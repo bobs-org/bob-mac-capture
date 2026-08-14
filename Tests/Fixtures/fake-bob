@@ -13,6 +13,7 @@ if [[ -n "${FAKE_BOB_RECORD_PATH:-}" ]]; then
     printf 'HOME=%s\n' "${HOME:-}"
     printf 'PATH=%s\n' "${PATH:-}"
     printf 'BOB_DIR=%s\n' "${BOB_DIR:-}"
+    printf 'BOB_PRIORITY_ROLL_SEED=%s\n' "${BOB_PRIORITY_ROLL_SEED:-}"
   } >>"${FAKE_BOB_RECORD_PATH}"
 fi
 
@@ -79,14 +80,32 @@ JSON
     cat <<'JSON'
 {
   "ok": true,
-  "schema_version": 1,
+  "bob_dir": "/tmp/bob",
+  "count": 1,
   "targets": [
     {
       "route": "today",
-      "title": "Today",
-      "sections": [{ "name": "Inbox", "anchor": "inbox" }],
-      "aliases": ["t"]
+      "name": "today",
+      "label": "today.md",
+      "kind": "inbox",
+      "is_default": true,
+      "status": null,
+      "relative_path": "today.md"
     }
+  ]
+}
+JSON
+    ;;
+  capture-complete)
+    cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 6,
+  "replacement": { "start": 6, "end": 6 },
+  "context": "route",
+  "candidates": [
+    { "replacement": "today", "route": "today", "label": "today.md", "kind": "inbox", "status": null }
   ]
 }
 JSON
@@ -95,15 +114,18 @@ JSON
     cat <<'JSON'
 {
   "ok": true,
-  "schema_version": 1,
-  "destination": {
-    "vault_path": "/tmp/bob",
-    "note_path": "Daily.md",
-    "heading": "Inbox",
-    "url": "obsidian://open?vault=bob&file=Daily.md"
-  },
-  "markdown": "- captured",
-  "opened": false,
+  "dry_run": true,
+  "routed": true,
+  "route": "today",
+  "route_label": "today.md",
+  "relative_target": "today.md",
+  "target": "/tmp/bob/today.md",
+  "text": "captured",
+  "task_line": "- [ ] #task captured [created::2026-08-14]",
+  "kind": "task",
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "inserted",
   "diagnostics": []
 }
 JSON

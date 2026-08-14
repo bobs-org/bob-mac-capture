@@ -76,7 +76,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self,
                   self.panel?.isKeyWindow == true,
-                  let command = self.keyRouter.command(for: event)
+                  let command = self.keyRouter.command(
+                    for: event,
+                    completionVisible: self.model.completionVisible
+                  )
             else {
                 return event
             }
@@ -91,11 +94,24 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             case .insertNewline:
                 return event
             case .escape:
+                if self.model.completionVisible {
+                    self.model.dismissCompletion()
+                    return nil
+                }
                 if self.model.pendingDiscardConfirmation || !self.model.hasDraft {
                     self.panel?.orderOut(nil)
                 } else {
                     _ = self.model.requestClose()
                 }
+                return nil
+            case .acceptCompletion:
+                self.model.acceptSelectedCompletion()
+                return nil
+            case .nextCompletion:
+                self.model.selectNextCompletion()
+                return nil
+            case .previousCompletion:
+                self.model.selectPreviousCompletion()
                 return nil
             }
         }

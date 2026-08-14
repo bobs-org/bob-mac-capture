@@ -57,4 +57,13 @@ public actor CaptureTargetsCache {
             )
         }
     }
+
+    public func markStale(errorDescription: String) -> CaptureTargetsSnapshot {
+        CaptureTargetsSnapshot(
+            targets: lastGoodResponse,
+            refreshedAt: lastRefreshDate,
+            stale: true,
+            errorDescription: errorDescription
+        )
+    }
 }

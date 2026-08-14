@@ -24,6 +24,47 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(record.contains("PATH=/usr/bin:/bin"))
     }
 
+    func testCaptureCompleteRunsCursorAwareEndpoint() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let response = try await client.captureComplete("idea @", cursor: 6)
+
+        XCTAssertEqual(response.context, "route")
+        XCTAssertEqual(response.candidates.first?.replacement, "today")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-complete --cursor 6 --format json -- idea @"))
+    }
+
+    func testLivePreviewAlwaysUsesNoClipAndPrioritySeed() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let response = try await client.captureLivePreview("buy milk % p:1", priorityRollSeed: "fixed")
+
+        XCTAssertTrue(response.dryRun == true)
+        XCTAssertEqual(response.taskLine, "- [ ] #task captured [created::2026-08-14]")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- buy milk % p:1"))
+        XCTAssertTrue(record.contains("BOB_PRIORITY_ROLL_SEED=fixed"))
+    }
+
     func testMalformedJSONProducesActionableErrorWithoutInputText() async throws {
         let client = BobProcessClient(
             executablePath: try fakeBobPath(),
@@ -65,6 +106,7 @@ final class BobProcessClientTests: XCTestCase {
 
         XCTAssertEqual(first.targets?.targets.first?.route, "today")
         XCTAssertEqual(second.targets?.targets.first?.route, "today")
+        XCTAssertEqual(first.targets?.targets.first?.label, "today.md")
         XCTAssertTrue(second.stale)
         XCTAssertTrue(second.errorDescription?.contains("boom") == true)
     }

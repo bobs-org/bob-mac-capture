@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import CaptureCore
 import ServiceManagement
 import XCTest
 
@@ -27,6 +28,43 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .shift)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .option)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 53)), .escape)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), completionVisible: true), .acceptCompletion)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), completionVisible: true), .acceptCompletion)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 125), completionVisible: true), .nextCompletion)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 126), completionVisible: true), .previousCompletion)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 45, modifiers: .control), completionVisible: true),
+            .nextCompletion
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 35, modifiers: .control), completionVisible: true),
+            .previousCompletion
+        )
+    }
+
+    @MainActor
+    func testCompletionAcceptanceUsesServerByteReplacementRange() {
+        let model = CapturePanelModel()
+        model.plainDraft = "idea @ma"
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 8,
+            replacement: CaptureRange(start: 6, end: 8),
+            context: "route",
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "mac_inbox",
+                    route: "mac_inbox",
+                    label: "mac_inbox.md",
+                    kind: "inbox"
+                )
+            ]
+        )
+
+        model.acceptSelectedCompletion()
+
+        XCTAssertEqual(model.plainDraft, "idea @mac_inbox")
+        XCTAssertNil(model.completionResponse)
     }
 
     func testHotKeyRegistrationConflictIsReported() {

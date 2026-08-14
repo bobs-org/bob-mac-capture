@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var hotKeyManager: HotKeyManager?
     private var panelController: CapturePanelController?
+    private var panelModel: CapturePanelModel?
+    private var vaultWatcher: VaultTargetWatcher?
     private let targetsCache = CaptureTargetsCache()
     private var processClient: BobProcessClient?
 
@@ -17,7 +19,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureStatusItem()
         configureProcessClient()
 
-        let model = CapturePanelModel()
+        let model = CapturePanelModel(processClient: processClient, targetsCache: targetsCache)
+        panelModel = model
         panelController = CapturePanelController(model: model)
         panelController?.prewarm()
 
@@ -27,11 +30,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         registerHotKey()
+        configureVaultWatcher()
         refreshTargetsWhenPossible()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         hotKeyManager?.invalidate()
+        vaultWatcher?.invalidate()
+        processClient?.cancelActiveProcess()
     }
 
     private func configureStatusItem() {
@@ -81,10 +87,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             processClient = BobProcessClient(executablePath: resolved, environment: environment)
             settings.resolvedBobPath = resolved
             settings.diagnosticStatus = "Ready"
+            panelModel?.setProcessClient(processClient)
         } catch {
             processClient = nil
             settings.resolvedBobPath = "Not resolved"
             settings.diagnosticStatus = String(describing: error)
+            panelModel?.setProcessClient(nil)
         }
     }
 
@@ -105,15 +113,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             let snapshot = await targetsCache.refresh(using: processClient)
             await MainActor.run {
+                self.panelModel?.updateTargetCacheSnapshot(snapshot)
                 if let error = snapshot.errorDescription {
-                    settings.diagnosticStatus = "Target cache stale: \(error)"
+                    self.settings.diagnosticStatus = "Target cache stale: \(error)"
                 }
             }
         }
     }
 
+    private func configureVaultWatcher() {
+        vaultWatcher?.invalidate()
+        let vaultPath = settings.bobDirectory.isEmpty
+            ? FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("bob")
+                .path
+            : settings.bobDirectory
+
+        vaultWatcher = VaultTargetWatcher(path: vaultPath) { [weak self] in
+            Task { @MainActor in
+                self?.refreshTargetsWhenPossible()
+            }
+        } onFailure: { [weak self] message in
+            Task { @MainActor in
+                guard let self else {
+                    return
+                }
+                let snapshot = await self.targetsCache.markStale(errorDescription: message)
+                self.panelModel?.updateTargetCacheSnapshot(snapshot)
+                self.settings.diagnosticStatus = "Target watcher stale: \(message)"
+            }
+        }
+
+        vaultWatcher?.start()
+    }
+
     private func showCapturePanel() {
         panelController?.show()
+        panelModel?.refreshTargetCache()
         refreshTargetsWhenPossible()
     }
 
@@ -129,6 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func recheckBob() {
         configureProcessClient()
         registerHotKey()
+        configureVaultWatcher()
     }
 
     @objc private func quit() {
