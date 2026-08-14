@@ -11,6 +11,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     init(model: CapturePanelModel) {
         self.model = model
         super.init()
+        model.panelDismisser = { [weak self] in self?.hidePanel() }
     }
 
     deinit {
@@ -25,6 +26,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
     func show() {
         let token = CaptureSignpost.begin("panel-order")
+        model.prepareForPresentation()
         let panel = makePanelIfNeeded()
         panel.center()
         panel.makeKeyAndOrderFront(nil)
@@ -71,6 +73,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return panel
     }
 
+    private func hidePanel() {
+        CaptureSignpost.event("panel-dismiss")
+        panel?.orderOut(nil)
+    }
+
     private func installKeyMonitorIfNeeded() {
         guard localMonitor == nil else {
             return
@@ -102,7 +109,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     return nil
                 }
                 if self.model.pendingDiscardConfirmation || !self.model.hasDraft {
-                    self.panel?.orderOut(nil)
+                    self.hidePanel()
                 } else {
                     _ = self.model.requestClose()
                 }

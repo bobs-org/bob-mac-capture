@@ -22,6 +22,23 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertNil(model.errorMessage)
     }
 
+    func testSuccessfulSubmitDismissesPanelExactlyOnce() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "Call bank @Cash"
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(dismissCount, 1)
+        XCTAssertEqual(model.plainDraft, "")
+    }
+
     func testSubmitAndOpenOpensObsidianURLBuiltFromReturnedTarget() async throws {
         let model = CapturePanelModel()
         model.processClient = BobProcessClient(
@@ -39,6 +56,25 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(openedURL?.host, "open")
     }
 
+    func testSuccessfulSubmitAndOpenDismissesPanelExactlyOnceAndOpensTarget() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "Call bank @Cash"
+        var openedURL: URL?
+        model.targetOpener = { openedURL = $0 }
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+
+        model.submit(openAfterCapture: true)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(dismissCount, 1)
+        XCTAssertNotNil(openedURL)
+    }
+
     func testFailedSubmitRetainsCompleteDraftAndSurfacesActionableError() async throws {
         let model = CapturePanelModel()
         model.processClient = BobProcessClient(
@@ -51,6 +87,8 @@ final class CapturePanelModelTests: XCTestCase {
             ]
         )
         model.plainDraft = "private captured text"
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
 
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
@@ -58,9 +96,10 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, "private captured text")
         XCTAssertEqual(model.errorMessage, "clipboard command xclip exited with 1")
         XCTAssertFalse(model.pendingDiscardConfirmation)
+        XCTAssertEqual(dismissCount, 0)
     }
 
-    func testTransportFailureAlsoRetainsDraftAndRedactsCapturedText() async throws {
+    func testTransportFailureAlsoRetainsDraftAndRedactsCapturedTextAndDoesNotDismiss() async throws {
         let model = CapturePanelModel()
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
@@ -71,6 +110,8 @@ final class CapturePanelModelTests: XCTestCase {
             ]
         )
         model.plainDraft = "private captured text"
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
 
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
@@ -78,6 +119,60 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, "private captured text")
         XCTAssertNotNil(model.errorMessage)
         XCTAssertFalse(model.errorMessage?.contains("private captured text") ?? true)
+        XCTAssertEqual(dismissCount, 0)
+    }
+
+    func testSubmitWithoutResolvedBobDoesNotDismissPanel() {
+        let model = CapturePanelModel()
+        model.plainDraft = "Call bank @Cash"
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+
+        model.submit(openAfterCapture: false)
+
+        XCTAssertEqual(dismissCount, 0)
+    }
+
+    func testPrepareForPresentationAfterSuccessClearsLastSuccessAndDestinationSummary() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "Call bank @Cash"
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+        XCTAssertNotNil(model.destinationSummary)
+
+        model.prepareForPresentation()
+
+        XCTAssertNil(model.lastSuccess)
+        XCTAssertNil(model.destinationSummary)
+        XCTAssertEqual(model.statusText, "")
+    }
+
+    func testPrepareForPresentationWithRetainedDraftAndErrorPreservesDraftErrorAndDiscardConfirmation() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": #"{"ok":false,"error":"clipboard command xclip exited with 1"}"#,
+                "FAKE_BOB_EXIT": "1",
+            ]
+        )
+        model.plainDraft = "private captured text"
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+        model.pendingDiscardConfirmation = true
+
+        model.prepareForPresentation()
+
+        XCTAssertEqual(model.plainDraft, "private captured text")
+        XCTAssertEqual(model.errorMessage, "clipboard command xclip exited with 1")
+        XCTAssertTrue(model.pendingDiscardConfirmation)
     }
 
     func testDoubleSubmitIsSuppressedWhileOneMutationIsInFlight() async throws {

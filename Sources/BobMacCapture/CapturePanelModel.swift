@@ -37,6 +37,7 @@ final class CapturePanelModel: ObservableObject {
     var processClient: BobProcessClient?
     var notificationService: NotificationService?
     var targetOpener: (URL) -> Void = { NSWorkspace.shared.open($0) }
+    var panelDismisser: () -> Void = {}
 
     private let debounceNanoseconds: UInt64
     private var analysisTask: Task<Void, Never>?
@@ -241,6 +242,24 @@ final class CapturePanelModel: ObservableObject {
         setPlainDraft("")
         suppressedCompletionAcceptanceDraft = nil
         priorityRollSeed = nil
+        resetAnalysisState()
+        analysisTask?.cancel()
+    }
+
+    // Called before the panel is (re)shown. A retained draft (from Escape or a failed
+    // capture) must reopen exactly as the user left it, error and all; only a panel with
+    // no draft — i.e. one that just dismissed after a success — needs its leftover
+    // success summary and status cleared so the next capture starts clean.
+    func prepareForPresentation() {
+        guard !hasDraft else {
+            return
+        }
+        resetAnalysisState()
+        lastSuccess = nil
+        selectedCompletionIndex = 0
+    }
+
+    private func resetAnalysisState() {
         pendingDiscardConfirmation = false
         parseDiagnostics = []
         completionResponse = nil
@@ -248,7 +267,6 @@ final class CapturePanelModel: ObservableObject {
         statusText = ""
         errorMessage = nil
         previewResult = nil
-        analysisTask?.cancel()
     }
 
     func dismissCompletion() {
@@ -348,6 +366,7 @@ final class CapturePanelModel: ObservableObject {
             if openAfterCapture, let url = ObsidianOpenURL.url(forAbsolutePath: success.target) {
                 targetOpener(url)
             }
+            panelDismisser()
         case .failure(let failure):
             errorMessage = failure.error
             statusText = "Capture failed"

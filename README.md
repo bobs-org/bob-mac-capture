@@ -93,13 +93,18 @@ or expired certificate can require reauthorizing those system permissions.
   that terminates and reaps a wedged process instead of leaving the panel waiting
   indefinitely; a fired timeout surfaces as an actionable `BobClientError.timedOut`. Quit
   cancels every outstanding invocation via `cancelActiveProcess()`.
+- A successful capture hides the panel automatically; a failed capture keeps the panel
+  open with its complete draft and an actionable error. Reopening the panel after a
+  success starts from a clean slate — the prior "Captured → …" summary and status text
+  are cleared, while a retained draft (from Escape or a failure) reopens exactly as it
+  was left.
 
 ## Keyboard
 
 | Key | In the editor | While completion is visible |
 | --- | --- | --- |
-| Return | Capture | Accept the selected completion |
-| Command-Return | Capture and open the target in Obsidian | Accept, then submit |
+| Return | Capture, then close the panel | Accept the selected completion |
+| Command-Return | Capture, open the target in Obsidian, then close the panel | Accept, then submit |
 | Shift-Return / Option-Return | Insert a newline | Insert a newline |
 | Tab | (normal focus traversal) | Accept the selected completion |
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion |
@@ -223,7 +228,9 @@ identifier `org.bobs.bob-mac-capture`; it never writes captured text to disk its
   with the underlying scan error; fix the reported cause (for example, an unreadable
   vault path) and reopen the panel, which retries the refresh.
 - **Capture fails but the draft disappears**: this should never happen — failures always
-  preserve the complete draft and destination. Use "Copy Diagnostic" next to the error to
+  preserve the complete draft and destination, and deliberately keep the panel on screen
+  to show it. A panel that vanished after Return means the capture landed; the success
+  notification names the route it took. Use "Copy Diagnostic" next to the error to
   capture the exact `bob` error for a bug report.
 - **The `Bob` menu-bar item does not appear** (no crash dialog, hotkey does nothing,
   Settings will not open): the app has no nib, so its entry point
