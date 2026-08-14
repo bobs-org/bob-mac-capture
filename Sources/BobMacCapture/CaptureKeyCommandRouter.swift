@@ -23,6 +23,7 @@ struct CaptureKeyCommandRouter {
         static let c: UInt16 = 8
         static let n: UInt16 = 45
         static let p: UInt16 = 35
+        static let leftBracket: UInt16 = 33
     }
 
     func command(for event: NSEvent, completionVisible: Bool = false) -> CaptureKeyCommand? {
@@ -42,6 +43,8 @@ struct CaptureKeyCommandRouter {
             return .submit
         case KeyCode.escape:
             return .escape
+        case KeyCode.leftBracket:
+            return modifiers == .control ? .escape : nil
         case KeyCode.c:
             return modifiers == .control ? .discardAndClose : nil
         case KeyCode.tab:

@@ -129,7 +129,7 @@ or expired certificate can require reauthorizing those system permissions.
 | Tab | (normal focus traversal) | Accept the selected completion |
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion |
 | Up / Ctrl-P | (normal focus traversal) | Select the previous completion |
-| Escape | Close the panel, retaining a nonempty draft without confirmation | Close completion |
+| Escape / Ctrl-[ | Close the panel, retaining a nonempty draft without confirmation | Close completion |
 | Control-C | Discard the draft and close the panel | Discard the draft and close the panel |
 
 Every capture action is reachable from the keyboard alone; the hotkey, editor, completion

@@ -282,6 +282,17 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .option)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 38, modifiers: .control)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 53)), .escape)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 33, modifiers: .control)), .escape)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 33, modifiers: .control), completionVisible: true),
+            .escape
+        )
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 33)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 33, modifiers: .shift)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 33, modifiers: .command)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 33, modifiers: .option)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 33, modifiers: [.control, .shift])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 33, modifiers: [.control, .command])))
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 8, modifiers: .control)), .discardAndClose)
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 8, modifiers: .control), completionVisible: true),
