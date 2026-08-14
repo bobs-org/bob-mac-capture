@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  macos:
+    name: macOS 26 SwiftPM
+    runs-on: macos-26
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          swift --version
+          sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
+          major="${sdk_version%%.*}"
+          test "${major}" -ge 26
+
+      - name: Lint Swift formatting
+        run: |
+          set -euo pipefail
+          if command -v swift-format >/dev/null 2>&1; then
+            swift-format lint --recursive Package.swift Sources Tests
+          else
+            swift format lint --recursive Package.swift Sources Tests
+          fi
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test
+
+      - name: Bundle
+        run: ./Scripts/bundle.sh --identity "-"
+
+      - name: Verify plist and signature
+        run: |
+          set -euo pipefail
+          app=".build/bundle/Bob Mac Capture.app"
+          plutil -lint "${app}/Contents/Info.plist"
+          codesign --verify --deep --strict "${app}"
+          identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${app}/Contents/Info.plist")"
+          test "${identifier}" = "org.bobs.bob-mac-capture"

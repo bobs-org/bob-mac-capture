@@ -1,0 +1,103 @@
+import AppKit
+import SwiftUI
+
+@MainActor
+final class CapturePanelController: NSObject, NSWindowDelegate {
+    private let model: CapturePanelModel
+    private let keyRouter = CaptureKeyCommandRouter()
+    private var panel: NSPanel?
+    private var localMonitor: Any?
+
+    init(model: CapturePanelModel) {
+        self.model = model
+        super.init()
+    }
+
+    deinit {
+        if let localMonitor {
+            NSEvent.removeMonitor(localMonitor)
+        }
+    }
+
+    func prewarm() {
+        _ = makePanelIfNeeded()
+    }
+
+    func show() {
+        let panel = makePanelIfNeeded()
+        panel.center()
+        panel.makeKeyAndOrderFront(nil)
+        installKeyMonitorIfNeeded()
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        model.requestClose()
+    }
+
+    func makePanelIfNeeded() -> NSPanel {
+        if let panel {
+            return panel
+        }
+
+        let created = Self.makePanel()
+        created.delegate = self
+        created.contentView = NSHostingView(rootView: CapturePanelView(model: model))
+        panel = created
+        return created
+    }
+
+    static func makePanel() -> NSPanel {
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 360),
+            styleMask: [
+                .nonactivatingPanel,
+                .titled,
+                .fullSizeContentView,
+                .resizable,
+            ],
+            backing: .buffered,
+            defer: false
+        )
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.titleVisibility = .hidden
+        panel.titlebarAppearsTransparent = true
+        panel.isReleasedWhenClosed = false
+        panel.hidesOnDeactivate = false
+        return panel
+    }
+
+    private func installKeyMonitorIfNeeded() {
+        guard localMonitor == nil else {
+            return
+        }
+
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self,
+                  self.panel?.isKeyWindow == true,
+                  let command = self.keyRouter.command(for: event)
+            else {
+                return event
+            }
+
+            switch command {
+            case .submit:
+                self.model.submit(openAfterCapture: false)
+                return nil
+            case .submitAndOpen:
+                self.model.submit(openAfterCapture: true)
+                return nil
+            case .insertNewline:
+                return event
+            case .escape:
+                if self.model.pendingDiscardConfirmation || !self.model.hasDraft {
+                    self.panel?.orderOut(nil)
+                } else {
+                    _ = self.model.requestClose()
+                }
+                return nil
+            }
+        }
+    }
+}

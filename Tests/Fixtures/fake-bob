@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ -n "${FAKE_BOB_TERM_PATH:-}" ]]; then
+  trap 'printf "terminated\n" >"${FAKE_BOB_TERM_PATH}"; exit 143' TERM INT
+fi
+
+if [[ -n "${FAKE_BOB_RECORD_PATH:-}" ]]; then
+  {
+    printf 'argv='
+    printf '%s' "$*"
+    printf '\n'
+    printf 'HOME=%s\n' "${HOME:-}"
+    printf 'PATH=%s\n' "${PATH:-}"
+    printf 'BOB_DIR=%s\n' "${BOB_DIR:-}"
+  } >>"${FAKE_BOB_RECORD_PATH}"
+fi
+
+if [[ -n "${FAKE_BOB_DELAY_SECONDS:-}" ]]; then
+  sleep "${FAKE_BOB_DELAY_SECONDS}" &
+  wait $!
+fi
+
+if [[ -n "${FAKE_BOB_STDERR:-}" ]]; then
+  printf '%s\n' "${FAKE_BOB_STDERR}" >&2
+fi
+
+if [[ -n "${FAKE_BOB_STDOUT:-}" ]]; then
+  printf '%s\n' "${FAKE_BOB_STDOUT}"
+  exit "${FAKE_BOB_EXIT:-0}"
+fi
+
+if [[ "${FAKE_BOB_EXIT:-0}" != "0" ]]; then
+  exit "${FAKE_BOB_EXIT}"
+fi
+
+command="${1:-}"
+shift || true
+
+json_string() {
+  local value="${1:-}"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\n'/\\n}"
+  value="${value//$'\r'/\\r}"
+  value="${value//$'\t'/\\t}"
+  printf '"%s"' "${value}"
+}
+
+case "${command}" in
+  capture-parse)
+    draft="${*: -1}"
+    if [[ "${draft}" == "Call bank @Cash^" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Call bank @Cash^",
+  "body": "Call bank",
+  "mode": "incomplete",
+  "route": "cash",
+  "needs": ["task"],
+  "spans": [
+    { "start": 10, "end": 15, "kind": "sub_bullet_route" },
+    { "start": 15, "end": 16, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": []
+}
+JSON
+    else
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      printf ',"body":'
+      json_string "${draft}"
+      printf ',"mode":"task","needs":[],"spans":[],"diagnostics":[]}\n'
+    fi
+    ;;
+  capture-targets)
+    cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "targets": [
+    {
+      "route": "today",
+      "title": "Today",
+      "sections": [{ "name": "Inbox", "anchor": "inbox" }],
+      "aliases": ["t"]
+    }
+  ]
+}
+JSON
+    ;;
+  capture)
+    cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "destination": {
+    "vault_path": "/tmp/bob",
+    "note_path": "Daily.md",
+    "heading": "Inbox",
+    "url": "obsidian://open?vault=bob&file=Daily.md"
+  },
+  "markdown": "- captured",
+  "opened": false,
+  "diagnostics": []
+}
+JSON
+    ;;
+  *)
+    printf 'unknown fake command: %s\n' "${command}" >&2
+    exit 64
+    ;;
+esac
