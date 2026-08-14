@@ -4,6 +4,8 @@ enum CaptureKeyCommand: Equatable {
     case submit
     case submitAndOpen
     case insertNewline
+    case insertBulletNewline
+    case deleteBackward
     case escape
     case discardAndClose
     case acceptCompletion
@@ -17,6 +19,7 @@ struct CaptureKeyCommandRouter {
         static let keypadEnter: UInt16 = 76
         static let escape: UInt16 = 53
         static let tab: UInt16 = 48
+        static let delete: UInt16 = 51
         static let arrowDown: UInt16 = 125
         static let arrowUp: UInt16 = 126
         static let j: UInt16 = 38
@@ -41,6 +44,12 @@ struct CaptureKeyCommandRouter {
                 return .acceptCompletion
             }
             return .submit
+        case KeyCode.j:
+            return modifiers == .control ? .insertBulletNewline : nil
+        case KeyCode.delete:
+            return event.modifierFlags.intersection([.command, .option, .control]).isEmpty
+                ? .deleteBackward
+                : nil
         case KeyCode.escape:
             return .escape
         case KeyCode.leftBracket:
@@ -53,8 +62,6 @@ struct CaptureKeyCommandRouter {
             return completionVisible ? .nextCompletion : nil
         case KeyCode.arrowUp:
             return completionVisible ? .previousCompletion : nil
-        case KeyCode.j:
-            return modifiers == .control ? .insertNewline : nil
         case KeyCode.n:
             return completionVisible && modifiers.contains(.control) ? .nextCompletion : nil
         case KeyCode.p:

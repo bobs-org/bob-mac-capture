@@ -280,7 +280,7 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .command)), .submitAndOpen)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .shift)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .option)), .insertNewline)
-        XCTAssertEqual(router.command(for: keyEvent(keyCode: 38, modifiers: .control)), .insertNewline)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 38, modifiers: .control)), .insertBulletNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 53)), .escape)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 33, modifiers: .control)), .escape)
         XCTAssertEqual(
@@ -325,7 +325,7 @@ final class BobMacCaptureTests: XCTestCase {
         )
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 38, modifiers: .control), completionVisible: true),
-            .insertNewline
+            .insertBulletNewline
         )
         XCTAssertNil(router.command(for: keyEvent(keyCode: 38, modifiers: [.control, .shift])))
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), completionVisible: true), .acceptCompletion)
@@ -339,6 +339,79 @@ final class BobMacCaptureTests: XCTestCase {
             router.command(for: keyEvent(keyCode: 35, modifiers: .control), completionVisible: true),
             .previousCompletion
         )
+    }
+
+    func testKeyRouterMatchesControlJAsBulletNewlineOnlyWithControlModifier() {
+        let router = CaptureKeyCommandRouter()
+
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 38, modifiers: .control)), .insertBulletNewline)
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 38)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 38, modifiers: .shift)))
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 38, modifiers: .control), completionVisible: true),
+            .insertBulletNewline
+        )
+    }
+
+    func testKeyRouterMatchesPlainBackspaceButNotModifiedVariants() {
+        let router = CaptureKeyCommandRouter()
+
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 51)), .deleteBackward)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 51, modifiers: .shift)), .deleteBackward)
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 51, modifiers: .option)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 51, modifiers: .command)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 51, modifiers: .control)))
+    }
+
+    @MainActor
+    func testEmptyBulletRowDeletionRangeRemovesMiddleRowAndPrecedingNewline() {
+        let textView = NSTextView(frame: .zero)
+        textView.string = "Parent\n- \nChild"
+        // Caret right after the placeholder's trailing space, before its own newline --
+        // exactly where the caret sits right after Ctrl-J inserted the row.
+        textView.setSelectedRange(NSRange(location: 9, length: 0))
+
+        let range = CapturePanelController.emptyBulletRowDeletionRange(in: textView)
+
+        XCTAssertEqual(range, NSRange(location: 6, length: 3))
+    }
+
+    @MainActor
+    func testEmptyBulletRowDeletionRangeRemovesOnlyRowContentOnFirstLine() {
+        let textView = NSTextView(frame: .zero)
+        textView.string = "- \nChild"
+        textView.setSelectedRange(NSRange(location: 2, length: 0))
+
+        let range = CapturePanelController.emptyBulletRowDeletionRange(in: textView)
+
+        XCTAssertEqual(range, NSRange(location: 0, length: 2))
+    }
+
+    @MainActor
+    func testEmptyBulletRowDeletionRangeIgnoresNonCollapsedSelection() {
+        let textView = NSTextView(frame: .zero)
+        textView.string = "Parent\n- \nChild"
+        textView.setSelectedRange(NSRange(location: 7, length: 1))
+
+        XCTAssertNil(CapturePanelController.emptyBulletRowDeletionRange(in: textView))
+    }
+
+    @MainActor
+    func testEmptyBulletRowDeletionRangeIgnoresNonPlaceholderRows() {
+        let textView = NSTextView(frame: .zero)
+        textView.string = "Parent\n- attach checklist\nChild"
+        textView.setSelectedRange(NSRange(location: 9, length: 0))
+
+        XCTAssertNil(CapturePanelController.emptyBulletRowDeletionRange(in: textView))
+    }
+
+    @MainActor
+    func testEmptyBulletRowDeletionRangeIgnoresOrdinaryLines() {
+        let textView = NSTextView(frame: .zero)
+        textView.string = "Parent text\nChild"
+        textView.setSelectedRange(NSRange(location: 5, length: 0))
+
+        XCTAssertNil(CapturePanelController.emptyBulletRowDeletionRange(in: textView))
     }
 
     @MainActor

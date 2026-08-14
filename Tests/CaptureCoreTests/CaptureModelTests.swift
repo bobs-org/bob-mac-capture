@@ -28,6 +28,51 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(decoded.schemaVersion, 1)
         XCTAssertEqual(decoded.spans, [CaptureSpan(start: 10, end: 15, kind: "sub_bullet_route")])
         XCTAssertEqual(decoded.needs, ["task"])
+        XCTAssertEqual(decoded.subBullets, [])
+    }
+
+    func testParseResponseDecodesSubBulletsWhenPresent() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Prepare launch\\n- confirm owner\\n- attach checklist",
+              "body": "Prepare launch",
+              "mode": "task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": [],
+              "sub_bullets": ["confirm owner", "attach checklist"]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(decoded.subBullets, ["confirm owner", "attach checklist"])
+    }
+
+    func testParseResponseDecodesEmptySubBulletsArray() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Prepare launch",
+              "body": "Prepare launch",
+              "mode": "task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": [],
+              "sub_bullets": []
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(decoded.subBullets, [])
     }
 
     func testCaptureCommandResponseDecodesRealSuccessShapeWithNoSchemaVersion() throws {
@@ -50,6 +95,45 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(success.target, "/home/bryan/bob/cash.md")
         XCTAssertNil(success.clip)
         XCTAssertNil(success.scheduleLog)
+        XCTAssertEqual(success.subBullets, [])
+    }
+
+    func testCaptureCommandResponseDecodesSubBulletsWhenPresent() throws {
+        let data = Data(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":"cash","route_label":"cash.md",
+             "relative_target":"cash.md","target":"/home/bryan/bob/cash.md","text":"Prepare launch",
+             "task_line":"- [ ] #task Prepare launch [created::2026-08-14]","kind":"task",
+             "created":"2026-08-14","scheduled":null,"placement":"inserted",
+             "sub_bullets":["  - confirm owner","  - attach checklist"]}
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.subBullets, ["  - confirm owner", "  - attach checklist"])
+    }
+
+    func testCaptureCommandResponseDecodesUnknownAdditiveTopLevelKeys() throws {
+        let data = Data(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":"cash","route_label":"cash.md",
+             "relative_target":"cash.md","target":"/home/bryan/bob/cash.md","text":"Prepare launch",
+             "task_line":"- [ ] #task Prepare launch [created::2026-08-14]","kind":"task",
+             "created":"2026-08-14","scheduled":null,"placement":"inserted",
+             "future_field":{"nested":true}}
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.subBullets, [])
     }
 
     func testCaptureCommandResponseDecodesRealFailureShape() throws {

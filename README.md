@@ -102,6 +102,11 @@ or expired certificate can require reauthorizing those system permissions.
 - Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through
   a dedicated process-client API that asserts `--no-clip`. `%` markers stay literal in
   continuous preview; clipboard-resolving preview is a separate explicit action.
+- The additive `sub_bullets` field on `capture`/`capture-parse` output (the exact
+  rendered authored-child lines, omitted entirely when a draft has no authored bullets)
+  decodes to `[]` when absent, so an older `bob` still produces a useful parent-only
+  preview. Preview renders `task_line` followed by every `sub_bullets` line in source
+  order and indentation, never flattened or truncated.
 - The preview path assigns a fixed `BOB_PRIORITY_ROLL_SEED` for the draft lifecycle so
   randomized `p:<N>` scheduled dates can be reused by submission and reset only after a
   successful capture or discard.
@@ -125,7 +130,9 @@ or expired certificate can require reauthorizing those system permissions.
 | --- | --- | --- |
 | Return | Capture, then close the panel | Accept the selected completion |
 | Command-Return | Capture, open the target in Obsidian, then close the panel | Accept, then submit |
-| Shift-Return / Option-Return / Ctrl-J | Insert a newline | Insert a newline |
+| Shift-Return / Option-Return | Insert a newline | Insert a newline |
+| Ctrl-J | Insert a new `- ` bullet row after the caret | Insert a new `- ` bullet row after the caret |
+| Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else) | Remove an unused `- ` row in one action |
 | Tab | (normal focus traversal) | Accept the selected completion |
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion |
 | Up / Ctrl-P | (normal focus traversal) | Select the previous completion |
@@ -135,9 +142,23 @@ or expired certificate can require reauthorizing those system permissions.
 Every capture action is reachable from the keyboard alone; the hotkey, editor, completion
 list, and Capture/Preview/Discard buttons never require a pointer. The editor
 starts at one visual line, grows and shrinks with rendered content through six visual
-lines, then scrolls internally for longer drafts. Multi-line drafts are an editing
-affordance only: embedded newlines are whitespace-normalized into a single line by
-`bob capture`, matching its documented CLI contract.
+lines, then scrolls internally for longer drafts.
+
+A draft is a one-line parent followed by zero or more flat `-`/`*`/`+` bullets; `bob
+capture` renders each as an authored child of the captured parent, and a marker (`@route`,
+`s:<N>`, `p:<N>`, `%`, …) at the end of any line configures the whole capture even when it
+appears on a child line:
+
+```text
+Prepare the launch review
+- Confirm the rollout owner
+- Attach the final checklist @work p:1
+```
+
+Ctrl-J starts the next `- ` row from anywhere in the draft, and Backspace on an empty `- `
+row removes it in one action instead of requiring two ordinary backspaces. Both act on the
+native text view directly, so undo, IME composition, and accessibility behave exactly as
+they do for any other edit.
 
 ## Live Preview and Clipboard Semantics
 

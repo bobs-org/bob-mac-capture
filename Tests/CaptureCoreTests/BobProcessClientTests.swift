@@ -24,6 +24,27 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(record.contains("PATH=/usr/bin:/bin"))
     }
 
+    func testCaptureParseRunsMultilineDraftAsOneArgvElementAndDecodesSubBullets() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "Prepare launch\n- confirm owner\n- attach checklist"
+
+        let response = try await client.captureParse(draft)
+
+        XCTAssertEqual(response.body, "Prepare launch")
+        XCTAssertEqual(response.subBullets, ["confirm owner", "attach checklist"])
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- \(draft)"))
+    }
+
     func testCaptureCompleteRunsCursorAwareEndpoint() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -83,6 +104,38 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(success.routeLabel, "cash.md")
         XCTAssertEqual(success.target, "/tmp/bob/cash.md")
         XCTAssertEqual(success.placement, "inserted")
+    }
+
+    func testCaptureSubmitDecodesRenderedSubBulletsForMultilineDraft() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "Prepare launch\n- confirm owner\n- attach checklist"
+
+        let response = try await client.capture(draft, dryRun: false, readClipboard: true)
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful capture response")
+        }
+        XCTAssertEqual(success.taskLine, "- [ ] #task Prepare launch [created::2026-08-14]")
+        XCTAssertEqual(success.subBullets, ["  - confirm owner", "  - attach checklist"])
+    }
+
+    func testLivePreviewDecodesRenderedSubBulletsForMultilineDraft() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "Prepare launch\n- confirm owner\n- attach checklist"
+
+        let response = try await client.captureLivePreview(draft, priorityRollSeed: "fixed")
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful live preview response")
+        }
+        XCTAssertTrue(success.dryRun)
+        XCTAssertEqual(success.subBullets, ["  - confirm owner", "  - attach checklist"])
     }
 
     func testCapturePreviewRunsDryRunWithoutSuppressingClipboard() async throws {

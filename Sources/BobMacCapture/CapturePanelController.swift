@@ -239,6 +239,22 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 firstResponder: panel?.firstResponder,
                 model: model
             )
+        case .insertBulletNewline:
+            guard let textView = Self.activeEditableTextView(in: panel) else {
+                return false
+            }
+            model.dismissCompletion()
+            textView.insertText("\n- ", replacementRange: textView.selectedRange())
+            return true
+        case .deleteBackward:
+            guard let textView = Self.activeEditableTextView(in: panel),
+                  let deletionRange = Self.emptyBulletRowDeletionRange(in: textView)
+            else {
+                return false
+            }
+            model.dismissCompletion()
+            textView.insertText("", replacementRange: deletionRange)
+            return true
         case .escape:
             if model.completionVisible {
                 model.dismissCompletion()
@@ -284,5 +300,45 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
             return self.perform(command) ? nil : event
         }
+    }
+
+    // Ctrl-J and the placeholder-row Backspace both act directly on the draft's backing
+    // `NSTextView` (found via the first responder) so undo, IME, and accessibility stay
+    // native instead of routing through `CapturePanelModel`.
+    private static func activeEditableTextView(in panel: NSPanel?) -> NSTextView? {
+        guard let textView = panel?.firstResponder as? NSTextView, textView.isEditable else {
+            return nil
+        }
+        return textView
+    }
+
+    // Intervenes only when the caret's collapsed selection sits on a physical line whose
+    // complete content is exactly the empty-bullet placeholder `- ` that Ctrl-J inserts.
+    // Every other selection, line, or content passes back `nil` so AppKit's ordinary
+    // Backspace behavior is untouched.
+    static func emptyBulletRowDeletionRange(in textView: NSTextView) -> NSRange? {
+        let selection = textView.selectedRange()
+        guard selection.length == 0 else {
+            return nil
+        }
+
+        let text = textView.string as NSString
+        var lineStart = 0
+        var contentsEnd = 0
+        text.getLineStart(
+            &lineStart,
+            end: nil,
+            contentsEnd: &contentsEnd,
+            for: NSRange(location: selection.location, length: 0)
+        )
+        let contentRange = NSRange(location: lineStart, length: contentsEnd - lineStart)
+        guard text.substring(with: contentRange) == "- " else {
+            return nil
+        }
+
+        if lineStart == 0 {
+            return contentRange
+        }
+        return NSRange(location: lineStart - 1, length: contentRange.length + 1)
     }
 }

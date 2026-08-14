@@ -12,6 +12,10 @@ public struct CaptureParseResponse: Codable, Equatable {
     public let needs: [String]
     public let spans: [CaptureSpan]
     public let diagnostics: [CaptureDiagnostic]
+    // Additive to schema version 1: `bob capture-parse` omits this key entirely when a
+    // draft has no authored sub-bullets, so decoding must tolerate its absence rather
+    // than requiring it like the other array fields above.
+    public let subBullets: [String]
 
     public init(
         ok: Bool,
@@ -24,7 +28,8 @@ public struct CaptureParseResponse: Codable, Equatable {
         blockID: String? = nil,
         needs: [String] = [],
         spans: [CaptureSpan] = [],
-        diagnostics: [CaptureDiagnostic] = []
+        diagnostics: [CaptureDiagnostic] = [],
+        subBullets: [String] = []
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -37,6 +42,23 @@ public struct CaptureParseResponse: Codable, Equatable {
         self.needs = needs
         self.spans = spans
         self.diagnostics = diagnostics
+        self.subBullets = subBullets
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decode(Bool.self, forKey: .ok)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        input = try container.decode(String.self, forKey: .input)
+        body = try container.decode(String.self, forKey: .body)
+        mode = try container.decode(String.self, forKey: .mode)
+        route = try container.decodeIfPresent(String.self, forKey: .route)
+        section = try container.decodeIfPresent(String.self, forKey: .section)
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
+        needs = try container.decode([String].self, forKey: .needs)
+        spans = try container.decode([CaptureSpan].self, forKey: .spans)
+        diagnostics = try container.decode([CaptureDiagnostic].self, forKey: .diagnostics)
+        subBullets = try container.decodeIfPresent([String].self, forKey: .subBullets) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -51,6 +73,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         case needs
         case spans
         case diagnostics
+        case subBullets = "sub_bullets"
     }
 }
 
@@ -141,6 +164,11 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     public let priority: String?
     public let priorityLabel: String?
     public let placement: String
+    // Additive: `bob capture` omits this key entirely when a draft has no authored
+    // sub-bullets, so decoding must tolerate its absence. These are the exact rendered
+    // Markdown child lines (including target-selected indentation), unlike
+    // `CaptureParseResponse.subBullets`'s normalized semantic bodies.
+    public let subBullets: [String]
     public let clip: CaptureClipOutput?
     public let scheduleLog: CaptureScheduleLog?
     public let blockID: String?
@@ -168,6 +196,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         priority: String? = nil,
         priorityLabel: String? = nil,
         placement: String,
+        subBullets: [String] = [],
         clip: CaptureClipOutput? = nil,
         scheduleLog: CaptureScheduleLog? = nil,
         blockID: String? = nil,
@@ -194,6 +223,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.priority = priority
         self.priorityLabel = priorityLabel
         self.placement = placement
+        self.subBullets = subBullets
         self.clip = clip
         self.scheduleLog = scheduleLog
         self.blockID = blockID
@@ -204,6 +234,36 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.parentText = parentText
         self.parentStatusSymbol = parentStatusSymbol
         self.parentStatusName = parentStatusName
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decode(Bool.self, forKey: .ok)
+        dryRun = try container.decode(Bool.self, forKey: .dryRun)
+        routed = try container.decode(Bool.self, forKey: .routed)
+        route = try container.decodeIfPresent(String.self, forKey: .route)
+        routeLabel = try container.decode(String.self, forKey: .routeLabel)
+        relativeTarget = try container.decode(String.self, forKey: .relativeTarget)
+        target = try container.decode(String.self, forKey: .target)
+        text = try container.decode(String.self, forKey: .text)
+        taskLine = try container.decode(String.self, forKey: .taskLine)
+        kind = try container.decode(String.self, forKey: .kind)
+        created = try container.decode(String.self, forKey: .created)
+        scheduled = try container.decodeIfPresent(String.self, forKey: .scheduled)
+        priority = try container.decodeIfPresent(String.self, forKey: .priority)
+        priorityLabel = try container.decodeIfPresent(String.self, forKey: .priorityLabel)
+        placement = try container.decode(String.self, forKey: .placement)
+        subBullets = try container.decodeIfPresent([String].self, forKey: .subBullets) ?? []
+        clip = try container.decodeIfPresent(CaptureClipOutput.self, forKey: .clip)
+        scheduleLog = try container.decodeIfPresent(CaptureScheduleLog.self, forKey: .scheduleLog)
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
+        dayFile = try container.decodeIfPresent(String.self, forKey: .dayFile)
+        blockLink = try container.decodeIfPresent(String.self, forKey: .blockLink)
+        pomodoroLinkPlacement = try container.decodeIfPresent(String.self, forKey: .pomodoroLinkPlacement)
+        parentLine = try container.decodeIfPresent(Int.self, forKey: .parentLine)
+        parentText = try container.decodeIfPresent(String.self, forKey: .parentText)
+        parentStatusSymbol = try container.decodeIfPresent(String.self, forKey: .parentStatusSymbol)
+        parentStatusName = try container.decodeIfPresent(String.self, forKey: .parentStatusName)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -222,6 +282,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case priority
         case priorityLabel = "priority_label"
         case placement
+        case subBullets = "sub_bullets"
         case clip
         case scheduleLog = "schedule_log"
         case blockID = "block_id"

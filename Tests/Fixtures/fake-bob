@@ -48,6 +48,8 @@ json_string() {
   printf '"%s"' "${value}"
 }
 
+multiline_draft=$'Prepare launch\n- confirm owner\n- attach checklist'
+
 case "${command}" in
   capture-parse)
     draft="${*: -1}"
@@ -127,6 +129,11 @@ JSON
   "diagnostics": []
 }
 JSON
+    elif [[ "${draft}" == "${multiline_draft}" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      printf ',"body":"Prepare launch","mode":"task","needs":[],"spans":[],"diagnostics":[],'
+      printf '"sub_bullets":["confirm owner","attach checklist"]}\n'
     else
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
@@ -272,6 +279,25 @@ JSON
   "created": "2026-08-14",
   "scheduled": null,
   "placement": "inserted"
+}
+JSON
+    elif [[ "${draft}" == "${multiline_draft}" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "cash",
+  "route_label": "cash.md",
+  "relative_target": "cash.md",
+  "target": "/tmp/bob/cash.md",
+  "text": "Prepare launch",
+  "task_line": "- [ ] #task Prepare launch [created::2026-08-14]",
+  "kind": "task",
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "inserted",
+  "sub_bullets": ["  - confirm owner", "  - attach checklist"]
 }
 JSON
     else

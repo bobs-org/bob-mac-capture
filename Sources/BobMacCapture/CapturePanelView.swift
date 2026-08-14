@@ -571,10 +571,26 @@ private struct PreviewPane: View {
         }
         .lineLimit(1)
 
-        Text(success.taskLine)
-            .font(.system(.callout, design: .monospaced))
-            .textSelection(.enabled)
-            .lineLimit(2)
+        if success.subBullets.isEmpty {
+            Text(success.taskLine)
+                .font(.system(.callout, design: .monospaced))
+                .textSelection(.enabled)
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(success.taskLine)
+                        .font(.system(.callout, design: .monospaced))
+                        .textSelection(.enabled)
+                    ForEach(Array(success.subBullets.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                            .font(.system(.callout, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 140)
+        }
 
         Text(success.relativeTarget)
             .foregroundStyle(.secondary)

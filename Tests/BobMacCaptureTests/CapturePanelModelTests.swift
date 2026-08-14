@@ -40,6 +40,34 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, "")
     }
 
+    func testSubmitDecodesRenderedSubBulletsForMultilineDraft() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "Prepare launch\n- confirm owner\n- attach checklist"
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.lastSuccess?.subBullets, ["  - confirm owner", "  - attach checklist"])
+    }
+
+    func testPreviewDecodesRenderedSubBulletsForMultilineDraft() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "Prepare launch\n- confirm owner\n- attach checklist"
+
+        model.preview()
+        await waitUntil { !model.isPreviewing }
+
+        XCTAssertEqual(model.previewResult?.subBullets, ["  - confirm owner", "  - attach checklist"])
+    }
+
     func testSubmitAndOpenOpensObsidianURLBuiltFromReturnedTarget() async throws {
         let model = CapturePanelModel()
         model.processClient = BobProcessClient(
