@@ -51,7 +51,16 @@ json_string() {
 case "${command}" in
   capture-parse)
     draft="${*: -1}"
-    if [[ "${draft}" == "idea @ma" ]]; then
+    if [[ "${draft}" == *"[[AI"* ]]; then
+      prefix="${draft%%"[[AI"*}"
+      start=$((${#prefix} + 2))
+      end=$((start + 2))
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      printf ',"body":'
+      json_string "${draft}"
+      printf ',"mode":"task","needs":[],"spans":[{"start":%s,"end":%s,"kind":"wikilink_target"}],"diagnostics":[]}\n' "${start}" "${end}"
+    elif [[ "${draft}" == "idea @ma" ]]; then
       cat <<'JSON'
 {
   "ok": true,
@@ -148,7 +157,44 @@ JSON
     ;;
   capture-complete)
     draft="${*: -1}"
-    if [[ "${draft}" == "idea @ma" ]]; then
+    if [[ "${draft}" == *"[[AI"* ]]; then
+      cursor="0"
+      args=("$@")
+      for ((i = 0; i < ${#args[@]}; i++)); do
+        if [[ "${args[$i]}" == "--cursor" || "${args[$i]}" == "-c" ]]; then
+          cursor="${args[$((i + 1))]:-0}"
+        fi
+      done
+      prefix="${draft%%"[[AI"*}"
+      start=$((${#prefix} + 2))
+      end=$((start + 2))
+      replacement="Artificial Intelligence|AI]]"
+      cursor_after=$((start + ${#replacement}))
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+JSON
+      printf '  "cursor": %s,\n' "${cursor}"
+      printf '  "replacement": { "start": %s, "end": %s },\n' "${start}" "${end}"
+      cat <<'JSON'
+  "context": "wikilink_note",
+  "candidates": [
+    {
+      "replacement": "Artificial Intelligence|AI]]",
+JSON
+      printf '      "cursor_after": %s,\n' "${cursor_after}"
+      cat <<'JSON'
+      "path": "Artificial Intelligence.md",
+      "name": "Artificial Intelligence",
+      "alias": "AI",
+      "match_kind": "exact_alias"
+    }
+  ],
+  "warnings": ["skipped unreadable note"]
+}
+JSON
+    elif [[ "${draft}" == "idea @ma" ]]; then
       cat <<'JSON'
 {
   "ok": true,

@@ -392,6 +392,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     public let replacement: CaptureRange
     public let context: String?
     public let candidates: [CaptureCompletionCandidate]
+    public let warnings: [String]
 
     public init(
         ok: Bool,
@@ -399,7 +400,8 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         cursor: Int,
         replacement: CaptureRange,
         context: String?,
-        candidates: [CaptureCompletionCandidate]
+        candidates: [CaptureCompletionCandidate],
+        warnings: [String] = []
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -407,6 +409,18 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         self.replacement = replacement
         self.context = context
         self.candidates = candidates
+        self.warnings = warnings
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decode(Bool.self, forKey: .ok)
+        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        cursor = try container.decode(Int.self, forKey: .cursor)
+        replacement = try container.decode(CaptureRange.self, forKey: .replacement)
+        context = try container.decodeIfPresent(String.self, forKey: .context)
+        candidates = try container.decodeIfPresent([CaptureCompletionCandidate].self, forKey: .candidates) ?? []
+        warnings = try container.decodeIfPresent([String].self, forKey: .warnings) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -416,6 +430,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         case replacement
         case context
         case candidates
+        case warnings
     }
 }
 
@@ -436,6 +451,13 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let section: String?
     public let depth: Int?
     public let childCount: Int?
+    public let cursorAfter: Int?
+    public let path: String?
+    public let name: String?
+    public let alias: String?
+    public let matchKind: String?
+    public let heading: String?
+    public let preview: String?
 
     public var id: String {
         [
@@ -445,6 +467,10 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
             taskRef,
             blockID,
             text,
+            path,
+            alias,
+            heading,
+            preview,
         ]
         .compactMap { $0 }
         .joined(separator: "\u{1f}")
@@ -466,7 +492,14 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         text: String? = nil,
         section: String? = nil,
         depth: Int? = nil,
-        childCount: Int? = nil
+        childCount: Int? = nil,
+        cursorAfter: Int? = nil,
+        path: String? = nil,
+        name: String? = nil,
+        alias: String? = nil,
+        matchKind: String? = nil,
+        heading: String? = nil,
+        preview: String? = nil
     ) {
         self.replacement = replacement
         self.route = route
@@ -484,6 +517,13 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.section = section
         self.depth = depth
         self.childCount = childCount
+        self.cursorAfter = cursorAfter
+        self.path = path
+        self.name = name
+        self.alias = alias
+        self.matchKind = matchKind
+        self.heading = heading
+        self.preview = preview
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -503,5 +543,12 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case section
         case depth
         case childCount = "child_count"
+        case cursorAfter = "cursor_after"
+        case path
+        case name
+        case alias
+        case matchKind = "match_kind"
+        case heading
+        case preview
     }
 }

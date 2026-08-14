@@ -185,6 +185,107 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(decoded.candidates.first?.childCount, 2)
     }
 
+    func testCompletionResponseDecodesWikilinkMetadataWarningsAndCursorAfter() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 4,
+              "replacement": { "start": 2, "end": 4 },
+              "context": "wikilink_note",
+              "candidates": [
+                {
+                  "replacement": "Artificial Intelligence|AI]]",
+                  "cursor_after": 30,
+                  "path": "Artificial Intelligence.md",
+                  "name": "Artificial Intelligence",
+                  "alias": "AI",
+                  "match_kind": "exact_alias",
+                  "future_key": true
+                }
+              ],
+              "warnings": ["skipped unreadable note"],
+              "future_key": "ignored"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+
+        XCTAssertEqual(decoded.context, "wikilink_note")
+        XCTAssertEqual(decoded.warnings, ["skipped unreadable note"])
+        XCTAssertEqual(decoded.candidates.first?.cursorAfter, 30)
+        XCTAssertEqual(decoded.candidates.first?.path, "Artificial Intelligence.md")
+        XCTAssertEqual(decoded.candidates.first?.alias, "AI")
+        XCTAssertEqual(decoded.candidates.first?.matchKind, "exact_alias")
+    }
+
+    func testCompletionResponseDecodesWikilinkHeadingAndBlockMetadata() throws {
+        let headingData = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 12,
+              "replacement": { "start": 10, "end": 12 },
+              "context": "wikilink_heading",
+              "candidates": [
+                {
+                  "replacement": "Design]]",
+                  "cursor_after": 18,
+                  "path": "sase.md",
+                  "heading": "Design",
+                  "level": 1,
+                  "match_kind": "prefix"
+                }
+              ]
+            }
+            """.utf8
+        )
+        let blockData = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 12,
+              "replacement": { "start": 10, "end": 12 },
+              "context": "wikilink_block",
+              "candidates": [
+                {
+                  "replacement": "^next-step]]",
+                  "cursor_after": 22,
+                  "path": "sase.md",
+                  "block_id": "next-step",
+                  "preview": "Plan the next step",
+                  "match_kind": "prefix"
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let heading = try JSONDecoder().decode(CaptureCompletionResponse.self, from: headingData)
+        let block = try JSONDecoder().decode(CaptureCompletionResponse.self, from: blockData)
+
+        XCTAssertEqual(heading.candidates.first?.heading, "Design")
+        XCTAssertEqual(heading.candidates.first?.level, 1)
+        XCTAssertEqual(block.candidates.first?.blockID, "next-step")
+        XCTAssertEqual(block.candidates.first?.preview, "Plan the next step")
+    }
+
+    func testAttributedStringUtf8OffsetRoundTripsCollapsedCaret() throws {
+        let text = AttributedString("a 🧪 cafe\u{301}")
+        let plain = String(text.characters)
+        let target = try XCTUnwrap(plain.range(of: "cafe"))
+        let offset = plain[..<target.lowerBound].utf8.count
+
+        let index = try XCTUnwrap(attributedStringIndex(in: text, utf8Offset: offset))
+
+        XCTAssertEqual(utf8Offset(in: text, at: index), offset)
+        XCTAssertNil(attributedStringIndex(in: text, utf8Offset: 3))
+    }
+
     func testValidatedSpanRangesRejectMalformedUtf8AndOverlaps() {
         let text = "Call 🧪 @Cash"
         let routeStart = text.utf8.count - "@Cash".utf8.count

@@ -13,6 +13,7 @@ enum CapturePreviewState: Equatable {
 @MainActor
 final class CapturePanelModel: ObservableObject {
     @Published var attributedDraft = AttributedString()
+    @Published var editorSelection = AttributedTextSelection()
     @Published var statusText = ""
     @Published var previewState: CapturePreviewState = .idle
     @Published var parseDiagnostics: [CaptureDiagnostic] = []
@@ -45,6 +46,7 @@ final class CapturePanelModel: ObservableObject {
     // SwiftUI can deliver the text-change callback after a programmatic binding update.
     // Remember the accepted value so that callback cannot start completion analysis again.
     private var suppressedCompletionAcceptanceDraft: String?
+    private var programmaticSelectionOffsetToIgnore: Int?
     private var priorityRollSeed: String?
 
     // Shared by submit and preview so a late callback from either one can never mutate
@@ -105,6 +107,7 @@ final class CapturePanelModel: ObservableObject {
             statusText = "Bob is not resolved"
             previewState = .idle
             completionResponse = nil
+            invalidateAnalysis()
         } else if hasDraft {
             editorTextDidChange()
         }
@@ -136,11 +139,41 @@ final class CapturePanelModel: ObservableObject {
             completionResponse = nil
             previewState = .idle
             statusText = ""
-            analysisTask?.cancel()
+            invalidateAnalysis()
             return
         }
 
-        scheduleAnalysis(cursorUTF8Offset: cursorUTF8Offset ?? draft.utf8.count)
+        let insertionOffset = cursorUTF8Offset ?? collapsedSelectionUTF8Offset()
+        scheduleAnalysis(cursorUTF8Offset: insertionOffset, requestCompletion: insertionOffset != nil)
+    }
+
+    func editorSelectionDidChange() {
+        editorSelectionDidChange(cursorUTF8Offset: collapsedSelectionUTF8Offset())
+    }
+
+    func editorSelectionDidChange(cursorUTF8Offset: Int?) {
+        let insertionOffset = cursorUTF8Offset
+        if let ignoredOffset = programmaticSelectionOffsetToIgnore {
+            if ignoredOffset == insertionOffset {
+                programmaticSelectionOffsetToIgnore = nil
+                return
+            }
+            programmaticSelectionOffsetToIgnore = nil
+        }
+        guard !isApplyingProgrammaticDraft, hasDraft else {
+            return
+        }
+
+        scheduleAnalysis(cursorUTF8Offset: insertionOffset, requestCompletion: insertionOffset != nil)
+    }
+
+    func collapsedSelectionUTF8Offset() -> Int? {
+        switch editorSelection.indices(in: attributedDraft) {
+        case .insertionPoint(let index):
+            return utf8Offset(in: attributedDraft, at: index)
+        case .ranges(_):
+            return nil
+        }
     }
 
     func submit(openAfterCapture: Bool) {
@@ -248,7 +281,6 @@ final class CapturePanelModel: ObservableObject {
         setPlainDraft("")
         suppressedCompletionAcceptanceDraft = nil
         priorityRollSeed = nil
-        invalidateAnalysis()
         resetAnalysisState()
     }
 
@@ -266,6 +298,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func resetAnalysisState() {
+        invalidateAnalysis()
         parseDiagnostics = []
         completionResponse = nil
         previewState = .idle
@@ -305,11 +338,20 @@ final class CapturePanelModel: ObservableObject {
 
         var text = plainDraft
         text.replaceSubrange(range, with: candidate.replacement)
-        let cursor = completionResponse.replacement.start + candidate.replacement.utf8.count
-        invalidateAnalysis()
+        let cursor = candidate.cursorAfter ?? completionResponse.replacement.start + candidate.replacement.utf8.count
+        guard stringRange(in: text, start: cursor, end: cursor) != nil else {
+            statusText = "Completion cursor is stale"
+            dismissCompletion()
+            return
+        }
+
         dismissCompletion()
         suppressedCompletionAcceptanceDraft = text
-        setPlainDraft(text)
+        setPlainDraft(
+            text,
+            cursorUTF8Offset: cursor,
+            suppressSelectionCallbacks: true
+        )
         scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false)
     }
 
@@ -328,6 +370,29 @@ final class CapturePanelModel: ObservableObject {
                 return "Heading \(level)"
             }
             return "Heading"
+        case "wikilink_note":
+            return [
+                candidate.alias.map { "alias \($0)" },
+                candidate.path,
+                candidate.matchKind,
+            ]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+        case "wikilink_heading":
+            return [
+                candidate.path,
+                candidate.level.map { "H\($0)" },
+            ]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+        case "wikilink_block":
+            return [
+                candidate.path,
+                candidate.blockID.map { "^\($0)" },
+                candidate.preview,
+            ]
+            .compactMap { $0 }
+            .joined(separator: " · ")
         case "pomodoro_block_id", "task":
             return [
                 candidate.statusSymbol,
@@ -355,10 +420,11 @@ final class CapturePanelModel: ObservableObject {
 
         switch response {
         case .success(let success):
+            invalidateAnalysis()
             lastSuccess = success
             previewResult = nil
             errorMessage = nil
-            attributedDraft = AttributedString()
+            setPlainDraft("")
             suppressedCompletionAcceptanceDraft = nil
             priorityRollSeed = nil
             parseDiagnostics = []
@@ -419,28 +485,35 @@ final class CapturePanelModel: ObservableObject {
         statusText = "Preview failed"
     }
 
-    private func setPlainDraft(_ text: String) {
+    private func setPlainDraft(
+        _ text: String,
+        cursorUTF8Offset: Int? = nil,
+        suppressSelectionCallbacks: Bool = false
+    ) {
         isApplyingProgrammaticDraft = true
         attributedDraft = AttributedString(text)
+        restoreSelection(
+            cursorUTF8Offset: cursorUTF8Offset ?? text.utf8.count,
+            suppressEditorCallbacks: suppressSelectionCallbacks
+        )
         isApplyingProgrammaticDraft = false
     }
 
-    private func scheduleAnalysis(
-        cursorUTF8Offset: Int,
-        requestCompletion: Bool = true
-    ) {
+    private func scheduleAnalysis(cursorUTF8Offset: Int?, requestCompletion: Bool) {
         guard let processClient else {
             statusText = "Bob is not resolved"
             return
         }
 
         let draft = plainDraft
-        guard cursorUTF8Offset >= 0,
-              cursorUTF8Offset <= draft.utf8.count,
-              stringRange(in: draft, start: cursorUTF8Offset, end: cursorUTF8Offset) != nil
-        else {
-            statusText = "Cursor is not on a UTF-8 boundary"
-            return
+        if let cursorUTF8Offset {
+            guard cursorUTF8Offset >= 0,
+                  cursorUTF8Offset <= draft.utf8.count,
+                  stringRange(in: draft, start: cursorUTF8Offset, end: cursorUTF8Offset) != nil
+            else {
+                statusText = "Cursor is not on a UTF-8 boundary"
+                return
+            }
         }
 
         analysisGeneration &+= 1
@@ -470,7 +543,14 @@ final class CapturePanelModel: ObservableObject {
                     return
                 }
 
-                if requestCompletion,
+                await self?.startLivePreview(
+                    draft: draft,
+                    generation: generation,
+                    processClient: processClient
+                )
+
+                if let cursorUTF8Offset,
+                   requestCompletion,
                    await self?.shouldRequestCompletion(parse: parse, cursor: cursorUTF8Offset) == true
                 {
                     if let cached = await self?.cachedRouteCompletion(
@@ -500,6 +580,7 @@ final class CapturePanelModel: ObservableObject {
                             }
                             self?.completionResponse = completion.candidates.isEmpty ? nil : completion
                             self?.selectedCompletionIndex = 0
+                            self?.applyCompletionWarnings(completion.warnings)
                         }
                     } catch {
                         await MainActor.run {
@@ -517,7 +598,25 @@ final class CapturePanelModel: ObservableObject {
                         self?.dismissCompletion()
                     }
                 }
+            } catch is CancellationError {
+            } catch {
+                await MainActor.run {
+                    guard self?.isCurrentAnalysis(generation) == true else {
+                        return
+                    }
+                    self?.previewState = .failed(String(describing: error))
+                }
+            }
+        }
+    }
 
+    private func startLivePreview(
+        draft: String,
+        generation: UInt64,
+        processClient: BobProcessClient
+    ) {
+        Task { [weak self, processClient] in
+            do {
                 let seed = await self?.activePriorityRollSeed() ?? UUID().uuidString
                 let preview = try await CaptureSignpost.measure("preview") {
                     try await processClient.captureLivePreview(
@@ -585,24 +684,31 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
-        var highlighted = AttributedString(draft)
-        for item in ranges {
-            guard let lower = AttributedString.Index(item.range.lowerBound, within: highlighted),
-                  let upper = AttributedString.Index(item.range.upperBound, within: highlighted)
-            else {
-                statusText = "Ignored malformed parse spans"
-                return
-            }
-
-            highlighted[lower..<upper].foregroundColor = color(forSpanKind: item.span.kind)
+        guard plainDraft == draft else {
+            return
         }
-
+        var ignoredMalformedSpan = false
         isApplyingProgrammaticDraft = true
-        attributedDraft = highlighted
+        attributedDraft.transform(updating: &editorSelection) { text in
+            text.foregroundColor = nil
+            for item in ranges {
+                guard let lower = AttributedString.Index(item.range.lowerBound, within: text),
+                      let upper = AttributedString.Index(item.range.upperBound, within: text)
+                else {
+                    ignoredMalformedSpan = true
+                    return
+                }
+
+                text[lower..<upper].foregroundColor = Self.color(forSpanKind: item.span.kind)
+            }
+        }
         isApplyingProgrammaticDraft = false
+        if ignoredMalformedSpan {
+            statusText = "Ignored malformed parse spans"
+        }
     }
 
-    private func color(forSpanKind kind: String) -> Color {
+    private static func color(forSpanKind kind: String) -> Color {
         switch kind {
         case "route", "pomodoro_route", "sub_bullet_route":
             return .accentColor
@@ -615,6 +721,16 @@ final class CapturePanelModel: ObservableObject {
         case "priority":
             return .orange
         case "clipboard":
+            return .teal
+        case "wikilink_delimiter":
+            return .secondary
+        case "wikilink_target":
+            return .accentColor
+        case "wikilink_heading":
+            return .purple
+        case "wikilink_block_id":
+            return .indigo
+        case "wikilink_alias":
             return .teal
         case "interactive_placeholder":
             return .secondary
@@ -637,6 +753,11 @@ final class CapturePanelModel: ObservableObject {
             "sub_bullet_route",
             "sub_bullet_block_id",
             "interactive_placeholder",
+            "wikilink_delimiter",
+            "wikilink_target",
+            "wikilink_heading",
+            "wikilink_block_id",
+            "wikilink_alias",
         ])
 
         return parse.spans.contains { span in
@@ -735,5 +856,24 @@ final class CapturePanelModel: ObservableObject {
                 )
         }
         return prefix + contains
+    }
+
+    private func restoreSelection(cursorUTF8Offset: Int, suppressEditorCallbacks: Bool = false) {
+        guard let insertionPoint = attributedStringIndex(in: attributedDraft, utf8Offset: cursorUTF8Offset) else {
+            statusText = "Cursor is not on a UTF-8 boundary"
+            return
+        }
+
+        if suppressEditorCallbacks {
+            programmaticSelectionOffsetToIgnore = cursorUTF8Offset
+        }
+        editorSelection = AttributedTextSelection(insertionPoint: insertionPoint)
+    }
+
+    private func applyCompletionWarnings(_ warnings: [String]) {
+        guard let warning = warnings.first else {
+            return
+        }
+        statusText = "Link completion warning: \(warning)"
     }
 }

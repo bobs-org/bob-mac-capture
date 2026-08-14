@@ -38,6 +38,48 @@ public func stringRange(in text: String, byteRange: CaptureRange) -> Range<Strin
     stringRange(in: text, start: byteRange.start, end: byteRange.end)
 }
 
+public func attributedStringIndex(
+    in text: AttributedString,
+    utf8Offset targetOffset: Int
+) -> AttributedString.Index? {
+    guard targetOffset >= 0 else {
+        return nil
+    }
+
+    var offset = 0
+    var index = text.startIndex
+    while index < text.endIndex {
+        if offset == targetOffset {
+            return index
+        }
+
+        let character = text.characters[index]
+        offset += String(character).utf8.count
+        index = text.characters.index(after: index)
+    }
+
+    return offset == targetOffset ? text.endIndex : nil
+}
+
+public func utf8Offset(
+    in text: AttributedString,
+    at targetIndex: AttributedString.Index
+) -> Int? {
+    var offset = 0
+    var index = text.startIndex
+    while index < text.endIndex {
+        if index == targetIndex {
+            return offset
+        }
+
+        let character = text.characters[index]
+        offset += String(character).utf8.count
+        index = text.characters.index(after: index)
+    }
+
+    return targetIndex == text.endIndex ? offset : nil
+}
+
 public func validatedSpanRanges(
     in text: String,
     spans: [CaptureSpan]

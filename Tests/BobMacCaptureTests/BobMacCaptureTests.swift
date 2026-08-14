@@ -443,6 +443,54 @@ final class BobMacCaptureTests: XCTestCase {
     }
 
     @MainActor
+    func testCompletionAcceptanceUsesServerCursorAfter() {
+        let model = CapturePanelModel()
+        model.plainDraft = "open [[AI"
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 9,
+            replacement: CaptureRange(start: 7, end: 9),
+            context: "wikilink_note",
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "Artificial Intelligence|AI]]",
+                    cursorAfter: "open [[Artificial Intelligence|AI]]".utf8.count
+                )
+            ]
+        )
+
+        model.acceptSelectedCompletion()
+
+        XCTAssertEqual(model.plainDraft, "open [[Artificial Intelligence|AI]]")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), "open [[Artificial Intelligence|AI]]".utf8.count)
+        XCTAssertNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testCompletionAcceptanceRejectsStaleCursorAfterWithoutChangingDraft() {
+        let model = CapturePanelModel()
+        model.plainDraft = "open [[AI"
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 9,
+            replacement: CaptureRange(start: 7, end: 9),
+            context: "wikilink_note",
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "Artificial Intelligence|AI]]",
+                    cursorAfter: 1_000
+                )
+            ]
+        )
+
+        model.acceptSelectedCompletion()
+
+        XCTAssertEqual(model.plainDraft, "open [[AI")
+        XCTAssertEqual(model.statusText, "Completion cursor is stale")
+        XCTAssertNil(model.completionResponse)
+    }
+
+    @MainActor
     func testInsertNewlineUsesEditableTextViewResponder() {
         let model = CapturePanelModel()
         model.completionResponse = sampleCompletionResponse()

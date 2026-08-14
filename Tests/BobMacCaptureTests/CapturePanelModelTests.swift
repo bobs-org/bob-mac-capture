@@ -1,5 +1,6 @@
 import CaptureCore
 import Foundation
+import SwiftUI
 import XCTest
 
 @testable import BobMacCapture
@@ -328,6 +329,82 @@ final class CapturePanelModelTests: XCTestCase {
         )
         record = try String(contentsOf: recordURL)
         XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 2)
+    }
+
+    func testEditorAnalysisUsesRealCaretForWikilinkCompletion() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        model.plainDraft = "prefix [[AI suffix"
+        let insertion = try XCTUnwrap(attributedStringIndex(
+            in: model.attributedDraft,
+            utf8Offset: "prefix [[AI".utf8.count
+        ))
+        model.editorSelection = AttributedTextSelection(insertionPoint: insertion)
+
+        model.editorTextDidChange(cursorUTF8Offset: "prefix [[AI".utf8.count)
+        await waitUntil { model.completionResponse?.context == "wikilink_note" }
+
+        XCTAssertEqual(model.completionResponse?.warnings, ["skipped unreadable note"])
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), "prefix [[AI".utf8.count)
+        XCTAssertEqual(model.statusText, "Link completion warning: skipped unreadable note")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-complete --cursor 11 --format json -- prefix [[AI suffix"))
+    }
+
+    func testRangeSelectionSuppressesCompletionButKeepsPreviewAnalysis() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        model.plainDraft = "prefix [[AI suffix"
+
+        model.editorSelectionDidChange(cursorUTF8Offset: nil)
+        await waitUntil {
+            if case .ready = model.previewState {
+                return true
+            }
+            return false
+        }
+
+        XCTAssertNil(model.completionResponse)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- prefix [[AI suffix"))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- prefix [[AI suffix"))
+        XCTAssertFalse(record.contains("capture-complete"))
+    }
+
+    func testCaretOnlyMoveRequeriesCompletionAtNewOffset() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        model.plainDraft = "prefix [[AI suffix"
+
+        model.editorSelectionDidChange(cursorUTF8Offset: "prefix [[".utf8.count)
+        await waitUntil { model.completionResponse?.context == "wikilink_note" }
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-complete --cursor 9 --format json -- prefix [[AI suffix"))
     }
 
     private func waitUntil(

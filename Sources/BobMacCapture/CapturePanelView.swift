@@ -1,4 +1,5 @@
 import CaptureCore
+import Combine
 import SwiftUI
 
 enum CapturePanelLayout {
@@ -123,7 +124,6 @@ struct CapturePanelContentHeightPolicy: Equatable {
 struct CapturePanelView: View {
     @ObservedObject var model: CapturePanelModel
     var onContentMetricsChange: (CapturePanelContentMetrics) -> Void = { _ in }
-    @State private var selection = AttributedTextSelection()
     @AccessibilityFocusState private var errorIsFocused: Bool
     @Environment(\.displayScale) private var displayScale
     @State private var measuredEditorHeight = CaptureEditorHeightPolicy().minimumHeight
@@ -145,7 +145,7 @@ struct CapturePanelView: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: CapturePanelLayout.sectionSpacing) {
-            AutosizingCaptureEditor(model: model, selection: $selection)
+            AutosizingCaptureEditor(model: model, selection: $model.editorSelection)
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(2)
                 .onGeometryChange(for: CGFloat.self) { geometry in
@@ -378,8 +378,11 @@ private struct AutosizingCaptureEditor: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .disabled(model.isSubmitting)
                     .accessibilityLabel("Capture draft")
-                    .onChange(of: String(model.attributedDraft.characters)) { _, newText in
-                        model.editorTextDidChange(cursorUTF8Offset: newText.utf8.count)
+                    .onChange(of: String(model.attributedDraft.characters)) { _, _ in
+                        model.editorTextDidChange(cursorUTF8Offset: model.collapsedSelectionUTF8Offset())
+                    }
+                    .onReceive(model.$editorSelection.dropFirst()) { _ in
+                        model.editorSelectionDidChange(cursorUTF8Offset: model.collapsedSelectionUTF8Offset())
                     }
 
                 if !model.hasDraft {
