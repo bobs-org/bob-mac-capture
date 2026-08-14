@@ -210,6 +210,91 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(success.clip?.entries[1].entries, [])
     }
 
+    func testPreviewBlockLinesOrderAuthoredChildrenClipThenScheduleLog() throws {
+        let data = Data(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"work","route_label":"work.md",
+             "relative_target":"work.md","target":"/home/bryan/bob/work.md",
+             "text":"Prepare the launch review",
+             "task_line":"- [ ] #task Prepare the launch review [created::2026-08-14] [priority::high] [scheduled::2026-08-18]",
+             "kind":"task","created":"2026-08-14","scheduled":"2026-08-18","placement":"inserted",
+             "sub_bullets":["  - Confirm the rollout owner","  - Attach the final checklist"],
+             "clip":{"header":null,"mode":"lines","lines":["  - clipped one","  - clipped two"],
+                     "attachments":[],"entries":[]},
+             "schedule_log":{"reason":"p:1 roll","lines":["  - **SCHEDULE LOG**",
+                                                          "    - _2026-08-18_ — p:1 roll"]}}
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(
+            success.previewBlockLines,
+            [
+                success.taskLine,
+                "  - Confirm the rollout owner",
+                "  - Attach the final checklist",
+                "  - clipped one",
+                "  - clipped two",
+                "  - **SCHEDULE LOG**",
+                "    - _2026-08-18_ — p:1 roll",
+            ]
+        )
+    }
+
+    func testPreviewBlockLinesIsJustTheTaskLineForAPlainCapture() throws {
+        let data = Data(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
+             "relative_target":"cash.md","target":"/home/bryan/bob/cash.md","text":"Call bank",
+             "task_line":"- [ ] #task Call bank [created::2026-08-14]","kind":"task",
+             "created":"2026-08-14","scheduled":null,"placement":"inserted"}
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.previewBlockLines, [success.taskLine])
+    }
+
+    func testPreviewBlockLinesOmitsClipForNoClipLivePreview() {
+        // Continuous live preview runs `--no-clip`, so `clip` is absent while the same
+        // draft's explicit Preview resolves it. Only the schedule log survives.
+        let success = CaptureCommandSuccess(
+            ok: true,
+            dryRun: true,
+            routed: true,
+            routeLabel: "work.md",
+            relativeTarget: "work.md",
+            target: "/home/bryan/bob/work.md",
+            text: "Prepare the launch review",
+            taskLine: "- [ ] #task Prepare the launch review [created::2026-08-14]",
+            kind: "task",
+            created: "2026-08-14",
+            placement: "inserted",
+            subBullets: ["\t- Confirm the rollout owner"],
+            scheduleLog: CaptureScheduleLog(
+                reason: "p:1 roll",
+                lines: ["\t- **SCHEDULE LOG**"]
+            )
+        )
+
+        XCTAssertEqual(
+            success.previewBlockLines,
+            [
+                "- [ ] #task Prepare the launch review [created::2026-08-14]",
+                "\t- Confirm the rollout owner",
+                "\t- **SCHEDULE LOG**",
+            ]
+        )
+    }
+
     func testCaptureCommandResponseDecodesRealFailureShape() throws {
         let data = Data(
             #"{"error":"clipboard command xclip exited with 1","ok":false}"#.utf8

@@ -213,14 +213,46 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         firstResponder: NSResponder?,
         model: CapturePanelModel
     ) -> Bool {
-        guard let textView = firstResponder as? NSTextView,
-              textView.isEditable
-        else {
+        guard let textView = editableTextView(firstResponder) else {
             return false
         }
 
         model.dismissCompletion()
         textView.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+        return true
+    }
+
+    /// Ctrl-J: replace the current selection with a fresh `- ` row and leave the caret
+    /// after the space. Returns `false` for any responder that is not an editable text
+    /// view so the key event falls through to AppKit untouched.
+    static func insertBulletNewlineInEditableTextView(
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder) else {
+            return false
+        }
+
+        model.dismissCompletion()
+        textView.insertText("\n- ", replacementRange: textView.selectedRange())
+        return true
+    }
+
+    /// Backspace: remove an unused `- ` placeholder row in one action. Returns `false`
+    /// whenever `emptyBulletRowDeletionRange(in:)` declines, so ordinary Backspace
+    /// behavior stays AppKit's.
+    static func deleteEmptyBulletRowInEditableTextView(
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder),
+              let deletionRange = emptyBulletRowDeletionRange(in: textView)
+        else {
+            return false
+        }
+
+        model.dismissCompletion()
+        textView.insertText("", replacementRange: deletionRange)
         return true
     }
 
@@ -240,21 +272,15 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 model: model
             )
         case .insertBulletNewline:
-            guard let textView = Self.activeEditableTextView(in: panel) else {
-                return false
-            }
-            model.dismissCompletion()
-            textView.insertText("\n- ", replacementRange: textView.selectedRange())
-            return true
+            return Self.insertBulletNewlineInEditableTextView(
+                firstResponder: panel?.firstResponder,
+                model: model
+            )
         case .deleteBackward:
-            guard let textView = Self.activeEditableTextView(in: panel),
-                  let deletionRange = Self.emptyBulletRowDeletionRange(in: textView)
-            else {
-                return false
-            }
-            model.dismissCompletion()
-            textView.insertText("", replacementRange: deletionRange)
-            return true
+            return Self.deleteEmptyBulletRowInEditableTextView(
+                firstResponder: panel?.firstResponder,
+                model: model
+            )
         case .escape:
             if model.completionVisible {
                 model.dismissCompletion()
@@ -305,8 +331,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     // Ctrl-J and the placeholder-row Backspace both act directly on the draft's backing
     // `NSTextView` (found via the first responder) so undo, IME, and accessibility stay
     // native instead of routing through `CapturePanelModel`.
-    private static func activeEditableTextView(in panel: NSPanel?) -> NSTextView? {
-        guard let textView = panel?.firstResponder as? NSTextView, textView.isEditable else {
+    private static func editableTextView(_ responder: NSResponder?) -> NSTextView? {
+        guard let textView = responder as? NSTextView, textView.isEditable else {
             return nil
         }
         return textView

@@ -637,17 +637,18 @@ private struct PreviewPane: View {
         }
         .lineLimit(1)
 
-        if success.subBullets.isEmpty {
+        // `previewBlockLines` is the parent line, the authored children, the clipboard
+        // children, and the schedule log in the exact order Bob writes them, already
+        // carrying the target note's indentation.
+        let blockLines = success.previewBlockLines
+        if blockLines.count == 1 {
             Text(success.taskLine)
                 .font(.system(.callout, design: .monospaced))
                 .textSelection(.enabled)
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(success.taskLine)
-                        .font(.system(.callout, design: .monospaced))
-                        .textSelection(.enabled)
-                    ForEach(Array(success.subBullets.enumerated()), id: \.offset) { _, line in
+                    ForEach(Array(blockLines.enumerated()), id: \.offset) { _, line in
                         Text(line)
                             .font(.system(.callout, design: .monospaced))
                             .textSelection(.enabled)

@@ -357,10 +357,15 @@ final class BobMacCaptureTests: XCTestCase {
         let router = CaptureKeyCommandRouter()
 
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 51)), .deleteBackward)
-        XCTAssertEqual(router.command(for: keyEvent(keyCode: 51, modifiers: .shift)), .deleteBackward)
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 51, modifiers: .shift)))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 51, modifiers: .option)))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 51, modifiers: .command)))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 51, modifiers: .control)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 51, modifiers: [.control, .shift])))
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 51), completionVisible: true),
+            .deleteBackward
+        )
     }
 
     @MainActor
@@ -590,6 +595,176 @@ final class BobMacCaptureTests: XCTestCase {
 
         XCTAssertFalse(
             CapturePanelController.insertNewlineInEditableTextView(
+                firstResponder: NSButton(title: "Preview", target: nil, action: nil),
+                model: model
+            )
+        )
+        XCTAssertNotNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testInsertBulletNewlineReplacesSelectionAndLeavesCaretAfterTheSpace() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "Prepare the launch review"
+        textView.setSelectedRange(NSRange(location: 25, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.insertBulletNewlineInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "Prepare the launch review\n- ")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 28, length: 0))
+        XCTAssertNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testInsertBulletNewlineSplitsTheDraftInTheMiddleAndConsumesTheSelection() {
+        let model = CapturePanelModel()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "Parent\n- confirm owner"
+        // Select "confirm" so the new row replaces it rather than appending after it.
+        textView.setSelectedRange(NSRange(location: 9, length: 7))
+
+        XCTAssertTrue(
+            CapturePanelController.insertBulletNewlineInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "Parent\n- \n-  owner")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 12, length: 0))
+    }
+
+    @MainActor
+    func testInsertBulletNewlineDeclinesNoneditableAndUnrelatedResponders() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let noneditable = NSTextView()
+        noneditable.isEditable = false
+        noneditable.string = "Prepare the launch review"
+
+        XCTAssertFalse(
+            CapturePanelController.insertBulletNewlineInEditableTextView(
+                firstResponder: noneditable,
+                model: model
+            )
+        )
+        XCTAssertFalse(
+            CapturePanelController.insertBulletNewlineInEditableTextView(
+                firstResponder: NSButton(title: "Preview", target: nil, action: nil),
+                model: model
+            )
+        )
+        XCTAssertFalse(
+            CapturePanelController.insertBulletNewlineInEditableTextView(
+                firstResponder: nil,
+                model: model
+            )
+        )
+        XCTAssertEqual(noneditable.string, "Prepare the launch review")
+        XCTAssertNotNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testDeleteEmptyBulletRowRemovesFinalPlaceholderRowAndItsNewline() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "Parent\n- "
+        textView.setSelectedRange(NSRange(location: 9, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.deleteEmptyBulletRowInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "Parent")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 6, length: 0))
+        XCTAssertNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testDeleteEmptyBulletRowRemovesMiddlePlaceholderRowOnly() {
+        let model = CapturePanelModel()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "Parent\n- \n- confirm owner"
+        textView.setSelectedRange(NSRange(location: 9, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.deleteEmptyBulletRowInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "Parent\n- confirm owner")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 6, length: 0))
+    }
+
+    @MainActor
+    func testDeleteEmptyBulletRowRemovesFirstLinePlaceholderWithoutTouchingTheNewline() {
+        let model = CapturePanelModel()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "- \nChild"
+        textView.setSelectedRange(NSRange(location: 2, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.deleteEmptyBulletRowInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "\nChild")
+    }
+
+    @MainActor
+    func testDeleteEmptyBulletRowPassesThroughOrdinaryBackspaceCases() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let nonemptyBullet = NSTextView()
+        nonemptyBullet.isEditable = true
+        nonemptyBullet.string = "Parent\n- confirm owner"
+        nonemptyBullet.setSelectedRange(NSRange(location: 22, length: 0))
+
+        let selection = NSTextView()
+        selection.isEditable = true
+        selection.string = "Parent\n- "
+        selection.setSelectedRange(NSRange(location: 7, length: 2))
+
+        let noneditable = NSTextView()
+        noneditable.isEditable = false
+        noneditable.string = "Parent\n- "
+        noneditable.setSelectedRange(NSRange(location: 9, length: 0))
+
+        for textView in [nonemptyBullet, selection, noneditable] {
+            let original = textView.string
+            XCTAssertFalse(
+                CapturePanelController.deleteEmptyBulletRowInEditableTextView(
+                    firstResponder: textView,
+                    model: model
+                )
+            )
+            XCTAssertEqual(textView.string, original)
+        }
+
+        XCTAssertFalse(
+            CapturePanelController.deleteEmptyBulletRowInEditableTextView(
                 firstResponder: NSButton(title: "Preview", target: nil, action: nil),
                 model: model
             )

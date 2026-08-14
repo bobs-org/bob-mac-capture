@@ -47,7 +47,9 @@ struct CaptureKeyCommandRouter {
         case KeyCode.j:
             return modifiers == .control ? .insertBulletNewline : nil
         case KeyCode.delete:
-            return event.modifierFlags.intersection([.command, .option, .control]).isEmpty
+            // Only unmodified Backspace may claim the empty-bullet deletion; every
+            // modified variant (including Shift-Backspace) stays AppKit's.
+            return modifiers.intersection([.command, .option, .control, .shift]).isEmpty
                 ? .deleteBackward
                 : nil
         case KeyCode.escape:

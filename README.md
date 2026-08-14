@@ -113,6 +113,11 @@ or expired certificate can require reauthorizing those system permissions.
   decodes to `[]` when absent, so an older `bob` still produces a useful parent-only
   preview. Preview renders `task_line` followed by every `sub_bullets` line in source
   order and indentation, never flattened or truncated.
+- Preview shows the whole block Bob will write, in Bob's own order: the parent
+  `task_line`, the authored children, then `clip.lines` and `schedule_log.lines` when the
+  response carries them. Continuous live preview passes `--no-clip`, so it has no `clip`
+  to show; the explicit **Preview** button and **Capture** resolve the clipboard and
+  therefore mirror the full block.
 - The preview path assigns a fixed `BOB_PRIORITY_ROLL_SEED` for the draft lifecycle so
   randomized `p:<N>` scheduled dates can be reused by submission and reset only after a
   successful capture or discard.
@@ -138,7 +143,7 @@ or expired certificate can require reauthorizing those system permissions.
 | Command-Return | Capture, open the target in Obsidian, then close the panel | Accept, then submit |
 | Shift-Return / Option-Return | Insert a newline | Insert a newline |
 | Ctrl-J | Insert a new `- ` bullet row after the caret | Insert a new `- ` bullet row after the caret |
-| Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else) | Remove an unused `- ` row in one action |
+| Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action |
 | Tab | (normal focus traversal) | Accept the selected completion |
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion |
 | Up / Ctrl-P | (normal focus traversal) | Select the previous completion |

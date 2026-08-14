@@ -296,6 +296,27 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case parentStatusSymbol = "parent_status_symbol"
         case parentStatusName = "parent_status_name"
     }
+
+    /// The exact Markdown block `bob capture` writes beneath the destination, in the
+    /// same order the CLI renders and prints it: the captured parent line, the authored
+    /// children, the clipboard children, then the priority-roll schedule log. Every line
+    /// already carries the target note's own child indentation, so preview must render
+    /// them verbatim rather than re-deriving nesting.
+    ///
+    /// Continuous live preview runs with `--no-clip`, so `clip` is absent there and the
+    /// block is just the parent plus authored children; the explicit Preview and Capture
+    /// paths resolve the clipboard and therefore mirror the full block.
+    public var previewBlockLines: [String] {
+        var lines = [taskLine]
+        lines.append(contentsOf: subBullets)
+        if let clip {
+            lines.append(contentsOf: clip.lines)
+        }
+        if let scheduleLog {
+            lines.append(contentsOf: scheduleLog.lines)
+        }
+        return lines
+    }
 }
 
 public struct CaptureCommandFailure: Codable, Equatable {
