@@ -49,3 +49,27 @@ jobs:
           codesign --verify --deep --strict "${app}"
           identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${app}/Contents/Info.plist")"
           test "${identifier}" = "org.bobs.bob-mac-capture"
+
+      - name: Install and reinstall
+        run: |
+          set -euo pipefail
+          temp_home="$(mktemp -d)"
+          stdout="$(mktemp)"
+          trap 'rm -rf "${temp_home}" "${stdout}"' EXIT
+
+          expected_path="${temp_home}/Applications/Bob Mac Capture.app"
+
+          verify_install() {
+            test "$(cat "${stdout}")" = "${expected_path}"
+            test -d "${expected_path}"
+            plutil -lint "${expected_path}/Contents/Info.plist"
+            codesign --verify --deep --strict "${expected_path}"
+            identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${expected_path}/Contents/Info.plist")"
+            test "${identifier}" = "org.bobs.bob-mac-capture"
+          }
+
+          HOME="${temp_home}" ./Scripts/install.sh --target '~/Applications' --identity "-" >"${stdout}"
+          verify_install
+
+          HOME="${temp_home}" ./Scripts/install.sh --target '~/Applications' --identity "-" >"${stdout}"
+          verify_install

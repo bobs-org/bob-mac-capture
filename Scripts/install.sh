@@ -47,10 +47,12 @@ fi
 package_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bundle_root="${package_root}/.build/install-bundle"
 app_name="Bob Mac Capture.app"
-staged_app="$("${package_root}/Scripts/bundle.sh" --identity "${identity}" --output "${bundle_root}")"
+staged_app="${bundle_root}/${app_name}"
 install_path="${target_dir}/${app_name}"
 tmp_path="${target_dir}/.${app_name}.$$"
 backup_path="${target_dir}/.${app_name}.previous.$$"
+
+"${package_root}/Scripts/bundle.sh" --identity "${identity}" --output "${bundle_root}" >&2
 
 # Verify the staged bundle fully before touching the install path, then swap it in via
 # a rename-with-backup so an interruption mid-install always leaves a recoverable state:
