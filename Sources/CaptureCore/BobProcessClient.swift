@@ -88,9 +88,8 @@ public final class BobProcessClient: @unchecked Sendable {
         ]
         Self.preconditionLivePreviewArguments(arguments)
 
-        let response: CaptureCommandResponse = try await decode(
+        let response = try await decodeCaptureResult(
             arguments: arguments,
-            expectedSchema: 1,
             environmentOverrides: ["BOB_PRIORITY_ROLL_SEED": priorityRollSeed],
             lane: "preview"
         )
