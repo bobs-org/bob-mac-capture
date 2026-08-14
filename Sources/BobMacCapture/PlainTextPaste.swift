@@ -5,6 +5,12 @@ enum PlainTextPaste {
     /// The clipboard's plain-text flavor, newline-normalized. `nil` when the pasteboard
     /// offers no plain text, so the caller can fall back to AppKit's native paste.
     static func plainText(from pasteboard: NSPasteboard) -> String? {
+        // `NSPasteboard.string(forType: .string)` synthesizes plain text from HTML/RTF
+        // flavors even when `.string` isn't advertised, so gate on `types` first to
+        // avoid triggering that rich-to-plain conversion on rich-only pasteboards.
+        guard let types = pasteboard.types, types.contains(.string) else {
+            return nil
+        }
         guard let raw = pasteboard.string(forType: .string), !raw.isEmpty else {
             return nil
         }

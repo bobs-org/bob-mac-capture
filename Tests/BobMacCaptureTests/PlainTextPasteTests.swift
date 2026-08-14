@@ -33,6 +33,12 @@ final class PlainTextPasteTests: XCTestCase {
         try withScratchPasteboard { pasteboard in
             writeRichOnlyPasteboard(pasteboard)
 
+            // The pasteboard never advertises `.string`, yet AppKit's converting
+            // accessor still synthesizes plain text from the rich flavors. This is
+            // exactly the trap `plainText(from:)` must not fall into.
+            XCTAssertFalse(pasteboard.types?.contains(.string) ?? false)
+            XCTAssertNotNil(pasteboard.string(forType: .string))
+
             let textView = NSTextView()
             textView.isEditable = true
             textView.string = "unchanged"
