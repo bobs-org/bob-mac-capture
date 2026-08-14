@@ -331,7 +331,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     // Ctrl-J and the placeholder-row Backspace both act directly on the draft's backing
     // `NSTextView` (found via the first responder) so undo, IME, and accessibility stay
     // native instead of routing through `CapturePanelModel`.
-    private static func editableTextView(_ responder: NSResponder?) -> NSTextView? {
+    static func editableTextView(_ responder: NSResponder?) -> NSTextView? {
         guard let textView = responder as? NSTextView, textView.isEditable else {
             return nil
         }

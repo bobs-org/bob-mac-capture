@@ -143,6 +143,7 @@ or expired certificate can require reauthorizing those system permissions.
 | Command-Return | Capture, open the target in Obsidian, then close the panel | Accept, then submit |
 | Shift-Return / Option-Return | Insert a newline | Insert a newline |
 | Ctrl-J | Insert a new `- ` bullet row after the caret | Insert a new `- ` bullet row after the caret |
+| Command-V | Insert the clipboard's plain text, discarding source formatting | Insert the clipboard's plain text and close completion |
 | Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action |
 | Tab | (normal focus traversal) | Accept the selected completion |
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion |
@@ -170,6 +171,11 @@ Ctrl-J starts the next `- ` row from anywhere in the draft, and Backspace on an 
 row removes it in one action instead of requiring two ordinary backspaces. Both act on the
 native text view directly, so undo, IME composition, and accessibility behave exactly as
 they do for any other edit.
+
+Command-V intentionally reads only the clipboard's plain-text flavor. Source formatting
+is discarded because Bob's capture grammar is plain text, and letting AppKit choose a
+rich HTML/RTF flavor forced a synchronous WebKit HTML import that could cost seconds per
+paste from browser content.
 
 ## Wikilink Completion
 
@@ -325,6 +331,10 @@ identifier `org.bobs.bob-mac-capture`; it never writes captured text to disk its
 - **A `bob` command times out**: every `bob` invocation is bounded (20s by default); a
   wedged process is terminated automatically rather than leaving the panel stuck, and the
   resulting error names the timed-out command (never the captured text).
+- **Pasting feels slow**: with the source content still on the clipboard, run
+  `osascript -e 'clipboard info'` and compare the rich flavor sizes with `string`. Then
+  run `pbpaste | pbcopy` to rewrite the clipboard as plain text only and paste the same
+  characters again. If the plain-text paste is instant, the delay was rich flavor import.
 - **Notifications never appear**: confirm Settings → Notifications shows "Authorized," use
   "Send Test Notification," and check Diagnostics → Signing — notification delivery
   requires the installed signed bundle, not `swift run`. If authorization shows "Denied,"
@@ -369,9 +379,10 @@ identifier `org.bobs.bob-mac-capture`; it never writes captured text to disk its
 
 The app emits `os_signpost` intervals/events (subsystem `org.bobs.bob-mac-capture`,
 category `capture`) around hotkey receipt, panel ordering, editor focus, parse,
-completion, preview, submit, and notification scheduling, visible in Instruments'
-Points of Interest / os_signpost templates. These, and the bounded Recent Activity list
-in Settings, are metadata-only by construction — see Privacy above.
+completion, preview, submit, plain-text paste (`paste-plain-text`), and notification
+scheduling, visible in Instruments' Points of Interest / os_signpost templates. These,
+and the bounded Recent Activity list in Settings, are metadata-only by construction —
+see Privacy above.
 
 ## CI
 

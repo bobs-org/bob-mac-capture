@@ -124,11 +124,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return menu
     }
 
-    // The Edit menu's actions have no Swift-visible declaring class of their own; they
+    // Most Edit menu actions have no Swift-visible declaring class of their own; they
     // are standard first-responder messages (`NSText`, `NSTextView`, `UndoManager`) that
-    // AppKit forwards along the responder chain, so they are built from raw selector
-    // strings rather than `#selector(...)` the way the App menu's `NSApplication`
-    // actions are above.
+    // AppKit forwards along the responder chain. Paste deliberately targets an
+    // AppDelegate selector so Cmd-V reads only the pasteboard's plain-text flavor before
+    // falling back to native paste for pasteboards without text.
     private static func makeEditMenu() -> NSMenu {
         let menu = NSMenu(title: "Edit")
         menu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
@@ -138,7 +138,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Cut", action: Selector(("cut:")), keyEquivalent: "x"))
         menu.addItem(NSMenuItem(title: "Copy", action: Selector(("copy:")), keyEquivalent: "c"))
-        menu.addItem(NSMenuItem(title: "Paste", action: Selector(("paste:")), keyEquivalent: "v"))
+        menu.addItem(
+            NSMenuItem(
+                title: "Paste",
+                action: #selector(AppDelegate.pastePlainText(_:)),
+                keyEquivalent: "v"
+            )
+        )
         menu.addItem(NSMenuItem(title: "Select All", action: Selector(("selectAll:")), keyEquivalent: "a"))
         return menu
     }
@@ -279,6 +285,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the model refresh as well would launch two `capture-targets` processes in
         // the same cancellation lane every time the panel opens.
         refreshTargetsWhenPossible()
+    }
+
+    @objc func pastePlainText(_ sender: Any?) {
+        let inserted = PlainTextPaste.insert(
+            into: NSApp.keyWindow?.firstResponder,
+            from: .general,
+            willInsert: { [weak self] in self?.panelModel?.dismissCompletion() }
+        )
+        guard !inserted else {
+            return
+        }
+        NSApp.sendAction(Selector(("paste:")), to: nil, from: sender)
+    }
+
+    @objc func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard menuItem.action == #selector(AppDelegate.pastePlainText(_:)) else {
+            return true
+        }
+        guard CapturePanelController.editableTextView(NSApp.keyWindow?.firstResponder) != nil else {
+            return false
+        }
+        return PlainTextPaste.plainText(from: .general) != nil
     }
 
     @objc private func openCapturePanel() {

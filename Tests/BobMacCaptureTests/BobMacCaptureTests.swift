@@ -840,6 +840,8 @@ final class BobMacCaptureTests: XCTestCase {
         // Regression guard for the AppKit entry-point migration: without an explicit
         // main menu, the capture editor silently loses Cmd-X/C/V/A/Z and the app loses
         // Cmd-Q, since neither the SwiftUI app lifecycle nor a nib supplies one anymore.
+        // Paste intentionally deviates from stock `paste:` so rich browser pasteboards
+        // enter the capture grammar as plain text without a synchronous HTML import.
         let mainMenu = AppDelegate.makeMainMenu()
 
         XCTAssertEqual(mainMenu.items.count, 2)
@@ -848,7 +850,7 @@ final class BobMacCaptureTests: XCTestCase {
         let editSelectors = editMenu.items.map { $0.action.map(NSStringFromSelector) }
         XCTAssertEqual(
             editSelectors,
-            ["undo:", "redo:", nil, "cut:", "copy:", "paste:", "selectAll:"]
+            ["undo:", "redo:", nil, "cut:", "copy:", "pastePlainText:", "selectAll:"]
         )
         XCTAssertEqual(editMenu.items.map(\.keyEquivalent), ["z", "z", "", "x", "c", "v", "a"])
         XCTAssertEqual(editMenu.items[1].keyEquivalentModifierMask, [.command, .shift])
@@ -858,6 +860,14 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(quitItem.title, "Quit Bob Mac Capture")
         XCTAssertEqual(quitItem.action, #selector(NSApplication.terminate(_:)))
         XCTAssertEqual(quitItem.keyEquivalent, "q")
+    }
+
+    @MainActor
+    func testMenuValidationLeavesUnrelatedSelectorsEnabled() {
+        let delegate = AppDelegate()
+        let menuItem = NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+
+        XCTAssertTrue(delegate.validateMenuItem(menuItem))
     }
 
     @MainActor
