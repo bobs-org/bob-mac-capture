@@ -538,7 +538,7 @@ final class CaptureModelTests: XCTestCase {
     func testAttributedStringUtf8OffsetRoundTripsCollapsedCaret() throws {
         let text = AttributedString("a 🧪 cafe\u{301}")
         let plain = String(text.characters)
-        let target = try XCTUnwrap(plain.range(of: "cafe"))
+        let target = try XCTUnwrap(plain.range(of: "caf"))
         let offset = plain[..<target.lowerBound].utf8.count
 
         let index = try XCTUnwrap(attributedStringIndex(in: text, utf8Offset: offset))

@@ -168,16 +168,35 @@ final class BobMacCaptureTests: XCTestCase {
         let panel = controller.makePanelIfNeeded()
         let initialFrame = panel.frame
         let initialContentHeight = panel.contentRect(forFrameRect: panel.frame).size.height
-
-        controller.receiveContentMetrics(
-            contentMetrics(ideal: initialContentHeight + 120, minimum: initialContentHeight)
+        let metrics = contentMetrics(ideal: initialContentHeight + 120, minimum: initialContentHeight)
+        let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+        let expectedContentHeight = CapturePanelWindowSizer(
+            displayScale: panel.screen?.backingScaleFactor ?? 1
+        ).contentHeight(
+            for: metrics,
+            availableScreenHeight: visibleFrame?.height
         )
+        let expectedFrame = CapturePanelWindowSizer(
+            displayScale: panel.screen?.backingScaleFactor ?? 1
+        ).frame(
+            forCurrentFrame: initialFrame,
+            contentHeight: expectedContentHeight,
+            chromeHeight: initialFrame.height - initialContentHeight,
+            visibleFrame: visibleFrame ?? NSRect(
+                x: -1_000_000,
+                y: -1_000_000,
+                width: 2_000_000,
+                height: 2_000_000
+            )
+        )
+
+        controller.receiveContentMetrics(metrics)
 
         let grownFrame = panel.frame
         XCTAssertGreaterThan(grownFrame.height, initialFrame.height)
-        XCTAssertEqual(grownFrame.maxY, initialFrame.maxY, accuracy: 0.5)
-        XCTAssertEqual(grownFrame.origin.x, initialFrame.origin.x)
-        XCTAssertEqual(grownFrame.width, initialFrame.width)
+        XCTAssertEqual(grownFrame.maxY, expectedFrame.maxY, accuracy: 0.5)
+        XCTAssertEqual(grownFrame.origin.x, expectedFrame.origin.x)
+        XCTAssertEqual(grownFrame.width, expectedFrame.width)
     }
 
     @MainActor
@@ -236,9 +255,19 @@ final class BobMacCaptureTests: XCTestCase {
 
         controller.receiveContentMetrics(metrics)
         let panel = controller.makePanelIfNeeded()
+        let expectedContentHeight = CapturePanelWindowSizer(
+            displayScale: panel.screen?.backingScaleFactor ?? 1
+        ).contentHeight(
+            for: metrics,
+            availableScreenHeight: panel.screen?.visibleFrame.height
+        )
         controller.replayLatestContentMetricsForPresentation()
 
-        XCTAssertEqual(panel.contentRect(forFrameRect: panel.frame).height, 280, accuracy: 0.5)
+        XCTAssertEqual(
+            panel.contentRect(forFrameRect: panel.frame).height,
+            expectedContentHeight,
+            accuracy: 0.5
+        )
     }
 
     @MainActor

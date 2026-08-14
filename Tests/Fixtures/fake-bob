@@ -6,15 +6,12 @@ if [[ -n "${FAKE_BOB_TERM_PATH:-}" ]]; then
 fi
 
 if [[ -n "${FAKE_BOB_RECORD_PATH:-}" ]]; then
-  {
-    printf 'argv='
-    printf '%s' "$*"
-    printf '\n'
-    printf 'HOME=%s\n' "${HOME:-}"
-    printf 'PATH=%s\n' "${PATH:-}"
-    printf 'BOB_DIR=%s\n' "${BOB_DIR:-}"
-    printf 'BOB_PRIORITY_ROLL_SEED=%s\n' "${BOB_PRIORITY_ROLL_SEED:-}"
-  } >>"${FAKE_BOB_RECORD_PATH}"
+  printf 'argv=%s\nHOME=%s\nPATH=%s\nBOB_DIR=%s\nBOB_PRIORITY_ROLL_SEED=%s\n' \
+    "$*" \
+    "${HOME:-}" \
+    "${PATH:-}" \
+    "${BOB_DIR:-}" \
+    "${BOB_PRIORITY_ROLL_SEED:-}" >>"${FAKE_BOB_RECORD_PATH}"
 fi
 
 if [[ -n "${FAKE_BOB_DELAY_SECONDS:-}" ]]; then
