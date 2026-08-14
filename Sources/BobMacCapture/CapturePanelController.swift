@@ -53,7 +53,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
     static func makePanel() -> NSPanel {
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 360),
+            contentRect: NSRect(
+                origin: .zero,
+                size: CapturePanelLayout.panelInitialContentSize
+            ),
             styleMask: [
                 .nonactivatingPanel,
                 .titled,
@@ -70,7 +73,23 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         panel.titlebarAppearsTransparent = true
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
+        panel.contentMinSize = CapturePanelLayout.panelMinimumContentSize
         return panel
+    }
+
+    static func insertNewlineInEditableTextView(
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) -> Bool {
+        guard let textView = firstResponder as? NSTextView,
+              textView.isEditable
+        else {
+            return false
+        }
+
+        model.dismissCompletion()
+        textView.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+        return true
     }
 
     private func hidePanel() {
@@ -102,6 +121,12 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 self.model.submit(openAfterCapture: true)
                 return nil
             case .insertNewline:
+                if Self.insertNewlineInEditableTextView(
+                    firstResponder: self.panel?.firstResponder,
+                    model: self.model
+                ) {
+                    return nil
+                }
                 return event
             case .escape:
                 if self.model.completionVisible {

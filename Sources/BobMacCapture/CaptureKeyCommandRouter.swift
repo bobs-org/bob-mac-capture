@@ -18,21 +18,24 @@ struct CaptureKeyCommandRouter {
         static let tab: UInt16 = 48
         static let arrowDown: UInt16 = 125
         static let arrowUp: UInt16 = 126
+        static let j: UInt16 = 38
         static let n: UInt16 = 45
         static let p: UInt16 = 35
     }
 
     func command(for event: NSEvent, completionVisible: Bool = false) -> CaptureKeyCommand? {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
         switch event.keyCode {
         case KeyCode.return, KeyCode.keypadEnter:
+            if modifiers.contains(.command) {
+                return completionVisible ? .acceptCompletion : .submitAndOpen
+            }
+            if modifiers.contains(.shift) || modifiers.contains(.option) {
+                return .insertNewline
+            }
             if completionVisible {
                 return .acceptCompletion
-            }
-            if event.modifierFlags.contains(.command) {
-                return .submitAndOpen
-            }
-            if event.modifierFlags.contains(.shift) || event.modifierFlags.contains(.option) {
-                return .insertNewline
             }
             return .submit
         case KeyCode.escape:
@@ -43,10 +46,12 @@ struct CaptureKeyCommandRouter {
             return completionVisible ? .nextCompletion : nil
         case KeyCode.arrowUp:
             return completionVisible ? .previousCompletion : nil
+        case KeyCode.j:
+            return modifiers == .control ? .insertNewline : nil
         case KeyCode.n:
-            return completionVisible && event.modifierFlags.contains(.control) ? .nextCompletion : nil
+            return completionVisible && modifiers.contains(.control) ? .nextCompletion : nil
         case KeyCode.p:
-            return completionVisible && event.modifierFlags.contains(.control) ? .previousCompletion : nil
+            return completionVisible && modifiers.contains(.control) ? .previousCompletion : nil
         default:
             return nil
         }

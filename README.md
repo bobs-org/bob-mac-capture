@@ -111,16 +111,18 @@ or expired certificate can require reauthorizing those system permissions.
 | --- | --- | --- |
 | Return | Capture, then close the panel | Accept the selected completion |
 | Command-Return | Capture, open the target in Obsidian, then close the panel | Accept, then submit |
-| Shift-Return / Option-Return | Insert a newline | Insert a newline |
+| Shift-Return / Option-Return / Ctrl-J | Insert a newline | Insert a newline |
 | Tab | (normal focus traversal) | Accept the selected completion |
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion |
 | Up / Ctrl-P | (normal focus traversal) | Select the previous completion |
 | Escape | Close completion, then close the panel (retaining a nonempty draft) | Close completion |
 
 Every capture action is reachable from the keyboard alone; the hotkey, editor, completion
-list, and Capture/Preview/Discard/Keep Draft buttons never require a pointer. Multi-line
-drafts are an editing affordance only: embedded newlines are whitespace-normalized into a
-single line by `bob capture`, matching its documented CLI contract.
+list, and Capture/Preview/Discard/Keep Draft buttons never require a pointer. The editor
+starts at one visual line, grows and shrinks with rendered content through six visual
+lines, then scrolls internally for longer drafts. Multi-line drafts are an editing
+affordance only: embedded newlines are whitespace-normalized into a single line by
+`bob capture`, matching its documented CLI contract.
 
 ## Live Preview and Clipboard Semantics
 

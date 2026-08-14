@@ -19,6 +19,12 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(panel.level, .floating)
         XCTAssertTrue(panel.collectionBehavior.contains(.canJoinAllSpaces))
         XCTAssertTrue(panel.collectionBehavior.contains(.fullScreenAuxiliary))
+        XCTAssertEqual(panel.contentMinSize, CapturePanelLayout.panelMinimumContentSize)
+
+        let contentSize = panel.contentRect(forFrameRect: panel.frame).size
+        XCTAssertEqual(contentSize, CapturePanelLayout.panelInitialContentSize)
+        XCTAssertGreaterThanOrEqual(contentSize.width, panel.contentMinSize.width)
+        XCTAssertGreaterThanOrEqual(contentSize.height, panel.contentMinSize.height)
     }
 
     func testKeyRouterMatchesCaptureShortcuts() {
@@ -28,8 +34,34 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .command)), .submitAndOpen)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .shift)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .option)), .insertNewline)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 38, modifiers: .control)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 53)), .escape)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), completionVisible: true), .acceptCompletion)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .command), completionVisible: true),
+            .acceptCompletion
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: [.command, .shift])),
+            .submitAndOpen
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: [.command, .shift]), completionVisible: true),
+            .acceptCompletion
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .shift), completionVisible: true),
+            .insertNewline
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .option), completionVisible: true),
+            .insertNewline
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 38, modifiers: .control), completionVisible: true),
+            .insertNewline
+        )
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 38, modifiers: [.control, .shift])))
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), completionVisible: true), .acceptCompletion)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 125), completionVisible: true), .nextCompletion)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 126), completionVisible: true), .previousCompletion)
@@ -41,6 +73,30 @@ final class BobMacCaptureTests: XCTestCase {
             router.command(for: keyEvent(keyCode: 35, modifiers: .control), completionVisible: true),
             .previousCompletion
         )
+    }
+
+    func testEditorHeightPolicyUsesOneLineMinimumAndSixLineCap() {
+        let policy = CaptureEditorHeightPolicy(
+            lineHeight: 20,
+            verticalPadding: 20,
+            maximumVisibleLines: 6,
+            displayScale: 2
+        )
+
+        let oneLineHeight = policy.resolvedHeight(forMeasuredTextHeight: 0)
+        let threeLineHeight = policy.resolvedHeight(forMeasuredTextHeight: 60)
+        let sixLineHeight = policy.resolvedHeight(forMeasuredTextHeight: 120)
+        let overflowingHeight = policy.resolvedHeight(forMeasuredTextHeight: 180)
+
+        XCTAssertEqual(oneLineHeight, 40)
+        XCTAssertEqual(policy.resolvedHeight(forMeasuredTextHeight: 12), oneLineHeight)
+        XCTAssertGreaterThan(threeLineHeight, oneLineHeight)
+        XCTAssertEqual(threeLineHeight, 80)
+        XCTAssertEqual(sixLineHeight, 140)
+        XCTAssertEqual(overflowingHeight, sixLineHeight)
+        XCTAssertEqual(policy.visibleLineCount(forMeasuredTextHeight: 0), 1)
+        XCTAssertEqual(policy.visibleLineCount(forMeasuredTextHeight: 60), 3)
+        XCTAssertEqual(policy.visibleLineCount(forMeasuredTextHeight: 180), 6)
     }
 
     @MainActor
@@ -66,6 +122,40 @@ final class BobMacCaptureTests: XCTestCase {
 
         XCTAssertEqual(model.plainDraft, "idea @mac_inbox")
         XCTAssertNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testInsertNewlineUsesEditableTextViewResponder() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "ab"
+        textView.setSelectedRange(NSRange(location: 1, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.insertNewlineInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "a\nb")
+        XCTAssertNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testInsertNewlineDeclinesUnrelatedResponder() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        XCTAssertFalse(
+            CapturePanelController.insertNewlineInEditableTextView(
+                firstResponder: NSButton(title: "Preview", target: nil, action: nil),
+                model: model
+            )
+        )
+        XCTAssertNotNil(model.completionResponse)
     }
 
     func testHotKeyRegistrationConflictIsReported() {
@@ -193,6 +283,24 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertFalse(LaunchAtLoginState(status: .notRegistered).enabled)
         XCTAssertFalse(LaunchAtLoginState(status: .requiresApproval).enabled)
         XCTAssertFalse(LaunchAtLoginState(status: .notFound).enabled)
+    }
+
+    @MainActor
+    private func sampleCompletionResponse() -> CaptureCompletionResponse {
+        CaptureCompletionResponse(
+            ok: true,
+            cursor: 8,
+            replacement: CaptureRange(start: 6, end: 8),
+            context: "route",
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "mac_inbox",
+                    route: "mac_inbox",
+                    label: "mac_inbox.md",
+                    kind: "inbox"
+                )
+            ]
+        )
     }
 
     private func keyEvent(keyCode: UInt16, modifiers: NSEvent.ModifierFlags = []) -> NSEvent {

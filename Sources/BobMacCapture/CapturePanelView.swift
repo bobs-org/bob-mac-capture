@@ -1,6 +1,50 @@
 import CaptureCore
 import SwiftUI
 
+enum CapturePanelLayout {
+    static let panelInitialContentSize = CGSize(width: 760, height: 420)
+    static let panelMinimumContentSize = CGSize(width: 620, height: 420)
+    static let editorContentPadding: CGFloat = 10
+    static let editorLineHeight: CGFloat = 22
+    static let editorMaximumVisibleLines = 6
+    static let completionVisibleRows = 3
+    static let completionRowHeight: CGFloat = 32
+    static let completionViewportHeight = completionRowHeight * CGFloat(completionVisibleRows) + 12
+    static let previewIdealHeight: CGFloat = 92
+}
+
+struct CaptureEditorHeightPolicy: Equatable {
+    var lineHeight: CGFloat = CapturePanelLayout.editorLineHeight
+    var verticalPadding: CGFloat = CapturePanelLayout.editorContentPadding * 2
+    var maximumVisibleLines: Int = CapturePanelLayout.editorMaximumVisibleLines
+    var displayScale: CGFloat = 1
+
+    var minimumHeight: CGFloat {
+        roundedToPixel(lineHeight + verticalPadding)
+    }
+
+    var maximumHeight: CGFloat {
+        roundedToPixel(lineHeight * CGFloat(maximumVisibleLines) + verticalPadding)
+    }
+
+    func resolvedHeight(forMeasuredTextHeight measuredTextHeight: CGFloat) -> CGFloat {
+        let measuredHeight = max(measuredTextHeight, lineHeight)
+        let unclampedHeight = measuredHeight + verticalPadding
+        return roundedToPixel(min(max(unclampedHeight, minimumHeight), maximumHeight))
+    }
+
+    func visibleLineCount(forMeasuredTextHeight measuredTextHeight: CGFloat) -> Int {
+        let measuredHeight = max(measuredTextHeight, lineHeight)
+        let measuredLines = Int(ceil(measuredHeight / lineHeight))
+        return min(max(measuredLines, 1), maximumVisibleLines)
+    }
+
+    private func roundedToPixel(_ value: CGFloat) -> CGFloat {
+        let scale = max(displayScale, 1)
+        return (value * scale).rounded(.up) / scale
+    }
+}
+
 @available(macOS 26.0, *)
 struct CapturePanelView: View {
     @ObservedObject var model: CapturePanelModel
@@ -10,36 +54,14 @@ struct CapturePanelView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ZStack(alignment: .topLeading) {
-                TextEditor(text: $model.attributedDraft, selection: $selection)
-                    .font(.system(.body, design: .monospaced))
-                    .textEditorStyle(.plain)
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 190)
-                    .padding(10)
-                    .background(.regularMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .disabled(model.isSubmitting)
-                    .accessibilityLabel("Capture draft")
-                    .onChange(of: String(model.attributedDraft.characters)) { _, newText in
-                        model.editorTextDidChange(cursorUTF8Offset: newText.utf8.count)
-                    }
-
-                if !model.hasDraft {
-                    Text("Type to capture\u{2026}")
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 15)
-                        .padding(.vertical, 18)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                }
-            }
+            AutosizingCaptureEditor(model: model, selection: $selection)
 
             if model.completionVisible {
                 CompletionList(model: model)
                     .frame(width: 430)
-                    .frame(maxHeight: 220)
+                    .frame(maxHeight: CapturePanelLayout.completionViewportHeight, alignment: .top)
                     .padding(.leading, 14)
+                    .layoutPriority(0)
             }
 
             if let destinationSummary = model.destinationSummary {
@@ -102,7 +124,122 @@ struct CapturePanelView: View {
             }
         }
         .padding(18)
-        .frame(minWidth: 620, minHeight: 420)
+        .frame(
+            minWidth: CapturePanelLayout.panelMinimumContentSize.width,
+            minHeight: CapturePanelLayout.panelMinimumContentSize.height,
+            alignment: .topLeading
+        )
+    }
+}
+
+@available(macOS 26.0, *)
+private struct AutosizingCaptureEditor: View {
+    @ObservedObject var model: CapturePanelModel
+    @Binding var selection: AttributedTextSelection
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayScale) private var displayScale
+    @State private var editorHeight = CaptureEditorHeightPolicy().minimumHeight
+    @State private var renderedLineCount = 1
+
+    private var policy: CaptureEditorHeightPolicy {
+        CaptureEditorHeightPolicy(displayScale: displayScale)
+    }
+
+    private var textInset: CGFloat {
+        CapturePanelLayout.editorContentPadding
+    }
+
+    private var editorFont: Font {
+        .system(.body, design: .monospaced)
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let usableTextWidth = max(1, proxy.size.width - textInset * 2)
+
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $model.attributedDraft, selection: $selection)
+                    .font(editorFont)
+                    .textEditorStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .frame(height: max(policy.lineHeight, editorHeight - textInset * 2))
+                    .padding(textInset)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .background(.regularMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .disabled(model.isSubmitting)
+                    .accessibilityLabel("Capture draft")
+                    .onChange(of: String(model.attributedDraft.characters)) { _, newText in
+                        model.editorTextDidChange(cursorUTF8Offset: newText.utf8.count)
+                    }
+
+                if !model.hasDraft {
+                    Text("Type to capture\u{2026}")
+                        .font(editorFont)
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, textInset + 5)
+                        .padding(.top, textInset + 3)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+
+                sizingText(width: usableTextWidth)
+                    .padding(textInset)
+                    .accessibilityHidden(true)
+                    .allowsHitTesting(false)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(height: editorHeight)
+        .onPreferenceChange(CaptureEditorMeasuredHeightKey.self) { measuredTextHeight in
+            updateHeight(forMeasuredTextHeight: measuredTextHeight)
+        }
+    }
+
+    private var sizingString: String {
+        String(model.attributedDraft.characters) + "\u{200B}"
+    }
+
+    private func sizingText(width: CGFloat) -> some View {
+        Text(verbatim: sizingString)
+            .font(editorFont)
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(width: width, alignment: .leading)
+            .background(
+                GeometryReader { geometry in
+                    Color.clear.preference(
+                        key: CaptureEditorMeasuredHeightKey.self,
+                        value: geometry.size.height
+                    )
+                }
+            )
+            .opacity(0)
+    }
+
+    private func updateHeight(forMeasuredTextHeight measuredTextHeight: CGFloat) {
+        let nextHeight = policy.resolvedHeight(forMeasuredTextHeight: measuredTextHeight)
+        let nextLineCount = policy.visibleLineCount(forMeasuredTextHeight: measuredTextHeight)
+        guard nextHeight != editorHeight else {
+            return
+        }
+
+        var transaction = Transaction()
+        if !reduceMotion && nextLineCount != renderedLineCount {
+            transaction.animation = .easeOut(duration: 0.12)
+        }
+        withTransaction(transaction) {
+            editorHeight = nextHeight
+            renderedLineCount = nextLineCount
+        }
+    }
+}
+
+private struct CaptureEditorMeasuredHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
@@ -203,10 +340,16 @@ private struct PreviewPane: View {
             }
         }
         .font(.callout)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: CapturePanelLayout.previewIdealHeight,
+            idealHeight: CapturePanelLayout.previewIdealHeight,
+            alignment: .leading
+        )
         .padding(10)
         .background(.thinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .layoutPriority(1)
     }
 
     @ViewBuilder
