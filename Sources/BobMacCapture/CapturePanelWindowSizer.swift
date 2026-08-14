@@ -9,17 +9,26 @@ struct CapturePanelWindowSizer: Equatable {
     var screenMargin: CGFloat = CapturePanelLayout.panelScreenMargin
     var displayScale: CGFloat = 1
 
-    /// Clamps a SwiftUI-measured ideal content height into the panel's allowed range,
-    /// further bounding it to the given screen height (minus margins) when known.
+    /// Clamps SwiftUI-measured content metrics into the panel's allowed range, further
+    /// bounding them to the given screen height (minus margins) when known.
     func contentHeight(
-        forIdealContentHeight idealContentHeight: CGFloat,
+        for metrics: CapturePanelContentMetrics,
         availableScreenHeight: CGFloat?
     ) -> CGFloat {
-        var clamped = min(max(idealContentHeight, minimumContentHeight), maximumContentHeight)
+        let persistentMinimum = max(metrics.minimumVisibleContentHeight, minimumContentHeight)
+        var clamped = min(max(metrics.idealContentHeight, persistentMinimum), maximumContentHeight)
+        clamped = max(clamped, persistentMinimum)
+
         if let availableScreenHeight {
-            let screenLimit = max(minimumContentHeight, availableScreenHeight - 2 * screenMargin)
-            clamped = min(clamped, screenLimit)
+            let screenLimit = max(1, availableScreenHeight - 2 * screenMargin)
+            if screenLimit < persistentMinimum {
+                clamped = screenLimit
+            } else {
+                clamped = min(clamped, screenLimit)
+                clamped = max(clamped, persistentMinimum)
+            }
         }
+
         return roundedToPixel(clamped)
     }
 

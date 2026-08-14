@@ -22,9 +22,51 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(panel.contentMinSize.width, CapturePanelLayout.panelMinimumContentWidth)
 
         let contentSize = panel.contentRect(forFrameRect: panel.frame).size
-        XCTAssertEqual(contentSize.height, CapturePanelLayout.panelCompactContentHeight)
+        XCTAssertEqual(contentSize.height, CapturePanelLayout.panelFallbackContentHeight)
         XCTAssertLessThan(contentSize.height, 420)
         XCTAssertGreaterThanOrEqual(contentSize.width, panel.contentMinSize.width)
+    }
+
+    func testContentHeightPolicyComposesEmptyAndAuxiliaryStates() {
+        let policy = CapturePanelContentHeightPolicy(
+            titlebarDragInset: 20,
+            rootPadding: 10,
+            sectionSpacing: 5,
+            displayScale: 1
+        )
+
+        let empty = policy.metrics(editorHeight: 40, auxiliaryHeight: nil, footerHeight: 30)
+        XCTAssertEqual(empty.idealContentHeight, 105)
+        XCTAssertEqual(empty.minimumVisibleContentHeight, 105)
+
+        let withAuxiliary = policy.metrics(editorHeight: 40, auxiliaryHeight: 60, footerHeight: 30)
+        XCTAssertEqual(withAuxiliary.idealContentHeight, 170)
+        XCTAssertEqual(withAuxiliary.minimumVisibleContentHeight, 110)
+    }
+
+    func testContentHeightPolicyUsesMeasuredFooterAndDisplayScaleRounding() {
+        let policy = CapturePanelContentHeightPolicy(
+            titlebarDragInset: 28,
+            rootPadding: 18,
+            sectionSpacing: 12,
+            displayScale: 2
+        )
+
+        let shortFooter = policy.metrics(
+            editorHeight: 42.1,
+            auxiliaryHeight: nil,
+            footerHeight: 37.2
+        )
+        let tallFooter = policy.metrics(
+            editorHeight: 42.1,
+            auxiliaryHeight: nil,
+            footerHeight: 47.2
+        )
+
+        XCTAssertEqual(shortFooter.idealContentHeight, 137.5)
+        XCTAssertEqual(shortFooter.minimumVisibleContentHeight, 137.5)
+        XCTAssertEqual(tallFooter.idealContentHeight, 147.5)
+        XCTAssertEqual(tallFooter.minimumVisibleContentHeight, 147.5)
     }
 
     func testSizerClampsIdealHeightToFloorCeilingAndPixelRounding() {
@@ -35,10 +77,44 @@ final class BobMacCaptureTests: XCTestCase {
             displayScale: 1
         )
 
-        XCTAssertEqual(sizer.contentHeight(forIdealContentHeight: 10, availableScreenHeight: nil), 100)
-        XCTAssertEqual(sizer.contentHeight(forIdealContentHeight: 900, availableScreenHeight: nil), 500)
-        XCTAssertEqual(sizer.contentHeight(forIdealContentHeight: 234.2, availableScreenHeight: nil), 235)
-        XCTAssertEqual(sizer.contentHeight(forIdealContentHeight: 480, availableScreenHeight: 300), 260)
+        XCTAssertEqual(
+            sizer.contentHeight(for: contentMetrics(ideal: 10, minimum: 40), availableScreenHeight: nil),
+            100
+        )
+        XCTAssertEqual(
+            sizer.contentHeight(for: contentMetrics(ideal: 900, minimum: 120), availableScreenHeight: nil),
+            500
+        )
+        XCTAssertEqual(
+            sizer.contentHeight(for: contentMetrics(ideal: 234.2, minimum: 120), availableScreenHeight: nil),
+            235
+        )
+        XCTAssertEqual(
+            sizer.contentHeight(for: contentMetrics(ideal: 480, minimum: 120), availableScreenHeight: 300),
+            260
+        )
+    }
+
+    func testSizerPreservesPersistentMinimumUnlessScreenIsTooShort() {
+        let sizer = CapturePanelWindowSizer(
+            minimumContentHeight: 100,
+            maximumContentHeight: 500,
+            screenMargin: 20,
+            displayScale: 1
+        )
+
+        XCTAssertEqual(
+            sizer.contentHeight(for: contentMetrics(ideal: 120, minimum: 180), availableScreenHeight: 600),
+            180
+        )
+        XCTAssertEqual(
+            sizer.contentHeight(for: contentMetrics(ideal: 900, minimum: 180), availableScreenHeight: 300),
+            260
+        )
+        XCTAssertEqual(
+            sizer.contentHeight(for: contentMetrics(ideal: 900, minimum: 280), availableScreenHeight: 300),
+            260
+        )
     }
 
     func testSizerFramePreservesTopEdgeOriginXAndWidthWhenGrowingAndShrinking() {
@@ -86,14 +162,16 @@ final class BobMacCaptureTests: XCTestCase {
     }
 
     @MainActor
-    func testApplyIdealContentHeightGrowsAndKeepsTopEdge() {
+    func testReceiveContentMetricsGrowsAndKeepsTopEdge() {
         let model = CapturePanelModel()
         let controller = CapturePanelController(model: model)
         let panel = controller.makePanelIfNeeded()
         let initialFrame = panel.frame
         let initialContentHeight = panel.contentRect(forFrameRect: panel.frame).size.height
 
-        controller.applyIdealContentHeight(initialContentHeight + 120)
+        controller.receiveContentMetrics(
+            contentMetrics(ideal: initialContentHeight + 120, minimum: initialContentHeight)
+        )
 
         let grownFrame = panel.frame
         XCTAssertGreaterThan(grownFrame.height, initialFrame.height)
@@ -103,31 +181,77 @@ final class BobMacCaptureTests: XCTestCase {
     }
 
     @MainActor
-    func testApplyIdealContentHeightIsIdempotentForARepeatedMeasurement() {
+    func testReceiveContentMetricsIsIdempotentForARepeatedMeasurement() {
         let model = CapturePanelModel()
         let controller = CapturePanelController(model: model)
         let panel = controller.makePanelIfNeeded()
         let initialContentHeight = panel.contentRect(forFrameRect: panel.frame).size.height
+        let metrics = contentMetrics(ideal: initialContentHeight + 120, minimum: initialContentHeight)
 
-        controller.applyIdealContentHeight(initialContentHeight + 120)
+        controller.receiveContentMetrics(metrics)
         let firstAppliedFrame = panel.frame
 
-        controller.applyIdealContentHeight(initialContentHeight + 120)
+        controller.receiveContentMetrics(metrics)
 
         XCTAssertEqual(panel.frame, firstAppliedFrame)
     }
 
     @MainActor
-    func testApplyIdealContentHeightIgnoresDegenerateMeasurements() {
+    func testShowReplayRestoresCachedMetricsAfterFallbackSizedFrame() {
+        let model = CapturePanelModel()
+        let controller = CapturePanelController(model: model)
+        let panel = controller.makePanelIfNeeded()
+        let metrics = contentMetrics(ideal: 320, minimum: 180)
+
+        controller.receiveContentMetrics(metrics)
+        let measuredContentHeight = panel.contentRect(forFrameRect: panel.frame).height
+
+        panel.contentMinSize = CapturePanelLayout.panelMinimumContentSize
+        panel.contentMaxSize = NSSize(
+            width: .greatestFiniteMagnitude,
+            height: .greatestFiniteMagnitude
+        )
+        panel.setContentSize(
+            NSSize(
+                width: panel.contentRect(forFrameRect: panel.frame).width,
+                height: CapturePanelLayout.panelFallbackContentHeight
+            )
+        )
+        XCTAssertNotEqual(panel.contentRect(forFrameRect: panel.frame).height, measuredContentHeight)
+
+        controller.replayLatestContentMetricsForPresentation()
+
+        XCTAssertEqual(
+            panel.contentRect(forFrameRect: panel.frame).height,
+            measuredContentHeight,
+            accuracy: 0.5
+        )
+    }
+
+    @MainActor
+    func testMetricsReceivedBeforePanelCreationAreCachedForReplay() {
+        let model = CapturePanelModel()
+        let controller = CapturePanelController(model: model)
+        let metrics = contentMetrics(ideal: 280, minimum: 180)
+
+        controller.receiveContentMetrics(metrics)
+        let panel = controller.makePanelIfNeeded()
+        controller.replayLatestContentMetricsForPresentation()
+
+        XCTAssertEqual(panel.contentRect(forFrameRect: panel.frame).height, 280, accuracy: 0.5)
+    }
+
+    @MainActor
+    func testReceiveContentMetricsIgnoresDegenerateMeasurements() {
         let model = CapturePanelModel()
         let controller = CapturePanelController(model: model)
         let panel = controller.makePanelIfNeeded()
         let initialFrame = panel.frame
 
-        controller.applyIdealContentHeight(0)
-        controller.applyIdealContentHeight(-40)
-        controller.applyIdealContentHeight(.nan)
-        controller.applyIdealContentHeight(.infinity)
+        controller.receiveContentMetrics(contentMetrics(ideal: 0, minimum: 0))
+        controller.receiveContentMetrics(contentMetrics(ideal: -40, minimum: 20))
+        controller.receiveContentMetrics(contentMetrics(ideal: .nan, minimum: 20))
+        controller.receiveContentMetrics(contentMetrics(ideal: .infinity, minimum: 20))
 
         XCTAssertEqual(panel.frame, initialFrame)
     }
@@ -137,7 +261,7 @@ final class BobMacCaptureTests: XCTestCase {
         let model = CapturePanelModel()
         let controller = CapturePanelController(model: model)
         let panel = controller.makePanelIfNeeded()
-        controller.applyIdealContentHeight(300)
+        controller.receiveContentMetrics(contentMetrics(ideal: 300, minimum: 180))
 
         let tallerProposal = NSSize(width: panel.frame.width, height: panel.frame.height + 200)
         let resolvedForTaller = controller.windowWillResize(panel, to: tallerProposal)
@@ -445,6 +569,13 @@ final class BobMacCaptureTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
+    }
+
+    private func contentMetrics(ideal: CGFloat, minimum: CGFloat) -> CapturePanelContentMetrics {
+        CapturePanelContentMetrics(
+            idealContentHeight: ideal,
+            minimumVisibleContentHeight: minimum
+        )
     }
 }
 

@@ -16,16 +16,10 @@ enum CapturePanelLayout {
     static let completionRowHeight: CGFloat = 32
     static let completionViewportHeight = completionRowHeight * CGFloat(completionVisibleRows) + 12
     static let previewIdealHeight: CGFloat = 92
-    static let footerEstimatedHeight: CGFloat = 28
 
-    /// First-frame estimate of the empty state, used before SwiftUI reports a real
-    /// measurement so the prewarmed panel opens already close to its compact size.
-    static let panelCompactContentHeight: CGFloat =
-        titlebarDragInset
-        + CaptureEditorHeightPolicy().minimumHeight
-        + sectionSpacing
-        + footerEstimatedHeight
-        + rootPadding
+    /// First-frame fallback used only until SwiftUI reports rendered editor/footer
+    /// metrics. The steady-state panel size is always measured, not inferred.
+    static let panelFallbackContentHeight: CGFloat = 160
 
     /// Hard floor guarding only against a degenerate measurement; deliberately below the
     /// real compact height so a correct measurement is never inflated.
@@ -33,7 +27,10 @@ enum CapturePanelLayout {
     static let panelMaximumContentHeight: CGFloat = 720
     static let panelScreenMargin: CGFloat = 24
 
-    static let panelInitialContentSize = CGSize(width: panelInitialContentWidth, height: panelCompactContentHeight)
+    static let panelInitialContentSize = CGSize(
+        width: panelInitialContentWidth,
+        height: panelFallbackContentHeight
+    )
     static let panelMinimumContentSize = CGSize(width: panelMinimumContentWidth, height: panelMinimumContentHeight)
 }
 
@@ -69,33 +66,156 @@ struct CaptureEditorHeightPolicy: Equatable {
     }
 }
 
+struct CapturePanelContentMetrics: Equatable {
+    var idealContentHeight: CGFloat
+    var minimumVisibleContentHeight: CGFloat
+
+    var isValid: Bool {
+        idealContentHeight.isFinite
+            && minimumVisibleContentHeight.isFinite
+            && idealContentHeight > 1
+            && minimumVisibleContentHeight > 1
+    }
+}
+
+struct CapturePanelContentHeightPolicy: Equatable {
+    var titlebarDragInset: CGFloat = CapturePanelLayout.titlebarDragInset
+    var rootPadding: CGFloat = CapturePanelLayout.rootPadding
+    var sectionSpacing: CGFloat = CapturePanelLayout.sectionSpacing
+    var displayScale: CGFloat = 1
+
+    func metrics(
+        editorHeight: CGFloat,
+        auxiliaryHeight: CGFloat?,
+        footerHeight: CGFloat
+    ) -> CapturePanelContentMetrics {
+        let editorHeight = sanitizedHeight(editorHeight)
+        let footerHeight = sanitizedHeight(footerHeight)
+        let auxiliaryHeight = auxiliaryHeight.map(sanitizedHeight)
+        let spacingCount = auxiliaryHeight == nil ? 1 : 2
+        let persistentHeight = titlebarDragInset
+            + editorHeight
+            + sectionSpacing * CGFloat(spacingCount)
+            + footerHeight
+            + rootPadding
+        let idealHeight = persistentHeight + (auxiliaryHeight ?? 0)
+
+        return CapturePanelContentMetrics(
+            idealContentHeight: roundedToPixel(idealHeight),
+            minimumVisibleContentHeight: roundedToPixel(persistentHeight)
+        )
+    }
+
+    private func sanitizedHeight(_ value: CGFloat) -> CGFloat {
+        guard value.isFinite else {
+            return 0
+        }
+        return max(0, value)
+    }
+
+    private func roundedToPixel(_ value: CGFloat) -> CGFloat {
+        let scale = max(displayScale, 1)
+        return (value * scale).rounded(.up) / scale
+    }
+}
+
 @available(macOS 26.0, *)
 struct CapturePanelView: View {
     @ObservedObject var model: CapturePanelModel
-    var onIdealContentHeightChange: (CGFloat) -> Void = { _ in }
+    var onContentMetricsChange: (CapturePanelContentMetrics) -> Void = { _ in }
     @State private var selection = AttributedTextSelection()
     @AccessibilityFocusState private var errorIsFocused: Bool
-    @AccessibilityFocusState private var statusIsFocused: Bool
+    @Environment(\.displayScale) private var displayScale
+    @State private var measuredEditorHeight = CaptureEditorHeightPolicy().minimumHeight
+    @State private var measuredAuxiliaryContentHeight: CGFloat = 0
+    @State private var measuredFooterHeight: CGFloat = 0
 
     var body: some View {
-        ScrollView(.vertical) {
-            content
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onIdealContentHeightChange($0) }
-        }
-        .scrollBounceBehavior(.basedOnSize)
+        content
+            .onChange(of: hasAuxiliaryContent) { _, hasContent in
+                if !hasContent {
+                    measuredAuxiliaryContentHeight = 0
+                }
+                reportContentMetrics()
+            }
+            .onChange(of: displayScale) { _, _ in
+                reportContentMetrics()
+            }
     }
 
     private var content: some View {
         VStack(alignment: .leading, spacing: CapturePanelLayout.sectionSpacing) {
             AutosizingCaptureEditor(model: model, selection: $selection)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(2)
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    updateMeasuredEditorHeight(height)
+                }
 
+            if hasAuxiliaryContent {
+                auxiliaryScrollRegion
+            }
+
+            CapturePanelFooter(model: model)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(2)
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    updateMeasuredFooterHeight(height)
+                }
+        }
+        .padding(.top, CapturePanelLayout.titlebarDragInset)
+        .padding([.horizontal, .bottom], CapturePanelLayout.rootPadding)
+        .frame(
+            minWidth: CapturePanelLayout.panelMinimumContentWidth,
+            maxWidth: .infinity,
+            alignment: .topLeading
+        )
+    }
+
+    private var hasAuxiliaryContent: Bool {
+        model.completionVisible
+            || model.destinationSummary != nil
+            || model.errorMessage != nil
+            || model.previewState != .idle
+    }
+
+    private var auxiliaryScrollRegion: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                auxiliaryContent
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .onGeometryChange(for: CGFloat.self) { geometry in
+                        geometry.size.height
+                    } action: { height in
+                        updateMeasuredAuxiliaryContentHeight(height)
+                    }
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Capture details")
+            .onChange(of: model.errorMessage) { _, errorMessage in
+                guard errorMessage != nil else {
+                    return
+                }
+                proxy.scrollTo(AuxiliarySection.error, anchor: .center)
+            }
+        }
+        .layoutPriority(0)
+    }
+
+    private var auxiliaryContent: some View {
+        VStack(alignment: .leading, spacing: CapturePanelLayout.sectionSpacing) {
             if model.completionVisible {
                 CompletionList(model: model)
                     .frame(width: 430)
                     .frame(maxHeight: CapturePanelLayout.completionViewportHeight, alignment: .top)
                     .padding(.leading, 14)
                     .layoutPriority(0)
+                    .id(AuxiliarySection.completion)
             }
 
             if let destinationSummary = model.destinationSummary {
@@ -103,6 +223,7 @@ struct CapturePanelView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                    .id(AuxiliarySection.destination)
             }
 
             if let errorMessage = model.errorMessage {
@@ -123,45 +244,106 @@ struct CapturePanelView: View {
                         }
                     }
                 }
+                .id(AuxiliarySection.error)
             }
 
             if model.previewState != .idle {
                 PreviewPane(model: model)
-            }
-
-            HStack(alignment: .center, spacing: 8) {
-                Text(model.statusText.isEmpty ? "Ready" : model.statusText)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .accessibilityFocused($statusIsFocused)
-                    .onChange(of: model.successAnnouncementTick) { _, _ in
-                        statusIsFocused = true
-                    }
-                Spacer(minLength: 12)
-                if model.pendingDiscardConfirmation {
-                    Button("Discard") {
-                        model.discardDraft()
-                    }
-                    Button("Keep Draft") {
-                        model.pendingDiscardConfirmation = false
-                    }
-                    .keyboardShortcut(.cancelAction)
-                }
-                Button("Preview") {
-                    model.preview()
-                }
-                .help("Resolves the current clipboard/history and shows the exact destination without writing anything.")
-                .disabled(!model.hasDraft || model.isSubmitting || model.isPreviewing)
-                Button("Capture") {
-                    model.submit(openAfterCapture: false)
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!model.hasDraft || model.isSubmitting)
+                    .id(AuxiliarySection.preview)
             }
         }
-        .padding(.top, CapturePanelLayout.titlebarDragInset)
-        .padding([.horizontal, .bottom], CapturePanelLayout.rootPadding)
-        .frame(minWidth: CapturePanelLayout.panelMinimumContentWidth, alignment: .topLeading)
+    }
+
+    private func updateMeasuredEditorHeight(_ height: CGFloat) {
+        guard height.isFinite, height > 0 else {
+            return
+        }
+        measuredEditorHeight = height
+        reportContentMetrics()
+    }
+
+    private func updateMeasuredAuxiliaryContentHeight(_ height: CGFloat) {
+        guard height.isFinite, height >= 0 else {
+            return
+        }
+        measuredAuxiliaryContentHeight = height
+        reportContentMetrics()
+    }
+
+    private func updateMeasuredFooterHeight(_ height: CGFloat) {
+        guard height.isFinite, height > 0 else {
+            return
+        }
+        measuredFooterHeight = height
+        reportContentMetrics()
+    }
+
+    private func reportContentMetrics() {
+        guard measuredEditorHeight.isFinite,
+              measuredEditorHeight > 1,
+              measuredFooterHeight.isFinite,
+              measuredFooterHeight > 1
+        else {
+            return
+        }
+
+        let policy = CapturePanelContentHeightPolicy(displayScale: displayScale)
+        let metrics = policy.metrics(
+            editorHeight: measuredEditorHeight,
+            auxiliaryHeight: hasAuxiliaryContent ? measuredAuxiliaryContentHeight : nil,
+            footerHeight: measuredFooterHeight
+        )
+        guard metrics.isValid else {
+            return
+        }
+        onContentMetricsChange(metrics)
+    }
+
+    private enum AuxiliarySection: Hashable {
+        case completion
+        case destination
+        case error
+        case preview
+    }
+}
+
+@available(macOS 26.0, *)
+private struct CapturePanelFooter: View {
+    @ObservedObject var model: CapturePanelModel
+    @AccessibilityFocusState private var statusIsFocused: Bool
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Text(model.statusText.isEmpty ? "Ready" : model.statusText)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .accessibilityFocused($statusIsFocused)
+                .onChange(of: model.successAnnouncementTick) { _, _ in
+                    statusIsFocused = true
+                }
+            Spacer(minLength: 12)
+            if model.pendingDiscardConfirmation {
+                Button("Discard") {
+                    model.discardDraft()
+                }
+                Button("Keep Draft") {
+                    model.pendingDiscardConfirmation = false
+                }
+                .keyboardShortcut(.cancelAction)
+            }
+            Button("Preview") {
+                model.preview()
+            }
+            .help("Resolves the current clipboard/history and shows the exact destination without writing anything.")
+            .disabled(!model.hasDraft || model.isSubmitting || model.isPreviewing)
+            Button("Capture") {
+                model.submit(openAfterCapture: false)
+            }
+            .keyboardShortcut(.defaultAction)
+            .disabled(!model.hasDraft || model.isSubmitting)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Capture actions")
     }
 }
 

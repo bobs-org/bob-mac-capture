@@ -7,9 +7,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     private let keyRouter = CaptureKeyCommandRouter()
     private var panel: NSPanel?
     private var localMonitor: Any?
+    private var latestContentMetrics: CapturePanelContentMetrics?
     private var appliedContentHeight: CGFloat?
     private var pendingRecenter = false
     private var isApplyingContentHeight = false
+    private var metricsArrivedDuringApplication = false
 
     init(model: CapturePanelModel) {
         self.model = model
@@ -31,9 +33,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let token = CaptureSignpost.begin("panel-order")
         model.prepareForPresentation()
         let panel = makePanelIfNeeded()
-        pendingRecenter = true
-        panel.contentView?.layoutSubtreeIfNeeded()
-        panel.center()
+        replayLatestContentMetricsForPresentation()
         panel.makeKeyAndOrderFront(nil)
         installKeyMonitorIfNeeded()
         CaptureSignpost.end(token)
@@ -51,31 +51,72 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return NSSize(width: frameSize.width, height: appliedContentHeight + Self.chromeHeight(for: panel))
     }
 
-    /// Resolves a SwiftUI-measured ideal content height to a target size, then applies it
-    /// to the live panel: anchored at the top edge, clamped inside the screen, and
-    /// guarded against feedback loops from resizing itself.
-    func applyIdealContentHeight(_ idealContentHeight: CGFloat) {
-        guard idealContentHeight.isFinite, idealContentHeight > 1 else {
+    /// Receives rendered SwiftUI metrics and caches them before trying to apply them to
+    /// the live panel. Reports can arrive during prewarm or a reentrant resize; neither
+    /// case should lose the newest measurement.
+    func receiveContentMetrics(_ metrics: CapturePanelContentMetrics) {
+        guard metrics.isValid else {
             return
         }
-        guard let panel, !isApplyingContentHeight else {
+        latestContentMetrics = metrics
+        applyLatestContentMetricsIfPossible()
+    }
+
+    /// Replays the cached report for first presentation and re-show paths. This is
+    /// intentionally explicit because unchanged SwiftUI geometry does not emit a second
+    /// change notification.
+    func replayLatestContentMetricsForPresentation() {
+        guard let panel else {
+            return
+        }
+
+        pendingRecenter = true
+        panel.contentView?.layoutSubtreeIfNeeded()
+        if latestContentMetrics == nil {
+            applyFallbackContentHeight(force: true)
+        } else {
+            applyLatestContentMetricsIfPossible(force: true)
+        }
+    }
+
+    /// Resolves SwiftUI-measured content metrics to a target size, then applies them to
+    /// the live panel: anchored at the top edge, clamped inside the screen, and guarded
+    /// against feedback loops from resizing itself.
+    private func applyContentMetrics(
+        _ metrics: CapturePanelContentMetrics,
+        force: Bool = false
+    ) {
+        guard metrics.isValid else {
+            return
+        }
+        guard let panel else {
+            return
+        }
+        guard !isApplyingContentHeight else {
+            metricsArrivedDuringApplication = true
             return
         }
 
         let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
         let sizer = CapturePanelWindowSizer(displayScale: panel.screen?.backingScaleFactor ?? 1)
         let target = sizer.contentHeight(
-            forIdealContentHeight: idealContentHeight,
+            for: metrics,
             availableScreenHeight: visibleFrame?.height
         )
 
         let heightChanged = appliedContentHeight.map { abs($0 - target) >= 0.5 } ?? true
-        guard heightChanged || pendingRecenter else {
+        guard force || heightChanged || pendingRecenter else {
             return
         }
 
         isApplyingContentHeight = true
-        defer { isApplyingContentHeight = false }
+        defer {
+            isApplyingContentHeight = false
+            if metricsArrivedDuringApplication {
+                metricsArrivedDuringApplication = false
+                applyLatestContentMetricsIfPossible()
+            }
+        }
 
         panel.contentMinSize = NSSize(width: CapturePanelLayout.panelMinimumContentWidth, height: target)
         panel.contentMaxSize = NSSize(width: .greatestFiniteMagnitude, height: target)
@@ -96,6 +137,23 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    private func applyLatestContentMetricsIfPossible(force: Bool = false) {
+        guard let latestContentMetrics else {
+            return
+        }
+        applyContentMetrics(latestContentMetrics, force: force)
+    }
+
+    private func applyFallbackContentHeight(force: Bool = false) {
+        applyContentMetrics(
+            CapturePanelContentMetrics(
+                idealContentHeight: CapturePanelLayout.panelFallbackContentHeight,
+                minimumVisibleContentHeight: CapturePanelLayout.panelFallbackContentHeight
+            ),
+            force: force
+        )
+    }
+
     func makePanelIfNeeded() -> NSPanel {
         if let panel {
             return panel
@@ -103,14 +161,16 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
         let created = Self.makePanel()
         created.delegate = self
+        panel = created
         let hostingView = NSHostingView(
-            rootView: CapturePanelView(model: model) { [weak self] height in
-                self?.applyIdealContentHeight(height)
+            rootView: CapturePanelView(model: model) { [weak self] metrics in
+                self?.receiveContentMetrics(metrics)
             }
         )
         hostingView.sizingOptions = []
         created.contentView = hostingView
-        panel = created
+        created.contentView?.layoutSubtreeIfNeeded()
+        applyLatestContentMetricsIfPossible()
         return created
     }
 
