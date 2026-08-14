@@ -6,7 +6,12 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = AppSettings()
-    let notificationService = NotificationService()
+    // Lazy because NotificationService's default center is `UNUserNotificationCenter.current()`,
+    // which raises NSInternalInconsistencyException in a process that has no app bundle. Eagerly
+    // building it here made `AppDelegate()` unconstructible under `swift test`, aborting the whole
+    // xctest process. Every real touch still happens at or after `applicationWillFinishLaunching`,
+    // so the delegate is assigned before any authorization request exactly as before.
+    lazy var notificationService = NotificationService()
 
     var settingsPresentation = SettingsPresentation()
 
