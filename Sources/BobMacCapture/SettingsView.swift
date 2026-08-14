@@ -71,6 +71,16 @@ struct SettingsView: View {
                 Text(settings.diagnosticStatus)
                     .textSelection(.enabled)
                 LabeledContent("Signing", value: settings.signingDiagnostic)
+                if !settings.diagnosticHistory.isEmpty {
+                    DisclosureGroup("Recent activity") {
+                        ForEach(Array(settings.diagnosticHistory.enumerated()), id: \.offset) { _, entry in
+                            Text(entry)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
             }
         }
         .padding(20)

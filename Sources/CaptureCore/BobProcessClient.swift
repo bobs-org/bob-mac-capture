@@ -9,6 +9,11 @@ public struct BobProcessResult: Equatable {
 }
 
 public final class BobProcessClient: @unchecked Sendable {
+    // Every `bob` invocation is local, offline, and expected to finish in well under a
+    // second; 20s is a generous bound that only fires for a genuinely wedged process
+    // (missing dependency, stuck filesystem mount) so the panel can never wait forever.
+    public static let defaultTimeout: TimeInterval = 20
+
     private let executablePath: String
     private let environment: [String: String]
     private let decoder: JSONDecoder
@@ -119,7 +124,8 @@ public final class BobProcessClient: @unchecked Sendable {
         arguments: [String],
         environmentOverrides: [String: String] = [:],
         lane: String = "default",
-        cancelsPreviousInLane: Bool = true
+        cancelsPreviousInLane: Bool = true,
+        timeout: TimeInterval = BobProcessClient.defaultTimeout
     ) async throws -> BobProcessResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executablePath)
@@ -140,7 +146,25 @@ public final class BobProcessClient: @unchecked Sendable {
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
+                // Both the timeout and the real termination handler race to resume the
+                // continuation; this guard makes whichever fires first authoritative and
+                // makes the other a no-op instead of a fatal double-resume.
+                let resumeGuard = ResumeGuard()
+
+                // Runs on `stateQueue` (see `asyncAfter` below), so it must use the
+                // already-on-the-queue clear helper, not the `.sync`-wrapping one.
+                let timeoutWorkItem = DispatchWorkItem { [weak self] in
+                    guard resumeGuard.markResumed() else { return }
+                    process.terminate()
+                    self?.clearActiveProcessAlreadyOnStateQueue(process: process, generation: generation, lane: lane)
+                    continuation.resume(throwing: BobClientError.timedOut(command: command, seconds: timeout))
+                }
+                stateQueue.asyncAfter(deadline: .now() + timeout, execute: timeoutWorkItem)
+
                 process.terminationHandler = { [weak self] completedProcess in
+                    timeoutWorkItem.cancel()
+                    guard resumeGuard.markResumed() else { return }
+
                     let stdout = String(
                         data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(),
                         encoding: .utf8
@@ -169,6 +193,8 @@ public final class BobProcessClient: @unchecked Sendable {
                 do {
                     try process.run()
                 } catch {
+                    timeoutWorkItem.cancel()
+                    guard resumeGuard.markResumed() else { return }
                     clearActiveProcess(process: process, generation: generation, lane: lane)
                     continuation.resume(throwing: error)
                 }
@@ -313,12 +339,20 @@ public final class BobProcessClient: @unchecked Sendable {
 
     private func clearActiveProcess(process: Process, generation: UInt64, lane: String) {
         stateQueue.sync {
-            if let active = activeProcesses[lane],
-               active.process === process,
-               active.generation == generation
-            {
-                activeProcesses[lane] = nil
-            }
+            clearActiveProcessAlreadyOnStateQueue(process: process, generation: generation, lane: lane)
+        }
+    }
+
+    // The timeout `DispatchWorkItem` below is itself scheduled on `stateQueue`, so it
+    // must mutate `activeProcesses` directly instead of calling `clearActiveProcess`:
+    // a `stateQueue.sync` from a block already running on `stateQueue` is a same-queue
+    // reentrant deadlock, not a re-entrant no-op.
+    private func clearActiveProcessAlreadyOnStateQueue(process: Process, generation: UInt64, lane: String) {
+        if let active = activeProcesses[lane],
+           active.process === process,
+           active.generation == generation
+        {
+            activeProcesses[lane] = nil
         }
     }
 }
@@ -326,6 +360,19 @@ public final class BobProcessClient: @unchecked Sendable {
 private struct ActiveProcess {
     let generation: UInt64
     let process: Process
+}
+
+private final class ResumeGuard: @unchecked Sendable {
+    private let lock = NSLock()
+    private var hasResumed = false
+
+    func markResumed() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !hasResumed else { return false }
+        hasResumed = true
+        return true
+    }
 }
 
 public protocol SchemaVersioned {

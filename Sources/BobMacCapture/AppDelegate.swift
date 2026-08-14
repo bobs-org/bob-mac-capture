@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController?.prewarm()
 
         hotKeyManager = HotKeyManager { [weak self] in
+            CaptureSignpost.event("hotkey-received")
             Task { @MainActor in
                 self?.showCapturePanel()
             }
@@ -46,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func configureStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.title = "Bob"
+        item.button?.toolTip = "Bob Mac Capture"
 
         let menu = NSMenu()
         menu.addItem(
@@ -97,6 +99,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settings.diagnosticStatus = String(describing: error)
             panelModel?.setProcessClient(nil)
         }
+        updateStatusItemAppearance()
+    }
+
+    // The menu-bar glyph is the only always-visible surface for an `LSUIElement` app,
+    // so it must reflect a broken bob resolution at a glance without opening Settings.
+    private func updateStatusItemAppearance() {
+        statusItem?.button?.title = processClient == nil ? "Bob \u{26A0}\u{FE0F}" : "Bob"
+        statusItem?.button?.toolTip = processClient == nil
+            ? "Bob Mac Capture — bob is not resolved. Check Settings."
+            : "Bob Mac Capture"
     }
 
     private func registerHotKey() {
@@ -114,7 +126,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         Task {
-            let snapshot = await targetsCache.refresh(using: processClient)
+            let snapshot = await CaptureSignpost.measure("targets") {
+                await targetsCache.refresh(using: processClient)
+            }
             await MainActor.run {
                 self.panelModel?.updateTargetCacheSnapshot(snapshot)
                 if let error = snapshot.errorDescription {

@@ -30,6 +30,9 @@ final class CapturePanelModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var lastSuccess: CaptureCommandSuccess?
     @Published var previewResult: CaptureCommandSuccess?
+    // Incremented on every successful capture so the view can drive a VoiceOver
+    // announcement without needing `CaptureCommandSuccess` to be diffed for equality.
+    @Published var successAnnouncementTick = 0
 
     var processClient: BobProcessClient?
     var notificationService: NotificationService?
@@ -166,12 +169,14 @@ final class CapturePanelModel: ObservableObject {
 
         Task {
             do {
-                let response = try await processClient.capture(
-                    draft,
-                    dryRun: false,
-                    readClipboard: true,
-                    priorityRollSeed: seed
-                )
+                let response = try await CaptureSignpost.measure("submit") {
+                    try await processClient.capture(
+                        draft,
+                        dryRun: false,
+                        readClipboard: true,
+                        priorityRollSeed: seed
+                    )
+                }
                 await MainActor.run {
                     self.completeSubmit(requestID: requestID, response: response, openAfterCapture: openAfterCapture)
                 }
@@ -201,12 +206,14 @@ final class CapturePanelModel: ObservableObject {
 
         Task {
             do {
-                let response = try await processClient.capture(
-                    draft,
-                    dryRun: true,
-                    readClipboard: true,
-                    priorityRollSeed: activePriorityRollSeed()
-                )
+                let response = try await CaptureSignpost.measure("preview-explicit") {
+                    try await processClient.capture(
+                        draft,
+                        dryRun: true,
+                        readClipboard: true,
+                        priorityRollSeed: activePriorityRollSeed()
+                    )
+                }
                 await MainActor.run {
                     self.completePreview(requestID: requestID, response: response)
                 }
@@ -337,6 +344,7 @@ final class CapturePanelModel: ObservableObject {
             completionResponse = nil
             previewState = .idle
             statusText = "Captured \u{2192} \(success.routeLabel)"
+            successAnnouncementTick += 1
             notificationService?.notifyCaptureSuccess(routeLabel: success.routeLabel, targetPath: success.target)
             if openAfterCapture, let url = ObsidianOpenURL.url(forAbsolutePath: success.target) {
                 targetOpener(url)
@@ -429,7 +437,9 @@ final class CapturePanelModel: ObservableObject {
                 try await Task.sleep(nanoseconds: debounceNanoseconds)
                 try Task.checkCancellation()
 
-                let parse = try await processClient.captureParse(draft)
+                let parse = try await CaptureSignpost.measure("parse") {
+                    try await processClient.captureParse(draft)
+                }
                 try Task.checkCancellation()
 
                 await MainActor.run {
@@ -459,10 +469,12 @@ final class CapturePanelModel: ObservableObject {
                     }
 
                     do {
-                        let completion = try await processClient.captureComplete(
-                            draft,
-                            cursor: cursorUTF8Offset
-                        )
+                        let completion = try await CaptureSignpost.measure("completion") {
+                            try await processClient.captureComplete(
+                                draft,
+                                cursor: cursorUTF8Offset
+                            )
+                        }
                         await MainActor.run {
                             guard self?.isCurrentAnalysis(generation) == true else {
                                 return
@@ -488,10 +500,12 @@ final class CapturePanelModel: ObservableObject {
                 }
 
                 let seed = await self?.activePriorityRollSeed() ?? UUID().uuidString
-                let preview = try await processClient.captureLivePreview(
-                    draft,
-                    priorityRollSeed: seed
-                )
+                let preview = try await CaptureSignpost.measure("preview") {
+                    try await processClient.captureLivePreview(
+                        draft,
+                        priorityRollSeed: seed
+                    )
+                }
                 await MainActor.run {
                     guard self?.isCurrentAnalysis(generation) == true else {
                         return

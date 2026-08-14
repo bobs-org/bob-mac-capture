@@ -6,6 +6,7 @@ struct CapturePanelView: View {
     @ObservedObject var model: CapturePanelModel
     @State private var selection = AttributedTextSelection()
     @AccessibilityFocusState private var errorIsFocused: Bool
+    @AccessibilityFocusState private var statusIsFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -19,9 +20,19 @@ struct CapturePanelView: View {
                     .background(.regularMaterial)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .disabled(model.isSubmitting)
+                    .accessibilityLabel("Capture draft")
                     .onChange(of: String(model.attributedDraft.characters)) { _, newText in
                         model.editorTextDidChange(cursorUTF8Offset: newText.utf8.count)
                     }
+
+                if !model.hasDraft {
+                    Text("Type to capture\u{2026}")
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 15)
+                        .padding(.vertical, 18)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
 
                 if model.completionVisible {
                     CompletionList(model: model)
@@ -64,6 +75,10 @@ struct CapturePanelView: View {
                 Text(model.statusText.isEmpty ? "Ready" : model.statusText)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
+                    .accessibilityFocused($statusIsFocused)
+                    .onChange(of: model.successAnnouncementTick) { _, _ in
+                        statusIsFocused = true
+                    }
                 Spacer(minLength: 12)
                 if model.pendingDiscardConfirmation {
                     Button("Discard") {
@@ -117,6 +132,8 @@ private struct CompletionList: View {
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .shadow(radius: 12, y: 6)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Completion suggestions")
     }
 }
 
@@ -143,6 +160,8 @@ private struct CompletionRow: View {
         .padding(.vertical, 6)
         .background(selected ? Color.accentColor.opacity(0.18) : Color.clear)
         .clipShape(RoundedRectangle(cornerRadius: 6))
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 
     private var primaryText: String {

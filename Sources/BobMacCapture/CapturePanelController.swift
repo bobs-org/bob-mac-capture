@@ -24,10 +24,13 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     func show() {
+        let token = CaptureSignpost.begin("panel-order")
         let panel = makePanelIfNeeded()
         panel.center()
         panel.makeKeyAndOrderFront(nil)
         installKeyMonitorIfNeeded()
+        CaptureSignpost.end(token)
+        CaptureSignpost.event("editor-focus-requested")
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {

@@ -241,6 +241,49 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: termURL.path))
     }
 
+    func testRunTerminatesAndThrowsTimedOutWhenProcessOutlivesTheTimeout() async throws {
+        let termURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_DELAY_SECONDS": "5",
+                "FAKE_BOB_TERM_PATH": termURL.path,
+            ]
+        )
+
+        do {
+            _ = try await client.run(arguments: ["capture-targets"], lane: "targets", timeout: 0.3)
+            XCTFail("Expected a timedOut error")
+        } catch BobClientError.timedOut(let command, let seconds) {
+            XCTAssertEqual(command.last, "capture-targets")
+            XCTAssertEqual(seconds, 0.3)
+        }
+
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline && !FileManager.default.fileExists(atPath: termURL.path) {
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: termURL.path),
+            "Expected the timed-out process to be terminated, not left running"
+        )
+    }
+
+    func testRunCompletesNormallyWhenFasterThanTheTimeout() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let result = try await client.run(arguments: ["capture-targets"], lane: "targets", timeout: 5)
+
+        XCTAssertEqual(result.exitStatus, 0)
+        XCTAssertFalse(result.stdout.isEmpty)
+    }
+
     private func fakeBobPath() throws -> String {
         let source = URL(fileURLWithPath: #filePath)
         let packageRoot = source

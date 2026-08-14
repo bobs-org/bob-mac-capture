@@ -50,7 +50,12 @@ app_name="Bob Mac Capture.app"
 staged_app="$("${package_root}/Scripts/bundle.sh" --identity "${identity}" --output "${bundle_root}")"
 install_path="${target_dir}/${app_name}"
 tmp_path="${target_dir}/.${app_name}.$$"
+backup_path="${target_dir}/.${app_name}.previous.$$"
 
+# Verify the staged bundle fully before touching the install path, then swap it in via
+# a rename-with-backup so an interruption mid-install always leaves a recoverable state:
+# either the previous app is still at install_path, or it is sitting at backup_path
+# ready to be restored.
 mkdir -p "${target_dir}"
 rm -rf "${tmp_path}"
 cp -R "${staged_app}" "${tmp_path}"
@@ -59,10 +64,36 @@ cp -R "${staged_app}" "${tmp_path}"
 identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${tmp_path}/Contents/Info.plist")"
 if [[ "${identifier}" != "org.bobs.bob-mac-capture" ]]; then
   printf 'Unexpected bundle identifier: %s\n' "${identifier}" >&2
+  rm -rf "${tmp_path}"
   exit 65
 fi
 
-rm -rf "${install_path}"
-mv "${tmp_path}" "${install_path}"
-/usr/bin/codesign --verify --deep --strict "${install_path}"
+restore_backup() {
+  if [[ -e "${backup_path}" ]]; then
+    rm -rf "${install_path}"
+    mv "${backup_path}" "${install_path}"
+    printf 'Restored the previous install at %s\n' "${install_path}" >&2
+  fi
+}
+
+rm -rf "${backup_path}"
+if [[ -e "${install_path}" ]]; then
+  mv "${install_path}" "${backup_path}"
+fi
+
+if ! mv "${tmp_path}" "${install_path}"; then
+  printf 'Failed to move the staged bundle into place\n' >&2
+  rm -rf "${tmp_path}"
+  restore_backup
+  exit 70
+fi
+
+if ! /usr/bin/codesign --verify --deep --strict "${install_path}"; then
+  printf 'Post-install signature verification failed\n' >&2
+  rm -rf "${install_path}"
+  restore_backup
+  exit 71
+fi
+
+rm -rf "${backup_path}" "${tmp_path}"
 printf '%s\n' "${install_path}"

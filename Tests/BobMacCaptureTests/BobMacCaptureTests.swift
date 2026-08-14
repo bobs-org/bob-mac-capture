@@ -92,6 +92,23 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(plist["LSMinimumSystemVersion"] as? String, "26.0")
     }
 
+    @MainActor
+    func testDiagnosticHistoryRecordsChangesAndStaysBounded() {
+        let defaults = UserDefaults(suiteName: "org.bobs.bob-mac-capture.tests.\(UUID().uuidString)")!
+        let settings = AppSettings(defaults: defaults)
+
+        settings.diagnosticStatus = "Starting"
+        XCTAssertTrue(settings.diagnosticHistory.isEmpty, "Setting the same value must not record a duplicate")
+
+        for index in 0..<25 {
+            settings.diagnosticStatus = "Status \(index)"
+        }
+
+        XCTAssertEqual(settings.diagnosticHistory.count, 20)
+        XCTAssertFalse(settings.diagnosticHistory.contains { $0.hasSuffix("Status 0") })
+        XCTAssertTrue(settings.diagnosticHistory.contains { $0.hasSuffix("Status 24") })
+    }
+
     func testLaunchAtLoginStateMapping() {
         XCTAssertTrue(LaunchAtLoginState(status: .enabled).enabled)
         XCTAssertFalse(LaunchAtLoginState(status: .notRegistered).enabled)
