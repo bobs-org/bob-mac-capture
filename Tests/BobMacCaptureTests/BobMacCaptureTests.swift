@@ -208,8 +208,8 @@ final class BobMacCaptureTests: XCTestCase {
 
         panel.contentMinSize = CapturePanelLayout.panelMinimumContentSize
         panel.contentMaxSize = NSSize(
-            width: .greatestFiniteMagnitude,
-            height: .greatestFiniteMagnitude
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
         )
         panel.setContentSize(
             NSSize(
