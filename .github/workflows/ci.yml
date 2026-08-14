@@ -51,6 +51,85 @@ jobs:
           identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${app}/Contents/Info.plist")"
           test "${identifier}" = "org.bobs.bob-mac-capture"
 
+      - name: Launch smoke test
+        id: launch_smoke_test
+        run: |
+          set -euo pipefail
+          app=".build/bundle/Bob Mac Capture.app"
+          bundle_id="org.bobs.bob-mac-capture"
+          launch_start="$(date '+%Y-%m-%d %H:%M:%S')"
+          log_file="${PWD}/launch-smoke-test.log"
+          pid=""
+
+          # Runs on every exit path (success, `exit 1`, or an unhandled failure under
+          # `set -e`) so the app never lingers on the runner and the filtered log is
+          # always captured for the upload step below.
+          cleanup() {
+            if [[ -n "${pid}" ]]; then
+              kill "${pid}" 2>/dev/null || true
+              for _ in $(seq 1 10); do
+                kill -0 "${pid}" 2>/dev/null || break
+                sleep 1
+              done
+            fi
+            log show --predicate "subsystem == \"${bundle_id}\"" --start "${launch_start}" \
+              >"${log_file}" 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          # Launch through LaunchServices, the same path a user's click or login item
+          # takes, rather than executing the binary directly.
+          open "${app}"
+
+          for _ in $(seq 1 30); do
+            pid="$(pgrep -x BobMacCapture || true)"
+            if [[ -n "${pid}" ]]; then
+              break
+            fi
+            sleep 1
+          done
+          if [[ -z "${pid}" ]]; then
+            echo "::error::BobMacCapture never appeared in the process list after launch"
+            exit 1
+          fi
+
+          # An `LSUIElement` app with a broken entry point still launches an empty AppKit
+          # event loop rather than crashing, so a bare process-exists check would pass on
+          # the exact regression this gate exists to catch. Settling first only rules out
+          # an immediate crash-on-launch.
+          sleep 5
+          if ! kill -0 "${pid}" 2>/dev/null; then
+            echo "::error::BobMacCapture exited shortly after launch (pid ${pid})"
+            exit 1
+          fi
+
+          # The real assertion: `applicationDidFinishLaunching` completing (delegate
+          # assigned, status item configured, hotkey registered) is what emits this
+          # signpost as its last statement. A live process alone does not prove it ran.
+          found_signpost=""
+          for _ in $(seq 1 20); do
+            if log show --predicate "subsystem == \"${bundle_id}\"" --start "${launch_start}" 2>/dev/null \
+                | grep -q "launch-complete"; then
+              found_signpost=1
+              break
+            fi
+            sleep 1
+          done
+          if [[ -z "${found_signpost}" ]]; then
+            echo "::error::launch-complete signpost never appeared in the unified log; applicationDidFinishLaunching did not complete"
+            exit 1
+          fi
+
+      - name: Upload launch smoke test diagnostics
+        if: failure() && steps.launch_smoke_test.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: launch-smoke-test-diagnostics
+          path: |
+            launch-smoke-test.log
+            ~/Library/Logs/DiagnosticReports/
+          if-no-files-found: ignore
+
       - name: Install and reinstall
         run: |
           set -euo pipefail

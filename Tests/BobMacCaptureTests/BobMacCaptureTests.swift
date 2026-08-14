@@ -108,6 +108,31 @@ final class BobMacCaptureTests: XCTestCase {
     }
 
     @MainActor
+    func testMainMenuExposesStandardEditSelectorsAndQuit() throws {
+        // Regression guard for the AppKit entry-point migration: without an explicit
+        // main menu, the capture editor silently loses Cmd-X/C/V/A/Z and the app loses
+        // Cmd-Q, since neither the SwiftUI app lifecycle nor a nib supplies one anymore.
+        let mainMenu = AppDelegate.makeMainMenu()
+
+        XCTAssertEqual(mainMenu.items.count, 2)
+
+        let editMenu = try XCTUnwrap(mainMenu.items[1].submenu)
+        let editSelectors = editMenu.items.map { $0.action.map(NSStringFromSelector) }
+        XCTAssertEqual(
+            editSelectors,
+            ["undo:", "redo:", nil, "cut:", "copy:", "paste:", "selectAll:"]
+        )
+        XCTAssertEqual(editMenu.items.map(\.keyEquivalent), ["z", "z", "", "x", "c", "v", "a"])
+        XCTAssertEqual(editMenu.items[1].keyEquivalentModifierMask, [.command, .shift])
+
+        let appMenu = try XCTUnwrap(mainMenu.items[0].submenu)
+        let quitItem = try XCTUnwrap(appMenu.items.last)
+        XCTAssertEqual(quitItem.title, "Quit Bob Mac Capture")
+        XCTAssertEqual(quitItem.action, #selector(NSApplication.terminate(_:)))
+        XCTAssertEqual(quitItem.keyEquivalent, "q")
+    }
+
+    @MainActor
     func testOpenSettingsMenuActionUsesRegisteredSettingsPresenterOnce() {
         let delegate = AppDelegate()
         var openSettingsCount = 0

@@ -219,6 +219,19 @@ identifier `org.bobs.bob-mac-capture`; it never writes captured text to disk its
 - **Capture fails but the draft disappears**: this should never happen — failures always
   preserve the complete draft and destination. Use "Copy Diagnostic" next to the error to
   capture the exact `bob` error for a bug report.
+- **The `Bob` menu-bar item does not appear** (no crash dialog, hotkey does nothing,
+  Settings will not open): the app has no nib, so its entry point
+  (`BobMacCaptureMain.swift`) must construct `AppDelegate`, assign it to
+  `NSApplication.shared.delegate` itself, and supply its own main menu — nothing in
+  `Resources/Info.plist` does this for you. If that wiring regresses, the process
+  launches and runs an empty AppKit event loop instead of crashing, so check for a live
+  but silent process before assuming the app failed to launch at all:
+  - `pgrep -fl BobMacCapture` — confirms whether the process is running at all.
+  - `log show --last 5m --predicate 'process == "BobMacCapture"'` — look for the
+    `launch-complete` signpost (subsystem `org.bobs.bob-mac-capture`); its absence means
+    `applicationDidFinishLaunching` never ran.
+  - `~/Library/Logs/DiagnosticReports/` — check for a crash report if the process is not
+    running at all.
 
 ## Diagnostics and Signposts
 
@@ -232,4 +245,7 @@ in Settings, are metadata-only by construction — see Privacy above.
 
 GitHub Actions runs on `macos-26` for pushes to `master` and pull requests. The workflow
 checks Swift formatting, `swift build`, `swift test`, bundle assembly, `plutil -lint`,
-signature verification, and the bundle identifier.
+signature verification, and the bundle identifier. It also launches the bundled app and
+requires the `launch-complete` signpost to appear in the unified log before quitting it,
+so a broken entry point (no delegate assigned, no menu bar item, no hotkey) fails CI
+instead of shipping silently.

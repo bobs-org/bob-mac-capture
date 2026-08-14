@@ -2,7 +2,6 @@ import AppKit
 import CaptureCore
 import SwiftUI
 
-@main
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = AppSettings()
@@ -25,6 +24,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsSceneRepresentation: SettingsSceneRepresentation?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // No nib supplies a main menu under the explicit `BobMacCaptureMain` entry point,
+        // so without this the app loses Cmd-X/C/V/A/Z and Cmd-Q even though it is not a
+        // regular windowed app.
+        NSApp.mainMenu = Self.makeMainMenu()
+
         let settings = settings
         let notificationService = notificationService
         let representation = NSHostingSceneRepresentation {
@@ -62,12 +66,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureVaultWatcher()
         refreshTargetsWhenPossible()
         settings.signingDiagnostic = BundleSigningInspector.currentBundleState().diagnosticText
+        CaptureSignpost.event("launch-complete")
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         hotKeyManager?.invalidate()
         vaultWatcher?.invalidate()
         processClient?.cancelActiveProcess()
+    }
+
+    static func makeMainMenu() -> NSMenu {
+        let mainMenu = NSMenu()
+
+        let appMenuItem = NSMenuItem()
+        appMenuItem.submenu = makeAppMenu()
+        mainMenu.addItem(appMenuItem)
+
+        let editMenuItem = NSMenuItem()
+        editMenuItem.submenu = makeEditMenu()
+        mainMenu.addItem(editMenuItem)
+
+        return mainMenu
+    }
+
+    private static func makeAppMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(
+            NSMenuItem(
+                title: "Hide Bob Mac Capture",
+                action: #selector(NSApplication.hide(_:)),
+                keyEquivalent: "h"
+            )
+        )
+        let hideOthers = NSMenuItem(
+            title: "Hide Others",
+            action: #selector(NSApplication.hideOtherApplications(_:)),
+            keyEquivalent: "h"
+        )
+        hideOthers.keyEquivalentModifierMask = [.command, .option]
+        menu.addItem(hideOthers)
+        menu.addItem(
+            NSMenuItem(
+                title: "Show All",
+                action: #selector(NSApplication.unhideAllApplications(_:)),
+                keyEquivalent: ""
+            )
+        )
+        menu.addItem(.separator())
+        menu.addItem(
+            NSMenuItem(
+                title: "Quit Bob Mac Capture",
+                action: #selector(NSApplication.terminate(_:)),
+                keyEquivalent: "q"
+            )
+        )
+        return menu
+    }
+
+    // The Edit menu's actions have no Swift-visible declaring class of their own; they
+    // are standard first-responder messages (`NSText`, `NSTextView`, `UndoManager`) that
+    // AppKit forwards along the responder chain, so they are built from raw selector
+    // strings rather than `#selector(...)` the way the App menu's `NSApplication`
+    // actions are above.
+    private static func makeEditMenu() -> NSMenu {
+        let menu = NSMenu(title: "Edit")
+        menu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+        let redo = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(redo)
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Cut", action: Selector(("cut:")), keyEquivalent: "x"))
+        menu.addItem(NSMenuItem(title: "Copy", action: Selector(("copy:")), keyEquivalent: "c"))
+        menu.addItem(NSMenuItem(title: "Paste", action: Selector(("paste:")), keyEquivalent: "v"))
+        menu.addItem(NSMenuItem(title: "Select All", action: Selector(("selectAll:")), keyEquivalent: "a"))
+        return menu
     }
 
     private func configureStatusItem() {
