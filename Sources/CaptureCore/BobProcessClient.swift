@@ -154,7 +154,7 @@ public final class BobProcessClient: @unchecked Sendable {
                 // already-on-the-queue clear helper, not the `.sync`-wrapping one.
                 let timeoutWorkItem = DispatchWorkItem { [weak self] in
                     guard resumeGuard.markResumed() else { return }
-                    process.terminate()
+                    Self.terminateIfRunning(process)
                     self?.clearActiveProcessAlreadyOnStateQueue(process: process, generation: generation, lane: lane)
                     continuation.resume(throwing: BobClientError.timedOut(command: command, seconds: timeout))
                 }
@@ -199,17 +199,28 @@ public final class BobProcessClient: @unchecked Sendable {
                 }
             }
         } onCancel: {
-            process.terminate()
+            Self.terminateIfRunning(process)
         }
     }
 
     public func cancelActiveProcess() {
         stateQueue.sync {
             for active in activeProcesses.values {
-                active.process.terminate()
+                Self.terminateIfRunning(active.process)
             }
             activeProcesses.removeAll()
         }
+    }
+
+    // Foundation raises NSInvalidArgumentException (which Swift cannot catch) when
+    // `terminate()` is sent before `run()`. A process enters `activeProcesses` just
+    // before it is launched, so cancellation and lane replacement must tolerate that
+    // short pre-launch interval instead of taking down the host application.
+    static func terminateIfRunning(_ process: Process) {
+        guard process.isRunning else {
+            return
+        }
+        process.terminate()
     }
 
     public static func preconditionLivePreviewArguments(_ arguments: [String]) {
@@ -326,7 +337,9 @@ public final class BobProcessClient: @unchecked Sendable {
         stateQueue.sync {
             activeGeneration += 1
             if cancelsPreviousInLane {
-                activeProcesses[lane]?.process.terminate()
+                if let active = activeProcesses[lane] {
+                    Self.terminateIfRunning(active.process)
+                }
             }
             activeProcesses[lane] = ActiveProcess(
                 generation: activeGeneration,

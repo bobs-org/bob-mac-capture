@@ -241,6 +241,14 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: termURL.path))
     }
 
+    func testTerminationIgnoresProcessThatHasNotLaunched() {
+        let process = Process()
+
+        BobProcessClient.terminateIfRunning(process)
+
+        XCTAssertFalse(process.isRunning)
+    }
+
     func testRunTerminatesAndThrowsTimedOutWhenProcessOutlivesTheTimeout() async throws {
         let termURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

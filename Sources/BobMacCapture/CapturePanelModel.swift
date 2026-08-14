@@ -38,7 +38,6 @@ final class CapturePanelModel: ObservableObject {
     var notificationService: NotificationService?
     var targetOpener: (URL) -> Void = { NSWorkspace.shared.open($0) }
 
-    private let targetsCache: CaptureTargetsCache?
     private let debounceNanoseconds: UInt64
     private var analysisTask: Task<Void, Never>?
     private var analysisGeneration: UInt64 = 0
@@ -51,11 +50,9 @@ final class CapturePanelModel: ObservableObject {
 
     init(
         processClient: BobProcessClient? = nil,
-        targetsCache: CaptureTargetsCache? = nil,
         debounceNanoseconds: UInt64 = 50_000_000
     ) {
         self.processClient = processClient
-        self.targetsCache = targetsCache
         self.debounceNanoseconds = debounceNanoseconds
     }
 
@@ -114,19 +111,6 @@ final class CapturePanelModel: ObservableObject {
         targetCacheSnapshot = snapshot
         if let error = snapshot.errorDescription {
             statusText = snapshot.stale ? "Target cache stale" : error
-        }
-    }
-
-    func refreshTargetCache() {
-        guard let processClient, let targetsCache else {
-            return
-        }
-
-        Task {
-            let snapshot = await targetsCache.refresh(using: processClient)
-            await MainActor.run {
-                self.updateTargetCacheSnapshot(snapshot)
-            }
         }
     }
 

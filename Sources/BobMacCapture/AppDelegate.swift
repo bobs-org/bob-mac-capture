@@ -20,7 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureStatusItem()
         configureProcessClient()
 
-        let model = CapturePanelModel(processClient: processClient, targetsCache: targetsCache)
+        let model = CapturePanelModel(processClient: processClient)
         model.notificationService = notificationService
         panelModel = model
         panelController = CapturePanelController(model: model)
@@ -166,7 +166,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showCapturePanel() {
         panelController?.show()
-        panelModel?.refreshTargetCache()
+        // One refresh updates both the shared cache and the panel snapshot. Starting
+        // the model refresh as well would launch two `capture-targets` processes in
+        // the same cancellation lane every time the panel opens.
         refreshTargetsWhenPossible()
     }
 
