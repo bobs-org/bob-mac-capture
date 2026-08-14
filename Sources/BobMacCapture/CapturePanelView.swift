@@ -14,7 +14,7 @@ enum CapturePanelLayout {
     static let editorLineHeight: CGFloat = 22
     static let editorMaximumVisibleLines = 6
     static let completionVisibleRows = 5
-    static let completionRowHeight: CGFloat = 32
+    static let completionRowHeight: CGFloat = 48
     static let completionViewportHeight = completionRowHeight * CGFloat(completionVisibleRows) + 12
     static let previewIdealHeight: CGFloat = 92
 
@@ -453,18 +453,14 @@ private struct CompletionList: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
-                LazyVStack(alignment: .leading, spacing: 0) {
+                LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(
                         Array((model.completionResponse?.candidates ?? []).enumerated()),
                         id: \.offset
                     ) {
                         index, candidate in
                         CompletionRow(
-                            candidate: candidate,
-                            detail: model.detailText(
-                                for: candidate,
-                                context: model.completionResponse?.context
-                            ),
+                            content: model.rowContent(for: candidate),
                             selected: index == model.selectedCompletionIndex
                         )
                         .id(index)
@@ -484,39 +480,109 @@ private struct CompletionList: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .shadow(radius: 12, y: 6)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Completion suggestions")
+        .accessibilityLabel(listAccessibilityLabel)
+    }
+
+    private var listAccessibilityLabel: String {
+        guard let candidates = model.completionResponse?.candidates, !candidates.isEmpty else {
+            return "Completion suggestions"
+        }
+        let contextLabel = model.rowContent(for: candidates[0]).contextLabel
+        let noun = contextLabel.isEmpty ? "Completion" : contextLabel
+        let count = candidates.count
+        return "\(noun) suggestions, \(count) result\(count == 1 ? "" : "s")"
     }
 }
 
 @available(macOS 26.0, *)
 private struct CompletionRow: View {
-    let candidate: CaptureCompletionCandidate
-    let detail: String
+    let content: CompletionRowContent
     let selected: Bool
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+
+    /// Character budget for the secondary (path) line before it truncates from the middle,
+    /// chosen to comfortably fit the list's fixed 430pt width alongside any badges.
+    private static let secondaryMaxLength = 46
+
+    private var tint: Color {
+        CaptureEditorPalette.color(for: content.category)
+    }
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(primaryText)
-                .font(.system(.body, design: .monospaced))
-                .lineLimit(1)
-            Spacer(minLength: 8)
-            if !detail.isEmpty {
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: content.symbolName)
+                .foregroundStyle(tint)
+                .frame(width: 16)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    emphasizedPrimaryText
+                        .font(.system(.body, design: .monospaced))
+                        .lineLimit(1)
+                    if !content.contextLabel.isEmpty {
+                        Text(content.contextLabel)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                    }
+                }
+
+                if content.secondaryText != nil || !content.badges.isEmpty {
+                    HStack(spacing: 6) {
+                        if let secondaryText = content.secondaryText {
+                            Text(middleTruncatedPath(secondaryText, maxLength: Self.secondaryMaxLength))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        ForEach(Array(content.badges.enumerated()), id: \.offset) { _, badge in
+                            Text(badge)
+                                .font(.caption2)
+                                .lineLimit(1)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(tint.opacity(0.15), in: Capsule())
+                                .foregroundStyle(tint)
+                        }
+                    }
+                }
             }
+
+            Spacer(minLength: 8)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(selected ? Color.accentColor.opacity(0.18) : Color.clear)
+        .background(selectionFill)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(content.accessibilityLabel)
+        .accessibilityHint(content.accessibilityHint)
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 
-    private var primaryText: String {
-        candidate.title ?? candidate.text ?? candidate.route ?? candidate.replacement
+    private var selectionFill: Color {
+        guard selected else {
+            return .clear
+        }
+        return tint.opacity(colorSchemeContrast == .increased ? 0.32 : 0.18)
+    }
+
+    private var emphasizedPrimaryText: Text {
+        guard let matchRange = content.primaryMatchRange else {
+            return Text(content.primaryText)
+        }
+
+        let characters = Array(content.primaryText)
+        guard matchRange.lowerBound >= 0, matchRange.upperBound <= characters.count else {
+            return Text(content.primaryText)
+        }
+
+        let prefix = String(characters[0..<matchRange.lowerBound])
+        let matched = String(characters[matchRange.lowerBound..<matchRange.upperBound])
+        let suffix = String(characters[matchRange.upperBound...])
+
+        return Text(prefix) + Text(matched).fontWeight(.semibold) + Text(suffix)
     }
 }
 

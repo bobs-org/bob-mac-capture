@@ -96,9 +96,15 @@ or expired certificate can require reauthorizing those system permissions.
   argv arrays and an explicit GUI-safe environment.
 - Editor highlighting is derived from `bob capture-parse --format json` spans. The app
   validates UTF-8 byte ranges and ignores a malformed span set instead of applying a
-  partial grammar view.
+  partial grammar view. Every span kind — capture markers and the five Obsidian wikilink
+  kinds (`wikilink_delimiter`, `wikilink_target`, `wikilink_heading`, `wikilink_block_id`,
+  `wikilink_alias`) — resolves through the single palette in `CaptureEditorPalette`, so
+  the editor and the completion list never disagree about what color represents what
+  syntax.
 - Inline completion calls `bob capture-complete --cursor BYTE --format json -- <draft>`;
-  accepted candidates apply the server-provided byte replacement range exactly.
+  accepted candidates apply the server-provided byte replacement range and `cursor_after`
+  exactly, restoring a collapsed caret at that offset. See "Wikilink Completion" below
+  for the Obsidian-specific contract and row presentation.
 - Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through
   a dedicated process-client API that asserts `--no-clip`. `%` markers stay literal in
   continuous preview; clipboard-resolving preview is a separate explicit action.
@@ -159,6 +165,44 @@ Ctrl-J starts the next `- ` row from anywhere in the draft, and Backspace on an 
 row removes it in one action instead of requiring two ordinary backspaces. Both act on the
 native text view directly, so undo, IME composition, and accessibility behave exactly as
 they do for any other edit.
+
+## Wikilink Completion
+
+Typing an Obsidian wikilink anywhere in the draft — a note (`[[sas`), an embed
+(`![[sas`), an alias (`[[Artificial Intelligence|AI`), a heading (`[[sase#Des` or the
+same-note `[[#Des`), or a block reference (`[[sase#^goog` or the same-note `[[#^goog`) —
+drives completion the same way capture-marker syntax does, keyed off the real caret
+position rather than the end of the draft. `bob-cli` owns every part of this: vault
+discovery, ranking, and the exact replacement text and byte range; the app only
+decodes and presents it.
+
+- **Note completion** (`wikilink_note`) inserts a vault-relative path without `.md`
+  (`[[sase]]`), or the canonical `[[path|Alias]]` form when the match came from a
+  frontmatter alias — never a bare alias with no path.
+- **Heading completion** (`wikilink_heading`) resolves against the capture's own
+  destination for `[[#...]]`, a named note for `[[Note#...]]`, or the whole vault for
+  `[[##...]]`.
+- **Block completion** (`wikilink_block`) works the same way for `[[#^...]]`,
+  `[[Note#^...]]`, and vault-wide `[[^^...]]`.
+- Accepting a candidate always applies the server's exact byte range and `cursor_after`
+  in one step, so the caret lands exactly where typing would have left it — after the
+  closing `]]`, mid-heading, or wherever the candidate specifies.
+
+Each completion row shows a compact SF Symbol and context label for what will be
+inserted (Note/Heading/Block, alongside the pre-existing Destination/Section/Parent
+Task rows), a primary line with restrained emphasis on the part of the text that
+matched what you typed, and a secondary line with the canonical vault-relative path
+plus small badges — `Alias`, a heading level like `H2`, or a short block preview. Long
+paths truncate from the middle, keeping the filename intact rather than the leading
+directory. The selected row's accent-tinted fill uses each result's own semantic color
+(matching the editor's highlight palette) and increases its opacity automatically under
+Increase Contrast. VoiceOver announces the context, the count of results, and each
+row's full context/name/path/badge description before "double-tap to insert."
+
+Note metadata — paths, stems, frontmatter aliases, heading text, and block-id previews
+— is read directly by `bob` from the local vault to build these candidates. The app
+never logs it, writes it to `UserDefaults`, or includes it in a notification, signpost,
+or Diagnostics entry; see Privacy below.
 
 ## Live Preview and Clipboard Semantics
 
@@ -256,6 +300,11 @@ identifier `org.bobs.bob-mac-capture`; it never writes captured text to disk its
 - Diagnostics and Recent Activity in Settings are metadata only — status strings like
   "Ready," "Hotkey conflict," or "Target cache stale," never note content.
 - Signposts (see below) carry event names and durations for Instruments, not payloads.
+- Wikilink note paths, aliases, heading text, and block previews are read locally by
+  `bob` to build completion candidates and are held only in the in-memory completion
+  response and the visible row content. They are never logged, written to
+  `UserDefaults`, or included in a notification, signpost, or Diagnostics entry — the
+  same guarantee the draft itself gets.
 
 ## Troubleshooting
 
@@ -278,6 +327,14 @@ identifier `org.bobs.bob-mac-capture`; it never writes captured text to disk its
 - **Target/route completion is empty or stale**: Diagnostics reports "Target cache stale"
   with the underlying scan error; fix the reported cause (for example, an unreadable
   vault path) and reopen the panel, which retries the refresh.
+- **Wikilink completion shows no candidates, or the status bar reports a link
+  completion warning**: an empty list with no status change means no note, heading, or
+  block matched the query — try a shorter query or check the spelling. A status message
+  starting with "Link completion warning:" instead means `bob-cli` skipped one or more
+  vault entries (for example, an unreadable note or malformed alias) but still returned
+  the candidates it could build; the warning names the specific problem. A `bob` process
+  or transport failure surfaces through the normal "Bob is not resolved" / timeout paths
+  above rather than as a silent empty list.
 - **Capture fails but the draft disappears**: this should never happen — failures always
   preserve the complete draft and destination, and deliberately keep the panel on screen
   to show it. A panel that vanished after Return means the capture landed; the success

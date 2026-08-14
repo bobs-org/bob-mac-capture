@@ -355,56 +355,29 @@ final class CapturePanelModel: ObservableObject {
         scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false)
     }
 
-    func detailText(for candidate: CaptureCompletionCandidate, context: String?) -> String {
-        switch context {
-        case "route":
-            return [
-                candidate.kind,
-                candidate.status,
-                candidate.label,
-            ]
-            .compactMap { $0 }
-            .joined(separator: " · ")
-        case "section":
-            if let level = candidate.level {
-                return "Heading \(level)"
-            }
-            return "Heading"
-        case "wikilink_note":
-            return [
-                candidate.alias.map { "alias \($0)" },
-                candidate.path,
-                candidate.matchKind,
-            ]
-            .compactMap { $0 }
-            .joined(separator: " · ")
-        case "wikilink_heading":
-            return [
-                candidate.path,
-                candidate.level.map { "H\($0)" },
-            ]
-            .compactMap { $0 }
-            .joined(separator: " · ")
-        case "wikilink_block":
-            return [
-                candidate.path,
-                candidate.blockID.map { "^\($0)" },
-                candidate.preview,
-            ]
-            .compactMap { $0 }
-            .joined(separator: " · ")
-        case "pomodoro_block_id", "task":
-            return [
-                candidate.statusSymbol,
-                candidate.statusName,
-                candidate.section,
-                candidate.blockID,
-            ]
-            .compactMap { $0 }
-            .joined(separator: " · ")
-        default:
-            return candidate.label ?? candidate.text ?? ""
+    /// Presentation content for one completion row: icon, context label, primary/secondary
+    /// text with match emphasis, and badges. Computed here (rather than in the view) because
+    /// it needs the in-progress query text, which only the model can derive from the draft,
+    /// the server-reported replacement range, and the cursor.
+    func rowContent(for candidate: CaptureCompletionCandidate) -> CompletionRowContent {
+        completionRowContent(
+            for: candidate,
+            context: completionResponse?.context,
+            query: completionQueryText()
+        )
+    }
+
+    private func completionQueryText() -> String {
+        guard let completionResponse,
+              let range = stringRange(
+                  in: plainDraft,
+                  start: completionResponse.replacement.start,
+                  end: min(completionResponse.cursor, completionResponse.replacement.end)
+              )
+        else {
+            return ""
         }
+        return String(plainDraft[range])
     }
 
     private func completeSubmit(
@@ -699,43 +672,13 @@ final class CapturePanelModel: ObservableObject {
                     return
                 }
 
-                text[lower..<upper].foregroundColor = Self.color(forSpanKind: item.span.kind)
+                let category = captureSemanticCategory(forSpanKind: item.span.kind)
+                text[lower..<upper].foregroundColor = CaptureEditorPalette.color(for: category)
             }
         }
         isApplyingProgrammaticDraft = false
         if ignoredMalformedSpan {
             statusText = "Ignored malformed parse spans"
-        }
-    }
-
-    private static func color(forSpanKind kind: String) -> Color {
-        switch kind {
-        case "route", "pomodoro_route", "sub_bullet_route":
-            return .accentColor
-        case "section":
-            return .purple
-        case "pomodoro_block_id", "sub_bullet_block_id":
-            return .indigo
-        case "schedule":
-            return .green
-        case "priority":
-            return .orange
-        case "clipboard":
-            return .teal
-        case "wikilink_delimiter":
-            return .secondary
-        case "wikilink_target":
-            return .accentColor
-        case "wikilink_heading":
-            return .purple
-        case "wikilink_block_id":
-            return .indigo
-        case "wikilink_alias":
-            return .teal
-        case "interactive_placeholder":
-            return .secondary
-        default:
-            return .primary
         }
     }
 

@@ -387,6 +387,52 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture-complete --cursor 11 --format json -- prefix [[AI suffix"))
     }
 
+    func testRowContentDerivesQueryFromDraftReplacementAndCursorForWikilinkNote() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "prefix [[AI suffix"
+        let insertion = try XCTUnwrap(attributedStringIndex(
+            in: model.attributedDraft,
+            utf8Offset: "prefix [[AI".utf8.count
+        ))
+        model.editorSelection = AttributedTextSelection(insertionPoint: insertion)
+
+        model.editorTextDidChange(cursorUTF8Offset: "prefix [[AI".utf8.count)
+        await waitUntil { model.completionResponse?.context == "wikilink_note" }
+
+        let candidate = try XCTUnwrap(model.completionResponse?.candidates.first)
+        let content = model.rowContent(for: candidate)
+
+        XCTAssertEqual(content.contextLabel, "Note")
+        XCTAssertEqual(content.primaryText, "AI")
+        XCTAssertEqual(content.secondaryText, "Artificial Intelligence.md")
+        XCTAssertEqual(content.badges, ["Alias"])
+        XCTAssertEqual(content.primaryMatchRange, 0..<2)
+    }
+
+    func testRowContentDerivesQueryFromDraftReplacementAndCursorForRoute() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "idea @ma"
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil { model.completionVisible }
+
+        let candidate = try XCTUnwrap(model.completionResponse?.candidates.first)
+        let content = model.rowContent(for: candidate)
+
+        XCTAssertEqual(content.contextLabel, "Destination")
+        XCTAssertEqual(content.primaryText, "mac_inbox")
+        XCTAssertEqual(content.secondaryText, "mac_inbox.md")
+        XCTAssertEqual(content.badges, ["inbox"])
+        XCTAssertEqual(content.primaryMatchRange, 0..<2)
+    }
+
     func testRangeSelectionSuppressesCompletionButKeepsPreviewAnalysis() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
