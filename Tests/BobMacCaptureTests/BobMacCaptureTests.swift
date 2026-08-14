@@ -95,6 +95,26 @@ final class BobMacCaptureTests: XCTestCase {
     }
 
     @MainActor
+    func testOpenSettingsMenuActionUsesRegisteredSettingsPresenterOnce() {
+        let delegate = AppDelegate()
+        var openSettingsCount = 0
+        var activationCount = 0
+        delegate.settingsPresentation = SettingsPresentation(
+            openSettings: {
+                openSettingsCount += 1
+            },
+            activateApplication: {
+                activationCount += 1
+            }
+        )
+
+        delegate.openSettings()
+
+        XCTAssertEqual(openSettingsCount, 1)
+        XCTAssertEqual(activationCount, 1)
+    }
+
+    @MainActor
     func testDiagnosticHistoryRecordsChangesAndStaysBounded() {
         let defaults = UserDefaults(suiteName: "org.bobs.bob-mac-capture.tests.\(UUID().uuidString)")!
         let settings = AppSettings(defaults: defaults)

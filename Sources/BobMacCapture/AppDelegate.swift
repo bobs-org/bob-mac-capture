@@ -2,10 +2,13 @@ import AppKit
 import CaptureCore
 import SwiftUI
 
+@main
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = AppSettings()
     let notificationService = NotificationService()
+
+    var settingsPresentation = SettingsPresentation()
 
     private var statusItem: NSStatusItem?
     private var hotKeyManager: HotKeyManager?
@@ -14,6 +17,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var vaultWatcher: VaultTargetWatcher?
     private let targetsCache = CaptureTargetsCache()
     private var processClient: BobProcessClient?
+    private var settingsSceneRepresentation: SettingsSceneRepresentation?
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        let settings = settings
+        let notificationService = notificationService
+        let representation = NSHostingSceneRepresentation {
+            BobSettingsScene(
+                settings: settings,
+                notificationService: notificationService
+            )
+        }
+
+        NSApplication.shared.addSceneRepresentation(representation)
+        settingsSceneRepresentation = representation
+        settingsPresentation = SettingsPresentation {
+            representation.environment.openSettings()
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -176,9 +197,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showCapturePanel()
     }
 
-    @objc private func openSettings() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        NSApp.activate()
+    @objc func openSettings() {
+        settingsPresentation.present()
     }
 
     @objc private func recheckBob() {
@@ -190,5 +210,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+}
+
+@MainActor
+struct SettingsPresentation {
+    var openSettings: () -> Void
+    var activateApplication: () -> Void
+
+    init(
+        openSettings: @escaping () -> Void = {},
+        activateApplication: @escaping () -> Void = {
+            NSApplication.shared.activate()
+        }
+    ) {
+        self.openSettings = openSettings
+        self.activateApplication = activateApplication
+    }
+
+    func present() {
+        openSettings()
+        activateApplication()
+    }
+}
+
+private typealias SettingsSceneRepresentation = NSHostingSceneRepresentation<BobSettingsScene>
+
+@MainActor
+private struct BobSettingsScene: Scene {
+    let settings: AppSettings
+    let notificationService: NotificationService
+
+    var body: some Scene {
+        Settings {
+            SettingsView(settings: settings, notificationService: notificationService)
+        }
     }
 }
