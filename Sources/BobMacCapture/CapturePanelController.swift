@@ -41,7 +41,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        model.requestClose()
+        model.prepareForRetainedClose()
+        return true
     }
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
@@ -223,6 +224,43 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
+    /// Applies a routed key command. Returns `true` when the key event is consumed.
+    @discardableResult
+    func perform(_ command: CaptureKeyCommand) -> Bool {
+        switch command {
+        case .submit:
+            model.submit(openAfterCapture: false)
+            return true
+        case .submitAndOpen:
+            model.submit(openAfterCapture: true)
+            return true
+        case .insertNewline:
+            return Self.insertNewlineInEditableTextView(
+                firstResponder: panel?.firstResponder,
+                model: model
+            )
+        case .escape:
+            if model.completionVisible {
+                model.dismissCompletion()
+            } else {
+                model.closeRetainingDraft()
+            }
+            return true
+        case .discardAndClose:
+            model.discardDraftAndClose()
+            return true
+        case .acceptCompletion:
+            model.acceptSelectedCompletion()
+            return true
+        case .nextCompletion:
+            model.selectNextCompletion()
+            return true
+        case .previousCompletion:
+            model.selectPreviousCompletion()
+            return true
+        }
+    }
+
     private func hidePanel() {
         CaptureSignpost.event("panel-dismiss")
         panel?.orderOut(nil)
@@ -244,42 +282,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 return event
             }
 
-            switch command {
-            case .submit:
-                self.model.submit(openAfterCapture: false)
-                return nil
-            case .submitAndOpen:
-                self.model.submit(openAfterCapture: true)
-                return nil
-            case .insertNewline:
-                if Self.insertNewlineInEditableTextView(
-                    firstResponder: self.panel?.firstResponder,
-                    model: self.model
-                ) {
-                    return nil
-                }
-                return event
-            case .escape:
-                if self.model.completionVisible {
-                    self.model.dismissCompletion()
-                    return nil
-                }
-                if self.model.pendingDiscardConfirmation || !self.model.hasDraft {
-                    self.hidePanel()
-                } else {
-                    _ = self.model.requestClose()
-                }
-                return nil
-            case .acceptCompletion:
-                self.model.acceptSelectedCompletion()
-                return nil
-            case .nextCompletion:
-                self.model.selectNextCompletion()
-                return nil
-            case .previousCompletion:
-                self.model.selectPreviousCompletion()
-                return nil
-            }
+            return self.perform(command) ? nil : event
         }
     }
 }

@@ -95,7 +95,6 @@ final class CapturePanelModelTests: XCTestCase {
 
         XCTAssertEqual(model.plainDraft, "private captured text")
         XCTAssertEqual(model.errorMessage, "clipboard command xclip exited with 1")
-        XCTAssertFalse(model.pendingDiscardConfirmation)
         XCTAssertEqual(dismissCount, 0)
     }
 
@@ -152,7 +151,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.statusText, "")
     }
 
-    func testPrepareForPresentationWithRetainedDraftAndErrorPreservesDraftErrorAndDiscardConfirmation() async throws {
+    func testPrepareForPresentationWithRetainedDraftAndErrorPreservesDraftAndError() async throws {
         let model = CapturePanelModel()
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
@@ -166,13 +165,59 @@ final class CapturePanelModelTests: XCTestCase {
         model.plainDraft = "private captured text"
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
-        model.pendingDiscardConfirmation = true
 
         model.prepareForPresentation()
 
         XCTAssertEqual(model.plainDraft, "private captured text")
         XCTAssertEqual(model.errorMessage, "clipboard command xclip exited with 1")
-        XCTAssertTrue(model.pendingDiscardConfirmation)
+    }
+
+    func testDiscardDraftAndCloseClearsDraftAnalysisStateAndDismisses() {
+        let model = CapturePanelModel()
+        model.plainDraft = "Call bank @Cash"
+        model.errorMessage = "Capture failed"
+        model.previewResult = sampleSuccess()
+        model.parseDiagnostics = [
+            CaptureDiagnostic(severity: "error", code: "bad_route", message: "Unknown route")
+        ]
+        model.previewState = .failed("Preview failed")
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 15,
+            replacement: CaptureRange(start: 11, end: 15),
+            context: "route",
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "Cash",
+                    route: "Cash",
+                    label: "Cash.md",
+                    kind: "cash"
+                )
+            ]
+        )
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+
+        model.discardDraftAndClose()
+
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertNil(model.errorMessage)
+        XCTAssertNil(model.previewResult)
+        XCTAssertEqual(model.parseDiagnostics, [])
+        XCTAssertEqual(model.previewState, .idle)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertEqual(dismissCount, 1)
+    }
+
+    func testCloseRetainingEmptyDraftDismissesWithoutDraftRetainedStatus() {
+        let model = CapturePanelModel()
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+
+        model.closeRetainingDraft()
+
+        XCTAssertEqual(dismissCount, 1)
+        XCTAssertEqual(model.statusText, "")
     }
 
     func testDoubleSubmitIsSuppressedWhileOneMutationIsInFlight() async throws {
@@ -310,5 +355,22 @@ final class CapturePanelModelTests: XCTestCase {
         return packageRoot
             .appendingPathComponent("Tests/Fixtures/fake-bob")
             .path
+    }
+
+    private func sampleSuccess() -> CaptureCommandSuccess {
+        CaptureCommandSuccess(
+            ok: true,
+            dryRun: true,
+            routed: true,
+            route: "Cash",
+            routeLabel: "Cash.md",
+            relativeTarget: "Cash.md",
+            target: "/tmp/Cash.md",
+            text: "Call bank",
+            taskLine: "- [ ] Call bank",
+            kind: "task",
+            created: "2026-08-14",
+            placement: "append"
+        )
     }
 }

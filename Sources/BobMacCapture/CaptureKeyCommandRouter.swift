@@ -5,6 +5,7 @@ enum CaptureKeyCommand: Equatable {
     case submitAndOpen
     case insertNewline
     case escape
+    case discardAndClose
     case acceptCompletion
     case nextCompletion
     case previousCompletion
@@ -19,6 +20,7 @@ struct CaptureKeyCommandRouter {
         static let arrowDown: UInt16 = 125
         static let arrowUp: UInt16 = 126
         static let j: UInt16 = 38
+        static let c: UInt16 = 8
         static let n: UInt16 = 45
         static let p: UInt16 = 35
     }
@@ -40,6 +42,8 @@ struct CaptureKeyCommandRouter {
             return .submit
         case KeyCode.escape:
             return .escape
+        case KeyCode.c:
+            return modifiers == .control ? .discardAndClose : nil
         case KeyCode.tab:
             return completionVisible ? .acceptCompletion : nil
         case KeyCode.arrowDown:

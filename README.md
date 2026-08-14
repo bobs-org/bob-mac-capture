@@ -116,7 +116,8 @@ or expired certificate can require reauthorizing those system permissions.
   open with its complete draft and an actionable error. Reopening the panel after a
   success starts from a clean slate — the prior "Captured → …" summary and status text
   are cleared, while a retained draft (from Escape or a failure) reopens exactly as it
-  was left.
+  was left. Closing the panel never destroys a draft; Control-C or **Discard** clears
+  the draft explicitly.
 
 ## Keyboard
 
@@ -128,10 +129,11 @@ or expired certificate can require reauthorizing those system permissions.
 | Tab | (normal focus traversal) | Accept the selected completion |
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion |
 | Up / Ctrl-P | (normal focus traversal) | Select the previous completion |
-| Escape | Close completion, then close the panel (retaining a nonempty draft) | Close completion |
+| Escape | Close the panel, retaining a nonempty draft without confirmation | Close completion |
+| Control-C | Discard the draft and close the panel | Discard the draft and close the panel |
 
 Every capture action is reachable from the keyboard alone; the hotkey, editor, completion
-list, and Capture/Preview/Discard/Keep Draft buttons never require a pointer. The editor
+list, and Capture/Preview/Discard buttons never require a pointer. The editor
 starts at one visual line, grows and shrinks with rendered content through six visual
 lines, then scrolls internally for longer drafts. Multi-line drafts are an editing
 affordance only: embedded newlines are whitespace-normalized into a single line by

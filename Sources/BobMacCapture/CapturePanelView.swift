@@ -322,15 +322,11 @@ private struct CapturePanelFooter: View {
                     statusIsFocused = true
                 }
             Spacer(minLength: 12)
-            if model.pendingDiscardConfirmation {
-                Button("Discard") {
-                    model.discardDraft()
-                }
-                Button("Keep Draft") {
-                    model.pendingDiscardConfirmation = false
-                }
-                .keyboardShortcut(.cancelAction)
+            Button("Discard") {
+                model.discardDraftAndClose()
             }
+            .help("Discards the draft and closes the panel (Control-C).")
+            .disabled(!model.hasDraft || model.isSubmitting)
             Button("Preview") {
                 model.preview()
             }

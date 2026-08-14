@@ -14,7 +14,6 @@ enum CapturePreviewState: Equatable {
 final class CapturePanelModel: ObservableObject {
     @Published var attributedDraft = AttributedString()
     @Published var statusText = ""
-    @Published var pendingDiscardConfirmation = false
     @Published var previewState: CapturePreviewState = .idle
     @Published var parseDiagnostics: [CaptureDiagnostic] = []
     @Published var completionResponse: CaptureCompletionResponse?
@@ -131,7 +130,6 @@ final class CapturePanelModel: ObservableObject {
             suppressedCompletionAcceptanceDraft = nil
         }
 
-        pendingDiscardConfirmation = false
         if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             priorityRollSeed = nil
             parseDiagnostics = []
@@ -228,22 +226,30 @@ final class CapturePanelModel: ObservableObject {
         NSPasteboard.general.setString(errorMessage, forType: .string)
     }
 
-    func requestClose() -> Bool {
-        guard hasDraft else {
-            pendingDiscardConfirmation = false
-            return true
+    /// Records a close that keeps the draft. Closing the panel is never destructive;
+    /// discarding is an explicit action (Control-C or the Discard button).
+    func prepareForRetainedClose() {
+        if hasDraft {
+            statusText = "Draft retained"
         }
-        pendingDiscardConfirmation = true
-        statusText = "Draft retained"
-        return false
+    }
+
+    func closeRetainingDraft() {
+        prepareForRetainedClose()
+        panelDismisser()
+    }
+
+    func discardDraftAndClose() {
+        discardDraft()
+        panelDismisser()
     }
 
     func discardDraft() {
         setPlainDraft("")
         suppressedCompletionAcceptanceDraft = nil
         priorityRollSeed = nil
+        invalidateAnalysis()
         resetAnalysisState()
-        analysisTask?.cancel()
     }
 
     // Called before the panel is (re)shown. A retained draft (from Escape or a failed
@@ -260,7 +266,6 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func resetAnalysisState() {
-        pendingDiscardConfirmation = false
         parseDiagnostics = []
         completionResponse = nil
         previewState = .idle
@@ -355,7 +360,6 @@ final class CapturePanelModel: ObservableObject {
             errorMessage = nil
             attributedDraft = AttributedString()
             suppressedCompletionAcceptanceDraft = nil
-            pendingDiscardConfirmation = false
             priorityRollSeed = nil
             parseDiagnostics = []
             completionResponse = nil

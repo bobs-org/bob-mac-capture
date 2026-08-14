@@ -282,6 +282,15 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .option)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 38, modifiers: .control)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 53)), .escape)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 8, modifiers: .control)), .discardAndClose)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 8, modifiers: .control), completionVisible: true),
+            .discardAndClose
+        )
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 8)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 8, modifiers: .command)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 8, modifiers: [.control, .shift])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 8, modifiers: [.control, .command])))
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), completionVisible: true), .acceptCompletion)
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 36, modifiers: .command), completionVisible: true),
@@ -319,6 +328,58 @@ final class BobMacCaptureTests: XCTestCase {
             router.command(for: keyEvent(keyCode: 35, modifiers: .control), completionVisible: true),
             .previousCompletion
         )
+    }
+
+    @MainActor
+    func testEscapeClosesOnceAndRetainsNonemptyDraft() {
+        let model = CapturePanelModel()
+        model.plainDraft = "Call bank @Cash"
+        let controller = CapturePanelController(model: model)
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+
+        XCTAssertTrue(controller.perform(.escape))
+
+        XCTAssertEqual(dismissCount, 1)
+        XCTAssertEqual(model.plainDraft, "Call bank @Cash")
+        XCTAssertEqual(model.statusText, "Draft retained")
+    }
+
+    @MainActor
+    func testEscapeDismissesCompletionBeforeClosingPanel() {
+        let model = CapturePanelModel()
+        model.plainDraft = "idea @ma"
+        model.completionResponse = sampleCompletionResponse()
+        let controller = CapturePanelController(model: model)
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+
+        XCTAssertTrue(controller.perform(.escape))
+
+        XCTAssertEqual(dismissCount, 0)
+        XCTAssertNil(model.completionResponse)
+
+        XCTAssertTrue(controller.perform(.escape))
+
+        XCTAssertEqual(dismissCount, 1)
+        XCTAssertEqual(model.plainDraft, "idea @ma")
+        XCTAssertEqual(model.statusText, "Draft retained")
+    }
+
+    @MainActor
+    func testDiscardAndCloseClearsDraftCompletionAndDismisses() {
+        let model = CapturePanelModel()
+        model.plainDraft = "idea @ma"
+        model.completionResponse = sampleCompletionResponse()
+        let controller = CapturePanelController(model: model)
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+
+        XCTAssertTrue(controller.perform(.discardAndClose))
+
+        XCTAssertEqual(dismissCount, 1)
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertNil(model.completionResponse)
     }
 
     func testEditorHeightPolicyUsesOneLineMinimumAndSixLineCap() {
