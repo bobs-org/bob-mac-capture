@@ -55,9 +55,9 @@ public struct CaptureParseResponse: Codable, Equatable {
         route = try container.decodeIfPresent(String.self, forKey: .route)
         section = try container.decodeIfPresent(String.self, forKey: .section)
         blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
-        needs = try container.decode([String].self, forKey: .needs)
-        spans = try container.decode([CaptureSpan].self, forKey: .spans)
-        diagnostics = try container.decode([CaptureDiagnostic].self, forKey: .diagnostics)
+        needs = try container.decodeIfPresent([String].self, forKey: .needs) ?? []
+        spans = try container.decodeIfPresent([CaptureSpan].self, forKey: .spans) ?? []
+        diagnostics = try container.decodeIfPresent([CaptureDiagnostic].self, forKey: .diagnostics) ?? []
         subBullets = try container.decodeIfPresent([String].self, forKey: .subBullets) ?? []
     }
 
@@ -75,6 +75,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         case diagnostics
         case subBullets = "sub_bullets"
     }
+
 }
 
 public struct CaptureSpan: Codable, Equatable {
@@ -120,7 +121,8 @@ public struct CaptureRange: Codable, Equatable {
 
 // `bob capture --format json` has no schema_version: success and failure are
 // distinguished only by `ok`, and a failure keeps `error` as its sole other field.
-// This mirrors bob-cli's actual `CaptureResult`/error JSON, not an aspirational shape.
+// Bob may omit empty collections and nil scalars, so collection fields decoded from bob
+// use `decodeIfPresent(...) ?? []` while optional scalars stay optional.
 public enum CaptureCommandResponse: Equatable, Decodable {
     case success(CaptureCommandSuccess)
     case failure(CaptureCommandFailure)
@@ -306,6 +308,8 @@ public struct CaptureCommandFailure: Codable, Equatable {
     }
 }
 
+// Keep callers on non-optional collection fields while tolerating older bob binaries
+// that omitted empty arrays from clip JSON.
 public struct CaptureClipOutput: Codable, Equatable {
     public let header: String?
     public let mode: String
@@ -328,6 +332,25 @@ public struct CaptureClipOutput: Codable, Equatable {
         self.attachments = attachments
         self.snippet = snippet
         self.entries = entries
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        header = try container.decodeIfPresent(String.self, forKey: .header)
+        mode = try container.decode(String.self, forKey: .mode)
+        lines = try container.decodeIfPresent([String].self, forKey: .lines) ?? []
+        attachments = try container.decodeIfPresent([CaptureAttachmentOutput].self, forKey: .attachments) ?? []
+        snippet = try container.decodeIfPresent(String.self, forKey: .snippet)
+        entries = try container.decodeIfPresent([CaptureClipOutput].self, forKey: .entries) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case header
+        case mode
+        case lines
+        case attachments
+        case snippet
+        case entries
     }
 }
 
@@ -493,6 +516,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         case candidates
         case warnings
     }
+
 }
 
 public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {

@@ -75,6 +75,26 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(decoded.subBullets, [])
     }
 
+    func testParseResponseDecodesMissingCollectionsAsEmpty() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Call bank",
+              "body": "Call bank",
+              "mode": "task"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(decoded.needs, [])
+        XCTAssertEqual(decoded.spans, [])
+        XCTAssertEqual(decoded.diagnostics, [])
+    }
+
     func testCaptureCommandResponseDecodesRealSuccessShapeWithNoSchemaVersion() throws {
         let data = Data(
             """
@@ -134,6 +154,60 @@ final class CaptureModelTests: XCTestCase {
             return XCTFail("Expected a successful response")
         }
         XCTAssertEqual(success.subBullets, [])
+    }
+
+    func testCaptureCommandResponseDecodesHeaderlessSingleClipWithOmittedEntries() throws {
+        let success = try decodeCaptureSuccess(#"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"inline","lines":["\t- hello-clip"],"attachments":[]}}"#)
+
+        XCTAssertEqual(success.clip?.header, nil)
+        XCTAssertEqual(success.clip?.mode, "inline")
+        XCTAssertEqual(success.clip?.lines, ["\t- hello-clip"])
+        XCTAssertEqual(success.clip?.attachments, [])
+        XCTAssertEqual(success.clip?.entries, [])
+    }
+
+    func testCaptureCommandResponseDecodesHeaderedClipWithOmittedEntries() throws {
+        let success = try decodeCaptureSuccess(#"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":"MYNOTE","mode":"inline","lines":["\t- **MYNOTE:** hello-clip"],"attachments":[]}}"#)
+
+        XCTAssertEqual(success.clip?.header, "MYNOTE")
+        XCTAssertEqual(success.clip?.mode, "inline")
+        XCTAssertEqual(success.clip?.lines, ["\t- **MYNOTE:** hello-clip"])
+        XCTAssertEqual(success.clip?.entries, [])
+    }
+
+    func testCaptureCommandResponseDecodesAttachmentClipWithOmittedEntries() throws {
+        let success = try decodeCaptureSuccess(#"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"attachments","lines":["\t- ![[img/shot.png|400]]"],"attachments":[{"source":"/tmp/tmp.GQUVrOEvrX/shot.png","saved":"img/shot.png","kind":"image","reused":false}]}}"#)
+
+        XCTAssertEqual(success.clip?.mode, "attachments")
+        XCTAssertEqual(success.clip?.lines, ["\t- ![[img/shot.png|400]]"])
+        XCTAssertEqual(success.clip?.attachments, [
+            CaptureAttachmentOutput(
+                source: "/tmp/tmp.GQUVrOEvrX/shot.png",
+                saved: "img/shot.png",
+                kind: "image",
+                reused: false
+            ),
+        ])
+        XCTAssertEqual(success.clip?.entries, [])
+    }
+
+    func testCaptureCommandResponseDecodesSnippetClipWithOmittedEntries() throws {
+        let success = try decodeCaptureSuccess(#"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"snippet","lines":["\t- [[file/clip-20260715-131415-heading]]"],"attachments":[],"snippet":"file/clip-20260715-131415-heading.md"}}"#)
+
+        XCTAssertEqual(success.clip?.mode, "snippet")
+        XCTAssertEqual(success.clip?.snippet, "file/clip-20260715-131415-heading.md")
+        XCTAssertEqual(success.clip?.entries, [])
+    }
+
+    func testCaptureCommandResponseDecodesHistoryClipWithNestedOmittedEntries() throws {
+        let success = try decodeCaptureSuccess(#"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.XA4h1kbsUm/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"history","lines":["\t- hello-clip","\t- older one","\t- older two"],"attachments":[],"entries":[{"header":null,"mode":"inline","lines":["\t- hello-clip"],"attachments":[]},{"header":null,"mode":"lines","lines":["\t- older one","\t- older two"],"attachments":[]}]}}"#)
+
+        XCTAssertEqual(success.clip?.mode, "history")
+        XCTAssertEqual(success.clip?.entries.count, 2)
+        XCTAssertEqual(success.clip?.entries[0].lines, ["\t- hello-clip"])
+        XCTAssertEqual(success.clip?.entries[0].entries, [])
+        XCTAssertEqual(success.clip?.entries[1].mode, "lines")
+        XCTAssertEqual(success.clip?.entries[1].entries, [])
     }
 
     func testCaptureCommandResponseDecodesRealFailureShape() throws {
@@ -269,6 +343,24 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(decoded.candidates.first?.childCount, 2)
     }
 
+    func testCompletionResponseDecodesMissingCandidatesAsEmpty() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 6,
+              "replacement": { "start": 6, "end": 6 },
+              "context": "route"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+
+        XCTAssertEqual(decoded.candidates, [])
+    }
+
     func testCompletionResponseDecodesWikilinkMetadataWarningsAndCursorAfter() throws {
         let data = Data(
             """
@@ -397,5 +489,17 @@ final class CaptureModelTests: XCTestCase {
                 CaptureSpan(start: routeStart + 1, end: routeEnd, kind: "route"),
             ]
         ))
+    }
+
+    private enum CaptureFixtureError: Error {
+        case expectedSuccess
+    }
+
+    private func decodeCaptureSuccess(_ json: String) throws -> CaptureCommandSuccess {
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: Data(json.utf8))
+        guard case .success(let success) = decoded else {
+            throw CaptureFixtureError.expectedSuccess
+        }
+        return success
     }
 }
