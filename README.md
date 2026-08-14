@@ -79,6 +79,16 @@ or expired certificate can require reauthorizing those system permissions.
 - Development/rollback hotkey: Control-Shift-Command-O, selectable in Settings.
 - The hotkey path uses a pre-warmed non-activating `NSPanel`; subprocess work is kept
   off that path.
+- A fresh popup is a compact, Spotlight-like bar — a one-line editor plus the footer
+  actions, no empty preview placeholder, no dead space. The window's height then tracks
+  the SwiftUI content's natural height as the editor grows, the completion list appears,
+  the live preview arrives, and errors show or clear, staying anchored at the window's
+  top edge and clamped inside the screen's visible frame. Resizing is instant and
+  unanimated so the content and window never desynchronize. Height is content-owned and
+  not user-draggable; width remains user-resizable and reflows the editor, which is the
+  one case that legitimately changes the content height. If the clamp ever binds (a very
+  small display, very large dynamic type, an unusually long error), the popup scrolls
+  internally instead of clipping the footer.
 - `CaptureCore` imports only Foundation and runs `bob` directly through `Process` with
   argv arrays and an explicit GUI-safe environment.
 - Editor highlighting is derived from `bob capture-parse --format json` spans. The app

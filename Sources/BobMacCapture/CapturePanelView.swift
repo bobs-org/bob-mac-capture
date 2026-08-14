@@ -2,15 +2,39 @@ import CaptureCore
 import SwiftUI
 
 enum CapturePanelLayout {
-    static let panelInitialContentSize = CGSize(width: 760, height: 420)
-    static let panelMinimumContentSize = CGSize(width: 620, height: 420)
+    static let rootPadding: CGFloat = 18
+    static let titlebarDragInset: CGFloat = 28
+    static let sectionSpacing: CGFloat = 12
+
+    static let panelInitialContentWidth: CGFloat = 760
+    static let panelMinimumContentWidth: CGFloat = 620
+
     static let editorContentPadding: CGFloat = 10
     static let editorLineHeight: CGFloat = 22
     static let editorMaximumVisibleLines = 6
-    static let completionVisibleRows = 3
+    static let completionVisibleRows = 5
     static let completionRowHeight: CGFloat = 32
     static let completionViewportHeight = completionRowHeight * CGFloat(completionVisibleRows) + 12
     static let previewIdealHeight: CGFloat = 92
+    static let footerEstimatedHeight: CGFloat = 28
+
+    /// First-frame estimate of the empty state, used before SwiftUI reports a real
+    /// measurement so the prewarmed panel opens already close to its compact size.
+    static let panelCompactContentHeight: CGFloat =
+        titlebarDragInset
+        + CaptureEditorHeightPolicy().minimumHeight
+        + sectionSpacing
+        + footerEstimatedHeight
+        + rootPadding
+
+    /// Hard floor guarding only against a degenerate measurement; deliberately below the
+    /// real compact height so a correct measurement is never inflated.
+    static let panelMinimumContentHeight: CGFloat = 96
+    static let panelMaximumContentHeight: CGFloat = 720
+    static let panelScreenMargin: CGFloat = 24
+
+    static let panelInitialContentSize = CGSize(width: panelInitialContentWidth, height: panelCompactContentHeight)
+    static let panelMinimumContentSize = CGSize(width: panelMinimumContentWidth, height: panelMinimumContentHeight)
 }
 
 struct CaptureEditorHeightPolicy: Equatable {
@@ -48,12 +72,22 @@ struct CaptureEditorHeightPolicy: Equatable {
 @available(macOS 26.0, *)
 struct CapturePanelView: View {
     @ObservedObject var model: CapturePanelModel
+    var onIdealContentHeightChange: (CGFloat) -> Void = { _ in }
     @State private var selection = AttributedTextSelection()
     @AccessibilityFocusState private var errorIsFocused: Bool
     @AccessibilityFocusState private var statusIsFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        ScrollView(.vertical) {
+            content
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { onIdealContentHeightChange($0) }
+        }
+        .scrollBounceBehavior(.basedOnSize)
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: CapturePanelLayout.sectionSpacing) {
             AutosizingCaptureEditor(model: model, selection: $selection)
 
             if model.completionVisible {
@@ -91,7 +125,9 @@ struct CapturePanelView: View {
                 }
             }
 
-            PreviewPane(model: model)
+            if model.previewState != .idle {
+                PreviewPane(model: model)
+            }
 
             HStack(alignment: .center, spacing: 8) {
                 Text(model.statusText.isEmpty ? "Ready" : model.statusText)
@@ -123,12 +159,9 @@ struct CapturePanelView: View {
                 .disabled(!model.hasDraft || model.isSubmitting)
             }
         }
-        .padding(18)
-        .frame(
-            minWidth: CapturePanelLayout.panelMinimumContentSize.width,
-            minHeight: CapturePanelLayout.panelMinimumContentSize.height,
-            alignment: .topLeading
-        )
+        .padding(.top, CapturePanelLayout.titlebarDragInset)
+        .padding([.horizontal, .bottom], CapturePanelLayout.rootPadding)
+        .frame(minWidth: CapturePanelLayout.panelMinimumContentWidth, alignment: .topLeading)
     }
 }
 
@@ -136,10 +169,8 @@ struct CapturePanelView: View {
 private struct AutosizingCaptureEditor: View {
     @ObservedObject var model: CapturePanelModel
     @Binding var selection: AttributedTextSelection
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
     @State private var editorHeight = CaptureEditorHeightPolicy().minimumHeight
-    @State private var renderedLineCount = 1
 
     private var policy: CaptureEditorHeightPolicy {
         CaptureEditorHeightPolicy(displayScale: displayScale)
@@ -219,19 +250,10 @@ private struct AutosizingCaptureEditor: View {
 
     private func updateHeight(forMeasuredTextHeight measuredTextHeight: CGFloat) {
         let nextHeight = policy.resolvedHeight(forMeasuredTextHeight: measuredTextHeight)
-        let nextLineCount = policy.visibleLineCount(forMeasuredTextHeight: measuredTextHeight)
         guard nextHeight != editorHeight else {
             return
         }
-
-        var transaction = Transaction()
-        if !reduceMotion && nextLineCount != renderedLineCount {
-            transaction.animation = .easeOut(duration: 0.12)
-        }
-        withTransaction(transaction) {
-            editorHeight = nextHeight
-            renderedLineCount = nextLineCount
-        }
+        editorHeight = nextHeight
     }
 }
 

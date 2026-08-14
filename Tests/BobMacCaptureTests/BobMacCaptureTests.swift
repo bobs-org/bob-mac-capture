@@ -19,12 +19,134 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(panel.level, .floating)
         XCTAssertTrue(panel.collectionBehavior.contains(.canJoinAllSpaces))
         XCTAssertTrue(panel.collectionBehavior.contains(.fullScreenAuxiliary))
-        XCTAssertEqual(panel.contentMinSize, CapturePanelLayout.panelMinimumContentSize)
+        XCTAssertEqual(panel.contentMinSize.width, CapturePanelLayout.panelMinimumContentWidth)
 
         let contentSize = panel.contentRect(forFrameRect: panel.frame).size
-        XCTAssertEqual(contentSize, CapturePanelLayout.panelInitialContentSize)
+        XCTAssertEqual(contentSize.height, CapturePanelLayout.panelCompactContentHeight)
+        XCTAssertLessThan(contentSize.height, 420)
         XCTAssertGreaterThanOrEqual(contentSize.width, panel.contentMinSize.width)
-        XCTAssertGreaterThanOrEqual(contentSize.height, panel.contentMinSize.height)
+    }
+
+    func testSizerClampsIdealHeightToFloorCeilingAndPixelRounding() {
+        let sizer = CapturePanelWindowSizer(
+            minimumContentHeight: 100,
+            maximumContentHeight: 500,
+            screenMargin: 20,
+            displayScale: 1
+        )
+
+        XCTAssertEqual(sizer.contentHeight(forIdealContentHeight: 10, availableScreenHeight: nil), 100)
+        XCTAssertEqual(sizer.contentHeight(forIdealContentHeight: 900, availableScreenHeight: nil), 500)
+        XCTAssertEqual(sizer.contentHeight(forIdealContentHeight: 234.2, availableScreenHeight: nil), 235)
+        XCTAssertEqual(sizer.contentHeight(forIdealContentHeight: 480, availableScreenHeight: 300), 260)
+    }
+
+    func testSizerFramePreservesTopEdgeOriginXAndWidthWhenGrowingAndShrinking() {
+        let sizer = CapturePanelWindowSizer()
+        let visibleFrame = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let currentFrame = NSRect(x: 100, y: 400, width: 760, height: 200)
+
+        let grown = sizer.frame(
+            forCurrentFrame: currentFrame,
+            contentHeight: 300,
+            chromeHeight: 0,
+            visibleFrame: visibleFrame
+        )
+        XCTAssertEqual(grown.maxY, currentFrame.maxY)
+        XCTAssertEqual(grown.origin.x, currentFrame.origin.x)
+        XCTAssertEqual(grown.width, currentFrame.width)
+        XCTAssertEqual(grown.height, 300)
+
+        let shrunk = sizer.frame(
+            forCurrentFrame: currentFrame,
+            contentHeight: 100,
+            chromeHeight: 0,
+            visibleFrame: visibleFrame
+        )
+        XCTAssertEqual(shrunk.maxY, currentFrame.maxY)
+        XCTAssertEqual(shrunk.origin.x, currentFrame.origin.x)
+        XCTAssertEqual(shrunk.width, currentFrame.width)
+        XCTAssertEqual(shrunk.height, 100)
+    }
+
+    func testSizerFramePushesUpWhenGrowingPastScreenBottom() {
+        let sizer = CapturePanelWindowSizer()
+        let visibleFrame = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let currentFrame = NSRect(x: 100, y: 20, width: 760, height: 120)
+
+        let grown = sizer.frame(
+            forCurrentFrame: currentFrame,
+            contentHeight: 600,
+            chromeHeight: 0,
+            visibleFrame: visibleFrame
+        )
+
+        XCTAssertTrue(visibleFrame.contains(grown))
+        XCTAssertEqual(grown.height, 600)
+    }
+
+    @MainActor
+    func testApplyIdealContentHeightGrowsAndKeepsTopEdge() {
+        let model = CapturePanelModel()
+        let controller = CapturePanelController(model: model)
+        let panel = controller.makePanelIfNeeded()
+        let initialFrame = panel.frame
+        let initialContentHeight = panel.contentRect(forFrameRect: panel.frame).size.height
+
+        controller.applyIdealContentHeight(initialContentHeight + 120)
+
+        let grownFrame = panel.frame
+        XCTAssertGreaterThan(grownFrame.height, initialFrame.height)
+        XCTAssertEqual(grownFrame.maxY, initialFrame.maxY, accuracy: 0.5)
+        XCTAssertEqual(grownFrame.origin.x, initialFrame.origin.x)
+        XCTAssertEqual(grownFrame.width, initialFrame.width)
+    }
+
+    @MainActor
+    func testApplyIdealContentHeightIsIdempotentForARepeatedMeasurement() {
+        let model = CapturePanelModel()
+        let controller = CapturePanelController(model: model)
+        let panel = controller.makePanelIfNeeded()
+        let initialContentHeight = panel.contentRect(forFrameRect: panel.frame).size.height
+
+        controller.applyIdealContentHeight(initialContentHeight + 120)
+        let firstAppliedFrame = panel.frame
+
+        controller.applyIdealContentHeight(initialContentHeight + 120)
+
+        XCTAssertEqual(panel.frame, firstAppliedFrame)
+    }
+
+    @MainActor
+    func testApplyIdealContentHeightIgnoresDegenerateMeasurements() {
+        let model = CapturePanelModel()
+        let controller = CapturePanelController(model: model)
+        let panel = controller.makePanelIfNeeded()
+        let initialFrame = panel.frame
+
+        controller.applyIdealContentHeight(0)
+        controller.applyIdealContentHeight(-40)
+        controller.applyIdealContentHeight(.nan)
+        controller.applyIdealContentHeight(.infinity)
+
+        XCTAssertEqual(panel.frame, initialFrame)
+    }
+
+    @MainActor
+    func testWindowWillResizePinsHeightAndPassesWidthThrough() {
+        let model = CapturePanelModel()
+        let controller = CapturePanelController(model: model)
+        let panel = controller.makePanelIfNeeded()
+        controller.applyIdealContentHeight(300)
+
+        let tallerProposal = NSSize(width: panel.frame.width, height: panel.frame.height + 200)
+        let resolvedForTaller = controller.windowWillResize(panel, to: tallerProposal)
+        XCTAssertEqual(resolvedForTaller.height, panel.frame.height, accuracy: 0.5)
+
+        let widerProposal = NSSize(width: panel.frame.width + 150, height: panel.frame.height)
+        let resolvedForWider = controller.windowWillResize(panel, to: widerProposal)
+        XCTAssertEqual(resolvedForWider.width, widerProposal.width)
+        XCTAssertEqual(resolvedForWider.height, panel.frame.height, accuracy: 0.5)
     }
 
     func testKeyRouterMatchesCaptureShortcuts() {

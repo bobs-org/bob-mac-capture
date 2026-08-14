@@ -7,6 +7,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     private let keyRouter = CaptureKeyCommandRouter()
     private var panel: NSPanel?
     private var localMonitor: Any?
+    private var appliedContentHeight: CGFloat?
+    private var pendingRecenter = false
+    private var isApplyingContentHeight = false
 
     init(model: CapturePanelModel) {
         self.model = model
@@ -28,6 +31,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let token = CaptureSignpost.begin("panel-order")
         model.prepareForPresentation()
         let panel = makePanelIfNeeded()
+        pendingRecenter = true
+        panel.contentView?.layoutSubtreeIfNeeded()
         panel.center()
         panel.makeKeyAndOrderFront(nil)
         installKeyMonitorIfNeeded()
@@ -39,6 +44,58 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         model.requestClose()
     }
 
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        guard let panel, let appliedContentHeight else {
+            return frameSize
+        }
+        return NSSize(width: frameSize.width, height: appliedContentHeight + Self.chromeHeight(for: panel))
+    }
+
+    /// Resolves a SwiftUI-measured ideal content height to a target size, then applies it
+    /// to the live panel: anchored at the top edge, clamped inside the screen, and
+    /// guarded against feedback loops from resizing itself.
+    func applyIdealContentHeight(_ idealContentHeight: CGFloat) {
+        guard idealContentHeight.isFinite, idealContentHeight > 1 else {
+            return
+        }
+        guard let panel, !isApplyingContentHeight else {
+            return
+        }
+
+        let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+        let sizer = CapturePanelWindowSizer(displayScale: panel.screen?.backingScaleFactor ?? 1)
+        let target = sizer.contentHeight(
+            forIdealContentHeight: idealContentHeight,
+            availableScreenHeight: visibleFrame?.height
+        )
+
+        let heightChanged = appliedContentHeight.map { abs($0 - target) >= 0.5 } ?? true
+        guard heightChanged || pendingRecenter else {
+            return
+        }
+
+        isApplyingContentHeight = true
+        defer { isApplyingContentHeight = false }
+
+        panel.contentMinSize = NSSize(width: CapturePanelLayout.panelMinimumContentWidth, height: target)
+        panel.contentMaxSize = NSSize(width: .greatestFiniteMagnitude, height: target)
+        appliedContentHeight = target
+
+        if pendingRecenter {
+            panel.setContentSize(NSSize(width: panel.frame.width, height: target))
+            panel.center()
+            pendingRecenter = false
+        } else {
+            let frame = sizer.frame(
+                forCurrentFrame: panel.frame,
+                contentHeight: target,
+                chromeHeight: Self.chromeHeight(for: panel),
+                visibleFrame: visibleFrame ?? Self.unlimitedVisibleFrame
+            )
+            panel.setFrame(frame, display: true, animate: false)
+        }
+    }
+
     func makePanelIfNeeded() -> NSPanel {
         if let panel {
             return panel
@@ -46,10 +103,24 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
         let created = Self.makePanel()
         created.delegate = self
-        created.contentView = NSHostingView(rootView: CapturePanelView(model: model))
+        let hostingView = NSHostingView(
+            rootView: CapturePanelView(model: model) { [weak self] height in
+                self?.applyIdealContentHeight(height)
+            }
+        )
+        hostingView.sizingOptions = []
+        created.contentView = hostingView
         panel = created
         return created
     }
+
+    private static func chromeHeight(for panel: NSPanel) -> CGFloat {
+        let referenceContentRect = NSRect(x: 0, y: 0, width: panel.frame.width, height: 100)
+        let referenceFrameRect = panel.frameRect(forContentRect: referenceContentRect)
+        return referenceFrameRect.height - referenceContentRect.height
+    }
+
+    private static let unlimitedVisibleFrame = NSRect(x: -1_000_000, y: -1_000_000, width: 2_000_000, height: 2_000_000)
 
     static func makePanel() -> NSPanel {
         let panel = NSPanel(
