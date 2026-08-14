@@ -44,7 +44,9 @@ final class AppSettings: ObservableObject {
         self.defaults = defaults
         bobExecutableOverride = defaults.string(forKey: Keys.bobExecutableOverride) ?? ""
         bobDirectory = defaults.string(forKey: Keys.bobDirectory) ?? ""
-        useProductionHotkey = defaults.bool(forKey: Keys.useProductionHotkey)
+        useProductionHotkey = defaults.object(forKey: Keys.useProductionHotkey) == nil
+            ? true
+            : defaults.bool(forKey: Keys.useProductionHotkey)
     }
 
     var hotKeyConfiguration: HotKeyConfiguration {

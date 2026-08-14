@@ -81,6 +81,19 @@ final class BobMacCaptureTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testProductionHotkeyIsTheDefaultAndDevelopmentChoicePersists() {
+        let suiteName = "org.bobs.bob-mac-capture.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        XCTAssertEqual(AppSettings(defaults: defaults).hotKeyConfiguration, .production)
+
+        defaults.set(false, forKey: "useProductionHotkey")
+        XCTAssertEqual(AppSettings(defaults: defaults).hotKeyConfiguration, .development)
+        defaults.removePersistentDomain(forName: suiteName)
+    }
+
     func testInfoPlistDeclaresUiElementAndBundleIdentity() throws {
         let plistURL = packageRoot().appendingPathComponent("Resources/Info.plist")
         let data = try Data(contentsOf: plistURL)

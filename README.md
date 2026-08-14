@@ -43,8 +43,8 @@ or expired certificate can require reauthorizing those system permissions.
 
 - Bundle identifier: `org.bobs.bob-mac-capture`.
 - App type: `LSUIElement` resident menu-bar app.
-- Development hotkey: Control-Shift-Command-O.
-- Production cutover hotkey preference: Control-Shift-Command-I.
+- Production hotkey (the default): Control-Shift-Command-I.
+- Development/rollback hotkey: Control-Shift-Command-O, selectable in Settings.
 - The hotkey path uses a pre-warmed non-activating `NSPanel`; subprocess work is kept
   off that path.
 - `CaptureCore` imports only Foundation and runs `bob` directly through `Process` with
@@ -113,7 +113,9 @@ If `RegisterEventHotKey` fails — most often because another app already owns t
 configured shortcut — the app does not silently do nothing. Settings' Diagnostics
 section reports "Hotkey conflict" with the underlying Carbon status, and the same event
 is recorded in Recent Activity. Use "Recheck Bob" from the menu-bar item after freeing
-the shortcut, or use Settings to switch between the development and production bindings.
+the shortcut, or use Settings to switch between the production and rollback bindings.
+New installs default to Control-Shift-Command-I; turn off **Use production
+Control-Shift-Command-I** only when restoring the retired Hammerspoon capture workflow.
 
 Launch at login is controlled from Settings via `SMAppService.mainApp`. If macOS reports
 "Requires approval in System Settings," open System Settings → General → Login Items and
@@ -137,6 +139,11 @@ working previous copy.
 To roll back deliberately, keep the previous release's commit or tag and rerun
 `just bundle`/`just install` from that revision; there is no separate rollback command
 because reinstalling the old build is the rollback.
+
+To roll back the Hammerspoon cutover specifically, first turn off **Use production
+Control-Shift-Command-I** in Settings so the app returns to Control-Shift-Command-O,
+then restore the pre-cutover Hammerspoon files documented in the chezmoi repository.
+Do not restore the old binding while the app still owns the production shortcut.
 
 Reinstalling with a **different** signing identity (for example, moving from ad-hoc `-`
 to a real Apple Development certificate, or renewing an expired certificate) resets
