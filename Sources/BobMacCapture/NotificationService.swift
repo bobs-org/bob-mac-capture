@@ -83,6 +83,16 @@ final class NotificationService: NSObject, ObservableObject {
         }
     }
 
+    // The status menu closes the moment Restart is clicked, so a refusal that leaves
+    // the app running needs to be visible without opening Settings. This is kept
+    // distinct from `notifyCaptureFailure` so the notification isn't mislabelled
+    // "Capture failed".
+    func notifyRestartFailure(message: String) {
+        Task {
+            try? await add(Self.restartFailureContent(message: message))
+        }
+    }
+
     func sendTestNotification() async throws {
         try await add(Self.testContent())
     }
@@ -127,6 +137,14 @@ final class NotificationService: NSObject, ObservableObject {
     nonisolated static func failureContent(message: String) -> UNMutableNotificationContent {
         let content = UNMutableNotificationContent()
         content.title = "Capture failed"
+        content.body = message
+        content.sound = .default
+        return content
+    }
+
+    nonisolated static func restartFailureContent(message: String) -> UNMutableNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.title = "Restart failed"
         content.body = message
         content.sound = .default
         return content

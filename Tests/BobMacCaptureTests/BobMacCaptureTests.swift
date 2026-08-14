@@ -133,6 +133,25 @@ final class BobMacCaptureTests: XCTestCase {
     }
 
     @MainActor
+    func testStatusMenuOffersRestartBeforeQuit() {
+        // Regression guard for the restart flow: Restart must sit directly below the
+        // separator and directly above Quit, and every item's action/key-equivalent
+        // must match what configureStatusItem() wires up.
+        let menu = AppDelegate.makeStatusMenu()
+
+        XCTAssertEqual(
+            menu.items.map(\.title),
+            ["Capture", "Settings", "Recheck Bob", "", "Restart Bob Mac Capture", "Quit Bob Mac Capture"]
+        )
+        XCTAssertTrue(menu.items[3].isSeparatorItem)
+        XCTAssertEqual(
+            menu.items.map { $0.action.map(NSStringFromSelector) },
+            ["openCapturePanel", "openSettings", "recheckBob", nil, "restartApp", "quit"]
+        )
+        XCTAssertEqual(menu.items.map(\.keyEquivalent), ["", ",", "", "", "", "q"])
+    }
+
+    @MainActor
     func testOpenSettingsMenuActionUsesRegisteredSettingsPresenterOnce() {
         let delegate = AppDelegate()
         var openSettingsCount = 0

@@ -69,6 +69,12 @@ or expired certificate can require reauthorizing those system permissions.
 
 - Bundle identifier: `org.bobs.bob-mac-capture`.
 - App type: `LSUIElement` resident menu-bar app.
+- The `Bob` status-item menu offers Capture, Settings, Recheck Bob, Restart Bob Mac
+  Capture, and Quit Bob Mac Capture, in that order. Restart discards an unsent draft
+  exactly as Quit does — there is no confirmation dialog — and it refuses to quit
+  (reporting a failure instead) when the running process is not launched from an
+  installed `.app` bundle or that bundle no longer exists on disk. See "Updating,
+  Reinstalling, and Rollback" below for what Restart is for.
 - Production hotkey (the default): Control-Shift-Command-I.
 - Development/rollback hotkey: Control-Shift-Command-O, selectable in Settings.
 - The hotkey path uses a pre-warmed non-activating `NSPanel`; subprocess work is kept
@@ -167,6 +173,13 @@ script automatically restores the previous app from that backup and exits non-ze
 interrupted or failed update never leaves `~/Applications` (or `/Applications`) without a
 working previous copy.
 
+`just install` swaps the bundle on disk, but the already-running process keeps executing
+the old code in memory until it is restarted or the user logs in again. Choose
+`Bob → Restart Bob Mac Capture` from the menu bar to complete the update: it quits the
+running process and relaunches from `~/Applications/Bob Mac Capture.app` (or
+`/Applications`), which by then is the newly installed build. This is the last step of
+the update, not a separate manual quit-and-relaunch.
+
 To roll back deliberately, keep the previous release's commit or tag and rerun
 `just bundle`/`just install` from that revision; there is no separate rollback command
 because reinstalling the old build is the rollback.
@@ -232,6 +245,12 @@ identifier `org.bobs.bob-mac-capture`; it never writes captured text to disk its
   to show it. A panel that vanished after Return means the capture landed; the success
   notification names the route it took. Use "Copy Diagnostic" next to the error to
   capture the exact `bob` error for a bug report.
+- **Restart reports "Restart failed"**: `Bob → Restart Bob Mac Capture` refuses to quit
+  rather than leaving no menu-bar item behind. This fires for two reasons: the process
+  is running unbundled (`swift run BobMacCapture` or a raw `.build` binary, which has no
+  `.app` to relaunch from) or the installed bundle at the launch-time path is missing.
+  Both cases post a "Restart failed" notification and record the reason in Settings →
+  Diagnostics; install the app with `just bundle` + `just install` and try again.
 - **The `Bob` menu-bar item does not appear** (no crash dialog, hotkey does nothing,
   Settings will not open): the app has no nib, so its entry point
   (`BobMacCaptureMain.swift`) must construct `AppDelegate`, assign it to

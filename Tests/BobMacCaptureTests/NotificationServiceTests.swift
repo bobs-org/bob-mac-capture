@@ -35,6 +35,15 @@ final class NotificationServiceTests: XCTestCase {
     }
 
     @MainActor
+    func testRestartFailureContentIsLabelledDistinctlyFromCaptureFailure() {
+        let content = NotificationService.restartFailureContent(message: "not running from an app bundle")
+
+        XCTAssertEqual(content.title, "Restart failed")
+        XCTAssertEqual(content.body, "not running from an app bundle")
+        XCTAssertNotEqual(content.title, NotificationService.failureContent(message: "x").title)
+    }
+
+    @MainActor
     func testTestContentDoesNotReferenceCaptureState() {
         let content = NotificationService.testContent()
 

@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var notificationService = NotificationService()
 
     var settingsPresentation = SettingsPresentation()
+    var relauncher = AppRelauncher()
 
     private var statusItem: NSStatusItem?
     private var hotKeyManager: HotKeyManager?
@@ -146,7 +147,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.title = "Bob"
         item.button?.toolTip = "Bob Mac Capture"
+        item.menu = Self.makeStatusMenu()
+        statusItem = item
+    }
 
+    static func makeStatusMenu() -> NSMenu {
         let menu = NSMenu()
         menu.addItem(
             NSMenuItem(
@@ -172,13 +177,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(
             NSMenuItem(
+                title: "Restart Bob Mac Capture",
+                action: #selector(restartApp),
+                keyEquivalent: ""
+            )
+        )
+        menu.addItem(
+            NSMenuItem(
                 title: "Quit Bob Mac Capture",
                 action: #selector(quit),
                 keyEquivalent: "q"
             )
         )
-        item.menu = menu
-        statusItem = item
+        return menu
     }
 
     private func configureProcessClient() {
@@ -283,6 +294,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelModel?.processClient = processClient
         registerHotKey()
         configureVaultWatcher()
+    }
+
+    @objc private func restartApp() {
+        CaptureSignpost.event("restart-requested")
+        do {
+            try relauncher.restart()
+        } catch {
+            let message = (error as? AppRelaunchError)?.message ?? String(describing: error)
+            settings.diagnosticStatus = "Restart failed: \(message)"
+            notificationService.notifyRestartFailure(message: message)
+        }
     }
 
     @objc private func quit() {
