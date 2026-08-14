@@ -1,9 +1,12 @@
+import AppKit
 import ServiceManagement
 import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
+    @ObservedObject var notificationService: NotificationService
     @State private var launchStatus = LaunchAtLoginController().state()
+    @State private var testNotificationStatus = ""
 
     var body: some View {
         Form {
@@ -36,13 +39,45 @@ struct SettingsView: View {
                 LabeledContent("Status", value: launchStatus.displayName)
             }
 
+            Section("Notifications") {
+                LabeledContent("Authorization", value: notificationService.authorization.displayName)
+                if notificationService.authorization.canRequestAuthorization {
+                    Button("Enable Notifications") {
+                        notificationService.requestAuthorization()
+                    }
+                }
+                Button("Open System Notification Settings") {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.notifications") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                Button("Send Test Notification") {
+                    Task {
+                        do {
+                            try await notificationService.sendTestNotification()
+                            testNotificationStatus = "Test notification sent"
+                        } catch {
+                            testNotificationStatus = "Test notification failed: \(error)"
+                        }
+                    }
+                }
+                if !testNotificationStatus.isEmpty {
+                    Text(testNotificationStatus)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Diagnostics") {
                 Text(settings.diagnosticStatus)
                     .textSelection(.enabled)
+                LabeledContent("Signing", value: settings.signingDiagnostic)
             }
         }
         .padding(20)
         .frame(width: 560)
+        .task {
+            await notificationService.refreshAuthorizationStatus()
+        }
     }
 }
 

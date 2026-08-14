@@ -17,6 +17,7 @@ final class AppSettings: ObservableObject {
 
     @Published var diagnosticStatus: String = "Starting"
     @Published var resolvedBobPath: String = "Not resolved"
+    @Published var signingDiagnostic: String = "Not checked"
 
     private let defaults: UserDefaults
 

@@ -1,0 +1,166 @@
+import CaptureCore
+import Foundation
+import XCTest
+
+@testable import BobMacCapture
+
+@MainActor
+final class CapturePanelModelTests: XCTestCase {
+    func testSubmitClearsDraftAndRecordsDestinationOnSuccess() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "Call bank @Cash"
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertEqual(model.lastSuccess?.routeLabel, "cash.md")
+        XCTAssertNil(model.errorMessage)
+    }
+
+    func testSubmitAndOpenOpensObsidianURLBuiltFromReturnedTarget() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "Call bank @Cash"
+        var openedURL: URL?
+        model.targetOpener = { openedURL = $0 }
+
+        model.submit(openAfterCapture: true)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(openedURL?.scheme, "obsidian")
+        XCTAssertEqual(openedURL?.host, "open")
+    }
+
+    func testFailedSubmitRetainsCompleteDraftAndSurfacesActionableError() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": #"{"ok":false,"error":"clipboard command xclip exited with 1"}"#,
+                "FAKE_BOB_EXIT": "1",
+            ]
+        )
+        model.plainDraft = "private captured text"
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.plainDraft, "private captured text")
+        XCTAssertEqual(model.errorMessage, "clipboard command xclip exited with 1")
+        XCTAssertFalse(model.pendingDiscardConfirmation)
+    }
+
+    func testTransportFailureAlsoRetainsDraftAndRedactsCapturedText() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": "{",
+            ]
+        )
+        model.plainDraft = "private captured text"
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.plainDraft, "private captured text")
+        XCTAssertNotNil(model.errorMessage)
+        XCTAssertFalse(model.errorMessage?.contains("private captured text") ?? true)
+    }
+
+    func testDoubleSubmitIsSuppressedWhileOneMutationIsInFlight() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        model.plainDraft = "Call bank @Cash"
+
+        model.submit(openAfterCapture: false)
+        model.submit(openAfterCapture: false)
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        let record = (try? String(contentsOf: recordURL)) ?? ""
+        let invocationCount = record.components(separatedBy: "argv=").count - 1
+        XCTAssertEqual(invocationCount, 1)
+    }
+
+    func testPreviewUsesDryRunWithoutSuppressingClipboardAndKeepsDraft() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        model.plainDraft = "Call bank @Cash"
+
+        model.preview()
+        await waitUntil { !model.isPreviewing }
+
+        XCTAssertEqual(model.plainDraft, "Call bank @Cash")
+        XCTAssertTrue(model.previewResult?.dryRun ?? false)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("--dry-run"))
+        XCTAssertFalse(record.contains("--no-clip"))
+    }
+
+    func testSubmitWithoutResolvedBobSurfacesErrorWithoutCrashing() {
+        let model = CapturePanelModel()
+        model.plainDraft = "Call bank @Cash"
+
+        model.submit(openAfterCapture: false)
+
+        XCTAssertFalse(model.isSubmitting)
+        XCTAssertNotNil(model.errorMessage)
+        XCTAssertEqual(model.plainDraft, "Call bank @Cash")
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ condition: @escaping () -> Bool
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline {
+                XCTFail("Condition not met before timeout", file: file, line: line)
+                return
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
+    private func fakeBobPath() throws -> String {
+        let source = URL(fileURLWithPath: #filePath)
+        let packageRoot = source
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return packageRoot
+            .appendingPathComponent("Tests/Fixtures/fake-bob")
+            .path
+    }
+}

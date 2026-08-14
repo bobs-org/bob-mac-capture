@@ -58,11 +58,114 @@ final class BobProcessClientTests: XCTestCase {
 
         let response = try await client.captureLivePreview("buy milk % p:1", priorityRollSeed: "fixed")
 
-        XCTAssertTrue(response.dryRun == true)
-        XCTAssertEqual(response.taskLine, "- [ ] #task captured [created::2026-08-14]")
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful live preview response")
+        }
+        XCTAssertTrue(success.dryRun)
+        XCTAssertEqual(success.taskLine, "- [ ] #task captured [created::2026-08-14]")
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- buy milk % p:1"))
         XCTAssertTrue(record.contains("BOB_PRIORITY_ROLL_SEED=fixed"))
+    }
+
+    func testCaptureSubmitDecodesSuccessResponse() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.capture("Call bank @Cash", dryRun: false, readClipboard: true)
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful capture response")
+        }
+        XCTAssertFalse(success.dryRun)
+        XCTAssertEqual(success.routeLabel, "cash.md")
+        XCTAssertEqual(success.target, "/tmp/bob/cash.md")
+        XCTAssertEqual(success.placement, "inserted")
+    }
+
+    func testCapturePreviewRunsDryRunWithoutSuppressingClipboard() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let response = try await client.capture("Call bank @Cash", dryRun: true, readClipboard: true)
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful preview response")
+        }
+        XCTAssertTrue(success.dryRun)
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("--dry-run"))
+        XCTAssertFalse(record.contains("--no-clip"))
+    }
+
+    func testCaptureFailureDecodesActionableErrorDespiteNonZeroExit() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": #"{"ok":false,"error":"clipboard command xclip exited with 1"}"#,
+                "FAKE_BOB_EXIT": "1",
+            ]
+        )
+
+        let response = try await client.capture("private captured text", dryRun: false, readClipboard: true)
+
+        guard case .failure(let failure) = response else {
+            return XCTFail("Expected a failed capture response")
+        }
+        XCTAssertEqual(failure.error, "clipboard command xclip exited with 1")
+        XCTAssertFalse(failure.error.contains("private captured text"))
+    }
+
+    func testCaptureEmptyStdoutWithNonZeroExitThrowsProcessFailed() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": "",
+                "FAKE_BOB_STDERR": "boom",
+                "FAKE_BOB_EXIT": "2",
+            ]
+        )
+
+        do {
+            _ = try await client.capture("private captured text", dryRun: false, readClipboard: true)
+            XCTFail("Expected processFailed")
+        } catch BobClientError.processFailed(_, let exitStatus, let stderr) {
+            XCTAssertEqual(exitStatus, 2)
+            XCTAssertTrue(stderr.contains("boom"))
+        }
+    }
+
+    func testCaptureMalformedJSONWithZeroExitProducesMalformedJSONError() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": "{",
+            ]
+        )
+
+        do {
+            _ = try await client.capture("private captured text", dryRun: false, readClipboard: true)
+            XCTFail("Expected malformedJSON")
+        } catch BobClientError.malformedJSON(_, let exitStatus, _, _) {
+            XCTAssertEqual(exitStatus, 0)
+        }
     }
 
     func testMalformedJSONProducesActionableErrorWithoutInputText() async throws {

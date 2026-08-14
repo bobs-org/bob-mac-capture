@@ -96,7 +96,6 @@ public final class BobProcessClient: @unchecked Sendable {
         _ draft: String,
         dryRun: Bool = false,
         readClipboard: Bool = true,
-        openAfterCapture: Bool = false,
         priorityRollSeed: String? = nil
     ) async throws -> CaptureCommandResponse {
         var arguments = ["capture", "--format", "json"]
@@ -106,19 +105,14 @@ public final class BobProcessClient: @unchecked Sendable {
         if !readClipboard {
             arguments.append("--no-clip")
         }
-        if openAfterCapture {
-            arguments.append("--open")
-        }
         arguments.append("--")
         arguments.append(draft)
 
-        let response: CaptureCommandResponse = try await decode(
+        return try await decodeCaptureResult(
             arguments: arguments,
-            expectedSchema: 1,
             environmentOverrides: priorityRollSeed.map { ["BOB_PRIORITY_ROLL_SEED": $0] } ?? [:],
             lane: dryRun ? "preview-explicit" : "submit"
         )
-        return response
     }
 
     public func run(
@@ -252,6 +246,53 @@ public final class BobProcessClient: @unchecked Sendable {
         }
     }
 
+    // `bob capture` has no schema_version and reports `ok: false` failures with a
+    // non-zero exit but a fully valid JSON body, so it cannot use `decode(_:expectedSchema:)`:
+    // that path treats any non-zero exit as a transport failure before looking at stdout,
+    // which would discard the real, actionable `error` message bob already produced.
+    private func decodeCaptureResult(
+        arguments: [String],
+        environmentOverrides: [String: String] = [:],
+        lane: String = "default"
+    ) async throws -> CaptureCommandResponse {
+        let result = try await run(arguments: arguments, environmentOverrides: environmentOverrides, lane: lane)
+        let stderr = boundedProcessText(result.stderr)
+        let trimmedStdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmedStdout.isEmpty else {
+            if result.exitStatus != 0 {
+                throw BobClientError.processFailed(
+                    command: result.command,
+                    exitStatus: result.exitStatus,
+                    stderr: stderr
+                )
+            }
+            throw BobClientError.emptyStdout(
+                command: result.command,
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            )
+        }
+
+        do {
+            return try decoder.decode(CaptureCommandResponse.self, from: Data(trimmedStdout.utf8))
+        } catch {
+            if result.exitStatus != 0 {
+                throw BobClientError.processFailed(
+                    command: result.command,
+                    exitStatus: result.exitStatus,
+                    stderr: stderr
+                )
+            }
+            throw BobClientError.malformedJSON(
+                command: result.command,
+                exitStatus: result.exitStatus,
+                stderr: stderr,
+                reason: error.localizedDescription
+            )
+        }
+    }
+
     private func nextGeneration(
         replacingWith process: Process,
         lane: String,
@@ -292,6 +333,5 @@ public protocol SchemaVersioned {
 }
 
 extension CaptureParseResponse: SchemaVersioned {}
-extension CaptureCommandResponse: SchemaVersioned {}
 extension CaptureTargetsResponse: SchemaVersioned {}
 extension CaptureCompletionResponse: SchemaVersioned {}

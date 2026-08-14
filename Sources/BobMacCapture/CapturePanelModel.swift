@@ -1,3 +1,4 @@
+import AppKit
 import CaptureCore
 import Foundation
 import SwiftUI
@@ -5,7 +6,7 @@ import SwiftUI
 enum CapturePreviewState: Equatable {
     case idle
     case loading
-    case ready(CaptureCommandResponse)
+    case ready(CaptureCommandSuccess)
     case failed(String)
 }
 
@@ -25,14 +26,25 @@ final class CapturePanelModel: ObservableObject {
         errorDescription: nil
     )
     @Published var isSubmitting = false
+    @Published var isPreviewing = false
+    @Published var errorMessage: String?
+    @Published var lastSuccess: CaptureCommandSuccess?
+    @Published var previewResult: CaptureCommandSuccess?
 
-    private var processClient: BobProcessClient?
+    var processClient: BobProcessClient?
+    var notificationService: NotificationService?
+    var targetOpener: (URL) -> Void = { NSWorkspace.shared.open($0) }
+
     private let targetsCache: CaptureTargetsCache?
     private let debounceNanoseconds: UInt64
     private var analysisTask: Task<Void, Never>?
     private var analysisGeneration: UInt64 = 0
     private var isApplyingProgrammaticDraft = false
     private var priorityRollSeed: String?
+
+    // Shared by submit and preview so a late callback from either one can never mutate
+    // state on behalf of a request that is no longer the active one.
+    private var activeRequestID: UUID?
 
     init(
         processClient: BobProcessClient? = nil,
@@ -59,6 +71,16 @@ final class CapturePanelModel: ObservableObject {
 
     var completionVisible: Bool {
         completionResponse?.candidates.isEmpty == false
+    }
+
+    var destinationSummary: String? {
+        if let previewResult {
+            return "Preview \u{2192} \(previewResult.routeLabel) (\(previewResult.relativeTarget)): \(previewResult.taskLine)"
+        }
+        if let lastSuccess {
+            return "Captured \u{2192} \(lastSuccess.routeLabel) (\(lastSuccess.relativeTarget)): \(lastSuccess.taskLine)"
+        }
+        return nil
     }
 
     var selectedCompletion: CaptureCompletionCandidate? {
@@ -126,50 +148,82 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func submit(openAfterCapture: Bool) {
-        guard !isSubmitting else {
+        guard !isSubmitting, !isPreviewing, hasDraft else {
             return
         }
         guard let processClient else {
-            statusText = "Bob is not resolved"
+            errorMessage = "Bob is not resolved. Check Settings and Recheck Bob."
             return
         }
 
         let draft = plainDraft
-        guard !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            statusText = "Nothing to capture"
-            return
-        }
-
+        let requestID = UUID()
+        activeRequestID = requestID
         isSubmitting = true
-        statusText = openAfterCapture ? "Capturing and opening" : "Capturing"
+        errorMessage = nil
+        statusText = openAfterCapture ? "Capturing and opening\u{2026}" : "Capturing\u{2026}"
         let seed = activePriorityRollSeed()
 
         Task {
             do {
                 let response = try await processClient.capture(
                     draft,
-                    openAfterCapture: openAfterCapture,
+                    dryRun: false,
+                    readClipboard: true,
                     priorityRollSeed: seed
                 )
                 await MainActor.run {
-                    self.isSubmitting = false
-                    if response.ok {
-                        self.setPlainDraft("", scheduleAnalysis: false)
-                        self.priorityRollSeed = nil
-                        self.previewState = .idle
-                        self.completionResponse = nil
-                        self.statusText = response.message ?? "Captured"
-                    } else {
-                        self.statusText = response.error ?? response.message ?? "Capture failed"
-                    }
+                    self.completeSubmit(requestID: requestID, response: response, openAfterCapture: openAfterCapture)
                 }
             } catch {
                 await MainActor.run {
-                    self.isSubmitting = false
-                    self.statusText = String(describing: error)
+                    self.failSubmit(requestID: requestID, error: error)
                 }
             }
         }
+    }
+
+    func preview() {
+        guard !isSubmitting, !isPreviewing, hasDraft else {
+            return
+        }
+        guard let processClient else {
+            errorMessage = "Bob is not resolved. Check Settings and Recheck Bob."
+            return
+        }
+
+        let draft = plainDraft
+        let requestID = UUID()
+        activeRequestID = requestID
+        isPreviewing = true
+        errorMessage = nil
+        statusText = "Resolving clipboard preview\u{2026}"
+
+        Task {
+            do {
+                let response = try await processClient.capture(
+                    draft,
+                    dryRun: true,
+                    readClipboard: true,
+                    priorityRollSeed: activePriorityRollSeed()
+                )
+                await MainActor.run {
+                    self.completePreview(requestID: requestID, response: response)
+                }
+            } catch {
+                await MainActor.run {
+                    self.failPreview(requestID: requestID, error: error)
+                }
+            }
+        }
+    }
+
+    func copyDiagnosticToPasteboard() {
+        guard let errorMessage else {
+            return
+        }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(errorMessage, forType: .string)
     }
 
     func requestClose() -> Bool {
@@ -190,6 +244,8 @@ final class CapturePanelModel: ObservableObject {
         completionResponse = nil
         previewState = .idle
         statusText = ""
+        errorMessage = nil
+        previewResult = nil
         analysisTask?.cancel()
     }
 
@@ -256,6 +312,81 @@ final class CapturePanelModel: ObservableObject {
         default:
             return candidate.label ?? candidate.text ?? ""
         }
+    }
+
+    private func completeSubmit(
+        requestID: UUID,
+        response: CaptureCommandResponse,
+        openAfterCapture: Bool
+    ) {
+        guard activeRequestID == requestID else {
+            return
+        }
+        activeRequestID = nil
+        isSubmitting = false
+
+        switch response {
+        case .success(let success):
+            lastSuccess = success
+            previewResult = nil
+            errorMessage = nil
+            attributedDraft = AttributedString()
+            pendingDiscardConfirmation = false
+            priorityRollSeed = nil
+            parseDiagnostics = []
+            completionResponse = nil
+            previewState = .idle
+            statusText = "Captured \u{2192} \(success.routeLabel)"
+            notificationService?.notifyCaptureSuccess(routeLabel: success.routeLabel, targetPath: success.target)
+            if openAfterCapture, let url = ObsidianOpenURL.url(forAbsolutePath: success.target) {
+                targetOpener(url)
+            }
+        case .failure(let failure):
+            errorMessage = failure.error
+            statusText = "Capture failed"
+            notificationService?.notifyCaptureFailure(message: failure.error)
+        }
+    }
+
+    private func failSubmit(requestID: UUID, error: Error) {
+        guard activeRequestID == requestID else {
+            return
+        }
+        activeRequestID = nil
+        isSubmitting = false
+
+        let message = String(describing: error)
+        errorMessage = message
+        statusText = "Capture failed"
+        notificationService?.notifyCaptureFailure(message: message)
+    }
+
+    private func completePreview(requestID: UUID, response: CaptureCommandResponse) {
+        guard activeRequestID == requestID else {
+            return
+        }
+        activeRequestID = nil
+        isPreviewing = false
+
+        switch response {
+        case .success(let success):
+            previewResult = success
+            errorMessage = nil
+            statusText = "Preview \u{2192} \(success.routeLabel)"
+        case .failure(let failure):
+            errorMessage = failure.error
+            statusText = "Preview failed"
+        }
+    }
+
+    private func failPreview(requestID: UUID, error: Error) {
+        guard activeRequestID == requestID else {
+            return
+        }
+        activeRequestID = nil
+        isPreviewing = false
+        errorMessage = String(describing: error)
+        statusText = "Preview failed"
     }
 
     private func setPlainDraft(
@@ -365,10 +496,11 @@ final class CapturePanelModel: ObservableObject {
                     guard self?.isCurrentAnalysis(generation) == true else {
                         return
                     }
-                    if preview.ok {
-                        self?.previewState = .ready(preview)
-                    } else {
-                        self?.previewState = .failed(preview.error ?? preview.message ?? "Preview failed")
+                    switch preview {
+                    case .success(let success):
+                        self?.previewState = .ready(success)
+                    case .failure(let failure):
+                        self?.previewState = .failed(failure.error)
                     }
                 }
             } catch is CancellationError {

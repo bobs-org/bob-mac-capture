@@ -95,52 +95,91 @@ public struct CaptureRange: Codable, Equatable {
     }
 }
 
-public struct CaptureCommandResponse: Codable, Equatable {
+// `bob capture --format json` has no schema_version: success and failure are
+// distinguished only by `ok`, and a failure keeps `error` as its sole other field.
+// This mirrors bob-cli's actual `CaptureResult`/error JSON, not an aspirational shape.
+public enum CaptureCommandResponse: Equatable, Decodable {
+    case success(CaptureCommandSuccess)
+    case failure(CaptureCommandFailure)
+
+    public var ok: Bool {
+        switch self {
+        case .success(let value):
+            return value.ok
+        case .failure(let value):
+            return value.ok
+        }
+    }
+
+    private enum DiscriminatorKeys: String, CodingKey {
+        case ok
+    }
+
+    public init(from decoder: Decoder) throws {
+        let discriminator = try decoder.container(keyedBy: DiscriminatorKeys.self)
+        if try discriminator.decode(Bool.self, forKey: .ok) {
+            self = .success(try CaptureCommandSuccess(from: decoder))
+        } else {
+            self = .failure(try CaptureCommandFailure(from: decoder))
+        }
+    }
+}
+
+public struct CaptureCommandSuccess: Codable, Equatable {
     public let ok: Bool
-    public let schemaVersion: Int
-    public let dryRun: Bool?
-    public let routed: Bool?
+    public let dryRun: Bool
+    public let routed: Bool
     public let route: String?
-    public let routeLabel: String?
-    public let relativeTarget: String?
-    public let target: String?
-    public let text: String?
-    public let taskLine: String?
-    public let kind: String?
-    public let created: String?
+    public let routeLabel: String
+    public let relativeTarget: String
+    public let target: String
+    public let text: String
+    public let taskLine: String
+    public let kind: String
+    public let created: String
     public let scheduled: String?
     public let priority: String?
     public let priorityLabel: String?
-    public let placement: String?
-    public let error: String?
-    public let opened: Bool?
-    public let message: String?
-    public let diagnostics: [CaptureDiagnostic]
+    public let placement: String
+    public let clip: CaptureClipOutput?
+    public let scheduleLog: CaptureScheduleLog?
+    public let blockID: String?
+    public let dayFile: String?
+    public let blockLink: String?
+    public let pomodoroLinkPlacement: String?
+    public let parentLine: Int?
+    public let parentText: String?
+    public let parentStatusSymbol: String?
+    public let parentStatusName: String?
 
     public init(
         ok: Bool,
-        schemaVersion: Int = 1,
-        dryRun: Bool? = nil,
-        routed: Bool? = nil,
+        dryRun: Bool,
+        routed: Bool,
         route: String? = nil,
-        routeLabel: String? = nil,
-        relativeTarget: String? = nil,
-        target: String? = nil,
-        text: String? = nil,
-        taskLine: String? = nil,
-        kind: String? = nil,
-        created: String? = nil,
+        routeLabel: String,
+        relativeTarget: String,
+        target: String,
+        text: String,
+        taskLine: String,
+        kind: String,
+        created: String,
         scheduled: String? = nil,
         priority: String? = nil,
         priorityLabel: String? = nil,
-        placement: String? = nil,
-        error: String? = nil,
-        opened: Bool? = nil,
-        message: String? = nil,
-        diagnostics: [CaptureDiagnostic] = []
+        placement: String,
+        clip: CaptureClipOutput? = nil,
+        scheduleLog: CaptureScheduleLog? = nil,
+        blockID: String? = nil,
+        dayFile: String? = nil,
+        blockLink: String? = nil,
+        pomodoroLinkPlacement: String? = nil,
+        parentLine: Int? = nil,
+        parentText: String? = nil,
+        parentStatusSymbol: String? = nil,
+        parentStatusName: String? = nil
     ) {
         self.ok = ok
-        self.schemaVersion = schemaVersion
         self.dryRun = dryRun
         self.routed = routed
         self.route = route
@@ -155,39 +194,20 @@ public struct CaptureCommandResponse: Codable, Equatable {
         self.priority = priority
         self.priorityLabel = priorityLabel
         self.placement = placement
-        self.error = error
-        self.opened = opened
-        self.message = message
-        self.diagnostics = diagnostics
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        ok = try container.decode(Bool.self, forKey: .ok)
-        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
-        dryRun = try container.decodeIfPresent(Bool.self, forKey: .dryRun)
-        routed = try container.decodeIfPresent(Bool.self, forKey: .routed)
-        route = try container.decodeIfPresent(String.self, forKey: .route)
-        routeLabel = try container.decodeIfPresent(String.self, forKey: .routeLabel)
-        relativeTarget = try container.decodeIfPresent(String.self, forKey: .relativeTarget)
-        target = try container.decodeIfPresent(String.self, forKey: .target)
-        text = try container.decodeIfPresent(String.self, forKey: .text)
-        taskLine = try container.decodeIfPresent(String.self, forKey: .taskLine)
-        kind = try container.decodeIfPresent(String.self, forKey: .kind)
-        created = try container.decodeIfPresent(String.self, forKey: .created)
-        scheduled = try container.decodeIfPresent(String.self, forKey: .scheduled)
-        priority = try container.decodeIfPresent(String.self, forKey: .priority)
-        priorityLabel = try container.decodeIfPresent(String.self, forKey: .priorityLabel)
-        placement = try container.decodeIfPresent(String.self, forKey: .placement)
-        error = try container.decodeIfPresent(String.self, forKey: .error)
-        opened = try container.decodeIfPresent(Bool.self, forKey: .opened)
-        message = try container.decodeIfPresent(String.self, forKey: .message)
-        diagnostics = try container.decodeIfPresent([CaptureDiagnostic].self, forKey: .diagnostics) ?? []
+        self.clip = clip
+        self.scheduleLog = scheduleLog
+        self.blockID = blockID
+        self.dayFile = dayFile
+        self.blockLink = blockLink
+        self.pomodoroLinkPlacement = pomodoroLinkPlacement
+        self.parentLine = parentLine
+        self.parentText = parentText
+        self.parentStatusSymbol = parentStatusSymbol
+        self.parentStatusName = parentStatusName
     }
 
     private enum CodingKeys: String, CodingKey {
         case ok
-        case schemaVersion = "schema_version"
         case dryRun = "dry_run"
         case routed
         case route
@@ -202,40 +222,75 @@ public struct CaptureCommandResponse: Codable, Equatable {
         case priority
         case priorityLabel = "priority_label"
         case placement
-        case error
-        case opened
-        case message
-        case diagnostics
+        case clip
+        case scheduleLog = "schedule_log"
+        case blockID = "block_id"
+        case dayFile = "day_file"
+        case blockLink = "block_link"
+        case pomodoroLinkPlacement = "pomodoro_link_placement"
+        case parentLine = "parent_line"
+        case parentText = "parent_text"
+        case parentStatusSymbol = "parent_status_symbol"
+        case parentStatusName = "parent_status_name"
     }
 }
 
-public struct CaptureDestination: Codable, Equatable {
-    public let vaultPath: String?
-    public let notePath: String?
-    public let heading: String?
-    public let blockID: String?
-    public let url: String?
+public struct CaptureCommandFailure: Codable, Equatable {
+    public let ok: Bool
+    public let error: String
+
+    public init(ok: Bool = false, error: String) {
+        self.ok = ok
+        self.error = error
+    }
+}
+
+public struct CaptureClipOutput: Codable, Equatable {
+    public let header: String?
+    public let mode: String
+    public let lines: [String]
+    public let attachments: [CaptureAttachmentOutput]
+    public let snippet: String?
+    public let entries: [CaptureClipOutput]
 
     public init(
-        vaultPath: String? = nil,
-        notePath: String? = nil,
-        heading: String? = nil,
-        blockID: String? = nil,
-        url: String? = nil
+        header: String? = nil,
+        mode: String,
+        lines: [String] = [],
+        attachments: [CaptureAttachmentOutput] = [],
+        snippet: String? = nil,
+        entries: [CaptureClipOutput] = []
     ) {
-        self.vaultPath = vaultPath
-        self.notePath = notePath
-        self.heading = heading
-        self.blockID = blockID
-        self.url = url
+        self.header = header
+        self.mode = mode
+        self.lines = lines
+        self.attachments = attachments
+        self.snippet = snippet
+        self.entries = entries
     }
+}
 
-    private enum CodingKeys: String, CodingKey {
-        case vaultPath = "vault_path"
-        case notePath = "note_path"
-        case heading
-        case blockID = "block_id"
-        case url
+public struct CaptureAttachmentOutput: Codable, Equatable {
+    public let source: String
+    public let saved: String
+    public let kind: String
+    public let reused: Bool
+
+    public init(source: String, saved: String, kind: String, reused: Bool) {
+        self.source = source
+        self.saved = saved
+        self.kind = kind
+        self.reused = reused
+    }
+}
+
+public struct CaptureScheduleLog: Codable, Equatable {
+    public let reason: String
+    public let lines: [String]
+
+    public init(reason: String, lines: [String]) {
+        self.reason = reason
+        self.lines = lines
     }
 }
 

@@ -40,7 +40,7 @@ let package = Package(
         ),
         .testTarget(
             name: "BobMacCaptureTests",
-            dependencies: ["BobMacCapture"],
+            dependencies: ["BobMacCapture", "CaptureCore"],
             swiftSettings: [
                 .swiftLanguageMode(.v5)
             ]

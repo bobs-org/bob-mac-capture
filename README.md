@@ -64,6 +64,18 @@ or expired certificate can require reauthorizing those system permissions.
   by a coalesced FSEvents watcher. Watcher or refresh failures mark the cache stale
   without clearing the last good route list.
 
+## Notifications
+
+The app posts success and failure `UNUserNotificationCenter` notifications and never
+makes capture correctness depend on them. Notification bodies omit captured text by
+default. Settings shows live authorization status, a button to request authorization,
+a link to the system notification settings pane, and a test-notification action.
+
+Notification delivery and authorization persistence require the installed, signed
+`Bob Mac Capture.app` bundle (`just bundle` + `just install`), not `swift run` or a raw
+`.build` binary: macOS ties notification permission grants to a stable bundle identity
+and code signature, and Settings reports the current signing state under Diagnostics.
+
 ## CI
 
 GitHub Actions runs on `macos-26` for pushes to `master` and pull requests. The workflow

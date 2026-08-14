@@ -30,6 +30,57 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(decoded.needs, ["task"])
     }
 
+    func testCaptureCommandResponseDecodesRealSuccessShapeWithNoSchemaVersion() throws {
+        let data = Data(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
+             "relative_target":"cash.md","target":"/home/bryan/bob/cash.md","text":"Call bank",
+             "task_line":"- [ ] #task Call bank [created::2026-08-13]","kind":"task",
+             "created":"2026-08-13","scheduled":null,"placement":"inserted","future_key":"ignored"}
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertTrue(decoded.ok)
+        XCTAssertEqual(success.routeLabel, "cash.md")
+        XCTAssertEqual(success.target, "/home/bryan/bob/cash.md")
+        XCTAssertNil(success.clip)
+        XCTAssertNil(success.scheduleLog)
+    }
+
+    func testCaptureCommandResponseDecodesRealFailureShape() throws {
+        let data = Data(
+            #"{"error":"clipboard command xclip exited with 1","ok":false}"#.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .failure(let failure) = decoded else {
+            return XCTFail("Expected a failed response")
+        }
+        XCTAssertFalse(decoded.ok)
+        XCTAssertEqual(failure.error, "clipboard command xclip exited with 1")
+    }
+
+    func testObsidianOpenURLRoundTripsAbsolutePath() throws {
+        let path = "/Users/bryan/bob/cash & notes #1.md"
+        let url = try XCTUnwrap(ObsidianOpenURL.url(forAbsolutePath: path))
+
+        XCTAssertEqual(url.scheme, "obsidian")
+        XCTAssertEqual(url.host, "open")
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        let decodedPath = components.queryItems?.first { $0.name == "path" }?.value
+        XCTAssertEqual(decodedPath, path)
+    }
+
+    func testObsidianOpenURLReturnsNilForEmptyPath() {
+        XCTAssertNil(ObsidianOpenURL.url(forAbsolutePath: ""))
+    }
+
     func testBoundedProcessTextPreservesUtf8Boundary() {
         let text = String(repeating: "a", count: 4) + "é" + String(repeating: "b", count: 10)
         let bounded = boundedProcessText(text, limit: 5)
@@ -91,10 +142,12 @@ final class CaptureModelTests: XCTestCase {
 
         let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
 
-        XCTAssertEqual(decoded.schemaVersion, 1)
-        XCTAssertEqual(decoded.taskLine, "- [ ] #task buy milk [created::2026-08-14]")
-        XCTAssertEqual(decoded.routeLabel, "mac_inbox.md")
-        XCTAssertEqual(decoded.placement, "created")
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.taskLine, "- [ ] #task buy milk [created::2026-08-14]")
+        XCTAssertEqual(success.routeLabel, "mac_inbox.md")
+        XCTAssertEqual(success.placement, "created")
     }
 
     func testCompletionResponseDecodesRouteAndTaskCandidates() throws {

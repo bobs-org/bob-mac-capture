@@ -5,6 +5,7 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = AppSettings()
+    let notificationService = NotificationService()
 
     private var statusItem: NSStatusItem?
     private var hotKeyManager: HotKeyManager?
@@ -20,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureProcessClient()
 
         let model = CapturePanelModel(processClient: processClient, targetsCache: targetsCache)
+        model.notificationService = notificationService
         panelModel = model
         panelController = CapturePanelController(model: model)
         panelController?.prewarm()
@@ -32,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         registerHotKey()
         configureVaultWatcher()
         refreshTargetsWhenPossible()
+        settings.signingDiagnostic = BundleSigningInspector.currentBundleState().diagnosticText
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -164,6 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func recheckBob() {
         configureProcessClient()
+        panelModel?.processClient = processClient
         registerHotKey()
         configureVaultWatcher()
     }

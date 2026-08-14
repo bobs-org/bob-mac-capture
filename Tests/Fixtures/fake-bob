@@ -111,22 +111,27 @@ JSON
 JSON
     ;;
   capture)
-    cat <<'JSON'
+    dry_run="false"
+    for arg in "$@"; do
+      if [[ "${arg}" == "--dry-run" ]]; then
+        dry_run="true"
+      fi
+    done
+    cat <<JSON
 {
   "ok": true,
-  "dry_run": true,
+  "dry_run": ${dry_run},
   "routed": true,
-  "route": "today",
-  "route_label": "today.md",
-  "relative_target": "today.md",
-  "target": "/tmp/bob/today.md",
+  "route": "cash",
+  "route_label": "cash.md",
+  "relative_target": "cash.md",
+  "target": "/tmp/bob/cash.md",
   "text": "captured",
   "task_line": "- [ ] #task captured [created::2026-08-14]",
   "kind": "task",
   "created": "2026-08-14",
   "scheduled": null,
-  "placement": "inserted",
-  "diagnostics": []
+  "placement": "inserted"
 }
 JSON
     ;;
