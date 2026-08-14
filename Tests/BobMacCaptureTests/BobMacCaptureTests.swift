@@ -7,6 +7,7 @@ import XCTest
 @testable import BobMacCapture
 
 final class BobMacCaptureTests: XCTestCase {
+    @MainActor
     func testPanelHasStableNonActivatingStyleInInitializer() {
         let panel = CapturePanelController.makePanel()
 
@@ -68,13 +69,14 @@ final class BobMacCaptureTests: XCTestCase {
     }
 
     func testHotKeyRegistrationConflictIsReported() {
-        let registrar = FakeHotKeyRegistrar(status: eventHotKeyExistsErr)
+        let conflictStatus = OSStatus(eventHotKeyExistsErr)
+        let registrar = FakeHotKeyRegistrar(status: conflictStatus)
         let manager = HotKeyManager(registrar: registrar) {}
 
         XCTAssertThrowsError(try manager.register(configuration: .development)) { error in
             XCTAssertEqual(
                 error as? HotKeyRegistrationError,
-                .registrationFailed(eventHotKeyExistsErr)
+                .registrationFailed(conflictStatus)
             )
         }
     }

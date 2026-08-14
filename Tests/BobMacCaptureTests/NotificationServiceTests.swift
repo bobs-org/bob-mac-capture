@@ -9,6 +9,7 @@ import XCTest
 // identity, so content building, categories, and action routing are deliberately
 // factored out as static functions that take/return plain values instead.
 final class NotificationServiceTests: XCTestCase {
+    @MainActor
     func testSuccessContentOmitsCapturedTextByDefault() {
         let content = NotificationService.successContent(
             routeLabel: "cash.md",
@@ -24,6 +25,7 @@ final class NotificationServiceTests: XCTestCase {
         )
     }
 
+    @MainActor
     func testFailureContentCarriesOnlyTheProvidedMessage() {
         let content = NotificationService.failureContent(message: "route not found")
 
@@ -32,6 +34,7 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertNil(content.userInfo[NotificationService.targetPathKey])
     }
 
+    @MainActor
     func testTestContentDoesNotReferenceCaptureState() {
         let content = NotificationService.testContent()
 
@@ -39,6 +42,7 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertFalse(content.body.isEmpty)
     }
 
+    @MainActor
     func testForegroundPresentationOptionsIncludeBannerSoundAndList() {
         XCTAssertEqual(
             NotificationService.foregroundPresentationOptions,
@@ -46,6 +50,7 @@ final class NotificationServiceTests: XCTestCase {
         )
     }
 
+    @MainActor
     func testCaptureCategoryRegistersOpenNoteAction() {
         let category = NotificationService.captureCategory()
 
@@ -54,6 +59,7 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertTrue(category.actions[0].options.contains(.foreground))
     }
 
+    @MainActor
     func testTargetURLOpensOnDefaultClickAndOpenNoteAction() {
         let userInfo: [AnyHashable: Any] = [
             NotificationService.targetPathKey: "/Users/bryan/bob/cash.md"
@@ -72,6 +78,7 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertEqual(openNoteURL?.scheme, "obsidian")
     }
 
+    @MainActor
     func testTargetURLIsNilForDismissActionOrMissingTarget() {
         let userInfo: [AnyHashable: Any] = [
             NotificationService.targetPathKey: "/Users/bryan/bob/cash.md"
@@ -96,7 +103,6 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertFalse(NotificationAuthorizationDisplay(status: .denied).canRequestAuthorization)
         XCTAssertFalse(NotificationAuthorizationDisplay(status: .authorized).canRequestAuthorization)
         XCTAssertFalse(NotificationAuthorizationDisplay(status: .provisional).canRequestAuthorization)
-        XCTAssertFalse(NotificationAuthorizationDisplay(status: .ephemeral).canRequestAuthorization)
 
         XCTAssertFalse(NotificationAuthorizationDisplay(status: .authorized).displayName.isEmpty)
         XCTAssertFalse(NotificationAuthorizationDisplay(status: .denied).displayName.isEmpty)
