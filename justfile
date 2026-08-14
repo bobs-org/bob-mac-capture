@@ -6,14 +6,14 @@ format-lint:
     if command -v swift-format >/dev/null 2>&1; then \
       swift-format lint --recursive Package.swift Sources Tests; \
     else \
-      swift format lint --recursive Package.swift Sources Tests; \
+      ./Scripts/xcode-swift.sh format lint --recursive Package.swift Sources Tests; \
     fi
 
 build:
-    swift build
+    ./Scripts/xcode-swift.sh build
 
 test:
-    swift test
+    ./Scripts/xcode-swift.sh test
 
 bundle identity="-":
     ./Scripts/bundle.sh --identity "{{identity}}"

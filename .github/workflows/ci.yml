@@ -19,6 +19,7 @@ jobs:
           set -euo pipefail
           xcodebuild -version
           swift --version
+          ./Scripts/xcode-swift.sh --version
           sdk_version="$(xcrun --sdk macosx --show-sdk-version)"
           major="${sdk_version%%.*}"
           test "${major}" -ge 26
@@ -29,14 +30,14 @@ jobs:
           if command -v swift-format >/dev/null 2>&1; then
             swift-format lint --recursive Package.swift Sources Tests
           else
-            swift format lint --recursive Package.swift Sources Tests
+            ./Scripts/xcode-swift.sh format lint --recursive Package.swift Sources Tests
           fi
 
       - name: Build
-        run: swift build
+        run: ./Scripts/xcode-swift.sh build
 
       - name: Test
-        run: swift test
+        run: ./Scripts/xcode-swift.sh test
 
       - name: Bundle
         run: ./Scripts/bundle.sh --identity "-"

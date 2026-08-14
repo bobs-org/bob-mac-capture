@@ -49,12 +49,13 @@ case "${configuration}" in
 esac
 
 package_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+xcode_swift="${package_root}/Scripts/xcode-swift.sh"
 app_name="Bob Mac Capture.app"
 app_path="${output_dir}/${app_name}"
 
 cd "${package_root}"
-swift build --configuration "${configuration}" --product BobMacCapture
-binary_path="$(swift build --configuration "${configuration}" --show-bin-path)/BobMacCapture"
+"${xcode_swift}" build --configuration "${configuration}" --product BobMacCapture
+binary_path="$("${xcode_swift}" build --configuration "${configuration}" --show-bin-path)/BobMacCapture"
 
 rm -rf "${app_path}"
 mkdir -p "${app_path}/Contents/MacOS" "${app_path}/Contents/Resources"

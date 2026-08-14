@@ -8,7 +8,27 @@ mutation.
 ## Requirements
 
 - macOS 26 with Xcode 26 or newer.
-- SwiftPM from the selected Xcode toolchain.
+- SwiftPM from the selected Xcode toolchain. `justfile`, `Scripts/bundle.sh`, and CI all
+  route Swift invocations through `Scripts/xcode-swift.sh`, which resolves `swift` via
+  `xcrun` from the full Xcode developer directory (`DEVELOPER_DIR` or `xcode-select
+  --print-path`) rather than trusting a bare `swift` on `PATH`. This matters because a
+  Swift.org / Swiftly installation, or `xcode-select` pointed at standalone Command Line
+  Tools, can compile ordinary targets while lacking Xcode's `XCTest` module — the build
+  succeeds but `swift test` fails at `import XCTest`. Compare what's actually selected:
+
+  ```sh
+  command -v swift; swift --version           # whatever is first on PATH
+  ./Scripts/xcode-swift.sh --version           # what build/test/bundle actually use
+  ```
+
+  If the two differ, or `import XCTest` fails to compile, select the full Xcode
+  application rather than migrating tests off XCTest:
+
+  ```sh
+  sudo xcode-select --switch /Applications/Xcode.app
+  # or, scoped to one shell:
+  export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+  ```
 - A signed or ad-hoc signed `bob` executable available at one of:
   - `~/.cargo/bin/bob`
   - `~/bin/bob`
@@ -177,6 +197,12 @@ identifier `org.bobs.bob-mac-capture`; it never writes captured text to disk its
 
 ## Troubleshooting
 
+- **`swift test` fails with `no such module 'XCTest'`**: this is a toolchain selection
+  problem, not a missing dependency — XCTest ships with Xcode's platform developer
+  frameworks, not through SwiftPM. Compare `swift --version` against
+  `./Scripts/xcode-swift.sh --version`; if they differ, or `xcode-select --print-path`
+  reports standalone Command Line Tools, select the full Xcode application (see
+  Requirements above) and rerun `just test`.
 - **"Bob is not resolved"**: Settings shows the resolved path (or "Not resolved") and the
   underlying error. Set an absolute path under "Executable override" or install `bob` at
   one of the default candidate locations, then use "Recheck Bob."
