@@ -42,6 +42,9 @@ final class CapturePanelModel: ObservableObject {
     private var analysisTask: Task<Void, Never>?
     private var analysisGeneration: UInt64 = 0
     private var isApplyingProgrammaticDraft = false
+    // SwiftUI can deliver the text-change callback after a programmatic binding update.
+    // Remember the accepted value so that callback cannot start completion analysis again.
+    private var suppressedCompletionAcceptanceDraft: String?
     private var priorityRollSeed: String?
 
     // Shared by submit and preview so a late callback from either one can never mutate
@@ -62,7 +65,7 @@ final class CapturePanelModel: ObservableObject {
 
     var plainDraft: String {
         get { String(attributedDraft.characters) }
-        set { setPlainDraft(newValue, scheduleAnalysis: false) }
+        set { setPlainDraft(newValue) }
     }
 
     var hasDraft: Bool {
@@ -119,8 +122,15 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
-        pendingDiscardConfirmation = false
         let draft = plainDraft
+        if let suppressedDraft = suppressedCompletionAcceptanceDraft {
+            if draft == suppressedDraft {
+                return
+            }
+            suppressedCompletionAcceptanceDraft = nil
+        }
+
+        pendingDiscardConfirmation = false
         if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             priorityRollSeed = nil
             parseDiagnostics = []
@@ -228,7 +238,8 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func discardDraft() {
-        setPlainDraft("", scheduleAnalysis: false)
+        setPlainDraft("")
+        suppressedCompletionAcceptanceDraft = nil
         priorityRollSeed = nil
         pendingDiscardConfirmation = false
         parseDiagnostics = []
@@ -272,8 +283,11 @@ final class CapturePanelModel: ObservableObject {
         var text = plainDraft
         text.replaceSubrange(range, with: candidate.replacement)
         let cursor = completionResponse.replacement.start + candidate.replacement.utf8.count
+        invalidateAnalysis()
         dismissCompletion()
-        setPlainDraft(text, scheduleAnalysis: true, cursorUTF8Offset: cursor)
+        suppressedCompletionAcceptanceDraft = text
+        setPlainDraft(text)
+        scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false)
     }
 
     func detailText(for candidate: CaptureCompletionCandidate, context: String?) -> String {
@@ -322,6 +336,7 @@ final class CapturePanelModel: ObservableObject {
             previewResult = nil
             errorMessage = nil
             attributedDraft = AttributedString()
+            suppressedCompletionAcceptanceDraft = nil
             pendingDiscardConfirmation = false
             priorityRollSeed = nil
             parseDiagnostics = []
@@ -381,21 +396,16 @@ final class CapturePanelModel: ObservableObject {
         statusText = "Preview failed"
     }
 
-    private func setPlainDraft(
-        _ text: String,
-        scheduleAnalysis: Bool,
-        cursorUTF8Offset: Int? = nil
-    ) {
+    private func setPlainDraft(_ text: String) {
         isApplyingProgrammaticDraft = true
         attributedDraft = AttributedString(text)
         isApplyingProgrammaticDraft = false
-
-        if scheduleAnalysis {
-            editorTextDidChange(cursorUTF8Offset: cursorUTF8Offset)
-        }
     }
 
-    private func scheduleAnalysis(cursorUTF8Offset: Int) {
+    private func scheduleAnalysis(
+        cursorUTF8Offset: Int,
+        requestCompletion: Bool = true
+    ) {
         guard let processClient else {
             statusText = "Bob is not resolved"
             return
@@ -410,7 +420,7 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
-        analysisGeneration += 1
+        analysisGeneration &+= 1
         let generation = analysisGeneration
         let debounceNanoseconds = self.debounceNanoseconds
         analysisTask?.cancel()
@@ -437,7 +447,9 @@ final class CapturePanelModel: ObservableObject {
                     return
                 }
 
-                if await self?.shouldRequestCompletion(parse: parse, cursor: cursorUTF8Offset) == true {
+                if requestCompletion,
+                   await self?.shouldRequestCompletion(parse: parse, cursor: cursorUTF8Offset) == true
+                {
                     if let cached = await self?.cachedRouteCompletion(
                         parse: parse,
                         cursor: cursorUTF8Offset,
@@ -515,6 +527,12 @@ final class CapturePanelModel: ObservableObject {
 
     private func isCurrentAnalysis(_ generation: UInt64) -> Bool {
         generation == analysisGeneration
+    }
+
+    private func invalidateAnalysis() {
+        analysisGeneration &+= 1
+        analysisTask?.cancel()
+        analysisTask = nil
     }
 
     private func activePriorityRollSeed() -> String {

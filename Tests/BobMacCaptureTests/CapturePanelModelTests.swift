@@ -137,6 +137,59 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, "Call bank @Cash")
     }
 
+    func testAcceptedCompletionStaysDismissedUntilNextUserEdit() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "idea @ma"
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil { model.completionVisible }
+
+        model.acceptSelectedCompletion()
+        XCTAssertEqual(model.plainDraft, "idea @mac_inbox")
+        XCTAssertNil(model.completionResponse)
+
+        // Mirror SwiftUI's delayed callback for the programmatic binding update.
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil {
+            guard case .ready(let preview) = model.previewState else {
+                return false
+            }
+            return preview.taskLine.contains("accepted completion")
+                && model.parseDiagnostics.contains { $0.code == "accepted_fixture" }
+        }
+
+        XCTAssertNil(model.completionResponse)
+        var record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
+        XCTAssertTrue(
+            record.contains("argv=capture-parse --format json -- idea @mac_inbox")
+        )
+        XCTAssertTrue(
+            record.contains("argv=capture --dry-run --no-clip --format json -- idea @mac_inbox")
+        )
+
+        model.plainDraft = "idea @mac_inboxx"
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil { model.completionVisible }
+
+        XCTAssertEqual(
+            model.completionResponse?.replacement,
+            CaptureRange(start: 6, end: 16)
+        )
+        record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 2)
+    }
+
     private func waitUntil(
         timeout: TimeInterval = 5,
         file: StaticString = #filePath,

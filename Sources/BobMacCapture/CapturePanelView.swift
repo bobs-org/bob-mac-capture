@@ -33,13 +33,13 @@ struct CapturePanelView: View {
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
+            }
 
-                if model.completionVisible {
-                    CompletionList(model: model)
-                        .frame(width: 430)
-                        .padding(.leading, 14)
-                        .padding(.top, 42)
-                }
+            if model.completionVisible {
+                CompletionList(model: model)
+                    .frame(width: 430)
+                    .frame(maxHeight: 220)
+                    .padding(.leading, 14)
             }
 
             if let destinationSummary = model.destinationSummary {
@@ -111,24 +111,35 @@ private struct CompletionList: View {
     @ObservedObject var model: CapturePanelModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array((model.completionResponse?.candidates ?? []).enumerated()), id: \.offset) {
-                index, candidate in
-                CompletionRow(
-                    candidate: candidate,
-                    detail: model.detailText(
-                        for: candidate,
-                        context: model.completionResponse?.context
-                    ),
-                    selected: index == model.selectedCompletionIndex
-                )
-                .onTapGesture {
-                    model.selectedCompletionIndex = index
-                    model.acceptSelectedCompletion()
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(
+                        Array((model.completionResponse?.candidates ?? []).enumerated()),
+                        id: \.offset
+                    ) {
+                        index, candidate in
+                        CompletionRow(
+                            candidate: candidate,
+                            detail: model.detailText(
+                                for: candidate,
+                                context: model.completionResponse?.context
+                            ),
+                            selected: index == model.selectedCompletionIndex
+                        )
+                        .id(index)
+                        .onTapGesture {
+                            model.selectedCompletionIndex = index
+                            model.acceptSelectedCompletion()
+                        }
+                    }
                 }
+                .padding(6)
+            }
+            .onChange(of: model.selectedCompletionIndex) { _, index in
+                proxy.scrollTo(index, anchor: .center)
             }
         }
-        .padding(6)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .shadow(radius: 12, y: 6)
