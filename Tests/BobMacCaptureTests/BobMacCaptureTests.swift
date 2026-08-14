@@ -255,11 +255,12 @@ final class BobMacCaptureTests: XCTestCase {
 
         controller.receiveContentMetrics(metrics)
         let panel = controller.makePanelIfNeeded()
+        let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
         let expectedContentHeight = CapturePanelWindowSizer(
             displayScale: panel.screen?.backingScaleFactor ?? 1
         ).contentHeight(
             for: metrics,
-            availableScreenHeight: panel.screen?.visibleFrame.height
+            availableScreenHeight: visibleFrame?.height
         )
         controller.replayLatestContentMetricsForPresentation()
 
