@@ -11,6 +11,7 @@ enum CaptureKeyCommand: Equatable {
     case stashDraftAndClose
     case toggleStashPicker
     case dismissStashPicker
+    case clearCanceledDraftStash
     case nextStashEntry
     case previousStashEntry
     case restoreSelectedStashEntry
@@ -151,6 +152,10 @@ struct CaptureKeyCommandRouter {
         modifiers: NSEvent.ModifierFlags,
         context: CaptureKeyRoutingContext
     ) -> CaptureKeyCommand? {
+        if modifiers.isEmpty, isClearStashKey(event.characters ?? "") {
+            return .clearCanceledDraftStash
+        }
+
         if modifiers.isEmpty,
            let index = CanceledDraftStash.acceleratorIndex(
             for: event.characters ?? "",
@@ -196,5 +201,13 @@ struct CaptureKeyCommandRouter {
             return nil
         }
         return .consumeKey
+    }
+
+    private func isClearStashKey(_ characters: String) -> Bool {
+        let scalars = Array(characters.unicodeScalars)
+        guard scalars.count == 1 else {
+            return false
+        }
+        return String(scalars[0]).uppercased() == "D"
     }
 }

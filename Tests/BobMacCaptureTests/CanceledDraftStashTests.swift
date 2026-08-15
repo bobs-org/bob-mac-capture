@@ -76,15 +76,23 @@ final class CanceledDraftStashTests: XCTestCase {
     }
 
     func testAcceleratorsCoverAllThirtySixSlots() {
-        let expected = Array("1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ").map(String.init)
+        let expected = Array("1234567890ABC-EFGHIJKLMNOPQRSTUVWXYZ").map(String.init)
 
         XCTAssertEqual((0..<36).compactMap(CanceledDraftStash.accelerator(for:)), expected)
+        XCTAssertEqual(Set(expected).count, 36)
+        XCTAssertFalse(expected.contains("D"))
         XCTAssertNil(CanceledDraftStash.accelerator(for: 36))
         XCTAssertEqual(CanceledDraftStash.acceleratorIndex(for: "1", entryCount: 36), 0)
         XCTAssertEqual(CanceledDraftStash.acceleratorIndex(for: "0", entryCount: 36), 9)
         XCTAssertEqual(CanceledDraftStash.acceleratorIndex(for: "a", entryCount: 36), 10)
+        XCTAssertEqual(CanceledDraftStash.acceleratorIndex(for: "-", entryCount: 36), 13)
+        XCTAssertNil(CanceledDraftStash.acceleratorIndex(for: "d", entryCount: 36))
+        XCTAssertNil(CanceledDraftStash.acceleratorIndex(for: "D", entryCount: 36))
+        XCTAssertEqual(CanceledDraftStash.acceleratorIndex(for: "E", entryCount: 36), 14)
+        XCTAssertEqual(CanceledDraftStash.acceleratorIndex(for: "N", entryCount: 36), 23)
         XCTAssertEqual(CanceledDraftStash.acceleratorIndex(for: "Z", entryCount: 36), 35)
         XCTAssertNil(CanceledDraftStash.acceleratorIndex(for: "Z", entryCount: 35))
+        XCTAssertNil(CanceledDraftStash.acceleratorIndex(for: "-", entryCount: 13))
         XCTAssertNil(CanceledDraftStash.acceleratorIndex(for: "é", entryCount: 36))
     }
 

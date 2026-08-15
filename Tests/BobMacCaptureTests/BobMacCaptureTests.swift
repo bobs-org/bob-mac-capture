@@ -436,6 +436,22 @@ final class BobMacCaptureTests: XCTestCase {
             .restoreStashEntry(10)
         )
         XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 27, characters: "-"), context: context),
+            .restoreStashEntry(13)
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 2, characters: "d"), context: context),
+            .clearCanceledDraftStash
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 2, characters: "D"), context: context),
+            .clearCanceledDraftStash
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 14, characters: "e"), context: context),
+            .restoreStashEntry(14)
+        )
+        XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 6, characters: "z"), context: context),
             .restoreStashEntry(35)
         )
@@ -453,6 +469,21 @@ final class BobMacCaptureTests: XCTestCase {
         let router = CaptureKeyCommandRouter()
         let shortContext = CaptureKeyRoutingContext(stashPickerVisible: true, stashEntryCount: 2)
 
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 2, modifiers: .shift, characters: "D"), context: shortContext),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 2, modifiers: .control, characters: "d"), context: shortContext),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 2, modifiers: .option, characters: "d"), context: shortContext),
+            .consumeKey
+        )
+        XCTAssertNil(
+            router.command(for: keyEvent(keyCode: 2, modifiers: .command, characters: "d"), context: shortContext)
+        )
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 6, characters: "z"), context: shortContext), .consumeKey)
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 6, modifiers: .shift, characters: "Z"), context: shortContext),
@@ -641,6 +672,28 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(dismissCount, 1)
         XCTAssertEqual(model.plainDraft, "")
         XCTAssertEqual(stash.entries.map(\.text), ["idea @ma"])
+    }
+
+    @MainActor
+    func testClearCanceledDraftStashCommandConsumesClearsAndKeepsPanelOpen() {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        stash.push("older private draft")
+        stash.push("newer private draft")
+        model.presentStashPicker()
+        model.selectedStashIndex = 1
+        let controller = CapturePanelController(model: model)
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+
+        XCTAssertTrue(controller.perform(.clearCanceledDraftStash))
+
+        XCTAssertTrue(stash.entries.isEmpty)
+        XCTAssertFalse(model.isStashPickerPresented)
+        XCTAssertEqual(model.selectedStashIndex, 0)
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertEqual(model.statusText, "Canceled draft stash cleared")
+        XCTAssertEqual(dismissCount, 0)
     }
 
     func testEditorHeightPolicyUsesOneLineMinimumAndSixLineCap() {

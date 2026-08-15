@@ -217,7 +217,6 @@ struct CapturePanelView: View {
             if model.isStashPickerPresented {
                 CanceledDraftStashPicker(model: model)
                     .frame(width: 520)
-                    .frame(maxHeight: CapturePanelLayout.stashViewportHeight, alignment: .top)
                     .padding(.leading, 14)
                     .layoutPriority(0)
                     .id(AuxiliarySection.stash)
@@ -598,37 +597,75 @@ private struct CanceledDraftStashPicker: View {
     @ObservedObject var model: CapturePanelModel
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.vertical) {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(Array(model.stashEntries.enumerated()), id: \.element.id) { index, entry in
-                        CanceledDraftStashRow(
-                            entry: entry,
-                            accelerator: CanceledDraftStash.accelerator(for: index) ?? "",
-                            selected: index == model.selectedStashIndex,
-                            now: Date()
-                        )
-                        .id(entry.id)
-                        .onTapGesture {
-                            model.restoreStashEntry(id: entry.id)
+        VStack(alignment: .leading, spacing: 4) {
+            clearAllButton
+
+            ScrollViewReader { proxy in
+                ScrollView(.vertical) {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(model.stashEntries.enumerated()), id: \.element.id) { index, entry in
+                            CanceledDraftStashRow(
+                                entry: entry,
+                                accelerator: CanceledDraftStash.accelerator(for: index) ?? "",
+                                selected: index == model.selectedStashIndex,
+                                now: Date()
+                            )
+                            .id(entry.id)
+                            .onTapGesture {
+                                model.restoreStashEntry(id: entry.id)
+                            }
                         }
                     }
+                    .padding(6)
                 }
-                .padding(6)
-            }
-            .onAppear {
-                scrollSelectionIntoView(proxy)
-            }
-            .onChange(of: model.selectedStashIndex) { _, _ in
-                scrollSelectionIntoView(proxy)
+                .frame(maxHeight: CapturePanelLayout.stashViewportHeight, alignment: .top)
+                .onAppear {
+                    scrollSelectionIntoView(proxy)
+                }
+                .onChange(of: model.selectedStashIndex) { _, _ in
+                    scrollSelectionIntoView(proxy)
+                }
             }
         }
+        .padding(6)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .shadow(radius: 12, y: 6)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(listAccessibilityLabel)
-        .accessibilityHint("Use arrows, Control-N, Control-P, Return, or a shown key to restore a canceled draft.")
+        .accessibilityHint(
+            "Use arrows, Control-N, Control-P, Return, or a shown key to restore a canceled draft. "
+                + "Press D to permanently remove all retained drafts from this app session."
+        )
+    }
+
+    private var clearAllButton: some View {
+        Button(role: .destructive) {
+            model.clearCanceledDraftStashFromPicker()
+        } label: {
+            HStack(spacing: 8) {
+                Text("D")
+                    .font(.system(.caption, design: .monospaced).weight(.semibold))
+                    .foregroundStyle(.red)
+                    .frame(width: 24, height: 22)
+                    .background(.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .strokeBorder(.red.opacity(0.35), lineWidth: 0.5)
+                    )
+                    .accessibilityHidden(true)
+                Text("Delete All")
+                    .font(.caption.weight(.semibold))
+                Spacer(minLength: 8)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.red)
+        .accessibilityLabel("D Delete All")
+        .accessibilityHint("Permanently removes all retained canceled drafts from the current app session.")
     }
 
     private var listAccessibilityLabel: String {

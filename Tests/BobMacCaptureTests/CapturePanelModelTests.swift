@@ -497,6 +497,43 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertFalse(model.isStashPickerPresented)
     }
 
+    func testClearCanceledDraftStashFromPickerClearsAllEntriesAndKeepsPanelAndEditorIntact() {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        stash.push("older private draft @Cash")
+        stash.push("newer private draft @Cash")
+        model.presentStashPicker()
+        model.selectedStashIndex = 1
+        model.errorMessage = nil
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+        let tick = model.statusAnnouncementTick
+
+        model.clearCanceledDraftStashFromPicker()
+
+        XCTAssertTrue(stash.entries.isEmpty)
+        XCTAssertEqual(stash.capacity, 10)
+        XCTAssertFalse(model.isStashPickerPresented)
+        XCTAssertEqual(model.selectedStashIndex, 0)
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertEqual(model.statusText, "Canceled draft stash cleared")
+        XCTAssertEqual(model.statusAnnouncementTick, tick + 1)
+        XCTAssertFalse(model.statusText.contains("private draft"))
+        XCTAssertEqual(dismissCount, 0)
+    }
+
+    func testClearCanceledDraftStashFromPickerIgnoresNonPickerCalls() {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        stash.push("retained")
+
+        model.clearCanceledDraftStashFromPicker()
+
+        XCTAssertEqual(stash.entries.map(\.text), ["retained"])
+        XCTAssertFalse(model.isStashPickerPresented)
+        XCTAssertEqual(model.statusText, "")
+    }
+
     func testRestoreStashEntryInstallsExactTextAtEndSchedulesFreshAnalysisAndPopsOnlyThatEntry() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let stash = CanceledDraftStash(capacity: 10)

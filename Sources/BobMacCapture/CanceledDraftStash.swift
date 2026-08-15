@@ -198,5 +198,6 @@ final class CanceledDraftStash: ObservableObject {
         }
     }
 
-    private nonisolated static let acceleratorKeys: [String] = Array("1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ").map(String.init)
+    private nonisolated static let acceleratorKeys: [String] =
+        Array("1234567890ABC-EFGHIJKLMNOPQRSTUVWXYZ").map(String.init)
 }

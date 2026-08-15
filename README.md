@@ -207,11 +207,16 @@ uses the same compact material style as completion. Rows are newest first. Resto
 row installs that exact text in the empty editor with the caret at the UTF-8 end, removes
 only that restored entry from the stash, keeps the panel open, and starts normal
 parse/live-preview analysis. This is a pop operation: non-restored entries remain in
-order.
+order. Pressing unmodified `D`, or clicking **D Delete All**, immediately clears every
+retained canceled draft from the current app session, closes the picker, leaves the
+panel open with an empty editor, and reports only "Canceled draft stash cleared". The
+Settings **Clear Stash...** action keeps its confirmation dialog for that non-modal
+workflow.
 
 | Key while stash is open | Behavior |
 | --- | --- |
-| 1...9, 0, A...Z | Restore that row immediately |
+| 1...9, 0, A...C, -, E...Z | Restore that row immediately |
+| D | Delete all retained canceled drafts for this app session |
 | Return | Restore the selected row |
 | Down / Ctrl-N | Select the next row, wrapping at the end |
 | Up / Ctrl-P | Select the previous row, wrapping at the top |
@@ -219,7 +224,8 @@ order.
 | Control-S | Close the stash picker |
 
 The 36-entry upper bound exists so every retained row always has a unique one-key
-accelerator: `1` through `9`, then `0`, then `A` through `Z`.
+accelerator while reserving `D` for Delete All: `1` through `9`, then `0`, then `A`
+through `C`, `-`, and `E` through `Z`.
 
 A draft is one or more capture items separated by one or more blank or whitespace-only
 physical lines. Within each item, the first nonblank line is the parent, followed by zero

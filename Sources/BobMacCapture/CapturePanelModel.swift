@@ -445,6 +445,15 @@ final class CapturePanelModel: ObservableObject {
         announceStatus("Restored canceled draft")
     }
 
+    func clearCanceledDraftStashFromPicker() {
+        guard isStashPickerPresented else {
+            return
+        }
+        canceledDraftStash.clear()
+        dismissStashPicker()
+        announceStatus("Canceled draft stash cleared")
+    }
+
     // Called before the panel is (re)shown. A retained draft (from Escape or a failed
     // capture) must reopen exactly as the user left it, error and all; only a panel with
     // no draft — i.e. one that just dismissed after a success — needs its leftover

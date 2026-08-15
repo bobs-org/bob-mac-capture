@@ -551,6 +551,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .dismissStashPicker:
             model.dismissStashPicker()
             return true
+        case .clearCanceledDraftStash:
+            model.clearCanceledDraftStashFromPicker()
+            return true
         case .nextStashEntry:
             model.selectNextStashEntry()
             return true
