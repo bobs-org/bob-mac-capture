@@ -45,6 +45,51 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(withAuxiliary.minimumVisibleContentHeight, 110)
     }
 
+    func testStashPickerHeightPolicySizesRowsAndActionChrome() {
+        let oneEntry = CanceledDraftStashPickerHeightPolicy(entryCount: 1)
+        let fiveEntries = CanceledDraftStashPickerHeightPolicy(entryCount: 5)
+        let moreThanFiveEntries = CanceledDraftStashPickerHeightPolicy(entryCount: 36)
+
+        let oneRowViewport = CapturePanelLayout.stashListPadding * 2 + CapturePanelLayout.stashRowHeight
+        let cappedViewport = CapturePanelLayout.stashListPadding * 2
+            + CapturePanelLayout.stashRowHeight * CGFloat(CapturePanelLayout.stashVisibleRows)
+            + CapturePanelLayout.stashRowSpacing * CGFloat(CapturePanelLayout.stashVisibleRows - 1)
+        let actionChrome = CapturePanelLayout.stashPickerPadding * 2
+            + CapturePanelLayout.stashPickerContentSpacing
+            + CapturePanelLayout.stashClearButtonHeight
+
+        XCTAssertEqual(oneEntry.visibleRowCount, 1)
+        XCTAssertEqual(oneEntry.rowViewportHeight, oneRowViewport)
+        XCTAssertEqual(oneEntry.minimumVisibleHeight, actionChrome)
+        XCTAssertEqual(oneEntry.idealHeight, oneRowViewport + actionChrome)
+
+        XCTAssertEqual(fiveEntries.visibleRowCount, 5)
+        XCTAssertEqual(fiveEntries.rowViewportHeight, cappedViewport)
+        XCTAssertEqual(fiveEntries.idealHeight, cappedViewport + actionChrome)
+
+        XCTAssertEqual(moreThanFiveEntries.visibleRowCount, 5)
+        XCTAssertEqual(moreThanFiveEntries.rowViewportHeight, fiveEntries.rowViewportHeight)
+        XCTAssertEqual(moreThanFiveEntries.idealHeight, fiveEntries.idealHeight)
+        XCTAssertLessThan(oneEntry.idealHeight, fiveEntries.idealHeight)
+    }
+
+    func testContentHeightPolicyIncludesStashRequiredVisibleAuxiliaryHeight() {
+        let policy = CapturePanelContentHeightPolicy(
+            titlebarDragInset: 20,
+            rootPadding: 10,
+            sectionSpacing: 5,
+            displayScale: 1
+        )
+        let stashHeight = CanceledDraftStashPickerHeightPolicy(entryCount: 1).auxiliaryHeight
+
+        let stash = policy.metrics(editorHeight: 40, auxiliary: stashHeight, footerHeight: 30)
+
+        XCTAssertEqual(stash.idealContentHeight, 110 + stashHeight.idealHeight)
+        XCTAssertEqual(stash.minimumVisibleContentHeight, 110 + stashHeight.minimumVisibleHeight)
+        XCTAssertGreaterThan(stash.idealContentHeight, stash.minimumVisibleContentHeight)
+        XCTAssertGreaterThan(stash.minimumVisibleContentHeight, 110)
+    }
+
     func testContentHeightPolicyUsesMeasuredFooterAndDisplayScaleRounding() {
         let policy = CapturePanelContentHeightPolicy(
             titlebarDragInset: 28,
@@ -115,6 +160,48 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(
             sizer.contentHeight(for: contentMetrics(ideal: 900, minimum: 280), availableScreenHeight: 300),
             260
+        )
+    }
+
+    func testSizerAppliesStashMetricsAndClampsOnlyWhenScreenIsTooShort() {
+        let policy = CapturePanelContentHeightPolicy(
+            titlebarDragInset: 20,
+            rootPadding: 10,
+            sectionSpacing: 5,
+            displayScale: 1
+        )
+        let stashMetrics = policy.metrics(
+            editorHeight: 40,
+            auxiliary: CanceledDraftStashPickerHeightPolicy(entryCount: 1).auxiliaryHeight,
+            footerHeight: 30
+        )
+        let normalSizer = CapturePanelWindowSizer(
+            minimumContentHeight: 100,
+            maximumContentHeight: 500,
+            screenMargin: 20,
+            displayScale: 1
+        )
+        let lowMaximumSizer = CapturePanelWindowSizer(
+            minimumContentHeight: 100,
+            maximumContentHeight: stashMetrics.minimumVisibleContentHeight - 10,
+            screenMargin: 20,
+            displayScale: 1
+        )
+
+        XCTAssertEqual(
+            normalSizer.contentHeight(for: stashMetrics, availableScreenHeight: 900),
+            stashMetrics.idealContentHeight
+        )
+        XCTAssertEqual(
+            lowMaximumSizer.contentHeight(for: stashMetrics, availableScreenHeight: nil),
+            stashMetrics.minimumVisibleContentHeight
+        )
+        XCTAssertEqual(
+            normalSizer.contentHeight(
+                for: stashMetrics,
+                availableScreenHeight: stashMetrics.minimumVisibleContentHeight + 20
+            ),
+            stashMetrics.minimumVisibleContentHeight - 20
         )
     }
 
@@ -214,6 +301,74 @@ final class BobMacCaptureTests: XCTestCase {
         controller.receiveContentMetrics(metrics)
 
         XCTAssertEqual(panel.frame, firstAppliedFrame)
+    }
+
+    @MainActor
+    func testReceiveStashContentMetricsGrowsFromCompactAndShrinksAfterDismissal() {
+        let model = CapturePanelModel()
+        let controller = CapturePanelController(model: model)
+        let panel = controller.makePanelIfNeeded()
+        let visibleFrame = panel.screen?.visibleFrame
+            ?? NSScreen.main?.visibleFrame
+            ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let displayScale = panel.screen?.backingScaleFactor ?? 1
+        let policy = CapturePanelContentHeightPolicy(displayScale: displayScale)
+        let compactMetrics = policy.metrics(editorHeight: 42, auxiliaryHeight: nil, footerHeight: 40)
+        let stashMetrics = policy.metrics(
+            editorHeight: 42,
+            auxiliary: CanceledDraftStashPickerHeightPolicy(
+                entryCount: 1,
+                displayScale: displayScale
+            ).auxiliaryHeight,
+            footerHeight: 40
+        )
+        let sizer = CapturePanelWindowSizer(displayScale: displayScale)
+        let expectedStashContentHeight = sizer.contentHeight(
+            for: stashMetrics,
+            availableScreenHeight: visibleFrame.height
+        )
+        let initialContentHeight = panel.contentRect(forFrameRect: panel.frame).height
+        let chromeHeight = panel.frame.height - initialContentHeight
+        let topY = min(
+            visibleFrame.maxY - 20,
+            visibleFrame.minY + expectedStashContentHeight + chromeHeight + 80
+        )
+        panel.setFrame(
+            NSRect(
+                x: visibleFrame.minX + 80,
+                y: topY - panel.frame.height,
+                width: panel.frame.width,
+                height: panel.frame.height
+            ),
+            display: false
+        )
+
+        controller.receiveContentMetrics(compactMetrics)
+        let compactFrame = panel.frame
+        let compactContentHeight = panel.contentRect(forFrameRect: compactFrame).height
+
+        controller.receiveContentMetrics(stashMetrics)
+        let stashFrame = panel.frame
+
+        XCTAssertGreaterThan(stashFrame.height, compactFrame.height)
+        XCTAssertEqual(
+            panel.contentRect(forFrameRect: stashFrame).height,
+            expectedStashContentHeight,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(stashFrame.maxY, compactFrame.maxY, accuracy: 0.5)
+
+        controller.receiveContentMetrics(stashMetrics)
+        XCTAssertEqual(panel.frame, stashFrame)
+
+        controller.receiveContentMetrics(compactMetrics)
+
+        XCTAssertEqual(
+            panel.contentRect(forFrameRect: panel.frame).height,
+            compactContentHeight,
+            accuracy: 0.5
+        )
+        XCTAssertLessThan(panel.frame.height, stashFrame.height)
     }
 
     @MainActor

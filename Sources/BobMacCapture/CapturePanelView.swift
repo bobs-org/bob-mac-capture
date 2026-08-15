@@ -17,8 +17,22 @@ enum CapturePanelLayout {
     static let completionRowHeight: CGFloat = 48
     static let completionViewportHeight = completionRowHeight * CGFloat(completionVisibleRows) + 12
     static let stashVisibleRows = 5
-    static let stashRowHeight: CGFloat = 58
-    static let stashViewportHeight = stashRowHeight * CGFloat(stashVisibleRows) + 12
+    static let stashListPadding: CGFloat = 6
+    static let stashRowSpacing: CGFloat = 2
+    static let stashRowContentMinimumHeight: CGFloat = 50
+    static let stashRowHorizontalPadding: CGFloat = 8
+    static let stashRowVerticalPadding: CGFloat = 6
+    static let stashRowHeight = stashRowContentMinimumHeight + stashRowVerticalPadding * 2
+    static let stashViewportHeight = stashListPadding * 2
+        + stashRowHeight * CGFloat(stashVisibleRows)
+        + stashRowSpacing * CGFloat(stashVisibleRows - 1)
+    static let stashPickerContentSpacing: CGFloat = 4
+    static let stashPickerPadding: CGFloat = 6
+    static let stashClearButtonKeyWidth: CGFloat = 58
+    static let stashClearButtonKeyHeight: CGFloat = 22
+    static let stashClearButtonHorizontalPadding: CGFloat = 8
+    static let stashClearButtonVerticalPadding: CGFloat = 5
+    static let stashClearButtonHeight = stashClearButtonKeyHeight + stashClearButtonVerticalPadding * 2
     static let previewIdealHeight: CGFloat = 92
 
     /// First-frame fallback used only until SwiftUI reports rendered editor/footer
@@ -82,6 +96,60 @@ struct CapturePanelContentMetrics: Equatable {
     }
 }
 
+struct CapturePanelAuxiliaryHeight: Equatable {
+    var idealHeight: CGFloat
+    var minimumVisibleHeight: CGFloat
+
+    static func overflow(idealHeight: CGFloat) -> Self {
+        Self(idealHeight: idealHeight, minimumVisibleHeight: 0)
+    }
+}
+
+struct CanceledDraftStashPickerHeightPolicy: Equatable {
+    var entryCount: Int
+    var visibleRowLimit: Int = CapturePanelLayout.stashVisibleRows
+    var displayScale: CGFloat = 1
+
+    var visibleRowCount: Int {
+        min(max(entryCount, 0), max(visibleRowLimit, 0))
+    }
+
+    var rowViewportHeight: CGFloat {
+        let rows = visibleRowCount
+        let rowHeight = CapturePanelLayout.stashRowHeight * CGFloat(rows)
+        let spacingHeight = CapturePanelLayout.stashRowSpacing * CGFloat(max(rows - 1, 0))
+        return roundedToPixel(CapturePanelLayout.stashListPadding * 2 + rowHeight + spacingHeight)
+    }
+
+    var actionChromeHeight: CGFloat {
+        roundedToPixel(
+            CapturePanelLayout.stashPickerPadding * 2
+                + CapturePanelLayout.stashPickerContentSpacing
+                + CapturePanelLayout.stashClearButtonHeight
+        )
+    }
+
+    var idealHeight: CGFloat {
+        roundedToPixel(rowViewportHeight + actionChromeHeight)
+    }
+
+    var minimumVisibleHeight: CGFloat {
+        actionChromeHeight
+    }
+
+    var auxiliaryHeight: CapturePanelAuxiliaryHeight {
+        CapturePanelAuxiliaryHeight(
+            idealHeight: idealHeight,
+            minimumVisibleHeight: minimumVisibleHeight
+        )
+    }
+
+    private func roundedToPixel(_ value: CGFloat) -> CGFloat {
+        let scale = max(displayScale, 1)
+        return (value * scale).rounded(.up) / scale
+    }
+}
+
 struct CapturePanelContentHeightPolicy: Equatable {
     var titlebarDragInset: CGFloat = CapturePanelLayout.titlebarDragInset
     var rootPadding: CGFloat = CapturePanelLayout.rootPadding
@@ -93,20 +161,33 @@ struct CapturePanelContentHeightPolicy: Equatable {
         auxiliaryHeight: CGFloat?,
         footerHeight: CGFloat
     ) -> CapturePanelContentMetrics {
+        metrics(
+            editorHeight: editorHeight,
+            auxiliary: auxiliaryHeight.map { CapturePanelAuxiliaryHeight.overflow(idealHeight: $0) },
+            footerHeight: footerHeight
+        )
+    }
+
+    func metrics(
+        editorHeight: CGFloat,
+        auxiliary: CapturePanelAuxiliaryHeight?,
+        footerHeight: CGFloat
+    ) -> CapturePanelContentMetrics {
         let editorHeight = sanitizedHeight(editorHeight)
         let footerHeight = sanitizedHeight(footerHeight)
-        let auxiliaryHeight = auxiliaryHeight.map(sanitizedHeight)
-        let spacingCount = auxiliaryHeight == nil ? 1 : 2
+        let auxiliary = auxiliary.map(sanitizedAuxiliaryHeight)
+        let spacingCount = auxiliary == nil ? 1 : 2
         let persistentHeight = titlebarDragInset
             + editorHeight
             + sectionSpacing * CGFloat(spacingCount)
             + footerHeight
             + rootPadding
-        let idealHeight = persistentHeight + (auxiliaryHeight ?? 0)
+        let idealHeight = persistentHeight + (auxiliary?.idealHeight ?? 0)
+        let minimumVisibleHeight = persistentHeight + (auxiliary?.minimumVisibleHeight ?? 0)
 
         return CapturePanelContentMetrics(
             idealContentHeight: roundedToPixel(idealHeight),
-            minimumVisibleContentHeight: roundedToPixel(persistentHeight)
+            minimumVisibleContentHeight: roundedToPixel(minimumVisibleHeight)
         )
     }
 
@@ -115,6 +196,14 @@ struct CapturePanelContentHeightPolicy: Equatable {
             return 0
         }
         return max(0, value)
+    }
+
+    private func sanitizedAuxiliaryHeight(_ value: CapturePanelAuxiliaryHeight) -> CapturePanelAuxiliaryHeight {
+        let minimumVisibleHeight = sanitizedHeight(value.minimumVisibleHeight)
+        return CapturePanelAuxiliaryHeight(
+            idealHeight: max(sanitizedHeight(value.idealHeight), minimumVisibleHeight),
+            minimumVisibleHeight: minimumVisibleHeight
+        )
     }
 
     private func roundedToPixel(_ value: CGFloat) -> CGFloat {
@@ -148,6 +237,13 @@ struct CapturePanelView: View {
                 }
                 reportContentMetrics()
             }
+            .onChange(of: model.isStashPickerPresented) { _, _ in
+                measuredAuxiliaryContentHeight = 0
+                reportContentMetrics()
+            }
+            .onChange(of: model.stashCount) { _, _ in
+                reportContentMetrics()
+            }
             .onChange(of: displayScale) { _, _ in
                 reportContentMetrics()
             }
@@ -165,7 +261,7 @@ struct CapturePanelView: View {
                 }
 
             if hasAuxiliaryContent {
-                auxiliaryScrollRegion
+                auxiliaryRegion
             }
 
             CapturePanelFooter(model: model)
@@ -195,6 +291,25 @@ struct CapturePanelView: View {
             || model.previewState != .idle
     }
 
+    @ViewBuilder
+    private var auxiliaryRegion: some View {
+        if model.isStashPickerPresented {
+            CanceledDraftStashPicker(model: model)
+                .frame(width: 520)
+                .padding(.leading, 14)
+                .layoutPriority(0)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Capture details")
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    updateMeasuredAuxiliaryContentHeight(height)
+                }
+        } else {
+            auxiliaryScrollRegion
+        }
+    }
+
     private var auxiliaryScrollRegion: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
@@ -221,61 +336,53 @@ struct CapturePanelView: View {
 
     private var auxiliaryContent: some View {
         VStack(alignment: .leading, spacing: CapturePanelLayout.sectionSpacing) {
-            if model.isStashPickerPresented {
-                CanceledDraftStashPicker(model: model)
-                    .frame(width: 520)
+            if model.taskIDPromptVisible {
+                TaskIDPromptCard(model: model, focus: $focusedControl)
+                    .frame(width: 430)
                     .padding(.leading, 14)
                     .layoutPriority(0)
-                    .id(AuxiliarySection.stash)
-            } else {
-                if model.taskIDPromptVisible {
-                    TaskIDPromptCard(model: model, focus: $focusedControl)
-                        .frame(width: 430)
-                        .padding(.leading, 14)
-                        .layoutPriority(0)
-                        .id(AuxiliarySection.taskIDPrompt)
-                } else if model.completionVisible {
-                    CompletionList(model: model)
-                        .frame(width: 430)
-                        .frame(maxHeight: CapturePanelLayout.completionViewportHeight, alignment: .top)
-                        .padding(.leading, 14)
-                        .layoutPriority(0)
-                        .id(AuxiliarySection.completion)
-                }
+                    .id(AuxiliarySection.taskIDPrompt)
+            } else if model.completionVisible {
+                CompletionList(model: model)
+                    .frame(width: 430)
+                    .frame(maxHeight: CapturePanelLayout.completionViewportHeight, alignment: .top)
+                    .padding(.leading, 14)
+                    .layoutPriority(0)
+                    .id(AuxiliarySection.completion)
+            }
 
-                if let destinationSummary = model.destinationSummary {
-                    Text(destinationSummary)
+            if let destinationSummary = model.destinationSummary {
+                Text(destinationSummary)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .id(AuxiliarySection.destination)
+            }
+
+            if let errorMessage = model.errorMessage {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(errorMessage)
                         .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .id(AuxiliarySection.destination)
-                }
-
-                if let errorMessage = model.errorMessage {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(errorMessage)
-                            .font(.callout)
-                            .foregroundStyle(.red)
-                            .textSelection(.enabled)
-                            .accessibilityLabel("Capture error: \(errorMessage)")
-                            .accessibilityFocused($errorIsFocused)
-                            .onAppear { errorIsFocused = true }
-                        HStack {
-                            Button("Retry") {
-                                model.submit(openAfterCapture: false)
-                            }
-                            Button("Copy Diagnostic") {
-                                model.copyDiagnosticToPasteboard()
-                            }
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                        .accessibilityLabel("Capture error: \(errorMessage)")
+                        .accessibilityFocused($errorIsFocused)
+                        .onAppear { errorIsFocused = true }
+                    HStack {
+                        Button("Retry") {
+                            model.submit(openAfterCapture: false)
+                        }
+                        Button("Copy Diagnostic") {
+                            model.copyDiagnosticToPasteboard()
                         }
                     }
-                    .id(AuxiliarySection.error)
                 }
+                .id(AuxiliarySection.error)
+            }
 
-                if model.previewState != .idle {
-                    PreviewPane(model: model)
-                        .id(AuxiliarySection.preview)
-                }
+            if model.previewState != .idle {
+                PreviewPane(model: model)
+                    .id(AuxiliarySection.preview)
             }
         }
     }
@@ -316,7 +423,7 @@ struct CapturePanelView: View {
         let policy = CapturePanelContentHeightPolicy(displayScale: displayScale)
         let metrics = policy.metrics(
             editorHeight: measuredEditorHeight,
-            auxiliaryHeight: hasAuxiliaryContent ? measuredAuxiliaryContentHeight : nil,
+            auxiliary: currentAuxiliaryHeight,
             footerHeight: measuredFooterHeight
         )
         guard metrics.isValid else {
@@ -327,6 +434,25 @@ struct CapturePanelView: View {
 
     private func applyFocusRequest(_ request: CapturePanelFocusRequest) {
         focusedControl = request.target
+    }
+
+    private var currentAuxiliaryHeight: CapturePanelAuxiliaryHeight? {
+        guard hasAuxiliaryContent else {
+            return nil
+        }
+
+        if model.isStashPickerPresented {
+            let explicit = CanceledDraftStashPickerHeightPolicy(
+                entryCount: model.stashCount,
+                displayScale: displayScale
+            ).auxiliaryHeight
+            return CapturePanelAuxiliaryHeight(
+                idealHeight: max(explicit.idealHeight, measuredAuxiliaryContentHeight),
+                minimumVisibleHeight: explicit.minimumVisibleHeight
+            )
+        }
+
+        return .overflow(idealHeight: measuredAuxiliaryContentHeight)
     }
 
     private enum AuxiliarySection: Hashable {
@@ -605,12 +731,13 @@ private struct TaskIDPromptCard: View {
 @available(macOS 26.0, *)
 private struct CanceledDraftStashPicker: View {
     @ObservedObject var model: CapturePanelModel
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: CapturePanelLayout.stashPickerContentSpacing) {
             ScrollViewReader { proxy in
                 ScrollView(.vertical) {
-                    LazyVStack(alignment: .leading, spacing: 2) {
+                    LazyVStack(alignment: .leading, spacing: CapturePanelLayout.stashRowSpacing) {
                         ForEach(Array(model.stashEntries.enumerated()), id: \.element.id) { index, entry in
                             CanceledDraftStashRow(
                                 entry: entry,
@@ -624,9 +751,15 @@ private struct CanceledDraftStashPicker: View {
                             }
                         }
                     }
-                    .padding(6)
+                    .padding(CapturePanelLayout.stashListPadding)
                 }
-                .frame(maxHeight: CapturePanelLayout.stashViewportHeight, alignment: .top)
+                .frame(
+                    minHeight: 0,
+                    idealHeight: sizing.rowViewportHeight,
+                    maxHeight: sizing.rowViewportHeight,
+                    alignment: .top
+                )
+                .layoutPriority(0)
                 .onAppear {
                     scrollSelectionIntoView(proxy)
                 }
@@ -636,8 +769,16 @@ private struct CanceledDraftStashPicker: View {
             }
 
             clearAllButton
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(2)
         }
-        .padding(6)
+        .padding(CapturePanelLayout.stashPickerPadding)
+        .frame(
+            minHeight: sizing.minimumVisibleHeight,
+            idealHeight: sizing.idealHeight,
+            maxHeight: sizing.idealHeight,
+            alignment: .topLeading
+        )
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .shadow(radius: 12, y: 6)
@@ -657,7 +798,10 @@ private struct CanceledDraftStashPicker: View {
                 Text("Shift-D")
                     .font(.system(.caption, design: .monospaced).weight(.semibold))
                     .foregroundStyle(.red)
-                    .frame(width: 58, height: 22)
+                    .frame(
+                        width: CapturePanelLayout.stashClearButtonKeyWidth,
+                        height: CapturePanelLayout.stashClearButtonKeyHeight
+                    )
                     .background(.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
                     .overlay(
                         RoundedRectangle(cornerRadius: 5)
@@ -669,8 +813,9 @@ private struct CanceledDraftStashPicker: View {
                 Spacer(minLength: 8)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
+            .padding(.horizontal, CapturePanelLayout.stashClearButtonHorizontalPadding)
+            .padding(.vertical, CapturePanelLayout.stashClearButtonVerticalPadding)
+            .frame(height: CapturePanelLayout.stashClearButtonHeight, alignment: .leading)
         }
         .buttonStyle(.plain)
         .foregroundStyle(.red)
@@ -679,6 +824,10 @@ private struct CanceledDraftStashPicker: View {
             "Permanently removes all retained canceled drafts from the current app session. "
                 + "Lowercase d does not delete."
         )
+    }
+
+    private var sizing: CanceledDraftStashPickerHeightPolicy {
+        CanceledDraftStashPickerHeightPolicy(entryCount: model.stashCount, displayScale: displayScale)
     }
 
     private var listAccessibilityLabel: String {
@@ -736,9 +885,9 @@ private struct CanceledDraftStashRow: View {
 
             Spacer(minLength: 8)
         }
-        .frame(minHeight: CapturePanelLayout.stashRowHeight - 8, alignment: .topLeading)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .frame(minHeight: CapturePanelLayout.stashRowContentMinimumHeight, alignment: .topLeading)
+        .padding(.horizontal, CapturePanelLayout.stashRowHorizontalPadding)
+        .padding(.vertical, CapturePanelLayout.stashRowVerticalPadding)
         .background(selectionFill)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .accessibilityElement(children: .combine)

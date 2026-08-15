@@ -94,7 +94,10 @@ or expired certificate can require reauthorizing those system permissions.
   the content height. Completion, destination, preview, and error details live in the
   auxiliary overflow region; if the clamp binds (a very small display, very large dynamic
   type, an unusually long error), that middle region scrolls while the editor and primary
-  controls stay visible.
+  controls stay visible. The canceled-draft stash picker grows the panel to show its
+  fixed **Shift-D Delete All** action and up to five draft rows; longer stashes scroll
+  only the row viewport, and screen-constrained layouts preserve the fixed picker action
+  before row height.
 - `CaptureCore` imports only Foundation and runs `bob` directly through `Process` with
   argv arrays and an explicit GUI-safe environment.
 - Editor highlighting is derived from `bob capture-parse --format json` spans. The app
