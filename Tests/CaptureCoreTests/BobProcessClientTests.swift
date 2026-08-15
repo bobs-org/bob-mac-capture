@@ -69,6 +69,29 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture-parse --format json -- \(draft)"))
     }
 
+    func testCaptureParseRunsBatchDraftAsOneArgvElementAndDecodesItems() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "First item @Cash\n\nSecond item @notes#Ideas"
+
+        let response = try await client.captureParse(draft)
+
+        XCTAssertEqual(response.items.map(\.body), ["First item", "Second item"])
+        XCTAssertEqual(response.items.compactMap(\.route), ["cash", "notes"])
+        XCTAssertEqual(response.items[1].section, "Ideas")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- \(draft)"))
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-parse").count - 1, 1)
+    }
+
     func testCaptureParseDecodesTaskBlockIDMarker() async throws {
         let client = BobProcessClient(
             executablePath: try fakeBobPath(),
@@ -101,6 +124,29 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(response.candidates.first?.replacement, "today")
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture-complete --cursor 6 --format json -- idea @"))
+    }
+
+    func testCaptureCompleteRunsBatchDraftAsOneArgvElement() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "First item @Cash\n\nSecond item @notes#Ideas"
+
+        let response = try await client.captureComplete(draft, cursor: 36)
+
+        XCTAssertEqual(response.context, "route")
+        XCTAssertEqual(response.replacement, CaptureRange(start: 31, end: 36))
+        XCTAssertEqual(response.candidates.first?.replacement, "notes")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-complete --cursor 36 --format json -- \(draft)"))
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
     }
 
     func testCaptureCompleteTaskBlockIDMarkerCompletesRouteButNotAuthoredID() async throws {
@@ -169,6 +215,31 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(record.contains("BOB_PRIORITY_ROLL_SEED=fixed"))
     }
 
+    func testLivePreviewDecodesBatchCapturesFromOneProcess() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "First item @Cash\n\nSecond item @notes#Ideas"
+
+        let response = try await client.captureLivePreview(draft, priorityRollSeed: "fixed")
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful live preview response")
+        }
+        XCTAssertEqual(success.normalizedCaptures.map(\.text), ["First item", "Second item"])
+        XCTAssertTrue(success.normalizedCaptures.allSatisfy { $0.dryRun })
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"))
+        XCTAssertEqual(record.components(separatedBy: "argv=capture").count - 1, 1)
+    }
+
     func testCaptureSubmitDecodesSuccessResponse() async throws {
         let client = BobProcessClient(
             executablePath: try fakeBobPath(),
@@ -220,6 +291,31 @@ final class BobProcessClientTests: XCTestCase {
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --format json -- Follow up @file^new-id"))
         XCTAssertTrue(record.contains("argv=capture --format json -- Add context @file+parent-id"))
+    }
+
+    func testCaptureSubmitDecodesBatchCapturesFromOneProcess() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "First item @Cash\n\nSecond item @notes#Ideas"
+
+        let response = try await client.capture(draft, dryRun: false, readClipboard: true)
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful capture response")
+        }
+        XCTAssertEqual(success.normalizedCaptures.map(\.relativeTarget), ["cash.md", "notes.md"])
+        XCTAssertEqual(success.normalizedCaptures[1].previewBlockLines, ["- Second item", "  - nested detail"])
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --format json -- \(draft)"))
+        XCTAssertEqual(record.components(separatedBy: "argv=capture").count - 1, 1)
     }
 
     func testCaptureSubmitDecodesSingleClipPayloadWithOmittedEntriesAsSuccess() async throws {
@@ -315,6 +411,32 @@ final class BobProcessClientTests: XCTestCase {
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("--dry-run"))
         XCTAssertFalse(record.contains("--no-clip"))
+    }
+
+    func testCapturePreviewDecodesBatchCapturesFromOneProcess() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "First item @Cash\n\nSecond item @notes#Ideas"
+
+        let response = try await client.capture(draft, dryRun: true, readClipboard: true)
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful preview response")
+        }
+        XCTAssertTrue(success.normalizedCaptures.allSatisfy { $0.dryRun })
+        XCTAssertEqual(success.normalizedCaptures.map(\.target), ["/tmp/bob/cash.md", "/tmp/bob/notes.md"])
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --format json --dry-run -- \(draft)"))
+        XCTAssertFalse(record.contains("--no-clip"))
+        XCTAssertEqual(record.components(separatedBy: "argv=capture").count - 1, 1)
     }
 
     func testCaptureFailureDecodesActionableErrorDespiteNonZeroExit() async throws {

@@ -759,7 +759,39 @@ private struct PreviewPane: View {
 
     @ViewBuilder
     private func previewContent(_ success: CaptureCommandSuccess) -> some View {
+        let captures = success.normalizedCaptures
+        if captures.count > 1 {
+            Text("\(captures.count) captures")
+                .fontWeight(.semibold)
+                .accessibilityLabel("\(captures.count) capture items")
+        }
+
+        ForEach(Array(captures.enumerated()), id: \.offset) { index, capture in
+            if index > 0 {
+                Divider()
+            }
+            previewItem(capture, index: index, total: captures.count)
+        }
+
+        if model.livePreviewUsesLiteralClipboard {
+            Text("Clipboard markers stay literal in live preview")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+        }
+    }
+
+    @ViewBuilder
+    private func previewItem(
+        _ success: CaptureCommandSuccess,
+        index: Int,
+        total: Int
+    ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if total > 1 {
+                Text("\(index + 1)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Text(success.routeLabel.isEmpty ? success.relativeTarget : success.routeLabel)
                 .fontWeight(.semibold)
             Text(success.placement)
@@ -777,33 +809,30 @@ private struct PreviewPane: View {
         // children, and the schedule log in the exact order Bob writes them, already
         // carrying the target note's indentation.
         let blockLines = success.previewBlockLines
-        if blockLines.count == 1 {
-            Text(success.taskLine)
-                .font(.system(.callout, design: .monospaced))
-                .textSelection(.enabled)
-        } else {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(Array(blockLines.enumerated()), id: \.offset) { _, line in
-                        Text(line)
-                            .font(.system(.callout, design: .monospaced))
-                            .textSelection(.enabled)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(blockLines.enumerated()), id: \.offset) { _, line in
+                Text(line)
+                    .font(.system(.callout, design: .monospaced))
+                    .textSelection(.enabled)
             }
-            .frame(maxHeight: 140)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(previewAccessibilityLabel(for: success, index: index, total: total))
 
         Text(success.relativeTarget)
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .textSelection(.enabled)
+    }
 
-        if model.livePreviewUsesLiteralClipboard {
-            Text("Clipboard markers stay literal in live preview")
-                .foregroundStyle(.secondary)
-                .font(.caption)
-        }
+    private func previewAccessibilityLabel(
+        for success: CaptureCommandSuccess,
+        index: Int,
+        total: Int
+    ) -> String {
+        let position = total > 1 ? "Item \(index + 1) of \(total), " : ""
+        let destination = success.routeLabel.isEmpty ? success.relativeTarget : success.routeLabel
+        return "\(position)\(success.kind), \(destination), \(success.previewBlockLines.joined(separator: ", "))"
     }
 }

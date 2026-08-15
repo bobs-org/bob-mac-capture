@@ -105,8 +105,11 @@ or expired certificate can require reauthorizing those system permissions.
   accepted candidates apply the server-provided byte replacement range and `cursor_after`
   exactly, restoring a collapsed caret at that offset. Route completion also covers the
   route side of Bob's `@route^block-id` ordinary task-with-ID marker; the authored ID
-  side has no existing-task picker and an empty completion result is shown as no list. See
-  "Wikilink Completion" below for the Obsidian-specific contract and row presentation.
+  side has no existing-task picker and an empty completion result is shown as no list.
+  For blank-line-separated drafts, completion still sends the complete draft as one argv
+  value; Bob scopes the answer to the item containing the UTF-8 cursor and returns
+  replacement ranges in draft-global byte offsets. See "Wikilink Completion" below for
+  the Obsidian-specific contract and row presentation.
 - Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through
   a dedicated process-client API that asserts `--no-clip`. `%` markers stay literal in
   continuous preview; clipboard-resolving preview is a separate explicit action.
@@ -114,16 +117,26 @@ or expired certificate can require reauthorizing those system permissions.
   child lines, including Bob's target-selected indentation, and is omitted entirely when
   a draft has no authored bullets. `capture-parse` keeps `sub_bullets` as normalized
   bodies and adds aligned `sub_bullet_depths` values (`1` or `2`); missing depths from an
-  older `bob` decode as depth `1`, and mismatched depths are ignored safely. Preview
-  renders `task_line` followed by every captured `sub_bullets` line in source order and
-  indentation, never flattened or truncated.
-- Preview shows the whole block Bob will write, in Bob's own order: the parent
-  `task_line`, the authored children, then `clip.lines` and `schedule_log.lines` when the
-  response carries them. Continuous live preview passes `--no-clip`, so it has no `clip`
-  to show; the explicit **Preview** button and **Capture** resolve the clipboard and
-  therefore mirror the full block.
+  older `bob` decode as depth `1`, and mismatched depths are ignored safely.
+  `capture-parse` also decodes Bob's additive `items` array for batch drafts,
+  preserving item index, source range, physical line range, route, section, needs, and
+  authored-child depths.
+- `bob capture --format json` keeps the legacy top-level first result for a single
+  capture or compatibility fallback, and may add an ordered `captures` array for a batch.
+  The app normalizes both shapes to one collection before updating preview, status,
+  VoiceOver announcements, and Command-Return opening; it never splits a draft into
+  multiple mutating `bob` subprocesses.
+- Preview shows every block Bob will write, in Bob's own order: each item's parent
+  `task_line`, authored children, then `clip.lines` and `schedule_log.lines` when the
+  response carries them. One item stays compact; a batch renders an ordered stack with
+  item count, destination/kind metadata, dividers, and exact `previewBlockLines`. The
+  outer auxiliary detail region owns scrolling, so preview itself never nests another
+  scroll view. Continuous live preview passes `--no-clip`, so it has no `clip` to show;
+  the explicit **Preview** button and **Capture** resolve the clipboard and therefore
+  mirror the full block.
 - The preview path assigns a fixed `BOB_PRIORITY_ROLL_SEED` for the draft lifecycle so
-  randomized `p:<N>` scheduled dates can be reused by submission and reset only after a
+  randomized `p:<N>` scheduled dates can be reused by submission. Bob derives
+  item-specific rolls from that seed for batch drafts, and the seed resets only after a
   successful capture or discard.
 - Capture targets are cached at launch, refreshed when the panel opens, and invalidated
   by a coalesced FSEvents watcher. Watcher or refresh failures mark the cache stale
@@ -132,13 +145,14 @@ or expired certificate can require reauthorizing those system permissions.
   that terminates and reaps a wedged process instead of leaving the panel waiting
   indefinitely; a fired timeout surfaces as an actionable `BobClientError.timedOut`. Quit
   cancels every outstanding invocation via `cancelActiveProcess()`.
-- A successful capture hides the panel automatically; a failed capture keeps the panel
-  open with its complete draft and an actionable error. Reopening the panel after a
-  success starts from a clean slate — the prior "Captured → …" summary and status text
-  are cleared, while a retained draft (from Escape or a failure) reopens exactly as it
-  was left. Closing the panel never destroys a draft. **Discard** permanently clears the
-  draft, while Control-C stashes a semantically nonempty draft for this app session
-  before clearing and closing.
+- A successful aggregate capture hides the panel automatically only after Bob returns
+  success for the whole draft; a failed capture keeps the panel open with its complete
+  draft and an actionable error. Command-Return opens every unique returned target in
+  source order. Reopening the panel after a success starts from a clean slate — the prior
+  "Captured → …" summary and status text are cleared, while a retained draft (from Escape
+  or a failure) reopens exactly as it was left. Closing the panel never destroys a draft.
+  **Discard** permanently clears the draft, while Control-C stashes a semantically
+  nonempty draft for this app session before clearing and closing.
 - Canceled drafts live in a bounded in-memory stash for the lifetime of the running app.
   Settings persists only the capacity, defaults it to 10, and clamps it to 0...36. Zero
   turns the feature off and clears the in-memory stash. Capacity reductions keep the
@@ -153,7 +167,7 @@ or expired certificate can require reauthorizing those system permissions.
 | Return | Capture, then close the panel | Accept the selected completion |
 | Command-Return | Capture, open the target in Obsidian, then close the panel | Accept, then submit |
 | Shift-Return / Option-Return | Insert a newline | Insert a newline |
-| Ctrl-J | Insert a new `- ` bullet row after the caret | Insert a new `- ` bullet row after the caret |
+| Ctrl-J | Insert a new indentation-aware `- ` row, or turn a marker-only placeholder into a blank item separator | Same edit, and close completion |
 | Command-V | Insert the clipboard's plain text, discarding source formatting | Insert the clipboard's plain text and close completion |
 | Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action |
 | Tab | Indent the current column-zero continuation bullet to two spaces (normal focus traversal otherwise) | Accept the selected completion |
@@ -196,17 +210,19 @@ order.
 The 36-entry upper bound exists so every retained row always has a unique one-key
 accelerator: `1` through `9`, then `0`, then `A` through `Z`.
 
-A draft is a one-line parent followed by zero or more authored `-`/`*`/`+` bullets.
-Column-zero bullets become first-level authored children; bullets prefixed by exactly two
-ASCII spaces become nested authored children under the nearest preceding first-level
-authored child. A marker (`@route`, `@route+block-id` for an existing-task sub-bullet,
-`@route^block-id` for an ordinary task with an authored block ID, `s:<N>`, `p:<N>`, `%`,
-…) at the end of any valid line configures the whole capture even when it appears on a
-child line. The app never parses that punctuation itself: highlighting and completion
-follow bob-cli's semantic spans. Both families complete their route side; only the `+`
-family's right-hand side offers existing tasks, and the `^` family's authored ID has no
-picker. The retired `@route::block-id` spelling is a parse diagnostic from
-`bob capture-parse`, not a supported interactive form.
+A draft is one or more capture items separated by one or more blank or whitespace-only
+physical lines. Within each item, the first nonblank line is the parent, followed by zero
+or more authored `-`/`*`/`+` bullets. Column-zero bullets become first-level authored
+children; bullets prefixed by exactly two ASCII spaces become nested authored children
+under the nearest preceding first-level authored child. A marker (`@route`,
+`@route+block-id` for an existing-task sub-bullet, `@route^block-id` for an ordinary task
+with an authored block ID, `s:<N>`, `p:<N>`, `%`, …) at the end of any valid line
+configures that item even when it appears on a child line. The app never parses that
+punctuation itself: highlighting and completion follow bob-cli's semantic spans. Both
+families complete their route side; only the `+` family's right-hand side offers
+existing tasks, and the `^` family's authored ID has no picker. The retired
+`@route::block-id` spelling is a parse diagnostic from `bob capture-parse`, not a
+supported interactive form.
 
 ```text
 Prepare the launch review
@@ -214,6 +230,8 @@ Prepare the launch review
   - Send the owner the final date
 - Attach the final checklist @work p:1
   - Verify the links
+
+Write release note @notes#Ideas
 ```
 
 Bob's routed marker syntax works directly in the editor. `@route^block-id` captures an
@@ -223,19 +241,22 @@ nests beneath an existing task. The app does not duplicate those grammar rules; 
 colors the span kinds Bob reports, asks Bob for completion at the real caret, and submits
 the original draft text.
 
-Ctrl-J starts the next top-level `- ` row from anywhere in the draft, and Backspace on an
-empty `- ` row removes it in one action instead of requiring two ordinary backspaces. To
-author a nested row, press Ctrl-J for a fresh top-level placeholder, then Tab before or
-after typing its body to indent it under the preceding first-level bullet — for example
-Ctrl-J, Tab, then type the nested body. Shift-Tab reverses that, returning a nested
+Ctrl-J starts the next canonical `- ` row from anywhere in the draft, copying exactly the
+current authored row's supported indentation (zero or two ASCII spaces). On a line that
+contains only optional whitespace plus one `-`, `*`, or `+` marker, Ctrl-J replaces the
+placeholder with exactly one blank item separator and puts the caret at the beginning of
+the following line, reusing an existing line terminator when one is already there.
+To author a nested row, press Ctrl-J from an existing nested row, or press Ctrl-J for a
+fresh top-level placeholder and then Tab before or after typing its body to indent it
+under the preceding first-level bullet. Shift-Tab reverses that, returning a nested
 bullet to column zero. Tab/Shift-Tab only move a continuation bullet between Bob's two
 supported source prefixes, exactly two ASCII spaces, so pasted or hand-authored drafts
 must still use that exact two-space indent; they stop at that ceiling and floor and leave
-every other line untouched. All three shortcuts act on the native text view directly, so
-undo, IME composition, and accessibility behave exactly as they do for any other edit,
-and Bob's live parse/preview remains the sole authority for whether the resulting
-hierarchy is contextually valid (for example, indenting a nonempty first bullet with no
-preceding owner).
+every other line untouched. Backspace on an empty `- ` row removes it in one action
+instead of requiring two ordinary backspaces. All four shortcuts act on the native text
+view directly, so undo, IME composition, and accessibility behave exactly as they do for
+any other edit, and Bob's live parse/preview remains the sole authority for whether the
+resulting hierarchy is contextually valid.
 
 Command-V intentionally reads only the clipboard's plain-text flavor. Source formatting
 is discarded because Bob's capture grammar is plain text, and letting AppKit choose a

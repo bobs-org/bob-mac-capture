@@ -109,6 +109,59 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(decoded.subBulletDepths, [1, 1])
     }
 
+    func testParseResponseDecodesBatchItemsWhenPresent() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "First @cash\\n\\nSecond @notes#Ideas",
+              "body": "First",
+              "mode": "task",
+              "route": "cash",
+              "needs": [],
+              "spans": [],
+              "diagnostics": [],
+              "items": [
+                {
+                  "index": 1,
+                  "range": { "start": 0, "end": 11 },
+                  "line_start": 1,
+                  "line_end": 1,
+                  "body": "First",
+                  "mode": "task",
+                  "route": "cash",
+                  "needs": []
+                },
+                {
+                  "index": 2,
+                  "range": { "start": 13, "end": 32 },
+                  "line_start": 3,
+                  "line_end": 3,
+                  "body": "Second",
+                  "mode": "bullet",
+                  "route": "notes",
+                  "section": "Ideas",
+                  "needs": [],
+                  "sub_bullets": ["nested"],
+                  "sub_bullet_depths": [2]
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(decoded.items.count, 2)
+        XCTAssertEqual(decoded.items[0].range, CaptureRange(start: 0, end: 11))
+        XCTAssertEqual(decoded.items[0].lineStart, 1)
+        XCTAssertEqual(decoded.items[1].mode, "bullet")
+        XCTAssertEqual(decoded.items[1].section, "Ideas")
+        XCTAssertEqual(decoded.items[1].subBullets, ["nested"])
+        XCTAssertEqual(decoded.items[1].subBulletDepths, [2])
+    }
+
     func testParseResponseDecodesTaskBlockIDMarkerAdditions() throws {
         let data = Data(
             """
@@ -204,6 +257,94 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertNil(success.clip)
         XCTAssertNil(success.scheduleLog)
         XCTAssertEqual(success.subBullets, [])
+        XCTAssertEqual(success.normalizedCaptures.count, 1)
+    }
+
+    func testCaptureCommandResponseDecodesOrderedMultiCaptureArray() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "cash",
+              "route_label": "cash.md",
+              "relative_target": "cash.md",
+              "target": "/tmp/bob/cash.md",
+              "text": "First",
+              "task_line": "- [ ] #task First [created::2026-08-14]",
+              "kind": "task",
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "inserted",
+              "captures": [
+                {
+                  "ok": true,
+                  "dry_run": false,
+                  "routed": true,
+                  "route": "cash",
+                  "route_label": "cash.md",
+                  "relative_target": "cash.md",
+                  "target": "/tmp/bob/cash.md",
+                  "text": "First",
+                  "task_line": "- [ ] #task First [created::2026-08-14]",
+                  "kind": "task",
+                  "created": "2026-08-14",
+                  "scheduled": null,
+                  "placement": "inserted"
+                },
+                {
+                  "ok": true,
+                  "dry_run": false,
+                  "routed": true,
+                  "route": "notes",
+                  "route_label": "notes.md",
+                  "relative_target": "notes.md",
+                  "target": "/tmp/bob/notes.md",
+                  "text": "Second",
+                  "task_line": "- Second",
+                  "kind": "bullet",
+                  "created": "2026-08-14",
+                  "scheduled": null,
+                  "placement": "appended",
+                  "sub_bullets": ["  - nested detail"]
+                }
+              ]
+            }
+            """
+        )
+
+        XCTAssertEqual(success.routeLabel, "cash.md")
+        XCTAssertEqual(success.captures.map(\.text), ["First", "Second"])
+        XCTAssertEqual(success.normalizedCaptures.map(\.relativeTarget), ["cash.md", "notes.md"])
+        XCTAssertEqual(success.normalizedCaptures[1].previewBlockLines, ["- Second", "  - nested detail"])
+    }
+
+    func testMalformedMultiCaptureArrayFailsDecode() {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "cash",
+              "route_label": "cash.md",
+              "relative_target": "cash.md",
+              "target": "/tmp/bob/cash.md",
+              "text": "First",
+              "task_line": "- [ ] #task First [created::2026-08-14]",
+              "kind": "task",
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "inserted",
+              "captures": [
+                { "ok": true, "dry_run": false }
+              ]
+            }
+            """.utf8
+        )
+
+        XCTAssertThrowsError(try JSONDecoder().decode(CaptureCommandResponse.self, from: data))
     }
 
     func testCaptureCommandResponseDecodesRenderedNestedSubBulletsWhenPresent() throws {

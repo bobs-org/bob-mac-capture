@@ -791,6 +791,74 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(textView.selectedRange(), NSRange(location: 12, length: 0))
     }
 
+    func testBulletNewlineResolverCopiesSupportedAuthoredIndentation() throws {
+        let topLevel = try applyBulletEdit(
+            text: "Parent\n- child",
+            selectedRange: NSRange(location: "Parent\n- child".utf16.count, length: 0)
+        )
+        XCTAssertEqual(topLevel.text, "Parent\n- child\n- ")
+        XCTAssertEqual(topLevel.selection, NSRange(location: "Parent\n- child\n- ".utf16.count, length: 0))
+
+        let nested = try applyBulletEdit(
+            text: "Parent\n  - child",
+            selectedRange: NSRange(location: "Parent\n  - child".utf16.count, length: 0)
+        )
+        XCTAssertEqual(nested.text, "Parent\n  - child\n  - ")
+        XCTAssertEqual(nested.selection, NSRange(location: "Parent\n  - child\n  - ".utf16.count, length: 0))
+
+        let parentRow = try applyBulletEdit(
+            text: "Parent",
+            selectedRange: NSRange(location: "Parent".utf16.count, length: 0)
+        )
+        XCTAssertEqual(parentRow.text, "Parent\n- ")
+    }
+
+    func testBulletNewlineResolverTurnsPlaceholderIntoOneSeparatorAtEOF() throws {
+        let resolved = try applyBulletEdit(
+            text: "Parent\n- ",
+            selectedRange: NSRange(location: "Parent\n- ".utf16.count, length: 0)
+        )
+
+        XCTAssertEqual(resolved.text, "Parent\n\n")
+        XCTAssertEqual(resolved.selection, NSRange(location: "Parent\n\n".utf16.count, length: 0))
+    }
+
+    func testBulletNewlineResolverTurnsWhitespaceWrappedPlaceholderIntoSeparatorBeforeNextLine() throws {
+        for marker in ["-", "*", "+"] {
+            let text = "Parent\n  \(marker)   \nChild"
+            let selectedRange = NSRange(location: "Parent\n  \(marker)".utf16.count, length: 0)
+
+            let resolved = try applyBulletEdit(text: text, selectedRange: selectedRange)
+
+            XCTAssertEqual(resolved.text, "Parent\n\nChild")
+            XCTAssertEqual(resolved.selection, NSRange(location: "Parent\n\n".utf16.count, length: 0))
+        }
+    }
+
+    func testBulletNewlineResolverReusesCRLFTerminatorForPlaceholder() throws {
+        let text = "Parent\r\n+ \r\nChild"
+
+        let resolved = try applyBulletEdit(
+            text: text,
+            selectedRange: NSRange(location: "Parent\r\n+".utf16.count, length: 0)
+        )
+
+        XCTAssertEqual(resolved.text, "Parent\r\n\r\nChild")
+        XCTAssertEqual(resolved.selection, NSRange(location: "Parent\r\n\r\n".utf16.count, length: 0))
+    }
+
+    func testBulletNewlineResolverKeepsSelectionReplacementBehaviorOnPlaceholderSelection() throws {
+        let text = "Parent\n- \nChild"
+
+        let resolved = try applyBulletEdit(
+            text: text,
+            selectedRange: NSRange(location: "Parent\n".utf16.count, length: "- \n".utf16.count)
+        )
+
+        XCTAssertEqual(resolved.text, "Parent\n\n- Child")
+        XCTAssertEqual(resolved.selection, NSRange(location: "Parent\n\n- ".utf16.count, length: 0))
+    }
+
     @MainActor
     func testInsertBulletNewlineDeclinesNoneditableAndUnrelatedResponders() {
         let model = CapturePanelModel()
@@ -1484,6 +1552,25 @@ final class BobMacCaptureTests: XCTestCase {
                 )
             ]
         )
+    }
+
+    private enum BulletEditTestError: Error {
+        case unresolved
+    }
+
+    private func applyBulletEdit(
+        text: String,
+        selectedRange: NSRange
+    ) throws -> (text: String, selection: NSRange) {
+        guard let edit = CaptureBulletNewlineEditResolver.resolve(
+            in: text,
+            selectedRange: selectedRange
+        ) else {
+            throw BulletEditTestError.unresolved
+        }
+        let result = NSMutableString(string: text)
+        result.replaceCharacters(in: edit.replacementRange, with: edit.replacementText)
+        return (String(result), edit.selectedRange)
     }
 
     private func keyEvent(

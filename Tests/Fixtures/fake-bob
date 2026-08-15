@@ -46,6 +46,7 @@ json_string() {
 }
 
 multiline_draft=$'Prepare launch\n- confirm owner\n  - text owner\n- attach checklist\n  - verify links'
+batch_draft=$'First item @Cash\n\nSecond item @notes#Ideas'
 
 case "${command}" in
   capture-parse)
@@ -240,6 +241,18 @@ JSON
       printf ',"body":"Prepare launch","mode":"task","needs":[],"spans":[],"diagnostics":[],'
       printf '"sub_bullets":["confirm owner","text owner","attach checklist","verify links"],'
       printf '"sub_bullet_depths":[1,2,1,2]}\n'
+    elif [[ "${draft}" == "${batch_draft}" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"body":"First item","mode":"task","route":"cash","needs":[],"spans":[],"diagnostics":[],
+"items":[
+  {"index":1,"range":{"start":0,"end":16},"line_start":1,"line_end":1,
+   "body":"First item","mode":"task","route":"cash","needs":[]},
+  {"index":2,"range":{"start":18,"end":42},"line_start":3,"line_end":3,
+   "body":"Second item","mode":"bullet","route":"notes","section":"Ideas","needs":[]}
+]}
+JSON
     else
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
@@ -394,13 +407,6 @@ JSON
 }
 JSON
     elif [[ "${draft}" == "Do work @Dev^new-id" ]]; then
-      cursor="0"
-      args=("$@")
-      for ((i = 0; i < ${#args[@]}; i++)); do
-        if [[ "${args[$i]}" == "--cursor" || "${args[$i]}" == "-c" ]]; then
-          cursor="${args[$((i + 1))]:-0}"
-        fi
-      done
       if [[ "${cursor}" -le 12 ]]; then
         cat <<'JSON'
 {
@@ -457,6 +463,19 @@ JSON
       "text": "Parent",
       "section": "Tasks"
     }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "${batch_draft}" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 31, "end": 36 },
+  "context": "route",
+  "candidates": [
+    { "replacement": "notes", "route": "notes", "label": "notes.md", "kind": "area", "status": null }
   ]
 }
 JSON
@@ -577,6 +596,57 @@ JSON
   "scheduled": null,
   "placement": "inserted",
   "sub_bullets": ["  - confirm owner", "    - text owner", "  - attach checklist", "    - verify links"]
+}
+JSON
+    elif [[ "${draft}" == "${batch_draft}" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "cash",
+  "route_label": "cash.md",
+  "relative_target": "cash.md",
+  "target": "/tmp/bob/cash.md",
+  "text": "First item",
+  "task_line": "- [ ] #task First item [created::2026-08-14]",
+  "kind": "task",
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "inserted",
+  "captures": [
+    {
+      "ok": true,
+      "dry_run": ${dry_run},
+      "routed": true,
+      "route": "cash",
+      "route_label": "cash.md",
+      "relative_target": "cash.md",
+      "target": "/tmp/bob/cash.md",
+      "text": "First item",
+      "task_line": "- [ ] #task First item [created::2026-08-14]",
+      "kind": "task",
+      "created": "2026-08-14",
+      "scheduled": null,
+      "placement": "inserted"
+    },
+    {
+      "ok": true,
+      "dry_run": ${dry_run},
+      "routed": true,
+      "route": "notes",
+      "route_label": "notes.md",
+      "relative_target": "notes.md",
+      "target": "/tmp/bob/notes.md",
+      "text": "Second item",
+      "task_line": "- Second item",
+      "kind": "bullet",
+      "created": "2026-08-14",
+      "scheduled": null,
+      "placement": "appended",
+      "sub_bullets": ["  - nested detail"]
+    }
+  ]
 }
 JSON
     else

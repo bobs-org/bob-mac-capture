@@ -17,6 +17,97 @@ struct CaptureBulletIndentationEdit: Equatable {
     let resultingSelection: NSRange
 }
 
+struct CaptureBulletNewlineEdit: Equatable {
+    let replacementRange: NSRange
+    let replacementText: String
+    let selectedRange: NSRange
+}
+
+enum CaptureBulletNewlineEditResolver {
+    static func resolve(in text: String, selectedRange: NSRange) -> CaptureBulletNewlineEdit? {
+        let nsText = text as NSString
+        guard selectedRange.location >= 0,
+              selectedRange.length >= 0,
+              selectedRange.location + selectedRange.length <= nsText.length
+        else {
+            return nil
+        }
+
+        var lineStart = 0
+        var lineEnd = 0
+        var contentsEnd = 0
+        nsText.getLineStart(
+            &lineStart,
+            end: &lineEnd,
+            contentsEnd: &contentsEnd,
+            for: NSRange(location: selectedRange.location, length: 0)
+        )
+
+        let contentRange = NSRange(location: lineStart, length: contentsEnd - lineStart)
+        let lineContent = nsText.substring(with: contentRange)
+
+        if selectedRange.length == 0,
+           isPlaceholderLine(lineContent)
+        {
+            let terminatorRange = NSRange(location: contentsEnd, length: lineEnd - contentsEnd)
+            let replacementRange: NSRange
+            let replacementText: String
+            if terminatorRange.length > 0 {
+                replacementRange = NSRange(location: lineStart, length: lineEnd - lineStart)
+                replacementText = nsText.substring(with: terminatorRange)
+            } else {
+                replacementRange = contentRange
+                replacementText = preferredLineTerminator(in: text)
+            }
+            let finalLocation = replacementRange.location + (replacementText as NSString).length
+            return CaptureBulletNewlineEdit(
+                replacementRange: replacementRange,
+                replacementText: replacementText,
+                selectedRange: NSRange(location: finalLocation, length: 0)
+            )
+        }
+
+        let indent = supportedAuthoredIndent(in: lineContent)
+        let replacementText = "\(preferredLineTerminator(in: text))\(indent)- "
+        let finalLocation = selectedRange.location + (replacementText as NSString).length
+        return CaptureBulletNewlineEdit(
+            replacementRange: selectedRange,
+            replacementText: replacementText,
+            selectedRange: NSRange(location: finalLocation, length: 0)
+        )
+    }
+
+    private static func isPlaceholderLine(_ line: String) -> Bool {
+        line.range(of: #"^\s*[-*+]\s*$"#, options: .regularExpression) != nil
+    }
+
+    private static func supportedAuthoredIndent(in line: String) -> String {
+        for indent in ["  ", ""] {
+            for marker in ["-", "*", "+"] {
+                let prefix = indent + marker
+                guard line.hasPrefix(prefix) else {
+                    continue
+                }
+                let suffix = line.dropFirst(prefix.count)
+                if suffix.isEmpty || suffix.first?.isWhitespace == true {
+                    return indent
+                }
+            }
+        }
+        return ""
+    }
+
+    private static func preferredLineTerminator(in text: String) -> String {
+        if text.contains("\r\n") {
+            return "\r\n"
+        }
+        if text.contains("\r") {
+            return "\r"
+        }
+        return "\n"
+    }
+}
+
 @MainActor
 final class CapturePanelController: NSObject, NSWindowDelegate {
     private let model: CapturePanelModel
@@ -238,19 +329,24 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
-    /// Ctrl-J: replace the current selection with a fresh `- ` row and leave the caret
-    /// after the space. Returns `false` for any responder that is not an editable text
-    /// view so the key event falls through to AppKit untouched.
+    /// Ctrl-J: resolve a deterministic native text edit, then apply it through
+    /// `NSTextView` so undo, IME, and accessibility stay AppKit-owned.
     static func insertBulletNewlineInEditableTextView(
         firstResponder: NSResponder?,
         model: CapturePanelModel
     ) -> Bool {
-        guard let textView = editableTextView(firstResponder) else {
+        guard let textView = editableTextView(firstResponder),
+              let edit = CaptureBulletNewlineEditResolver.resolve(
+                in: textView.string,
+                selectedRange: textView.selectedRange()
+              )
+        else {
             return false
         }
 
         model.dismissCompletion()
-        textView.insertText("\n- ", replacementRange: textView.selectedRange())
+        textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
+        textView.setSelectedRange(edit.selectedRange)
         return true
     }
 

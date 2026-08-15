@@ -97,11 +97,11 @@ final class CanceledDraftStash: ObservableObject {
         return (clampedSelectionIndex(index) + entries.count - 1) % entries.count
     }
 
-    static func clampedCapacity(_ capacity: Int) -> Int {
+    nonisolated static func clampedCapacity(_ capacity: Int) -> Int {
         min(max(capacity, 0), maximumCapacity)
     }
 
-    static func accelerator(for index: Int) -> String? {
+    nonisolated static func accelerator(for index: Int) -> String? {
         guard acceleratorKeys.indices.contains(index) else {
             return nil
         }
@@ -123,7 +123,7 @@ final class CanceledDraftStash: ObservableObject {
         return index
     }
 
-    static func previewLine(for text: String, maxCharacters: Int = 80) -> String {
+    nonisolated static func previewLine(for text: String, maxCharacters: Int = 80) -> String {
         let fallback = "Whitespace only draft"
         let line = text
             .split(whereSeparator: \.isNewline)
@@ -146,7 +146,7 @@ final class CanceledDraftStash: ObservableObject {
         return String(line[..<endIndex]) + "..."
     }
 
-    static func lineCount(for text: String) -> Int {
+    nonisolated static func lineCount(for text: String) -> Int {
         guard !text.isEmpty else {
             return 0
         }
@@ -169,12 +169,12 @@ final class CanceledDraftStash: ObservableObject {
         return count
     }
 
-    static func metadataDescription(for entry: CanceledDraftEntry, now: Date = Date()) -> String {
+    nonisolated static func metadataDescription(for entry: CanceledDraftEntry, now: Date = Date()) -> String {
         let lines = lineCount(for: entry.text)
         return "\(lines) \(lines == 1 ? "line" : "lines") - \(relativeAgeDescription(from: entry.createdAt, to: now))"
     }
 
-    static func relativeAgeDescription(from start: Date, to end: Date = Date()) -> String {
+    nonisolated static func relativeAgeDescription(from start: Date, to end: Date = Date()) -> String {
         let seconds = max(0, Int(end.timeIntervalSince(start)))
         if seconds < 60 {
             return "just now"

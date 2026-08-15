@@ -18,6 +18,7 @@ public struct CaptureParseResponse: Codable, Equatable {
     // responses rather than letting clients index mismatched arrays.
     public let subBullets: [String]
     public let subBulletDepths: [Int]
+    public let items: [CaptureParseItem]
 
     public init(
         ok: Bool,
@@ -32,7 +33,8 @@ public struct CaptureParseResponse: Codable, Equatable {
         spans: [CaptureSpan] = [],
         diagnostics: [CaptureDiagnostic] = [],
         subBullets: [String] = [],
-        subBulletDepths: [Int]? = nil
+        subBulletDepths: [Int]? = nil,
+        items: [CaptureParseItem] = []
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -50,6 +52,7 @@ public struct CaptureParseResponse: Codable, Equatable {
             subBulletDepths,
             bodyCount: subBullets.count
         )
+        self.items = items
     }
 
     public init(from decoder: Decoder) throws {
@@ -75,6 +78,7 @@ public struct CaptureParseResponse: Codable, Equatable {
             decodedDepths,
             bodyCount: subBullets.count
         )
+        items = try container.decodeIfPresent([CaptureParseItem].self, forKey: .items) ?? []
     }
 
     private static func normalizedSubBulletDepths(
@@ -105,6 +109,81 @@ public struct CaptureParseResponse: Codable, Equatable {
         case needs
         case spans
         case diagnostics
+        case subBullets = "sub_bullets"
+        case subBulletDepths = "sub_bullet_depths"
+        case items
+    }
+}
+
+public struct CaptureParseItem: Codable, Equatable {
+    public let index: Int
+    public let range: CaptureRange
+    public let lineStart: Int
+    public let lineEnd: Int
+    public let body: String
+    public let mode: String
+    public let route: String?
+    public let section: String?
+    public let blockID: String?
+    public let needs: [String]
+    public let subBullets: [String]
+    public let subBulletDepths: [Int]
+
+    public init(
+        index: Int,
+        range: CaptureRange,
+        lineStart: Int,
+        lineEnd: Int,
+        body: String,
+        mode: String,
+        route: String? = nil,
+        section: String? = nil,
+        blockID: String? = nil,
+        needs: [String] = [],
+        subBullets: [String] = [],
+        subBulletDepths: [Int] = []
+    ) {
+        self.index = index
+        self.range = range
+        self.lineStart = lineStart
+        self.lineEnd = lineEnd
+        self.body = body
+        self.mode = mode
+        self.route = route
+        self.section = section
+        self.blockID = blockID
+        self.needs = needs
+        self.subBullets = subBullets
+        self.subBulletDepths = subBulletDepths
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        index = try container.decode(Int.self, forKey: .index)
+        range = try container.decode(CaptureRange.self, forKey: .range)
+        lineStart = try container.decode(Int.self, forKey: .lineStart)
+        lineEnd = try container.decode(Int.self, forKey: .lineEnd)
+        body = try container.decode(String.self, forKey: .body)
+        mode = try container.decode(String.self, forKey: .mode)
+        route = try container.decodeIfPresent(String.self, forKey: .route)
+        section = try container.decodeIfPresent(String.self, forKey: .section)
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
+        needs = try container.decodeIfPresent([String].self, forKey: .needs) ?? []
+        subBullets = try container.decodeIfPresent([String].self, forKey: .subBullets) ?? []
+        subBulletDepths = try container.decodeIfPresent([Int].self, forKey: .subBulletDepths) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case index
+        case range
+        case lineStart = "line_start"
+        case lineEnd = "line_end"
+        case body
+        case mode
+        case route
+        case section
+        case blockID = "block_id"
+        case needs
         case subBullets = "sub_bullets"
         case subBulletDepths = "sub_bullet_depths"
     }
@@ -213,6 +292,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     public let parentText: String?
     public let parentStatusSymbol: String?
     public let parentStatusName: String?
+    public let captures: [CaptureCommandSuccess]
 
     public init(
         ok: Bool,
@@ -240,7 +320,8 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         parentLine: Int? = nil,
         parentText: String? = nil,
         parentStatusSymbol: String? = nil,
-        parentStatusName: String? = nil
+        parentStatusName: String? = nil,
+        captures: [CaptureCommandSuccess] = []
     ) {
         self.ok = ok
         self.dryRun = dryRun
@@ -268,6 +349,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.parentText = parentText
         self.parentStatusSymbol = parentStatusSymbol
         self.parentStatusName = parentStatusName
+        self.captures = captures
     }
 
     public init(from decoder: Decoder) throws {
@@ -298,6 +380,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         parentText = try container.decodeIfPresent(String.self, forKey: .parentText)
         parentStatusSymbol = try container.decodeIfPresent(String.self, forKey: .parentStatusSymbol)
         parentStatusName = try container.decodeIfPresent(String.self, forKey: .parentStatusName)
+        captures = try container.decodeIfPresent([CaptureCommandSuccess].self, forKey: .captures) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -327,6 +410,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case parentText = "parent_text"
         case parentStatusSymbol = "parent_status_symbol"
         case parentStatusName = "parent_status_name"
+        case captures
     }
 
     /// The exact Markdown block `bob capture` writes beneath the destination, in the
@@ -348,6 +432,10 @@ public struct CaptureCommandSuccess: Codable, Equatable {
             lines.append(contentsOf: scheduleLog.lines)
         }
         return lines
+    }
+
+    public var normalizedCaptures: [CaptureCommandSuccess] {
+        captures.isEmpty ? [self] : captures
     }
 }
 

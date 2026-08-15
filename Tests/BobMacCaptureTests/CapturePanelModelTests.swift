@@ -68,6 +68,43 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.previewResult?.subBullets, renderedNestedSubBullets())
     }
 
+    func testSubmitRetainsAggregateBatchSuccessAndCountAwareStatus() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "First item @Cash\n\nSecond item @notes#Ideas"
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertEqual(model.lastSuccess?.text, "First item")
+        XCTAssertEqual(model.lastSuccessResults.map(\.text), ["First item", "Second item"])
+        XCTAssertEqual(model.statusText, "Captured 2 items")
+        XCTAssertTrue(model.destinationSummary?.contains("2 captures, 2 destinations") == true)
+        XCTAssertNil(model.errorMessage)
+    }
+
+    func testPreviewRetainsAggregateBatchResultAndKeepsDraft() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "First item @Cash\n\nSecond item @notes#Ideas"
+
+        model.preview()
+        await waitUntil { !model.isPreviewing }
+
+        XCTAssertEqual(model.plainDraft, "First item @Cash\n\nSecond item @notes#Ideas")
+        XCTAssertEqual(model.previewResult?.text, "First item")
+        XCTAssertEqual(model.previewResults.map(\.relativeTarget), ["cash.md", "notes.md"])
+        XCTAssertEqual(model.statusText, "Preview 2 items")
+        XCTAssertTrue(model.destinationSummary?.contains("First item; Second item") == true)
+    }
+
     func testSubmitAndOpenOpensObsidianURLBuiltFromReturnedTarget() async throws {
         let model = CapturePanelModel()
         model.processClient = BobProcessClient(
@@ -102,6 +139,51 @@ final class CapturePanelModelTests: XCTestCase {
 
         XCTAssertEqual(dismissCount, 1)
         XCTAssertNotNil(openedURL)
+    }
+
+    func testSubmitAndOpenBatchOpensUniqueTargetsInSourceOrder() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "First item @Cash\n\nSecond item @notes#Ideas"
+        var openedPaths: [String] = []
+        model.targetOpener = { url in
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let path = components?.queryItems?.first { $0.name == "path" }?.value
+            openedPaths.append(path ?? "")
+        }
+
+        model.submit(openAfterCapture: true)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(openedPaths, ["/tmp/bob/cash.md", "/tmp/bob/notes.md"])
+    }
+
+    func testSubmitAndOpenBatchDeduplicatesTargets() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": sameTargetBatchSuccessJSON,
+            ]
+        )
+        model.plainDraft = "First @cash\n\nSecond @cash"
+        var openedPaths: [String] = []
+        model.targetOpener = { url in
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let path = components?.queryItems?.first { $0.name == "path" }?.value
+            openedPaths.append(path ?? "")
+        }
+
+        model.submit(openAfterCapture: true)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.lastSuccessResults.map(\.text), ["First", "Second"])
+        XCTAssertEqual(openedPaths, ["/tmp/bob/cash.md"])
     }
 
     func testFailedSubmitRetainsCompleteDraftAndSurfacesActionableError() async throws {
@@ -246,6 +328,8 @@ final class CapturePanelModelTests: XCTestCase {
 
         XCTAssertEqual(model.stashEntries.map(\.text), ["Call bank @Cash"])
         XCTAssertEqual(model.stashCount, 1)
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertEqual(model.statusText, "Canceled draft stashed")
     }
 
     func testStashDraftAndCloseStoresExactNonemptyDraftClearsStateAndDismisses() {
@@ -915,5 +999,57 @@ final class CapturePanelModelTests: XCTestCase {
             "  - attach checklist",
             "    - verify links",
         ]
+    }
+
+    private var sameTargetBatchSuccessJSON: String {
+        """
+        {
+          "ok": true,
+          "dry_run": false,
+          "routed": true,
+          "route": "cash",
+          "route_label": "cash.md",
+          "relative_target": "cash.md",
+          "target": "/tmp/bob/cash.md",
+          "text": "First",
+          "task_line": "- [ ] #task First [created::2026-08-14]",
+          "kind": "task",
+          "created": "2026-08-14",
+          "scheduled": null,
+          "placement": "inserted",
+          "captures": [
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "cash",
+              "route_label": "cash.md",
+              "relative_target": "cash.md",
+              "target": "/tmp/bob/cash.md",
+              "text": "First",
+              "task_line": "- [ ] #task First [created::2026-08-14]",
+              "kind": "task",
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "inserted"
+            },
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "cash",
+              "route_label": "cash.md",
+              "relative_target": "cash.md",
+              "target": "/tmp/bob/cash.md",
+              "text": "Second",
+              "task_line": "- [ ] #task Second [created::2026-08-14]",
+              "kind": "task",
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "inserted"
+            }
+          ]
+        }
+        """
     }
 }

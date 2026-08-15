@@ -31,6 +31,8 @@ final class CapturePanelModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var lastSuccess: CaptureCommandSuccess?
     @Published var previewResult: CaptureCommandSuccess?
+    @Published var lastSuccessResults: [CaptureCommandSuccess] = []
+    @Published var previewResults: [CaptureCommandSuccess] = []
     // Incremented on every successful capture so the view can drive a VoiceOver
     // announcement without needing `CaptureCommandSuccess` to be diffed for equality.
     @Published var successAnnouncementTick = 0
@@ -107,11 +109,11 @@ final class CapturePanelModel: ObservableObject {
     }
 
     var destinationSummary: String? {
-        if let previewResult {
-            return "Preview \u{2192} \(previewResult.routeLabel) (\(previewResult.relativeTarget)): \(previewResult.taskLine)"
+        if !previewResults.isEmpty {
+            return captureSummary(prefix: "Preview", captures: previewResults)
         }
-        if let lastSuccess {
-            return "Captured \u{2192} \(lastSuccess.routeLabel) (\(lastSuccess.relativeTarget)): \(lastSuccess.taskLine)"
+        if !lastSuccessResults.isEmpty {
+            return captureSummary(prefix: "Captured", captures: lastSuccessResults)
         }
         return nil
     }
@@ -415,6 +417,7 @@ final class CapturePanelModel: ObservableObject {
         }
         resetAnalysisState()
         lastSuccess = nil
+        lastSuccessResults = []
         selectedCompletionIndex = 0
     }
 
@@ -430,6 +433,7 @@ final class CapturePanelModel: ObservableObject {
         statusText = ""
         errorMessage = nil
         previewResult = nil
+        previewResults = []
     }
 
     private func announceStatus(_ message: String) {
@@ -536,9 +540,12 @@ final class CapturePanelModel: ObservableObject {
 
         switch response {
         case .success(let success):
+            let captures = success.normalizedCaptures
             invalidateAnalysis()
-            lastSuccess = success
+            lastSuccess = captures.first
+            lastSuccessResults = captures
             previewResult = nil
+            previewResults = []
             errorMessage = nil
             setPlainDraft("")
             suppressedCompletionAcceptanceDraft = nil
@@ -546,11 +553,15 @@ final class CapturePanelModel: ObservableObject {
             parseDiagnostics = []
             completionResponse = nil
             previewState = .idle
-            statusText = "Captured \u{2192} \(success.routeLabel)"
+            statusText = captureStatus(prefix: "Captured", captures: captures)
             successAnnouncementTick += 1
-            notificationService?.notifyCaptureSuccess(routeLabel: success.routeLabel, targetPath: success.target)
-            if openAfterCapture, let url = ObsidianOpenURL.url(forAbsolutePath: success.target) {
-                targetOpener(url)
+            if let firstCapture = captures.first {
+                notificationService?.notifyCaptureSuccess(routeLabel: firstCapture.routeLabel, targetPath: firstCapture.target)
+            }
+            if openAfterCapture {
+                for url in uniqueTargetURLs(from: captures) {
+                    targetOpener(url)
+                }
             }
             panelDismisser()
         case .failure(let failure):
@@ -582,9 +593,11 @@ final class CapturePanelModel: ObservableObject {
 
         switch response {
         case .success(let success):
-            previewResult = success
+            let captures = success.normalizedCaptures
+            previewResult = captures.first
+            previewResults = captures
             errorMessage = nil
-            statusText = "Preview \u{2192} \(success.routeLabel)"
+            statusText = captureStatus(prefix: "Preview", captures: captures)
         case .failure(let failure):
             errorMessage = failure.error
             statusText = "Preview failed"
@@ -962,5 +975,46 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         statusText = "Link completion warning: \(warning)"
+    }
+
+    private func captureSummary(prefix: String, captures: [CaptureCommandSuccess]) -> String {
+        guard captures.count != 1 else {
+            let capture = captures[0]
+            return "\(prefix) \u{2192} \(displayLabel(for: capture)) (\(capture.relativeTarget)): \(capture.taskLine)"
+        }
+
+        let destinationCount = Set(captures.map(\.target)).count
+        let noun = captures.count == 1 ? "capture" : "captures"
+        let destinationNoun = destinationCount == 1 ? "destination" : "destinations"
+        let sample = captures
+            .prefix(2)
+            .map(\.text)
+            .joined(separator: "; ")
+        return "\(prefix) \u{2192} \(captures.count) \(noun), \(destinationCount) \(destinationNoun): \(sample)"
+    }
+
+    private func captureStatus(prefix: String, captures: [CaptureCommandSuccess]) -> String {
+        guard captures.count != 1 else {
+            return "\(prefix) \u{2192} \(displayLabel(for: captures[0]))"
+        }
+        return "\(prefix) \(captures.count) items"
+    }
+
+    private func displayLabel(for capture: CaptureCommandSuccess) -> String {
+        capture.routeLabel.isEmpty ? capture.relativeTarget : capture.routeLabel
+    }
+
+    private func uniqueTargetURLs(from captures: [CaptureCommandSuccess]) -> [URL] {
+        var seen = Set<String>()
+        var urls: [URL] = []
+        for capture in captures {
+            guard seen.insert(capture.target).inserted,
+                  let url = ObsidianOpenURL.url(forAbsolutePath: capture.target)
+            else {
+                continue
+            }
+            urls.append(url)
+        }
+        return urls
     }
 }
