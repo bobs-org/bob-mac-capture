@@ -27,35 +27,31 @@ final class PlainTextPasteTests: XCTestCase {
     }
 
     @MainActor
-    func testPlainTextDeclinesRichOnlyPasteboardAndLeavesTextViewUntouched() throws {
-        // Regression guard for exotic pasteboards: without `.string`, the plain-text
-        // path declines so AppKit can fall back to its native paste behavior.
-        try withScratchPasteboard { pasteboard in
-            writeRichOnlyPasteboard(pasteboard)
+    func testPlainTextDeclinesReaderWithoutStringFlavorAndLeavesTextViewUntouched() {
+        // Regression guard for rich-only pasteboards: a converting accessor may produce
+        // plain text, but the plain-text path only consumes a reported `.string`.
+        let pasteboard = TestPasteboardReader(
+            types: [.html, .rtf],
+            strings: [.string: "Rich capture text"]
+        )
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "unchanged"
+        textView.setSelectedRange(NSRange(location: 4, length: 0))
+        var willInsertRan = false
 
-            // The pasteboard never advertises `.string`, yet AppKit's converting
-            // accessor still synthesizes plain text from the rich flavors. This is
-            // exactly the trap `plainText(from:)` must not fall into.
-            XCTAssertFalse(pasteboard.types?.contains(.string) ?? false)
-            XCTAssertNotNil(pasteboard.string(forType: .string))
-
-            let textView = NSTextView()
-            textView.isEditable = true
-            textView.string = "unchanged"
-            textView.setSelectedRange(NSRange(location: 4, length: 0))
-            var willInsertRan = false
-
-            XCTAssertNil(PlainTextPaste.plainText(from: pasteboard))
-            XCTAssertFalse(
-                PlainTextPaste.insert(
-                    into: textView,
-                    from: pasteboard,
-                    willInsert: { willInsertRan = true }
-                )
+        XCTAssertFalse(pasteboard.types?.contains(.string) ?? false)
+        XCTAssertNotNil(pasteboard.string(forType: .string))
+        XCTAssertNil(PlainTextPaste.plainText(from: pasteboard))
+        XCTAssertFalse(
+            PlainTextPaste.insert(
+                into: textView,
+                from: pasteboard,
+                willInsert: { willInsertRan = true }
             )
-            XCTAssertEqual(textView.string, "unchanged")
-            XCTAssertFalse(willInsertRan)
-        }
+        )
+        XCTAssertEqual(textView.string, "unchanged")
+        XCTAssertFalse(willInsertRan)
     }
 
     @MainActor
@@ -143,6 +139,15 @@ final class PlainTextPasteTests: XCTestCase {
         let rtf = #"{\rtf1\ansi{\field{\*\fldinst{HYPERLINK "https://example.com"}}{\fldrslt Rich capture text}}}"#
             .data(using: .utf8)!
         XCTAssertTrue(pasteboard.setData(rtf, forType: .rtf))
+    }
+
+    private struct TestPasteboardReader: PlainTextPasteboardReading {
+        let types: [NSPasteboard.PasteboardType]?
+        let strings: [NSPasteboard.PasteboardType: String]
+
+        func string(forType dataType: NSPasteboard.PasteboardType) -> String? {
+            strings[dataType]
+        }
     }
 
     @MainActor

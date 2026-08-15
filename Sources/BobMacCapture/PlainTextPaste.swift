@@ -1,13 +1,33 @@
 import AppKit
 
 @MainActor
+protocol PlainTextPasteboardReading {
+    var types: [NSPasteboard.PasteboardType]? { get }
+
+    func string(forType dataType: NSPasteboard.PasteboardType) -> String?
+}
+
+extension NSPasteboard: PlainTextPasteboardReading {}
+
+@MainActor
 enum PlainTextPaste {
     /// The clipboard's plain-text flavor, newline-normalized. `nil` when the pasteboard
     /// offers no plain text, so the caller can fall back to AppKit's native paste.
     static func plainText(from pasteboard: NSPasteboard) -> String? {
+        plainText(fromReader: pasteboard)
+    }
+
+    static func plainText<Pasteboard: PlainTextPasteboardReading>(
+        from pasteboard: Pasteboard
+    ) -> String? {
+        plainText(fromReader: pasteboard)
+    }
+
+    private static func plainText<Pasteboard: PlainTextPasteboardReading>(
+        fromReader pasteboard: Pasteboard
+    ) -> String? {
         // `NSPasteboard.string(forType: .string)` synthesizes plain text from HTML/RTF
-        // flavors even when `.string` isn't advertised, so gate on `types` first to
-        // avoid triggering that rich-to-plain conversion on rich-only pasteboards.
+        // flavors even when the reader reports no `.string`, so gate on `types` first.
         guard let types = pasteboard.types, types.contains(.string) else {
             return nil
         }
@@ -32,8 +52,26 @@ enum PlainTextPaste {
         from pasteboard: NSPasteboard,
         willInsert: () -> Void = {}
     ) -> Bool {
+        insert(into: responder, fromReader: pasteboard, willInsert: willInsert)
+    }
+
+    @discardableResult
+    static func insert<Pasteboard: PlainTextPasteboardReading>(
+        into responder: NSResponder?,
+        from pasteboard: Pasteboard,
+        willInsert: () -> Void = {}
+    ) -> Bool {
+        insert(into: responder, fromReader: pasteboard, willInsert: willInsert)
+    }
+
+    @discardableResult
+    private static func insert<Pasteboard: PlainTextPasteboardReading>(
+        into responder: NSResponder?,
+        fromReader pasteboard: Pasteboard,
+        willInsert: () -> Void
+    ) -> Bool {
         guard let textView = CapturePanelController.editableTextView(responder),
-              let text = plainText(from: pasteboard)
+              let text = plainText(fromReader: pasteboard)
         else {
             return false
         }
