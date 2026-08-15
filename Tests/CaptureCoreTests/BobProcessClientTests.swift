@@ -168,6 +168,9 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(response.replacement, CaptureRange(start: 39, end: 43))
         XCTAssertEqual(response.candidates.map(\.text), ["Handoff ready", "Plan the handoff"])
         XCTAssertEqual(response.candidates.map(\.blockID), ["hand-ready", nil])
+        guard response.candidates.count == 2 else {
+            return
+        }
         XCTAssertFalse(response.candidates[0].requiresBlockID)
         XCTAssertTrue(response.candidates[1].requiresBlockID)
         XCTAssertEqual(response.candidates[1].replacement, "")

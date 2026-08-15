@@ -49,6 +49,8 @@ multiline_draft=$'Prepare launch\n- confirm owner\n  - text owner\n- attach chec
 batch_draft=$'First item @Cash\n\nSecond item @notes#Ideas'
 later_task_batch_draft=$'Plan café @Cash\n\nFile follow-up @file+hand'
 later_task_id_batch_draft=$'Plan café @Cash\n\nFile follow-up @file+new-id'
+later_task_batch_suffix=$'\n\nFile follow-up @file+hand'
+later_task_id_batch_suffix=$'\n\nFile follow-up @file+new-id'
 
 case "${command}" in
   capture-parse)
@@ -243,8 +245,8 @@ JSON
       printf ',"body":"Prepare launch","mode":"task","needs":[],"spans":[],"diagnostics":[],'
       printf '"sub_bullets":["confirm owner","text owner","attach checklist","verify links"],'
       printf '"sub_bullet_depths":[1,2,1,2]}\n'
-    elif [[ "${draft}" == "${later_task_batch_draft}" || "${draft}" == "${later_task_id_batch_draft}" ]]; then
-      if [[ "${draft}" == "${later_task_batch_draft}" ]]; then
+    elif [[ "${draft}" == *"${later_task_batch_suffix}" || "${draft}" == *"${later_task_id_batch_suffix}" ]]; then
+      if [[ "${draft}" == *"${later_task_batch_suffix}" ]]; then
         block_id="hand"
         second_range_end=43
       else
@@ -511,7 +513,7 @@ JSON
   ]
 }
 JSON
-    elif [[ "${draft}" == "${later_task_batch_draft}" ]]; then
+    elif [[ "${draft}" == *"${later_task_batch_suffix}" ]]; then
       cat <<JSON
 {
   "ok": true,
