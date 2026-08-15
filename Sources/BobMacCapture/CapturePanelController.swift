@@ -380,7 +380,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     /// only recognizes the two supported source prefixes (column zero and exactly two
     /// ASCII spaces) and never inspects route markers, parses JSON, or infers capture
     /// output. Bob's own parse remains authoritative for contextual validity.
-    static func bulletIndentationEdit(
+    nonisolated static func bulletIndentationEdit(
         direction: CaptureBulletIndentationDirection,
         in text: NSString,
         selectedRange: NSRange
@@ -433,7 +433,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
     // Transforms a selection endpoint through a two-character prefix deletion, clamping
     // an endpoint that sat inside the removed prefix to the new line start.
-    private static func clampedOffset(_ offset: Int, removing range: NSRange) -> Int {
+    private nonisolated static func clampedOffset(_ offset: Int, removing range: NSRange) -> Int {
         if offset <= range.location {
             return offset
         }
@@ -446,7 +446,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     // Recognizes `-`, `*`, and `+` at the given leading-space depth when the marker is
     // at end of line (an interactive placeholder) or is followed by a space or tab.
     // Prose, `-body`, blank rows, leading tabs, and every other depth decline.
-    private static func isAuthoredBulletRow(_ lineText: NSString, leadingSpaces: Int) -> Bool {
+    private nonisolated static func isAuthoredBulletRow(_ lineText: NSString, leadingSpaces: Int) -> Bool {
         guard lineText.length > leadingSpaces else {
             return false
         }
@@ -467,15 +467,15 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return nextCharacter == Self.asciiSpace || nextCharacter == Self.asciiTab
     }
 
-    private static func isBulletMarkerCharacter(_ character: unichar) -> Bool {
+    private nonisolated static func isBulletMarkerCharacter(_ character: unichar) -> Bool {
         character == Self.hyphen || character == Self.asterisk || character == Self.plus
     }
 
-    private static let asciiSpace: unichar = 0x20
-    private static let asciiTab: unichar = 0x09
-    private static let hyphen: unichar = 0x2D
-    private static let asterisk: unichar = 0x2A
-    private static let plus: unichar = 0x2B
+    private nonisolated static let asciiSpace: unichar = 0x20
+    private nonisolated static let asciiTab: unichar = 0x09
+    private nonisolated static let hyphen: unichar = 0x2D
+    private nonisolated static let asterisk: unichar = 0x2A
+    private nonisolated static let plus: unichar = 0x2B
 
     /// Ctrl-U: use AppKit's native physical-line deletion so line boundaries, undo, IME,
     /// and accessibility stay owned by the text system.
