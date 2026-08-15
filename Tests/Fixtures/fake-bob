@@ -47,6 +47,8 @@ json_string() {
 
 multiline_draft=$'Prepare launch\n- confirm owner\n  - text owner\n- attach checklist\n  - verify links'
 batch_draft=$'First item @Cash\n\nSecond item @notes#Ideas'
+later_task_batch_draft=$'Plan café @Cash\n\nFile follow-up @file+hand'
+later_task_id_batch_draft=$'Plan café @Cash\n\nFile follow-up @file+new-id'
 
 case "${command}" in
   capture-parse)
@@ -241,6 +243,25 @@ JSON
       printf ',"body":"Prepare launch","mode":"task","needs":[],"spans":[],"diagnostics":[],'
       printf '"sub_bullets":["confirm owner","text owner","attach checklist","verify links"],'
       printf '"sub_bullet_depths":[1,2,1,2]}\n'
+    elif [[ "${draft}" == "${later_task_batch_draft}" || "${draft}" == "${later_task_id_batch_draft}" ]]; then
+      if [[ "${draft}" == "${later_task_batch_draft}" ]]; then
+        block_id="hand"
+        second_range_end=43
+      else
+        block_id="new-id"
+        second_range_end=45
+      fi
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      printf ',"body":"Plan café","mode":"task","route":"cash","needs":[],'
+      printf '"spans":[{"start":33,"end":38,"kind":"sub_bullet_route"},{"start":39,"end":%s,"kind":"sub_bullet_block_id"}],' "${second_range_end}"
+      printf '"diagnostics":[],'
+      printf '"items":['
+      printf '{"index":1,"range":{"start":0,"end":16},"line_start":1,"line_end":1,'
+      printf '"body":"Plan café","mode":"task","route":"cash","needs":[]},'
+      printf '{"index":2,"range":{"start":18,"end":%s},"line_start":3,"line_end":3,' "${second_range_end}"
+      printf '"body":"File follow-up","mode":"sub_bullet","route":"file","block_id":"%s","needs":[]}' "${block_id}"
+      printf ']}\n'
     elif [[ "${draft}" == "${batch_draft}" ]]; then
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
@@ -490,6 +511,46 @@ JSON
   ]
 }
 JSON
+    elif [[ "${draft}" == "${later_task_batch_draft}" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 39, "end": 43 },
+  "context": "task",
+  "candidates": [
+    {
+      "replacement": "hand-ready",
+      "ref": "4:handready",
+      "block_id": "hand-ready",
+      "route": "file",
+      "requires_block_id": false,
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Handoff ready",
+      "section": "Tasks",
+      "depth": 1,
+      "child_count": 0
+    },
+    {
+      "replacement": "",
+      "ref": "8:missingidea",
+      "block_id": null,
+      "route": "file",
+      "requires_block_id": true,
+      "status_symbol": " ",
+      "status_name": "Todo",
+      "status_type": "TODO",
+      "text": "Plan the handoff",
+      "section": "Tasks",
+      "depth": 1,
+      "child_count": 0
+    }
+  ]
+}
+JSON
     elif [[ "${draft}" == "${batch_draft}" ]]; then
       cat <<JSON
 {
@@ -674,6 +735,59 @@ JSON
   "scheduled": null,
   "placement": "inserted",
   "sub_bullets": ["  - confirm owner", "    - text owner", "  - attach checklist", "    - verify links"]
+}
+JSON
+    elif [[ "${draft}" == "${later_task_id_batch_draft}" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "cash",
+  "route_label": "cash.md",
+  "relative_target": "cash.md",
+  "target": "/tmp/bob/cash.md",
+  "text": "Plan café",
+  "task_line": "- [ ] #task Plan café [created::2026-08-14]",
+  "kind": "task",
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "inserted",
+  "captures": [
+    {
+      "ok": true,
+      "dry_run": ${dry_run},
+      "routed": true,
+      "route": "cash",
+      "route_label": "cash.md",
+      "relative_target": "cash.md",
+      "target": "/tmp/bob/cash.md",
+      "text": "Plan café",
+      "task_line": "- [ ] #task Plan café [created::2026-08-14]",
+      "kind": "task",
+      "created": "2026-08-14",
+      "scheduled": null,
+      "placement": "inserted"
+    },
+    {
+      "ok": true,
+      "dry_run": ${dry_run},
+      "routed": true,
+      "route": "file",
+      "route_label": "file.md",
+      "relative_target": "file.md",
+      "target": "/tmp/bob/file.md",
+      "text": "File follow-up",
+      "task_line": "- File follow-up",
+      "kind": "sub_bullet",
+      "block_id": "new-id",
+      "parent_text": "Plan the handoff",
+      "parent_line": 8,
+      "created": "2026-08-14",
+      "scheduled": null,
+      "placement": "inserted"
+    }
+  ]
 }
 JSON
     elif [[ "${draft}" == "${batch_draft}" ]]; then

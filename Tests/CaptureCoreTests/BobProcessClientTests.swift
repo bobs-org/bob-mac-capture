@@ -149,6 +149,36 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
     }
 
+    func testCaptureCompleteAllTasksDecodesLaterBatchItemAsOneArgvElement() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = laterTaskBatchDraft()
+
+        let response = try await client.captureComplete(draft, cursor: draft.utf8.count)
+
+        XCTAssertEqual(response.context, "task")
+        XCTAssertEqual(response.replacement, CaptureRange(start: 39, end: 43))
+        XCTAssertEqual(response.candidates.map(\.text), ["Handoff ready", "Plan the handoff"])
+        XCTAssertEqual(response.candidates.map(\.blockID), ["hand-ready", nil])
+        XCTAssertFalse(response.candidates[0].requiresBlockID)
+        XCTAssertTrue(response.candidates[1].requiresBlockID)
+        XCTAssertEqual(response.candidates[1].replacement, "")
+        XCTAssertEqual(response.candidates[1].route, "file")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-complete --all-tasks --cursor 43 --format json -- \(draft)")
+        )
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
+    }
+
     func testCaptureCompleteTaskBlockIDMarkerCompletesRouteButNotAuthoredID() async throws {
         let client = BobProcessClient(
             executablePath: try fakeBobPath(),
@@ -710,5 +740,9 @@ final class BobProcessClientTests: XCTestCase {
             "  - attach checklist",
             "    - verify links",
         ]
+    }
+
+    private func laterTaskBatchDraft() -> String {
+        "Plan café @Cash\n\nFile follow-up @file+hand"
     }
 }

@@ -1020,6 +1020,80 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.statusText, "Add block ID")
     }
 
+    func testLaterBatchTaskIDPromptSuccessSplicesGlobalRangeAndKeepsCaptureContract() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = laterTaskBatchDraft()
+        let assignedDraft = laterTaskIDBatchDraft()
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            model.completionResponse?.context == "task"
+                && model.completionResponse?.candidates.count == 2
+        }
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 39, end: 43))
+        XCTAssertEqual(model.plainDraft, draft)
+
+        model.selectedCompletionIndex = 1
+        model.acceptSelectedCompletion()
+        XCTAssertEqual(model.plainDraft, draft)
+        XCTAssertEqual(model.taskIDPrompt?.draftSnapshot, draft)
+        XCTAssertEqual(model.taskIDPrompt?.replacementRange, CaptureRange(start: 39, end: 43))
+        XCTAssertEqual(model.taskIDPrompt?.candidate.text, "Plan the handoff")
+
+        model.updateTaskIDPromptBlockID("new-id")
+        model.submitTaskIDPrompt()
+        await waitUntil { model.taskIDPrompt == nil && model.plainDraft == assignedDraft }
+
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), assignedDraft.utf8.count)
+        XCTAssertNil(model.completionResponse)
+        await waitUntil { model.previewResults.map(\.text) == ["Plan café", "File follow-up"] }
+        XCTAssertEqual(model.previewResults.map(\.kind), ["task", "sub_bullet"])
+
+        var record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-complete --all-tasks --cursor 43 --format json -- \(draft)")
+        )
+        XCTAssertEqual(
+            record.components(
+                separatedBy: "argv=capture-task-id --route file --task-ref 8:missingidea --block-id new-id --format json"
+            ).count - 1,
+            1
+        )
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- \(assignedDraft)"))
+        XCTAssertTrue(
+            record.contains("argv=capture --dry-run --no-clip --format json -- \(assignedDraft)")
+        )
+
+        model.preview()
+        await waitUntil { !model.isPreviewing }
+        XCTAssertEqual(model.previewResults.map(\.text), ["Plan café", "File follow-up"])
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertEqual(model.lastSuccessResults.map(\.text), ["Plan café", "File follow-up"])
+
+        record = try String(contentsOf: recordURL)
+        XCTAssertEqual(
+            record.components(separatedBy: "argv=capture --format json --dry-run -- \(assignedDraft)").count - 1,
+            1
+        )
+        XCTAssertEqual(
+            record.components(separatedBy: "argv=capture --format json -- \(assignedDraft)").count - 1,
+            1
+        )
+    }
+
     func testTaskIDPromptRejectsInvalidLocalBlockIDWithoutCallingBob() throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel()
@@ -1094,6 +1168,57 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.statusText, "Add block ID failed")
     }
 
+    func testLaterBatchTaskIDPromptServerFailureRetainsEntireDraftAndSelection() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": #"{"ok":false,"error":"block ID ^duplicate-id already exists in file.md"}"#,
+                "FAKE_BOB_EXIT": "1",
+            ]
+        )
+        installLaterTaskBatchMissingTaskCompletion(on: model)
+        model.acceptSelectedCompletion()
+
+        model.updateTaskIDPromptBlockID("duplicate-id")
+        model.submitTaskIDPrompt()
+        await waitUntil { model.taskIDPrompt?.isSaving == false }
+
+        XCTAssertEqual(model.plainDraft, laterTaskBatchDraft())
+        XCTAssertEqual(model.taskIDPrompt?.candidate.text, "Plan the handoff")
+        XCTAssertEqual(model.taskIDPrompt?.authoredID, "duplicate-id")
+        XCTAssertEqual(model.taskIDPrompt?.replacementRange, CaptureRange(start: 39, end: 43))
+        XCTAssertEqual(model.taskIDPrompt?.errorMessage, "block ID ^duplicate-id already exists in file.md")
+        XCTAssertEqual(model.statusText, "Add block ID failed")
+    }
+
+    func testLaterBatchTaskIDPromptTransportFailureRetainsEntireDraftAndSelection() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_EXIT": "64",
+            ]
+        )
+        installLaterTaskBatchMissingTaskCompletion(on: model)
+        model.acceptSelectedCompletion()
+
+        model.updateTaskIDPromptBlockID("new-id")
+        model.submitTaskIDPrompt()
+        await waitUntil { model.taskIDPrompt?.isSaving == false }
+
+        XCTAssertEqual(model.plainDraft, laterTaskBatchDraft())
+        XCTAssertEqual(model.taskIDPrompt?.candidate.text, "Plan the handoff")
+        XCTAssertEqual(model.taskIDPrompt?.authoredID, "new-id")
+        XCTAssertEqual(model.taskIDPrompt?.replacementRange, CaptureRange(start: 39, end: 43))
+        XCTAssertTrue(model.taskIDPrompt?.errorMessage?.contains("bob command failed (exit 64)") == true)
+        XCTAssertEqual(model.statusText, "Add block ID failed")
+    }
+
     func testCancelTaskIDPromptRestoresChooserSelectionWithoutMutation() {
         let model = CapturePanelModel()
         installMissingTaskCompletion(on: model)
@@ -1107,6 +1232,57 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(model.completionVisible)
         XCTAssertEqual(model.selectedCompletionIndex, 1)
         XCTAssertEqual(model.completionResponse?.candidates[1].text, "Plan the handoff")
+    }
+
+    func testLaterBatchCancelTaskIDPromptRestoresChooserSelectionWithoutMutation() {
+        let model = CapturePanelModel()
+        installLaterTaskBatchMissingTaskCompletion(on: model)
+        model.acceptSelectedCompletion()
+        model.updateTaskIDPromptBlockID("new-id")
+
+        model.cancelTaskIDPrompt()
+
+        XCTAssertNil(model.taskIDPrompt)
+        XCTAssertEqual(model.plainDraft, laterTaskBatchDraft())
+        XCTAssertTrue(model.completionVisible)
+        XCTAssertEqual(model.selectedCompletionIndex, 1)
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 39, end: 43))
+        XCTAssertEqual(model.completionResponse?.candidates[1].text, "Plan the handoff")
+    }
+
+    func testLaterBatchTaskIDPromptStaleRangeRetainsDraftAndSelectionWithoutCallingBob() throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = laterTaskBatchDraft()
+        model.plainDraft = draft
+        model.taskIDPrompt = CaptureTaskIDPromptState(
+            candidate: laterTaskBatchMissingCandidate(),
+            draftSnapshot: draft,
+            replacementRange: CaptureRange(start: 200, end: 204),
+            selectedCompletionIndex: 1,
+            authoredID: "new-id",
+            isSaving: false,
+            errorMessage: nil
+        )
+
+        model.submitTaskIDPrompt()
+
+        XCTAssertEqual(model.plainDraft, draft)
+        XCTAssertEqual(model.taskIDPrompt?.candidate.text, "Plan the handoff")
+        XCTAssertEqual(model.taskIDPrompt?.authoredID, "new-id")
+        XCTAssertEqual(
+            model.taskIDPrompt?.errorMessage,
+            "Completion range is stale. Return to the task list and choose again."
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: recordURL.path))
     }
 
     func testCanceledTaskIDPromptIgnoresLateAssignmentResponse() async throws {
@@ -1131,6 +1307,33 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertNil(model.taskIDPrompt)
         XCTAssertEqual(model.plainDraft, "note @Cash+goog")
         XCTAssertTrue(model.completionVisible)
+    }
+
+    func testLaterBatchCaptureFailureAfterTaskIDAssignmentReportsNoPartialSuccessOrDraftClearing() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": #"{"ok":false,"error":"capture item 2 starting on line 3: duplicate block ID"}"#,
+                "FAKE_BOB_EXIT": "1",
+            ]
+        )
+        let assignedDraft = laterTaskIDBatchDraft()
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+        model.plainDraft = assignedDraft
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.plainDraft, assignedDraft)
+        XCTAssertNil(model.lastSuccess)
+        XCTAssertTrue(model.lastSuccessResults.isEmpty)
+        XCTAssertEqual(model.errorMessage, "capture item 2 starting on line 3: duplicate block ID")
+        XCTAssertEqual(model.statusText, "Capture failed")
+        XCTAssertEqual(dismissCount, 0)
     }
 
     func testCaretOnlyMoveRequeriesCompletionAtNewOffset() async throws {
@@ -1236,6 +1439,59 @@ final class CapturePanelModelTests: XCTestCase {
             ]
         )
         model.selectedCompletionIndex = 1
+    }
+
+    private func installLaterTaskBatchMissingTaskCompletion(on model: CapturePanelModel) {
+        model.plainDraft = laterTaskBatchDraft()
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 43,
+            replacement: CaptureRange(start: 39, end: 43),
+            context: "task",
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "hand-ready",
+                    route: "file",
+                    taskRef: "4:handready",
+                    blockID: "hand-ready",
+                    requiresBlockID: false,
+                    statusSymbol: "*",
+                    statusName: "Next",
+                    statusType: "ON_HOLD",
+                    text: "Handoff ready",
+                    section: "Tasks",
+                    depth: 1,
+                    childCount: 0
+                ),
+                laterTaskBatchMissingCandidate(),
+            ]
+        )
+        model.selectedCompletionIndex = 1
+    }
+
+    private func laterTaskBatchMissingCandidate() -> CaptureCompletionCandidate {
+        CaptureCompletionCandidate(
+            replacement: "",
+            route: "file",
+            taskRef: "8:missingidea",
+            blockID: nil,
+            requiresBlockID: true,
+            statusSymbol: " ",
+            statusName: "Todo",
+            statusType: "TODO",
+            text: "Plan the handoff",
+            section: "Tasks",
+            depth: 1,
+            childCount: 0
+        )
+    }
+
+    private func laterTaskBatchDraft() -> String {
+        "Plan café @Cash\n\nFile follow-up @file+hand"
+    }
+
+    private func laterTaskIDBatchDraft() -> String {
+        "Plan café @Cash\n\nFile follow-up @file+new-id"
     }
 
     private func nestedMultilineDraft() -> String {
