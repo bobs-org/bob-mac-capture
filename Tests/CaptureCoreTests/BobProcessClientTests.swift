@@ -35,12 +35,16 @@ final class BobProcessClientTests: XCTestCase {
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
             ]
         )
-        let draft = "Prepare launch\n- confirm owner\n- attach checklist"
+        let draft = nestedMultilineDraft()
 
         let response = try await client.captureParse(draft)
 
         XCTAssertEqual(response.body, "Prepare launch")
-        XCTAssertEqual(response.subBullets, ["confirm owner", "attach checklist"])
+        XCTAssertEqual(
+            response.subBullets,
+            ["confirm owner", "text owner", "attach checklist", "verify links"]
+        )
+        XCTAssertEqual(response.subBulletDepths, [1, 2, 1, 2])
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture-parse --format json -- \(draft)"))
     }
@@ -162,7 +166,7 @@ final class BobProcessClientTests: XCTestCase {
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
-        let draft = "Prepare launch\n- confirm owner\n- attach checklist"
+        let draft = nestedMultilineDraft()
 
         let response = try await client.capture(draft, dryRun: false, readClipboard: true)
 
@@ -170,7 +174,7 @@ final class BobProcessClientTests: XCTestCase {
             return XCTFail("Expected a successful capture response")
         }
         XCTAssertEqual(success.taskLine, "- [ ] #task Prepare launch [created::2026-08-14]")
-        XCTAssertEqual(success.subBullets, ["  - confirm owner", "  - attach checklist"])
+        XCTAssertEqual(success.subBullets, renderedNestedSubBullets())
     }
 
     func testCaptureSubmitDecodesOrdinaryTaskWithBlockID() async throws {
@@ -197,7 +201,7 @@ final class BobProcessClientTests: XCTestCase {
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
-        let draft = "Prepare launch\n- confirm owner\n- attach checklist"
+        let draft = nestedMultilineDraft()
 
         let response = try await client.captureLivePreview(draft, priorityRollSeed: "fixed")
 
@@ -205,7 +209,7 @@ final class BobProcessClientTests: XCTestCase {
             return XCTFail("Expected a successful live preview response")
         }
         XCTAssertTrue(success.dryRun)
-        XCTAssertEqual(success.subBullets, ["  - confirm owner", "  - attach checklist"])
+        XCTAssertEqual(success.subBullets, renderedNestedSubBullets())
     }
 
     func testCapturePreviewRunsDryRunWithoutSuppressingClipboard() async throws {
@@ -424,5 +428,24 @@ final class BobProcessClientTests: XCTestCase {
         return packageRoot
             .appendingPathComponent("Tests/Fixtures/fake-bob")
             .path
+    }
+
+    private func nestedMultilineDraft() -> String {
+        [
+            "Prepare launch",
+            "- confirm owner",
+            "  - text owner",
+            "- attach checklist",
+            "  - verify links",
+        ].joined(separator: "\n")
+    }
+
+    private func renderedNestedSubBullets() -> [String] {
+        [
+            "  - confirm owner",
+            "    - text owner",
+            "  - attach checklist",
+            "    - verify links",
+        ]
     }
 }

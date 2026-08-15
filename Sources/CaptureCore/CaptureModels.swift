@@ -12,10 +12,12 @@ public struct CaptureParseResponse: Codable, Equatable {
     public let needs: [String]
     public let spans: [CaptureSpan]
     public let diagnostics: [CaptureDiagnostic]
-    // Additive to schema version 1: `bob capture-parse` omits this key entirely when a
-    // draft has no authored sub-bullets, so decoding must tolerate its absence rather
-    // than requiring it like the other array fields above.
+    // Additive to schema version 1: `bob capture-parse` omits these keys entirely when
+    // a draft has no authored sub-bullets, and older bob versions omit depths even when
+    // they provide bodies. Decode both tolerantly and synthesize depth 1 for older bob
+    // responses rather than letting clients index mismatched arrays.
     public let subBullets: [String]
+    public let subBulletDepths: [Int]
 
     public init(
         ok: Bool,
@@ -29,7 +31,8 @@ public struct CaptureParseResponse: Codable, Equatable {
         needs: [String] = [],
         spans: [CaptureSpan] = [],
         diagnostics: [CaptureDiagnostic] = [],
-        subBullets: [String] = []
+        subBullets: [String] = [],
+        subBulletDepths: [Int]? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -43,6 +46,10 @@ public struct CaptureParseResponse: Codable, Equatable {
         self.spans = spans
         self.diagnostics = diagnostics
         self.subBullets = subBullets
+        self.subBulletDepths = Self.normalizedSubBulletDepths(
+            subBulletDepths,
+            bodyCount: subBullets.count
+        )
     }
 
     public init(from decoder: Decoder) throws {
@@ -57,8 +64,33 @@ public struct CaptureParseResponse: Codable, Equatable {
         blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
         needs = try container.decodeIfPresent([String].self, forKey: .needs) ?? []
         spans = try container.decodeIfPresent([CaptureSpan].self, forKey: .spans) ?? []
-        diagnostics = try container.decodeIfPresent([CaptureDiagnostic].self, forKey: .diagnostics) ?? []
+        diagnostics =
+            try container.decodeIfPresent([CaptureDiagnostic].self, forKey: .diagnostics) ?? []
         subBullets = try container.decodeIfPresent([String].self, forKey: .subBullets) ?? []
+        let decodedDepths = try container.decodeIfPresent(
+            [Int].self,
+            forKey: .subBulletDepths
+        )
+        subBulletDepths = Self.normalizedSubBulletDepths(
+            decodedDepths,
+            bodyCount: subBullets.count
+        )
+    }
+
+    private static func normalizedSubBulletDepths(
+        _ depths: [Int]?,
+        bodyCount: Int
+    ) -> [Int] {
+        guard bodyCount > 0 else {
+            return []
+        }
+        guard let depths,
+              depths.count == bodyCount,
+              depths.allSatisfy({ $0 == 1 || $0 == 2 })
+        else {
+            return Array(repeating: 1, count: bodyCount)
+        }
+        return depths
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -74,8 +106,8 @@ public struct CaptureParseResponse: Codable, Equatable {
         case spans
         case diagnostics
         case subBullets = "sub_bullets"
+        case subBulletDepths = "sub_bullet_depths"
     }
-
 }
 
 public struct CaptureSpan: Codable, Equatable {

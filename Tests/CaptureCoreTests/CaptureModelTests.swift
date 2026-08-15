@@ -26,12 +26,43 @@ final class CaptureModelTests: XCTestCase {
         let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
 
         XCTAssertEqual(decoded.schemaVersion, 1)
-        XCTAssertEqual(decoded.spans, [CaptureSpan(start: 10, end: 15, kind: "sub_bullet_route")])
+        XCTAssertEqual(
+            decoded.spans,
+            [CaptureSpan(start: 10, end: 15, kind: "sub_bullet_route")]
+        )
         XCTAssertEqual(decoded.needs, ["task"])
         XCTAssertEqual(decoded.subBullets, [])
+        XCTAssertEqual(decoded.subBulletDepths, [])
     }
 
-    func testParseResponseDecodesSubBulletsWhenPresent() throws {
+    func testParseResponseDecodesSubBulletsAndDepthsWhenPresent() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Prepare launch\\n- confirm owner\\n  - text owner\\n- attach checklist",
+              "body": "Prepare launch",
+              "mode": "task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": [],
+              "sub_bullets": ["confirm owner", "text owner", "attach checklist"],
+              "sub_bullet_depths": [1, 2, 1]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(
+            decoded.subBullets,
+            ["confirm owner", "text owner", "attach checklist"]
+        )
+        XCTAssertEqual(decoded.subBulletDepths, [1, 2, 1])
+    }
+
+    func testParseResponseSynthesizesDepthOneForOlderSubBulletResponses() throws {
         let data = Data(
             """
             {
@@ -51,6 +82,31 @@ final class CaptureModelTests: XCTestCase {
         let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
 
         XCTAssertEqual(decoded.subBullets, ["confirm owner", "attach checklist"])
+        XCTAssertEqual(decoded.subBulletDepths, [1, 1])
+    }
+
+    func testParseResponseIgnoresMismatchedSubBulletDepthsSafely() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Prepare launch\\n- confirm owner\\n  - text owner",
+              "body": "Prepare launch",
+              "mode": "task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": [],
+              "sub_bullets": ["confirm owner", "text owner"],
+              "sub_bullet_depths": [1]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(decoded.subBullets, ["confirm owner", "text owner"])
+        XCTAssertEqual(decoded.subBulletDepths, [1, 1])
     }
 
     func testParseResponseDecodesTaskBlockIDMarkerAdditions() throws {
@@ -102,6 +158,7 @@ final class CaptureModelTests: XCTestCase {
         let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
 
         XCTAssertEqual(decoded.subBullets, [])
+        XCTAssertEqual(decoded.subBulletDepths, [])
     }
 
     func testParseResponseDecodesMissingCollectionsAsEmpty() throws {
@@ -122,6 +179,8 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(decoded.needs, [])
         XCTAssertEqual(decoded.spans, [])
         XCTAssertEqual(decoded.diagnostics, [])
+        XCTAssertEqual(decoded.subBullets, [])
+        XCTAssertEqual(decoded.subBulletDepths, [])
     }
 
     func testCaptureCommandResponseDecodesRealSuccessShapeWithNoSchemaVersion() throws {
@@ -147,14 +206,15 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(success.subBullets, [])
     }
 
-    func testCaptureCommandResponseDecodesSubBulletsWhenPresent() throws {
+    func testCaptureCommandResponseDecodesRenderedNestedSubBulletsWhenPresent() throws {
         let data = Data(
             """
             {"ok":true,"dry_run":false,"routed":true,"route":"cash","route_label":"cash.md",
              "relative_target":"cash.md","target":"/home/bryan/bob/cash.md","text":"Prepare launch",
              "task_line":"- [ ] #task Prepare launch [created::2026-08-14]","kind":"task",
              "created":"2026-08-14","scheduled":null,"placement":"inserted",
-             "sub_bullets":["  - confirm owner","  - attach checklist"]}
+             "sub_bullets":["  - confirm owner","    - text owner","  - attach checklist",
+                            "    - verify links"]}
             """.utf8
         )
 
@@ -163,7 +223,12 @@ final class CaptureModelTests: XCTestCase {
         guard case .success(let success) = decoded else {
             return XCTFail("Expected a successful response")
         }
-        XCTAssertEqual(success.subBullets, ["  - confirm owner", "  - attach checklist"])
+        XCTAssertEqual(success.subBullets, [
+            "  - confirm owner",
+            "    - text owner",
+            "  - attach checklist",
+            "    - verify links",
+        ])
     }
 
     func testCaptureCommandResponseDecodesUnknownAdditiveTopLevelKeys() throws {
@@ -247,7 +312,10 @@ final class CaptureModelTests: XCTestCase {
              "text":"Prepare the launch review",
              "task_line":"- [ ] #task Prepare the launch review [created::2026-08-14] [priority::high] [scheduled::2026-08-18]",
              "kind":"task","created":"2026-08-14","scheduled":"2026-08-18","placement":"inserted",
-             "sub_bullets":["  - Confirm the rollout owner","  - Attach the final checklist"],
+             "sub_bullets":["  - Confirm the rollout owner",
+                            "    - Text the owner",
+                            "  - Attach the final checklist",
+                            "    - Verify the links"],
              "clip":{"header":null,"mode":"lines","lines":["  - clipped one","  - clipped two"],
                      "attachments":[],"entries":[]},
              "schedule_log":{"reason":"p:1 roll","lines":["  - **SCHEDULE LOG**",
@@ -265,7 +333,9 @@ final class CaptureModelTests: XCTestCase {
             [
                 success.taskLine,
                 "  - Confirm the rollout owner",
+                "    - Text the owner",
                 "  - Attach the final checklist",
+                "    - Verify the links",
                 "  - clipped one",
                 "  - clipped two",
                 "  - **SCHEDULE LOG**",

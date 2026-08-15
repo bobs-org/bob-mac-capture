@@ -110,11 +110,13 @@ or expired certificate can require reauthorizing those system permissions.
 - Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through
   a dedicated process-client API that asserts `--no-clip`. `%` markers stay literal in
   continuous preview; clipboard-resolving preview is a separate explicit action.
-- The additive `sub_bullets` field on `capture`/`capture-parse` output (the exact
-  rendered authored-child lines, omitted entirely when a draft has no authored bullets)
-  decodes to `[]` when absent, so an older `bob` still produces a useful parent-only
-  preview. Preview renders `task_line` followed by every `sub_bullets` line in source
-  order and indentation, never flattened or truncated.
+- The additive `sub_bullets` field on `capture` output is the exact rendered authored
+  child lines, including Bob's target-selected indentation, and is omitted entirely when
+  a draft has no authored bullets. `capture-parse` keeps `sub_bullets` as normalized
+  bodies and adds aligned `sub_bullet_depths` values (`1` or `2`); missing depths from an
+  older `bob` decode as depth `1`, and mismatched depths are ignored safely. Preview
+  renders `task_line` followed by every captured `sub_bullets` line in source order and
+  indentation, never flattened or truncated.
 - Preview shows the whole block Bob will write, in Bob's own order: the parent
   `task_line`, the authored children, then `clip.lines` and `schedule_log.lines` when the
   response carries them. Continuous live preview passes `--no-clip`, so it has no `clip`
@@ -158,15 +160,18 @@ list, and Capture/Preview/Discard buttons never require a pointer. The editor
 starts at one visual line, grows and shrinks with rendered content through six visual
 lines, then scrolls internally for longer drafts.
 
-A draft is a one-line parent followed by zero or more flat `-`/`*`/`+` bullets; `bob
-capture` renders each as an authored child of the captured parent, and a marker (`@route`,
-`s:<N>`, `p:<N>`, `%`, …) at the end of any line configures the whole capture even when it
-appears on a child line:
+A draft is a one-line parent followed by zero or more authored `-`/`*`/`+` bullets.
+Column-zero bullets become first-level authored children; bullets prefixed by exactly two
+ASCII spaces become nested authored children under the nearest preceding first-level
+authored child. A marker (`@route`, `s:<N>`, `p:<N>`, `%`, …) at the end of any valid line
+configures the whole capture even when it appears on a child line:
 
 ```text
 Prepare the launch review
 - Confirm the rollout owner
+  - Send the owner the final date
 - Attach the final checklist @work p:1
+  - Verify the links
 ```
 
 Bob's routed marker syntax works directly in the editor. `@route::block-id` captures an
@@ -176,10 +181,12 @@ nests beneath an existing task. The app does not duplicate those grammar rules; 
 colors the span kinds Bob reports, asks Bob for completion at the real caret, and submits
 the original draft text.
 
-Ctrl-J starts the next `- ` row from anywhere in the draft, and Backspace on an empty `- `
-row removes it in one action instead of requiring two ordinary backspaces. Both act on the
-native text view directly, so undo, IME composition, and accessibility behave exactly as
-they do for any other edit.
+Ctrl-J starts the next top-level `- ` row from anywhere in the draft, and Backspace on an
+empty `- ` row removes it in one action instead of requiring two ordinary backspaces. To
+author a nested row, insert a newline and type the documented two leading spaces before
+the bullet marker; the Swift app passes that draft unchanged to Bob instead of inferring
+hierarchy itself. Both shortcuts act on the native text view directly, so undo, IME
+composition, and accessibility behave exactly as they do for any other edit.
 
 Command-V intentionally reads only the clipboard's plain-text flavor. Source formatting
 is discarded because Bob's capture grammar is plain text, and letting AppKit choose a

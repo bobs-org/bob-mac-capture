@@ -45,7 +45,7 @@ json_string() {
   printf '"%s"' "${value}"
 }
 
-multiline_draft=$'Prepare launch\n- confirm owner\n- attach checklist'
+multiline_draft=$'Prepare launch\n- confirm owner\n  - text owner\n- attach checklist\n  - verify links'
 
 case "${command}" in
   capture-parse)
@@ -166,7 +166,8 @@ JSON
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
       printf ',"body":"Prepare launch","mode":"task","needs":[],"spans":[],"diagnostics":[],'
-      printf '"sub_bullets":["confirm owner","attach checklist"]}\n'
+      printf '"sub_bullets":["confirm owner","text owner","attach checklist","verify links"],'
+      printf '"sub_bullet_depths":[1,2,1,2]}\n'
     else
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
@@ -375,7 +376,7 @@ JSON
   "created": "2026-08-14",
   "scheduled": null,
   "placement": "inserted",
-  "sub_bullets": ["  - confirm owner", "  - attach checklist"]
+  "sub_bullets": ["  - confirm owner", "    - text owner", "  - attach checklist", "    - verify links"]
 }
 JSON
     else

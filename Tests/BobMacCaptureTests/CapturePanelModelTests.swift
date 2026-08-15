@@ -40,32 +40,32 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, "")
     }
 
-    func testSubmitDecodesRenderedSubBulletsForMultilineDraft() async throws {
+    func testSubmitDecodesRenderedNestedSubBulletsForMultilineDraft() async throws {
         let model = CapturePanelModel()
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
-        model.plainDraft = "Prepare launch\n- confirm owner\n- attach checklist"
+        model.plainDraft = nestedMultilineDraft()
 
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
-        XCTAssertEqual(model.lastSuccess?.subBullets, ["  - confirm owner", "  - attach checklist"])
+        XCTAssertEqual(model.lastSuccess?.subBullets, renderedNestedSubBullets())
     }
 
-    func testPreviewDecodesRenderedSubBulletsForMultilineDraft() async throws {
+    func testPreviewDecodesRenderedNestedSubBulletsForMultilineDraft() async throws {
         let model = CapturePanelModel()
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
-        model.plainDraft = "Prepare launch\n- confirm owner\n- attach checklist"
+        model.plainDraft = nestedMultilineDraft()
 
         model.preview()
         await waitUntil { !model.isPreviewing }
 
-        XCTAssertEqual(model.previewResult?.subBullets, ["  - confirm owner", "  - attach checklist"])
+        XCTAssertEqual(model.previewResult?.subBullets, renderedNestedSubBullets())
     }
 
     func testSubmitAndOpenOpensObsidianURLBuiltFromReturnedTarget() async throws {
@@ -597,5 +597,24 @@ final class CapturePanelModelTests: XCTestCase {
             created: "2026-08-14",
             placement: "append"
         )
+    }
+
+    private func nestedMultilineDraft() -> String {
+        [
+            "Prepare launch",
+            "- confirm owner",
+            "  - text owner",
+            "- attach checklist",
+            "  - verify links",
+        ].joined(separator: "\n")
+    }
+
+    private func renderedNestedSubBullets() -> [String] {
+        [
+            "  - confirm owner",
+            "    - text owner",
+            "  - attach checklist",
+            "    - verify links",
+        ]
     }
 }
