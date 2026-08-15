@@ -156,7 +156,7 @@ struct CaptureKeyCommandRouter {
         modifiers: NSEvent.ModifierFlags,
         context: CaptureKeyRoutingContext
     ) -> CaptureKeyCommand? {
-        if modifiers.isEmpty, isClearStashKey(event.characters ?? "") {
+        if isClearStashShortcut(for: event, modifiers: modifiers) {
             return .clearCanceledDraftStash
         }
 
@@ -207,11 +207,10 @@ struct CaptureKeyCommandRouter {
         return .consumeKey
     }
 
-    private func isClearStashKey(_ characters: String) -> Bool {
-        let scalars = Array(characters.unicodeScalars)
-        guard scalars.count == 1 else {
+    private func isClearStashShortcut(for event: NSEvent, modifiers: NSEvent.ModifierFlags) -> Bool {
+        guard event.characters == "D" else {
             return false
         }
-        return String(scalars[0]).uppercased() == "D"
+        return modifiers.subtracting([.shift, .capsLock]).isEmpty
     }
 }

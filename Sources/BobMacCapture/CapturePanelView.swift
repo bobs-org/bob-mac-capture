@@ -598,8 +598,6 @@ private struct CanceledDraftStashPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            clearAllButton
-
             ScrollViewReader { proxy in
                 ScrollView(.vertical) {
                     LazyVStack(alignment: .leading, spacing: 2) {
@@ -626,6 +624,8 @@ private struct CanceledDraftStashPicker: View {
                     scrollSelectionIntoView(proxy)
                 }
             }
+
+            clearAllButton
         }
         .padding(6)
         .background(.regularMaterial)
@@ -635,7 +635,7 @@ private struct CanceledDraftStashPicker: View {
         .accessibilityLabel(listAccessibilityLabel)
         .accessibilityHint(
             "Use arrows, Control-N, Control-P, Return, or a shown key to restore a canceled draft. "
-                + "Press D to permanently remove all retained drafts from this app session."
+                + "Press Shift-D to permanently remove all retained drafts from this app session."
         )
     }
 
@@ -644,10 +644,10 @@ private struct CanceledDraftStashPicker: View {
             model.clearCanceledDraftStashFromPicker()
         } label: {
             HStack(spacing: 8) {
-                Text("D")
+                Text("Shift-D")
                     .font(.system(.caption, design: .monospaced).weight(.semibold))
                     .foregroundStyle(.red)
-                    .frame(width: 24, height: 22)
+                    .frame(width: 58, height: 22)
                     .background(.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))
                     .overlay(
                         RoundedRectangle(cornerRadius: 5)
@@ -664,8 +664,11 @@ private struct CanceledDraftStashPicker: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(.red)
-        .accessibilityLabel("D Delete All")
-        .accessibilityHint("Permanently removes all retained canceled drafts from the current app session.")
+        .accessibilityLabel("Shift-D Delete All")
+        .accessibilityHint(
+            "Permanently removes all retained canceled drafts from the current app session. "
+                + "Lowercase d does not delete."
+        )
     }
 
     private var listAccessibilityLabel: String {

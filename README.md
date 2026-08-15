@@ -208,16 +208,17 @@ uses the same compact material style as completion. Rows are newest first. Resto
 row installs that exact text in the empty editor with the caret at the UTF-8 end, removes
 only that restored entry from the stash, keeps the panel open, and starts normal
 parse/live-preview analysis. This is a pop operation: non-restored entries remain in
-order. Pressing unmodified `D`, or clicking **D Delete All**, immediately clears every
-retained canceled draft from the current app session, closes the picker, leaves the
-panel open with an empty editor, and reports only "Canceled draft stash cleared". The
+order. Pressing uppercase `D` with Shift-D or Caps Lock, or clicking
+**Shift-D Delete All**, immediately clears every retained canceled draft from the
+current app session, closes the picker, leaves the panel open with an empty editor, and
+reports only "Canceled draft stash cleared". Lowercase `d` does nothing destructive. The
 Settings **Clear Stash...** action keeps its confirmation dialog for that non-modal
 workflow.
 
 | Key while stash is open | Behavior |
 | --- | --- |
 | 1...9, 0, A...C, -, E...Z | Restore that row immediately |
-| D | Delete all retained canceled drafts for this app session |
+| Shift-D | Delete all retained canceled drafts for this app session |
 | Return | Restore the selected row |
 | Down / Ctrl-N | Select the next row, wrapping at the end |
 | Up / Ctrl-P | Select the previous row, wrapping at the top |

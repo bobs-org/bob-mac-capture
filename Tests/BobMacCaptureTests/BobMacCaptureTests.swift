@@ -446,10 +446,18 @@ final class BobMacCaptureTests: XCTestCase {
         )
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 2, characters: "d"), context: context),
-            .clearCanceledDraftStash
+            .consumeKey
         )
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 2, characters: "D"), context: context),
+            .clearCanceledDraftStash
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 2, modifiers: .shift, characters: "D"), context: context),
+            .clearCanceledDraftStash
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 2, modifiers: .capsLock, characters: "D"), context: context),
             .clearCanceledDraftStash
         )
         XCTAssertEqual(
@@ -476,7 +484,7 @@ final class BobMacCaptureTests: XCTestCase {
 
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 2, modifiers: .shift, characters: "D"), context: shortContext),
-            .consumeKey
+            .clearCanceledDraftStash
         )
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 2, modifiers: .control, characters: "d"), context: shortContext),
@@ -488,6 +496,12 @@ final class BobMacCaptureTests: XCTestCase {
         )
         XCTAssertNil(
             router.command(for: keyEvent(keyCode: 2, modifiers: .command, characters: "d"), context: shortContext)
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 2, modifiers: [.command, .shift], characters: "D"),
+                context: shortContext
+            )
         )
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 6, characters: "z"), context: shortContext), .consumeKey)
         XCTAssertEqual(
