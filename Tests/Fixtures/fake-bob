@@ -109,6 +109,42 @@ JSON
   "diagnostics": []
 }
 JSON
+    elif [[ "${draft}" == "idea @ma::new-id" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "idea @ma::new-id",
+  "body": "idea",
+  "mode": "task",
+  "route": "ma",
+  "block_id": "new-id",
+  "needs": [],
+  "spans": [
+    { "start": 5, "end": 8, "kind": "task_block_id_route" },
+    { "start": 10, "end": 16, "kind": "task_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "idea @mac_inbox::new-id" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "idea @mac_inbox::new-id",
+  "body": "idea",
+  "mode": "task",
+  "route": "mac_inbox",
+  "block_id": "new-id",
+  "needs": [],
+  "spans": [
+    { "start": 5, "end": 15, "kind": "task_block_id_route" },
+    { "start": 17, "end": 23, "kind": "task_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
     elif [[ "${draft}" == "Call bank @Cash^" ]]; then
       cat <<'JSON'
 {
@@ -161,14 +197,14 @@ JSON
     ;;
   capture-complete)
     draft="${*: -1}"
+    cursor="0"
+    args=("$@")
+    for ((i = 0; i < ${#args[@]}; i++)); do
+      if [[ "${args[$i]}" == "--cursor" || "${args[$i]}" == "-c" ]]; then
+        cursor="${args[$((i + 1))]:-0}"
+      fi
+    done
     if [[ "${draft}" == *"[[AI"* ]]; then
-      cursor="0"
-      args=("$@")
-      for ((i = 0; i < ${#args[@]}; i++)); do
-        if [[ "${args[$i]}" == "--cursor" || "${args[$i]}" == "-c" ]]; then
-          cursor="${args[$((i + 1))]:-0}"
-        fi
-      done
       prefix="${draft%%"[[AI"*}"
       start=$((${#prefix} + 2))
       end=$((start + 2))
@@ -198,6 +234,32 @@ JSON
   "warnings": ["skipped unreadable note"]
 }
 JSON
+    elif [[ "${draft}" == "idea @ma::new-id" ]]; then
+      if (( cursor <= 8 )); then
+        cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 8,
+  "replacement": { "start": 6, "end": 8 },
+  "context": "route",
+  "candidates": [
+    { "replacement": "mac_inbox", "route": "mac_inbox", "label": "mac_inbox.md", "kind": "inbox", "status": null }
+  ]
+}
+JSON
+      else
+        cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": ${cursor}, "end": ${cursor} },
+  "context": null,
+  "candidates": []
+}
+JSON
+      fi
     elif [[ "${draft}" == "idea @ma" ]]; then
       cat <<'JSON'
 {
@@ -276,6 +338,25 @@ JSON
   "created": "2026-08-14",
   "scheduled": null,
   "placement": "inserted"
+}
+JSON
+    elif [[ "${draft}" == "idea @mac_inbox::new-id" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "mac_inbox",
+  "route_label": "mac_inbox.md",
+  "relative_target": "mac_inbox.md",
+  "target": "/tmp/bob/mac_inbox.md",
+  "text": "idea",
+  "task_line": "- [ ] #task idea [created::2026-08-14] ^new-id",
+  "kind": "task",
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "inserted",
+  "block_id": "new-id"
 }
 JSON
     elif [[ "${draft}" == "${multiline_draft}" ]]; then

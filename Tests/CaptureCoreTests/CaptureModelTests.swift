@@ -53,6 +53,35 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(decoded.subBullets, ["confirm owner", "attach checklist"])
     }
 
+    func testParseResponseDecodesTaskBlockIDMarkerAdditions() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "idea @ma::new-id",
+              "body": "idea",
+              "mode": "task",
+              "route": "ma",
+              "block_id": "new-id",
+              "needs": [],
+              "spans": [
+                { "start": 5, "end": 8, "kind": "task_block_id_route" },
+                { "start": 10, "end": 16, "kind": "task_block_id" }
+              ],
+              "diagnostics": []
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(decoded.mode, "task")
+        XCTAssertEqual(decoded.route, "ma")
+        XCTAssertEqual(decoded.blockID, "new-id")
+        XCTAssertEqual(decoded.spans.map(\.kind), ["task_block_id_route", "task_block_id"])
+    }
+
     func testParseResponseDecodesEmptySubBulletsArray() throws {
         let data = Data(
             """
@@ -391,6 +420,41 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(success.taskLine, "- [ ] #task buy milk [created::2026-08-14]")
         XCTAssertEqual(success.routeLabel, "mac_inbox.md")
         XCTAssertEqual(success.placement, "created")
+    }
+
+    func testCaptureCommandResponseDecodesOrdinaryTaskWithBlockID() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "dev",
+              "route_label": "dev.md",
+              "relative_target": "dev.md",
+              "target": "/tmp/bob/dev.md",
+              "text": "Do work",
+              "task_line": "- [ ] #task Do work [created::2026-08-14] ^new-id",
+              "kind": "task",
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "inserted",
+              "block_id": "new-id"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.kind, "task")
+        XCTAssertEqual(success.blockID, "new-id")
+        XCTAssertNil(success.dayFile)
+        XCTAssertNil(success.blockLink)
+        XCTAssertNil(success.pomodoroLinkPlacement)
+        XCTAssertEqual(success.previewBlockLines, [success.taskLine])
     }
 
     func testCompletionResponseDecodesRouteAndTaskCandidates() throws {

@@ -182,9 +182,11 @@ final class CompletionRowContentTests: XCTestCase {
 
     func testSpanKindCategoriesCoverExistingCaptureMarkerAndWikilinkKinds() {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "route"), .route)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_block_id_route"), .route)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_route"), .route)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "sub_bullet_route"), .route)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "section"), .section)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "sub_bullet_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "schedule"), .schedule)

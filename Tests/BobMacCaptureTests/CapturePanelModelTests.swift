@@ -433,6 +433,80 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(content.primaryMatchRange, 0..<2)
     }
 
+    func testTaskBlockIDRouteSpanUsesCachedRouteCompletion() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        model.updateTargetCacheSnapshot(CaptureTargetsSnapshot(
+            targets: CaptureTargetsResponse(
+                ok: true,
+                targets: [
+                    CaptureTarget(
+                        route: "mac_inbox",
+                        name: "mac_inbox",
+                        label: "mac_inbox.md",
+                        kind: "inbox",
+                        relativePath: "mac_inbox.md"
+                    ),
+                ]
+            ),
+            refreshedAt: Date(),
+            stale: false,
+            errorDescription: nil
+        ))
+        model.plainDraft = "idea @ma::new-id"
+
+        model.editorTextDidChange(cursorUTF8Offset: "idea @ma".utf8.count)
+        await waitUntil { model.completionVisible }
+
+        XCTAssertEqual(model.completionResponse?.context, "route")
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 6, end: 8))
+        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "mac_inbox")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- idea @ma::new-id"))
+        XCTAssertFalse(record.contains("capture-complete"))
+    }
+
+    func testTaskBlockIDAuthoredIDSideDoesNotCompleteButLivePreviewShowsBlockID() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        model.plainDraft = "idea @mac_inbox::new-id"
+
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil {
+            guard case .ready(let preview) = model.previewState else {
+                return false
+            }
+            return preview.taskLine == "- [ ] #task idea [created::2026-08-14] ^new-id"
+        }
+
+        XCTAssertNil(model.completionResponse)
+        guard case .ready(let preview) = model.previewState else {
+            return XCTFail("Expected ready preview")
+        }
+        XCTAssertEqual(preview.kind, "task")
+        XCTAssertEqual(preview.blockID, "new-id")
+        XCTAssertNil(preview.dayFile)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- idea @mac_inbox::new-id"))
+        XCTAssertFalse(record.contains("capture-complete"))
+    }
+
     func testRangeSelectionSuppressesCompletionButKeepsPreviewAnalysis() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)

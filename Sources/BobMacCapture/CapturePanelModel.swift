@@ -691,6 +691,7 @@ final class CapturePanelModel: ObservableObject {
         let completionSpanKinds = Set([
             "route",
             "section",
+            "task_block_id_route",
             "pomodoro_route",
             "pomodoro_block_id",
             "sub_bullet_route",
@@ -755,7 +756,7 @@ final class CapturePanelModel: ObservableObject {
         cursor: Int,
         draft: String
     ) -> CaptureRange? {
-        let routeSpanKinds = Set(["route", "pomodoro_route", "sub_bullet_route"])
+        let routeSpanKinds = Set(["route", "task_block_id_route", "pomodoro_route", "sub_bullet_route"])
 
         for span in parse.spans where cursor >= span.start && cursor <= span.end {
             if routeSpanKinds.contains(span.kind) {

@@ -23,11 +23,11 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
 /// `.neutral`, matching ordinary prose rather than signaling an error.
 public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemanticCategory {
     switch kind {
-    case "route", "pomodoro_route", "sub_bullet_route":
+    case "route", "task_block_id_route", "pomodoro_route", "sub_bullet_route":
         return .route
     case "section":
         return .section
-    case "pomodoro_block_id", "sub_bullet_block_id":
+    case "task_block_id", "pomodoro_block_id", "sub_bullet_block_id":
         return .blockID
     case "schedule":
         return .schedule

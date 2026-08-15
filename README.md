@@ -103,8 +103,10 @@ or expired certificate can require reauthorizing those system permissions.
   syntax.
 - Inline completion calls `bob capture-complete --cursor BYTE --format json -- <draft>`;
   accepted candidates apply the server-provided byte replacement range and `cursor_after`
-  exactly, restoring a collapsed caret at that offset. See "Wikilink Completion" below
-  for the Obsidian-specific contract and row presentation.
+  exactly, restoring a collapsed caret at that offset. Route completion also covers the
+  route side of Bob's `@route::block-id` ordinary task-with-ID marker; the authored ID
+  side has no existing-task picker and an empty completion result is shown as no list. See
+  "Wikilink Completion" below for the Obsidian-specific contract and row presentation.
 - Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through
   a dedicated process-client API that asserts `--no-clip`. `%` markers stay literal in
   continuous preview; clipboard-resolving preview is a separate explicit action.
@@ -166,6 +168,13 @@ Prepare the launch review
 - Confirm the rollout owner
 - Attach the final checklist @work p:1
 ```
+
+Bob's routed marker syntax works directly in the editor. `@route::block-id` captures an
+ordinary `[ ]` task with a trailing `^block-id` and no Pomodoro task link, while
+`@route:block-id` keeps the Pomodoro-linked next-task behavior and `@route^block-id`
+nests beneath an existing task. The app does not duplicate those grammar rules; it
+colors the span kinds Bob reports, asks Bob for completion at the real caret, and submits
+the original draft text.
 
 Ctrl-J starts the next `- ` row from anywhere in the draft, and Backspace on an empty `- `
 row removes it in one action instead of requiring two ordinary backspaces. Both act on the

@@ -45,6 +45,20 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture-parse --format json -- \(draft)"))
     }
 
+    func testCaptureParseDecodesTaskBlockIDMarker() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.captureParse("idea @ma::new-id")
+
+        XCTAssertEqual(response.mode, "task")
+        XCTAssertEqual(response.route, "ma")
+        XCTAssertEqual(response.blockID, "new-id")
+        XCTAssertEqual(response.spans.map(\.kind), ["task_block_id_route", "task_block_id"])
+    }
+
     func testCaptureCompleteRunsCursorAwareEndpoint() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -63,6 +77,23 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(response.candidates.first?.replacement, "today")
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture-complete --cursor 6 --format json -- idea @"))
+    }
+
+    func testCaptureCompleteTaskBlockIDMarkerCompletesRouteButNotAuthoredID() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let route = try await client.captureComplete("idea @ma::new-id", cursor: 8)
+        XCTAssertEqual(route.context, "route")
+        XCTAssertEqual(route.replacement, CaptureRange(start: 6, end: 8))
+        XCTAssertEqual(route.candidates.first?.route, "mac_inbox")
+
+        let authoredID = try await client.captureComplete("idea @ma::new-id", cursor: 12)
+        XCTAssertNil(authoredID.context)
+        XCTAssertTrue(authoredID.candidates.isEmpty)
+        XCTAssertEqual(authoredID.replacement, CaptureRange(start: 12, end: 12))
     }
 
     func testLivePreviewAlwaysUsesNoClipAndPrioritySeed() async throws {
@@ -140,6 +171,25 @@ final class BobProcessClientTests: XCTestCase {
         }
         XCTAssertEqual(success.taskLine, "- [ ] #task Prepare launch [created::2026-08-14]")
         XCTAssertEqual(success.subBullets, ["  - confirm owner", "  - attach checklist"])
+    }
+
+    func testCaptureSubmitDecodesOrdinaryTaskWithBlockID() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.capture("idea @mac_inbox::new-id", dryRun: false, readClipboard: true)
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful capture response")
+        }
+        XCTAssertEqual(success.kind, "task")
+        XCTAssertEqual(success.blockID, "new-id")
+        XCTAssertNil(success.dayFile)
+        XCTAssertNil(success.blockLink)
+        XCTAssertNil(success.pomodoroLinkPlacement)
+        XCTAssertEqual(success.taskLine, "- [ ] #task idea [created::2026-08-14] ^new-id")
     }
 
     func testLivePreviewDecodesRenderedSubBulletsForMultilineDraft() async throws {
