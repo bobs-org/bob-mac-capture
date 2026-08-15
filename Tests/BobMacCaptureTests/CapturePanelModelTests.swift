@@ -238,6 +238,175 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(dismissCount, 1)
     }
 
+    func testStashDraftAndCloseStoresExactNonemptyDraftClearsStateAndDismisses() {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        let draft = "  café task @Cash\n- keep whitespace  "
+        model.plainDraft = draft
+        model.errorMessage = "Capture failed"
+        model.previewResult = sampleSuccess()
+        model.parseDiagnostics = [
+            CaptureDiagnostic(severity: "error", code: "bad_route", message: "Unknown route")
+        ]
+        model.previewState = .failed("Preview failed")
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 15,
+            replacement: CaptureRange(start: 11, end: 15),
+            context: "route",
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "Cash",
+                    route: "Cash",
+                    label: "Cash.md",
+                    kind: "cash"
+                )
+            ]
+        )
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+
+        model.stashDraftAndClose()
+
+        XCTAssertEqual(stash.entries.map(\.text), [draft])
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertNil(model.errorMessage)
+        XCTAssertNil(model.previewResult)
+        XCTAssertEqual(model.parseDiagnostics, [])
+        XCTAssertEqual(model.previewState, .idle)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertEqual(model.statusText, "Canceled draft stashed")
+        XCTAssertEqual(dismissCount, 1)
+    }
+
+    func testStashDraftAndCloseWhitespaceOnlyDraftDoesNotStoreAndClearsEditor() {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        model.plainDraft = " \n\t "
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+
+        model.stashDraftAndClose()
+
+        XCTAssertTrue(stash.entries.isEmpty)
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertEqual(model.statusText, "")
+        XCTAssertEqual(dismissCount, 1)
+    }
+
+    func testDiscardDraftAndCloseDoesNotAddToStash() {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        model.plainDraft = "Call bank @Cash"
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+
+        model.discardDraftAndClose()
+
+        XCTAssertTrue(stash.entries.isEmpty)
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertEqual(dismissCount, 1)
+    }
+
+    func testStashPickerOpeningReportsEmptyAndRefusesLiveDraft() {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+
+        model.presentStashPicker()
+        XCTAssertFalse(model.isStashPickerPresented)
+        XCTAssertEqual(model.statusText, "No canceled drafts yet")
+
+        stash.push("retained")
+        model.plainDraft = "live draft"
+        model.presentStashPicker()
+
+        XCTAssertFalse(model.isStashPickerPresented)
+        XCTAssertEqual(model.statusText, "Capture, retain, or cancel the current draft before opening stash")
+        XCTAssertEqual(model.plainDraft, "live draft")
+        XCTAssertEqual(stash.entries.map(\.text), ["retained"])
+    }
+
+    func testStashPickerSelectionWrapsAndClampsWhenStoreChanges() {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        stash.push("old")
+        stash.push("middle")
+        stash.push("new")
+
+        model.presentStashPicker()
+        XCTAssertTrue(model.isStashPickerPresented)
+        XCTAssertEqual(model.selectedStashIndex, 0)
+
+        model.selectPreviousStashEntry()
+        XCTAssertEqual(model.selectedStashIndex, 2)
+
+        model.selectNextStashEntry()
+        XCTAssertEqual(model.selectedStashIndex, 0)
+
+        model.selectedStashIndex = 2
+        stash.updateCapacity(1)
+        XCTAssertEqual(stash.entries.map(\.text), ["new"])
+        XCTAssertEqual(model.selectedStashIndex, 0)
+        XCTAssertTrue(model.isStashPickerPresented)
+
+        stash.clear()
+        XCTAssertEqual(model.selectedStashIndex, 0)
+        XCTAssertFalse(model.isStashPickerPresented)
+    }
+
+    func testRestoreStashEntryInstallsExactTextAtEndSchedulesFreshAnalysisAndPopsOnlyThatEntry() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            ),
+            debounceNanoseconds: 0,
+            canceledDraftStash: stash
+        )
+        let older = try XCTUnwrap(stash.push("older @Cash"))
+        let chosen = try XCTUnwrap(stash.push("Restored café @Cash\n- child"))
+        _ = older
+        model.presentStashPicker()
+
+        model.restoreStashEntry(id: chosen.id)
+
+        XCTAssertEqual(model.plainDraft, "Restored café @Cash\n- child")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), model.plainDraft.utf8.count)
+        XCTAssertFalse(model.isStashPickerPresented)
+        XCTAssertEqual(stash.entries.map(\.text), ["older @Cash"])
+        XCTAssertEqual(model.statusText, "Restored canceled draft")
+
+        await waitUntil {
+            guard case .ready(let preview) = model.previewState else {
+                return false
+            }
+            return preview.routeLabel == "cash.md"
+        }
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- Restored café @Cash\n- child"))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- Restored café @Cash\n- child"))
+    }
+
+    func testRestoreStashEntryRefusesToOverwriteLiveDraftAndLeavesEntry() throws {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        let entry = try XCTUnwrap(stash.push("retained"))
+        model.plainDraft = "live"
+
+        model.restoreStashEntry(id: entry.id)
+
+        XCTAssertEqual(model.plainDraft, "live")
+        XCTAssertEqual(stash.entries, [entry])
+        XCTAssertEqual(model.statusText, "Capture, retain, or cancel the current draft before opening stash")
+    }
+
     func testCloseRetainingEmptyDraftDismissesWithoutDraftRetainedStatus() {
         let model = CapturePanelModel()
         var dismissCount = 0

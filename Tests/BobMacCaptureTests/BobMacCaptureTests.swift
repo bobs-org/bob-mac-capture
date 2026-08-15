@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import Combine
 import CaptureCore
 import ServiceManagement
 import XCTest
@@ -317,15 +318,18 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertNil(router.command(for: keyEvent(keyCode: 33, modifiers: .option)))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 33, modifiers: [.control, .shift])))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 33, modifiers: [.control, .command])))
-        XCTAssertEqual(router.command(for: keyEvent(keyCode: 8, modifiers: .control)), .discardAndClose)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 8, modifiers: .control)), .stashDraftAndClose)
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 8, modifiers: .control), completionVisible: true),
-            .discardAndClose
+            .stashDraftAndClose
         )
         XCTAssertNil(router.command(for: keyEvent(keyCode: 8)))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 8, modifiers: .command)))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 8, modifiers: [.control, .shift])))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 8, modifiers: [.control, .command])))
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 1, modifiers: .control)), .toggleStashPicker)
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 1)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 1, modifiers: [.control, .shift])))
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), completionVisible: true), .acceptCompletion)
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 36, modifiers: .command), completionVisible: true),
@@ -363,6 +367,88 @@ final class BobMacCaptureTests: XCTestCase {
             router.command(for: keyEvent(keyCode: 35, modifiers: .control), completionVisible: true),
             .previousCompletion
         )
+    }
+
+    func testKeyRouterMatchesStashPickerModalCommands() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(
+            completionVisible: true,
+            stashPickerVisible: true,
+            stashEntryCount: 36
+        )
+
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), context: context), .restoreSelectedStashEntry)
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 36, modifiers: .command), context: context))
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 53), context: context), .dismissStashPicker)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 33, modifiers: .control), context: context),
+            .dismissStashPicker
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 1, modifiers: .control), context: context),
+            .toggleStashPicker
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 125), context: context), .nextStashEntry)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 126), context: context), .previousStashEntry)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 45, modifiers: .control), context: context),
+            .nextStashEntry
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 35, modifiers: .control), context: context),
+            .previousStashEntry
+        )
+
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 18, characters: "1"), context: context),
+            .restoreStashEntry(0)
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 29, characters: "0"), context: context),
+            .restoreStashEntry(9)
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 0, characters: "a"), context: context),
+            .restoreStashEntry(10)
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 6, characters: "z"), context: context),
+            .restoreStashEntry(35)
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 45, characters: "n"), context: context),
+            .restoreStashEntry(23)
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 35, characters: "p"), context: context),
+            .restoreStashEntry(25)
+        )
+    }
+
+    func testKeyRouterConsumesPrintableKeysWhileStashPickerIsModalButLeavesCommandShortcuts() {
+        let router = CaptureKeyCommandRouter()
+        let shortContext = CaptureKeyRoutingContext(stashPickerVisible: true, stashEntryCount: 2)
+
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 6, characters: "z"), context: shortContext), .consumeKey)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 6, modifiers: .shift, characters: "Z"), context: shortContext),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 6, modifiers: .option, characters: "Ω"), context: shortContext),
+            .consumeKey
+        )
+        XCTAssertNil(
+            router.command(for: keyEvent(keyCode: 6, modifiers: .command, characters: "z"), context: shortContext)
+        )
+        XCTAssertNil(
+            router.command(for: keyEvent(keyCode: 18, modifiers: .command, characters: "1"), context: shortContext)
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 18, modifiers: .shift, characters: "!"), context: shortContext),
+            .consumeKey
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 49, characters: " "), context: shortContext), .consumeKey)
     }
 
     func testKeyRouterMatchesControlJAsBulletNewlineOnlyWithControlModifier() {
@@ -515,6 +601,22 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(dismissCount, 1)
         XCTAssertEqual(model.plainDraft, "")
         XCTAssertNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testStashDraftAndCloseCommandStoresDraftAndDismisses() {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        model.plainDraft = "idea @ma"
+        let controller = CapturePanelController(model: model)
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+
+        XCTAssertTrue(controller.perform(.stashDraftAndClose))
+
+        XCTAssertEqual(dismissCount, 1)
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertEqual(stash.entries.map(\.text), ["idea @ma"])
     }
 
     func testEditorHeightPolicyUsesOneLineMinimumAndSixLineCap() {
@@ -1203,6 +1305,58 @@ final class BobMacCaptureTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
     }
 
+    @MainActor
+    func testCanceledDraftStashCapacityDefaultsPersistsAndClamps() {
+        let suiteName = "org.bobs.bob-mac-capture.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertEqual(settings.canceledDraftStashCapacity, 10)
+
+        settings.canceledDraftStashCapacity = 24
+        XCTAssertEqual(defaults.integer(forKey: "canceledDraftStashCapacity"), 24)
+        XCTAssertEqual(AppSettings(defaults: defaults).canceledDraftStashCapacity, 24)
+
+        settings.canceledDraftStashCapacity = 999
+        XCTAssertEqual(settings.canceledDraftStashCapacity, 36)
+        XCTAssertEqual(defaults.integer(forKey: "canceledDraftStashCapacity"), 36)
+
+        settings.canceledDraftStashCapacity = -5
+        XCTAssertEqual(settings.canceledDraftStashCapacity, 0)
+        XCTAssertEqual(defaults.integer(forKey: "canceledDraftStashCapacity"), 0)
+
+        defaults.set("not an integer", forKey: "canceledDraftStashCapacity")
+        XCTAssertEqual(AppSettings(defaults: defaults).canceledDraftStashCapacity, 10)
+        defaults.removePersistentDomain(forName: suiteName)
+    }
+
+    @MainActor
+    func testStashCapacityPropagationTrimsImmediatelyAndPayloadsStayOutOfDefaultsAndDiagnostics() {
+        let suiteName = "org.bobs.bob-mac-capture.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        let settings = AppSettings(defaults: defaults)
+        let stash = CanceledDraftStash(capacity: settings.canceledDraftStashCapacity)
+        let cancellable = settings.$canceledDraftStashCapacity.sink { capacity in
+            stash.updateCapacity(capacity)
+        }
+        let secret = "private canceled draft"
+
+        stash.push("old")
+        stash.push(secret)
+        settings.canceledDraftStashCapacity = 1
+
+        XCTAssertEqual(stash.entries.map(\.text), [secret])
+        XCTAssertEqual(defaults.integer(forKey: "canceledDraftStashCapacity"), 1)
+        XCTAssertFalse(defaults.dictionaryRepresentation().description.contains(secret))
+
+        settings.diagnosticStatus = "Canceled draft stashed"
+        XCTAssertFalse(settings.diagnosticHistory.description.contains(secret))
+        cancellable.cancel()
+        defaults.removePersistentDomain(forName: suiteName)
+    }
+
     func testInfoPlistDeclaresUiElementAndBundleIdentity() throws {
         let plistURL = packageRoot().appendingPathComponent("Resources/Info.plist")
         let data = try Data(contentsOf: plistURL)
@@ -1332,7 +1486,11 @@ final class BobMacCaptureTests: XCTestCase {
         )
     }
 
-    private func keyEvent(keyCode: UInt16, modifiers: NSEvent.ModifierFlags = []) -> NSEvent {
+    private func keyEvent(
+        keyCode: UInt16,
+        modifiers: NSEvent.ModifierFlags = [],
+        characters: String = ""
+    ) -> NSEvent {
         NSEvent.keyEvent(
             with: .keyDown,
             location: .zero,
@@ -1340,8 +1498,8 @@ final class BobMacCaptureTests: XCTestCase {
             timestamp: 0,
             windowNumber: 0,
             context: nil,
-            characters: "",
-            charactersIgnoringModifiers: "",
+            characters: characters,
+            charactersIgnoringModifiers: characters,
             isARepeat: false,
             keyCode: keyCode
         )!

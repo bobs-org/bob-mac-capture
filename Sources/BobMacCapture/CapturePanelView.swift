@@ -16,6 +16,9 @@ enum CapturePanelLayout {
     static let completionVisibleRows = 5
     static let completionRowHeight: CGFloat = 48
     static let completionViewportHeight = completionRowHeight * CGFloat(completionVisibleRows) + 12
+    static let stashVisibleRows = 5
+    static let stashRowHeight: CGFloat = 58
+    static let stashViewportHeight = stashRowHeight * CGFloat(stashVisibleRows) + 12
     static let previewIdealHeight: CGFloat = 92
 
     /// First-frame fallback used only until SwiftUI reports rendered editor/footer
@@ -177,7 +180,8 @@ struct CapturePanelView: View {
     }
 
     private var hasAuxiliaryContent: Bool {
-        model.completionVisible
+        model.isStashPickerPresented
+            || model.completionVisible
             || model.destinationSummary != nil
             || model.errorMessage != nil
             || model.previewState != .idle
@@ -209,47 +213,56 @@ struct CapturePanelView: View {
 
     private var auxiliaryContent: some View {
         VStack(alignment: .leading, spacing: CapturePanelLayout.sectionSpacing) {
-            if model.completionVisible {
-                CompletionList(model: model)
-                    .frame(width: 430)
-                    .frame(maxHeight: CapturePanelLayout.completionViewportHeight, alignment: .top)
+            if model.isStashPickerPresented {
+                CanceledDraftStashPicker(model: model)
+                    .frame(width: 520)
+                    .frame(maxHeight: CapturePanelLayout.stashViewportHeight, alignment: .top)
                     .padding(.leading, 14)
                     .layoutPriority(0)
-                    .id(AuxiliarySection.completion)
-            }
+                    .id(AuxiliarySection.stash)
+            } else {
+                if model.completionVisible {
+                    CompletionList(model: model)
+                        .frame(width: 430)
+                        .frame(maxHeight: CapturePanelLayout.completionViewportHeight, alignment: .top)
+                        .padding(.leading, 14)
+                        .layoutPriority(0)
+                        .id(AuxiliarySection.completion)
+                }
 
-            if let destinationSummary = model.destinationSummary {
-                Text(destinationSummary)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .id(AuxiliarySection.destination)
-            }
-
-            if let errorMessage = model.errorMessage {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(errorMessage)
+                if let destinationSummary = model.destinationSummary {
+                    Text(destinationSummary)
                         .font(.callout)
-                        .foregroundStyle(.red)
-                        .textSelection(.enabled)
-                        .accessibilityLabel("Capture error: \(errorMessage)")
-                        .accessibilityFocused($errorIsFocused)
-                        .onAppear { errorIsFocused = true }
-                    HStack {
-                        Button("Retry") {
-                            model.submit(openAfterCapture: false)
-                        }
-                        Button("Copy Diagnostic") {
-                            model.copyDiagnosticToPasteboard()
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .id(AuxiliarySection.destination)
+                }
+
+                if let errorMessage = model.errorMessage {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(errorMessage)
+                            .font(.callout)
+                            .foregroundStyle(.red)
+                            .textSelection(.enabled)
+                            .accessibilityLabel("Capture error: \(errorMessage)")
+                            .accessibilityFocused($errorIsFocused)
+                            .onAppear { errorIsFocused = true }
+                        HStack {
+                            Button("Retry") {
+                                model.submit(openAfterCapture: false)
+                            }
+                            Button("Copy Diagnostic") {
+                                model.copyDiagnosticToPasteboard()
+                            }
                         }
                     }
+                    .id(AuxiliarySection.error)
                 }
-                .id(AuxiliarySection.error)
-            }
 
-            if model.previewState != .idle {
-                PreviewPane(model: model)
-                    .id(AuxiliarySection.preview)
+                if model.previewState != .idle {
+                    PreviewPane(model: model)
+                        .id(AuxiliarySection.preview)
+                }
             }
         }
     }
@@ -300,6 +313,7 @@ struct CapturePanelView: View {
     }
 
     private enum AuxiliarySection: Hashable {
+        case stash
         case completion
         case destination
         case error
@@ -321,11 +335,21 @@ private struct CapturePanelFooter: View {
                 .onChange(of: model.successAnnouncementTick) { _, _ in
                     statusIsFocused = true
                 }
+                .onChange(of: model.statusAnnouncementTick) { _, _ in
+                    statusIsFocused = true
+                }
             Spacer(minLength: 12)
+            Button {
+                model.toggleStashPicker()
+            } label: {
+                Label("Stash \(model.stashCount)", systemImage: "tray")
+            }
+            .help("Restore a draft canceled with Control-C (Control-S).")
+            .disabled(model.isSubmitting)
             Button("Discard") {
                 model.discardDraftAndClose()
             }
-            .help("Discards the draft and closes the panel (Control-C).")
+            .help("Permanently discards the draft and closes the panel.")
             .disabled(!model.hasDraft || model.isSubmitting)
             Button("Preview") {
                 model.preview()
@@ -443,6 +467,118 @@ private struct CaptureEditorMeasuredHeightKey: PreferenceKey {
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
+    }
+}
+
+@available(macOS 26.0, *)
+private struct CanceledDraftStashPicker: View {
+    @ObservedObject var model: CapturePanelModel
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(model.stashEntries.enumerated()), id: \.element.id) { index, entry in
+                        CanceledDraftStashRow(
+                            entry: entry,
+                            accelerator: CanceledDraftStash.accelerator(for: index) ?? "",
+                            selected: index == model.selectedStashIndex,
+                            now: Date()
+                        )
+                        .id(entry.id)
+                        .onTapGesture {
+                            model.restoreStashEntry(id: entry.id)
+                        }
+                    }
+                }
+                .padding(6)
+            }
+            .onAppear {
+                scrollSelectionIntoView(proxy)
+            }
+            .onChange(of: model.selectedStashIndex) { _, _ in
+                scrollSelectionIntoView(proxy)
+            }
+        }
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .shadow(radius: 12, y: 6)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(listAccessibilityLabel)
+        .accessibilityHint("Use arrows, Control-N, Control-P, Return, or a shown key to restore a canceled draft.")
+    }
+
+    private var listAccessibilityLabel: String {
+        let count = model.stashCount
+        return "Canceled draft stash, \(count) \(count == 1 ? "entry" : "entries")"
+    }
+
+    private func scrollSelectionIntoView(_ proxy: ScrollViewProxy) {
+        guard let entry = model.selectedStashEntry else {
+            return
+        }
+        proxy.scrollTo(entry.id, anchor: .center)
+    }
+}
+
+@available(macOS 26.0, *)
+private struct CanceledDraftStashRow: View {
+    let entry: CanceledDraftEntry
+    let accelerator: String
+    let selected: Bool
+    let now: Date
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+
+    private var preview: String {
+        CanceledDraftStash.previewLine(for: entry.text, maxCharacters: 96)
+    }
+
+    private var metadata: String {
+        CanceledDraftStash.metadataDescription(for: entry, now: now)
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(accelerator)
+                .font(.system(.caption, design: .monospaced).weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 24, height: 22)
+                .background(.secondary.opacity(0.14), in: RoundedRectangle(cornerRadius: 5))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .strokeBorder(.secondary.opacity(0.28), lineWidth: 0.5)
+                )
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(preview)
+                    .font(.system(.callout, design: .monospaced))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(metadata)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+        }
+        .frame(minHeight: CapturePanelLayout.stashRowHeight - 8, alignment: .topLeading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(selectionFill)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Canceled draft \(accelerator), \(preview), \(metadata)")
+        .accessibilityHint("Press \(accelerator) or Return to restore this draft.")
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private var selectionFill: Color {
+        guard selected else {
+            return .clear
+        }
+        return Color.accentColor.opacity(colorSchemeContrast == .increased ? 0.32 : 0.18)
     }
 }
 

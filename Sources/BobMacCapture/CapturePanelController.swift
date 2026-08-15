@@ -446,6 +446,29 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .discardAndClose:
             model.discardDraftAndClose()
             return true
+        case .stashDraftAndClose:
+            model.stashDraftAndClose()
+            return true
+        case .toggleStashPicker:
+            model.toggleStashPicker()
+            return true
+        case .dismissStashPicker:
+            model.dismissStashPicker()
+            return true
+        case .nextStashEntry:
+            model.selectNextStashEntry()
+            return true
+        case .previousStashEntry:
+            model.selectPreviousStashEntry()
+            return true
+        case .restoreSelectedStashEntry:
+            model.restoreSelectedStashEntry()
+            return true
+        case .restoreStashEntry(let index):
+            model.restoreStashEntry(at: index)
+            return true
+        case .consumeKey:
+            return true
         case .acceptCompletion:
             model.acceptSelectedCompletion()
             return true
@@ -460,6 +483,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
     private func hidePanel() {
         CaptureSignpost.event("panel-dismiss")
+        model.prepareForDismissal()
         panel?.orderOut(nil)
     }
 
@@ -473,7 +497,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                   self.panel?.isKeyWindow == true,
                   let command = self.keyRouter.command(
                     for: event,
-                    completionVisible: self.model.completionVisible
+                    context: CaptureKeyRoutingContext(
+                        completionVisible: self.model.completionVisible,
+                        stashPickerVisible: self.model.isStashPickerPresented,
+                        stashEntryCount: self.model.stashCount
+                    )
                   )
             else {
                 return event

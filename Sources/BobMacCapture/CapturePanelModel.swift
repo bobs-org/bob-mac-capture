@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import CaptureCore
 import Foundation
 import SwiftUI
@@ -33,14 +34,19 @@ final class CapturePanelModel: ObservableObject {
     // Incremented on every successful capture so the view can drive a VoiceOver
     // announcement without needing `CaptureCommandSuccess` to be diffed for equality.
     @Published var successAnnouncementTick = 0
+    @Published var statusAnnouncementTick = 0
+    @Published var isStashPickerPresented = false
+    @Published var selectedStashIndex = 0
 
     var processClient: BobProcessClient?
     var notificationService: NotificationService?
     var targetOpener: (URL) -> Void = { NSWorkspace.shared.open($0) }
     var panelDismisser: () -> Void = {}
+    let canceledDraftStash: CanceledDraftStash
 
     private let debounceNanoseconds: UInt64
     private var analysisTask: Task<Void, Never>?
+    private var stashCancellable: AnyCancellable?
     private var analysisGeneration: UInt64 = 0
     private var isApplyingProgrammaticDraft = false
     // SwiftUI can deliver the text-change callback after a programmatic binding update.
@@ -55,10 +61,19 @@ final class CapturePanelModel: ObservableObject {
 
     init(
         processClient: BobProcessClient? = nil,
-        debounceNanoseconds: UInt64 = 50_000_000
+        debounceNanoseconds: UInt64 = 50_000_000,
+        canceledDraftStash: CanceledDraftStash = CanceledDraftStash()
     ) {
         self.processClient = processClient
         self.debounceNanoseconds = debounceNanoseconds
+        self.canceledDraftStash = canceledDraftStash
+        stashCancellable = canceledDraftStash.$entries.sink { [weak self] entries in
+            guard let self else {
+                return
+            }
+            self.objectWillChange.send()
+            self.clampStashSelection(afterEntriesChange: entries)
+        }
     }
 
     deinit {
@@ -75,7 +90,19 @@ final class CapturePanelModel: ObservableObject {
     }
 
     var completionVisible: Bool {
-        completionResponse?.candidates.isEmpty == false
+        !isStashPickerPresented && completionResponse?.candidates.isEmpty == false
+    }
+
+    var stashEntries: [CanceledDraftEntry] {
+        canceledDraftStash.entries
+    }
+
+    var stashCount: Int {
+        canceledDraftStash.count
+    }
+
+    var selectedStashEntry: CanceledDraftEntry? {
+        canceledDraftStash.entry(at: selectedStashIndex)
     }
 
     var destinationSummary: String? {
@@ -260,8 +287,9 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// Records a close that keeps the draft. Closing the panel is never destructive;
-    /// discarding is an explicit action (Control-C or the Discard button).
+    /// permanent discarding is an explicit action from the Discard button.
     func prepareForRetainedClose() {
+        dismissStashPicker()
         if hasDraft {
             statusText = "Draft retained"
         }
@@ -278,10 +306,101 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func discardDraft() {
+        dismissStashPicker()
         setPlainDraft("")
         suppressedCompletionAcceptanceDraft = nil
         priorityRollSeed = nil
         resetAnalysisState()
+    }
+
+    func stashDraftAndClose() {
+        if hasDraft {
+            let draft = plainDraft
+            let stashed = canceledDraftStash.push(draft) != nil
+            discardDraft()
+            announceStatus(stashed ? "Canceled draft stashed" : "Canceled draft discarded")
+        } else {
+            discardDraft()
+        }
+        panelDismisser()
+    }
+
+    func toggleStashPicker() {
+        if isStashPickerPresented {
+            dismissStashPicker()
+        } else {
+            presentStashPicker()
+        }
+    }
+
+    func presentStashPicker() {
+        guard plainDraft.isEmpty else {
+            announceStatus("Capture, retain, or cancel the current draft before opening stash")
+            return
+        }
+        guard !canceledDraftStash.isEmpty else {
+            announceStatus("No canceled drafts yet")
+            return
+        }
+
+        dismissCompletion()
+        selectedStashIndex = 0
+        isStashPickerPresented = true
+        announceStatus("Canceled draft stash opened")
+    }
+
+    func dismissStashPicker() {
+        guard isStashPickerPresented || selectedStashIndex != 0 else {
+            return
+        }
+        isStashPickerPresented = false
+        selectedStashIndex = 0
+    }
+
+    func selectNextStashEntry() {
+        selectedStashIndex = canceledDraftStash.nextSelectionIndex(after: selectedStashIndex)
+    }
+
+    func selectPreviousStashEntry() {
+        selectedStashIndex = canceledDraftStash.previousSelectionIndex(before: selectedStashIndex)
+    }
+
+    func restoreSelectedStashEntry() {
+        guard let entry = selectedStashEntry else {
+            announceStatus("No canceled drafts yet")
+            dismissStashPicker()
+            return
+        }
+        restoreStashEntry(id: entry.id)
+    }
+
+    func restoreStashEntry(at index: Int) {
+        guard let entry = canceledDraftStash.entry(at: index) else {
+            return
+        }
+        restoreStashEntry(id: entry.id)
+    }
+
+    func restoreStashEntry(id: UUID) {
+        guard plainDraft.isEmpty else {
+            announceStatus("Capture, retain, or cancel the current draft before opening stash")
+            return
+        }
+        guard let entry = canceledDraftStash.entry(id: id) else {
+            announceStatus("Canceled draft is no longer available")
+            clampStashSelectionAfterStoreChange()
+            return
+        }
+
+        let text = entry.text
+        dismissStashPicker()
+        suppressedCompletionAcceptanceDraft = nil
+        priorityRollSeed = nil
+        resetAnalysisState()
+        setPlainDraft(text, cursorUTF8Offset: text.utf8.count, suppressSelectionCallbacks: true)
+        scheduleAnalysis(cursorUTF8Offset: text.utf8.count, requestCompletion: false)
+        canceledDraftStash.remove(id: entry.id)
+        announceStatus("Restored canceled draft")
     }
 
     // Called before the panel is (re)shown. A retained draft (from Escape or a failed
@@ -289,12 +408,17 @@ final class CapturePanelModel: ObservableObject {
     // no draft — i.e. one that just dismissed after a success — needs its leftover
     // success summary and status cleared so the next capture starts clean.
     func prepareForPresentation() {
+        dismissStashPicker()
         guard !hasDraft else {
             return
         }
         resetAnalysisState()
         lastSuccess = nil
         selectedCompletionIndex = 0
+    }
+
+    func prepareForDismissal() {
+        dismissStashPicker()
     }
 
     private func resetAnalysisState() {
@@ -305,6 +429,24 @@ final class CapturePanelModel: ObservableObject {
         statusText = ""
         errorMessage = nil
         previewResult = nil
+    }
+
+    private func announceStatus(_ message: String) {
+        statusText = message
+        statusAnnouncementTick += 1
+    }
+
+    private func clampStashSelectionAfterStoreChange() {
+        clampStashSelection(afterEntriesChange: canceledDraftStash.entries)
+    }
+
+    private func clampStashSelection(afterEntriesChange entries: [CanceledDraftEntry]) {
+        guard !entries.isEmpty else {
+            isStashPickerPresented = false
+            selectedStashIndex = 0
+            return
+        }
+        selectedStashIndex = min(max(selectedStashIndex, 0), entries.count - 1)
     }
 
     func dismissCompletion() {

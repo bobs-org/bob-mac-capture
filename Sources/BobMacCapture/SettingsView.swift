@@ -5,8 +5,10 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var notificationService: NotificationService
+    @ObservedObject var canceledDraftStash: CanceledDraftStash
     @State private var launchStatus = LaunchAtLoginController().state()
     @State private var testNotificationStatus = ""
+    @State private var isConfirmingStashClear = false
 
     var body: some View {
         Form {
@@ -19,6 +21,31 @@ struct SettingsView: View {
             Section("Hotkey") {
                 Toggle("Use production Control-Shift-Command-I", isOn: $settings.useProductionHotkey)
                 LabeledContent("Active binding", value: settings.hotKeyConfiguration.displayName)
+            }
+
+            Section("Canceled Draft Stash") {
+                Stepper(
+                    value: Binding(
+                        get: { settings.canceledDraftStashCapacity },
+                        set: { settings.canceledDraftStashCapacity = $0 }
+                    ),
+                    in: 0...CanceledDraftStash.maximumCapacity
+                ) {
+                    LabeledContent("Capacity", value: stashCapacityLabel)
+                }
+                .accessibilityHint("Set to zero to turn off canceled draft stashing.")
+
+                LabeledContent("Retained", value: retainedDraftCountLabel)
+
+                Text("Canceled draft text stays only in memory for this app session. Quitting or restarting clears it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Button("Clear Stash...", role: .destructive) {
+                    isConfirmingStashClear = true
+                }
+                .disabled(canceledDraftStash.isEmpty)
+                .accessibilityHint("Permanently removes retained canceled drafts from this app session.")
             }
 
             Section("Launch") {
@@ -85,9 +112,29 @@ struct SettingsView: View {
         }
         .padding(20)
         .frame(width: 560)
+        .confirmationDialog(
+            "Clear canceled draft stash?",
+            isPresented: $isConfirmingStashClear
+        ) {
+            Button("Clear Stash", role: .destructive) {
+                canceledDraftStash.clear()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes retained canceled drafts from this app session.")
+        }
         .task {
             await notificationService.refreshAuthorizationStatus()
         }
+    }
+
+    private var stashCapacityLabel: String {
+        settings.canceledDraftStashCapacity == 0 ? "Off" : "\(settings.canceledDraftStashCapacity)"
+    }
+
+    private var retainedDraftCountLabel: String {
+        let count = canceledDraftStash.count
+        return "\(count) \(count == 1 ? "draft" : "drafts")"
     }
 }
 

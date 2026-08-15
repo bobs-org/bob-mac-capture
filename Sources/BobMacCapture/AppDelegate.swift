@@ -1,10 +1,12 @@
 import AppKit
+import Combine
 import CaptureCore
 import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = AppSettings()
+    lazy var canceledDraftStash = CanceledDraftStash(capacity: settings.canceledDraftStashCapacity)
     // Lazy because NotificationService's default center is `UNUserNotificationCenter.current()`,
     // which raises NSInternalInconsistencyException in a process that has no app bundle. Eagerly
     // building it here made `AppDelegate()` unconstructible under `swift test`, aborting the whole
@@ -23,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let targetsCache = CaptureTargetsCache()
     private var processClient: BobProcessClient?
     private var settingsSceneRepresentation: SettingsSceneRepresentation?
+    private var settingsCancellables: Set<AnyCancellable> = []
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         // No nib supplies a main menu under the explicit `BobMacCaptureMain` entry point,
@@ -32,10 +35,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let settings = settings
         let notificationService = notificationService
+        let canceledDraftStash = canceledDraftStash
+        observeCanceledDraftStashCapacity()
         let representation = NSHostingSceneRepresentation {
             BobSettingsScene(
                 settings: settings,
-                notificationService: notificationService
+                notificationService: notificationService,
+                canceledDraftStash: canceledDraftStash
             )
         }
 
@@ -51,7 +57,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureStatusItem()
         configureProcessClient()
 
-        let model = CapturePanelModel(processClient: processClient)
+        let model = CapturePanelModel(
+            processClient: processClient,
+            canceledDraftStash: canceledDraftStash
+        )
         model.notificationService = notificationService
         panelModel = model
         panelController = CapturePanelController(model: model)
@@ -155,6 +164,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.toolTip = "Bob Mac Capture"
         item.menu = Self.makeStatusMenu()
         statusItem = item
+    }
+
+    private func observeCanceledDraftStashCapacity() {
+        guard settingsCancellables.isEmpty else {
+            return
+        }
+        settings.$canceledDraftStashCapacity
+            .sink { [weak self] capacity in
+                self?.canceledDraftStash.updateCapacity(capacity)
+            }
+            .store(in: &settingsCancellables)
     }
 
     static func makeStatusMenu() -> NSMenu {
@@ -367,10 +387,15 @@ private typealias SettingsSceneRepresentation = NSHostingSceneRepresentation<Bob
 private struct BobSettingsScene: Scene {
     let settings: AppSettings
     let notificationService: NotificationService
+    let canceledDraftStash: CanceledDraftStash
 
     var body: some Scene {
         Settings {
-            SettingsView(settings: settings, notificationService: notificationService)
+            SettingsView(
+                settings: settings,
+                notificationService: notificationService,
+                canceledDraftStash: canceledDraftStash
+            )
         }
     }
 }

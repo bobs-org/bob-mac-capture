@@ -15,6 +15,16 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(useProductionHotkey, forKey: Keys.useProductionHotkey) }
     }
 
+    @Published var canceledDraftStashCapacity: Int {
+        didSet {
+            let clamped = Self.clampedCanceledDraftStashCapacity(canceledDraftStashCapacity)
+            if canceledDraftStashCapacity != clamped {
+                canceledDraftStashCapacity = clamped
+            }
+            defaults.set(canceledDraftStashCapacity, forKey: Keys.canceledDraftStashCapacity)
+        }
+    }
+
     // `didSet` (not a setter method) so every existing call site that assigns
     // `diagnosticStatus` directly gets recorded without further wiring.
     @Published var diagnosticStatus: String = "Starting" {
@@ -47,10 +57,29 @@ final class AppSettings: ObservableObject {
         useProductionHotkey = defaults.object(forKey: Keys.useProductionHotkey) == nil
             ? true
             : defaults.bool(forKey: Keys.useProductionHotkey)
+        canceledDraftStashCapacity = Self.loadCanceledDraftStashCapacity(from: defaults)
     }
 
     var hotKeyConfiguration: HotKeyConfiguration {
         useProductionHotkey ? .production : .development
+    }
+
+    static func clampedCanceledDraftStashCapacity(_ capacity: Int) -> Int {
+        CanceledDraftStash.clampedCapacity(capacity)
+    }
+
+    private static func loadCanceledDraftStashCapacity(from defaults: UserDefaults) -> Int {
+        guard let value = defaults.object(forKey: Keys.canceledDraftStashCapacity) else {
+            return CanceledDraftStash.defaultCapacity
+        }
+
+        if let capacity = value as? Int {
+            return clampedCanceledDraftStashCapacity(capacity)
+        }
+        if let number = value as? NSNumber {
+            return clampedCanceledDraftStashCapacity(number.intValue)
+        }
+        return CanceledDraftStash.defaultCapacity
     }
 
     private func recordDiagnostic(_ message: String) {
@@ -66,4 +95,5 @@ private enum Keys {
     static let bobExecutableOverride = "bobExecutableOverride"
     static let bobDirectory = "bobDirectory"
     static let useProductionHotkey = "useProductionHotkey"
+    static let canceledDraftStashCapacity = "canceledDraftStashCapacity"
 }
