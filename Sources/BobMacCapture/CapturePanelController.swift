@@ -477,6 +477,21 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     private static let asterisk: unichar = 0x2A
     private static let plus: unichar = 0x2B
 
+    /// Ctrl-U: use AppKit's native physical-line deletion so line boundaries, undo, IME,
+    /// and accessibility stay owned by the text system.
+    static func deleteToBeginningOfLineInEditableTextView(
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder) else {
+            return false
+        }
+
+        model.dismissCompletion()
+        textView.doCommand(by: Selector(("deleteToBeginningOfLine:")))
+        return true
+    }
+
     /// Backspace: remove an unused `- ` placeholder row in one action. Returns `false`
     /// whenever `emptyBulletRowDeletionRange(in:)` declines, so ordinary Backspace
     /// behavior stays AppKit's.
@@ -512,6 +527,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             )
         case .insertBulletNewline:
             return Self.insertBulletNewlineInEditableTextView(
+                firstResponder: panel?.firstResponder,
+                model: model
+            )
+        case .deleteToBeginningOfLine:
+            return Self.deleteToBeginningOfLineInEditableTextView(
                 firstResponder: panel?.firstResponder,
                 model: model
             )
@@ -617,10 +637,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    // Ctrl-J, the placeholder-row Backspace, and Tab/Shift-Tab bullet indentation all act
-    // directly on the draft's backing `NSTextView` (found via the first responder) so
-    // undo, IME, and accessibility stay native instead of routing through
-    // `CapturePanelModel`.
+    // Ctrl-J, Ctrl-U, the placeholder-row Backspace, and Tab/Shift-Tab bullet
+    // indentation all act directly on the draft's backing `NSTextView` (found via the
+    // first responder) so undo, IME, and accessibility stay native instead of routing
+    // through `CapturePanelModel`.
     static func editableTextView(_ responder: NSResponder?) -> NSTextView? {
         guard let textView = responder as? NSTextView, textView.isEditable else {
             return nil

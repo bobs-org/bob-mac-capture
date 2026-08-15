@@ -179,6 +179,7 @@ or expired certificate can require reauthorizing those system permissions.
 | Command-Return | Capture, open the target in Obsidian, then close the panel | Accept, then submit | Consume the key; do not capture |
 | Shift-Return / Option-Return | Insert a newline | Insert a newline | Add the ID and select the task |
 | Ctrl-J | Insert a new indentation-aware `- ` row, or turn a marker-only placeholder into a blank item separator | Same edit, and close completion | Native text-field behavior |
+| Ctrl-U | Delete from the caret to the beginning of the current physical line | Delete to the beginning of the current physical line and close completion | Native text-field behavior |
 | Command-V | Insert the clipboard's plain text, discarding source formatting | Insert the clipboard's plain text and close completion | Native text-field paste |
 | Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace |
 | Tab | Indent the current column-zero continuation bullet to two spaces (normal focus traversal otherwise) | Accept the selected completion | Consume the key; do not indent or capture |
@@ -269,9 +270,10 @@ under the preceding first-level bullet. Shift-Tab reverses that, returning a nes
 bullet to column zero. Tab/Shift-Tab only move a continuation bullet between Bob's two
 supported source prefixes, exactly two ASCII spaces, so pasted or hand-authored drafts
 must still use that exact two-space indent; they stop at that ceiling and floor and leave
-every other line untouched. Backspace on an empty `- ` row removes it in one action
-instead of requiring two ordinary backspaces. All four shortcuts act on the native text
-view directly, so undo, IME composition, and accessibility behave exactly as they do for
+every other line untouched. Ctrl-U deletes from the caret to the beginning of the current
+physical line. Backspace on an empty `- ` row removes it in one action instead of
+requiring two ordinary backspaces. All five shortcuts act on the native text view
+directly, so undo, IME composition, and accessibility behave exactly as they do for
 any other edit, and Bob's live parse/preview remains the sole authority for whether the
 resulting hierarchy is contextually valid.
 

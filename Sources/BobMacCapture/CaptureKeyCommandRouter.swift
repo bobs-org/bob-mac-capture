@@ -5,6 +5,7 @@ enum CaptureKeyCommand: Equatable {
     case submitAndOpen
     case insertNewline
     case insertBulletNewline
+    case deleteToBeginningOfLine
     case deleteBackward
     case escape
     case discardAndClose
@@ -47,6 +48,7 @@ struct CaptureKeyCommandRouter {
         static let c: UInt16 = 8
         static let n: UInt16 = 45
         static let p: UInt16 = 35
+        static let u: UInt16 = 32
         static let leftBracket: UInt16 = 33
     }
 
@@ -82,6 +84,8 @@ struct CaptureKeyCommandRouter {
             return .submit
         case KeyCode.j:
             return modifiers == .control ? .insertBulletNewline : nil
+        case KeyCode.u:
+            return modifiers == .control ? .deleteToBeginningOfLine : nil
         case KeyCode.delete:
             // Only unmodified Backspace may claim the empty-bullet deletion; every
             // modified variant (including Shift-Backspace) stays AppKit's.

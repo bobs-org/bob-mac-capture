@@ -306,6 +306,7 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .shift)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .option)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 38, modifiers: .control)), .insertBulletNewline)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 32, modifiers: .control)), .deleteToBeginningOfLine)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 53)), .escape)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 33, modifiers: .control)), .escape)
         XCTAssertEqual(
@@ -354,6 +355,10 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 38, modifiers: .control), completionVisible: true),
             .insertBulletNewline
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 32, modifiers: .control), completionVisible: true),
+            .deleteToBeginningOfLine
         )
         XCTAssertNil(router.command(for: keyEvent(keyCode: 38, modifiers: [.control, .shift])))
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), completionVisible: true), .acceptCompletion)
@@ -538,6 +543,23 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: .command), completionVisible: true))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: .option), completionVisible: true))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: .control), completionVisible: true))
+    }
+
+    func testKeyRouterMatchesControlUAsLinePrefixDeletionOnlyWithControlModifier() {
+        let router = CaptureKeyCommandRouter()
+
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 32, modifiers: .control)), .deleteToBeginningOfLine)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 32, modifiers: .control), completionVisible: true),
+            .deleteToBeginningOfLine
+        )
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 32)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: .shift)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: .command)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: .option)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: [.control, .shift])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: [.control, .command])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: [.control, .option])))
     }
 
     func testKeyRouterMatchesPlainBackspaceButNotModifiedVariants() {
@@ -1323,6 +1345,63 @@ final class BobMacCaptureTests: XCTestCase {
             CapturePanelController.applyBulletIndentation(.increase, firstResponder: nil, model: model)
         )
         XCTAssertEqual(noneditable.string, "Parent\n- confirm owner")
+        XCTAssertNotNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testDeleteToBeginningOfLineRemovesOnlyCurrentPhysicalLinePrefix() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "Prior line\nprefix 🧪 suffix"
+        let caret = (textView.string as NSString).range(of: "🧪 suffix").location
+        textView.setSelectedRange(NSRange(location: caret, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.deleteToBeginningOfLineInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "Prior line\n🧪 suffix")
+        XCTAssertEqual(
+            textView.selectedRange(),
+            NSRange(location: ("Prior line\n" as NSString).length, length: 0)
+        )
+        XCTAssertNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testDeleteToBeginningOfLineDeclinesNoneditableUnrelatedAndMissingResponders() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let noneditable = NSTextView()
+        noneditable.isEditable = false
+        noneditable.string = "Prior line\nprefix suffix"
+        noneditable.setSelectedRange(NSRange(location: 17, length: 0))
+
+        XCTAssertFalse(
+            CapturePanelController.deleteToBeginningOfLineInEditableTextView(
+                firstResponder: noneditable,
+                model: model
+            )
+        )
+        XCTAssertFalse(
+            CapturePanelController.deleteToBeginningOfLineInEditableTextView(
+                firstResponder: NSButton(title: "Preview", target: nil, action: nil),
+                model: model
+            )
+        )
+        XCTAssertFalse(
+            CapturePanelController.deleteToBeginningOfLineInEditableTextView(
+                firstResponder: nil,
+                model: model
+            )
+        )
+        XCTAssertEqual(noneditable.string, "Prior line\nprefix suffix")
         XCTAssertNotNil(model.completionResponse)
     }
 
