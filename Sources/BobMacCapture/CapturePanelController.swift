@@ -1,6 +1,22 @@
 import AppKit
 import SwiftUI
 
+/// Direction of a bullet-indentation edit between Bob's two supported authored-child
+/// prefixes: column zero and exactly two ASCII spaces.
+enum CaptureBulletIndentationDirection {
+    case increase
+    case decrease
+}
+
+/// A deterministic single-line source edit that indents or outdents one continuation
+/// bullet row, plus the selection that keeps the caret/selection at the same logical
+/// position in the bullet body after the edit is applied.
+struct CaptureBulletIndentationEdit: Equatable {
+    let replacementRange: NSRange
+    let replacementText: String
+    let resultingSelection: NSRange
+}
+
 @MainActor
 final class CapturePanelController: NSObject, NSWindowDelegate {
     private let model: CapturePanelModel
@@ -238,6 +254,133 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
+    /// Tab/Shift-Tab: indent or outdent the continuation bullet row the caret sits on
+    /// between column zero and exactly two ASCII spaces. Returns `false` without
+    /// changing state whenever `bulletIndentationEdit(direction:in:selectedRange:)`
+    /// declines, so the key event falls through to AppKit's normal focus traversal.
+    static func applyBulletIndentation(
+        _ direction: CaptureBulletIndentationDirection,
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder),
+              let edit = bulletIndentationEdit(
+                direction: direction,
+                in: textView.string as NSString,
+                selectedRange: textView.selectedRange()
+              )
+        else {
+            return false
+        }
+
+        model.dismissCompletion()
+        textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
+        textView.setSelectedRange(edit.resultingSelection)
+        return true
+    }
+
+    /// Resolves the bounded source edit for one continuation bullet row, or `nil` when
+    /// the selection or line is out of scope. This is a pure, deterministic helper: it
+    /// only recognizes the two supported source prefixes (column zero and exactly two
+    /// ASCII spaces) and never inspects route markers, parses JSON, or infers capture
+    /// output. Bob's own parse remains authoritative for contextual validity.
+    static func bulletIndentationEdit(
+        direction: CaptureBulletIndentationDirection,
+        in text: NSString,
+        selectedRange: NSRange
+    ) -> CaptureBulletIndentationEdit? {
+        var lineStart = 0
+        var contentsEnd = 0
+        text.getLineStart(
+            &lineStart,
+            end: nil,
+            contentsEnd: &contentsEnd,
+            for: NSRange(location: selectedRange.location, length: 0)
+        )
+
+        // Never transform physical line 1 (the captured parent), and decline a
+        // selection that spans more than one physical line or includes a delimiter.
+        guard lineStart > 0, NSMaxRange(selectedRange) <= contentsEnd else {
+            return nil
+        }
+
+        let lineRange = NSRange(location: lineStart, length: contentsEnd - lineStart)
+        let lineText = text.substring(with: lineRange) as NSString
+
+        switch direction {
+        case .increase:
+            guard isAuthoredBulletRow(lineText, leadingSpaces: 0) else {
+                return nil
+            }
+            return CaptureBulletIndentationEdit(
+                replacementRange: NSRange(location: lineStart, length: 0),
+                replacementText: "  ",
+                resultingSelection: NSRange(
+                    location: selectedRange.location + 2,
+                    length: selectedRange.length
+                )
+            )
+        case .decrease:
+            guard isAuthoredBulletRow(lineText, leadingSpaces: 2) else {
+                return nil
+            }
+            let deletionRange = NSRange(location: lineStart, length: 2)
+            let newLocation = clampedOffset(selectedRange.location, removing: deletionRange)
+            let newEnd = clampedOffset(NSMaxRange(selectedRange), removing: deletionRange)
+            return CaptureBulletIndentationEdit(
+                replacementRange: deletionRange,
+                replacementText: "",
+                resultingSelection: NSRange(location: newLocation, length: newEnd - newLocation)
+            )
+        }
+    }
+
+    // Transforms a selection endpoint through a two-character prefix deletion, clamping
+    // an endpoint that sat inside the removed prefix to the new line start.
+    private static func clampedOffset(_ offset: Int, removing range: NSRange) -> Int {
+        if offset <= range.location {
+            return offset
+        }
+        if offset >= NSMaxRange(range) {
+            return offset - range.length
+        }
+        return range.location
+    }
+
+    // Recognizes `-`, `*`, and `+` at the given leading-space depth when the marker is
+    // at end of line (an interactive placeholder) or is followed by a space or tab.
+    // Prose, `-body`, blank rows, leading tabs, and every other depth decline.
+    private static func isAuthoredBulletRow(_ lineText: NSString, leadingSpaces: Int) -> Bool {
+        guard lineText.length > leadingSpaces else {
+            return false
+        }
+        for index in 0..<leadingSpaces where lineText.character(at: index) != Self.asciiSpace {
+            return false
+        }
+
+        let markerIndex = leadingSpaces
+        guard Self.isBulletMarkerCharacter(lineText.character(at: markerIndex)) else {
+            return false
+        }
+
+        let afterMarker = markerIndex + 1
+        guard afterMarker < lineText.length else {
+            return true
+        }
+        let nextCharacter = lineText.character(at: afterMarker)
+        return nextCharacter == Self.asciiSpace || nextCharacter == Self.asciiTab
+    }
+
+    private static func isBulletMarkerCharacter(_ character: unichar) -> Bool {
+        character == Self.hyphen || character == Self.asterisk || character == Self.plus
+    }
+
+    private static let asciiSpace: unichar = 0x20
+    private static let asciiTab: unichar = 0x09
+    private static let hyphen: unichar = 0x2D
+    private static let asterisk: unichar = 0x2A
+    private static let plus: unichar = 0x2B
+
     /// Backspace: remove an unused `- ` placeholder row in one action. Returns `false`
     /// whenever `emptyBulletRowDeletionRange(in:)` declines, so ordinary Backspace
     /// behavior stays AppKit's.
@@ -278,6 +421,18 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             )
         case .deleteBackward:
             return Self.deleteEmptyBulletRowInEditableTextView(
+                firstResponder: panel?.firstResponder,
+                model: model
+            )
+        case .increaseBulletIndentation:
+            return Self.applyBulletIndentation(
+                .increase,
+                firstResponder: panel?.firstResponder,
+                model: model
+            )
+        case .decreaseBulletIndentation:
+            return Self.applyBulletIndentation(
+                .decrease,
                 firstResponder: panel?.firstResponder,
                 model: model
             )
@@ -328,9 +483,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    // Ctrl-J and the placeholder-row Backspace both act directly on the draft's backing
-    // `NSTextView` (found via the first responder) so undo, IME, and accessibility stay
-    // native instead of routing through `CapturePanelModel`.
+    // Ctrl-J, the placeholder-row Backspace, and Tab/Shift-Tab bullet indentation all act
+    // directly on the draft's backing `NSTextView` (found via the first responder) so
+    // undo, IME, and accessibility stay native instead of routing through
+    // `CapturePanelModel`.
     static func editableTextView(_ responder: NSResponder?) -> NSTextView? {
         guard let textView = responder as? NSTextView, textView.isEditable else {
             return nil

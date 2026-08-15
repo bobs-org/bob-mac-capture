@@ -377,6 +377,28 @@ final class BobMacCaptureTests: XCTestCase {
         )
     }
 
+    func testKeyRouterMatchesTabIndentationAndPreservesCompletionAcceptance() {
+        let router = CaptureKeyCommandRouter()
+
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48)), .increaseBulletIndentation)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), completionVisible: true), .acceptCompletion)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48, modifiers: .shift)), .decreaseBulletIndentation)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 48, modifiers: .shift), completionVisible: true),
+            .decreaseBulletIndentation
+        )
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: .command)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: .option)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: .control)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: [.command, .shift])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: [.option, .shift])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: [.control, .shift])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: [.command, .option])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: .command), completionVisible: true))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: .option), completionVisible: true))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: .control), completionVisible: true))
+    }
+
     func testKeyRouterMatchesPlainBackspaceButNotModifiedVariants() {
         let router = CaptureKeyCommandRouter()
 
@@ -695,6 +717,365 @@ final class BobMacCaptureTests: XCTestCase {
             )
         )
         XCTAssertEqual(noneditable.string, "Prepare the launch review")
+        XCTAssertNotNil(model.completionResponse)
+    }
+
+    func testBulletIndentationEditIncreasesColumnZeroMarkersToTwoSpaces() {
+        for marker in ["-", "*", "+"] {
+            let text = "Parent\n\(marker) confirm owner" as NSString
+
+            let edit = CapturePanelController.bulletIndentationEdit(
+                direction: .increase,
+                in: text,
+                selectedRange: NSRange(location: 7, length: 0)
+            )
+
+            XCTAssertEqual(
+                edit,
+                CaptureBulletIndentationEdit(
+                    replacementRange: NSRange(location: 7, length: 0),
+                    replacementText: "  ",
+                    resultingSelection: NSRange(location: 9, length: 0)
+                ),
+                "marker \(marker)"
+            )
+        }
+    }
+
+    func testBulletIndentationEditDecreasesTwoSpaceMarkersToColumnZero() {
+        for marker in ["-", "*", "+"] {
+            let text = "Parent\n  \(marker) confirm owner" as NSString
+
+            let edit = CapturePanelController.bulletIndentationEdit(
+                direction: .decrease,
+                in: text,
+                selectedRange: NSRange(location: 9, length: 0)
+            )
+
+            XCTAssertEqual(
+                edit,
+                CaptureBulletIndentationEdit(
+                    replacementRange: NSRange(location: 7, length: 2),
+                    replacementText: "",
+                    resultingSelection: NSRange(location: 7, length: 0)
+                ),
+                "marker \(marker)"
+            )
+        }
+    }
+
+    func testBulletIndentationEditHandlesEmptyPlaceholderRowsInBothDirections() {
+        let bareTopLevel = "Parent\n-" as NSString
+        XCTAssertEqual(
+            CapturePanelController.bulletIndentationEdit(
+                direction: .increase,
+                in: bareTopLevel,
+                selectedRange: NSRange(location: 8, length: 0)
+            ),
+            CaptureBulletIndentationEdit(
+                replacementRange: NSRange(location: 7, length: 0),
+                replacementText: "  ",
+                resultingSelection: NSRange(location: 10, length: 0)
+            )
+        )
+
+        let spacedTopLevel = "Parent\n- " as NSString
+        XCTAssertEqual(
+            CapturePanelController.bulletIndentationEdit(
+                direction: .increase,
+                in: spacedTopLevel,
+                selectedRange: NSRange(location: 9, length: 0)
+            )?.replacementRange,
+            NSRange(location: 7, length: 0)
+        )
+
+        let bareNested = "Parent\n  -" as NSString
+        XCTAssertEqual(
+            CapturePanelController.bulletIndentationEdit(
+                direction: .decrease,
+                in: bareNested,
+                selectedRange: NSRange(location: 10, length: 0)
+            ),
+            CaptureBulletIndentationEdit(
+                replacementRange: NSRange(location: 7, length: 2),
+                replacementText: "",
+                resultingSelection: NSRange(location: 8, length: 0)
+            )
+        )
+    }
+
+    func testBulletIndentationEditTransformsCaretThroughThePrefixOnIncrease() {
+        // Indices: Parent(0-5) \n(6) -(7) space(8) c(9) a(10) f(11) é(12) space(13) r-e-v-i-e-w(14-19).
+        let text = "Parent\n- caf\u{00e9} review" as NSString
+
+        XCTAssertEqual(
+            CapturePanelController.bulletIndentationEdit(
+                direction: .increase,
+                in: text,
+                selectedRange: NSRange(location: 7, length: 0)
+            )?.resultingSelection,
+            NSRange(location: 9, length: 0),
+            "caret before the marker"
+        )
+        XCTAssertEqual(
+            CapturePanelController.bulletIndentationEdit(
+                direction: .increase,
+                in: text,
+                selectedRange: NSRange(location: 8, length: 0)
+            )?.resultingSelection,
+            NSRange(location: 10, length: 0),
+            "caret after the marker"
+        )
+        XCTAssertEqual(
+            CapturePanelController.bulletIndentationEdit(
+                direction: .increase,
+                in: text,
+                selectedRange: NSRange(location: 13, length: 0)
+            )?.resultingSelection,
+            NSRange(location: 15, length: 0),
+            "caret after Unicode body text"
+        )
+    }
+
+    func testBulletIndentationEditTransformsCaretThroughThePrefixOnDecrease() {
+        // Indices: Parent(0-5) \n(6) space(7) space(8) -(9) space(10) c-a-f-é(11-14) space(15) r...(16).
+        let text = "Parent\n  - caf\u{00e9} review" as NSString
+
+        XCTAssertEqual(
+            CapturePanelController.bulletIndentationEdit(
+                direction: .decrease,
+                in: text,
+                selectedRange: NSRange(location: 7, length: 0)
+            )?.resultingSelection,
+            NSRange(location: 7, length: 0),
+            "caret at the line start, before the prefix"
+        )
+        XCTAssertEqual(
+            CapturePanelController.bulletIndentationEdit(
+                direction: .decrease,
+                in: text,
+                selectedRange: NSRange(location: 8, length: 0)
+            )?.resultingSelection,
+            NSRange(location: 7, length: 0),
+            "caret inside the removed prefix clamps to the new line start"
+        )
+        XCTAssertEqual(
+            CapturePanelController.bulletIndentationEdit(
+                direction: .decrease,
+                in: text,
+                selectedRange: NSRange(location: 9, length: 0)
+            )?.resultingSelection,
+            NSRange(location: 7, length: 0),
+            "caret on the marker"
+        )
+        XCTAssertEqual(
+            CapturePanelController.bulletIndentationEdit(
+                direction: .decrease,
+                in: text,
+                selectedRange: NSRange(location: 10, length: 0)
+            )?.resultingSelection,
+            NSRange(location: 8, length: 0),
+            "caret after the marker"
+        )
+        XCTAssertEqual(
+            CapturePanelController.bulletIndentationEdit(
+                direction: .decrease,
+                in: text,
+                selectedRange: NSRange(location: 15, length: 0)
+            )?.resultingSelection,
+            NSRange(location: 13, length: 0),
+            "caret after Unicode body text"
+        )
+    }
+
+    func testBulletIndentationEditPreservesSameLineSelectionOnIncrease() {
+        let text = "Parent\n- confirm owner" as NSString
+
+        let edit = CapturePanelController.bulletIndentationEdit(
+            direction: .increase,
+            in: text,
+            selectedRange: NSRange(location: 9, length: 7)
+        )
+
+        XCTAssertEqual(edit?.resultingSelection, NSRange(location: 11, length: 7))
+    }
+
+    func testBulletIndentationEditClampsOutdentSelectionThatIntersectsTheRemovedPrefix() {
+        let text = "Parent\n  - confirm owner" as NSString
+        // Covers the second prefix space through the marker and its trailing space.
+        let selection = NSRange(location: 8, length: 3)
+
+        let edit = CapturePanelController.bulletIndentationEdit(
+            direction: .decrease,
+            in: text,
+            selectedRange: selection
+        )
+
+        XCTAssertEqual(edit?.resultingSelection, NSRange(location: 7, length: 2))
+    }
+
+    func testBulletIndentationEditChangesOnlyTheSelectedRowInACRLFDraft() {
+        let text = "Parent\r\n- first\r\n- second" as NSString
+        // Row 3 ("- second") starts at index 17; the caret sits inside "second".
+        let selection = NSRange(location: 22, length: 0)
+
+        let edit = CapturePanelController.bulletIndentationEdit(
+            direction: .increase,
+            in: text,
+            selectedRange: selection
+        )
+
+        XCTAssertEqual(edit?.replacementRange, NSRange(location: 17, length: 0))
+        XCTAssertEqual(edit?.replacementText, "  ")
+        XCTAssertEqual(edit?.resultingSelection, NSRange(location: 24, length: 0))
+    }
+
+    func testBulletIndentationEditDeclinesPhysicalLineOneEvenWhenItLooksLikeABullet() {
+        let text = "- looks like a bullet" as NSString
+        let selection = NSRange(location: 2, length: 0)
+
+        XCTAssertNil(
+            CapturePanelController.bulletIndentationEdit(direction: .increase, in: text, selectedRange: selection)
+        )
+        XCTAssertNil(
+            CapturePanelController.bulletIndentationEdit(direction: .decrease, in: text, selectedRange: selection)
+        )
+    }
+
+    func testBulletIndentationEditDeclinesProseBlankAndMalformedRows() {
+        let cases: [(name: String, draft: String, location: Int)] = [
+            ("prose", "Parent\nJust prose", 8),
+            ("blank row", "Parent\n", 7),
+            ("marker glued to body", "Parent\n-body", 9),
+            ("one leading space", "Parent\n - one space", 9),
+            ("leading tab", "Parent\n\t- tab indented", 9),
+            ("four leading spaces", "Parent\n    - four spaces", 11),
+        ]
+
+        for testCase in cases {
+            let text = testCase.draft as NSString
+            let selection = NSRange(location: testCase.location, length: 0)
+
+            XCTAssertNil(
+                CapturePanelController.bulletIndentationEdit(direction: .increase, in: text, selectedRange: selection),
+                "increase should decline for \(testCase.name)"
+            )
+            XCTAssertNil(
+                CapturePanelController.bulletIndentationEdit(direction: .decrease, in: text, selectedRange: selection),
+                "decrease should decline for \(testCase.name)"
+            )
+        }
+    }
+
+    func testBulletIndentationEditDeclinesWhenAlreadyAtTheTargetDepth() {
+        let alreadyNested = "Parent\n  - nested already" as NSString
+        XCTAssertNil(
+            CapturePanelController.bulletIndentationEdit(
+                direction: .increase,
+                in: alreadyNested,
+                selectedRange: NSRange(location: 10, length: 0)
+            )
+        )
+
+        let alreadyTopLevel = "Parent\n- top level already" as NSString
+        XCTAssertNil(
+            CapturePanelController.bulletIndentationEdit(
+                direction: .decrease,
+                in: alreadyTopLevel,
+                selectedRange: NSRange(location: 8, length: 0)
+            )
+        )
+    }
+
+    func testBulletIndentationEditDeclinesMultilineSelections() {
+        let text = "Parent\n- first\n- second" as NSString
+        // Starts inside "first" and extends past its line delimiter into "second".
+        let selection = NSRange(location: 10, length: 10)
+
+        XCTAssertNil(
+            CapturePanelController.bulletIndentationEdit(direction: .increase, in: text, selectedRange: selection)
+        )
+        XCTAssertNil(
+            CapturePanelController.bulletIndentationEdit(direction: .decrease, in: text, selectedRange: selection)
+        )
+    }
+
+    @MainActor
+    func testApplyBulletIndentationEditsTheBackingTextViewAndDismissesCompletion() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "Parent\n- confirm owner"
+        textView.setSelectedRange(NSRange(location: 9, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.applyBulletIndentation(.increase, firstResponder: textView, model: model)
+        )
+        XCTAssertEqual(textView.string, "Parent\n  - confirm owner")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 11, length: 0))
+        XCTAssertNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testApplyBulletIndentationOutdentsAndDismissesCompletion() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "Parent\n  - confirm owner"
+        textView.setSelectedRange(NSRange(location: 11, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.applyBulletIndentation(.decrease, firstResponder: textView, model: model)
+        )
+        XCTAssertEqual(textView.string, "Parent\n- confirm owner")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 9, length: 0))
+        XCTAssertNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testApplyBulletIndentationDeclinesAndPreservesCompletionWhenLineIsInapplicable() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "Parent\nJust prose"
+        textView.setSelectedRange(NSRange(location: 10, length: 0))
+
+        XCTAssertFalse(
+            CapturePanelController.applyBulletIndentation(.increase, firstResponder: textView, model: model)
+        )
+        XCTAssertEqual(textView.string, "Parent\nJust prose")
+        XCTAssertNotNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testApplyBulletIndentationDeclinesNoneditableUnrelatedAndNilResponders() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let noneditable = NSTextView()
+        noneditable.isEditable = false
+        noneditable.string = "Parent\n- confirm owner"
+
+        XCTAssertFalse(
+            CapturePanelController.applyBulletIndentation(.increase, firstResponder: noneditable, model: model)
+        )
+        XCTAssertFalse(
+            CapturePanelController.applyBulletIndentation(
+                .decrease,
+                firstResponder: NSButton(title: "Preview", target: nil, action: nil),
+                model: model
+            )
+        )
+        XCTAssertFalse(
+            CapturePanelController.applyBulletIndentation(.increase, firstResponder: nil, model: model)
+        )
+        XCTAssertEqual(noneditable.string, "Parent\n- confirm owner")
         XCTAssertNotNil(model.completionResponse)
     }
 

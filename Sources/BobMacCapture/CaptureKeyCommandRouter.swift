@@ -11,6 +11,8 @@ enum CaptureKeyCommand: Equatable {
     case acceptCompletion
     case nextCompletion
     case previousCompletion
+    case increaseBulletIndentation
+    case decreaseBulletIndentation
 }
 
 struct CaptureKeyCommandRouter {
@@ -59,7 +61,14 @@ struct CaptureKeyCommandRouter {
         case KeyCode.c:
             return modifiers == .control ? .discardAndClose : nil
         case KeyCode.tab:
-            return completionVisible ? .acceptCompletion : nil
+            // Plain Tab keeps the existing completion-acceptance contract and otherwise
+            // indents; Shift-Tab always outdents, deliberately replacing the accidental
+            // completion acceptance it used to trigger. Every other modifier combination
+            // (Command, Option, Control, or Shift plus another modifier) stays AppKit's.
+            if modifiers.isEmpty {
+                return completionVisible ? .acceptCompletion : .increaseBulletIndentation
+            }
+            return modifiers == .shift ? .decreaseBulletIndentation : nil
         case KeyCode.arrowDown:
             return completionVisible ? .nextCompletion : nil
         case KeyCode.arrowUp:

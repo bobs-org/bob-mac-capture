@@ -149,7 +149,8 @@ or expired certificate can require reauthorizing those system permissions.
 | Ctrl-J | Insert a new `- ` bullet row after the caret | Insert a new `- ` bullet row after the caret |
 | Command-V | Insert the clipboard's plain text, discarding source formatting | Insert the clipboard's plain text and close completion |
 | Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action |
-| Tab | (normal focus traversal) | Accept the selected completion |
+| Tab | Indent the current column-zero continuation bullet to two spaces (normal focus traversal otherwise) | Accept the selected completion |
+| Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion |
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion |
 | Up / Ctrl-P | (normal focus traversal) | Select the previous completion |
 | Escape / Ctrl-[ | Close the panel, retaining a nonempty draft without confirmation | Close completion |
@@ -189,10 +190,17 @@ the original draft text.
 
 Ctrl-J starts the next top-level `- ` row from anywhere in the draft, and Backspace on an
 empty `- ` row removes it in one action instead of requiring two ordinary backspaces. To
-author a nested row, insert a newline and type the documented two leading spaces before
-the bullet marker; the Swift app passes that draft unchanged to Bob instead of inferring
-hierarchy itself. Both shortcuts act on the native text view directly, so undo, IME
-composition, and accessibility behave exactly as they do for any other edit.
+author a nested row, press Ctrl-J for a fresh top-level placeholder, then Tab before or
+after typing its body to indent it under the preceding first-level bullet — for example
+Ctrl-J, Tab, then type the nested body. Shift-Tab reverses that, returning a nested
+bullet to column zero. Tab/Shift-Tab only move a continuation bullet between Bob's two
+supported source prefixes, exactly two ASCII spaces, so pasted or hand-authored drafts
+must still use that exact two-space indent; they stop at that ceiling and floor and leave
+every other line untouched. All three shortcuts act on the native text view directly, so
+undo, IME composition, and accessibility behave exactly as they do for any other edit,
+and Bob's live parse/preview remains the sole authority for whether the resulting
+hierarchy is contextually valid (for example, indenting a nonempty first bullet with no
+preceding owner).
 
 Command-V intentionally reads only the clipboard's plain-text flavor. Source formatting
 is discarded because Bob's capture grammar is plain text, and letting AppKit choose a
