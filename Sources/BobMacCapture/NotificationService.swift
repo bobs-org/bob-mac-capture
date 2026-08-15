@@ -34,10 +34,10 @@ struct NotificationAuthorizationDisplay: Equatable {
 
 @MainActor
 final class NotificationService: NSObject, ObservableObject {
-    static let openNoteActionIdentifier = "org.bobs.bob-mac-capture.open-note"
-    static let captureCategoryIdentifier = "org.bobs.bob-mac-capture.capture"
-    static let targetPathKey = "targetPath"
-    static let foregroundPresentationOptions: UNNotificationPresentationOptions = [
+    nonisolated static let openNoteActionIdentifier = "org.bobs.bob-mac-capture.open-note"
+    nonisolated static let captureCategoryIdentifier = "org.bobs.bob-mac-capture.capture"
+    nonisolated static let targetPathKey = "targetPath"
+    nonisolated static let foregroundPresentationOptions: UNNotificationPresentationOptions = [
         .banner, .sound, .list,
     ]
 

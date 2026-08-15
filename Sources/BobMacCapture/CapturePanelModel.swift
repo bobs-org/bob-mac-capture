@@ -62,10 +62,11 @@ final class CapturePanelModel: ObservableObject {
     init(
         processClient: BobProcessClient? = nil,
         debounceNanoseconds: UInt64 = 50_000_000,
-        canceledDraftStash: CanceledDraftStash = CanceledDraftStash()
+        canceledDraftStash: CanceledDraftStash? = nil
     ) {
         self.processClient = processClient
         self.debounceNanoseconds = debounceNanoseconds
+        let canceledDraftStash = canceledDraftStash ?? CanceledDraftStash()
         self.canceledDraftStash = canceledDraftStash
         stashCancellable = canceledDraftStash.$entries.sink { [weak self] entries in
             guard let self else {

@@ -9,8 +9,8 @@ struct CanceledDraftEntry: Identifiable, Equatable {
 
 @MainActor
 final class CanceledDraftStash: ObservableObject {
-    static let defaultCapacity = 10
-    static let maximumCapacity = 36
+    nonisolated static let defaultCapacity = 10
+    nonisolated static let maximumCapacity = 36
 
     @Published private(set) var capacity: Int
     @Published private(set) var entries: [CanceledDraftEntry] = []
@@ -108,7 +108,7 @@ final class CanceledDraftStash: ObservableObject {
         return acceleratorKeys[index]
     }
 
-    static func acceleratorIndex(for characters: String, entryCount: Int) -> Int? {
+    nonisolated static func acceleratorIndex(for characters: String, entryCount: Int) -> Int? {
         let scalars = Array(characters.unicodeScalars)
         guard scalars.count == 1 else {
             return nil
@@ -198,5 +198,5 @@ final class CanceledDraftStash: ObservableObject {
         }
     }
 
-    private static let acceleratorKeys: [String] = Array("1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ").map(String.init)
+    private nonisolated static let acceleratorKeys: [String] = Array("1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ").map(String.init)
 }

@@ -238,6 +238,16 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(dismissCount, 1)
     }
 
+    func testDefaultConstructionCreatesUsableCanceledDraftStash() {
+        let model = CapturePanelModel()
+        model.plainDraft = "Call bank @Cash"
+
+        model.stashDraftAndClose()
+
+        XCTAssertEqual(model.stashEntries.map(\.text), ["Call bank @Cash"])
+        XCTAssertEqual(model.stashCount, 1)
+    }
+
     func testStashDraftAndCloseStoresExactNonemptyDraftClearsStateAndDismisses() {
         let stash = CanceledDraftStash(capacity: 10)
         let model = CapturePanelModel(canceledDraftStash: stash)
