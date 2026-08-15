@@ -51,6 +51,7 @@ public final class BobProcessClient: @unchecked Sendable {
         let response: CaptureCompletionResponse = try await decode(
             arguments: [
                 "capture-complete",
+                "--all-tasks",
                 "--cursor",
                 String(cursor),
                 "--format",
@@ -62,6 +63,30 @@ public final class BobProcessClient: @unchecked Sendable {
             lane: "completion"
         )
         return response
+    }
+
+    public func assignCaptureTaskID(
+        route: String,
+        taskRef: String,
+        blockID: String,
+        dryRun: Bool = false
+    ) async throws -> CaptureTaskIDResponse {
+        var arguments = [
+            "capture-task-id",
+            "--route",
+            route,
+            "--task-ref",
+            taskRef,
+            "--block-id",
+            blockID,
+            "--format",
+            "json",
+        ]
+        if dryRun {
+            arguments.append("--dry-run")
+        }
+
+        return try await decodeCaptureTaskIDResult(arguments: arguments, lane: "task-id")
     }
 
     public func captureTargets() async throws -> CaptureTargetsResponse {
@@ -312,6 +337,58 @@ public final class BobProcessClient: @unchecked Sendable {
 
         do {
             return try decoder.decode(CaptureCommandResponse.self, from: Data(trimmedStdout.utf8))
+        } catch {
+            if result.exitStatus != 0 {
+                throw BobClientError.processFailed(
+                    command: result.command,
+                    exitStatus: result.exitStatus,
+                    stderr: stderr
+                )
+            }
+            throw BobClientError.malformedJSON(
+                command: result.command,
+                exitStatus: result.exitStatus,
+                stderr: stderr,
+                reason: error.localizedDescription
+            )
+        }
+    }
+
+    private func decodeCaptureTaskIDResult(
+        arguments: [String],
+        lane: String
+    ) async throws -> CaptureTaskIDResponse {
+        let result = try await run(arguments: arguments, lane: lane)
+        let stderr = boundedProcessText(result.stderr)
+        let trimmedStdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !trimmedStdout.isEmpty else {
+            if result.exitStatus != 0 {
+                throw BobClientError.processFailed(
+                    command: result.command,
+                    exitStatus: result.exitStatus,
+                    stderr: stderr
+                )
+            }
+            throw BobClientError.emptyStdout(
+                command: result.command,
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            )
+        }
+
+        do {
+            let response = try decoder.decode(CaptureTaskIDResponse.self, from: Data(trimmedStdout.utf8))
+            if case .success(let success) = response, success.schemaVersion != 1 {
+                throw BobClientError.schemaMismatch(
+                    command: result.command,
+                    expected: 1,
+                    actual: success.schemaVersion
+                )
+            }
+            return response
+        } catch let error as BobClientError {
+            throw error
         } catch {
             if result.exitStatus != 0 {
                 throw BobClientError.processFailed(

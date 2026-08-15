@@ -11,6 +11,16 @@ enum CapturePreviewState: Equatable {
     case failed(String)
 }
 
+struct CaptureTaskIDPromptState: Equatable {
+    let candidate: CaptureCompletionCandidate
+    let draftSnapshot: String
+    let replacementRange: CaptureRange
+    let selectedCompletionIndex: Int
+    var authoredID: String
+    var isSaving: Bool
+    var errorMessage: String?
+}
+
 @MainActor
 final class CapturePanelModel: ObservableObject {
     @Published var attributedDraft = AttributedString()
@@ -39,6 +49,7 @@ final class CapturePanelModel: ObservableObject {
     @Published var statusAnnouncementTick = 0
     @Published var isStashPickerPresented = false
     @Published var selectedStashIndex = 0
+    @Published var taskIDPrompt: CaptureTaskIDPromptState?
 
     var processClient: BobProcessClient?
     var notificationService: NotificationService?
@@ -60,6 +71,7 @@ final class CapturePanelModel: ObservableObject {
     // Shared by submit and preview so a late callback from either one can never mutate
     // state on behalf of a request that is no longer the active one.
     private var activeRequestID: UUID?
+    private var activeTaskIDRequestID: UUID?
 
     init(
         processClient: BobProcessClient? = nil,
@@ -93,7 +105,20 @@ final class CapturePanelModel: ObservableObject {
     }
 
     var completionVisible: Bool {
-        !isStashPickerPresented && completionResponse?.candidates.isEmpty == false
+        !isStashPickerPresented
+            && taskIDPrompt == nil
+            && completionResponse?.candidates.isEmpty == false
+    }
+
+    var taskIDPromptVisible: Bool {
+        taskIDPrompt != nil
+    }
+
+    var taskIDPromptCanSubmit: Bool {
+        guard let prompt = taskIDPrompt, !prompt.isSaving else {
+            return false
+        }
+        return Self.isValidBlockID(prompt.authoredID)
     }
 
     var stashEntries: [CanceledDraftEntry] {
@@ -156,6 +181,10 @@ final class CapturePanelModel: ObservableObject {
         }
 
         let draft = plainDraft
+        if let prompt = taskIDPrompt, prompt.draftSnapshot != draft {
+            cancelTaskIDPrompt(clearCompletion: true)
+        }
+
         if let suppressedDraft = suppressedCompletionAcceptanceDraft {
             if draft == suppressedDraft {
                 return
@@ -167,6 +196,8 @@ final class CapturePanelModel: ObservableObject {
             priorityRollSeed = nil
             parseDiagnostics = []
             completionResponse = nil
+            taskIDPrompt = nil
+            activeTaskIDRequestID = nil
             previewState = .idle
             statusText = ""
             invalidateAnalysis()
@@ -207,7 +238,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func submit(openAfterCapture: Bool) {
-        guard !isSubmitting, !isPreviewing, hasDraft else {
+        guard taskIDPrompt == nil, !isSubmitting, !isPreviewing, hasDraft else {
             return
         }
         guard let processClient else {
@@ -245,7 +276,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func preview() {
-        guard !isSubmitting, !isPreviewing, hasDraft else {
+        guard taskIDPrompt == nil, !isSubmitting, !isPreviewing, hasDraft else {
             return
         }
         guard let processClient else {
@@ -293,6 +324,8 @@ final class CapturePanelModel: ObservableObject {
     /// permanent discarding is an explicit action from the Discard button.
     func prepareForRetainedClose() {
         dismissStashPicker()
+        taskIDPrompt = nil
+        activeTaskIDRequestID = nil
         if hasDraft {
             statusText = "Draft retained"
         }
@@ -310,6 +343,8 @@ final class CapturePanelModel: ObservableObject {
 
     func discardDraft() {
         dismissStashPicker()
+        taskIDPrompt = nil
+        activeTaskIDRequestID = nil
         setPlainDraft("")
         suppressedCompletionAcceptanceDraft = nil
         priorityRollSeed = nil
@@ -337,6 +372,10 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func presentStashPicker() {
+        guard taskIDPrompt == nil else {
+            announceStatus("Finish or cancel the block ID prompt before opening stash")
+            return
+        }
         guard plainDraft.isEmpty else {
             announceStatus("Capture, retain, or cancel the current draft before opening stash")
             return
@@ -423,12 +462,16 @@ final class CapturePanelModel: ObservableObject {
 
     func prepareForDismissal() {
         dismissStashPicker()
+        taskIDPrompt = nil
+        activeTaskIDRequestID = nil
     }
 
     private func resetAnalysisState() {
         invalidateAnalysis()
         parseDiagnostics = []
         completionResponse = nil
+        taskIDPrompt = nil
+        activeTaskIDRequestID = nil
         previewState = .idle
         statusText = ""
         errorMessage = nil
@@ -483,6 +526,15 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
+        if completionResponse.context == "task", candidate.requiresBlockID {
+            presentTaskIDPrompt(
+                candidate: candidate,
+                draftSnapshot: plainDraft,
+                replacementRange: completionResponse.replacement
+            )
+            return
+        }
+
         var text = plainDraft
         text.replaceSubrange(range, with: candidate.replacement)
         let cursor = candidate.cursorAfter ?? completionResponse.replacement.start + candidate.replacement.utf8.count
@@ -500,6 +552,89 @@ final class CapturePanelModel: ObservableObject {
             suppressSelectionCallbacks: true
         )
         scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false)
+    }
+
+    func updateTaskIDPromptBlockID(_ blockID: String) {
+        guard var prompt = taskIDPrompt, !prompt.isSaving else {
+            return
+        }
+        prompt.authoredID = blockID
+        prompt.errorMessage = Self.blockIDValidationMessage(for: blockID)
+        taskIDPrompt = prompt
+    }
+
+    func cancelTaskIDPrompt(clearCompletion: Bool = false) {
+        guard let prompt = taskIDPrompt else {
+            return
+        }
+        activeTaskIDRequestID = nil
+        taskIDPrompt = nil
+        selectedCompletionIndex = prompt.selectedCompletionIndex
+        if clearCompletion {
+            dismissCompletion()
+        } else {
+            statusText = "Ready"
+        }
+    }
+
+    func submitTaskIDPrompt() {
+        guard var prompt = taskIDPrompt, !prompt.isSaving else {
+            return
+        }
+        guard let processClient else {
+            prompt.errorMessage = "Bob is not resolved. Check Settings and Recheck Bob."
+            taskIDPrompt = prompt
+            return
+        }
+        if let validationMessage = Self.blockIDValidationMessage(for: prompt.authoredID) {
+            prompt.errorMessage = validationMessage
+            taskIDPrompt = prompt
+            return
+        }
+        guard prompt.draftSnapshot == plainDraft else {
+            prompt.errorMessage = "Draft changed. Return to the task list and choose again."
+            taskIDPrompt = prompt
+            return
+        }
+        guard stringRange(in: prompt.draftSnapshot, byteRange: prompt.replacementRange) != nil else {
+            prompt.errorMessage = "Completion range is stale. Return to the task list and choose again."
+            taskIDPrompt = prompt
+            return
+        }
+        guard let route = prompt.candidate.route,
+              let taskRef = prompt.candidate.taskRef
+        else {
+            prompt.errorMessage = "Task candidate is missing route metadata. Refresh the task list and choose again."
+            taskIDPrompt = prompt
+            return
+        }
+
+        let requestID = UUID()
+        activeTaskIDRequestID = requestID
+        prompt.isSaving = true
+        prompt.errorMessage = nil
+        taskIDPrompt = prompt
+        statusText = "Adding to \(route).md\u{2026}"
+        let blockID = prompt.authoredID
+
+        Task {
+            do {
+                let response = try await CaptureSignpost.measure("capture-task-id") {
+                    try await processClient.assignCaptureTaskID(
+                        route: route,
+                        taskRef: taskRef,
+                        blockID: blockID
+                    )
+                }
+                await MainActor.run {
+                    self.completeTaskIDAssignment(requestID: requestID, response: response)
+                }
+            } catch {
+                await MainActor.run {
+                    self.failTaskIDAssignment(requestID: requestID, error: error)
+                }
+            }
+        }
     }
 
     /// Presentation content for one completion row: icon, context label, primary/secondary
@@ -525,6 +660,88 @@ final class CapturePanelModel: ObservableObject {
             return ""
         }
         return String(plainDraft[range])
+    }
+
+    private func presentTaskIDPrompt(
+        candidate: CaptureCompletionCandidate,
+        draftSnapshot: String,
+        replacementRange: CaptureRange
+    ) {
+        invalidateAnalysis()
+        activeTaskIDRequestID = nil
+        taskIDPrompt = CaptureTaskIDPromptState(
+            candidate: candidate,
+            draftSnapshot: draftSnapshot,
+            replacementRange: replacementRange,
+            selectedCompletionIndex: selectedCompletionIndex,
+            authoredID: "",
+            isSaving: false,
+            errorMessage: nil
+        )
+        statusText = "Add block ID"
+    }
+
+    private func completeTaskIDAssignment(
+        requestID: UUID,
+        response: CaptureTaskIDResponse
+    ) {
+        guard activeTaskIDRequestID == requestID,
+              var prompt = taskIDPrompt
+        else {
+            return
+        }
+        activeTaskIDRequestID = nil
+
+        switch response {
+        case .success(let success):
+            guard let range = stringRange(in: prompt.draftSnapshot, byteRange: prompt.replacementRange) else {
+                prompt.isSaving = false
+                prompt.errorMessage = "Completion range is stale. Return to the task list and choose again."
+                taskIDPrompt = prompt
+                statusText = "Add block ID failed"
+                return
+            }
+
+            var text = prompt.draftSnapshot
+            text.replaceSubrange(range, with: success.blockID)
+            let cursor = prompt.replacementRange.start + success.blockID.utf8.count
+            guard stringRange(in: text, start: cursor, end: cursor) != nil else {
+                prompt.isSaving = false
+                prompt.errorMessage = "Completion cursor is stale. Return to the task list and choose again."
+                taskIDPrompt = prompt
+                statusText = "Add block ID failed"
+                return
+            }
+
+            taskIDPrompt = nil
+            dismissCompletion()
+            suppressedCompletionAcceptanceDraft = text
+            setPlainDraft(
+                text,
+                cursorUTF8Offset: cursor,
+                suppressSelectionCallbacks: true
+            )
+            scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false)
+            statusText = "Added ^\(success.blockID) to \(success.relativeTarget)"
+        case .failure(let failure):
+            prompt.isSaving = false
+            prompt.errorMessage = failure.error
+            taskIDPrompt = prompt
+            statusText = "Add block ID failed"
+        }
+    }
+
+    private func failTaskIDAssignment(requestID: UUID, error: Error) {
+        guard activeTaskIDRequestID == requestID,
+              var prompt = taskIDPrompt
+        else {
+            return
+        }
+        activeTaskIDRequestID = nil
+        prompt.isSaving = false
+        prompt.errorMessage = String(describing: error)
+        taskIDPrompt = prompt
+        statusText = "Add block ID failed"
     }
 
     private func completeSubmit(
@@ -1014,5 +1231,23 @@ final class CapturePanelModel: ObservableObject {
             urls.append(url)
         }
         return urls
+    }
+
+    private static func blockIDValidationMessage(for blockID: String) -> String? {
+        if blockID.isEmpty {
+            return "Enter a block ID."
+        }
+        return isValidBlockID(blockID) ? nil : "Use only letters, numbers, and hyphens."
+    }
+
+    private static func isValidBlockID(_ blockID: String) -> Bool {
+        !blockID.isEmpty
+            && blockID.unicodeScalars.allSatisfy { scalar in
+                let value = scalar.value
+                return (value >= 48 && value <= 57)
+                    || (value >= 65 && value <= 90)
+                    || (value >= 97 && value <= 122)
+                    || value == 45
+            }
     }
 }

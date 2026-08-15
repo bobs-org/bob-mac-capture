@@ -696,7 +696,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.collapsedSelectionUTF8Offset(), "prefix [[AI".utf8.count)
         XCTAssertEqual(model.statusText, "Link completion warning: skipped unreadable note")
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture-complete --cursor 11 --format json -- prefix [[AI suffix"))
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 11 --format json -- prefix [[AI suffix"))
     }
 
     func testRowContentDerivesQueryFromDraftReplacementAndCursorForWikilinkNote() async throws {
@@ -967,6 +967,135 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertFalse(model.completionVisible)
     }
 
+    func testMissingTaskCompletionOpensTaskIDPromptWithoutChangingDraft() {
+        let model = CapturePanelModel()
+        installMissingTaskCompletion(on: model)
+
+        model.acceptSelectedCompletion()
+
+        XCTAssertEqual(model.plainDraft, "note @Cash+goog")
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertEqual(model.taskIDPrompt?.candidate.text, "Plan the handoff")
+        XCTAssertEqual(model.taskIDPrompt?.candidate.route, "cash")
+        XCTAssertEqual(model.taskIDPrompt?.candidate.taskRef, "8:missingidea")
+        XCTAssertEqual(model.taskIDPrompt?.draftSnapshot, "note @Cash+goog")
+        XCTAssertEqual(model.taskIDPrompt?.replacementRange, CaptureRange(start: 11, end: 15))
+        XCTAssertEqual(model.statusText, "Add block ID")
+    }
+
+    func testTaskIDPromptRejectsInvalidLocalBlockIDWithoutCallingBob() throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installMissingTaskCompletion(on: model)
+        model.acceptSelectedCompletion()
+
+        model.updateTaskIDPromptBlockID("bad_id")
+        model.submitTaskIDPrompt()
+
+        XCTAssertEqual(model.plainDraft, "note @Cash+goog")
+        XCTAssertEqual(model.taskIDPrompt?.authoredID, "bad_id")
+        XCTAssertEqual(model.taskIDPrompt?.errorMessage, "Use only letters, numbers, and hyphens.")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: recordURL.path))
+    }
+
+    func testTaskIDPromptSuccessSplicesReturnedIDAfterBobConfirms() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installMissingTaskCompletion(on: model)
+        model.acceptSelectedCompletion()
+
+        model.updateTaskIDPromptBlockID("new-id")
+        model.submitTaskIDPrompt()
+        await waitUntil { model.taskIDPrompt == nil && model.plainDraft == "note @Cash+new-id" }
+
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), "note @Cash+new-id".utf8.count)
+        XCTAssertNil(model.completionResponse)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-task-id --route cash --task-ref 8:missingidea --block-id new-id --format json")
+        )
+    }
+
+    func testTaskIDPromptServerFailureRetainsDraftTaskAndAuthoredID() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": #"{"ok":false,"error":"block ID ^duplicate-id already exists in cash.md"}"#,
+                "FAKE_BOB_EXIT": "1",
+            ]
+        )
+        installMissingTaskCompletion(on: model)
+        model.acceptSelectedCompletion()
+
+        model.updateTaskIDPromptBlockID("duplicate-id")
+        model.submitTaskIDPrompt()
+        await waitUntil { model.taskIDPrompt?.isSaving == false }
+
+        XCTAssertEqual(model.plainDraft, "note @Cash+goog")
+        XCTAssertEqual(model.taskIDPrompt?.candidate.text, "Plan the handoff")
+        XCTAssertEqual(model.taskIDPrompt?.authoredID, "duplicate-id")
+        XCTAssertEqual(model.taskIDPrompt?.errorMessage, "block ID ^duplicate-id already exists in cash.md")
+        XCTAssertEqual(model.statusText, "Add block ID failed")
+    }
+
+    func testCancelTaskIDPromptRestoresChooserSelectionWithoutMutation() {
+        let model = CapturePanelModel()
+        installMissingTaskCompletion(on: model)
+        model.acceptSelectedCompletion()
+        model.updateTaskIDPromptBlockID("new-id")
+
+        model.cancelTaskIDPrompt()
+
+        XCTAssertNil(model.taskIDPrompt)
+        XCTAssertEqual(model.plainDraft, "note @Cash+goog")
+        XCTAssertTrue(model.completionVisible)
+        XCTAssertEqual(model.selectedCompletionIndex, 1)
+        XCTAssertEqual(model.completionResponse?.candidates[1].text, "Plan the handoff")
+    }
+
+    func testCanceledTaskIDPromptIgnoresLateAssignmentResponse() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_DELAY_SECONDS": "0.2",
+            ]
+        )
+        installMissingTaskCompletion(on: model)
+        model.acceptSelectedCompletion()
+        model.updateTaskIDPromptBlockID("new-id")
+
+        model.submitTaskIDPrompt()
+        XCTAssertEqual(model.taskIDPrompt?.isSaving, true)
+        model.cancelTaskIDPrompt()
+        try await Task.sleep(nanoseconds: 450_000_000)
+
+        XCTAssertNil(model.taskIDPrompt)
+        XCTAssertEqual(model.plainDraft, "note @Cash+goog")
+        XCTAssertTrue(model.completionVisible)
+    }
+
     func testCaretOnlyMoveRequeriesCompletionAtNewOffset() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
@@ -984,7 +1113,7 @@ final class CapturePanelModelTests: XCTestCase {
         await waitUntil { model.completionResponse?.context == "wikilink_note" }
 
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture-complete --cursor 9 --format json -- prefix [[AI suffix"))
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 9 --format json -- prefix [[AI suffix"))
     }
 
     private func waitUntil(
@@ -1029,6 +1158,47 @@ final class CapturePanelModelTests: XCTestCase {
             created: "2026-08-14",
             placement: "append"
         )
+    }
+
+    private func installMissingTaskCompletion(on model: CapturePanelModel) {
+        model.plainDraft = "note @Cash+goog"
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 15,
+            replacement: CaptureRange(start: 11, end: 15),
+            context: "task",
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "goog-exit",
+                    route: "cash",
+                    taskRef: "4:googexit",
+                    blockID: "goog-exit",
+                    requiresBlockID: false,
+                    statusSymbol: "*",
+                    statusName: "Next",
+                    statusType: "ON_HOLD",
+                    text: "Finish Google Exit Packet!",
+                    section: "Tasks",
+                    depth: 1,
+                    childCount: 1
+                ),
+                CaptureCompletionCandidate(
+                    replacement: "",
+                    route: "cash",
+                    taskRef: "8:missingidea",
+                    blockID: nil,
+                    requiresBlockID: true,
+                    statusSymbol: " ",
+                    statusName: "Todo",
+                    statusType: "TODO",
+                    text: "Plan the handoff",
+                    section: "Tasks",
+                    depth: 1,
+                    childCount: 0
+                ),
+            ]
+        )
+        model.selectedCompletionIndex = 1
     }
 
     private func nestedMultilineDraft() -> String {

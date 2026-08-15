@@ -750,8 +750,10 @@ final class CaptureModelTests: XCTestCase {
               "candidates": [
                 {
                   "replacement": "goog-exit",
-                  "ref": "Tasks.md#^goog-exit",
+                  "ref": "4:googexit",
                   "block_id": "goog-exit",
+                  "route": "cash",
+                  "requires_block_id": false,
                   "status_symbol": "*",
                   "status_name": "in-progress",
                   "status_type": "TODO",
@@ -759,6 +761,20 @@ final class CaptureModelTests: XCTestCase {
                   "section": "Tasks",
                   "depth": 0,
                   "child_count": 2
+                },
+                {
+                  "replacement": "",
+                  "ref": "8:missing",
+                  "block_id": null,
+                  "route": "cash",
+                  "requires_block_id": true,
+                  "status_symbol": " ",
+                  "status_name": "Todo",
+                  "status_type": "TODO",
+                  "text": "Plan handoff",
+                  "section": "Tasks",
+                  "depth": 1,
+                  "child_count": 0
                 }
               ]
             }
@@ -769,8 +785,14 @@ final class CaptureModelTests: XCTestCase {
 
         XCTAssertEqual(decoded.context, "task")
         XCTAssertEqual(decoded.replacement, CaptureRange(start: 6, end: 8))
-        XCTAssertEqual(decoded.candidates.first?.taskRef, "Tasks.md#^goog-exit")
+        XCTAssertEqual(decoded.candidates.first?.taskRef, "4:googexit")
+        XCTAssertEqual(decoded.candidates.first?.route, "cash")
+        XCTAssertEqual(decoded.candidates.first?.requiresBlockID, false)
         XCTAssertEqual(decoded.candidates.first?.childCount, 2)
+        XCTAssertEqual(decoded.candidates[1].taskRef, "8:missing")
+        XCTAssertNil(decoded.candidates[1].blockID)
+        XCTAssertTrue(decoded.candidates[1].requiresBlockID)
+        XCTAssertEqual(decoded.candidates[1].replacement, "")
     }
 
     func testCompletionResponseDecodesMissingCandidatesAsEmpty() throws {
@@ -878,6 +900,52 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(heading.candidates.first?.level, 1)
         XCTAssertEqual(block.candidates.first?.blockID, "next-step")
         XCTAssertEqual(block.candidates.first?.preview, "Plan the next step")
+    }
+
+    func testCaptureTaskIDResponseDecodesVersionedSuccessAndFailure() throws {
+        let successData = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "dry_run": false,
+              "route": "file",
+              "relative_target": "file.md",
+              "block_id": "new-id",
+              "line": 8,
+              "ref": "8:updated",
+              "task": {
+                "ref": "8:updated",
+                "line": 8,
+                "block_id": "new-id",
+                "status_symbol": " ",
+                "status_name": "Todo",
+                "status_type": "TODO",
+                "text": "Plan handoff",
+                "section": "Tasks",
+                "depth": 1,
+                "child_count": 0
+              }
+            }
+            """.utf8
+        )
+        let failureData = Data(#"{"ok":false,"error":"block ID ^new-id already exists in file.md"}"#.utf8)
+
+        let successResponse = try JSONDecoder().decode(CaptureTaskIDResponse.self, from: successData)
+        let failureResponse = try JSONDecoder().decode(CaptureTaskIDResponse.self, from: failureData)
+
+        guard case .success(let success) = successResponse else {
+            return XCTFail("Expected task ID success")
+        }
+        XCTAssertEqual(success.schemaVersion, 1)
+        XCTAssertEqual(success.blockID, "new-id")
+        XCTAssertEqual(success.taskRef, "8:updated")
+        XCTAssertEqual(success.task.text, "Plan handoff")
+
+        guard case .failure(let failure) = failureResponse else {
+            return XCTFail("Expected task ID failure")
+        }
+        XCTAssertEqual(failure.error, "block ID ^new-id already exists in file.md")
     }
 
     func testAttributedStringUtf8OffsetRoundTripsCollapsedCaret() throws {

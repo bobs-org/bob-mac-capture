@@ -123,7 +123,7 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(response.context, "route")
         XCTAssertEqual(response.candidates.first?.replacement, "today")
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture-complete --cursor 6 --format json -- idea @"))
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 6 --format json -- idea @"))
     }
 
     func testCaptureCompleteRunsBatchDraftAsOneArgvElement() async throws {
@@ -145,7 +145,7 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(response.replacement, CaptureRange(start: 31, end: 36))
         XCTAssertEqual(response.candidates.first?.replacement, "notes")
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture-complete --cursor 36 --format json -- \(draft)"))
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 36 --format json -- \(draft)"))
         XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
     }
 
@@ -181,14 +181,74 @@ final class BobProcessClientTests: XCTestCase {
         let plusSide = try await client.captureComplete("note @Cash+goog", cursor: 15)
         XCTAssertEqual(plusSide.context, "task")
         XCTAssertEqual(plusSide.candidates.first?.blockID, "goog-exit")
+        XCTAssertFalse(plusSide.candidates.first?.requiresBlockID ?? true)
+        XCTAssertEqual(plusSide.candidates[1].taskRef, "8:missingidea")
+        XCTAssertTrue(plusSide.candidates[1].requiresBlockID)
+        XCTAssertEqual(plusSide.candidates[1].replacement, "")
 
         let authoredId = try await client.captureComplete("Do work @Dev^new-id", cursor: 19)
         XCTAssertNil(authoredId.context)
         XCTAssertEqual(authoredId.candidates.count, 0)
 
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture-complete --cursor 15 --format json -- note @Cash+goog"))
-        XCTAssertTrue(record.contains("argv=capture-complete --cursor 19 --format json -- Do work @Dev^new-id"))
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 15 --format json -- note @Cash+goog"))
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 19 --format json -- Do work @Dev^new-id"))
+    }
+
+    func testAssignCaptureTaskIDRunsDedicatedCommandAndDecodesSuccess() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let response = try await client.assignCaptureTaskID(
+            route: "file",
+            taskRef: "8:missingidea",
+            blockID: "new-id"
+        )
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected assignment success")
+        }
+        XCTAssertEqual(success.schemaVersion, 1)
+        XCTAssertEqual(success.route, "file")
+        XCTAssertEqual(success.relativeTarget, "file.md")
+        XCTAssertEqual(success.blockID, "new-id")
+        XCTAssertEqual(success.task.blockID, "new-id")
+        XCTAssertEqual(success.task.text, "Plan the handoff")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-task-id --route file --task-ref 8:missingidea --block-id new-id --format json")
+        )
+    }
+
+    func testAssignCaptureTaskIDDecodesJSONFailureOnNonZeroExit() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": #"{"ok":false,"error":"block ID ^duplicate-id already exists in file.md"}"#,
+                "FAKE_BOB_EXIT": "1",
+            ]
+        )
+
+        let response = try await client.assignCaptureTaskID(
+            route: "file",
+            taskRef: "8:missingidea",
+            blockID: "duplicate-id"
+        )
+
+        guard case .failure(let failure) = response else {
+            return XCTFail("Expected assignment failure")
+        }
+        XCTAssertEqual(failure.error, "block ID ^duplicate-id already exists in file.md")
     }
 
     func testLivePreviewAlwaysUsesNoClipAndPrioritySeed() async throws {

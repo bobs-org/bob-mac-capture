@@ -159,8 +159,9 @@ public func completionRowContent(
         accessibilityHint = "Inserts this section heading."
 
     case .pomodoroBlockID, .task:
-        category = .blockID
-        symbolName = "arrow.turn.down.right"
+        let needsBlockID = context == .task && candidate.requiresBlockID
+        category = needsBlockID ? .priority : .blockID
+        symbolName = needsBlockID ? "link.badge.plus" : "link"
         contextLabel = context == .pomodoroBlockID ? "Pomodoro Task" : "Parent Task"
         primaryText = candidate.text ?? candidate.replacement
         secondaryText = candidate.section
@@ -171,8 +172,12 @@ public func completionRowContent(
         }
         if let blockID = candidate.blockID {
             badges.append("^\(blockID)")
+        } else if needsBlockID {
+            badges.append("Add ID")
         }
-        accessibilityHint = "Nests the capture under this task."
+        accessibilityHint = needsBlockID
+            ? "Adds a block ID, then selects this task."
+            : "Nests the capture under this task."
 
     case .wikilinkNote:
         category = .wikilinkTarget

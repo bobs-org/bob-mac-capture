@@ -181,6 +181,7 @@ struct CapturePanelView: View {
 
     private var hasAuxiliaryContent: Bool {
         model.isStashPickerPresented
+            || model.taskIDPromptVisible
             || model.completionVisible
             || model.destinationSummary != nil
             || model.errorMessage != nil
@@ -221,7 +222,13 @@ struct CapturePanelView: View {
                     .layoutPriority(0)
                     .id(AuxiliarySection.stash)
             } else {
-                if model.completionVisible {
+                if model.taskIDPromptVisible {
+                    TaskIDPromptCard(model: model)
+                        .frame(width: 430)
+                        .padding(.leading, 14)
+                        .layoutPriority(0)
+                        .id(AuxiliarySection.taskIDPrompt)
+                } else if model.completionVisible {
                     CompletionList(model: model)
                         .frame(width: 430)
                         .frame(maxHeight: CapturePanelLayout.completionViewportHeight, alignment: .top)
@@ -314,6 +321,7 @@ struct CapturePanelView: View {
 
     private enum AuxiliarySection: Hashable {
         case stash
+        case taskIDPrompt
         case completion
         case destination
         case error
@@ -345,22 +353,22 @@ private struct CapturePanelFooter: View {
                 Label("Stash \(model.stashCount)", systemImage: "tray")
             }
             .help("Restore a draft canceled with Control-C (Control-S).")
-            .disabled(model.isSubmitting)
+            .disabled(model.isSubmitting || model.taskIDPromptVisible)
             Button("Discard") {
                 model.discardDraftAndClose()
             }
             .help("Permanently discards the draft and closes the panel.")
-            .disabled(!model.hasDraft || model.isSubmitting)
+            .disabled(!model.hasDraft || model.isSubmitting || model.taskIDPrompt?.isSaving == true)
             Button("Preview") {
                 model.preview()
             }
             .help("Resolves the current clipboard/history and shows the exact destination without writing anything.")
-            .disabled(!model.hasDraft || model.isSubmitting || model.isPreviewing)
+            .disabled(!model.hasDraft || model.isSubmitting || model.isPreviewing || model.taskIDPromptVisible)
             Button("Capture") {
                 model.submit(openAfterCapture: false)
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(!model.hasDraft || model.isSubmitting)
+            .disabled(!model.hasDraft || model.isSubmitting || model.taskIDPromptVisible)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Capture actions")
@@ -400,7 +408,7 @@ private struct AutosizingCaptureEditor: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .background(.regularMaterial)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .disabled(model.isSubmitting)
+                    .disabled(model.isSubmitting || model.taskIDPromptVisible)
                     .accessibilityLabel("Capture draft")
                     .onChange(of: String(model.attributedDraft.characters)) { _, _ in
                         model.editorTextDidChange(cursorUTF8Offset: model.collapsedSelectionUTF8Offset())
@@ -467,6 +475,121 @@ private struct CaptureEditorMeasuredHeightKey: PreferenceKey {
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
+    }
+}
+
+@available(macOS 26.0, *)
+private struct TaskIDPromptCard: View {
+    @ObservedObject var model: CapturePanelModel
+    @FocusState private var blockIDFieldFocused: Bool
+
+    private var prompt: CaptureTaskIDPromptState? {
+        model.taskIDPrompt
+    }
+
+    var body: some View {
+        if let prompt {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Label("Add block ID", systemImage: "link.badge.plus")
+                        .font(.headline)
+                    Spacer(minLength: 8)
+                    if prompt.isSaving {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+
+                taskSummary(prompt)
+
+                HStack(spacing: 0) {
+                    Text("^")
+                        .font(.system(.body, design: .monospaced).weight(.semibold))
+                        .foregroundStyle(CaptureEditorPalette.color(for: .blockID))
+                        .padding(.leading, 8)
+                    TextField(
+                        "block-id",
+                        text: Binding(
+                            get: { model.taskIDPrompt?.authoredID ?? "" },
+                            set: { model.updateTaskIDPromptBlockID($0) }
+                        )
+                    )
+                    .font(.system(.body, design: .monospaced))
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 6)
+                    .focused($blockIDFieldFocused)
+                    .disabled(prompt.isSaving)
+                    .onSubmit {
+                        model.submitTaskIDPrompt()
+                    }
+                    .accessibilityLabel("Block ID")
+                }
+                .background(.background.opacity(0.45), in: RoundedRectangle(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(.secondary.opacity(0.24), lineWidth: 0.5)
+                )
+
+                Text("Letters, numbers, and hyphens")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if let error = prompt.errorMessage {
+                    Text(error)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                        .accessibilityLabel("Block ID error: \(error)")
+                }
+
+                HStack {
+                    Spacer()
+                    Button("Cancel") {
+                        model.cancelTaskIDPrompt()
+                    }
+                    .disabled(prompt.isSaving)
+                    Button("Add & Select") {
+                        model.submitTaskIDPrompt()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!model.taskIDPromptCanSubmit)
+                }
+            }
+            .padding(10)
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .shadow(radius: 12, y: 6)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Add block ID")
+            .onAppear {
+                blockIDFieldFocused = true
+            }
+        }
+    }
+
+    private func taskSummary(_ prompt: CaptureTaskIDPromptState) -> some View {
+        let candidate = prompt.candidate
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                if let symbol = candidate.statusSymbol {
+                    Text("[\(symbol)]")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Text(candidate.text ?? "Selected task")
+                    .font(.system(.callout, design: .monospaced))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let section = candidate.section {
+                Text(section)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -590,19 +713,12 @@ private struct CompletionList: View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(
-                        Array((model.completionResponse?.candidates ?? []).enumerated()),
-                        id: \.offset
-                    ) {
-                        index, candidate in
-                        CompletionRow(
-                            content: model.rowContent(for: candidate),
-                            selected: index == model.selectedCompletionIndex
-                        )
-                        .id(index)
-                        .onTapGesture {
-                            model.selectedCompletionIndex = index
-                            model.acceptSelectedCompletion()
+                    if model.completionResponse?.context == "task" {
+                        taskGroup(title: "Ready to use", rows: taskRows(requiresBlockID: false))
+                        taskGroup(title: "Needs block ID", rows: taskRows(requiresBlockID: true))
+                    } else {
+                        ForEach(indexedCandidates) { row in
+                            completionRow(row)
                         }
                     }
                 }
@@ -627,6 +743,51 @@ private struct CompletionList: View {
         let noun = contextLabel.isEmpty ? "Completion" : contextLabel
         let count = candidates.count
         return "\(noun) suggestions, \(count) result\(count == 1 ? "" : "s")"
+    }
+
+    private var indexedCandidates: [IndexedCompletionCandidate] {
+        (model.completionResponse?.candidates ?? []).enumerated().map {
+            IndexedCompletionCandidate(index: $0.offset, candidate: $0.element)
+        }
+    }
+
+    private func taskRows(requiresBlockID: Bool) -> [IndexedCompletionCandidate] {
+        indexedCandidates.filter { $0.candidate.requiresBlockID == requiresBlockID }
+    }
+
+    @ViewBuilder
+    private func taskGroup(title: String, rows: [IndexedCompletionCandidate]) -> some View {
+        if !rows.isEmpty {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .padding(.horizontal, 8)
+                .padding(.top, 4)
+                .accessibilityAddTraits(.isHeader)
+            ForEach(rows) { row in
+                completionRow(row)
+            }
+        }
+    }
+
+    private func completionRow(_ row: IndexedCompletionCandidate) -> some View {
+        CompletionRow(
+            content: model.rowContent(for: row.candidate),
+            selected: row.index == model.selectedCompletionIndex
+        )
+        .id(row.index)
+        .onTapGesture {
+            model.selectedCompletionIndex = row.index
+            model.acceptSelectedCompletion()
+        }
+    }
+
+    private struct IndexedCompletionCandidate: Identifiable {
+        let index: Int
+        let candidate: CaptureCompletionCandidate
+
+        var id: Int { index }
     }
 }
 
@@ -678,7 +839,11 @@ private struct CompletionRow: View {
                                 .lineLimit(1)
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 1)
-                                .background(tint.opacity(0.15), in: Capsule())
+                                .background(badge == "Add ID" ? Color.clear : tint.opacity(0.15), in: Capsule())
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(badge == "Add ID" ? tint.opacity(0.55) : Color.clear, lineWidth: 0.7)
+                                )
                                 .foregroundStyle(tint)
                         }
                     }

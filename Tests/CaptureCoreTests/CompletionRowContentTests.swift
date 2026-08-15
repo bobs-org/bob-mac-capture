@@ -66,10 +66,36 @@ final class CompletionRowContentTests: XCTestCase {
         let content = completionRowContent(for: candidate, context: "task", query: "")
 
         XCTAssertEqual(content.category, .blockID)
+        XCTAssertEqual(content.symbolName, "link")
         XCTAssertEqual(content.contextLabel, "Parent Task")
         XCTAssertEqual(content.primaryText, "Ship the release")
         XCTAssertEqual(content.secondaryText, "Work")
         XCTAssertEqual(content.badges, ["[x] Done", "^goog-exit"])
+    }
+
+    func testTaskContextMissingBlockIDUsesAddIDPresentation() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "",
+            route: "cash",
+            taskRef: "8:missing",
+            blockID: nil,
+            requiresBlockID: true,
+            statusSymbol: " ",
+            statusName: "Todo",
+            statusType: "TODO",
+            text: "Plan the handoff",
+            section: "Tasks"
+        )
+
+        let content = completionRowContent(for: candidate, context: "task", query: "hand")
+
+        XCTAssertEqual(content.category, .priority)
+        XCTAssertEqual(content.symbolName, "link.badge.plus")
+        XCTAssertEqual(content.contextLabel, "Parent Task")
+        XCTAssertEqual(content.primaryText, "Plan the handoff")
+        XCTAssertEqual(content.badges, ["[ ] Todo", "Add ID"])
+        XCTAssertEqual(content.primaryMatchRange, 9..<13)
+        XCTAssertEqual(content.accessibilityHint, "Adds a block ID, then selects this task.")
     }
 
     func testPomodoroBlockIDContextUsesItsOwnLabel() {

@@ -40,6 +40,9 @@ mutation.
   - `~/bin/bob`
   - `/opt/homebrew/bin/bob`
   - `/usr/local/bin/bob`
+- A `bob` build that supports `capture-complete --all-tasks` and
+  `capture-task-id`. Older builds can still capture ordinary drafts, but the Add block
+  ID flow reports the local Bob error until Bob is upgraded.
 
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.
@@ -101,15 +104,23 @@ or expired certificate can require reauthorizing those system permissions.
   `wikilink_alias`) — resolves through the single palette in `CaptureEditorPalette`, so
   the editor and the completion list never disagree about what color represents what
   syntax.
-- Inline completion calls `bob capture-complete --cursor BYTE --format json -- <draft>`;
-  accepted candidates apply the server-provided byte replacement range and `cursor_after`
-  exactly, restoring a collapsed caret at that offset. Route completion also covers the
-  route side of Bob's `@route^block-id` ordinary task-with-ID marker; the authored ID
-  side has no existing-task picker and an empty completion result is shown as no list.
+- Inline completion calls
+  `bob capture-complete --all-tasks --cursor BYTE --format json -- <draft>`; accepted
+  ordinary candidates apply the server-provided byte replacement range and
+  `cursor_after` exactly, restoring a collapsed caret at that offset. Route completion
+  also covers the route side of Bob's `@route^block-id` ordinary task-with-ID marker;
+  the authored ID side has no existing-task picker and an empty completion result is
+  shown as no list.
   For blank-line-separated drafts, completion still sends the complete draft as one argv
   value; Bob scopes the answer to the item containing the UTF-8 cursor and returns
   replacement ranges in draft-global byte offsets. See "Wikilink Completion" below for
   the Obsidian-specific contract and row presentation.
+- In the `@route+` task context, Bob may return open tasks that still lack block IDs.
+  Ready tasks stay first and insert in one action. Missing-ID rows replace the completion
+  list with an inline **Add block ID** prompt; the draft remains unchanged while the app
+  calls `bob capture-task-id --route ROUTE --task-ref REF --block-id ID --format json`.
+  Only a confirmed Bob success splices the returned canonical ID into the saved
+  replacement range and reruns preview. Cancel and every error keep the draft unchanged.
 - Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through
   a dedicated process-client API that asserts `--no-clip`. `%` markers stay literal in
   continuous preview; clipboard-resolving preview is a separate explicit action.
@@ -162,21 +173,21 @@ or expired certificate can require reauthorizing those system permissions.
 
 ## Keyboard
 
-| Key | In the editor | While completion is visible |
-| --- | --- | --- |
-| Return | Capture, then close the panel | Accept the selected completion |
-| Command-Return | Capture, open the target in Obsidian, then close the panel | Accept, then submit |
-| Shift-Return / Option-Return | Insert a newline | Insert a newline |
-| Ctrl-J | Insert a new indentation-aware `- ` row, or turn a marker-only placeholder into a blank item separator | Same edit, and close completion |
-| Command-V | Insert the clipboard's plain text, discarding source formatting | Insert the clipboard's plain text and close completion |
-| Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action |
-| Tab | Indent the current column-zero continuation bullet to two spaces (normal focus traversal otherwise) | Accept the selected completion |
-| Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion |
-| Down / Ctrl-N | (normal focus traversal) | Select the next completion |
-| Up / Ctrl-P | (normal focus traversal) | Select the previous completion |
-| Escape / Ctrl-[ | Close the panel, retaining a nonempty draft without confirmation | Close completion |
-| Control-S | Open the canceled-draft stash picker | Open the canceled-draft stash picker |
-| Control-C | Stash a nonempty draft for this session, then clear and close | Stash a nonempty draft for this session, then clear and close |
+| Key | In the editor | While completion is visible | While Add block ID is open |
+| --- | --- | --- | --- |
+| Return | Capture, then close the panel | Accept the selected completion | Add the ID and select the task |
+| Command-Return | Capture, open the target in Obsidian, then close the panel | Accept, then submit | Consume the key; do not capture |
+| Shift-Return / Option-Return | Insert a newline | Insert a newline | Add the ID and select the task |
+| Ctrl-J | Insert a new indentation-aware `- ` row, or turn a marker-only placeholder into a blank item separator | Same edit, and close completion | Native text-field behavior |
+| Command-V | Insert the clipboard's plain text, discarding source formatting | Insert the clipboard's plain text and close completion | Native text-field paste |
+| Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace |
+| Tab | Indent the current column-zero continuation bullet to two spaces (normal focus traversal otherwise) | Accept the selected completion | Consume the key; do not indent or capture |
+| Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion | Consume the key; do not outdent or capture |
+| Down / Ctrl-N | (normal focus traversal) | Select the next completion | Consume the key; do not move completion selection |
+| Up / Ctrl-P | (normal focus traversal) | Select the previous completion | Consume the key; do not move completion selection |
+| Escape / Ctrl-[ | Close the panel, retaining a nonempty draft without confirmation | Close completion | Cancel back to the task list |
+| Control-S | Open the canceled-draft stash picker | Open the canceled-draft stash picker | Consume the key; finish or cancel the prompt first |
+| Control-C | Stash a nonempty draft for this session, then clear and close | Stash a nonempty draft for this session, then clear and close | Stash a nonempty draft for this session, then clear and close |
 
 Every capture action is reachable from the keyboard alone; the hotkey, editor, completion
 list, Stash/Capture/Preview/Discard buttons, and stash picker never require a pointer. The editor
@@ -286,15 +297,17 @@ decodes and presents it.
   closing `]]`, mid-heading, or wherever the candidate specifies.
 
 Each completion row shows a compact SF Symbol and context label for what will be
-inserted (Note/Heading/Block, alongside the pre-existing Destination/Section/Parent
-Task rows), a primary line with restrained emphasis on the part of the text that
-matched what you typed, and a secondary line with the canonical vault-relative path
-plus small badges — `Alias`, a heading level like `H2`, or a short block preview. Long
-paths truncate from the middle, keeping the filename intact rather than the leading
-directory. The selected row's accent-tinted fill uses each result's own semantic color
-(matching the editor's highlight palette) and increases its opacity automatically under
-Increase Contrast. VoiceOver announces the context, the count of results, and each
-row's full context/name/path/badge description before "double-tap to insert."
+inserted (Note/Heading/Block, alongside Destination/Section/Parent Task rows), a
+primary line with restrained emphasis on the part of the text that matched what you
+typed, and a secondary line with the canonical vault-relative path plus small badges —
+`Alias`, a heading level like `H2`, a short block preview, `^block-id`, or `Add ID`.
+`@route+` task suggestions are grouped as **Ready to use** followed by **Needs block
+ID**, preserving Bob's order inside each group. Long paths truncate from the middle,
+keeping the filename intact rather than the leading directory. The selected row's
+accent-tinted fill uses each result's own semantic color (matching the editor's
+highlight palette) and increases its opacity automatically under Increase Contrast.
+VoiceOver announces the context, the count of results, and each row's full
+context/name/path/badge description before "double-tap to insert."
 
 Note metadata — paths, stems, frontmatter aliases, heading text, and block-id previews
 — is read directly by `bob` from the local vault to build these candidates. The app
@@ -420,6 +433,10 @@ captured text to disk itself.
   response and the visible row content. They are never logged, written to
   `UserDefaults`, or included in a notification, signpost, or Diagnostics entry — the
   same guarantee the draft itself gets.
+- `@route+` task completion metadata and a user-authored block ID are sent only to the
+  local `bob` subprocess. The app never opens or rewrites Markdown notes directly; Bob
+  performs the vault write through `capture-task-id`, and the app updates the draft only
+  after Bob confirms success.
 
 ## Troubleshooting
 
@@ -446,6 +463,10 @@ captured text to disk itself.
 - **Target/route completion is empty or stale**: Diagnostics reports "Target cache stale"
   with the underlying scan error; fix the reported cause (for example, an unreadable
   vault path) and reopen the panel, which retries the refresh.
+- **Adding a block ID fails**: duplicate IDs, stale task refs, terminal tasks, and file
+  I/O errors are Bob errors. The Add block ID card keeps the selected task and typed ID
+  visible so you can edit, retry, or press Escape to return to the refreshed task list.
+  The draft is not expanded until Bob confirms the write.
 - **Wikilink completion shows no candidates, or the status bar reports a link
   completion warning**: an empty list with no status change means no note, heading, or
   block matched the query — try a shorter query or check the spelling. A status message

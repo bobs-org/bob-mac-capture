@@ -369,6 +369,30 @@ final class BobMacCaptureTests: XCTestCase {
         )
     }
 
+    func testKeyRouterIsolatesTaskIDPromptCommands() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(
+            completionVisible: true,
+            stashPickerVisible: false,
+            stashEntryCount: 0,
+            taskIDPromptVisible: true
+        )
+
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), context: context), .submitTaskIDPrompt)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 76), context: context), .submitTaskIDPrompt)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .command), context: context), .consumeKey)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 53), context: context), .cancelTaskIDPrompt)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 33, modifiers: .control), context: context),
+            .cancelTaskIDPrompt
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), context: context), .consumeKey)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 125), context: context), .consumeKey)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 126), context: context), .consumeKey)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 8, modifiers: .control), context: context), .stashDraftAndClose)
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 0, characters: "a"), context: context))
+    }
+
     func testKeyRouterMatchesStashPickerModalCommands() {
         let router = CaptureKeyCommandRouter()
         let context = CaptureKeyRoutingContext(

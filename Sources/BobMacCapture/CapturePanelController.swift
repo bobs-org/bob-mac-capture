@@ -574,6 +574,12 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .previousCompletion:
             model.selectPreviousCompletion()
             return true
+        case .submitTaskIDPrompt:
+            model.submitTaskIDPrompt()
+            return true
+        case .cancelTaskIDPrompt:
+            model.cancelTaskIDPrompt()
+            return true
         }
     }
 
@@ -596,7 +602,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     context: CaptureKeyRoutingContext(
                         completionVisible: self.model.completionVisible,
                         stashPickerVisible: self.model.isStashPickerPresented,
-                        stashEntryCount: self.model.stashCount
+                        stashEntryCount: self.model.stashCount,
+                        taskIDPromptVisible: self.model.taskIDPromptVisible
                     )
                   )
             else {

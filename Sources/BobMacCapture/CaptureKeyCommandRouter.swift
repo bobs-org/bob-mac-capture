@@ -21,12 +21,15 @@ enum CaptureKeyCommand: Equatable {
     case previousCompletion
     case increaseBulletIndentation
     case decreaseBulletIndentation
+    case submitTaskIDPrompt
+    case cancelTaskIDPrompt
 }
 
 struct CaptureKeyRoutingContext: Equatable {
     var completionVisible = false
     var stashPickerVisible = false
     var stashEntryCount = 0
+    var taskIDPromptVisible = false
 }
 
 struct CaptureKeyCommandRouter {
@@ -54,6 +57,10 @@ struct CaptureKeyCommandRouter {
 
         if context.stashPickerVisible {
             return stashPickerCommand(for: event, modifiers: modifiers, context: context)
+        }
+
+        if context.taskIDPromptVisible {
+            return taskIDPromptCommand(for: event, modifiers: modifiers)
         }
 
         if event.keyCode == KeyCode.s, modifiers == .control {
@@ -110,6 +117,33 @@ struct CaptureKeyCommandRouter {
 
     func command(for event: NSEvent, completionVisible: Bool) -> CaptureKeyCommand? {
         command(for: event, context: CaptureKeyRoutingContext(completionVisible: completionVisible))
+    }
+
+    private func taskIDPromptCommand(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags
+    ) -> CaptureKeyCommand? {
+        switch event.keyCode {
+        case KeyCode.return, KeyCode.keypadEnter:
+            if modifiers.contains(.command) {
+                return .consumeKey
+            }
+            return .submitTaskIDPrompt
+        case KeyCode.escape:
+            return .cancelTaskIDPrompt
+        case KeyCode.leftBracket:
+            return modifiers == .control ? .cancelTaskIDPrompt : nil
+        case KeyCode.c:
+            return modifiers == .control ? .stashDraftAndClose : nil
+        case KeyCode.tab, KeyCode.arrowDown, KeyCode.arrowUp:
+            return modifiers.contains(.command) ? nil : .consumeKey
+        case KeyCode.n, KeyCode.p:
+            return modifiers == .control ? .consumeKey : nil
+        case KeyCode.s:
+            return modifiers == .control ? .consumeKey : nil
+        default:
+            return nil
+        }
     }
 
     private func stashPickerCommand(

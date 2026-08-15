@@ -284,10 +284,14 @@ JSON
   capture-complete)
     draft="${*: -1}"
     cursor="0"
+    all_tasks="false"
     args=("$@")
     for ((i = 0; i < ${#args[@]}; i++)); do
       if [[ "${args[$i]}" == "--cursor" || "${args[$i]}" == "-c" ]]; then
         cursor="${args[$((i + 1))]:-0}"
+      fi
+      if [[ "${args[$i]}" == "--all-tasks" || "${args[$i]}" == "-a" ]]; then
+        all_tasks="true"
       fi
     done
     if [[ "${draft}" == *"[[AI"* ]]; then
@@ -396,12 +400,29 @@ JSON
   "candidates": [
     {
       "replacement": "goog-exit",
+      "ref": "4:googexit",
       "block_id": "goog-exit",
+      "route": "cash",
+      "requires_block_id": false,
       "status_symbol": "*",
       "status_name": "Next",
       "status_type": "ON_HOLD",
       "text": "Finish Google Exit Packet!",
       "section": "Tasks"
+    },
+    {
+      "replacement": "",
+      "ref": "8:missingidea",
+      "block_id": null,
+      "route": "cash",
+      "requires_block_id": true,
+      "status_symbol": " ",
+      "status_name": "Todo",
+      "status_type": "TODO",
+      "text": "Plan the handoff",
+      "section": "Tasks",
+      "depth": 1,
+      "child_count": 0
     }
   ]
 }
@@ -456,7 +477,10 @@ JSON
   "candidates": [
     {
       "replacement": "parent-id",
+      "ref": "2:parent",
       "block_id": "parent-id",
+      "route": "file",
+      "requires_block_id": false,
       "status_symbol": " ",
       "status_name": "Todo",
       "status_type": "TODO",
@@ -493,6 +517,60 @@ JSON
 }
 JSON
     fi
+    ;;
+  capture-task-id)
+    route=""
+    task_ref=""
+    block_id=""
+    dry_run="false"
+    args=("$@")
+    for ((i = 0; i < ${#args[@]}; i++)); do
+      case "${args[$i]}" in
+        --route|-r)
+          route="${args[$((i + 1))]:-}"
+          ;;
+        --task-ref|-t)
+          task_ref="${args[$((i + 1))]:-}"
+          ;;
+        --block-id|-i)
+          block_id="${args[$((i + 1))]:-}"
+          ;;
+        --dry-run|-d)
+          dry_run="true"
+          ;;
+      esac
+    done
+    if [[ "${block_id}" == "duplicate-id" ]]; then
+      cat <<'JSON'
+{"ok":false,"error":"block ID ^duplicate-id already exists in file.md"}
+JSON
+      exit 1
+    fi
+    updated_ref="8:${block_id}-updated"
+    cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "dry_run": ${dry_run},
+  "route": "${route}",
+  "relative_target": "${route}.md",
+  "block_id": "${block_id}",
+  "line": 8,
+  "ref": "${updated_ref}",
+  "task": {
+    "ref": "${updated_ref}",
+    "line": 8,
+    "block_id": "${block_id}",
+    "status_symbol": " ",
+    "status_name": "Todo",
+    "status_type": "TODO",
+    "text": "Plan the handoff",
+    "section": "Tasks",
+    "depth": 1,
+    "child_count": 0
+  }
+}
+JSON
     ;;
   capture)
     dry_run="false"

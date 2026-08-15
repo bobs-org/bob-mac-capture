@@ -452,6 +452,129 @@ public struct CaptureCommandFailure: Codable, Equatable {
     }
 }
 
+public enum CaptureTaskIDResponse: Equatable, Decodable {
+    case success(CaptureTaskIDSuccess)
+    case failure(CaptureCommandFailure)
+
+    public var ok: Bool {
+        switch self {
+        case .success(let value):
+            return value.ok
+        case .failure(let value):
+            return value.ok
+        }
+    }
+
+    private enum DiscriminatorKeys: String, CodingKey {
+        case ok
+    }
+
+    public init(from decoder: Decoder) throws {
+        let discriminator = try decoder.container(keyedBy: DiscriminatorKeys.self)
+        if try discriminator.decode(Bool.self, forKey: .ok) {
+            self = .success(try CaptureTaskIDSuccess(from: decoder))
+        } else {
+            self = .failure(try CaptureCommandFailure(from: decoder))
+        }
+    }
+}
+
+public struct CaptureTaskIDSuccess: Codable, Equatable {
+    public let ok: Bool
+    public let schemaVersion: Int
+    public let dryRun: Bool
+    public let route: String
+    public let relativeTarget: String
+    public let blockID: String
+    public let line: Int
+    public let taskRef: String
+    public let task: CaptureTaskIDTask
+
+    public init(
+        ok: Bool,
+        schemaVersion: Int = 1,
+        dryRun: Bool,
+        route: String,
+        relativeTarget: String,
+        blockID: String,
+        line: Int,
+        taskRef: String,
+        task: CaptureTaskIDTask
+    ) {
+        self.ok = ok
+        self.schemaVersion = schemaVersion
+        self.dryRun = dryRun
+        self.route = route
+        self.relativeTarget = relativeTarget
+        self.blockID = blockID
+        self.line = line
+        self.taskRef = taskRef
+        self.task = task
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case schemaVersion = "schema_version"
+        case dryRun = "dry_run"
+        case route
+        case relativeTarget = "relative_target"
+        case blockID = "block_id"
+        case line
+        case taskRef = "ref"
+        case task
+    }
+}
+
+public struct CaptureTaskIDTask: Codable, Equatable {
+    public let taskRef: String
+    public let line: Int
+    public let blockID: String
+    public let statusSymbol: String
+    public let statusName: String
+    public let statusType: String
+    public let text: String
+    public let section: String?
+    public let depth: Int
+    public let childCount: Int
+
+    public init(
+        taskRef: String,
+        line: Int,
+        blockID: String,
+        statusSymbol: String,
+        statusName: String,
+        statusType: String,
+        text: String,
+        section: String? = nil,
+        depth: Int,
+        childCount: Int
+    ) {
+        self.taskRef = taskRef
+        self.line = line
+        self.blockID = blockID
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
+        self.statusType = statusType
+        self.text = text
+        self.section = section
+        self.depth = depth
+        self.childCount = childCount
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case taskRef = "ref"
+        case line
+        case blockID = "block_id"
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
+        case statusType = "status_type"
+        case text
+        case section
+        case depth
+        case childCount = "child_count"
+    }
+}
+
 // Keep callers on non-optional collection fields while tolerating older bob binaries
 // that omitted empty arrays from clip JSON.
 public struct CaptureClipOutput: Codable, Equatable {
@@ -673,6 +796,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let level: Int?
     public let taskRef: String?
     public let blockID: String?
+    public let requiresBlockID: Bool
     public let statusSymbol: String?
     public let statusName: String?
     public let statusType: String?
@@ -715,6 +839,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         level: Int? = nil,
         taskRef: String? = nil,
         blockID: String? = nil,
+        requiresBlockID: Bool = false,
         statusSymbol: String? = nil,
         statusName: String? = nil,
         statusType: String? = nil,
@@ -739,6 +864,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.level = level
         self.taskRef = taskRef
         self.blockID = blockID
+        self.requiresBlockID = requiresBlockID
         self.statusSymbol = statusSymbol
         self.statusName = statusName
         self.statusType = statusType
@@ -755,6 +881,34 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.preview = preview
     }
 
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        replacement = try container.decode(String.self, forKey: .replacement)
+        route = try container.decodeIfPresent(String.self, forKey: .route)
+        label = try container.decodeIfPresent(String.self, forKey: .label)
+        kind = try container.decodeIfPresent(String.self, forKey: .kind)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        level = try container.decodeIfPresent(Int.self, forKey: .level)
+        taskRef = try container.decodeIfPresent(String.self, forKey: .taskRef)
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
+        requiresBlockID = try container.decodeIfPresent(Bool.self, forKey: .requiresBlockID) ?? false
+        statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol)
+        statusName = try container.decodeIfPresent(String.self, forKey: .statusName)
+        statusType = try container.decodeIfPresent(String.self, forKey: .statusType)
+        text = try container.decodeIfPresent(String.self, forKey: .text)
+        section = try container.decodeIfPresent(String.self, forKey: .section)
+        depth = try container.decodeIfPresent(Int.self, forKey: .depth)
+        childCount = try container.decodeIfPresent(Int.self, forKey: .childCount)
+        cursorAfter = try container.decodeIfPresent(Int.self, forKey: .cursorAfter)
+        path = try container.decodeIfPresent(String.self, forKey: .path)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        alias = try container.decodeIfPresent(String.self, forKey: .alias)
+        matchKind = try container.decodeIfPresent(String.self, forKey: .matchKind)
+        heading = try container.decodeIfPresent(String.self, forKey: .heading)
+        preview = try container.decodeIfPresent(String.self, forKey: .preview)
+    }
+
     private enum CodingKeys: String, CodingKey {
         case replacement
         case route
@@ -765,6 +919,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case level
         case taskRef = "ref"
         case blockID = "block_id"
+        case requiresBlockID = "requires_block_id"
         case statusSymbol = "status_symbol"
         case statusName = "status_name"
         case statusType = "status_type"
