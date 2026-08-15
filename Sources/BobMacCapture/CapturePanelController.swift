@@ -143,6 +143,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         replayLatestContentMetricsForPresentation()
         panel.makeKeyAndOrderFront(nil)
         installKeyMonitorIfNeeded()
+        model.requestFocus(.editor)
         CaptureSignpost.end(token)
         CaptureSignpost.event("editor-focus-requested")
     }

@@ -127,6 +127,7 @@ struct CapturePanelContentHeightPolicy: Equatable {
 struct CapturePanelView: View {
     @ObservedObject var model: CapturePanelModel
     var onContentMetricsChange: (CapturePanelContentMetrics) -> Void = { _ in }
+    @FocusState private var focusedControl: CapturePanelFocusTarget?
     @AccessibilityFocusState private var errorIsFocused: Bool
     @Environment(\.displayScale) private var displayScale
     @State private var measuredEditorHeight = CaptureEditorHeightPolicy().minimumHeight
@@ -135,6 +136,12 @@ struct CapturePanelView: View {
 
     var body: some View {
         content
+            .onAppear {
+                applyFocusRequest(model.focusRequest)
+            }
+            .onChange(of: model.focusRequest) { _, request in
+                applyFocusRequest(request)
+            }
             .onChange(of: hasAuxiliaryContent) { _, hasContent in
                 if !hasContent {
                     measuredAuxiliaryContentHeight = 0
@@ -148,7 +155,7 @@ struct CapturePanelView: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: CapturePanelLayout.sectionSpacing) {
-            AutosizingCaptureEditor(model: model, selection: $model.editorSelection)
+            AutosizingCaptureEditor(model: model, selection: $model.editorSelection, focus: $focusedControl)
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(2)
                 .onGeometryChange(for: CGFloat.self) { geometry in
@@ -222,7 +229,7 @@ struct CapturePanelView: View {
                     .id(AuxiliarySection.stash)
             } else {
                 if model.taskIDPromptVisible {
-                    TaskIDPromptCard(model: model)
+                    TaskIDPromptCard(model: model, focus: $focusedControl)
                         .frame(width: 430)
                         .padding(.leading, 14)
                         .layoutPriority(0)
@@ -318,6 +325,10 @@ struct CapturePanelView: View {
         onContentMetricsChange(metrics)
     }
 
+    private func applyFocusRequest(_ request: CapturePanelFocusRequest) {
+        focusedControl = request.target
+    }
+
     private enum AuxiliarySection: Hashable {
         case stash
         case taskIDPrompt
@@ -378,6 +389,7 @@ private struct CapturePanelFooter: View {
 private struct AutosizingCaptureEditor: View {
     @ObservedObject var model: CapturePanelModel
     @Binding var selection: AttributedTextSelection
+    var focus: FocusState<CapturePanelFocusTarget?>.Binding
     @Environment(\.displayScale) private var displayScale
     @State private var editorHeight = CaptureEditorHeightPolicy().minimumHeight
 
@@ -408,6 +420,7 @@ private struct AutosizingCaptureEditor: View {
                     .background(.regularMaterial)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .disabled(model.isSubmitting || model.taskIDPromptVisible)
+                    .focused(focus, equals: .editor)
                     .accessibilityLabel("Capture draft")
                     .onChange(of: String(model.attributedDraft.characters)) { _, _ in
                         model.editorTextDidChange(cursorUTF8Offset: model.collapsedSelectionUTF8Offset())
@@ -480,7 +493,7 @@ private struct CaptureEditorMeasuredHeightKey: PreferenceKey {
 @available(macOS 26.0, *)
 private struct TaskIDPromptCard: View {
     @ObservedObject var model: CapturePanelModel
-    @FocusState private var blockIDFieldFocused: Bool
+    var focus: FocusState<CapturePanelFocusTarget?>.Binding
 
     private var prompt: CaptureTaskIDPromptState? {
         model.taskIDPrompt
@@ -517,7 +530,7 @@ private struct TaskIDPromptCard: View {
                     .textFieldStyle(.plain)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 6)
-                    .focused($blockIDFieldFocused)
+                    .focused(focus, equals: .taskIDPromptBlockID)
                     .disabled(prompt.isSaving)
                     .onSubmit {
                         model.submitTaskIDPrompt()
@@ -561,9 +574,6 @@ private struct TaskIDPromptCard: View {
             .shadow(radius: 12, y: 6)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Add block ID")
-            .onAppear {
-                blockIDFieldFocused = true
-            }
         }
     }
 

@@ -1,4 +1,5 @@
 import CaptureCore
+import Combine
 import Foundation
 import SwiftUI
 import XCTest
@@ -508,6 +509,7 @@ final class CapturePanelModelTests: XCTestCase {
         var dismissCount = 0
         model.panelDismisser = { dismissCount += 1 }
         let tick = model.statusAnnouncementTick
+        let focusSequence = model.focusRequest.sequence
 
         model.clearCanceledDraftStashFromPicker()
 
@@ -520,6 +522,8 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.statusAnnouncementTick, tick + 1)
         XCTAssertFalse(model.statusText.contains("private draft"))
         XCTAssertEqual(dismissCount, 0)
+        XCTAssertEqual(model.focusRequest.target, .editor)
+        XCTAssertGreaterThan(model.focusRequest.sequence, focusSequence)
     }
 
     func testClearCanceledDraftStashFromPickerIgnoresNonPickerCalls() {
@@ -532,6 +536,23 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(stash.entries.map(\.text), ["retained"])
         XCTAssertFalse(model.isStashPickerPresented)
         XCTAssertEqual(model.statusText, "")
+    }
+
+    func testStashPickerDoesNotOpenWhileTaskIDPromptIsVisible() {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        stash.push("retained")
+        installMissingTaskCompletion(on: model)
+        model.acceptSelectedCompletion()
+        let promptFocusSequence = model.focusRequest.sequence
+
+        model.presentStashPicker()
+
+        XCTAssertFalse(model.isStashPickerPresented)
+        XCTAssertNotNil(model.taskIDPrompt)
+        XCTAssertEqual(model.statusText, "Finish or cancel the block ID prompt before opening stash")
+        XCTAssertEqual(model.focusRequest.target, .taskIDPromptBlockID)
+        XCTAssertGreaterThan(model.focusRequest.sequence, promptFocusSequence)
     }
 
     func testRestoreStashEntryInstallsExactTextAtEndSchedulesFreshAnalysisAndPopsOnlyThatEntry() async throws {
@@ -793,33 +814,66 @@ final class CapturePanelModelTests: XCTestCase {
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
             ]
         )
-        model.updateTargetCacheSnapshot(CaptureTargetsSnapshot(
-            targets: CaptureTargetsResponse(
-                ok: true,
-                targets: [
-                    CaptureTarget(
-                        route: "mac_inbox",
-                        name: "mac_inbox",
-                        label: "mac_inbox.md",
-                        kind: "inbox",
-                        relativePath: "mac_inbox.md"
-                    ),
-                ]
-            ),
-            refreshedAt: Date(),
-            stale: false,
-            errorDescription: nil
-        ))
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(
+                    route: "mac_inbox",
+                    name: "mac_inbox",
+                    label: "mac_inbox.md",
+                    kind: "inbox",
+                    relativePath: "mac_inbox.md"
+                ),
+            ]
+        )
         model.plainDraft = "idea @ma^new-id"
 
         model.editorTextDidChange(cursorUTF8Offset: "idea @ma".utf8.count)
-        await waitUntil { model.completionVisible }
+        await waitUntil { self.analysisSettled(for: model, recordURL: recordURL, draft: "idea @ma^new-id") }
 
         XCTAssertEqual(model.completionResponse?.context, "route")
         XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 6, end: 8))
         XCTAssertEqual(model.completionResponse?.candidates.first?.route, "mac_inbox")
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture-parse --format json -- idea @ma^new-id"))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- idea @ma^new-id"))
+        XCTAssertFalse(record.contains("capture-complete"))
+    }
+
+    func testOrdinaryRouteSpanUsesCachedRouteCompletionWithoutBobComplete() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(
+                    route: "mac_inbox",
+                    name: "mac_inbox",
+                    label: "mac_inbox.md",
+                    kind: "inbox",
+                    relativePath: "mac_inbox.md"
+                ),
+            ]
+        )
+        model.plainDraft = "idea @ma"
+
+        model.editorTextDidChange(cursorUTF8Offset: "idea @ma".utf8.count)
+        await waitUntil { self.analysisSettled(for: model, recordURL: recordURL, draft: "idea @ma") }
+
+        XCTAssertEqual(model.completionResponse?.context, "route")
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 6, end: 8))
+        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "mac_inbox")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- idea @ma"))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- idea @ma"))
         XCTAssertFalse(record.contains("capture-complete"))
     }
 
@@ -949,45 +1003,132 @@ final class CapturePanelModelTests: XCTestCase {
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
             ]
         )
-        model.updateTargetCacheSnapshot(
-            CaptureTargetsSnapshot(
-                targets: CaptureTargetsResponse(
-                    ok: true,
-                    targets: [
-                        CaptureTarget(
-                            route: "file",
-                            name: "file",
-                            label: "file.md",
-                            kind: "area",
-                            relativePath: "file.md"
-                        )
-                    ]
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(
+                    route: "file",
+                    name: "file",
+                    label: "file.md",
+                    kind: "area",
+                    relativePath: "file.md"
                 ),
-                refreshedAt: Date(),
-                stale: false,
-                errorDescription: nil
-            )
+            ]
         )
 
         model.plainDraft = "Add context @file+parent-id"
         model.editorTextDidChange(cursorUTF8Offset: "Add context @file".utf8.count)
-        await waitUntil { model.completionResponse?.context == "route" }
+        await waitUntil { self.analysisSettled(for: model, recordURL: recordURL, draft: "Add context @file+parent-id") }
         XCTAssertEqual(model.completionResponse?.candidates.first?.route, "file")
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 13, end: 17))
 
         model.plainDraft = "Follow up @file^new-id"
         model.editorTextDidChange(cursorUTF8Offset: "Follow up @file".utf8.count)
-        await waitUntil {
-            model.completionResponse?.context == "route"
-                && model.plainDraft == "Follow up @file^new-id"
-        }
+        await waitUntil { self.analysisSettled(for: model, recordURL: recordURL, draft: "Follow up @file^new-id") }
         XCTAssertEqual(model.completionResponse?.candidates.first?.route, "file")
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 11, end: 15))
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- Add context @file+parent-id"))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- Add context @file+parent-id"))
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- Follow up @file^new-id"))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- Follow up @file^new-id"))
+        XCTAssertFalse(record.contains("capture-complete"))
     }
 
-    func testPlusRightSideOffersTasksAndCaretAuthoredIdShowsNoPicker() async throws {
+    func testRouteCompletionFallsBackToBobWhenCacheHasNoMatch() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
-            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(
+                    route: "today",
+                    name: "today",
+                    label: "today.md",
+                    kind: "inbox",
+                    relativePath: "today.md"
+                ),
+            ]
+        )
+        model.plainDraft = "idea @ma"
+
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil { model.completionResponse?.context == "route" }
+
+        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "mac_inbox")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 8 --format json -- idea @ma"))
+    }
+
+    func testInteractivePlaceholderCompletionUsesBobEvenWithMatchingCache() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(
+                    route: "cash",
+                    name: "cash",
+                    label: "cash.md",
+                    kind: "area",
+                    relativePath: "cash.md"
+                ),
+            ]
+        )
+        model.plainDraft = "Call bank @Cash+"
+
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return record.contains("argv=capture-complete --all-tasks --cursor 16 --format json -- Call bank @Cash+")
+        }
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- Call bank @Cash+"))
+        XCTAssertTrue(
+            record.contains("argv=capture-complete --all-tasks --cursor 16 --format json -- Call bank @Cash+")
+        )
+    }
+
+    func testPlusRightSideOffersTasksAndCaretAuthoredIdShowsNoPicker() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(
+                    route: "cash",
+                    name: "cash",
+                    label: "cash.md",
+                    kind: "area",
+                    relativePath: "cash.md"
+                ),
+            ]
         )
 
         model.plainDraft = "note @Cash+goog"
@@ -995,6 +1136,8 @@ final class CapturePanelModelTests: XCTestCase {
         await waitUntil { model.completionResponse?.context == "task" }
         XCTAssertEqual(model.completionResponse?.candidates.first?.blockID, "goog-exit")
         XCTAssertTrue(model.completionVisible)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 15 --format json -- note @Cash+goog"))
 
         model.plainDraft = "Do work @Dev^new-id"
         model.editorTextDidChange(cursorUTF8Offset: "Do work @Dev^new-id".utf8.count)
@@ -1007,6 +1150,7 @@ final class CapturePanelModelTests: XCTestCase {
     func testMissingTaskCompletionOpensTaskIDPromptWithoutChangingDraft() {
         let model = CapturePanelModel()
         installMissingTaskCompletion(on: model)
+        let initialFocusSequence = model.focusRequest.sequence
 
         model.acceptSelectedCompletion()
 
@@ -1018,6 +1162,8 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.taskIDPrompt?.draftSnapshot, "note @Cash+goog")
         XCTAssertEqual(model.taskIDPrompt?.replacementRange, CaptureRange(start: 11, end: 15))
         XCTAssertEqual(model.statusText, "Add block ID")
+        XCTAssertEqual(model.focusRequest.target, .taskIDPromptBlockID)
+        XCTAssertGreaterThan(model.focusRequest.sequence, initialFocusSequence)
     }
 
     func testLaterBatchTaskIDPromptSuccessSplicesGlobalRangeAndKeepsCaptureContract() async throws {
@@ -1120,6 +1266,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         installMissingTaskCompletion(on: model)
         model.acceptSelectedCompletion()
+        let promptFocusSequence = model.focusRequest.sequence
 
         model.updateTaskIDPromptBlockID("bad_id")
         model.submitTaskIDPrompt()
@@ -1127,6 +1274,8 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, "note @Cash+goog")
         XCTAssertEqual(model.taskIDPrompt?.authoredID, "bad_id")
         XCTAssertEqual(model.taskIDPrompt?.errorMessage, "Use only letters, numbers, and hyphens.")
+        XCTAssertEqual(model.focusRequest.target, .taskIDPromptBlockID)
+        XCTAssertGreaterThan(model.focusRequest.sequence, promptFocusSequence)
         XCTAssertFalse(FileManager.default.fileExists(atPath: recordURL.path))
     }
 
@@ -1143,6 +1292,16 @@ final class CapturePanelModelTests: XCTestCase {
         )
         installMissingTaskCompletion(on: model)
         model.acceptSelectedCompletion()
+        var focusEvents: [(target: CapturePanelFocusTarget, draft: String, cursor: Int?)] = []
+        let focusCancellable = model.$focusRequest.dropFirst().sink { request in
+            focusEvents.append(
+                (
+                    target: request.target,
+                    draft: model.plainDraft,
+                    cursor: model.collapsedSelectionUTF8Offset()
+                )
+            )
+        }
 
         model.updateTaskIDPromptBlockID("new-id")
         model.submitTaskIDPrompt()
@@ -1150,10 +1309,14 @@ final class CapturePanelModelTests: XCTestCase {
 
         XCTAssertEqual(model.collapsedSelectionUTF8Offset(), "note @Cash+new-id".utf8.count)
         XCTAssertNil(model.completionResponse)
+        XCTAssertEqual(focusEvents.last?.target, .editor)
+        XCTAssertEqual(focusEvents.last?.draft, "note @Cash+new-id")
+        XCTAssertEqual(focusEvents.last?.cursor, "note @Cash+new-id".utf8.count)
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(
             record.contains("argv=capture-task-id --route cash --task-ref 8:missingidea --block-id new-id --format json")
         )
+        withExtendedLifetime(focusCancellable) {}
     }
 
     func testTaskIDPromptServerFailureRetainsDraftTaskAndAuthoredID() async throws {
@@ -1169,6 +1332,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         installMissingTaskCompletion(on: model)
         model.acceptSelectedCompletion()
+        let promptFocusSequence = model.focusRequest.sequence
 
         model.updateTaskIDPromptBlockID("duplicate-id")
         model.submitTaskIDPrompt()
@@ -1179,6 +1343,8 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.taskIDPrompt?.authoredID, "duplicate-id")
         XCTAssertEqual(model.taskIDPrompt?.errorMessage, "block ID ^duplicate-id already exists in cash.md")
         XCTAssertEqual(model.statusText, "Add block ID failed")
+        XCTAssertEqual(model.focusRequest.target, .taskIDPromptBlockID)
+        XCTAssertGreaterThan(model.focusRequest.sequence, promptFocusSequence)
     }
 
     func testLaterBatchTaskIDPromptServerFailureRetainsEntireDraftAndSelection() async throws {
@@ -1237,6 +1403,7 @@ final class CapturePanelModelTests: XCTestCase {
         installMissingTaskCompletion(on: model)
         model.acceptSelectedCompletion()
         model.updateTaskIDPromptBlockID("new-id")
+        let promptFocusSequence = model.focusRequest.sequence
 
         model.cancelTaskIDPrompt()
 
@@ -1245,6 +1412,8 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(model.completionVisible)
         XCTAssertEqual(model.selectedCompletionIndex, 1)
         XCTAssertEqual(model.completionResponse?.candidates[1].text, "Plan the handoff")
+        XCTAssertEqual(model.focusRequest.target, .editor)
+        XCTAssertGreaterThan(model.focusRequest.sequence, promptFocusSequence)
     }
 
     func testLaterBatchCancelTaskIDPromptRestoresChooserSelectionWithoutMutation() {
@@ -1315,11 +1484,13 @@ final class CapturePanelModelTests: XCTestCase {
         model.submitTaskIDPrompt()
         XCTAssertEqual(model.taskIDPrompt?.isSaving, true)
         model.cancelTaskIDPrompt()
+        let canceledFocusRequest = model.focusRequest
         try await Task.sleep(nanoseconds: 450_000_000)
 
         XCTAssertNil(model.taskIDPrompt)
         XCTAssertEqual(model.plainDraft, "note @Cash+goog")
         XCTAssertTrue(model.completionVisible)
+        XCTAssertEqual(model.focusRequest, canceledFocusRequest)
     }
 
     func testLaterBatchCaptureFailureAfterTaskIDAssignmentReportsNoPartialSuccessOrDraftClearing() async throws {
@@ -1394,6 +1565,37 @@ final class CapturePanelModelTests: XCTestCase {
         return packageRoot
             .appendingPathComponent("Tests/Fixtures/fake-bob")
             .path
+    }
+
+    private func analysisSettled(
+        for model: CapturePanelModel,
+        recordURL: URL,
+        draft: String
+    ) -> Bool {
+        guard model.plainDraft == draft,
+              model.completionResponse?.context == "route",
+              case .ready = model.previewState
+        else {
+            return false
+        }
+
+        let record = (try? String(contentsOf: recordURL)) ?? ""
+        return record.contains("argv=capture-parse --format json -- \(draft)")
+            && record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)")
+    }
+
+    private func installTargetCache(
+        on model: CapturePanelModel,
+        targets: [CaptureTarget]
+    ) {
+        model.updateTargetCacheSnapshot(
+            CaptureTargetsSnapshot(
+                targets: CaptureTargetsResponse(ok: true, targets: targets),
+                refreshedAt: Date(),
+                stale: false,
+                errorDescription: nil
+            )
+        )
     }
 
     private func sampleSuccess() -> CaptureCommandSuccess {

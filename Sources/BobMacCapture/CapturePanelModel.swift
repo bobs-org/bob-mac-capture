@@ -21,6 +21,16 @@ struct CaptureTaskIDPromptState: Equatable {
     var errorMessage: String?
 }
 
+enum CapturePanelFocusTarget: Hashable {
+    case editor
+    case taskIDPromptBlockID
+}
+
+struct CapturePanelFocusRequest: Equatable {
+    let sequence: UInt64
+    let target: CapturePanelFocusTarget
+}
+
 @MainActor
 final class CapturePanelModel: ObservableObject {
     @Published var attributedDraft = AttributedString()
@@ -50,6 +60,7 @@ final class CapturePanelModel: ObservableObject {
     @Published var isStashPickerPresented = false
     @Published var selectedStashIndex = 0
     @Published var taskIDPrompt: CaptureTaskIDPromptState?
+    @Published private(set) var focusRequest = CapturePanelFocusRequest(sequence: 0, target: .editor)
 
     var processClient: BobProcessClient?
     var notificationService: NotificationService?
@@ -67,6 +78,7 @@ final class CapturePanelModel: ObservableObject {
     private var suppressedCompletionAcceptanceDraft: String?
     private var programmaticSelectionOffsetToIgnore: Int?
     private var priorityRollSeed: String?
+    private var focusSequence: UInt64 = 0
 
     // Shared by submit and preview so a late callback from either one can never mutate
     // state on behalf of a request that is no longer the active one.
@@ -374,6 +386,7 @@ final class CapturePanelModel: ObservableObject {
     func presentStashPicker() {
         guard taskIDPrompt == nil else {
             announceStatus("Finish or cancel the block ID prompt before opening stash")
+            requestFocus(.taskIDPromptBlockID)
             return
         }
         guard plainDraft.isEmpty else {
@@ -397,6 +410,7 @@ final class CapturePanelModel: ObservableObject {
         }
         isStashPickerPresented = false
         selectedStashIndex = 0
+        requestFocus(.editor)
     }
 
     func selectNextStashEntry() {
@@ -451,6 +465,7 @@ final class CapturePanelModel: ObservableObject {
         }
         canceledDraftStash.clear()
         dismissStashPicker()
+        requestFocus(.editor)
         announceStatus("Canceled draft stash cleared")
     }
 
@@ -473,6 +488,11 @@ final class CapturePanelModel: ObservableObject {
         dismissStashPicker()
         taskIDPrompt = nil
         activeTaskIDRequestID = nil
+    }
+
+    func requestFocus(_ target: CapturePanelFocusTarget) {
+        focusSequence &+= 1
+        focusRequest = CapturePanelFocusRequest(sequence: focusSequence, target: target)
     }
 
     private func resetAnalysisState() {
@@ -584,6 +604,7 @@ final class CapturePanelModel: ObservableObject {
         } else {
             statusText = "Ready"
         }
+        requestFocus(.editor)
     }
 
     func submitTaskIDPrompt() {
@@ -593,21 +614,25 @@ final class CapturePanelModel: ObservableObject {
         guard let processClient else {
             prompt.errorMessage = "Bob is not resolved. Check Settings and Recheck Bob."
             taskIDPrompt = prompt
+            requestFocus(.taskIDPromptBlockID)
             return
         }
         if let validationMessage = Self.blockIDValidationMessage(for: prompt.authoredID) {
             prompt.errorMessage = validationMessage
             taskIDPrompt = prompt
+            requestFocus(.taskIDPromptBlockID)
             return
         }
         guard prompt.draftSnapshot == plainDraft else {
             prompt.errorMessage = "Draft changed. Return to the task list and choose again."
             taskIDPrompt = prompt
+            requestFocus(.taskIDPromptBlockID)
             return
         }
         guard stringRange(in: prompt.draftSnapshot, byteRange: prompt.replacementRange) != nil else {
             prompt.errorMessage = "Completion range is stale. Return to the task list and choose again."
             taskIDPrompt = prompt
+            requestFocus(.taskIDPromptBlockID)
             return
         }
         guard let route = prompt.candidate.route,
@@ -615,6 +640,7 @@ final class CapturePanelModel: ObservableObject {
         else {
             prompt.errorMessage = "Task candidate is missing route metadata. Refresh the task list and choose again."
             taskIDPrompt = prompt
+            requestFocus(.taskIDPromptBlockID)
             return
         }
 
@@ -688,6 +714,7 @@ final class CapturePanelModel: ObservableObject {
             errorMessage: nil
         )
         statusText = "Add block ID"
+        requestFocus(.taskIDPromptBlockID)
     }
 
     private func completeTaskIDAssignment(
@@ -708,6 +735,7 @@ final class CapturePanelModel: ObservableObject {
                 prompt.errorMessage = "Completion range is stale. Return to the task list and choose again."
                 taskIDPrompt = prompt
                 statusText = "Add block ID failed"
+                requestFocus(.taskIDPromptBlockID)
                 return
             }
 
@@ -719,6 +747,7 @@ final class CapturePanelModel: ObservableObject {
                 prompt.errorMessage = "Completion cursor is stale. Return to the task list and choose again."
                 taskIDPrompt = prompt
                 statusText = "Add block ID failed"
+                requestFocus(.taskIDPromptBlockID)
                 return
             }
 
@@ -732,11 +761,13 @@ final class CapturePanelModel: ObservableObject {
             )
             scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false)
             statusText = "Added ^\(success.blockID) to \(success.relativeTarget)"
+            requestFocus(.editor)
         case .failure(let failure):
             prompt.isSaving = false
             prompt.errorMessage = failure.error
             taskIDPrompt = prompt
             statusText = "Add block ID failed"
+            requestFocus(.taskIDPromptBlockID)
         }
     }
 
@@ -751,6 +782,7 @@ final class CapturePanelModel: ObservableObject {
         prompt.errorMessage = String(describing: error)
         taskIDPrompt = prompt
         statusText = "Add block ID failed"
+        requestFocus(.taskIDPromptBlockID)
     }
 
     private func completeSubmit(
@@ -1149,14 +1181,6 @@ final class CapturePanelModel: ObservableObject {
                 }
                 return CaptureRange(start: min(start, span.end), end: span.end)
             }
-
-            if span.kind == "interactive_placeholder", parse.needs.contains("route") {
-                return CaptureRange(start: cursor, end: cursor)
-            }
-        }
-
-        if parse.needs.contains("route") {
-            return CaptureRange(start: cursor, end: cursor)
         }
 
         return nil

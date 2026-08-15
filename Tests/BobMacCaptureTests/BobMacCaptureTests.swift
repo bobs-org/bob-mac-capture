@@ -730,6 +730,26 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, "")
         XCTAssertEqual(model.statusText, "Canceled draft stash cleared")
         XCTAssertEqual(dismissCount, 0)
+        XCTAssertEqual(model.focusRequest.target, .editor)
+    }
+
+    @MainActor
+    func testCancelTaskIDPromptCommandRestoresSelectionAndEditorFocus() {
+        let model = CapturePanelModel()
+        model.plainDraft = "note @Cash+goog"
+        model.completionResponse = sampleMissingTaskCompletionResponse()
+        model.selectedCompletionIndex = 1
+        let controller = CapturePanelController(model: model)
+
+        XCTAssertTrue(controller.perform(.acceptCompletion))
+        let promptFocusSequence = model.focusRequest.sequence
+        XCTAssertTrue(controller.perform(.cancelTaskIDPrompt))
+
+        XCTAssertNil(model.taskIDPrompt)
+        XCTAssertTrue(model.completionVisible)
+        XCTAssertEqual(model.selectedCompletionIndex, 1)
+        XCTAssertEqual(model.focusRequest.target, .editor)
+        XCTAssertGreaterThan(model.focusRequest.sequence, promptFocusSequence)
     }
 
     func testEditorHeightPolicyUsesOneLineMinimumAndSixLineCap() {
@@ -1720,6 +1740,45 @@ final class BobMacCaptureTests: XCTestCase {
                     label: "mac_inbox.md",
                     kind: "inbox"
                 )
+            ]
+        )
+    }
+
+    private func sampleMissingTaskCompletionResponse() -> CaptureCompletionResponse {
+        CaptureCompletionResponse(
+            ok: true,
+            cursor: 15,
+            replacement: CaptureRange(start: 11, end: 15),
+            context: "task",
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "goog-exit",
+                    route: "cash",
+                    taskRef: "4:googexit",
+                    blockID: "goog-exit",
+                    requiresBlockID: false,
+                    statusSymbol: "*",
+                    statusName: "Next",
+                    statusType: "ON_HOLD",
+                    text: "Finish Google Exit Packet!",
+                    section: "Tasks",
+                    depth: 1,
+                    childCount: 1
+                ),
+                CaptureCompletionCandidate(
+                    replacement: "",
+                    route: "cash",
+                    taskRef: "8:missingidea",
+                    blockID: nil,
+                    requiresBlockID: true,
+                    statusSymbol: " ",
+                    statusName: "Todo",
+                    statusType: "TODO",
+                    text: "Plan the handoff",
+                    section: "Tasks",
+                    depth: 1,
+                    childCount: 0
+                ),
             ]
         )
     }
