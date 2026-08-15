@@ -1056,8 +1056,16 @@ final class CapturePanelModelTests: XCTestCase {
 
         XCTAssertEqual(model.collapsedSelectionUTF8Offset(), assignedDraft.utf8.count)
         XCTAssertNil(model.completionResponse)
-        await waitUntil { model.previewResults.map(\.text) == ["Plan café", "File follow-up"] }
-        XCTAssertEqual(model.previewResults.map(\.kind), ["task", "sub_bullet"])
+        await waitUntil {
+            guard case .ready(let preview) = model.previewState else {
+                return false
+            }
+            return preview.normalizedCaptures.map(\.text) == ["Plan café", "File follow-up"]
+        }
+        guard case .ready(let livePreview) = model.previewState else {
+            return XCTFail("Expected ready live preview")
+        }
+        XCTAssertEqual(livePreview.normalizedCaptures.map(\.kind), ["task", "sub_bullet"])
 
         var record = try String(contentsOf: recordURL)
         XCTAssertTrue(
