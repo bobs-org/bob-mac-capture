@@ -109,12 +109,12 @@ JSON
   "diagnostics": []
 }
 JSON
-    elif [[ "${draft}" == "idea @ma::new-id" ]]; then
+    elif [[ "${draft}" == "idea @ma^new-id" ]]; then
       cat <<'JSON'
 {
   "ok": true,
   "schema_version": 1,
-  "input": "idea @ma::new-id",
+  "input": "idea @ma^new-id",
   "body": "idea",
   "mode": "task",
   "route": "ma",
@@ -122,17 +122,17 @@ JSON
   "needs": [],
   "spans": [
     { "start": 5, "end": 8, "kind": "task_block_id_route" },
-    { "start": 10, "end": 16, "kind": "task_block_id" }
+    { "start": 9, "end": 15, "kind": "task_block_id" }
   ],
   "diagnostics": []
 }
 JSON
-    elif [[ "${draft}" == "idea @mac_inbox::new-id" ]]; then
+    elif [[ "${draft}" == "idea @mac_inbox^new-id" ]]; then
       cat <<'JSON'
 {
   "ok": true,
   "schema_version": 1,
-  "input": "idea @mac_inbox::new-id",
+  "input": "idea @mac_inbox^new-id",
   "body": "idea",
   "mode": "task",
   "route": "mac_inbox",
@@ -140,17 +140,17 @@ JSON
   "needs": [],
   "spans": [
     { "start": 5, "end": 15, "kind": "task_block_id_route" },
-    { "start": 17, "end": 23, "kind": "task_block_id" }
+    { "start": 16, "end": 22, "kind": "task_block_id" }
   ],
   "diagnostics": []
 }
 JSON
-    elif [[ "${draft}" == "Call bank @Cash^" ]]; then
+    elif [[ "${draft}" == "Call bank @Cash+" ]]; then
       cat <<'JSON'
 {
   "ok": true,
   "schema_version": 1,
-  "input": "Call bank @Cash^",
+  "input": "Call bank @Cash+",
   "body": "Call bank",
   "mode": "incomplete",
   "route": "cash",
@@ -158,6 +158,78 @@ JSON
   "spans": [
     { "start": 10, "end": 15, "kind": "sub_bullet_route" },
     { "start": 15, "end": 16, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "Add context @file+parent-id" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Add context @file+parent-id",
+  "body": "Add context",
+  "mode": "sub_bullet",
+  "route": "file",
+  "block_id": "parent-id",
+  "needs": [],
+  "spans": [
+    { "start": 12, "end": 17, "kind": "sub_bullet_route" },
+    { "start": 18, "end": 27, "kind": "sub_bullet_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "Follow up @file^new-id" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Follow up @file^new-id",
+  "body": "Follow up",
+  "mode": "task",
+  "route": "file",
+  "block_id": "new-id",
+  "needs": [],
+  "spans": [
+    { "start": 10, "end": 15, "kind": "task_block_id_route" },
+    { "start": 16, "end": 22, "kind": "task_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "Do work @Dev^new-id" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Do work @Dev^new-id",
+  "body": "Do work",
+  "mode": "task",
+  "route": "dev",
+  "block_id": "new-id",
+  "needs": [],
+  "spans": [
+    { "start": 8, "end": 12, "kind": "task_block_id_route" },
+    { "start": 13, "end": 19, "kind": "task_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "note @Cash+goog" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "note @Cash+goog",
+  "body": "note",
+  "mode": "sub_bullet",
+  "route": "cash",
+  "block_id": "goog",
+  "needs": [],
+  "spans": [
+    { "start": 5, "end": 10, "kind": "sub_bullet_route" },
+    { "start": 11, "end": 15, "kind": "sub_bullet_block_id" }
   ],
   "diagnostics": []
 }
@@ -235,7 +307,7 @@ JSON
   "warnings": ["skipped unreadable note"]
 }
 JSON
-    elif [[ "${draft}" == "idea @ma::new-id" ]]; then
+    elif [[ "${draft}" == "idea @ma^new-id" ]]; then
       if (( cursor <= 8 )); then
         cat <<'JSON'
 {
@@ -300,6 +372,94 @@ JSON
   ]
 }
 JSON
+    elif [[ "${draft}" == "note @Cash+goog" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 15,
+  "replacement": { "start": 11, "end": 15 },
+  "context": "task",
+  "candidates": [
+    {
+      "replacement": "goog-exit",
+      "block_id": "goog-exit",
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Finish Google Exit Packet!",
+      "section": "Tasks"
+    }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "Do work @Dev^new-id" ]]; then
+      cursor="0"
+      args=("$@")
+      for ((i = 0; i < ${#args[@]}; i++)); do
+        if [[ "${args[$i]}" == "--cursor" || "${args[$i]}" == "-c" ]]; then
+          cursor="${args[$((i + 1))]:-0}"
+        fi
+      done
+      if [[ "${cursor}" -le 12 ]]; then
+        cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 12,
+  "replacement": { "start": 9, "end": 12 },
+  "context": "route",
+  "candidates": [
+    { "replacement": "dev", "route": "dev", "label": "dev.md", "kind": "area", "status": null }
+  ]
+}
+JSON
+      else
+        cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": ${cursor}, "end": ${cursor} },
+  "context": null,
+  "candidates": []
+}
+JSON
+      fi
+    elif [[ "${draft}" == "Follow up @file^new-id" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 12,
+  "replacement": { "start": 11, "end": 15 },
+  "context": "route",
+  "candidates": [
+    { "replacement": "file", "route": "file", "label": "file.md", "kind": "area", "status": null }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "Add context @file+parent-id" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 27,
+  "replacement": { "start": 18, "end": 27 },
+  "context": "task",
+  "candidates": [
+    {
+      "replacement": "parent-id",
+      "block_id": "parent-id",
+      "status_symbol": " ",
+      "status_name": "Todo",
+      "status_type": "TODO",
+      "text": "Parent",
+      "section": "Tasks"
+    }
+  ]
+}
+JSON
     else
       cat <<'JSON'
 {
@@ -341,7 +501,7 @@ JSON
   "placement": "inserted"
 }
 JSON
-    elif [[ "${draft}" == "idea @mac_inbox::new-id" ]]; then
+    elif [[ "${draft}" == "idea @mac_inbox^new-id" ]]; then
       cat <<JSON
 {
   "ok": true,
@@ -358,6 +518,46 @@ JSON
   "scheduled": null,
   "placement": "inserted",
   "block_id": "new-id"
+}
+JSON
+    elif [[ "${draft}" == "Follow up @file^new-id" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "file",
+  "route_label": "file.md",
+  "relative_target": "file.md",
+  "target": "/tmp/bob/file.md",
+  "text": "Follow up",
+  "task_line": "- [ ] #task Follow up [created::2026-08-14] ^new-id",
+  "kind": "task",
+  "block_id": "new-id",
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "inserted"
+}
+JSON
+    elif [[ "${draft}" == "Add context @file+parent-id" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "file",
+  "route_label": "file.md",
+  "relative_target": "file.md",
+  "target": "/tmp/bob/file.md",
+  "text": "Add context",
+  "task_line": "- Add context",
+  "kind": "sub_bullet",
+  "block_id": "parent-id",
+  "parent_text": "Parent",
+  "parent_line": 1,
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "inserted"
 }
 JSON
     elif [[ "${draft}" == "${multiline_draft}" ]]; then

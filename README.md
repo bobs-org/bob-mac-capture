@@ -104,7 +104,7 @@ or expired certificate can require reauthorizing those system permissions.
 - Inline completion calls `bob capture-complete --cursor BYTE --format json -- <draft>`;
   accepted candidates apply the server-provided byte replacement range and `cursor_after`
   exactly, restoring a collapsed caret at that offset. Route completion also covers the
-  route side of Bob's `@route::block-id` ordinary task-with-ID marker; the authored ID
+  route side of Bob's `@route^block-id` ordinary task-with-ID marker; the authored ID
   side has no existing-task picker and an empty completion result is shown as no list. See
   "Wikilink Completion" below for the Obsidian-specific contract and row presentation.
 - Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through
@@ -163,8 +163,14 @@ lines, then scrolls internally for longer drafts.
 A draft is a one-line parent followed by zero or more authored `-`/`*`/`+` bullets.
 Column-zero bullets become first-level authored children; bullets prefixed by exactly two
 ASCII spaces become nested authored children under the nearest preceding first-level
-authored child. A marker (`@route`, `s:<N>`, `p:<N>`, `%`, …) at the end of any valid line
-configures the whole capture even when it appears on a child line:
+authored child. A marker (`@route`, `@route+block-id` for an existing-task sub-bullet,
+`@route^block-id` for an ordinary task with an authored block ID, `s:<N>`, `p:<N>`, `%`,
+…) at the end of any valid line configures the whole capture even when it appears on a
+child line. The app never parses that punctuation itself: highlighting and completion
+follow bob-cli's semantic spans. Both families complete their route side; only the `+`
+family's right-hand side offers existing tasks, and the `^` family's authored ID has no
+picker. The retired `@route::block-id` spelling is a parse diagnostic from
+`bob capture-parse`, not a supported interactive form.
 
 ```text
 Prepare the launch review
@@ -174,9 +180,9 @@ Prepare the launch review
   - Verify the links
 ```
 
-Bob's routed marker syntax works directly in the editor. `@route::block-id` captures an
+Bob's routed marker syntax works directly in the editor. `@route^block-id` captures an
 ordinary `[ ]` task with a trailing `^block-id` and no Pomodoro task link, while
-`@route:block-id` keeps the Pomodoro-linked next-task behavior and `@route^block-id`
+`@route:block-id` keeps the Pomodoro-linked next-task behavior and `@route+block-id`
 nests beneath an existing task. The app does not duplicate those grammar rules; it
 colors the span kinds Bob reports, asks Bob for completion at the real caret, and submits
 the original draft text.

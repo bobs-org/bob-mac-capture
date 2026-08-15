@@ -9,7 +9,7 @@ final class CaptureModelTests: XCTestCase {
             {
               "ok": true,
               "schema_version": 1,
-              "input": "Call bank @Cash^",
+              "input": "Call bank @Cash+",
               "body": "Call bank",
               "mode": "incomplete",
               "route": "cash",
@@ -115,7 +115,7 @@ final class CaptureModelTests: XCTestCase {
             {
               "ok": true,
               "schema_version": 1,
-              "input": "idea @ma::new-id",
+              "input": "idea @ma^new-id",
               "body": "idea",
               "mode": "task",
               "route": "ma",
@@ -123,7 +123,7 @@ final class CaptureModelTests: XCTestCase {
               "needs": [],
               "spans": [
                 { "start": 5, "end": 8, "kind": "task_block_id_route" },
-                { "start": 10, "end": 16, "kind": "task_block_id" }
+                { "start": 9, "end": 15, "kind": "task_block_id" }
               ],
               "diagnostics": []
             }
@@ -521,10 +521,47 @@ final class CaptureModelTests: XCTestCase {
         }
         XCTAssertEqual(success.kind, "task")
         XCTAssertEqual(success.blockID, "new-id")
+        XCTAssertEqual(success.taskLine, "- [ ] #task Do work [created::2026-08-14] ^new-id")
         XCTAssertNil(success.dayFile)
         XCTAssertNil(success.blockLink)
         XCTAssertNil(success.pomodoroLinkPlacement)
+        XCTAssertNil(success.parentText)
         XCTAssertEqual(success.previewBlockLines, [success.taskLine])
+    }
+
+    func testCaptureCommandResponseDecodesSubBulletSuccess() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "file",
+              "route_label": "file.md",
+              "relative_target": "file.md",
+              "target": "/tmp/bob/file.md",
+              "text": "Add context",
+              "task_line": "- Add context",
+              "kind": "sub_bullet",
+              "block_id": "parent-id",
+              "parent_text": "Parent",
+              "parent_line": 1,
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "inserted"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.kind, "sub_bullet")
+        XCTAssertEqual(success.blockID, "parent-id")
+        XCTAssertEqual(success.parentText, "Parent")
+        XCTAssertEqual(success.parentLine, 1)
     }
 
     func testCompletionResponseDecodesRouteAndTaskCandidates() throws {

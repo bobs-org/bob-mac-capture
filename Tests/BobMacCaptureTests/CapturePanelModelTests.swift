@@ -461,7 +461,7 @@ final class CapturePanelModelTests: XCTestCase {
             stale: false,
             errorDescription: nil
         ))
-        model.plainDraft = "idea @ma::new-id"
+        model.plainDraft = "idea @ma^new-id"
 
         model.editorTextDidChange(cursorUTF8Offset: "idea @ma".utf8.count)
         await waitUntil { model.completionVisible }
@@ -470,7 +470,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 6, end: 8))
         XCTAssertEqual(model.completionResponse?.candidates.first?.route, "mac_inbox")
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture-parse --format json -- idea @ma::new-id"))
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- idea @ma^new-id"))
         XCTAssertFalse(record.contains("capture-complete"))
     }
 
@@ -485,7 +485,7 @@ final class CapturePanelModelTests: XCTestCase {
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
             ]
         )
-        model.plainDraft = "idea @mac_inbox::new-id"
+        model.plainDraft = "idea @mac_inbox^new-id"
 
         model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
         await waitUntil {
@@ -503,7 +503,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(preview.blockID, "new-id")
         XCTAssertNil(preview.dayFile)
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- idea @mac_inbox::new-id"))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- idea @mac_inbox^new-id"))
         XCTAssertFalse(record.contains("capture-complete"))
     }
 
@@ -533,6 +533,126 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture-parse --format json -- prefix [[AI suffix"))
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- prefix [[AI suffix"))
         XCTAssertFalse(record.contains("capture-complete"))
+    }
+
+    func testPlusSubBulletAndCaretIdOnlySubmitThroughDirectArgv() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        model.plainDraft = "Follow up @file^new-id"
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+        XCTAssertEqual(model.lastSuccess?.kind, "task")
+        XCTAssertEqual(model.lastSuccess?.blockID, "new-id")
+        XCTAssertNil(model.lastSuccess?.dayFile)
+        XCTAssertNil(model.lastSuccess?.blockLink)
+        XCTAssertNil(model.lastSuccess?.pomodoroLinkPlacement)
+
+        model.plainDraft = "Add context @file+parent-id"
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+        XCTAssertEqual(model.lastSuccess?.kind, "sub_bullet")
+        XCTAssertEqual(model.lastSuccess?.blockID, "parent-id")
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --format json -- Follow up @file^new-id"))
+        XCTAssertTrue(record.contains("argv=capture --format json -- Add context @file+parent-id"))
+    }
+
+    func testPreviewDecodesAuthoredIdOnlyTaskWithoutPomodoroFields() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "Follow up @file^new-id"
+
+        model.preview()
+        await waitUntil { !model.isPreviewing }
+
+        XCTAssertEqual(model.previewResult?.kind, "task")
+        XCTAssertEqual(model.previewResult?.blockID, "new-id")
+        XCTAssertEqual(
+            model.previewResult?.taskLine,
+            "- [ ] #task Follow up [created::2026-08-14] ^new-id"
+        )
+        XCTAssertNil(model.previewResult?.dayFile)
+        XCTAssertNil(model.previewResult?.blockLink)
+        XCTAssertNil(model.previewResult?.pomodoroLinkPlacement)
+    }
+
+    func testCachedRouteCompletionWorksOnPlusAndCaretRouteSpans() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        model.updateTargetCacheSnapshot(
+            CaptureTargetsSnapshot(
+                targets: CaptureTargetsResponse(
+                    ok: true,
+                    targets: [
+                        CaptureTarget(
+                            route: "file",
+                            name: "file",
+                            label: "file.md",
+                            kind: "area",
+                            relativePath: "file.md"
+                        )
+                    ]
+                ),
+                refreshedAt: Date(),
+                stale: false,
+                errorDescription: nil
+            )
+        )
+
+        model.plainDraft = "Add context @file+parent-id"
+        model.editorTextDidChange(cursorUTF8Offset: "Add context @file".utf8.count)
+        await waitUntil { model.completionResponse?.context == "route" }
+        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "file")
+
+        model.plainDraft = "Follow up @file^new-id"
+        model.editorTextDidChange(cursorUTF8Offset: "Follow up @file".utf8.count)
+        await waitUntil {
+            model.completionResponse?.context == "route"
+                && model.plainDraft == "Follow up @file^new-id"
+        }
+        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "file")
+    }
+
+    func testPlusRightSideOffersTasksAndCaretAuthoredIdShowsNoPicker() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        model.plainDraft = "note @Cash+goog"
+        model.editorTextDidChange(cursorUTF8Offset: "note @Cash+goog".utf8.count)
+        await waitUntil { model.completionResponse?.context == "task" }
+        XCTAssertEqual(model.completionResponse?.candidates.first?.blockID, "goog-exit")
+        XCTAssertTrue(model.completionVisible)
+
+        model.plainDraft = "Do work @Dev^new-id"
+        model.editorTextDidChange(cursorUTF8Offset: "Do work @Dev^new-id".utf8.count)
+        await waitUntil {
+            model.plainDraft == "Do work @Dev^new-id" && model.completionResponse == nil
+        }
+        XCTAssertFalse(model.completionVisible)
     }
 
     func testCaretOnlyMoveRequeriesCompletionAtNewOffset() async throws {

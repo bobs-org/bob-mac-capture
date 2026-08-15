@@ -16,12 +16,32 @@ final class BobProcessClientTests: XCTestCase {
             ]
         )
 
-        let response = try await client.captureParse("Call bank @Cash^")
+        let response = try await client.captureParse("Call bank @Cash+")
 
         XCTAssertEqual(response.body, "Call bank")
+        XCTAssertEqual(response.mode, "incomplete")
+        XCTAssertEqual(response.needs, ["task"])
+        XCTAssertEqual(response.spans.map(\.kind), ["sub_bullet_route", "interactive_placeholder"])
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture-parse --format json -- Call bank @Cash^"))
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- Call bank @Cash+"))
         XCTAssertTrue(record.contains("PATH=/usr/bin:/bin"))
+    }
+
+    func testCaptureParseDecodesPlusSubBulletAndCaretIdOnlyMarkers() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let subBullet = try await client.captureParse("Add context @file+parent-id")
+        XCTAssertEqual(subBullet.mode, "sub_bullet")
+        XCTAssertEqual(subBullet.blockID, "parent-id")
+        XCTAssertEqual(subBullet.spans.map(\.kind), ["sub_bullet_route", "sub_bullet_block_id"])
+
+        let authored = try await client.captureParse("Follow up @file^new-id")
+        XCTAssertEqual(authored.mode, "task")
+        XCTAssertEqual(authored.blockID, "new-id")
+        XCTAssertEqual(authored.spans.map(\.kind), ["task_block_id_route", "task_block_id"])
     }
 
     func testCaptureParseRunsMultilineDraftAsOneArgvElementAndDecodesSubBullets() async throws {
@@ -55,7 +75,7 @@ final class BobProcessClientTests: XCTestCase {
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
 
-        let response = try await client.captureParse("idea @ma::new-id")
+        let response = try await client.captureParse("idea @ma^new-id")
 
         XCTAssertEqual(response.mode, "task")
         XCTAssertEqual(response.route, "ma")
@@ -89,15 +109,40 @@ final class BobProcessClientTests: XCTestCase {
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
 
-        let route = try await client.captureComplete("idea @ma::new-id", cursor: 8)
+        let route = try await client.captureComplete("idea @ma^new-id", cursor: 8)
         XCTAssertEqual(route.context, "route")
         XCTAssertEqual(route.replacement, CaptureRange(start: 6, end: 8))
         XCTAssertEqual(route.candidates.first?.route, "mac_inbox")
 
-        let authoredID = try await client.captureComplete("idea @ma::new-id", cursor: 12)
+        let authoredID = try await client.captureComplete("idea @ma^new-id", cursor: 12)
         XCTAssertNil(authoredID.context)
         XCTAssertTrue(authoredID.candidates.isEmpty)
         XCTAssertEqual(authoredID.replacement, CaptureRange(start: 12, end: 12))
+    }
+
+    func testCaptureCompleteOffersTasksOnPlusSideAndNoneOnAuthoredCaretId() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let plusSide = try await client.captureComplete("note @Cash+goog", cursor: 15)
+        XCTAssertEqual(plusSide.context, "task")
+        XCTAssertEqual(plusSide.candidates.first?.blockID, "goog-exit")
+
+        let authoredId = try await client.captureComplete("Do work @Dev^new-id", cursor: 19)
+        XCTAssertNil(authoredId.context)
+        XCTAssertEqual(authoredId.candidates.count, 0)
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-complete --cursor 15 --format json -- note @Cash+goog"))
+        XCTAssertTrue(record.contains("argv=capture-complete --cursor 19 --format json -- Do work @Dev^new-id"))
     }
 
     func testLivePreviewAlwaysUsesNoClipAndPrioritySeed() async throws {
@@ -139,6 +184,42 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(success.routeLabel, "cash.md")
         XCTAssertEqual(success.target, "/tmp/bob/cash.md")
         XCTAssertEqual(success.placement, "inserted")
+    }
+
+    func testCaptureSubmitDecodesAuthoredIdOnlyAndSubBulletModes() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let authored = try await client.capture("Follow up @file^new-id", dryRun: false, readClipboard: true)
+        guard case .success(let authoredSuccess) = authored else {
+            return XCTFail("Expected authored ID capture success")
+        }
+        XCTAssertEqual(authoredSuccess.kind, "task")
+        XCTAssertEqual(authoredSuccess.blockID, "new-id")
+        XCTAssertEqual(authoredSuccess.taskLine, "- [ ] #task Follow up [created::2026-08-14] ^new-id")
+        XCTAssertNil(authoredSuccess.dayFile)
+        XCTAssertNil(authoredSuccess.blockLink)
+        XCTAssertNil(authoredSuccess.pomodoroLinkPlacement)
+
+        let nested = try await client.capture("Add context @file+parent-id", dryRun: false, readClipboard: true)
+        guard case .success(let nestedSuccess) = nested else {
+            return XCTFail("Expected sub-bullet capture success")
+        }
+        XCTAssertEqual(nestedSuccess.kind, "sub_bullet")
+        XCTAssertEqual(nestedSuccess.blockID, "parent-id")
+        XCTAssertEqual(nestedSuccess.parentText, "Parent")
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --format json -- Follow up @file^new-id"))
+        XCTAssertTrue(record.contains("argv=capture --format json -- Add context @file+parent-id"))
     }
 
     func testCaptureSubmitDecodesSingleClipPayloadWithOmittedEntriesAsSuccess() async throws {
@@ -183,7 +264,7 @@ final class BobProcessClientTests: XCTestCase {
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
 
-        let response = try await client.capture("idea @mac_inbox::new-id", dryRun: false, readClipboard: true)
+        let response = try await client.capture("idea @mac_inbox^new-id", dryRun: false, readClipboard: true)
 
         guard case .success(let success) = response else {
             return XCTFail("Expected a successful capture response")
