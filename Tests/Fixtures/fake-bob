@@ -739,7 +739,7 @@ JSON
   "sub_bullets": ["  - confirm owner", "    - text owner", "  - attach checklist", "    - verify links"]
 }
 JSON
-    elif [[ "${draft}" == "${later_task_id_batch_draft}" ]]; then
+    elif [[ "${draft}" == *"${later_task_id_batch_suffix}" ]]; then
       cat <<JSON
 {
   "ok": true,

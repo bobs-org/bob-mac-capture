@@ -918,6 +918,7 @@ final class CapturePanelModel: ObservableObject {
                             self?.completionResponse = cached
                             self?.selectedCompletionIndex = 0
                         }
+                        return
                     }
 
                     do {
