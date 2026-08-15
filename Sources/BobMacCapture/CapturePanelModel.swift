@@ -555,9 +555,7 @@ final class CapturePanelModel: ObservableObject {
             previewState = .idle
             statusText = captureStatus(prefix: "Captured", captures: captures)
             successAnnouncementTick += 1
-            if let firstCapture = captures.first {
-                notificationService?.notifyCaptureSuccess(routeLabel: firstCapture.routeLabel, targetPath: firstCapture.target)
-            }
+            notificationService?.notifyCaptureSuccess(captures: captures)
             if openAfterCapture {
                 for url in uniqueTargetURLs(from: captures) {
                     targetOpener(url)

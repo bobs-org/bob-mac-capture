@@ -186,6 +186,55 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(openedPaths, ["/tmp/bob/cash.md"])
     }
 
+    func testSuccessfulBatchSubmitAndOpenStoresAllResultsAndOpensUniqueTargetsInSourceOrder() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": """
+                {"ok":true,"dry_run":false,"routed":true,"route":"work","route_label":"work.md",
+                 "relative_target":"work.md","target":"/tmp/bob/work.md",
+                 "text":"Ship release","task_line":"- [ ] #task Ship release [created::2026-08-14]",
+                 "kind":"task","created":"2026-08-14","scheduled":null,"placement":"inserted",
+                 "captures":[
+                   {"ok":true,"dry_run":false,"routed":true,"route":"work","route_label":"work.md",
+                    "relative_target":"work.md","target":"/tmp/bob/work.md",
+                    "text":"Ship release","task_line":"- [ ] #task Ship release [created::2026-08-14]",
+                    "kind":"task","created":"2026-08-14","scheduled":null,"placement":"inserted"},
+                   {"ok":true,"dry_run":false,"routed":true,"route":"ideas","route_label":"ideas.md",
+                    "relative_target":"ideas.md","target":"/tmp/bob/ideas.md",
+                    "text":"Capture follow-up","task_line":"- Capture follow-up",
+                    "kind":"bullet","created":"2026-08-14","scheduled":null,"placement":"append"},
+                   {"ok":true,"dry_run":false,"routed":true,"route":"work","route_label":"work.md",
+                    "relative_target":"work.md","target":"/tmp/bob/work.md",
+                    "text":"Backfill notes","task_line":"- Backfill notes",
+                    "kind":"bullet","created":"2026-08-14","scheduled":null,"placement":"append"}
+                 ]}
+                """,
+            ]
+        )
+        model.plainDraft = "Ship release @work\n\nCapture follow-up @ideas\n\nBackfill notes @work"
+        var openedPaths: [String] = []
+        model.targetOpener = { url in
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let path = components?.queryItems?.first { $0.name == "path" }?.value
+            openedPaths.append(path ?? "")
+        }
+
+        model.submit(openAfterCapture: true)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(openedPaths, ["/tmp/bob/work.md", "/tmp/bob/ideas.md"])
+        XCTAssertEqual(model.statusText, "Captured 3 items")
+        XCTAssertEqual(model.lastSuccessResults.map(\.text), [
+            "Ship release",
+            "Capture follow-up",
+            "Backfill notes",
+        ])
+    }
+
     func testFailedSubmitRetainsCompleteDraftAndSurfacesActionableError() async throws {
         let model = CapturePanelModel()
         model.processClient = BobProcessClient(

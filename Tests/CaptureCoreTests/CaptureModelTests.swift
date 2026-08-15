@@ -501,6 +501,39 @@ final class CaptureModelTests: XCTestCase {
             return XCTFail("Expected a successful response")
         }
         XCTAssertEqual(success.previewBlockLines, [success.taskLine])
+        XCTAssertEqual(success.normalizedCaptures.map(\.text), ["Call bank"])
+    }
+
+    func testCaptureCommandSuccessNormalizesOrderedMultiCaptureArray() throws {
+        let data = Data(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":"work","route_label":"work.md",
+             "relative_target":"work.md","target":"/home/bryan/bob/work.md",
+             "text":"Ship release","task_line":"- [ ] #task Ship release [created::2026-08-14]",
+             "kind":"task","created":"2026-08-14","scheduled":null,"placement":"inserted",
+             "captures":[
+               {"ok":true,"dry_run":false,"routed":true,"route":"work","route_label":"work.md",
+                "relative_target":"work.md","target":"/home/bryan/bob/work.md",
+                "text":"Ship release","task_line":"- [ ] #task Ship release [created::2026-08-14]",
+                "kind":"task","created":"2026-08-14","scheduled":null,"placement":"inserted"},
+               {"ok":true,"dry_run":false,"routed":true,"route":"ideas","route_label":"ideas.md",
+                "relative_target":"ideas.md","target":"/home/bryan/bob/ideas.md",
+                "text":"Capture follow-up","task_line":"- Capture follow-up",
+                "kind":"bullet","created":"2026-08-14","scheduled":"2026-08-19","placement":"append"}
+             ]}
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.normalizedCaptures.map(\.text), ["Ship release", "Capture follow-up"])
+        XCTAssertEqual(success.normalizedCaptures.map(\.target), [
+            "/home/bryan/bob/work.md",
+            "/home/bryan/bob/ideas.md",
+        ])
     }
 
     func testPreviewBlockLinesOmitsClipForNoClipLivePreview() {

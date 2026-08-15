@@ -314,9 +314,22 @@ displayed scheduled date always matches what gets written.
 ## Notifications
 
 The app posts success and failure `UNUserNotificationCenter` notifications and never
-makes capture correctness depend on them. Notification bodies omit captured text by
-default. Settings shows live authorization status, a button to request authorization,
-a link to the system notification settings pane, and a test-notification action.
+makes capture correctness depend on them. Success notifications use Bob's semantic
+capture text rather than raw draft syntax: a single capture is titled `Task captured` or
+`Note captured`, names the destination, and includes scheduled-date metadata when Bob
+returns it. A batch is titled with the item count, summarizes task/note and destination
+counts, and emits one ordered body line per captured item without substituting an
+ellipsis for later entries. The only newly authorized notification body content is the
+captured semantic text; failure notifications still carry only the bounded error
+message.
+
+Capture notifications register singular and plural foreground actions (`Open Note` and
+`Open Notes`). The notification stores the legacy first `targetPath` plus an ordered
+`targetPaths` array, and clicking the notification or pressing its open action routes
+every unique Obsidian destination in source order. If Bob returns no usable destination,
+the notification remains informative and omits the open action. Settings shows live
+authorization status, a button to request authorization, a link to the system
+notification settings pane, and a test-notification action.
 
 Notification delivery and authorization persistence require the installed, signed
 `Bob Mac Capture.app` bundle (`just bundle` + `just install`), not `swift run` or a raw

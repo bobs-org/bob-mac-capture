@@ -434,6 +434,9 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         return lines
     }
 
+    /// Bob preserves the legacy top-level success fields for one capture and for the
+    /// first item of a multi-capture response. New callers should use this normalized
+    /// collection so single and batch presentation share one code path.
     public var normalizedCaptures: [CaptureCommandSuccess] {
         captures.isEmpty ? [self] : captures
     }
