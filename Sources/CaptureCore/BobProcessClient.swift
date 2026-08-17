@@ -177,7 +177,11 @@ public final class BobProcessClient: @unchecked Sendable {
 
                 // Runs on `stateQueue` (see `asyncAfter` below), so it must use the
                 // already-on-the-queue clear helper, not the `.sync`-wrapping one.
-                let timeoutWorkItem = DispatchWorkItem { [weak self] in
+                //
+                // `DispatchWorkItem.cancel()` is documented thread-safe, so it's sound to
+                // share this across the termination handler's `@Sendable` closure even
+                // though the type itself isn't `Sendable`.
+                nonisolated(unsafe) let timeoutWorkItem = DispatchWorkItem { [weak self] in
                     guard resumeGuard.markResumed() else { return }
                     Self.terminateIfRunning(process)
                     self?.clearActiveProcessAlreadyOnStateQueue(process: process, generation: generation, lane: lane)

@@ -36,7 +36,7 @@ public actor CaptureTargetsCache {
 
     public func refresh(
         using client: BobProcessClient,
-        now: @Sendable () -> Date = Date.init
+        now: @Sendable () -> Date = { Date() }
     ) async -> CaptureTargetsSnapshot {
         do {
             let response = try await client.captureTargets()

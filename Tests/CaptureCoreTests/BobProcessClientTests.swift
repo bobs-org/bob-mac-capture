@@ -637,6 +637,50 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(second.errorDescription?.contains("boom") == true)
     }
 
+    func testRefreshUsesInjectedClockAndPreservesItAcrossFailure() async throws {
+        let successClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let failingClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_EXIT": "2",
+                "FAKE_BOB_STDERR": "boom",
+            ]
+        )
+        let cache = CaptureTargetsCache()
+        let injectedNow = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let success = await cache.refresh(using: successClient) { injectedNow }
+        XCTAssertEqual(success.refreshedAt, injectedNow)
+
+        let failure = await cache.refresh(using: failingClient) { Date(timeIntervalSince1970: 0) }
+        XCTAssertEqual(
+            failure.refreshedAt,
+            injectedNow,
+            "a failed refresh must keep the last successful refresh's timestamp instead of querying the clock again"
+        )
+    }
+
+    func testRefreshDefaultsToTheSystemClockWhenNoTimeIsInjected() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let cache = CaptureTargetsCache()
+        let before = Date()
+
+        let snapshot = await cache.refresh(using: client)
+
+        let after = Date()
+        let refreshedAt = try XCTUnwrap(snapshot.refreshedAt)
+        XCTAssertGreaterThanOrEqual(refreshedAt, before)
+        XCTAssertLessThanOrEqual(refreshedAt, after)
+    }
+
     func testCancellationTerminatesProcess() async throws {
         let termURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -701,6 +745,35 @@ final class BobProcessClientTests: XCTestCase {
             FileManager.default.fileExists(atPath: termURL.path),
             "Expected the timed-out process to be terminated, not left running"
         )
+    }
+
+    // The timeout `DispatchWorkItem` and the process's own termination handler race to
+    // resume the same continuation on every run here, since the fake process traps
+    // SIGTERM and exits almost immediately after the timeout fires. A double-resume
+    // would crash the test process with a continuation-misuse trap instead of throwing
+    // `timedOut`, so looping guards against a flaky, non-deterministic race.
+    func testRepeatedTimeoutRacesResumeTheContinuationExactlyOnce() async throws {
+        for iteration in 0..<10 {
+            let client = BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_DELAY_SECONDS": "5",
+                ]
+            )
+
+            do {
+                _ = try await client.run(
+                    arguments: ["capture-targets"],
+                    lane: "race-\(iteration)",
+                    timeout: 0.05
+                )
+                XCTFail("Expected a timedOut error on iteration \(iteration)")
+            } catch BobClientError.timedOut {
+                // Expected.
+            }
+        }
     }
 
     func testRunCompletesNormallyWhenFasterThanTheTimeout() async throws {
