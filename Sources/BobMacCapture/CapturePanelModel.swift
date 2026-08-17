@@ -61,6 +61,7 @@ final class CapturePanelModel: ObservableObject {
     @Published var selectedStashIndex = 0
     @Published var taskIDPrompt: CaptureTaskIDPromptState?
     @Published private(set) var focusRequest = CapturePanelFocusRequest(sequence: 0, target: .editor)
+    @Published private(set) var editorInputLocked = false
 
     var processClient: BobProcessClient?
     var notificationService: NotificationService?
@@ -84,6 +85,7 @@ final class CapturePanelModel: ObservableObject {
     // state on behalf of a request that is no longer the active one.
     private var activeRequestID: UUID?
     private var activeTaskIDRequestID: UUID?
+    private var editorInputLockToken: UUID?
 
     init(
         processClient: BobProcessClient? = nil,
@@ -208,8 +210,7 @@ final class CapturePanelModel: ObservableObject {
             priorityRollSeed = nil
             parseDiagnostics = []
             completionResponse = nil
-            taskIDPrompt = nil
-            activeTaskIDRequestID = nil
+            clearTaskIDPrompt()
             previewState = .idle
             statusText = ""
             invalidateAnalysis()
@@ -336,8 +337,7 @@ final class CapturePanelModel: ObservableObject {
     /// permanent discarding is an explicit action from the Discard button.
     func prepareForRetainedClose() {
         dismissStashPicker()
-        taskIDPrompt = nil
-        activeTaskIDRequestID = nil
+        clearTaskIDPrompt()
         if hasDraft {
             statusText = "Draft retained"
         }
@@ -355,8 +355,7 @@ final class CapturePanelModel: ObservableObject {
 
     func discardDraft() {
         dismissStashPicker()
-        taskIDPrompt = nil
-        activeTaskIDRequestID = nil
+        clearTaskIDPrompt()
         setPlainDraft("")
         suppressedCompletionAcceptanceDraft = nil
         priorityRollSeed = nil
@@ -486,8 +485,7 @@ final class CapturePanelModel: ObservableObject {
 
     func prepareForDismissal() {
         dismissStashPicker()
-        taskIDPrompt = nil
-        activeTaskIDRequestID = nil
+        clearTaskIDPrompt()
     }
 
     func requestFocus(_ target: CapturePanelFocusTarget) {
@@ -499,13 +497,36 @@ final class CapturePanelModel: ObservableObject {
         invalidateAnalysis()
         parseDiagnostics = []
         completionResponse = nil
-        taskIDPrompt = nil
-        activeTaskIDRequestID = nil
+        clearTaskIDPrompt()
         previewState = .idle
         statusText = ""
         errorMessage = nil
         previewResult = nil
         previewResults = []
+    }
+
+    private func clearTaskIDPrompt() {
+        taskIDPrompt = nil
+        activeTaskIDRequestID = nil
+        clearEditorInputLock()
+    }
+
+    private func scheduleDeferredEditorInputLock() {
+        let token = UUID()
+        editorInputLockToken = token
+        Task { @MainActor in
+            guard self.editorInputLockToken == token, self.taskIDPrompt != nil else {
+                return
+            }
+            self.editorInputLocked = true
+        }
+    }
+
+    private func clearEditorInputLock() {
+        editorInputLockToken = nil
+        if editorInputLocked {
+            editorInputLocked = false
+        }
     }
 
     private func announceStatus(_ message: String) {
@@ -596,8 +617,7 @@ final class CapturePanelModel: ObservableObject {
         guard let prompt = taskIDPrompt else {
             return
         }
-        activeTaskIDRequestID = nil
-        taskIDPrompt = nil
+        clearTaskIDPrompt()
         selectedCompletionIndex = prompt.selectedCompletionIndex
         if clearCompletion {
             dismissCompletion()
@@ -715,6 +735,7 @@ final class CapturePanelModel: ObservableObject {
         )
         statusText = "Add block ID"
         requestFocus(.taskIDPromptBlockID)
+        scheduleDeferredEditorInputLock()
     }
 
     private func completeTaskIDAssignment(
@@ -751,7 +772,7 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
 
-            taskIDPrompt = nil
+            clearTaskIDPrompt()
             dismissCompletion()
             suppressedCompletionAcceptanceDraft = text
             setPlainDraft(

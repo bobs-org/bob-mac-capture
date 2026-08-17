@@ -120,8 +120,10 @@ or expired certificate can require reauthorizing those system permissions.
   the Obsidian-specific contract and row presentation.
 - In the `@route+` task context, Bob may return open tasks that still lack block IDs.
   Ready tasks stay first and insert in one action. Missing-ID rows replace the completion
-  list with an inline **Add block ID** prompt; the draft remains unchanged while the app
-  calls `bob capture-task-id --route ROUTE --task-ref REF --block-id ID --format json`.
+  list with an inline **Add block ID** prompt; opening the prompt moves keyboard focus
+  into the block-ID field so the ID can be typed immediately, and canceling or completing
+  the prompt returns focus to the capture editor. The draft remains unchanged while the
+  app calls `bob capture-task-id --route ROUTE --task-ref REF --block-id ID --format json`.
   Only a confirmed Bob success splices the returned canonical ID into the saved
   replacement range and reruns preview. Cancel and every error keep the draft unchanged.
 - Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through
@@ -194,7 +196,9 @@ or expired certificate can require reauthorizing those system permissions.
 | Control-C | Stash a nonempty draft for this session, then clear and close | Stash a nonempty draft for this session, then clear and close | Stash a nonempty draft for this session, then clear and close |
 
 Every capture action is reachable from the keyboard alone; the hotkey, editor, completion
-list, Stash/Capture/Preview/Discard buttons, and stash picker never require a pointer. The editor
+list, Stash/Capture/Preview/Discard buttons, and stash picker never require a pointer.
+Opening the **Add block ID** prompt moves keyboard focus into the block-ID field;
+canceling or completing the prompt restores focus to the capture editor. The editor
 starts at one visual line, grows and shrinks with rendered content through six visual
 lines, then scrolls internally for longer drafts.
 

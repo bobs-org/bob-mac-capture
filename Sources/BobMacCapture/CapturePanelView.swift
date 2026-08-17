@@ -545,8 +545,14 @@ private struct AutosizingCaptureEditor: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .background(.regularMaterial)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .disabled(model.isSubmitting || model.taskIDPromptVisible)
-                    .focused(focus, equals: .editor)
+                    .disabled(model.isSubmitting || model.editorInputLocked)
+                    .modifier(
+                        CaptureFocusAdoption(
+                            target: .editor,
+                            request: model.focusRequest,
+                            focus: focus
+                        )
+                    )
                     .accessibilityLabel("Capture draft")
                     .onChange(of: String(model.attributedDraft.characters)) { _, _ in
                         model.editorTextDidChange(cursorUTF8Offset: model.collapsedSelectionUTF8Offset())
@@ -617,6 +623,31 @@ private struct CaptureEditorMeasuredHeightKey: PreferenceKey {
 }
 
 @available(macOS 26.0, *)
+private struct CaptureFocusAdoption: ViewModifier {
+    let target: CapturePanelFocusTarget
+    let request: CapturePanelFocusRequest
+    var focus: FocusState<CapturePanelFocusTarget?>.Binding
+
+    func body(content: Content) -> some View {
+        content
+            .focused(focus, equals: target)
+            // `.task(id:)` runs after this control is installed and after the update
+            // that installed it commits, so it can claim a request published in the
+            // same transaction that created the control, and can re-claim one that was
+            // dropped when another control resigned first responder in that
+            // transaction. `id:` re-runs it for every later request (validation error,
+            // Bob failure) without re-stealing focus the control already holds.
+            .task(id: request) {
+                guard request.target == target, focus.wrappedValue != target else {
+                    return
+                }
+                focus.wrappedValue = target
+                CaptureSignpost.event("focus-adopted")
+            }
+    }
+}
+
+@available(macOS 26.0, *)
 private struct TaskIDPromptCard: View {
     @ObservedObject var model: CapturePanelModel
     var focus: FocusState<CapturePanelFocusTarget?>.Binding
@@ -656,7 +687,13 @@ private struct TaskIDPromptCard: View {
                     .textFieldStyle(.plain)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 6)
-                    .focused(focus, equals: .taskIDPromptBlockID)
+                    .modifier(
+                        CaptureFocusAdoption(
+                            target: .taskIDPromptBlockID,
+                            request: model.focusRequest,
+                            focus: focus
+                        )
+                    )
                     .disabled(prompt.isSaving)
                     .onSubmit {
                         model.submitTaskIDPrompt()
