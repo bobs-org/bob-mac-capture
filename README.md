@@ -86,18 +86,20 @@ or expired certificate can require reauthorizing those system permissions.
   footer actions, no empty preview placeholder, no dead space. Its first frame uses a
   conservative compact fallback only until SwiftUI reports rendered editor, auxiliary,
   and footer metrics. After that, the window's height tracks measured content as the
-  editor grows, the completion list appears, the live preview arrives, and errors show
-  or clear, staying anchored at the window's top edge and clamped inside the screen's
-  visible frame. Resizing is instant and unanimated so the content and window never
-  desynchronize. Height is content-owned and not user-draggable; width remains
-  user-resizable and reflows the editor, which is the one case that legitimately changes
-  the content height. Completion, destination, preview, and error details live in the
-  auxiliary overflow region; if the clamp binds (a very small display, very large dynamic
-  type, an unusually long error), that middle region scrolls while the editor and primary
-  controls stay visible. The canceled-draft stash picker grows the panel to show its
-  fixed **Shift-D Delete All** action and up to five draft rows; longer stashes scroll
-  only the row viewport, and screen-constrained layouts preserve the fixed picker action
-  before row height.
+  editor grows with the draft, the completion list appears, the live preview arrives,
+  and errors show or clear, staying anchored at the window's top edge. The editor's
+  ceiling is a screen-derived budget — the visible frame minus margins, persistent
+  chrome, and a reserved minimum for the auxiliary region — not a fixed line count.
+  The window's ceiling is the screen's visible frame minus the 24 pt margins. Resizing
+  is instant and unanimated so the content and window never desynchronize. Height is
+  content-owned and not user-draggable; width remains user-resizable and reflows the
+  editor, which is the one case that legitimately changes the content height.
+  Completion, destination, preview, and error details live in the auxiliary overflow
+  region. When the budget binds, the editor scrolls internally, that middle region
+  keeps its reserved minimum and scrolls, and the footer actions always stay visible.
+  The canceled-draft stash picker grows the panel to show its fixed **Shift-D Delete
+  All** action and up to five draft rows; longer stashes scroll only the row viewport,
+  and screen-constrained layouts preserve the fixed picker action before row height.
 - `CaptureCore` imports only Foundation and runs `bob` directly through `Process` with
   argv arrays and an explicit GUI-safe environment.
 - Editor highlighting is derived from `bob capture-parse --format json` spans. The app

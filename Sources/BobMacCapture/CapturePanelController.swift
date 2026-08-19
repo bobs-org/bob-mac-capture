@@ -160,6 +160,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return NSSize(width: frameSize.width, height: appliedContentHeight + Self.chromeHeight(for: panel))
     }
 
+    func windowDidChangeScreen(_: Notification) {
+        updateAvailableScreenHeight()
+        applyLatestContentMetricsIfPossible()
+    }
+
     /// Receives rendered SwiftUI metrics and caches them before trying to apply them to
     /// the live panel. Reports can arrive during prewarm or a reentrant resize; neither
     /// case should lose the newest measurement.
@@ -180,6 +185,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
 
         pendingRecenter = true
+        updateAvailableScreenHeight()
         panel.contentView?.layoutSubtreeIfNeeded()
         if latestContentMetrics == nil {
             applyFallbackContentHeight(force: true)
@@ -207,7 +213,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
 
         let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
-        let sizer = CapturePanelWindowSizer(displayScale: panel.screen?.backingScaleFactor ?? 1)
+        updateAvailableScreenHeight(visibleFrame?.height)
+        let sizer = CapturePanelWindowSizer(
+            maximumContentHeight: visibleFrame == nil ? CapturePanelLayout.panelMaximumContentHeight : nil,
+            displayScale: panel.screen?.backingScaleFactor ?? 1
+        )
         let target = sizer.contentHeight(
             for: metrics,
             availableScreenHeight: visibleFrame?.height
@@ -235,15 +245,15 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             panel.setContentSize(NSSize(width: panel.frame.width, height: target))
             panel.center()
             pendingRecenter = false
-        } else {
-            let frame = sizer.frame(
-                forCurrentFrame: panel.frame,
-                contentHeight: target,
-                chromeHeight: Self.chromeHeight(for: panel),
-                visibleFrame: visibleFrame ?? Self.unlimitedVisibleFrame
-            )
-            panel.setFrame(frame, display: true, animate: false)
         }
+
+        let frame = sizer.frame(
+            forCurrentFrame: panel.frame,
+            contentHeight: target,
+            chromeHeight: Self.chromeHeight(for: panel),
+            visibleFrame: visibleFrame ?? Self.unlimitedVisibleFrame
+        )
+        panel.setFrame(frame, display: true, animate: false)
     }
 
     private func applyLatestContentMetricsIfPossible(force: Bool = false) {
@@ -271,6 +281,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let created = Self.makePanel()
         created.delegate = self
         panel = created
+        updateAvailableScreenHeight()
         let hostingView = NSHostingView(
             rootView: CapturePanelView(model: model) { [weak self] metrics in
                 self?.receiveContentMetrics(metrics)
@@ -278,9 +289,24 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         )
         hostingView.sizingOptions = []
         created.contentView = hostingView
+        updateAvailableScreenHeight()
         created.contentView?.layoutSubtreeIfNeeded()
         applyLatestContentMetricsIfPossible()
         return created
+    }
+
+    /// Publishes the hosting screen's visible height to the model so SwiftUI can budget
+    /// the editor against it. Assigns only on an actual change to avoid a metrics
+    /// feedback loop; the budget depends on the screen, never on the applied window
+    /// height.
+    private func updateAvailableScreenHeight(_ height: CGFloat? = nil) {
+        let resolved = height
+            ?? panel?.screen?.visibleFrame.height
+            ?? NSScreen.main?.visibleFrame.height
+        guard model.availableScreenHeight != resolved else {
+            return
+        }
+        model.availableScreenHeight = resolved
     }
 
     private static func chromeHeight(for panel: NSPanel) -> CGFloat {

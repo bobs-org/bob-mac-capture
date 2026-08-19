@@ -249,6 +249,45 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(grown.height, 600)
     }
 
+    func testSizerUsesScreenLimitAsSoleCeilingWhenMaximumIsNil() {
+        let sizer = CapturePanelWindowSizer(
+            minimumContentHeight: 100,
+            maximumContentHeight: nil,
+            screenMargin: 24,
+            displayScale: 1
+        )
+        let availableScreenHeight: CGFloat = 800
+        let screenLimit = availableScreenHeight - 2 * 24
+
+        XCTAssertEqual(
+            sizer.contentHeight(
+                for: contentMetrics(ideal: 10_000, minimum: 120),
+                availableScreenHeight: availableScreenHeight
+            ),
+            screenLimit
+        )
+        XCTAssertEqual(screenLimit, 752)
+    }
+
+    func testSizerDoesNotRoundAboveScreenLimit() {
+        let sizer = CapturePanelWindowSizer(
+            minimumContentHeight: 100,
+            maximumContentHeight: nil,
+            screenMargin: 24,
+            displayScale: 2
+        )
+        let availableScreenHeight: CGFloat = 801.25
+        let rawScreenLimit = availableScreenHeight - 2 * 24
+        let result = sizer.contentHeight(
+            for: contentMetrics(ideal: 10_000, minimum: 120),
+            availableScreenHeight: availableScreenHeight
+        )
+
+        XCTAssertLessThanOrEqual(result, rawScreenLimit)
+        XCTAssertEqual(result, 753)
+        XCTAssertEqual(rawScreenLimit, 753.25)
+    }
+
     @MainActor
     func testReceiveContentMetricsGrowsAndKeepsTopEdge() {
         let model = CapturePanelModel()
@@ -907,28 +946,188 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertGreaterThan(model.focusRequest.sequence, promptFocusSequence)
     }
 
-    func testEditorHeightPolicyUsesOneLineMinimumAndSixLineCap() {
+    func testEditorHeightPolicyUsesOneLineMinimumAndInjectedCap() {
         let policy = CaptureEditorHeightPolicy(
             lineHeight: 20,
             verticalPadding: 20,
-            maximumVisibleLines: 6,
+            maximumHeight: 140,
             displayScale: 2
         )
 
         let oneLineHeight = policy.resolvedHeight(forMeasuredTextHeight: 0)
         let threeLineHeight = policy.resolvedHeight(forMeasuredTextHeight: 60)
-        let sixLineHeight = policy.resolvedHeight(forMeasuredTextHeight: 120)
+        let cappedHeight = policy.resolvedHeight(forMeasuredTextHeight: 120)
         let overflowingHeight = policy.resolvedHeight(forMeasuredTextHeight: 180)
+        let pixelRoundedHeight = policy.resolvedHeight(forMeasuredTextHeight: 21.25)
 
         XCTAssertEqual(oneLineHeight, 40)
         XCTAssertEqual(policy.resolvedHeight(forMeasuredTextHeight: 12), oneLineHeight)
         XCTAssertGreaterThan(threeLineHeight, oneLineHeight)
         XCTAssertEqual(threeLineHeight, 80)
-        XCTAssertEqual(sixLineHeight, 140)
-        XCTAssertEqual(overflowingHeight, sixLineHeight)
-        XCTAssertEqual(policy.visibleLineCount(forMeasuredTextHeight: 0), 1)
-        XCTAssertEqual(policy.visibleLineCount(forMeasuredTextHeight: 60), 3)
-        XCTAssertEqual(policy.visibleLineCount(forMeasuredTextHeight: 180), 6)
+        XCTAssertEqual(cappedHeight, 140)
+        XCTAssertEqual(overflowingHeight, cappedHeight)
+        XCTAssertEqual(pixelRoundedHeight, 41.5)
+        XCTAssertEqual(policy.minimumHeight, 40)
+
+        let tighterThanMinimum = CaptureEditorHeightPolicy(
+            lineHeight: 20,
+            verticalPadding: 20,
+            maximumHeight: 10,
+            displayScale: 2
+        )
+        XCTAssertEqual(
+            tighterThanMinimum.resolvedHeight(forMeasuredTextHeight: 100),
+            tighterThanMinimum.minimumHeight
+        )
+    }
+
+    func testEditorHeightBudgetGrowsOnTallScreensAndReservesAuxiliary() {
+        let footerHeight: CGFloat = 40
+        let tallScreen: CGFloat = 1600
+        let contentPolicy = CapturePanelContentHeightPolicy()
+        let none = CaptureEditorHeightBudget(
+            availableScreenHeight: tallScreen,
+            footerHeight: footerHeight,
+            auxiliary: nil,
+            contentPolicy: contentPolicy
+        )
+        let overflowingAuxiliary = CaptureEditorHeightBudget(
+            availableScreenHeight: tallScreen,
+            footerHeight: footerHeight,
+            auxiliary: .overflow(idealHeight: 200),
+            contentPolicy: contentPolicy
+        )
+        let shortAuxiliary = CaptureEditorHeightBudget(
+            availableScreenHeight: tallScreen,
+            footerHeight: footerHeight,
+            auxiliary: .overflow(idealHeight: 50),
+            contentPolicy: contentPolicy
+        )
+
+        XCTAssertGreaterThan(none.maximumHeight, 152)
+        XCTAssertEqual(
+            none.maximumHeight - overflowingAuxiliary.maximumHeight,
+            CapturePanelLayout.sectionSpacing + CapturePanelLayout.auxiliaryReservedHeight
+        )
+        XCTAssertEqual(
+            none.maximumHeight - shortAuxiliary.maximumHeight,
+            CapturePanelLayout.sectionSpacing + 50
+        )
+
+        let stash = CanceledDraftStashPickerHeightPolicy(entryCount: 1).auxiliaryHeight
+        let withStash = CaptureEditorHeightBudget(
+            availableScreenHeight: tallScreen,
+            footerHeight: footerHeight,
+            auxiliary: stash,
+            contentPolicy: contentPolicy
+        )
+        XCTAssertGreaterThanOrEqual(
+            none.maximumHeight - withStash.maximumHeight,
+            CapturePanelLayout.sectionSpacing + stash.minimumVisibleHeight
+        )
+    }
+
+    func testEditorHeightBudgetNeverDropsBelowOneLineMinimum() {
+        let short = CaptureEditorHeightBudget(
+            availableScreenHeight: 400,
+            footerHeight: 40,
+            auxiliary: nil
+        )
+        let tiny = CaptureEditorHeightBudget(
+            availableScreenHeight: 80,
+            footerHeight: 40,
+            auxiliary: .overflow(idealHeight: 200)
+        )
+
+        XCTAssertGreaterThanOrEqual(short.maximumHeight, short.minimumEditorHeight)
+        XCTAssertEqual(tiny.maximumHeight, tiny.minimumEditorHeight)
+        XCTAssertGreaterThan(tiny.maximumHeight, 0)
+    }
+
+    func testEditorHeightBudgetFallsBackToPanelMaximumWhenScreenIsUnknown() {
+        let footerHeight: CGFloat = 40
+        let unknown = CaptureEditorHeightBudget(
+            availableScreenHeight: nil,
+            footerHeight: footerHeight,
+            auxiliary: nil
+        )
+        let equivalentScreen = CaptureEditorHeightBudget(
+            availableScreenHeight: CapturePanelLayout.panelMaximumContentHeight
+                + 2 * CapturePanelLayout.panelScreenMargin,
+            footerHeight: footerHeight,
+            auxiliary: nil
+        )
+
+        XCTAssertEqual(unknown.maximumHeight, equivalentScreen.maximumHeight)
+        XCTAssertEqual(
+            unknown.maximumHeight,
+            CapturePanelLayout.panelMaximumContentHeight
+                - CapturePanelContentHeightPolicy().nonEditorChromeHeight(
+                    footerHeight: footerHeight,
+                    hasAuxiliary: false
+                )
+        )
+    }
+
+    func testLongDraftOnTallScreenResolvesToExactScreenLimit() {
+        let availableScreenHeight: CGFloat = 900
+        let footerHeight: CGFloat = 40
+        let displayScale: CGFloat = 1
+        let contentPolicy = CapturePanelContentHeightPolicy(displayScale: displayScale)
+        let screenLimit = availableScreenHeight - 2 * CapturePanelLayout.panelScreenMargin
+
+        let compactBudget = CaptureEditorHeightBudget(
+            availableScreenHeight: availableScreenHeight,
+            footerHeight: footerHeight,
+            auxiliary: nil,
+            contentPolicy: contentPolicy
+        )
+        let compactEditor = CaptureEditorHeightPolicy(
+            maximumHeight: compactBudget.maximumHeight,
+            displayScale: displayScale
+        ).resolvedHeight(forMeasuredTextHeight: 10_000)
+        let compactMetrics = contentPolicy.metrics(
+            editorHeight: compactEditor,
+            auxiliaryHeight: nil,
+            footerHeight: footerHeight
+        )
+        let sizer = CapturePanelWindowSizer(
+            maximumContentHeight: nil,
+            displayScale: displayScale
+        )
+
+        XCTAssertEqual(compactEditor, compactBudget.maximumHeight)
+        XCTAssertEqual(compactMetrics.idealContentHeight, screenLimit)
+        XCTAssertEqual(
+            sizer.contentHeight(for: compactMetrics, availableScreenHeight: availableScreenHeight),
+            screenLimit
+        )
+
+        let auxiliary = CapturePanelAuxiliaryHeight.overflow(
+            idealHeight: CapturePanelLayout.auxiliaryReservedHeight
+        )
+        let auxiliaryBudget = CaptureEditorHeightBudget(
+            availableScreenHeight: availableScreenHeight,
+            footerHeight: footerHeight,
+            auxiliary: auxiliary,
+            contentPolicy: contentPolicy
+        )
+        let auxiliaryEditor = CaptureEditorHeightPolicy(
+            maximumHeight: auxiliaryBudget.maximumHeight,
+            displayScale: displayScale
+        ).resolvedHeight(forMeasuredTextHeight: 10_000)
+        let auxiliaryMetrics = contentPolicy.metrics(
+            editorHeight: auxiliaryEditor,
+            auxiliary: auxiliary,
+            footerHeight: footerHeight
+        )
+
+        XCTAssertEqual(auxiliaryEditor, auxiliaryBudget.maximumHeight)
+        XCTAssertEqual(auxiliaryMetrics.idealContentHeight, screenLimit)
+        XCTAssertEqual(
+            sizer.contentHeight(for: auxiliaryMetrics, availableScreenHeight: availableScreenHeight),
+            screenLimit
+        )
     }
 
     @MainActor

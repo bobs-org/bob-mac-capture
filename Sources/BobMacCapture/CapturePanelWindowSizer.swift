@@ -5,7 +5,10 @@ import AppKit
 /// applies the result.
 struct CapturePanelWindowSizer: Equatable {
     var minimumContentHeight: CGFloat = CapturePanelLayout.panelMinimumContentHeight
-    var maximumContentHeight: CGFloat = CapturePanelLayout.panelMaximumContentHeight
+    /// Artificial content-height cap. `nil` (the default) means no cap beyond the
+    /// screen limit. Tests and the no-screen controller path pass a value; a live
+    /// panel with a known screen does not.
+    var maximumContentHeight: CGFloat? = nil
     var screenMargin: CGFloat = CapturePanelLayout.panelScreenMargin
     var displayScale: CGFloat = 1
 
@@ -16,17 +19,23 @@ struct CapturePanelWindowSizer: Equatable {
         availableScreenHeight: CGFloat?
     ) -> CGFloat {
         let persistentMinimum = max(metrics.minimumVisibleContentHeight, minimumContentHeight)
-        var clamped = min(max(metrics.idealContentHeight, persistentMinimum), maximumContentHeight)
-        clamped = max(clamped, persistentMinimum)
+        var clamped = max(metrics.idealContentHeight, persistentMinimum)
+        if let maximumContentHeight {
+            clamped = min(clamped, maximumContentHeight)
+            clamped = max(clamped, persistentMinimum)
+        }
 
         if let availableScreenHeight {
-            let screenLimit = max(1, availableScreenHeight - 2 * screenMargin)
+            // Round the screen limit down to the pixel grid *before* clamping so the
+            // subsequent round-up cannot return a value a fraction of a point above
+            // the visible frame.
+            let screenLimit = max(1, roundedDownToPixel(availableScreenHeight - 2 * screenMargin))
             if screenLimit < persistentMinimum {
-                clamped = screenLimit
-            } else {
-                clamped = min(clamped, screenLimit)
-                clamped = max(clamped, persistentMinimum)
+                return screenLimit
             }
+            clamped = min(clamped, screenLimit)
+            clamped = max(clamped, persistentMinimum)
+            return min(roundedToPixel(clamped), screenLimit)
         }
 
         return roundedToPixel(clamped)
@@ -62,5 +71,10 @@ struct CapturePanelWindowSizer: Equatable {
     private func roundedToPixel(_ value: CGFloat) -> CGFloat {
         let scale = max(displayScale, 1)
         return (value * scale).rounded(.up) / scale
+    }
+
+    private func roundedDownToPixel(_ value: CGFloat) -> CGFloat {
+        let scale = max(displayScale, 1)
+        return (value * scale).rounded(.down) / scale
     }
 }

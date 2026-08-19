@@ -12,7 +12,6 @@ enum CapturePanelLayout {
 
     static let editorContentPadding: CGFloat = 10
     static let editorLineHeight: CGFloat = 22
-    static let editorMaximumVisibleLines = 6
     static let completionVisibleRows = 5
     static let completionRowHeight: CGFloat = 48
     static let completionViewportHeight = completionRowHeight * CGFloat(completionVisibleRows) + 12
@@ -42,8 +41,16 @@ enum CapturePanelLayout {
     /// Hard floor guarding only against a degenerate measurement; deliberately below the
     /// real compact height so a correct measurement is never inflated.
     static let panelMinimumContentHeight: CGFloat = 96
+    /// Fallback content-height ceiling used only when no screen is known (headless
+    /// tests, a panel that has not yet been placed). A live panel on a real screen is
+    /// limited solely by that screen's visible frame minus `panelScreenMargin`.
     static let panelMaximumContentHeight: CGFloat = 720
     static let panelScreenMargin: CGFloat = 24
+    /// Minimum height reserved for the auxiliary region (completion, destination,
+    /// preview, error) when the editor budget binds. Roughly a two-line destination
+    /// summary plus spacing; a shorter auxiliary never over-reserves, and the stash
+    /// picker keeps its own `minimumVisibleHeight` floor.
+    static let auxiliaryReservedHeight: CGFloat = 88
 
     static let panelInitialContentSize = CGSize(
         width: panelInitialContentWidth,
@@ -55,27 +62,28 @@ enum CapturePanelLayout {
 struct CaptureEditorHeightPolicy: Equatable {
     var lineHeight: CGFloat = CapturePanelLayout.editorLineHeight
     var verticalPadding: CGFloat = CapturePanelLayout.editorContentPadding * 2
-    var maximumVisibleLines: Int = CapturePanelLayout.editorMaximumVisibleLines
+    /// Injected ceiling. `nil` means unbounded; `CapturePanelView` always supplies a
+    /// screen-derived (or no-screen fallback) budget so the live editor is never
+    /// unbounded.
+    var maximumHeight: CGFloat? = nil
     var displayScale: CGFloat = 1
 
     var minimumHeight: CGFloat {
         roundedToPixel(lineHeight + verticalPadding)
     }
 
-    var maximumHeight: CGFloat {
-        roundedToPixel(lineHeight * CGFloat(maximumVisibleLines) + verticalPadding)
-    }
-
     func resolvedHeight(forMeasuredTextHeight measuredTextHeight: CGFloat) -> CGFloat {
         let measuredHeight = max(measuredTextHeight, lineHeight)
         let unclampedHeight = measuredHeight + verticalPadding
-        return roundedToPixel(min(max(unclampedHeight, minimumHeight), maximumHeight))
-    }
-
-    func visibleLineCount(forMeasuredTextHeight measuredTextHeight: CGFloat) -> Int {
-        let measuredHeight = max(measuredTextHeight, lineHeight)
-        let measuredLines = Int(ceil(measuredHeight / lineHeight))
-        return min(max(measuredLines, 1), maximumVisibleLines)
+        let floored = max(unclampedHeight, minimumHeight)
+        let rounded = roundedToPixel(floored)
+        guard let maximumHeight else {
+            return rounded
+        }
+        // Never clamp below the one-line minimum, even if the injected ceiling is
+        // smaller than that minimum (a degenerate short-screen budget).
+        let ceiling = max(maximumHeight, minimumHeight)
+        return min(rounded, ceiling)
     }
 
     private func roundedToPixel(_ value: CGFloat) -> CGFloat {
@@ -176,12 +184,10 @@ struct CapturePanelContentHeightPolicy: Equatable {
         let editorHeight = sanitizedHeight(editorHeight)
         let footerHeight = sanitizedHeight(footerHeight)
         let auxiliary = auxiliary.map(sanitizedAuxiliaryHeight)
-        let spacingCount = auxiliary == nil ? 1 : 2
-        let persistentHeight = titlebarDragInset
-            + editorHeight
-            + sectionSpacing * CGFloat(spacingCount)
-            + footerHeight
-            + rootPadding
+        let persistentHeight = nonEditorChromeHeight(
+            footerHeight: footerHeight,
+            hasAuxiliary: auxiliary != nil
+        ) + editorHeight
         let idealHeight = persistentHeight + (auxiliary?.idealHeight ?? 0)
         let minimumVisibleHeight = persistentHeight + (auxiliary?.minimumVisibleHeight ?? 0)
 
@@ -189,6 +195,17 @@ struct CapturePanelContentHeightPolicy: Equatable {
             idealContentHeight: roundedToPixel(idealHeight),
             minimumVisibleContentHeight: roundedToPixel(minimumVisibleHeight)
         )
+    }
+
+    /// Persistent chrome excluding the editor: titlebar inset, inter-section spacing,
+    /// footer, and root padding. Shared with `CaptureEditorHeightBudget` so the editor
+    /// ceiling and the panel metrics agree on spacing count.
+    func nonEditorChromeHeight(footerHeight: CGFloat, hasAuxiliary: Bool) -> CGFloat {
+        let spacingCount = hasAuxiliary ? 2 : 1
+        return titlebarDragInset
+            + sectionSpacing * CGFloat(spacingCount)
+            + sanitizedHeight(footerHeight)
+            + rootPadding
     }
 
     private func sanitizedHeight(_ value: CGFloat) -> CGFloat {
@@ -209,6 +226,42 @@ struct CapturePanelContentHeightPolicy: Equatable {
     private func roundedToPixel(_ value: CGFloat) -> CGFloat {
         let scale = max(displayScale, 1)
         return (value * scale).rounded(.up) / scale
+    }
+}
+
+/// Screen-derived ceiling for the capture editor. Given the available screen height,
+/// measured footer, and auxiliary state, answers how tall the editor may grow.
+struct CaptureEditorHeightBudget: Equatable {
+    var availableScreenHeight: CGFloat?
+    var footerHeight: CGFloat
+    var auxiliary: CapturePanelAuxiliaryHeight?
+    var contentPolicy: CapturePanelContentHeightPolicy = CapturePanelContentHeightPolicy()
+    var screenMargin: CGFloat = CapturePanelLayout.panelScreenMargin
+    var auxiliaryReservedHeight: CGFloat = CapturePanelLayout.auxiliaryReservedHeight
+    var minimumEditorHeight: CGFloat = CaptureEditorHeightPolicy().minimumHeight
+    var fallbackMaximumContentHeight: CGFloat = CapturePanelLayout.panelMaximumContentHeight
+
+    var maximumHeight: CGFloat {
+        let screenLimit: CGFloat
+        if let availableScreenHeight {
+            screenLimit = max(1, availableScreenHeight - 2 * screenMargin)
+        } else {
+            screenLimit = fallbackMaximumContentHeight
+        }
+
+        let chrome = contentPolicy.nonEditorChromeHeight(
+            footerHeight: footerHeight,
+            hasAuxiliary: auxiliary != nil
+        )
+        let auxiliaryReserve: CGFloat
+        if let auxiliary {
+            let floor = max(auxiliaryReservedHeight, auxiliary.minimumVisibleHeight)
+            auxiliaryReserve = min(max(auxiliary.idealHeight, 0), floor)
+        } else {
+            auxiliaryReserve = 0
+        }
+
+        return max(minimumEditorHeight, screenLimit - chrome - auxiliaryReserve)
     }
 }
 
@@ -247,18 +300,44 @@ struct CapturePanelView: View {
             .onChange(of: displayScale) { _, _ in
                 reportContentMetrics()
             }
+            .onChange(of: model.availableScreenHeight) { _, _ in
+                reportContentMetrics()
+            }
+            .onChange(of: measuredFooterHeight) { _, _ in
+                reportContentMetrics()
+            }
+    }
+
+    private var editorHeightPolicy: CaptureEditorHeightPolicy {
+        let contentPolicy = CapturePanelContentHeightPolicy(displayScale: displayScale)
+        let budget = CaptureEditorHeightBudget(
+            availableScreenHeight: model.availableScreenHeight,
+            footerHeight: measuredFooterHeight,
+            auxiliary: currentAuxiliaryHeight,
+            contentPolicy: contentPolicy,
+            minimumEditorHeight: CaptureEditorHeightPolicy(displayScale: displayScale).minimumHeight
+        )
+        return CaptureEditorHeightPolicy(
+            maximumHeight: budget.maximumHeight,
+            displayScale: displayScale
+        )
     }
 
     private var content: some View {
         VStack(alignment: .leading, spacing: CapturePanelLayout.sectionSpacing) {
-            AutosizingCaptureEditor(model: model, selection: $model.editorSelection, focus: $focusedControl)
-                .fixedSize(horizontal: false, vertical: true)
-                .layoutPriority(2)
-                .onGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.size.height
-                } action: { height in
-                    updateMeasuredEditorHeight(height)
-                }
+            AutosizingCaptureEditor(
+                model: model,
+                selection: $model.editorSelection,
+                focus: $focusedControl,
+                heightPolicy: editorHeightPolicy
+            )
+            .fixedSize(horizontal: false, vertical: true)
+            .layoutPriority(2)
+            .onGeometryChange(for: CGFloat.self) { geometry in
+                geometry.size.height
+            } action: { height in
+                updateMeasuredEditorHeight(height)
+            }
 
             if hasAuxiliaryContent {
                 auxiliaryRegion
@@ -516,12 +595,9 @@ private struct AutosizingCaptureEditor: View {
     @ObservedObject var model: CapturePanelModel
     @Binding var selection: AttributedTextSelection
     var focus: FocusState<CapturePanelFocusTarget?>.Binding
-    @Environment(\.displayScale) private var displayScale
+    var heightPolicy: CaptureEditorHeightPolicy
     @State private var editorHeight = CaptureEditorHeightPolicy().minimumHeight
-
-    private var policy: CaptureEditorHeightPolicy {
-        CaptureEditorHeightPolicy(displayScale: displayScale)
-    }
+    @State private var measuredTextHeight: CGFloat = 0
 
     private var textInset: CGFloat {
         CapturePanelLayout.editorContentPadding
@@ -540,7 +616,7 @@ private struct AutosizingCaptureEditor: View {
                     .font(editorFont)
                     .textEditorStyle(.plain)
                     .scrollContentBackground(.hidden)
-                    .frame(height: max(policy.lineHeight, editorHeight - textInset * 2))
+                    .frame(height: max(heightPolicy.lineHeight, editorHeight - textInset * 2))
                     .padding(textInset)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .background(.regularMaterial)
@@ -582,6 +658,9 @@ private struct AutosizingCaptureEditor: View {
         .onPreferenceChange(CaptureEditorMeasuredHeightKey.self) { measuredTextHeight in
             updateHeight(forMeasuredTextHeight: measuredTextHeight)
         }
+        .onChange(of: heightPolicy) { _, _ in
+            updateHeight(forMeasuredTextHeight: measuredTextHeight)
+        }
     }
 
     private var sizingString: String {
@@ -606,7 +685,8 @@ private struct AutosizingCaptureEditor: View {
     }
 
     private func updateHeight(forMeasuredTextHeight measuredTextHeight: CGFloat) {
-        let nextHeight = policy.resolvedHeight(forMeasuredTextHeight: measuredTextHeight)
+        self.measuredTextHeight = measuredTextHeight
+        let nextHeight = heightPolicy.resolvedHeight(forMeasuredTextHeight: measuredTextHeight)
         guard nextHeight != editorHeight else {
             return
         }

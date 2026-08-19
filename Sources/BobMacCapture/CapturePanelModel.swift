@@ -62,6 +62,10 @@ final class CapturePanelModel: ObservableObject {
     @Published var taskIDPrompt: CaptureTaskIDPromptState?
     @Published private(set) var focusRequest = CapturePanelFocusRequest(sequence: 0, target: .editor)
     @Published private(set) var editorInputLocked = false
+    /// Visible-frame height of the screen hosting the panel. `nil` until the controller
+    /// observes a screen; the editor height budget then falls back to
+    /// `CapturePanelLayout.panelMaximumContentHeight`.
+    @Published var availableScreenHeight: CGFloat?
 
     var processClient: BobProcessClient?
     var notificationService: NotificationService?
