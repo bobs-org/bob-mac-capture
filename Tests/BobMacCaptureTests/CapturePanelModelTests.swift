@@ -1165,6 +1165,132 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertFalse(model.completionVisible)
     }
 
+    func testHashAfterResolvedSubBulletOpensTaskSectionCompletion() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "Postgres 17 minimum @foo+bar#"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.completionResponse?.context == "task_section" }
+
+        XCTAssertTrue(model.completionVisible)
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 29, end: 29))
+        XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "requirements")
+        XCTAssertEqual(model.completionResponse?.candidates.first?.title, "REQUIREMENTS")
+        XCTAssertEqual(model.completionResponse?.candidates.first?.text, "Parent task")
+        XCTAssertEqual(model.completionResponse?.candidates.first?.blockID, "bar")
+        XCTAssertEqual(model.completionResponse?.candidates.first?.childCount, 2)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-complete --all-tasks --cursor 29 --format json -- Postgres 17 minimum @foo+bar#"
+            )
+        )
+    }
+
+    func testTypedSubBulletSectionKeepsTaskSectionCompletionOpen() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "Postgres 17 minimum @foo+bar#req"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.completionResponse?.context == "task_section" }
+
+        XCTAssertTrue(model.completionVisible)
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 29, end: 32))
+        XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "requirements")
+    }
+
+    func testBareTrailingHashDoesNotOpenTaskSectionCompletion() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "jot idea #"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            guard case .ready = model.previewState else {
+                return false
+            }
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return record.contains("argv=capture-parse --format json -- jot idea #")
+                && record.contains("argv=capture --dry-run --no-clip --format json -- jot idea #")
+        }
+        // Live preview is recorded before the completion request, so wait long
+        // enough that a task-section complete would have been invoked.
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertNil(model.completionResponse)
+        XCTAssertFalse(model.completionVisible)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertFalse(record.contains("capture-complete"))
+    }
+
+    func testNoteBulletHashStillOpensSectionCompletion() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "jot idea @foo#"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.completionResponse?.context == "section" }
+
+        XCTAssertTrue(model.completionVisible)
+        XCTAssertEqual(model.completionResponse?.candidates.first?.title, "Ideas")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-complete --all-tasks --cursor 14 --format json -- jot idea @foo#"
+            )
+        )
+    }
+
+    func testAcceptingTaskSectionCandidateInsertsSlugAndLandsCaret() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "Postgres 17 minimum @foo+bar#"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.completionResponse?.context == "task_section" }
+
+        model.acceptSelectedCompletion()
+
+        let accepted = "Postgres 17 minimum @foo+bar#requirements"
+        XCTAssertEqual(model.plainDraft, accepted)
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), accepted.utf8.count)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertNil(model.taskIDPrompt)
+    }
+
     func testMissingTaskCompletionOpensTaskIDPromptWithoutChangingDraft() {
         let model = CapturePanelModel()
         installMissingTaskCompletion(on: model)

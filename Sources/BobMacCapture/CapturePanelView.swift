@@ -1029,6 +1029,8 @@ private struct CompletionList: View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: 2) {
+                    // Ready-to-use / Needs-block-ID grouping is specific to the `task`
+                    // context. Task-section rows stay a plain ungrouped list.
                     if model.completionResponse?.context == "task" {
                         taskGroup(title: "Ready to use", rows: taskRows(requiresBlockID: false))
                         taskGroup(title: "Needs block ID", rows: taskRows(requiresBlockID: true))

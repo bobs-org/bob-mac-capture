@@ -1121,7 +1121,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func shouldRequestCompletion(parse: CaptureParseResponse, cursor: Int) -> Bool {
-        let completionNeeds = Set(["route", "section", "pomodoro_id", "task"])
+        let completionNeeds = Set(["route", "section", "pomodoro_id", "task", "task_section"])
         if !completionNeeds.isDisjoint(with: Set(parse.needs)) {
             return true
         }
@@ -1134,6 +1134,7 @@ final class CapturePanelModel: ObservableObject {
             "pomodoro_block_id",
             "sub_bullet_route",
             "sub_bullet_block_id",
+            "sub_bullet_section",
             "interactive_placeholder",
             "wikilink_delimiter",
             "wikilink_target",

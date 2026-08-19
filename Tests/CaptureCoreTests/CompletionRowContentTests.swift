@@ -53,6 +53,62 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.primaryMatchRange, 0..<3)
     }
 
+    func testTaskSectionContextShowsTitleParentTaskAndItemCountBadges() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "requirements",
+            title: "REQUIREMENTS",
+            blockID: "bar",
+            text: "Parent task",
+            childCount: 2
+        )
+
+        let content = completionRowContent(for: candidate, context: "task_section", query: "req")
+
+        XCTAssertEqual(content.category, .section)
+        XCTAssertEqual(content.symbolName, "list.bullet.rectangle")
+        XCTAssertEqual(content.contextLabel, "Task Section")
+        XCTAssertEqual(content.primaryText, "REQUIREMENTS")
+        XCTAssertEqual(content.secondaryText, "Parent task")
+        XCTAssertEqual(content.badges, ["^bar", "2 items"])
+        XCTAssertEqual(content.primaryMatchRange, 0..<3)
+        XCTAssertEqual(content.accessibilityHint, "Nests the capture under this task section.")
+        XCTAssertEqual(
+            content.accessibilityLabel,
+            "Task Section, REQUIREMENTS, Parent task, ^bar, 2 items"
+        )
+    }
+
+    func testTaskSectionContextEmptySectionUsesEmptyBadge() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "requirements",
+            title: "REQUIREMENTS",
+            blockID: "bar",
+            text: "Parent task",
+            childCount: 0
+        )
+
+        let content = completionRowContent(for: candidate, context: "task_section", query: "")
+
+        XCTAssertEqual(content.badges, ["^bar", "Empty"])
+        XCTAssertNil(content.primaryMatchRange)
+    }
+
+    func testTaskSectionContextShowsMultiWordTitle() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "future-work",
+            title: "FUTURE WORK",
+            blockID: "bar",
+            text: "Parent task",
+            childCount: 1
+        )
+
+        let content = completionRowContent(for: candidate, context: "task_section", query: "future")
+
+        XCTAssertEqual(content.primaryText, "FUTURE WORK")
+        XCTAssertEqual(content.primaryMatchRange, 0..<6)
+        XCTAssertEqual(content.badges, ["^bar", "1 items"])
+    }
+
     func testTaskContextShowsTextSectionStatusAndBlockBadges() {
         let candidate = CaptureCompletionCandidate(
             replacement: "goog-exit",
@@ -212,6 +268,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_route"), .route)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "sub_bullet_route"), .route)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "section"), .section)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "sub_bullet_section"), .section)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "sub_bullet_block_id"), .blockID)
@@ -232,6 +289,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(CaptureCompletionContext(rawContext: "section"), .section)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "pomodoro_block_id"), .pomodoroBlockID)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "task"), .task)
+        XCTAssertEqual(CaptureCompletionContext(rawContext: "task_section"), .taskSection)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "wikilink_note"), .wikilinkNote)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "wikilink_heading"), .wikilinkHeading)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "wikilink_block"), .wikilinkBlock)

@@ -276,6 +276,97 @@ JSON
    "body":"Second item","mode":"bullet","route":"notes","section":"Ideas","needs":[]}
 ]}
 JSON
+    elif [[ "${draft}" == "Postgres 17 minimum @foo+bar#" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Postgres 17 minimum @foo+bar#",
+  "body": "Postgres 17 minimum",
+  "mode": "incomplete",
+  "route": "foo",
+  "block_id": "bar",
+  "needs": ["task_section"],
+  "spans": [
+    { "start": 20, "end": 24, "kind": "sub_bullet_route" },
+    { "start": 25, "end": 28, "kind": "sub_bullet_block_id" },
+    { "start": 28, "end": 29, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "Postgres 17 minimum @foo+bar#req" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Postgres 17 minimum @foo+bar#req",
+  "body": "Postgres 17 minimum",
+  "mode": "sub_bullet",
+  "route": "foo",
+  "block_id": "bar",
+  "section": "req",
+  "needs": [],
+  "spans": [
+    { "start": 20, "end": 24, "kind": "sub_bullet_route" },
+    { "start": 25, "end": 28, "kind": "sub_bullet_block_id" },
+    { "start": 29, "end": 32, "kind": "sub_bullet_section" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "Postgres 17 minimum @foo+bar#requirements" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Postgres 17 minimum @foo+bar#requirements",
+  "body": "Postgres 17 minimum",
+  "mode": "sub_bullet",
+  "route": "foo",
+  "block_id": "bar",
+  "section": "requirements",
+  "needs": [],
+  "spans": [
+    { "start": 20, "end": 24, "kind": "sub_bullet_route" },
+    { "start": 25, "end": 28, "kind": "sub_bullet_block_id" },
+    { "start": 29, "end": 41, "kind": "sub_bullet_section" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "jot idea #" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "jot idea #",
+  "body": "jot idea",
+  "mode": "pomodoro_note",
+  "needs": [],
+  "spans": [
+    { "start": 9, "end": 10, "kind": "pomodoro_note" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "jot idea @foo#" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "jot idea @foo#",
+  "body": "jot idea",
+  "mode": "bullet",
+  "route": "foo",
+  "needs": ["section"],
+  "spans": [
+    { "start": 9, "end": 13, "kind": "route" },
+    { "start": 13, "end": 14, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": []
+}
+JSON
     else
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
@@ -563,6 +654,63 @@ JSON
   "context": "route",
   "candidates": [
     { "replacement": "notes", "route": "notes", "label": "notes.md", "kind": "area", "status": null }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "Postgres 17 minimum @foo+bar#" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 29, "end": 29 },
+  "context": "task_section",
+  "candidates": [
+    {
+      "replacement": "requirements",
+      "title": "REQUIREMENTS",
+      "route": "foo",
+      "block_id": "bar",
+      "text": "Parent task",
+      "line": 4,
+      "child_count": 2,
+      "cursor_after": 41
+    }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "Postgres 17 minimum @foo+bar#req" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 29, "end": 32 },
+  "context": "task_section",
+  "candidates": [
+    {
+      "replacement": "requirements",
+      "title": "REQUIREMENTS",
+      "route": "foo",
+      "block_id": "bar",
+      "text": "Parent task",
+      "line": 4,
+      "child_count": 2,
+      "cursor_after": 41
+    }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "jot idea @foo#" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 14, "end": 14 },
+  "context": "section",
+  "candidates": [
+    { "replacement": "Ideas", "title": "Ideas", "level": 2 }
   ]
 }
 JSON

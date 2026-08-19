@@ -25,7 +25,7 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
     switch kind {
     case "route", "task_block_id_route", "pomodoro_route", "sub_bullet_route":
         return .route
-    case "section":
+    case "section", "sub_bullet_section":
         return .section
     case "task_block_id", "pomodoro_block_id", "sub_bullet_block_id":
         return .blockID
@@ -60,6 +60,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case section
     case pomodoroBlockID
     case task
+    case taskSection
     case wikilinkNote
     case wikilinkHeading
     case wikilinkBlock
@@ -70,6 +71,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "section": self = .section
         case "pomodoro_block_id": self = .pomodoroBlockID
         case "task": self = .task
+        case "task_section": self = .taskSection
         case "wikilink_note": self = .wikilinkNote
         case "wikilink_heading": self = .wikilinkHeading
         case "wikilink_block": self = .wikilinkBlock
@@ -157,6 +159,19 @@ public func completionRowContent(
             badges = ["H\(level)"]
         }
         accessibilityHint = "Inserts this section heading."
+
+    case .taskSection:
+        category = .section
+        symbolName = "list.bullet.rectangle"
+        contextLabel = "Task Section"
+        primaryText = candidate.title ?? candidate.replacement
+        secondaryText = candidate.text
+        if let blockID = candidate.blockID {
+            badges.append("^\(blockID)")
+        }
+        let childCount = candidate.childCount ?? 0
+        badges.append(childCount == 0 ? "Empty" : "\(childCount) items")
+        accessibilityHint = "Nests the capture under this task section."
 
     case .pomodoroBlockID, .task:
         let needsBlockID = context == .task && candidate.requiresBlockID

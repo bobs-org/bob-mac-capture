@@ -40,9 +40,10 @@ mutation.
   - `~/bin/bob`
   - `/opt/homebrew/bin/bob`
   - `/usr/local/bin/bob`
-- A `bob` build that supports `capture-complete --all-tasks` and
-  `capture-task-id`. Older builds can still capture ordinary drafts, but the Add block
-  ID flow reports the local Bob error until Bob is upgraded.
+- A `bob` build that supports `capture-complete --all-tasks`, `capture-task-id`, and
+  `task_section` completion for `@route+block-id#`. Older builds can still capture
+  ordinary drafts, but the Add block ID flow and the task-section popup report the local
+  Bob error or an empty list until Bob is upgraded.
 
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.
@@ -115,11 +116,13 @@ or expired certificate can require reauthorizing those system permissions.
   `cursor_after` exactly, restoring a collapsed caret at that offset. Route completion
   also covers the route side of Bob's `@route^block-id` ordinary task-with-ID marker;
   the authored ID side has no existing-task picker and an empty completion result is
-  shown as no list.
-  For blank-line-separated drafts, completion still sends the complete draft as one argv
-  value; Bob scopes the answer to the item containing the UTF-8 cursor and returns
-  replacement ranges in draft-global byte offsets. See "Wikilink Completion" below for
-  the Obsidian-specific contract and row presentation.
+  shown as no list. Typing `#` immediately after a resolved `@route+block-id` opens
+  `task_section` completion for that task's ALL-CAPS section bullets; a standalone
+  trailing `#` stays the Pomodoro-note marker and `@route#` stays note-section
+  completion. For blank-line-separated drafts, completion still sends the complete draft
+  as one argv value; Bob scopes the answer to the item containing the UTF-8 cursor and
+  returns replacement ranges in draft-global byte offsets. See "Wikilink Completion"
+  below for the Obsidian-specific contract and row presentation.
 - In the `@route+` task context, Bob may return open tasks that still lack block IDs.
   Ready tasks stay first and insert in one action. Missing-ID rows replace the completion
   list with an inline **Add block ID** prompt; opening the prompt moves keyboard focus
@@ -245,14 +248,15 @@ physical lines. Within each item, the first nonblank line is the parent, followe
 or more authored `-`/`*`/`+` bullets. Column-zero bullets become first-level authored
 children; bullets prefixed by exactly two ASCII spaces become nested authored children
 under the nearest preceding first-level authored child. A marker (`@route`,
-`@route+block-id` for an existing-task sub-bullet, `@route^block-id` for an ordinary task
-with an authored block ID, `s:<N>`, `p:<N>`, `%`, …) at the end of any valid line
+`@route+block-id` for an existing-task sub-bullet, `@route+block-id#section` to nest
+under one of that task's ALL-CAPS section bullets, `@route^block-id` for an ordinary
+task with an authored block ID, `s:<N>`, `p:<N>`, `%`, …) at the end of any valid line
 configures that item even when it appears on a child line. The app never parses that
 punctuation itself: highlighting and completion follow bob-cli's semantic spans. Both
 families complete their route side; only the `+` family's right-hand side offers
-existing tasks, and the `^` family's authored ID has no picker. The retired
-`@route::block-id` spelling is a parse diagnostic from `bob capture-parse`, not a
-supported interactive form.
+existing tasks, `#` after a resolved `@route+block-id` offers that task's sections, and
+the `^` family's authored ID has no picker. The retired `@route::block-id` spelling is a
+parse diagnostic from `bob capture-parse`, not a supported interactive form.
 
 ```text
 Prepare the launch review
@@ -266,10 +270,12 @@ Write release note @notes#Ideas
 
 Bob's routed marker syntax works directly in the editor. `@route^block-id` captures an
 ordinary `[ ]` task with a trailing `^block-id` and no Pomodoro task link, while
-`@route:block-id` keeps the Pomodoro-linked next-task behavior and `@route+block-id`
-nests beneath an existing task. The app does not duplicate those grammar rules; it
-colors the span kinds Bob reports, asks Bob for completion at the real caret, and submits
-the original draft text.
+`@route:block-id` keeps the Pomodoro-linked next-task behavior, `@route+block-id` nests
+beneath an existing task, and `@route+block-id#section` nests under that task's matching
+section bullet. Typing `#` right after a resolved `@route+block-id` opens the
+task-section popup. The app does not duplicate those grammar rules; it colors the span
+kinds Bob reports, asks Bob for completion at the real caret, and submits the original
+draft text.
 
 Ctrl-J starts the next canonical `- ` row from anywhere in the draft, copying exactly the
 current authored row's supported indentation (zero or two ASCII spaces). On a line that
@@ -317,14 +323,15 @@ decodes and presents it.
   closing `]]`, mid-heading, or wherever the candidate specifies.
 
 Each completion row shows a compact SF Symbol and context label for what will be
-inserted (Note/Heading/Block, alongside Destination/Section/Parent Task rows), a
-primary line with restrained emphasis on the part of the text that matched what you
-typed, and a secondary line with the canonical vault-relative path plus small badges —
-`Alias`, a heading level like `H2`, a short block preview, `^block-id`, or `Add ID`.
-`@route+` task suggestions are grouped as **Ready to use** followed by **Needs block
-ID**, preserving Bob's order inside each group. Long paths truncate from the middle,
-keeping the filename intact rather than the leading directory. The selected row's
-accent-tinted fill uses each result's own semantic color (matching the editor's
+inserted (Note/Heading/Block, alongside Destination/Section/Parent Task/Task Section
+rows), a primary line with restrained emphasis on the part of the text that matched
+what you typed, and a secondary line with the canonical vault-relative path or parent
+task plus small badges — `Alias`, a heading level like `H2`, a short block preview,
+`^block-id`, `Add ID`, `N items`, or `Empty`. `@route+` task suggestions are grouped as
+**Ready to use** followed by **Needs block ID**, preserving Bob's order inside each
+group; task-section rows stay a plain ungrouped list. Long paths truncate from the
+middle, keeping the filename intact rather than the leading directory. The selected
+row's accent-tinted fill uses each result's own semantic color (matching the editor's
 highlight palette) and increases its opacity automatically under Increase Contrast.
 VoiceOver announces the context, the count of results, and each row's full
 context/name/path/badge description before "double-tap to insert."
@@ -456,10 +463,10 @@ text is stored separately in that Application Support directory (see Privacy).
   response and the visible row content. They are never logged, written to
   `UserDefaults`, or included in a notification, signpost, or Diagnostics entry — the
   same guarantee the draft itself gets.
-- `@route+` task completion metadata and a user-authored block ID are sent only to the
-  local `bob` subprocess. The app never opens or rewrites Markdown notes directly; Bob
-  performs the vault write through `capture-task-id`, and the app updates the draft only
-  after Bob confirms success.
+- `@route+` task completion metadata, task-section titles, and a user-authored block ID
+  are sent only to the local `bob` subprocess. The app never opens or rewrites Markdown
+  notes directly; Bob performs the vault write through `capture-task-id`, and the app
+  updates the draft only after Bob confirms success.
 
 ## Troubleshooting
 

@@ -795,6 +795,45 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(decoded.candidates[1].replacement, "")
     }
 
+    func testCompletionResponseDecodesTaskSectionCandidatesWithoutNewCodingKeys() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 29,
+              "replacement": { "start": 29, "end": 29 },
+              "context": "task_section",
+              "candidates": [
+                {
+                  "replacement": "requirements",
+                  "title": "REQUIREMENTS",
+                  "slug": "requirements",
+                  "route": "foo",
+                  "block_id": "bar",
+                  "text": "Parent task",
+                  "line": 4,
+                  "child_count": 2,
+                  "cursor_after": 41
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+
+        XCTAssertEqual(decoded.context, "task_section")
+        XCTAssertEqual(decoded.replacement, CaptureRange(start: 29, end: 29))
+        XCTAssertEqual(decoded.candidates.first?.replacement, "requirements")
+        XCTAssertEqual(decoded.candidates.first?.title, "REQUIREMENTS")
+        XCTAssertEqual(decoded.candidates.first?.route, "foo")
+        XCTAssertEqual(decoded.candidates.first?.blockID, "bar")
+        XCTAssertEqual(decoded.candidates.first?.text, "Parent task")
+        XCTAssertEqual(decoded.candidates.first?.childCount, 2)
+        XCTAssertEqual(decoded.candidates.first?.cursorAfter, 41)
+    }
+
     func testCompletionResponseDecodesMissingCandidatesAsEmpty() throws {
         let data = Data(
             """
