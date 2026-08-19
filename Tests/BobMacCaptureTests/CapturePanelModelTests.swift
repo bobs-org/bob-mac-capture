@@ -608,6 +608,24 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.statusText, "Capture, retain, or cancel the current draft before opening stash")
     }
 
+    func testRestoreStashEntryPersistsRemainingEntriesInStoreOrder() throws {
+        let store = RecordingCanceledDraftStashStore()
+        let stash = CanceledDraftStash(capacity: 10, store: store)
+        let oldest = try XCTUnwrap(stash.push("oldest @Cash"))
+        _ = try XCTUnwrap(stash.push("middle @Cash"))
+        let newest = try XCTUnwrap(stash.push("newest @Cash"))
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        model.presentStashPicker()
+
+        model.restoreStashEntry(id: newest.id)
+
+        XCTAssertEqual(model.plainDraft, "newest @Cash")
+        XCTAssertEqual(stash.entries.map(\.text), ["middle @Cash", "oldest @Cash"])
+        XCTAssertEqual(store.snapshots.last?.map(\.text), ["middle @Cash", "oldest @Cash"])
+        XCTAssertEqual(store.snapshots.last?.map(\.id), stash.entries.map(\.id))
+        XCTAssertEqual(stash.entries.last?.id, oldest.id)
+    }
+
     func testCloseRetainingEmptyDraftDismissesWithoutDraftRetainedStatus() {
         let model = CapturePanelModel()
         var dismissCount = 0

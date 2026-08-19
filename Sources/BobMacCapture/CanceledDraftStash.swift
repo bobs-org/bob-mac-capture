@@ -1,3 +1,4 @@
+import CaptureCore
 import Combine
 import Foundation
 
@@ -15,17 +16,36 @@ final class CanceledDraftStash: ObservableObject {
     @Published private(set) var capacity: Int
     @Published private(set) var entries: [CanceledDraftEntry] = []
 
+    private let store: CanceledDraftStashStoring?
     private let now: () -> Date
     private let idGenerator: () -> UUID
 
     init(
         capacity: Int = CanceledDraftStash.defaultCapacity,
+        store: CanceledDraftStashStoring? = nil,
         now: @escaping () -> Date = Date.init,
         idGenerator: @escaping () -> UUID = UUID.init
     ) {
         self.capacity = Self.clampedCapacity(capacity)
+        self.store = store
         self.now = now
         self.idGenerator = idGenerator
+
+        if self.capacity == 0 {
+            store?.save([])
+            return
+        }
+
+        guard let store else {
+            return
+        }
+
+        entries = store.load().map(Self.entry(from:))
+        let loadedCount = entries.count
+        trimToCapacity()
+        if entries.count != loadedCount {
+            persist()
+        }
     }
 
     var isEmpty: Bool {
@@ -45,16 +65,19 @@ final class CanceledDraftStash: ObservableObject {
         let entry = CanceledDraftEntry(id: idGenerator(), text: text, createdAt: now())
         entries.insert(entry, at: 0)
         trimToCapacity()
+        persist()
         return entry
     }
 
     func updateCapacity(_ newCapacity: Int) {
         capacity = Self.clampedCapacity(newCapacity)
         trimToCapacity()
+        persist()
     }
 
     func clear() {
         entries.removeAll()
+        persist()
     }
 
     func entry(id: UUID) -> CanceledDraftEntry? {
@@ -73,7 +96,9 @@ final class CanceledDraftStash: ObservableObject {
         guard let index = entries.firstIndex(where: { $0.id == id }) else {
             return nil
         }
-        return entries.remove(at: index)
+        let removed = entries.remove(at: index)
+        persist()
+        return removed
     }
 
     func clampedSelectionIndex(_ index: Int) -> Int {
@@ -188,14 +213,26 @@ final class CanceledDraftStash: ObservableObject {
         return "\(seconds / 86_400)d ago"
     }
 
+    private func persist() {
+        store?.save(entries.map(Self.persisted(from:)))
+    }
+
     private func trimToCapacity() {
         guard capacity > 0 else {
-            clear()
+            entries.removeAll()
             return
         }
         if entries.count > capacity {
             entries.removeLast(entries.count - capacity)
         }
+    }
+
+    private static func entry(from draft: PersistedCanceledDraft) -> CanceledDraftEntry {
+        CanceledDraftEntry(id: draft.id, text: draft.text, createdAt: draft.createdAt)
+    }
+
+    private static func persisted(from entry: CanceledDraftEntry) -> PersistedCanceledDraft {
+        PersistedCanceledDraft(id: entry.id, text: entry.text, createdAt: entry.createdAt)
     }
 
     private nonisolated static let acceleratorKeys: [String] =

@@ -903,7 +903,7 @@ private struct CanceledDraftStashPicker: View {
         .accessibilityLabel(listAccessibilityLabel)
         .accessibilityHint(
             "Use arrows, Control-N, Control-P, Return, or a shown key to restore a canceled draft. "
-                + "Press Shift-D to permanently remove all retained drafts from this app session."
+                + "Press Shift-D to permanently remove all retained drafts."
         )
     }
 
@@ -938,7 +938,7 @@ private struct CanceledDraftStashPicker: View {
         .foregroundStyle(.red)
         .accessibilityLabel("Shift-D Delete All")
         .accessibilityHint(
-            "Permanently removes all retained canceled drafts from the current app session. "
+            "Permanently removes all retained canceled drafts. "
                 + "Lowercase d does not delete."
         )
     }

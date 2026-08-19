@@ -1,3 +1,4 @@
+import CaptureCore
 import Foundation
 import XCTest
 
@@ -113,5 +114,160 @@ final class CanceledDraftStashTests: XCTestCase {
         XCTAssertEqual(preview, "This is a deliberately...")
         XCTAssertEqual(metadata, "4 lines - 3m ago")
         XCTAssertEqual(entry.text, text)
+    }
+
+    func testInitLoadsPersistedEntriesNewestFirst() {
+        let drafts = [
+            samplePersistedDraft(text: "newest", createdAt: Date(timeIntervalSince1970: 3)),
+            samplePersistedDraft(text: "middle", createdAt: Date(timeIntervalSince1970: 2)),
+            samplePersistedDraft(text: "oldest", createdAt: Date(timeIntervalSince1970: 1)),
+        ]
+        let store = RecordingCanceledDraftStashStore(drafts: drafts)
+
+        let stash = CanceledDraftStash(capacity: 10, store: store)
+
+        XCTAssertEqual(stash.entries.map(\.text), ["newest", "middle", "oldest"])
+        XCTAssertEqual(stash.entries.map(\.id), drafts.map(\.id))
+        XCTAssertEqual(stash.entries.map(\.createdAt), drafts.map(\.createdAt))
+        XCTAssertTrue(store.snapshots.isEmpty)
+    }
+
+    func testInitTrimsOverflowAndPersistsImmediately() {
+        let drafts = [
+            samplePersistedDraft(text: "newest", createdAt: Date(timeIntervalSince1970: 4)),
+            samplePersistedDraft(text: "kept", createdAt: Date(timeIntervalSince1970: 3)),
+            samplePersistedDraft(text: "dropped", createdAt: Date(timeIntervalSince1970: 2)),
+            samplePersistedDraft(text: "oldest", createdAt: Date(timeIntervalSince1970: 1)),
+        ]
+        let store = RecordingCanceledDraftStashStore(drafts: drafts)
+
+        let stash = CanceledDraftStash(capacity: 2, store: store)
+
+        XCTAssertEqual(stash.entries.map(\.text), ["newest", "kept"])
+        XCTAssertEqual(store.snapshots.last?.map(\.text), ["newest", "kept"])
+        XCTAssertEqual(store.snapshots.last?.map(\.id), Array(drafts.prefix(2).map(\.id)))
+    }
+
+    func testInitWithCapacityZeroDoesNotLoadAndSavesEmpty() {
+        let store = RecordingCanceledDraftStashStore(
+            drafts: [samplePersistedDraft(text: "should not load")]
+        )
+
+        let stash = CanceledDraftStash(capacity: 0, store: store)
+
+        XCTAssertEqual(store.loadCount, 0)
+        XCTAssertTrue(stash.entries.isEmpty)
+        XCTAssertEqual(store.snapshots, [[]])
+    }
+
+    func testMutationsWriteThroughAndMatchPublishedEntries() throws {
+        let store = RecordingCanceledDraftStashStore()
+        let stash = CanceledDraftStash(capacity: 10, store: store)
+
+        let first = try XCTUnwrap(stash.push("first"))
+        XCTAssertEqual(store.snapshots.last, persisted(stash.entries))
+
+        let second = try XCTUnwrap(stash.push("second"))
+        XCTAssertEqual(store.snapshots.last, persisted(stash.entries))
+        XCTAssertEqual(store.snapshots.last?.map(\.text), ["second", "first"])
+
+        XCTAssertEqual(stash.remove(id: first.id), first)
+        XCTAssertEqual(store.snapshots.last, persisted(stash.entries))
+        XCTAssertEqual(store.snapshots.last?.map(\.id), [second.id])
+
+        stash.clear()
+        XCTAssertTrue(stash.entries.isEmpty)
+        XCTAssertEqual(store.snapshots.last, [])
+        XCTAssertEqual(store.snapshots.last, persisted(stash.entries))
+    }
+
+    func testUpdateCapacityZeroEmptiesMemoryAndRecordsEmptySave() {
+        let store = RecordingCanceledDraftStashStore()
+        let stash = CanceledDraftStash(capacity: 10, store: store)
+        stash.push("retained")
+
+        stash.updateCapacity(0)
+
+        XCTAssertTrue(stash.entries.isEmpty)
+        XCTAssertEqual(store.snapshots.last, [])
+        XCTAssertNil(stash.push("ignored"))
+        XCTAssertEqual(store.snapshots.last, [])
+    }
+
+    func testUnreadableStoreLeavesStashEmptyAndForwardsMessage() {
+        let message = FileCanceledDraftStashStore.unreadableQuarantinedMessage
+        let store = RecordingCanceledDraftStashStore(
+            drafts: [samplePersistedDraft(text: "secret")]
+        )
+        store.loadErrorMessage = message
+
+        let stash = CanceledDraftStash(capacity: 10, store: store)
+
+        XCTAssertTrue(stash.entries.isEmpty)
+        XCTAssertEqual(store.messages, [message])
+        XCTAssertTrue(store.snapshots.isEmpty)
+    }
+
+    private func samplePersistedDraft(
+        text: String,
+        createdAt: Date = Date(timeIntervalSince1970: 1)
+    ) -> PersistedCanceledDraft {
+        PersistedCanceledDraft(id: UUID(), text: text, createdAt: createdAt)
+    }
+
+    private func persisted(_ entries: [CanceledDraftEntry]) -> [PersistedCanceledDraft] {
+        entries.map { PersistedCanceledDraft(id: $0.id, text: $0.text, createdAt: $0.createdAt) }
+    }
+}
+
+final class RecordingCanceledDraftStashStore: CanceledDraftStashStoring, @unchecked Sendable {
+    private let lock = NSLock()
+    private var drafts: [PersistedCanceledDraft]
+    private var recordedSnapshots: [[PersistedCanceledDraft]] = []
+    private var recordedMessages: [String] = []
+    private var recordedLoadCount = 0
+    var loadErrorMessage: String?
+
+    init(drafts: [PersistedCanceledDraft] = []) {
+        self.drafts = drafts
+    }
+
+    var snapshots: [[PersistedCanceledDraft]] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedSnapshots
+    }
+
+    var loadCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedLoadCount
+    }
+
+    var messages: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedMessages
+    }
+
+    func load() -> [PersistedCanceledDraft] {
+        lock.lock()
+        recordedLoadCount += 1
+        let message = loadErrorMessage
+        let result = drafts
+        if let message {
+            recordedMessages.append(message)
+            lock.unlock()
+            return []
+        }
+        lock.unlock()
+        return result
+    }
+
+    func save(_ drafts: [PersistedCanceledDraft]) {
+        lock.lock()
+        recordedSnapshots.append(drafts)
+        self.drafts = drafts
+        lock.unlock()
     }
 }
