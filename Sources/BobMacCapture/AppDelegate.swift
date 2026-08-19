@@ -6,7 +6,10 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let settings = AppSettings()
-    lazy var canceledDraftStash = CanceledDraftStash(capacity: settings.canceledDraftStashCapacity)
+    lazy var canceledDraftStash = CanceledDraftStash(
+        capacity: settings.canceledDraftStashCapacity,
+        store: Self.makeCanceledDraftStashStore(settings: settings)
+    )
     // Lazy because NotificationService's default center is `UNUserNotificationCenter.current()`,
     // which raises NSInternalInconsistencyException in a process that has no app bundle. Eagerly
     // building it here made `AppDelegate()` unconstructible under `swift test`, aborting the whole
@@ -80,9 +83,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // The canceled-draft stash is write-through on every mutation, so there is
+        // nothing to flush here. A terminate-only save would drop drafts on force
+        // quit, crash, logout SIGKILL, or a just install that replaces the bundle.
         hotKeyManager?.invalidate()
         vaultWatcher?.invalidate()
         processClient?.cancelActiveProcess()
+    }
+
+    private static func makeCanceledDraftStashStore(settings: AppSettings) -> CanceledDraftStashStoring? {
+        do {
+            let fileURL = try FileCanceledDraftStashStore.defaultFileURL()
+            return FileCanceledDraftStashStore(
+                fileURL: fileURL,
+                onError: { message in
+                    Task { @MainActor in
+                        settings.diagnosticStatus = message
+                    }
+                }
+            )
+        } catch {
+            settings.diagnosticStatus = FileCanceledDraftStashStore.saveFailureMessage(for: error)
+            return nil
+        }
     }
 
     static func makeMainMenu() -> NSMenu {

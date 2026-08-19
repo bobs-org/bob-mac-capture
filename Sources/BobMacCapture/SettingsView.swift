@@ -37,7 +37,7 @@ struct SettingsView: View {
 
                 LabeledContent("Retained", value: retainedDraftCountLabel)
 
-                Text("Canceled draft text stays only in memory for this app session. Quitting or restarting clears it.")
+                Text("Canceled drafts are stored on disk and survive quitting or restarting. Setting capacity to 0 or using Clear Stash... deletes the file.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -45,7 +45,7 @@ struct SettingsView: View {
                     isConfirmingStashClear = true
                 }
                 .disabled(canceledDraftStash.isEmpty)
-                .accessibilityHint("Permanently removes retained canceled drafts from this app session.")
+                .accessibilityHint("Permanently removes retained canceled drafts.")
             }
 
             Section("Launch") {
@@ -121,7 +121,7 @@ struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes retained canceled drafts from this app session.")
+            Text("This removes retained canceled drafts.")
         }
         .task {
             await notificationService.refreshAuthorizationStatus()

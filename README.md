@@ -73,9 +73,9 @@ or expired certificate can require reauthorizing those system permissions.
 - Bundle identifier: `org.bobs.bob-mac-capture`.
 - App type: `LSUIElement` resident menu-bar app.
 - The `Bob` status-item menu offers Capture, Settings, Recheck Bob, Restart Bob Mac
-  Capture, and Quit Bob Mac Capture, in that order. Restart discards an unsent draft and
-  clears the canceled-draft stash exactly as Quit does — there is no confirmation dialog
-  — and it refuses to quit (reporting a failure instead) when the running process is not
+  Capture, and Quit Bob Mac Capture, in that order. Restart discards an unsent draft;
+  retained canceled drafts survive Restart and Quit. There is no confirmation dialog.
+  Restart refuses to quit (reporting a failure instead) when the running process is not
   launched from an installed `.app` bundle or that bundle no longer exists on disk. See
   "Updating, Reinstalling, and Rollback" below for what Restart is for.
 - Production hotkey (the default): Control-Shift-Command-I.
@@ -170,13 +170,15 @@ or expired certificate can require reauthorizing those system permissions.
   "Captured → …" summary and status text are cleared, while a retained draft (from Escape
   or a failure) reopens exactly as it was left. Closing the panel never destroys a draft.
   **Discard** permanently clears the draft, while Control-C stashes a semantically
-  nonempty draft for this app session before clearing and closing.
-- Canceled drafts live in a bounded in-memory stash for the lifetime of the running app.
-  Settings persists only the capacity, defaults it to 10, and clamps it to 0...36. Zero
-  turns the feature off and clears the in-memory stash. Capacity reductions keep the
-  newest entries and drop older overflow. Repeated cancellations are retained as
-  separate entries, even when their text is identical. Settings also shows the retained
-  count and a confirmed **Clear Stash...** action.
+  nonempty draft before clearing and closing.
+- Canceled drafts persist across Quit, Restart, crash, and logout in
+  `~/Library/Application Support/org.bobs.bob-mac-capture/canceled-draft-stash.json`
+  (`schemaVersion` 1, newest-first array order). The directory is mode 0700 and the file
+  is mode 0600. Settings persists only the capacity (in `UserDefaults`), defaults it to
+  10, and clamps it to 0...36. Zero turns the feature off and deletes the file. Capacity
+  reductions keep the newest entries and drop older overflow. Repeated cancellations are
+  retained as separate entries, even when their text is identical. Settings also shows
+  the retained count and a confirmed **Clear Stash...** action, which deletes the file.
 
 ## Keyboard
 
@@ -195,7 +197,7 @@ or expired certificate can require reauthorizing those system permissions.
 | Up / Ctrl-P | (normal focus traversal) | Select the previous completion | Consume the key; do not move completion selection |
 | Escape / Ctrl-[ | Close the panel, retaining a nonempty draft without confirmation | Close completion | Cancel back to the task list |
 | Control-S | Open the canceled-draft stash picker | Open the canceled-draft stash picker | Consume the key; finish or cancel the prompt first |
-| Control-C | Stash a nonempty draft for this session, then clear and close | Stash a nonempty draft for this session, then clear and close | Stash a nonempty draft for this session, then clear and close |
+| Control-C | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close |
 
 Every capture action is reachable from the keyboard alone; the hotkey, editor, completion
 list, Stash/Capture/Preview/Discard buttons, and stash picker never require a pointer.
@@ -218,16 +220,16 @@ row installs that exact text in the empty editor with the caret at the UTF-8 end
 only that restored entry from the stash, keeps the panel open, and starts normal
 parse/live-preview analysis. This is a pop operation: non-restored entries remain in
 order. Pressing uppercase `D` with Shift-D or Caps Lock, or clicking
-**Shift-D Delete All**, immediately clears every retained canceled draft from the
-current app session, closes the picker, leaves the panel open with an empty editor, and
-reports only "Canceled draft stash cleared". Lowercase `d` does nothing destructive. The
-Settings **Clear Stash...** action keeps its confirmation dialog for that non-modal
-workflow.
+**Shift-D Delete All**, immediately clears every retained canceled draft permanently,
+including the on-disk file, closes the picker, leaves the panel open with an empty
+editor, and reports only "Canceled draft stash cleared". Lowercase `d` does nothing
+destructive. The Settings **Clear Stash...** action keeps its confirmation dialog for
+that non-modal workflow.
 
 | Key while stash is open | Behavior |
 | --- | --- |
 | 1...9, 0, A...C, -, E...Z | Restore that row immediately |
-| Shift-D | Delete all retained canceled drafts for this app session |
+| Shift-D | Delete all retained canceled drafts |
 | Return | Restore the selected row |
 | Down / Ctrl-N | Select the next row, wrapping at the end |
 | Up / Ctrl-P | Select the previous row, wrapping at the top |
@@ -423,14 +425,15 @@ the lifetime of an install rather than alternating between ad-hoc and signed bui
 
 ```sh
 rm -rf ~/Applications/"Bob Mac Capture.app"   # or /Applications
+rm -rf ~/Library/Application\ Support/org.bobs.bob-mac-capture
 ```
 
 This also removes the launch-at-login registration's target, though macOS may keep a
 stale, non-functional Login Items entry until the next login — remove it manually from
 System Settings → General → Login Items if it lingers. The app stores only non-sensitive
 preferences (bob path, vault path, hotkey choice, and canceled-draft stash capacity) in
-`UserDefaults` under the bundle identifier `org.bobs.bob-mac-capture`; it never writes
-captured text to disk itself.
+`UserDefaults` under the bundle identifier `org.bobs.bob-mac-capture`. Canceled draft
+text is stored separately in that Application Support directory (see Privacy).
 
 ## Privacy
 
@@ -439,10 +442,12 @@ captured text to disk itself.
   notification bodies, or emitted in a signpost or Diagnostics entry.
   `BobClientError.description` explicitly redacts the trailing draft argument from every
   command it echoes.
-- Canceled drafts retained with Control-C live only in the app-lifetime in-memory stash.
-  They are cleared by Quit, Restart, capacity zero, or Settings' **Clear Stash...**
-  action, and are never written to `UserDefaults`, notifications, signposts, logs, or
-  Diagnostics.
+- Canceled drafts retained with Control-C are stored in
+  `~/Library/Application Support/org.bobs.bob-mac-capture/canceled-draft-stash.json`
+  (directory mode 0700, file mode 0600). If the stash file is unreadable, it is renamed
+  to `canceled-draft-stash.corrupt.json`, which can also hold captured text. They are
+  never written to `UserDefaults`, notifications, signposts, logs, or Diagnostics.
+  Settings' **Clear Stash...** action and capacity 0 delete both files.
 - Diagnostics and Recent Activity in Settings are metadata only — status strings like
   "Ready," "Hotkey conflict," or "Target cache stale," never note content.
 - Signposts (see below) carry event names and durations for Instruments, not payloads.
