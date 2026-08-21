@@ -54,6 +54,145 @@ final class PlainTextPasteTests: XCTestCase {
         XCTAssertFalse(willInsertRan)
     }
 
+    func testResolverJoinsTopLevelPastedBulletListIntoPlaceholder() {
+        let draft = "Parent\n- "
+        let (edit, result) = resolvePaste(
+            draft: draft,
+            selectedRange: NSRange(location: draft.utf16.count, length: 0),
+            clipboardText: "- first\n- second"
+        )
+
+        XCTAssertEqual(
+            edit.replacementRange,
+            NSRange(location: "Parent\n".utf16.count, length: "- ".utf16.count)
+        )
+        XCTAssertEqual(result, "Parent\n- first\n- second")
+    }
+
+    func testResolverRebasesFlatListOntoNestedPlaceholder() {
+        let draft = "Parent\n  - "
+        let (_, result) = resolvePaste(
+            draft: draft,
+            selectedRange: NSRange(location: draft.utf16.count, length: 0),
+            clipboardText: "- first\n- second"
+        )
+
+        XCTAssertEqual(result, "Parent\n  - first\n  - second")
+    }
+
+    func testResolverRebasesIndentedClipboardFromFirstBulletBaseline() {
+        let draft = "Parent\n- "
+        let (_, result) = resolvePaste(
+            draft: draft,
+            selectedRange: NSRange(location: draft.utf16.count, length: 0),
+            clipboardText: "  - first\n    - child\n  - second"
+        )
+
+        XCTAssertEqual(result, "Parent\n- first\n  - child\n- second")
+    }
+
+    func testResolverRetainsPlaceholderMarkerWhenClipboardUsesDifferentMarker() {
+        for marker in ["*", "+"] {
+            let draft = "Parent\n\(marker) "
+            let (_, result) = resolvePaste(
+                draft: draft,
+                selectedRange: NSRange(location: draft.utf16.count, length: 0),
+                clipboardText: "- first\n- second"
+            )
+
+            XCTAssertEqual(result, "Parent\n\(marker) first\n- second")
+        }
+    }
+
+    func testResolverPreservesBlankLinesAndTrailingNewlineWithoutWhitespaceOnlyRows() {
+        let draft = "Parent\n  - "
+        let (_, result) = resolvePaste(
+            draft: draft,
+            selectedRange: NSRange(location: draft.utf16.count, length: 0),
+            clipboardText: "- first\n  \n  - child\n"
+        )
+
+        XCTAssertEqual(result, "Parent\n  - first\n\n    - child\n")
+    }
+
+    func testResolverFallsBackToExactPlainTextInsertionOutsidePlaceholderListPaste() {
+        let cases: [(
+            name: String,
+            draft: String,
+            selectedRange: NSRange,
+            clipboardText: String
+        )] = [
+            (
+                "prose clipboard",
+                "Parent\n- ",
+                NSRange(location: "Parent\n- ".utf16.count, length: 0),
+                "plain text"
+            ),
+            (
+                "unsupported first clipboard line",
+                "Parent\n- ",
+                NSRange(location: "Parent\n- ".utf16.count, length: 0),
+                "-first"
+            ),
+            (
+                "marker-only clipboard line",
+                "Parent\n- ",
+                NSRange(location: "Parent\n- ".utf16.count, length: 0),
+                "- "
+            ),
+            (
+                "noncollapsed selection",
+                "Parent\n- ",
+                NSRange(location: "Parent\n".utf16.count, length: "- ".utf16.count),
+                "- first"
+            ),
+            (
+                "multiline selection",
+                "Parent\n- \nChild",
+                NSRange(location: 0, length: "Parent\n- ".utf16.count),
+                "- first"
+            ),
+            (
+                "mid-line caret",
+                "Parent\n-  suffix",
+                NSRange(location: "Parent\n- ".utf16.count, length: 0),
+                "- first"
+            ),
+            (
+                "authored bullet row",
+                "Parent\n- existing",
+                NSRange(location: "Parent\n- existing".utf16.count, length: 0),
+                "- first"
+            ),
+            (
+                "unsupported placeholder indentation",
+                "Parent\n - ",
+                NSRange(location: "Parent\n - ".utf16.count, length: 0),
+                "- first"
+            ),
+        ]
+
+        for testCase in cases {
+            let (edit, result) = resolvePaste(
+                draft: testCase.draft,
+                selectedRange: testCase.selectedRange,
+                clipboardText: testCase.clipboardText
+            )
+
+            XCTAssertEqual(edit.replacementRange, testCase.selectedRange, testCase.name)
+            XCTAssertEqual(edit.replacementText, testCase.clipboardText, testCase.name)
+            XCTAssertEqual(
+                result,
+                defaultPasteResult(
+                    draft: testCase.draft,
+                    selectedRange: testCase.selectedRange,
+                    clipboardText: testCase.clipboardText
+                ),
+                testCase.name
+            )
+        }
+    }
+
     @MainActor
     func testInsertSplicesPlainTextAndDoesNotImportRichFormatting() throws {
         // Regression guard for slow rich paste: inserting must use the plain flavor
@@ -85,6 +224,47 @@ final class PlainTextPasteTests: XCTestCase {
 
             XCTAssertEqual(textView.string, "AlphaPLAINOmega")
             XCTAssertTrue(willInsertRan)
+            assertNoLinkAttribute(in: textStorage)
+            assertSingleEffectiveRun(for: .font, in: textStorage)
+            assertSingleEffectiveRun(for: .foregroundColor, in: textStorage)
+        }
+    }
+
+    @MainActor
+    func testInsertJoinsBulletListThroughNativePlainTextPath() throws {
+        try withScratchPasteboard { pasteboard in
+            writeRichAndPlainPasteboard(pasteboard, plain: "+ first\r\n- second")
+
+            let textView = NSTextView()
+            textView.isEditable = true
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 13),
+                .foregroundColor: NSColor.black,
+            ]
+            let textStorage = try XCTUnwrap(textView.textStorage)
+            textStorage.setAttributedString(
+                NSAttributedString(string: "Parent\n* ", attributes: attributes)
+            )
+            textView.typingAttributes = attributes
+            textView.setSelectedRange(
+                NSRange(location: "Parent\n* ".utf16.count, length: 0)
+            )
+            var willInsertCount = 0
+
+            XCTAssertTrue(
+                PlainTextPaste.insert(
+                    into: textView,
+                    from: pasteboard,
+                    willInsert: { willInsertCount += 1 }
+                )
+            )
+
+            XCTAssertEqual(textView.string, "Parent\n* first\n- second")
+            XCTAssertEqual(
+                textView.selectedRange(),
+                NSRange(location: "Parent\n* first\n- second".utf16.count, length: 0)
+            )
+            XCTAssertEqual(willInsertCount, 1)
             assertNoLinkAttribute(in: textStorage)
             assertSingleEffectiveRun(for: .font, in: textStorage)
             assertSingleEffectiveRun(for: .foregroundColor, in: textStorage)
@@ -139,6 +319,31 @@ final class PlainTextPasteTests: XCTestCase {
         let rtf = #"{\rtf1\ansi{\field{\*\fldinst{HYPERLINK "https://example.com"}}{\fldrslt Rich capture text}}}"#
             .data(using: .utf8)!
         XCTAssertTrue(pasteboard.setData(rtf, forType: .rtf))
+    }
+
+    private func resolvePaste(
+        draft: String,
+        selectedRange: NSRange,
+        clipboardText: String
+    ) -> (edit: PlainTextPasteEdit, result: String) {
+        let edit = PlainTextPasteEditResolver.resolve(
+            in: draft,
+            selectedRange: selectedRange,
+            clipboardText: clipboardText
+        )
+        let result = NSMutableString(string: draft)
+        result.replaceCharacters(in: edit.replacementRange, with: edit.replacementText)
+        return (edit, String(result))
+    }
+
+    private func defaultPasteResult(
+        draft: String,
+        selectedRange: NSRange,
+        clipboardText: String
+    ) -> String {
+        let result = NSMutableString(string: draft)
+        result.replaceCharacters(in: selectedRange, with: clipboardText)
+        return String(result)
     }
 
     private struct TestPasteboardReader: PlainTextPasteboardReading {

@@ -192,7 +192,7 @@ or expired certificate can require reauthorizing those system permissions.
 | Shift-Return / Option-Return | Insert a newline | Insert a newline | Add the ID and select the task |
 | Ctrl-J | Insert a new indentation-aware `- ` row, or turn a marker-only placeholder into a blank item separator | Same edit, and close completion | Native text-field behavior |
 | Ctrl-U | Delete from the caret to the beginning of the current physical line | Delete to the beginning of the current physical line and close completion | Native text-field behavior |
-| Command-V | Insert the clipboard's plain text, discarding source formatting | Insert the clipboard's plain text and close completion | Native text-field paste |
+| Command-V | Insert the clipboard's plain text, discarding source formatting; when an empty bullet row receives a Markdown bullet list, consume the first pasted marker and align the list to that row | Same paste edit, and close completion | Native text-field paste |
 | Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace |
 | Tab | Indent the current column-zero continuation bullet to two spaces (normal focus traversal otherwise) | Accept the selected completion | Consume the key; do not indent or capture |
 | Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion | Consume the key; do not outdent or capture |
@@ -298,7 +298,34 @@ resulting hierarchy is contextually valid.
 Command-V intentionally reads only the clipboard's plain-text flavor. Source formatting
 is discarded because Bob's capture grammar is plain text, and letting AppKit choose a
 rich HTML/RTF flavor forced a synchronous WebKit HTML import that could cost seconds per
-paste from browser content.
+paste from browser content. When the caret is at the end of an otherwise empty `- `,
+`* `, or `+ ` row and the clipboard begins with a Markdown `-`, `*`, or `+` bullet with
+a body, Command-V treats that row as the first pasted bullet: the row's marker is kept,
+the clipboard's first marker is consumed, and the remaining pasted lines are rebased to
+the row's column-zero or two-space indentation.
+
+```text
+Plan rollout
+-
+```
+
+Pasting:
+
+```text
+- Confirm owner
+- Attach checklist
+```
+
+Produces:
+
+```text
+Plan rollout
+- Confirm owner
+- Attach checklist
+```
+
+Every other clipboard shape, selection, caret position, and unsupported indentation
+still follows ordinary plain-text insertion.
 
 ## Wikilink Completion
 
