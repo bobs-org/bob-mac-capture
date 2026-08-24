@@ -1247,12 +1247,22 @@ private struct PreviewPane: View {
                 .fontWeight(.semibold)
                 .accessibilityLabel("\(captures.count) capture items")
         }
+        if let globalDestination = success.globalDestination {
+            Text("All items \u{2192} \(globalDestination.scopeSummary)")
+                .fontWeight(.semibold)
+                .accessibilityLabel("All items to \(globalDestination.scopeSummary)")
+        }
 
         ForEach(Array(captures.enumerated()), id: \.offset) { index, capture in
             if index > 0 {
                 Divider()
             }
-            previewItem(capture, index: index, total: captures.count)
+            previewItem(
+                capture,
+                index: index,
+                total: captures.count,
+                globalDestination: success.globalDestination
+            )
         }
 
         if model.livePreviewUsesLiteralClipboard {
@@ -1266,8 +1276,12 @@ private struct PreviewPane: View {
     private func previewItem(
         _ success: CaptureCommandSuccess,
         index: Int,
-        total: Int
+        total: Int,
+        globalDestination: CaptureGlobalDestination?
     ) -> some View {
+        let isLocalOverride = globalDestination.map {
+            !captureUsesGlobalDestination(success, $0)
+        } ?? false
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             if total > 1 {
                 Text("\(index + 1)")
@@ -1276,6 +1290,10 @@ private struct PreviewPane: View {
             }
             Text(success.routeLabel.isEmpty ? success.relativeTarget : success.routeLabel)
                 .fontWeight(.semibold)
+            if isLocalOverride {
+                Text("local override")
+                    .foregroundStyle(.secondary)
+            }
             Text(success.placement)
                 .foregroundStyle(.secondary)
             Text(success.kind)
@@ -1300,7 +1318,12 @@ private struct PreviewPane: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(previewAccessibilityLabel(for: success, index: index, total: total))
+        .accessibilityLabel(previewAccessibilityLabel(
+            for: success,
+            index: index,
+            total: total,
+            isLocalOverride: isLocalOverride
+        ))
 
         Text(success.relativeTarget)
             .foregroundStyle(.secondary)
@@ -1311,10 +1334,12 @@ private struct PreviewPane: View {
     private func previewAccessibilityLabel(
         for success: CaptureCommandSuccess,
         index: Int,
-        total: Int
+        total: Int,
+        isLocalOverride: Bool
     ) -> String {
         let position = total > 1 ? "Item \(index + 1) of \(total), " : ""
         let destination = success.routeLabel.isEmpty ? success.relativeTarget : success.routeLabel
-        return "\(position)\(success.kind), \(destination), \(success.previewBlockLines.joined(separator: ", "))"
+        let override = isLocalOverride ? ", local override" : ""
+        return "\(position)\(success.kind), \(destination)\(override), \(success.previewBlockLines.joined(separator: ", "))"
     }
 }

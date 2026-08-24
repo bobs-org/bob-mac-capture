@@ -80,6 +80,97 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertFalse(content.body.contains("\u{2026}"))
     }
 
+    func testGlobalSameTargetBatchUsesCompactSharedScopeBody() {
+        let content = NotificationService.successContent(
+            captures: [
+                capture(
+                    kind: "task",
+                    routeLabel: "foo.md",
+                    target: "/Users/bryan/bob/foo.md",
+                    text: "First task"
+                ),
+                capture(
+                    kind: "task",
+                    routeLabel: "foo.md",
+                    target: "/Users/bryan/bob/foo.md",
+                    text: "Second task"
+                ),
+            ],
+            globalDestination: CaptureGlobalDestination(mode: "task", route: "foo")
+        )
+
+        XCTAssertEqual(content.title, "2 items captured")
+        XCTAssertEqual(content.subtitle, "2 tasks \u{00b7} foo.md")
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureCategoryIdentifier)
+        XCTAssertTrue(content.body.contains("1. First task"))
+        XCTAssertTrue(content.body.contains("2. Second task"))
+        XCTAssertFalse(content.body.contains("-> foo.md"))
+        XCTAssertFalse(content.body.contains("@@"))
+    }
+
+    func testGlobalSharedParentBatchMentionsParentOnce() {
+        let content = NotificationService.successContent(
+            captures: [
+                capture(
+                    kind: "sub_bullet",
+                    routeLabel: "file.md",
+                    target: "/Users/bryan/bob/file.md",
+                    text: "First note",
+                    blockID: "hand"
+                ),
+                capture(
+                    kind: "sub_bullet",
+                    routeLabel: "file.md",
+                    target: "/Users/bryan/bob/file.md",
+                    text: "Second note",
+                    blockID: "hand"
+                ),
+            ],
+            globalDestination: CaptureGlobalDestination(
+                mode: "sub_bullet",
+                route: "file",
+                blockID: "hand"
+            )
+        )
+
+        XCTAssertEqual(content.subtitle, "2 notes \u{00b7} file.md \u{00b7} under ^hand")
+        XCTAssertTrue(content.body.contains("1. First note"))
+        XCTAssertFalse(content.body.contains("1. First note \u{2192} file.md"))
+    }
+
+    func testGlobalMixedOverrideBatchNamesOnlyOverrideDestination() {
+        let content = NotificationService.successContent(
+            captures: [
+                capture(
+                    kind: "task",
+                    routeLabel: "foo.md",
+                    target: "/Users/bryan/bob/foo.md",
+                    text: "First task"
+                ),
+                capture(
+                    kind: "task",
+                    routeLabel: "bar.md",
+                    target: "/Users/bryan/bob/bar.md",
+                    text: "Second task"
+                ),
+            ],
+            globalDestination: CaptureGlobalDestination(mode: "task", route: "foo")
+        )
+
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureBatchCategoryIdentifier)
+        XCTAssertEqual(
+            content.userInfo[NotificationService.targetPathsKey] as? [String],
+            [
+                "/Users/bryan/bob/foo.md",
+                "/Users/bryan/bob/bar.md",
+            ]
+        )
+        XCTAssertTrue(content.subtitle.contains("1 local override"))
+        XCTAssertTrue(content.body.contains("1. First task"))
+        XCTAssertTrue(content.body.contains("2. Second task \u{2192} bar.md"))
+        XCTAssertFalse(content.body.contains("1. First task \u{2192} foo.md"))
+    }
+
     func testCrossTargetBatchUsesPluralCategoryAndPreservesTargetOrder() {
         let content = NotificationService.successContent(captures: [
             capture(
@@ -244,7 +335,8 @@ final class NotificationServiceTests: XCTestCase {
         target: String,
         text: String,
         scheduled: String? = nil,
-        parentText: String? = nil
+        parentText: String? = nil,
+        blockID: String? = nil
     ) -> CaptureCommandSuccess {
         CaptureCommandSuccess(
             ok: true,
@@ -259,6 +351,7 @@ final class NotificationServiceTests: XCTestCase {
             created: "2026-08-14",
             scheduled: scheduled,
             placement: "inserted",
+            blockID: blockID,
             parentText: parentText
         )
     }

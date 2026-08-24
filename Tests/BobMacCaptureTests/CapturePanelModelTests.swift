@@ -106,6 +106,48 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(model.destinationSummary?.contains("First item; Second item") == true)
     }
 
+    func testGlobalPreviewShowsSharedScopeSummary() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "@@foo\nFirst task\n\nSecond task"
+
+        model.preview()
+        await waitUntil { !model.isPreviewing }
+
+        XCTAssertEqual(model.previewGlobalDestination?.scopeSummary, "foo.md")
+        XCTAssertEqual(model.previewResults.map(\.text), ["First task", "Second task"])
+        XCTAssertTrue(model.statusText.contains("All items \u{2192} foo.md"))
+        XCTAssertTrue(model.destinationSummary?.contains("All items \u{2192} foo.md") == true)
+        XCTAssertFalse(model.destinationSummary?.contains("@@") == true)
+    }
+
+    func testGlobalSubmitKeepsOverrideSummaryAndUniqueTargets() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "@@foo\nFirst task\n\nSecond task @bar"
+        var openedPaths: [String] = []
+        model.targetOpener = { url in
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let path = components?.queryItems?.first { $0.name == "path" }?.value
+            openedPaths.append(path ?? "")
+        }
+
+        model.submit(openAfterCapture: true)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.lastSuccessGlobalDestination?.scopeSummary, "foo.md")
+        XCTAssertEqual(model.lastSuccessResults.map(\.relativeTarget), ["foo.md", "bar.md"])
+        XCTAssertTrue(model.statusText.contains("1 local override"))
+        XCTAssertTrue(model.destinationSummary?.contains("1 local override") == true)
+        XCTAssertEqual(openedPaths, ["/tmp/bob/foo.md", "/tmp/bob/bar.md"])
+    }
+
     func testSubmitAndOpenOpensObsidianURLBuiltFromReturnedTarget() async throws {
         let model = CapturePanelModel()
         model.processClient = BobProcessClient(
@@ -893,6 +935,70 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture-parse --format json -- idea @ma"))
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- idea @ma"))
         XCTAssertFalse(record.contains("capture-complete"))
+    }
+
+    func testGlobalRouteSpanUsesCachedRouteCompletionWithoutBobComplete() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(
+                    route: "mac_inbox",
+                    name: "mac_inbox",
+                    label: "mac_inbox.md",
+                    kind: "inbox",
+                    relativePath: "mac_inbox.md"
+                ),
+            ]
+        )
+        let draft = "@@ma\nFirst task"
+        model.plainDraft = draft
+
+        model.editorTextDidChange(cursorUTF8Offset: "@@ma".utf8.count)
+        await waitUntil { self.analysisSettled(for: model, recordURL: recordURL, draft: draft) }
+
+        XCTAssertEqual(model.completionResponse?.context, "route")
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 2, end: 4))
+        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "mac_inbox")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- \(draft)"))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"))
+        XCTAssertFalse(record.contains("capture-complete"))
+    }
+
+    func testGlobalSubBulletTaskCompletionAndMissingIDPromptUseHeaderRange() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "@@file+\nFirst note"
+        model.plainDraft = draft
+
+        model.editorTextDidChange(cursorUTF8Offset: "@@file+".utf8.count)
+        await waitUntil { model.completionResponse?.context == "task" }
+
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 7, end: 7))
+        model.selectedCompletionIndex = 1
+        model.acceptSelectedCompletion()
+
+        XCTAssertEqual(model.taskIDPrompt?.draftSnapshot, draft)
+        XCTAssertEqual(model.taskIDPrompt?.replacementRange, CaptureRange(start: 7, end: 7))
+
+        model.updateTaskIDPromptBlockID("new-id")
+        model.submitTaskIDPrompt()
+        await waitUntil { model.taskIDPrompt == nil }
+
+        XCTAssertEqual(model.plainDraft, "@@file+new-id\nFirst note")
     }
 
     func testTaskBlockIDAuthoredIDSideDoesNotCompleteButLivePreviewShowsBlockID() async throws {

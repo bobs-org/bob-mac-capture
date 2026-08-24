@@ -54,6 +54,8 @@ final class CapturePanelModel: ObservableObject {
     @Published var previewResult: CaptureCommandSuccess?
     @Published var lastSuccessResults: [CaptureCommandSuccess] = []
     @Published var previewResults: [CaptureCommandSuccess] = []
+    @Published var lastSuccessGlobalDestination: CaptureGlobalDestination?
+    @Published var previewGlobalDestination: CaptureGlobalDestination?
     // Incremented on every successful capture so the view can drive a VoiceOver
     // announcement without needing `CaptureCommandSuccess` to be diffed for equality.
     @Published var successAnnouncementTick = 0
@@ -153,10 +155,18 @@ final class CapturePanelModel: ObservableObject {
 
     var destinationSummary: String? {
         if !previewResults.isEmpty {
-            return captureSummary(prefix: "Preview", captures: previewResults)
+            return captureSummary(
+                prefix: "Preview",
+                captures: previewResults,
+                globalDestination: previewGlobalDestination
+            )
         }
         if !lastSuccessResults.isEmpty {
-            return captureSummary(prefix: "Captured", captures: lastSuccessResults)
+            return captureSummary(
+                prefix: "Captured",
+                captures: lastSuccessResults,
+                globalDestination: lastSuccessGlobalDestination
+            )
         }
         return nil
     }
@@ -484,6 +494,7 @@ final class CapturePanelModel: ObservableObject {
         resetAnalysisState()
         lastSuccess = nil
         lastSuccessResults = []
+        lastSuccessGlobalDestination = nil
         selectedCompletionIndex = 0
     }
 
@@ -507,6 +518,7 @@ final class CapturePanelModel: ObservableObject {
         errorMessage = nil
         previewResult = nil
         previewResults = []
+        previewGlobalDestination = nil
     }
 
     private func clearTaskIDPrompt() {
@@ -815,8 +827,10 @@ final class CapturePanelModel: ObservableObject {
             invalidateAnalysis()
             lastSuccess = captures.first
             lastSuccessResults = captures
+            lastSuccessGlobalDestination = success.globalDestination
             previewResult = nil
             previewResults = []
+            previewGlobalDestination = nil
             errorMessage = nil
             setPlainDraft("")
             suppressedCompletionAcceptanceDraft = nil
@@ -824,9 +838,16 @@ final class CapturePanelModel: ObservableObject {
             parseDiagnostics = []
             completionResponse = nil
             previewState = .idle
-            statusText = captureStatus(prefix: "Captured", captures: captures)
+            statusText = captureStatus(
+                prefix: "Captured",
+                captures: captures,
+                globalDestination: success.globalDestination
+            )
             successAnnouncementTick += 1
-            notificationService?.notifyCaptureSuccess(captures: captures)
+            notificationService?.notifyCaptureSuccess(
+                captures: captures,
+                globalDestination: success.globalDestination
+            )
             if openAfterCapture {
                 for url in uniqueTargetURLs(from: captures) {
                     targetOpener(url)
@@ -865,8 +886,13 @@ final class CapturePanelModel: ObservableObject {
             let captures = success.normalizedCaptures
             previewResult = captures.first
             previewResults = captures
+            previewGlobalDestination = success.globalDestination
             errorMessage = nil
-            statusText = captureStatus(prefix: "Preview", captures: captures)
+            statusText = captureStatus(
+                prefix: "Preview",
+                captures: captures,
+                globalDestination: success.globalDestination
+            )
         case .failure(let failure):
             errorMessage = failure.error
             statusText = "Preview failed"
@@ -1123,6 +1149,9 @@ final class CapturePanelModel: ObservableObject {
             "sub_bullet_route",
             "sub_bullet_block_id",
             "sub_bullet_section",
+            "global_route",
+            "global_sub_bullet_route",
+            "global_sub_bullet_block_id",
             "interactive_placeholder",
             "wikilink_delimiter",
             "wikilink_target",
@@ -1183,15 +1212,29 @@ final class CapturePanelModel: ObservableObject {
         cursor: Int,
         draft: String
     ) -> CaptureRange? {
-        let routeSpanKinds = Set(["route", "task_block_id_route", "pomodoro_route", "sub_bullet_route"])
+        let routeSpanKinds = Set([
+            "route",
+            "task_block_id_route",
+            "pomodoro_route",
+            "sub_bullet_route",
+            "global_route",
+            "global_sub_bullet_route",
+        ])
 
         for span in parse.spans where cursor >= span.start && cursor <= span.end {
             if routeSpanKinds.contains(span.kind) {
                 var start = span.start
-                if let markerRange = stringRange(in: draft, start: span.start, end: min(span.start + 1, span.end)),
-                   draft[markerRange] == "@"
-                {
-                    start += 1
+                if let sigilRange = stringRange(
+                    in: draft,
+                    start: span.start,
+                    end: min(span.start + 2, span.end)
+                ) {
+                    let sigil = String(draft[sigilRange])
+                    if sigil == "@@" {
+                        start += 2
+                    } else if sigil.hasPrefix("@") {
+                        start += 1
+                    }
                 }
                 return CaptureRange(start: min(start, span.end), end: span.end)
             }
@@ -1240,7 +1283,25 @@ final class CapturePanelModel: ObservableObject {
         statusText = "Link completion warning: \(warning)"
     }
 
-    private func captureSummary(prefix: String, captures: [CaptureCommandSuccess]) -> String {
+    private func captureSummary(
+        prefix: String,
+        captures: [CaptureCommandSuccess],
+        globalDestination: CaptureGlobalDestination?
+    ) -> String {
+        if let globalDestination {
+            let sample = captures
+                .prefix(2)
+                .map(\.text)
+                .joined(separator: "; ")
+            let overrideCount = captures.filter {
+                !captureUsesGlobalDestination($0, globalDestination)
+            }.count
+            let overrides = overrideCount == 0
+                ? ""
+                : ", \(overrideCount) local override\(overrideCount == 1 ? "" : "s")"
+            return "\(prefix) \u{2192} All items \u{2192} \(globalDestination.scopeSummary)\(overrides): \(sample)"
+        }
+
         guard captures.count != 1 else {
             let capture = captures[0]
             return "\(prefix) \u{2192} \(displayLabel(for: capture)) (\(capture.relativeTarget)): \(capture.taskLine)"
@@ -1256,7 +1317,21 @@ final class CapturePanelModel: ObservableObject {
         return "\(prefix) \u{2192} \(captures.count) \(noun), \(destinationCount) \(destinationNoun): \(sample)"
     }
 
-    private func captureStatus(prefix: String, captures: [CaptureCommandSuccess]) -> String {
+    private func captureStatus(
+        prefix: String,
+        captures: [CaptureCommandSuccess],
+        globalDestination: CaptureGlobalDestination?
+    ) -> String {
+        if let globalDestination {
+            let overrideCount = captures.filter {
+                !captureUsesGlobalDestination($0, globalDestination)
+            }.count
+            let overrides = overrideCount == 0
+                ? ""
+                : ", \(overrideCount) local override\(overrideCount == 1 ? "" : "s")"
+            return "\(prefix) \(captures.count) items \u{00b7} All items \u{2192} \(globalDestination.scopeSummary)\(overrides)"
+        }
+
         guard captures.count != 1 else {
             return "\(prefix) \u{2192} \(displayLabel(for: captures[0]))"
         }

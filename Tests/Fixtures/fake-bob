@@ -47,6 +47,9 @@ json_string() {
 
 multiline_draft=$'Prepare launch\n- confirm owner\n  - text owner\n- attach checklist\n  - verify links'
 batch_draft=$'First item @Cash\n\nSecond item @notes#Ideas'
+global_task_draft=$'@@foo\nFirst task\n\nSecond task'
+global_mixed_draft=$'@@foo\nFirst task\n\nSecond task @bar'
+global_parent_draft=$'@@file+hand\nFirst note\n\nSecond note'
 later_task_batch_draft=$'Plan café @Cash\n\nFile follow-up @file+hand'
 later_task_id_batch_draft=$'Plan café @Cash\n\nFile follow-up @file+new-id'
 later_task_batch_suffix=$'\n\nFile follow-up @file+hand'
@@ -64,6 +67,75 @@ case "${command}" in
       printf ',"body":'
       json_string "${draft}"
       printf ',"mode":"task","needs":[],"spans":[{"start":%s,"end":%s,"kind":"wikilink_target"}],"diagnostics":[]}\n' "${start}" "${end}"
+    elif [[ "${draft}" == "@@ma"$'\n'"First task" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"body":"First task","mode":"task","route":"ma","needs":[],
+"spans":[{"start":0,"end":4,"kind":"global_route"}],"diagnostics":[],
+"global_destination":{"range":{"start":0,"end":4},"mode":"task","route":"ma","block_id":null,"needs":[]}}
+JSON
+    elif [[ "${draft}" == "@@file+"$'\n'"First note" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"body":"First note","mode":"incomplete","route":"file","needs":["task"],
+"spans":[{"start":0,"end":6,"kind":"global_sub_bullet_route"},{"start":6,"end":7,"kind":"interactive_placeholder"}],
+"diagnostics":[],
+"global_destination":{"range":{"start":0,"end":7},"mode":"incomplete","route":"file","block_id":null,"needs":["task"]}}
+JSON
+    elif [[ "${draft}" == "@@file+hand"$'\n'"First note" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"body":"First note","mode":"sub_bullet","route":"file","block_id":"hand","needs":[],
+"spans":[{"start":0,"end":6,"kind":"global_sub_bullet_route"},{"start":7,"end":11,"kind":"global_sub_bullet_block_id"}],
+"diagnostics":[],
+"global_destination":{"range":{"start":0,"end":11},"mode":"sub_bullet","route":"file","block_id":"hand","needs":[]}}
+JSON
+    elif [[ "${draft}" == "${global_task_draft}" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"body":"First task","mode":"task","route":"foo","needs":[],
+"spans":[{"start":0,"end":5,"kind":"global_route"}],"diagnostics":[],
+"items":[
+  {"index":1,"range":{"start":6,"end":16},"line_start":2,"line_end":2,
+   "body":"First task","mode":"task","route":"foo","needs":[]},
+  {"index":2,"range":{"start":18,"end":29},"line_start":4,"line_end":4,
+   "body":"Second task","mode":"task","route":"foo","needs":[]}
+],
+"global_destination":{"range":{"start":0,"end":5},"mode":"task","route":"foo","block_id":null,"needs":[]}}
+JSON
+    elif [[ "${draft}" == "${global_mixed_draft}" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"body":"First task","mode":"task","route":"foo","needs":[],
+"spans":[{"start":0,"end":5,"kind":"global_route"},{"start":30,"end":34,"kind":"route"}],"diagnostics":[],
+"items":[
+  {"index":1,"range":{"start":6,"end":16},"line_start":2,"line_end":2,
+   "body":"First task","mode":"task","route":"foo","needs":[]},
+  {"index":2,"range":{"start":18,"end":34},"line_start":4,"line_end":4,
+   "body":"Second task","mode":"task","route":"bar","needs":[]}
+],
+"global_destination":{"range":{"start":0,"end":5},"mode":"task","route":"foo","block_id":null,"needs":[]}}
+JSON
+    elif [[ "${draft}" == "${global_parent_draft}" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"body":"First note","mode":"sub_bullet","route":"file","block_id":"hand","needs":[],
+"spans":[{"start":0,"end":6,"kind":"global_sub_bullet_route"},{"start":7,"end":11,"kind":"global_sub_bullet_block_id"}],
+"diagnostics":[],
+"items":[
+  {"index":1,"range":{"start":12,"end":22},"line_start":2,"line_end":2,
+   "body":"First note","mode":"sub_bullet","route":"file","block_id":"hand","needs":[]},
+  {"index":2,"range":{"start":24,"end":35},"line_start":4,"line_end":4,
+   "body":"Second note","mode":"sub_bullet","route":"file","block_id":"hand","needs":[]}
+],
+"global_destination":{"range":{"start":0,"end":11},"mode":"sub_bullet","route":"file","block_id":"hand","needs":[]}}
+JSON
     elif [[ "${draft}" == "idea @ma" ]]; then
       cat <<'JSON'
 {
@@ -436,6 +508,99 @@ JSON
     }
   ],
   "warnings": ["skipped unreadable note"]
+}
+JSON
+    elif [[ "${draft}" == "@@ma"$'\n'"First task" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 2, "end": 4 },
+  "context": "route",
+  "candidates": [
+    { "replacement": "mac_inbox", "route": "mac_inbox", "label": "mac_inbox.md", "kind": "inbox", "status": null }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "@@file+"$'\n'"First note" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 7, "end": 7 },
+  "context": "task",
+  "candidates": [
+    {
+      "replacement": "hand-ready",
+      "ref": "4:handready",
+      "block_id": "hand-ready",
+      "route": "file",
+      "requires_block_id": false,
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Handoff ready",
+      "section": "Tasks",
+      "depth": 1,
+      "child_count": 0
+    },
+    {
+      "replacement": "",
+      "ref": "8:missingidea",
+      "block_id": null,
+      "route": "file",
+      "requires_block_id": true,
+      "status_symbol": " ",
+      "status_name": "Todo",
+      "status_type": "TODO",
+      "text": "Plan the handoff",
+      "section": "Tasks",
+      "depth": 1,
+      "child_count": 0
+    }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "@@file+hand"$'\n'"First note" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 7, "end": 11 },
+  "context": "task",
+  "candidates": [
+    {
+      "replacement": "hand-ready",
+      "ref": "4:handready",
+      "block_id": "hand-ready",
+      "route": "file",
+      "requires_block_id": false,
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Handoff ready",
+      "section": "Tasks",
+      "depth": 1,
+      "child_count": 0
+    },
+    {
+      "replacement": "",
+      "ref": "8:missingidea",
+      "block_id": null,
+      "route": "file",
+      "requires_block_id": true,
+      "status_symbol": " ",
+      "status_name": "Todo",
+      "status_type": "TODO",
+      "text": "Plan the handoff",
+      "section": "Tasks",
+      "depth": 1,
+      "child_count": 0
+    }
+  ]
 }
 JSON
     elif [[ "${draft}" == "idea @ma^new-id" ]]; then
@@ -885,6 +1050,168 @@ JSON
   "scheduled": null,
   "placement": "inserted",
   "sub_bullets": ["  - confirm owner", "    - text owner", "  - attach checklist", "    - verify links"]
+}
+JSON
+    elif [[ "${draft}" == "${global_task_draft}" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "foo",
+  "route_label": "foo.md",
+  "relative_target": "foo.md",
+  "target": "/tmp/bob/foo.md",
+  "text": "First task",
+  "task_line": "- [ ] #task First task [created::2026-08-14]",
+  "kind": "task",
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "inserted",
+  "global_destination": { "mode": "task", "route": "foo" },
+  "captures": [
+    {
+      "ok": true,
+      "dry_run": ${dry_run},
+      "routed": true,
+      "route": "foo",
+      "route_label": "foo.md",
+      "relative_target": "foo.md",
+      "target": "/tmp/bob/foo.md",
+      "text": "First task",
+      "task_line": "- [ ] #task First task [created::2026-08-14]",
+      "kind": "task",
+      "created": "2026-08-14",
+      "scheduled": null,
+      "placement": "inserted"
+    },
+    {
+      "ok": true,
+      "dry_run": ${dry_run},
+      "routed": true,
+      "route": "foo",
+      "route_label": "foo.md",
+      "relative_target": "foo.md",
+      "target": "/tmp/bob/foo.md",
+      "text": "Second task",
+      "task_line": "- [ ] #task Second task [created::2026-08-14]",
+      "kind": "task",
+      "created": "2026-08-14",
+      "scheduled": null,
+      "placement": "inserted"
+    }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "${global_mixed_draft}" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "foo",
+  "route_label": "foo.md",
+  "relative_target": "foo.md",
+  "target": "/tmp/bob/foo.md",
+  "text": "First task",
+  "task_line": "- [ ] #task First task [created::2026-08-14]",
+  "kind": "task",
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "inserted",
+  "global_destination": { "mode": "task", "route": "foo" },
+  "captures": [
+    {
+      "ok": true,
+      "dry_run": ${dry_run},
+      "routed": true,
+      "route": "foo",
+      "route_label": "foo.md",
+      "relative_target": "foo.md",
+      "target": "/tmp/bob/foo.md",
+      "text": "First task",
+      "task_line": "- [ ] #task First task [created::2026-08-14]",
+      "kind": "task",
+      "created": "2026-08-14",
+      "scheduled": null,
+      "placement": "inserted"
+    },
+    {
+      "ok": true,
+      "dry_run": ${dry_run},
+      "routed": true,
+      "route": "bar",
+      "route_label": "bar.md",
+      "relative_target": "bar.md",
+      "target": "/tmp/bob/bar.md",
+      "text": "Second task",
+      "task_line": "- [ ] #task Second task [created::2026-08-14]",
+      "kind": "task",
+      "created": "2026-08-14",
+      "scheduled": null,
+      "placement": "inserted"
+    }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "${global_parent_draft}" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "file",
+  "route_label": "file.md",
+  "relative_target": "file.md",
+  "target": "/tmp/bob/file.md",
+  "text": "First note",
+  "task_line": "- First note",
+  "kind": "sub_bullet",
+  "block_id": "hand",
+  "parent_text": "Handoff ready",
+  "parent_line": 4,
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "inserted",
+  "global_destination": { "mode": "sub_bullet", "route": "file", "block_id": "hand" },
+  "captures": [
+    {
+      "ok": true,
+      "dry_run": ${dry_run},
+      "routed": true,
+      "route": "file",
+      "route_label": "file.md",
+      "relative_target": "file.md",
+      "target": "/tmp/bob/file.md",
+      "text": "First note",
+      "task_line": "- First note",
+      "kind": "sub_bullet",
+      "block_id": "hand",
+      "parent_text": "Handoff ready",
+      "parent_line": 4,
+      "created": "2026-08-14",
+      "scheduled": null,
+      "placement": "inserted"
+    },
+    {
+      "ok": true,
+      "dry_run": ${dry_run},
+      "routed": true,
+      "route": "file",
+      "route_label": "file.md",
+      "relative_target": "file.md",
+      "target": "/tmp/bob/file.md",
+      "text": "Second note",
+      "task_line": "- Second note",
+      "kind": "sub_bullet",
+      "block_id": "hand",
+      "parent_text": "Handoff ready",
+      "parent_line": 4,
+      "created": "2026-08-14",
+      "scheduled": null,
+      "placement": "inserted"
+    }
+  ]
 }
 JSON
     elif [[ "${draft}" == *"${later_task_id_batch_suffix}" ]]; then

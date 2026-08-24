@@ -12,6 +12,7 @@ public struct CaptureParseResponse: Codable, Equatable {
     public let needs: [String]
     public let spans: [CaptureSpan]
     public let diagnostics: [CaptureDiagnostic]
+    public let globalDestination: CaptureGlobalDestination?
     // Additive to schema version 1: `bob capture-parse` omits these keys entirely when
     // a draft has no authored sub-bullets, and older bob versions omit depths even when
     // they provide bodies. Decode both tolerantly and synthesize depth 1 for older bob
@@ -32,6 +33,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         needs: [String] = [],
         spans: [CaptureSpan] = [],
         diagnostics: [CaptureDiagnostic] = [],
+        globalDestination: CaptureGlobalDestination? = nil,
         subBullets: [String] = [],
         subBulletDepths: [Int]? = nil,
         items: [CaptureParseItem] = []
@@ -47,6 +49,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         self.needs = needs
         self.spans = spans
         self.diagnostics = diagnostics
+        self.globalDestination = globalDestination
         self.subBullets = subBullets
         self.subBulletDepths = Self.normalizedSubBulletDepths(
             subBulletDepths,
@@ -69,6 +72,10 @@ public struct CaptureParseResponse: Codable, Equatable {
         spans = try container.decodeIfPresent([CaptureSpan].self, forKey: .spans) ?? []
         diagnostics =
             try container.decodeIfPresent([CaptureDiagnostic].self, forKey: .diagnostics) ?? []
+        globalDestination = try container.decodeIfPresent(
+            CaptureGlobalDestination.self,
+            forKey: .globalDestination
+        )
         subBullets = try container.decodeIfPresent([String].self, forKey: .subBullets) ?? []
         let decodedDepths = try container.decodeIfPresent(
             [Int].self,
@@ -109,6 +116,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         case needs
         case spans
         case diagnostics
+        case globalDestination = "global_destination"
         case subBullets = "sub_bullets"
         case subBulletDepths = "sub_bullet_depths"
         case items
@@ -230,6 +238,56 @@ public struct CaptureRange: Codable, Equatable {
     }
 }
 
+public struct CaptureGlobalDestination: Codable, Equatable {
+    public let range: CaptureRange?
+    public let mode: String
+    public let route: String?
+    public let blockID: String?
+    public let needs: [String]
+
+    public init(
+        range: CaptureRange? = nil,
+        mode: String,
+        route: String? = nil,
+        blockID: String? = nil,
+        needs: [String] = []
+    ) {
+        self.range = range
+        self.mode = mode
+        self.route = route
+        self.blockID = blockID
+        self.needs = needs
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        range = try container.decodeIfPresent(CaptureRange.self, forKey: .range)
+        mode = try container.decode(String.self, forKey: .mode)
+        route = try container.decodeIfPresent(String.self, forKey: .route)
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
+        needs = try container.decodeIfPresent([String].self, forKey: .needs) ?? []
+    }
+
+    public var destinationLabel: String {
+        route.map { "\($0).md" } ?? "global destination"
+    }
+
+    public var scopeSummary: String {
+        guard let blockID, !blockID.isEmpty else {
+            return destinationLabel
+        }
+        return "\(destinationLabel) \u{00b7} under ^\(blockID)"
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case range
+        case mode
+        case route
+        case blockID = "block_id"
+        case needs
+    }
+}
+
 // `bob capture --format json` has no schema_version: success and failure are
 // distinguished only by `ok`, and a failure keeps `error` as its sole other field.
 // Bob may omit empty collections and nil scalars, so collection fields decoded from bob
@@ -293,6 +351,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     public let parentStatusSymbol: String?
     public let parentStatusName: String?
     public let captures: [CaptureCommandSuccess]
+    public let globalDestination: CaptureGlobalDestination?
 
     public init(
         ok: Bool,
@@ -321,7 +380,8 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         parentText: String? = nil,
         parentStatusSymbol: String? = nil,
         parentStatusName: String? = nil,
-        captures: [CaptureCommandSuccess] = []
+        captures: [CaptureCommandSuccess] = [],
+        globalDestination: CaptureGlobalDestination? = nil
     ) {
         self.ok = ok
         self.dryRun = dryRun
@@ -350,6 +410,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.parentStatusSymbol = parentStatusSymbol
         self.parentStatusName = parentStatusName
         self.captures = captures
+        self.globalDestination = globalDestination
     }
 
     public init(from decoder: Decoder) throws {
@@ -381,6 +442,10 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         parentStatusSymbol = try container.decodeIfPresent(String.self, forKey: .parentStatusSymbol)
         parentStatusName = try container.decodeIfPresent(String.self, forKey: .parentStatusName)
         captures = try container.decodeIfPresent([CaptureCommandSuccess].self, forKey: .captures) ?? []
+        globalDestination = try container.decodeIfPresent(
+            CaptureGlobalDestination.self,
+            forKey: .globalDestination
+        )
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -411,6 +476,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case parentStatusSymbol = "parent_status_symbol"
         case parentStatusName = "parent_status_name"
         case captures
+        case globalDestination = "global_destination"
     }
 
     /// The exact Markdown block `bob capture` writes beneath the destination, in the
@@ -440,6 +506,41 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     public var normalizedCaptures: [CaptureCommandSuccess] {
         captures.isEmpty ? [self] : captures
     }
+}
+
+public func captureUsesGlobalDestination(
+    _ capture: CaptureCommandSuccess,
+    _ globalDestination: CaptureGlobalDestination
+) -> Bool {
+    guard let globalRoute = globalDestination.route, !globalRoute.isEmpty else {
+        return false
+    }
+
+    let routeMatches = capture.route == globalRoute
+        || capture.routeLabel == "\(globalRoute).md"
+        || capture.relativeTarget == "\(globalRoute).md"
+    guard routeMatches else {
+        return false
+    }
+    guard capture.blockID == globalDestination.blockID else {
+        return false
+    }
+
+    switch normalizedCaptureKind(globalDestination.mode) {
+    case "task":
+        return normalizedCaptureKind(capture.kind) == "task"
+    case "sub_bullet":
+        return normalizedCaptureKind(capture.kind) == "sub_bullet"
+    default:
+        return true
+    }
+}
+
+private func normalizedCaptureKind(_ value: String) -> String {
+    value
+        .lowercased()
+        .replacingOccurrences(of: "-", with: "_")
+        .replacingOccurrences(of: " ", with: "_")
 }
 
 public struct CaptureCommandFailure: Codable, Equatable {

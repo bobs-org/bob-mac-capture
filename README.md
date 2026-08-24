@@ -40,10 +40,11 @@ mutation.
   - `~/bin/bob`
   - `/opt/homebrew/bin/bob`
   - `/usr/local/bin/bob`
-- A `bob` build that supports `capture-complete --all-tasks`, `capture-task-id`, and
-  `task_section` completion for `@route+block-id#`. Older builds can still capture
-  ordinary drafts, but the Add block ID flow and the task-section popup report the local
-  Bob error or an empty list until Bob is upgraded.
+- A `bob` build that supports `@@route` / `@@route+block-id` global destination
+  metadata, `capture-complete --all-tasks`, `capture-task-id`, and `task_section`
+  completion for `@route+block-id#`. Older builds can still capture ordinary drafts,
+  but global headers, the Add block ID flow, and the task-section popup report the
+  local Bob error or an empty list until Bob is upgraded.
 
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.
@@ -107,23 +108,27 @@ or expired certificate can require reauthorizing those system permissions.
   validates UTF-8 byte ranges and ignores a malformed span set instead of applying a
   partial grammar view. Every span kind — capture markers and the five Obsidian wikilink
   kinds (`wikilink_delimiter`, `wikilink_target`, `wikilink_heading`, `wikilink_block_id`,
-  `wikilink_alias`) — resolves through the single palette in `CaptureEditorPalette`, so
+  `wikilink_alias`) — resolves through the single palette in `CaptureEditorPalette`.
+  Global destination spans (`global_route`, `global_sub_bullet_route`, and
+  `global_sub_bullet_block_id`) reuse the existing destination and block-ID colors, so
   the editor and the completion list never disagree about what color represents what
   syntax.
 - Inline completion calls
   `bob capture-complete --all-tasks --cursor BYTE --format json -- <draft>`; accepted
   ordinary candidates apply the server-provided byte replacement range and
   `cursor_after` exactly, restoring a collapsed caret at that offset. Route completion
-  also covers the route side of Bob's `@route^block-id` ordinary task-with-ID marker;
-  the authored ID side has no existing-task picker and an empty completion result is
-  shown as no list. Typing `#` immediately after a resolved `@route+block-id` opens
-  `task_section` completion for that task's ALL-CAPS section bullets; a standalone
-  trailing `#` stays the Pomodoro-note marker and `@route#` stays note-section
-  completion. For blank-line-separated drafts, completion still sends the complete draft
-  as one argv value; Bob scopes the answer to the item containing the UTF-8 cursor and
-  returns replacement ranges in draft-global byte offsets. See "Wikilink Completion"
+  also covers the route side of Bob's `@route^block-id` ordinary task-with-ID marker and
+  the route side of a first-line `@@route` or `@@route+block-id` header; cached route
+  completion strips the complete `@@` sigil just like Bob's server response. The authored
+  ID side has no existing-task picker and an empty completion result is shown as no list.
+  Typing `#` immediately after a resolved `@route+block-id` opens `task_section`
+  completion for that task's ALL-CAPS section bullets; a standalone trailing `#` stays
+  the Pomodoro-note marker and `@route#` stays note-section completion. For
+  blank-line-separated drafts, completion still sends the complete draft as one argv
+  value; Bob scopes the answer to the item or global header containing the UTF-8 cursor
+  and returns replacement ranges in draft-global byte offsets. See "Wikilink Completion"
   below for the Obsidian-specific contract and row presentation.
-- In the `@route+` task context, Bob may return open tasks that still lack block IDs.
+- In the `@route+` and `@@route+` task contexts, Bob may return open tasks that still lack block IDs.
   Ready tasks stay first and insert in one action. Missing-ID rows replace the completion
   list with an inline **Add block ID** prompt; opening the prompt moves keyboard focus
   into the block-ID field so the ID can be typed immediately, with a highlighted field
@@ -142,20 +147,25 @@ or expired certificate can require reauthorizing those system permissions.
   older `bob` decode as depth `1`, and mismatched depths are ignored safely.
   `capture-parse` also decodes Bob's additive `items` array for batch drafts,
   preserving item index, source range, physical line range, route, section, needs, and
-  authored-child depths.
+  authored-child depths. Its additive `global_destination` object is decoded
+  tolerantly; absent metadata means the connected `bob` binary predates global headers.
 - `bob capture --format json` keeps the legacy top-level first result for a single
   capture or compatibility fallback, and may add an ordered `captures` array for a batch.
   The app normalizes both shapes to one collection before updating preview, status,
-  VoiceOver announcements, and Command-Return opening; it never splits a draft into
-  multiple mutating `bob` subprocesses.
+  VoiceOver announcements, notification content, and Command-Return opening; it keeps the
+  additive top-level `global_destination` summary alongside that normalized collection
+  and never splits a draft into multiple mutating `bob` subprocesses.
 - Preview shows every block Bob will write, in Bob's own order: each item's parent
   `task_line`, authored children, then `clip.lines` and `schedule_log.lines` when the
   response carries them. One item stays compact; a batch renders an ordered stack with
-  item count, destination/kind metadata, dividers, and exact `previewBlockLines`. The
-  outer auxiliary detail region owns scrolling, so preview itself never nests another
-  scroll view. Continuous live preview passes `--no-clip`, so it has no `clip` to show;
-  the explicit **Preview** button and **Capture** resolve the clipboard and therefore
-  mirror the full block.
+  item count, destination/kind metadata, dividers, and exact `previewBlockLines`. When
+  Bob reports a global destination, preview and the destination detail show one compact
+  shared-scope line (`All items → foo.md` or `All items → foo.md · under ^a-id`) and
+  mark item-level deviations as local overrides instead of repeating the shared target
+  on every item. The outer auxiliary detail region owns scrolling, so preview itself
+  never nests another scroll view. Continuous live preview passes `--no-clip`, so it has
+  no `clip` to show; the explicit **Preview** button and **Capture** resolve the
+  clipboard and therefore mirror the full block.
 - The preview path assigns a fixed `BOB_PRIORITY_ROLL_SEED` for the draft lifecycle so
   randomized `p:<N>` scheduled dates can be reused by submission. Bob derives
   item-specific rolls from that seed for batch drafts, and the seed resets only after a
@@ -246,11 +256,16 @@ The 36-entry upper bound exists so every retained row always has a unique one-ke
 accelerator while reserving `D` for Delete All: `1` through `9`, then `0`, then `A`
 through `C`, `-`, and `E` through `Z`.
 
-A draft is one or more capture items separated by one or more blank or whitespace-only
-physical lines. Within each item, the first nonblank line is the parent, followed by zero
-or more authored `-`/`*`/`+` bullets. Column-zero bullets become first-level authored
-children; bullets prefixed by exactly two ASCII spaces become nested authored children
-under the nearest preceding first-level authored child. A marker (`@route`,
+A draft is an optional global destination header followed by one or more capture items
+separated by one or more blank or whitespace-only physical lines. A header is exactly
+one `@@route` or `@@route+block-id` token on the first nonblank physical line; it routes
+otherwise-unmarked items to `route.md`, or beneath `^block-id` in that route. Any local
+item marker still wins for that item, and unsupported or misplaced `@@` forms are Bob
+diagnostics rather than literal task text. Within each item, the first nonblank line is
+the parent, followed by zero or more authored `-`/`*`/`+` bullets. Column-zero bullets
+become first-level authored children; bullets prefixed by exactly two ASCII spaces
+become nested authored children under the nearest preceding first-level authored child.
+A marker (`@route`,
 `@route+block-id` for an existing-task sub-bullet, `@route+block-id#section` to nest
 under one of that task's ALL-CAPS section bullets, `@route^block-id` for an ordinary
 task with an authored block ID, `s:<N>`, `p:<N>`, `%`, …) at the end of any valid line
@@ -269,6 +284,13 @@ Prepare the launch review
   - Verify the links
 
 Write release note @notes#Ideas
+```
+
+```text
+@@foo
+First task
+
+Second task @bar
 ```
 
 Bob's routed marker syntax works directly in the editor. `@route^block-id` captures an
@@ -389,9 +411,12 @@ capture text rather than raw draft syntax: a single capture is titled `Task capt
 `Note captured`, names the destination, and includes scheduled-date metadata when Bob
 returns it. A batch is titled with the item count, summarizes task/note and destination
 counts, and emits one ordered body line per captured item without substituting an
-ellipsis for later entries. The only newly authorized notification body content is the
-captured semantic text; failure notifications still carry only the bounded error
-message.
+ellipsis for later entries. When Bob reports a global destination, a same-scope batch
+uses compact wording such as `2 tasks · foo.md` or `2 notes · file.md · under ^a-id`;
+only items that locally override the header repeat their actual destination. The raw
+`@@...` declaration is never included in notification text. The only newly authorized
+notification body content is the captured semantic text; failure notifications still
+carry only the bounded error message.
 
 Capture notifications register singular and plural foreground actions (`Open Note` and
 `Open Notes`). The notification stores the legacy first `targetPath` plus an ordered

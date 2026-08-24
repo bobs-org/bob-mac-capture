@@ -74,9 +74,15 @@ final class NotificationService: NSObject, ObservableObject {
         authorization = NotificationAuthorizationDisplay(status: settings.authorizationStatus)
     }
 
-    func notifyCaptureSuccess(captures: [CaptureCommandSuccess]) {
+    func notifyCaptureSuccess(
+        captures: [CaptureCommandSuccess],
+        globalDestination: CaptureGlobalDestination? = nil
+    ) {
         Task {
-            try? await add(Self.successContent(captures: captures))
+            try? await add(Self.successContent(
+                captures: captures,
+                globalDestination: globalDestination
+            ))
         }
     }
 
@@ -122,8 +128,14 @@ final class NotificationService: NSObject, ObservableObject {
     // Pure content/category/routing builders are `nonisolated`: they touch no actor
     // state, so callers (including synchronous, non-MainActor unit tests) can use them
     // without hopping onto the main actor.
-    nonisolated static func successContent(captures: [CaptureCommandSuccess]) -> UNMutableNotificationContent {
-        let presentation = successPresentation(captures: captures)
+    nonisolated static func successContent(
+        captures: [CaptureCommandSuccess],
+        globalDestination: CaptureGlobalDestination? = nil
+    ) -> UNMutableNotificationContent {
+        let presentation = successPresentation(
+            captures: captures,
+            globalDestination: globalDestination
+        )
         let content = UNMutableNotificationContent()
         content.title = presentation.title
         content.subtitle = presentation.subtitle
@@ -254,7 +266,8 @@ final class NotificationService: NSObject, ObservableObject {
     }
 
     nonisolated private static func successPresentation(
-        captures: [CaptureCommandSuccess]
+        captures: [CaptureCommandSuccess],
+        globalDestination: CaptureGlobalDestination?
     ) -> CaptureNotificationPresentation {
         let nonemptyCaptures = captures.isEmpty ? [] : captures
         let targetPaths = orderedUniquePaths(nonemptyCaptures.map(\.target).filter { !$0.isEmpty })
@@ -272,6 +285,14 @@ final class NotificationService: NSObject, ObservableObject {
                 title: "\(kind) captured",
                 subtitle: capture.routeLabel,
                 body: singleCaptureBody(capture),
+                targetPaths: targetPaths
+            )
+        }
+
+        if let globalDestination {
+            return globalBatchPresentation(
+                captures: nonemptyCaptures,
+                globalDestination: globalDestination,
                 targetPaths: targetPaths
             )
         }
@@ -298,6 +319,38 @@ final class NotificationService: NSObject, ObservableObject {
         )
     }
 
+    nonisolated private static func globalBatchPresentation(
+        captures: [CaptureCommandSuccess],
+        globalDestination: CaptureGlobalDestination,
+        targetPaths: [String]
+    ) -> CaptureNotificationPresentation {
+        let kindSummary = pluralSummary(
+            labels: captures.map { friendlyKindLabel($0.kind) }
+        )
+        let overrideCount = captures.filter {
+            !captureUsesGlobalDestination($0, globalDestination)
+        }.count
+        let overrideSummary = overrideCount == 0
+            ? ""
+            : "\(overrideCount) local override\(overrideCount == 1 ? "" : "s")"
+        let summary = [kindSummary, globalDestination.scopeSummary, overrideSummary]
+            .filter { !$0.isEmpty }
+            .joined(separator: " \u{00b7} ")
+        let lines = captures.enumerated().map { index, capture in
+            let scheduled = capture.scheduled.map { " scheduled \($0)" } ?? ""
+            let override = captureUsesGlobalDestination(capture, globalDestination)
+                ? ""
+                : " \u{2192} \(displayLabel(for: capture))"
+            return "\(index + 1). \(semanticText(capture))\(override)\(scheduled)"
+        }
+        return CaptureNotificationPresentation(
+            title: "\(captures.count) items captured",
+            subtitle: summary,
+            body: ([summary] + lines).filter { !$0.isEmpty }.joined(separator: "\n"),
+            targetPaths: targetPaths
+        )
+    }
+
     nonisolated private static func singleCaptureBody(_ capture: CaptureCommandSuccess) -> String {
         let scheduled = capture.scheduled.map { "\nScheduled: \($0)" } ?? ""
         return "\(semanticText(capture))\(scheduled)"
@@ -311,6 +364,10 @@ final class NotificationService: NSObject, ObservableObject {
             return parentText
         }
         return capture.taskLine
+    }
+
+    nonisolated private static func displayLabel(for capture: CaptureCommandSuccess) -> String {
+        capture.routeLabel.isEmpty ? capture.relativeTarget : capture.routeLabel
     }
 
     nonisolated private static func friendlyKindLabel(_ kind: String) -> String {

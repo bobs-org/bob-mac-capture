@@ -236,6 +236,44 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(decoded.subBulletDepths, [])
     }
 
+    func testParseResponseDecodesGlobalDestinationMetadataTolerantly() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "@@foo+a-id\\nFirst note",
+              "body": "First note",
+              "mode": "sub_bullet",
+              "route": "foo",
+              "block_id": "a-id",
+              "needs": [],
+              "spans": [
+                { "start": 0, "end": 5, "kind": "global_sub_bullet_route" },
+                { "start": 6, "end": 10, "kind": "global_sub_bullet_block_id" }
+              ],
+              "diagnostics": [],
+              "global_destination": {
+                "range": { "start": 0, "end": 10 },
+                "mode": "sub_bullet",
+                "route": "foo",
+                "block_id": "a-id"
+              }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(decoded.globalDestination?.range, CaptureRange(start: 0, end: 10))
+        XCTAssertEqual(decoded.globalDestination?.scopeSummary, "foo.md \u{00b7} under ^a-id")
+        XCTAssertEqual(decoded.globalDestination?.needs, [])
+        XCTAssertEqual(
+            decoded.spans.map { captureSemanticCategory(forSpanKind: $0.kind) },
+            [.route, .blockID]
+        )
+    }
+
     func testCaptureCommandResponseDecodesRealSuccessShapeWithNoSchemaVersion() throws {
         let data = Data(
             """
@@ -318,6 +356,50 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(success.captures.map(\.text), ["First", "Second"])
         XCTAssertEqual(success.normalizedCaptures.map(\.relativeTarget), ["cash.md", "notes.md"])
         XCTAssertEqual(success.normalizedCaptures[1].previewBlockLines, ["- Second", "  - nested detail"])
+    }
+
+    func testCaptureCommandResponseDecodesGlobalDestinationSummary() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "foo",
+              "route_label": "foo.md",
+              "relative_target": "foo.md",
+              "target": "/tmp/bob/foo.md",
+              "text": "First",
+              "task_line": "- [ ] #task First [created::2026-08-14]",
+              "kind": "task",
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "inserted",
+              "global_destination": { "mode": "task", "route": "foo" },
+              "captures": [
+                {
+                  "ok": true,
+                  "dry_run": false,
+                  "routed": true,
+                  "route": "foo",
+                  "route_label": "foo.md",
+                  "relative_target": "foo.md",
+                  "target": "/tmp/bob/foo.md",
+                  "text": "First",
+                  "task_line": "- [ ] #task First [created::2026-08-14]",
+                  "kind": "task",
+                  "created": "2026-08-14",
+                  "scheduled": null,
+                  "placement": "inserted"
+                }
+              ]
+            }
+            """
+        )
+
+        let globalDestination = try XCTUnwrap(success.globalDestination)
+        XCTAssertEqual(globalDestination.scopeSummary, "foo.md")
+        XCTAssertTrue(captureUsesGlobalDestination(success.normalizedCaptures[0], globalDestination))
     }
 
     func testMalformedMultiCaptureArrayFailsDecode() {
