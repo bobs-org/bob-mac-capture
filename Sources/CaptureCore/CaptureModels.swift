@@ -238,6 +238,80 @@ public struct CaptureRange: Codable, Equatable {
     }
 }
 
+public struct CaptureRewriteResponse: Codable, Equatable {
+    public let ok: Bool
+    public let schemaVersion: Int
+    public let input: String
+    public let text: String
+    public let changed: Bool
+    public let cursor: Int?
+    public let rule: String?
+    public let edits: [CaptureRewriteEdit]
+    public let summary: String?
+    public let notices: [String]
+
+    public init(
+        ok: Bool,
+        schemaVersion: Int,
+        input: String,
+        text: String,
+        changed: Bool,
+        cursor: Int? = nil,
+        rule: String? = nil,
+        edits: [CaptureRewriteEdit] = [],
+        summary: String? = nil,
+        notices: [String] = []
+    ) {
+        self.ok = ok
+        self.schemaVersion = schemaVersion
+        self.input = input
+        self.text = text
+        self.changed = changed
+        self.cursor = cursor
+        self.rule = rule
+        self.edits = edits
+        self.summary = summary
+        self.notices = notices
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decode(Bool.self, forKey: .ok)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        input = try container.decode(String.self, forKey: .input)
+        text = try container.decode(String.self, forKey: .text)
+        changed = try container.decode(Bool.self, forKey: .changed)
+        cursor = try container.decodeIfPresent(Int.self, forKey: .cursor)
+        rule = try container.decodeIfPresent(String.self, forKey: .rule)
+        edits = try container.decodeIfPresent([CaptureRewriteEdit].self, forKey: .edits) ?? []
+        summary = try container.decodeIfPresent(String.self, forKey: .summary)
+        notices = try container.decodeIfPresent([String].self, forKey: .notices) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case schemaVersion = "schema_version"
+        case input
+        case text
+        case changed
+        case cursor
+        case rule
+        case edits
+        case summary
+        case notices
+    }
+}
+
+public struct CaptureRewriteEdit: Codable, Equatable {
+    public let range: CaptureRange
+    public let replacement: String
+
+    public init(range: CaptureRange, replacement: String) {
+        self.range = range
+        self.replacement = replacement
+    }
+}
+
 public struct CaptureGlobalDestination: Codable, Equatable {
     public let range: CaptureRange?
     public let mode: String

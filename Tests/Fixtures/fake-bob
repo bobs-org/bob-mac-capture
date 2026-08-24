@@ -447,6 +447,47 @@ JSON
       printf ',"mode":"task","needs":[],"spans":[],"diagnostics":[]}\n'
     fi
     ;;
+  capture-rewrite)
+    draft="${*: -1}"
+    cursor="0"
+    args=("$@")
+    for ((i = 0; i < ${#args[@]}; i++)); do
+      if [[ "${args[$i]}" == "--cursor" || "${args[$i]}" == "-c" ]]; then
+        cursor="${args[$((i + 1))]:-0}"
+      fi
+    done
+    if [[ -n "${FAKE_BOB_REWRITE_DELAY_SECONDS:-}" ]]; then
+      sleep "${FAKE_BOB_REWRITE_DELAY_SECONDS}" &
+      wait $!
+    fi
+    if [[ "${draft}" == "Buy milk @dev @@" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"Buy milk @@dev","changed":true,"cursor":14,"rule":"absorb_local_marker",
+"edits":[
+  {"range":{"start":9,"end":14},"replacement":""},
+  {"range":{"start":14,"end":16},"replacement":"@@dev"}
+],
+"summary":"Moved @dev into @@dev"}
+JSON
+    elif [[ "${draft}" == "note @notes#Ideas @@" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      printf ',"text":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"changed":false,"cursor":20,"edits":[],
+"notices":["@@ cannot take a section: leave @notes#Ideas on this item, or delete it and declare @@notes"]}
+JSON
+    else
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      printf ',"text":'
+      json_string "${draft}"
+      printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+    fi
+    ;;
   capture-targets)
     cat <<'JSON'
 {

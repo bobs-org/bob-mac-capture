@@ -44,6 +44,26 @@ public final class BobProcessClient: @unchecked Sendable {
         return response
     }
 
+    public func captureRewrite(
+        _ draft: String,
+        cursor: Int
+    ) async throws -> CaptureRewriteResponse {
+        let response: CaptureRewriteResponse = try await decode(
+            arguments: [
+                "capture-rewrite",
+                "--cursor",
+                String(cursor),
+                "--format",
+                "json",
+                "--",
+                draft,
+            ],
+            expectedSchema: 1,
+            lane: "rewrite"
+        )
+        return response
+    }
+
     public func captureComplete(
         _ draft: String,
         cursor: Int
@@ -473,5 +493,6 @@ public protocol SchemaVersioned {
 }
 
 extension CaptureParseResponse: SchemaVersioned {}
+extension CaptureRewriteResponse: SchemaVersioned {}
 extension CaptureTargetsResponse: SchemaVersioned {}
 extension CaptureCompletionResponse: SchemaVersioned {}

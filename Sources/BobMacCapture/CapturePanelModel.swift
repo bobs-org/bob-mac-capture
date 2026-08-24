@@ -78,6 +78,7 @@ final class CapturePanelModel: ObservableObject {
 
     private let debounceNanoseconds: UInt64
     private var analysisTask: Task<Void, Never>?
+    private var rewriteTask: Task<Void, Never>?
     private var stashCancellable: AnyCancellable?
     private var analysisGeneration: UInt64 = 0
     private var isApplyingProgrammaticDraft = false
@@ -113,6 +114,7 @@ final class CapturePanelModel: ObservableObject {
 
     deinit {
         analysisTask?.cancel()
+        rewriteTask?.cancel()
     }
 
     var plainDraft: String {
@@ -191,6 +193,7 @@ final class CapturePanelModel: ObservableObject {
             previewState = .idle
             completionResponse = nil
             invalidateAnalysis()
+            invalidateRewrite()
         } else if hasDraft {
             editorTextDidChange()
         }
@@ -228,10 +231,16 @@ final class CapturePanelModel: ObservableObject {
             previewState = .idle
             statusText = ""
             invalidateAnalysis()
+            invalidateRewrite()
             return
         }
 
         let insertionOffset = cursorUTF8Offset ?? collapsedSelectionUTF8Offset()
+        if let insertionOffset,
+           Self.isBareAtAtTrigger(in: draft, cursorUTF8Offset: insertionOffset)
+        {
+            startCaptureRewrite(draft: draft, cursorUTF8Offset: insertionOffset)
+        }
         scheduleAnalysis(cursorUTF8Offset: insertionOffset, requestCompletion: insertionOffset != nil)
     }
 
@@ -510,6 +519,7 @@ final class CapturePanelModel: ObservableObject {
 
     private func resetAnalysisState() {
         invalidateAnalysis()
+        invalidateRewrite()
         parseDiagnostics = []
         completionResponse = nil
         clearTaskIDPrompt()
@@ -1035,6 +1045,61 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
+    private func startCaptureRewrite(draft: String, cursorUTF8Offset: Int) {
+        guard let processClient else {
+            return
+        }
+
+        rewriteTask?.cancel()
+        rewriteTask = Task { [weak self, processClient] in
+            do {
+                let response = try await CaptureSignpost.measure("rewrite") {
+                    try await processClient.captureRewrite(draft, cursor: cursorUTF8Offset)
+                }
+                try Task.checkCancellation()
+
+                await MainActor.run {
+                    self?.applyCaptureRewrite(response, draft: draft)
+                }
+            } catch is CancellationError {
+            } catch {
+                // Rewriting is a typing assist. Parse, completion, and preview still run
+                // on the original draft, so transport failures should not disturb the UI.
+            }
+        }
+    }
+
+    private func applyCaptureRewrite(
+        _ response: CaptureRewriteResponse,
+        draft: String
+    ) {
+        guard plainDraft == draft else {
+            return
+        }
+
+        if response.changed {
+            if let cursor = response.cursor,
+               stringRange(in: response.text, start: cursor, end: cursor) == nil
+            {
+                return
+            }
+
+            let cursor = response.cursor ?? response.text.utf8.count
+            suppressedCompletionAcceptanceDraft = response.text
+            setPlainDraft(
+                response.text,
+                cursorUTF8Offset: cursor,
+                suppressSelectionCallbacks: true
+            )
+            if let summary = response.summary, !summary.isEmpty {
+                announceStatus(summary)
+            }
+            scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false)
+        } else if let notice = response.notices.first {
+            announceStatus(notice)
+        }
+    }
+
     private func startLivePreview(
         draft: String,
         generation: UInt64,
@@ -1080,6 +1145,11 @@ final class CapturePanelModel: ObservableObject {
         analysisGeneration &+= 1
         analysisTask?.cancel()
         analysisTask = nil
+    }
+
+    private func invalidateRewrite() {
+        rewriteTask?.cancel()
+        rewriteTask = nil
     }
 
     private func activePriorityRollSeed() -> String {
@@ -1372,5 +1442,18 @@ final class CapturePanelModel: ObservableObject {
                     || (value >= 97 && value <= 122)
                     || value == 45
             }
+    }
+
+    private static func isBareAtAtTrigger(in draft: String, cursorUTF8Offset: Int) -> Bool {
+        let bytes = Array(draft.utf8)
+        guard cursorUTF8Offset >= 2,
+              cursorUTF8Offset <= bytes.count,
+              bytes[cursorUTF8Offset - 2] == 64,
+              bytes[cursorUTF8Offset - 1] == 64
+        else {
+            return false
+        }
+
+        return cursorUTF8Offset < 3 || bytes[cursorUTF8Offset - 3] != 64
     }
 }

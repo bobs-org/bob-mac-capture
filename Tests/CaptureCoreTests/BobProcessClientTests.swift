@@ -106,6 +106,47 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(response.spans.map(\.kind), ["task_block_id_route", "task_block_id"])
     }
 
+    func testCaptureRewriteRunsCursorAwareEndpoint() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let response = try await client.captureRewrite("Buy milk @dev @@", cursor: 16)
+
+        XCTAssertTrue(response.changed)
+        XCTAssertEqual(response.text, "Buy milk @@dev")
+        XCTAssertEqual(response.cursor, 14)
+        XCTAssertEqual(response.rule, "absorb_local_marker")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 16 --format json -- Buy milk @dev @@"))
+    }
+
+    func testCaptureRewriteRejectsWrongSchemaVersion() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": #"{"ok":true,"schema_version":2,"input":"@@","text":"@@","changed":false}"#,
+            ]
+        )
+
+        do {
+            _ = try await client.captureRewrite("@@", cursor: 2)
+            XCTFail("Expected schema mismatch")
+        } catch BobClientError.schemaMismatch(_, let expected, let actual) {
+            XCTAssertEqual(expected, 1)
+            XCTAssertEqual(actual, 2)
+        }
+    }
+
     func testCaptureCompleteRunsCursorAwareEndpoint() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

@@ -274,6 +274,68 @@ final class CaptureModelTests: XCTestCase {
         )
     }
 
+    func testCaptureRewriteResponseDecodesFullPayload() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Buy milk @dev @@",
+              "text": "Buy milk @@dev",
+              "changed": true,
+              "cursor": 14,
+              "rule": "absorb_local_marker",
+              "edits": [
+                { "range": { "start": 9, "end": 14 }, "replacement": "" },
+                { "range": { "start": 14, "end": 16 }, "replacement": "@@dev" }
+              ],
+              "summary": "Moved @dev into @@dev",
+              "notices": ["future notice"],
+              "future_key": "ignored"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureRewriteResponse.self, from: data)
+
+        XCTAssertEqual(decoded.schemaVersion, 1)
+        XCTAssertTrue(decoded.changed)
+        XCTAssertEqual(decoded.cursor, 14)
+        XCTAssertEqual(decoded.rule, "absorb_local_marker")
+        XCTAssertEqual(
+            decoded.edits,
+            [
+                CaptureRewriteEdit(range: CaptureRange(start: 9, end: 14), replacement: ""),
+                CaptureRewriteEdit(range: CaptureRange(start: 14, end: 16), replacement: "@@dev"),
+            ]
+        )
+        XCTAssertEqual(decoded.summary, "Moved @dev into @@dev")
+        XCTAssertEqual(decoded.notices, ["future notice"])
+    }
+
+    func testCaptureRewriteResponseDecodesMinimalNoopPayload() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "No marker",
+              "text": "No marker",
+              "changed": false
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureRewriteResponse.self, from: data)
+
+        XCTAssertFalse(decoded.changed)
+        XCTAssertNil(decoded.cursor)
+        XCTAssertNil(decoded.rule)
+        XCTAssertEqual(decoded.edits, [])
+        XCTAssertNil(decoded.summary)
+        XCTAssertEqual(decoded.notices, [])
+    }
+
     func testCaptureCommandResponseDecodesRealSuccessShapeWithNoSchemaVersion() throws {
         let data = Data(
             """

@@ -736,6 +736,98 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, "Call bank @Cash")
     }
 
+    func testBareAtAtRewriteTriggerAppliesDraftAndAnnouncesSummary() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        model.plainDraft = "Buy milk @dev @@"
+
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil {
+            model.plainDraft == "Buy milk @@dev"
+                && model.statusText == "Moved @dev into @@dev"
+        }
+
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), "Buy milk @@dev".utf8.count)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 16 --format json -- Buy milk @dev @@"))
+    }
+
+    func testBareAtAtRewriteDropsStaleResponse() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_REWRITE_DELAY_SECONDS": "0.2",
+            ]
+        )
+
+        model.plainDraft = "Buy milk @dev @@"
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        model.plainDraft = "Buy milk @dev @@ and keep typing"
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+
+        try await Task.sleep(nanoseconds: 400_000_000)
+
+        XCTAssertEqual(model.plainDraft, "Buy milk @dev @@ and keep typing")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 16 --format json -- Buy milk @dev @@"))
+    }
+
+    func testBareAtAtRewriteNoticeDoesNotMutateDraft() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "note @notes#Ideas @@"
+        model.plainDraft = draft
+
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.statusText.contains("@@ cannot take a section") }
+
+        XCTAssertEqual(model.plainDraft, draft)
+    }
+
+    func testSingleAtAndTripleAtDoNotTriggerRewrite() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        model.plainDraft = "Buy milk @dev @"
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil {
+            ((try? String(contentsOf: recordURL)) ?? "").contains("argv=capture-parse")
+        }
+
+        model.plainDraft = "Buy milk @dev @@@"
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil {
+            ((try? String(contentsOf: recordURL)) ?? "").contains("Buy milk @dev @@@")
+        }
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertFalse(record.contains("capture-rewrite"))
+    }
+
     func testAcceptedCompletionStaysDismissedUntilNextUserEdit() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(
