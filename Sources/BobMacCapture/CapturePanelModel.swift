@@ -23,6 +23,7 @@ struct CaptureTaskIDPromptState: Equatable {
 
 enum CapturePanelFocusTarget: Hashable {
     case editor
+    /// Model-level focus intent owned by `BlockIDField` / AppKit, not `@FocusState`.
     case taskIDPromptBlockID
 }
 
@@ -89,7 +90,6 @@ final class CapturePanelModel: ObservableObject {
     // state on behalf of a request that is no longer the active one.
     private var activeRequestID: UUID?
     private var activeTaskIDRequestID: UUID?
-    private var editorInputLockToken: UUID?
 
     init(
         processClient: BobProcessClient? = nil,
@@ -515,19 +515,7 @@ final class CapturePanelModel: ObservableObject {
         clearEditorInputLock()
     }
 
-    private func scheduleDeferredEditorInputLock() {
-        let token = UUID()
-        editorInputLockToken = token
-        Task { @MainActor in
-            guard self.editorInputLockToken == token, self.taskIDPrompt != nil else {
-                return
-            }
-            self.editorInputLocked = true
-        }
-    }
-
     private func clearEditorInputLock() {
-        editorInputLockToken = nil
         if editorInputLocked {
             editorInputLocked = false
         }
@@ -739,7 +727,7 @@ final class CapturePanelModel: ObservableObject {
         )
         statusText = "Add block ID"
         requestFocus(.taskIDPromptBlockID)
-        scheduleDeferredEditorInputLock()
+        editorInputLocked = true
     }
 
     private func completeTaskIDAssignment(

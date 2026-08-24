@@ -126,9 +126,10 @@ or expired certificate can require reauthorizing those system permissions.
 - In the `@route+` task context, Bob may return open tasks that still lack block IDs.
   Ready tasks stay first and insert in one action. Missing-ID rows replace the completion
   list with an inline **Add block ID** prompt; opening the prompt moves keyboard focus
-  into the block-ID field so the ID can be typed immediately, and canceling or completing
-  the prompt returns focus to the capture editor. The draft remains unchanged while the
-  app calls `bob capture-task-id --route ROUTE --task-ref REF --block-id ID --format json`.
+  into the block-ID field so the ID can be typed immediately, with a highlighted field
+  border while it holds focus. Canceling or completing the prompt returns focus to the
+  capture editor. The draft remains unchanged while the app calls
+  `bob capture-task-id --route ROUTE --task-ref REF --block-id ID --format json`.
   Only a confirmed Bob success splices the returned canonical ID into the saved
   replacement range and reruns preview. Cancel and every error keep the draft unchanged.
 - Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through
@@ -205,9 +206,11 @@ or expired certificate can require reauthorizing those system permissions.
 Every capture action is reachable from the keyboard alone; the hotkey, editor, completion
 list, Stash/Capture/Preview/Discard buttons, and stash picker never require a pointer.
 Opening the **Add block ID** prompt moves keyboard focus into the block-ID field;
-canceling or completing the prompt restores focus to the capture editor. The editor
-starts at one visual line, grows and shrinks with rendered content through six visual
-lines, then scrolls internally for longer drafts.
+that field's first responder is owned directly by AppKit rather than SwiftUI focus, and
+a keystroke arriving while nothing holds focus re-claims the field. Canceling or
+completing the prompt restores focus to the capture editor. The editor starts at one
+visual line, grows and shrinks with rendered content through six visual lines, then
+scrolls internally for longer drafts.
 
 The footer's **Stash** action shows the number of retained canceled drafts and matches
 Control-S. If the stash is empty, opening it reports "No canceled drafts yet" without
@@ -524,6 +527,10 @@ text is stored separately in that Application Support directory (see Privacy).
   I/O errors are Bob errors. The Add block ID card keeps the selected task and typed ID
   visible so you can edit, retry, or press Escape to return to the refreshed task list.
   The draft is not expanded until Bob confirms the write.
+- **Typing does not reach the Add block ID field**: check
+  `log show --signpost --predicate 'subsystem == "org.bobs.bob-mac-capture"'` for
+  `block-id-focus-claimed` (normal), `block-id-focus-repaired` (the safety net fired),
+  or `block-id-focus-claim-failed` (report it).
 - **Wikilink completion shows no candidates, or the status bar reports a link
   completion warning**: an empty list with no status change means no note, heading, or
   block matched the query — try a shorter query or check the spelling. A status message
@@ -561,10 +568,10 @@ text is stored separately in that Application Support directory (see Privacy).
 
 The app emits `os_signpost` intervals/events (subsystem `org.bobs.bob-mac-capture`,
 category `capture`) around hotkey receipt, panel ordering, editor focus, parse,
-completion, preview, submit, plain-text paste (`paste-plain-text`), and notification
-scheduling, visible in Instruments' Points of Interest / os_signpost templates. These,
-and the bounded Recent Activity list in Settings, are metadata-only by construction —
-see Privacy above.
+completion, preview, submit, block-ID focus claims, plain-text paste
+(`paste-plain-text`), and notification scheduling, visible in Instruments' Points of
+Interest / os_signpost templates. These, and the bounded Recent Activity list in
+Settings, are metadata-only by construction — see Privacy above.
 
 ## CI
 

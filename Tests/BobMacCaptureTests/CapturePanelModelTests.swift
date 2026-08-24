@@ -1308,10 +1308,10 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.statusText, "Add block ID")
         XCTAssertEqual(model.focusRequest.target, .taskIDPromptBlockID)
         XCTAssertGreaterThan(model.focusRequest.sequence, initialFocusSequence)
-        XCTAssertFalse(model.editorInputLocked)
+        XCTAssertTrue(model.editorInputLocked)
     }
 
-    func testTaskIDPromptDefersEditorInputLockUntilNextTurn() async {
+    func testTaskIDPromptLocksEditorInPresentingTurn() async {
         let model = CapturePanelModel()
         installMissingTaskCompletion(on: model)
 
@@ -1319,23 +1319,27 @@ final class CapturePanelModelTests: XCTestCase {
 
         XCTAssertTrue(model.taskIDPromptVisible)
         XCTAssertEqual(model.focusRequest.target, .taskIDPromptBlockID)
-        XCTAssertFalse(model.editorInputLocked)
+        XCTAssertTrue(model.editorInputLocked)
 
-        await waitUntil { model.editorInputLocked }
+        await Task.yield()
 
         XCTAssertTrue(model.editorInputLocked)
         XCTAssertTrue(model.taskIDPromptVisible)
         XCTAssertEqual(model.focusRequest.target, .taskIDPromptBlockID)
     }
 
-    func testCancelTaskIDPromptBeforeDeferredLockNeverLocksEditor() async {
+    func testCancelTaskIDPromptUnlocksEditorImmediately() async {
         let model = CapturePanelModel()
         installMissingTaskCompletion(on: model)
 
         model.acceptSelectedCompletion()
         XCTAssertTrue(model.taskIDPromptVisible)
-        XCTAssertFalse(model.editorInputLocked)
+        XCTAssertTrue(model.editorInputLocked)
         model.cancelTaskIDPrompt()
+
+        XCTAssertNil(model.taskIDPrompt)
+        XCTAssertFalse(model.editorInputLocked)
+        XCTAssertEqual(model.focusRequest.target, .editor)
 
         await Task.yield()
         try? await Task.sleep(nanoseconds: 50_000_000)
@@ -1349,7 +1353,7 @@ final class CapturePanelModelTests: XCTestCase {
         let model = CapturePanelModel()
         installMissingTaskCompletion(on: model)
         model.acceptSelectedCompletion()
-        await waitUntil { model.editorInputLocked }
+        XCTAssertTrue(model.editorInputLocked)
 
         model.prepareForDismissal()
 
@@ -1525,7 +1529,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         installMissingTaskCompletion(on: model)
         model.acceptSelectedCompletion()
-        await waitUntil { model.editorInputLocked }
+        XCTAssertTrue(model.editorInputLocked)
         let promptFocusSequence = model.focusRequest.sequence
 
         model.updateTaskIDPromptBlockID("duplicate-id")

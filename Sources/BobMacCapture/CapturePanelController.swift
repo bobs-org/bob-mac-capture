@@ -646,22 +646,65 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self,
-                  self.panel?.isKeyWindow == true,
-                  let command = self.keyRouter.command(
-                    for: event,
-                    context: CaptureKeyRoutingContext(
-                        completionVisible: self.model.completionVisible,
-                        stashPickerVisible: self.model.isStashPickerPresented,
-                        stashEntryCount: self.model.stashCount,
-                        taskIDPromptVisible: self.model.taskIDPromptVisible
-                    )
-                  )
+                  self.panel?.isKeyWindow == true
             else {
+                return event
+            }
+            self.repairBlockIDFocusIfOrphaned()
+            guard let command = self.keyRouter.command(
+                for: event,
+                context: CaptureKeyRoutingContext(
+                    completionVisible: self.model.completionVisible,
+                    stashPickerVisible: self.model.isStashPickerPresented,
+                    stashEntryCount: self.model.stashCount,
+                    taskIDPromptVisible: self.model.taskIDPromptVisible
+                )
+            ) else {
                 return event
             }
 
             return self.perform(command) ? nil : event
         }
+    }
+
+    /// While the Add block ID prompt is open, a key event with no control holding first
+    /// responder would be dropped. Re-claim only that orphaned state, leaving focused
+    /// controls such as buttons alone.
+    private func repairBlockIDFocusIfOrphaned() {
+        guard model.taskIDPromptVisible,
+              model.taskIDPrompt?.isSaving != true,
+              let panel,
+              Self.blockIDFocusIsOrphaned(in: panel),
+              let field = Self.findBlockIDField(in: panel.contentView)
+        else {
+            return
+        }
+        field.requestFirstResponder()
+        CaptureSignpost.event("block-id-focus-repaired")
+    }
+
+    static func blockIDFocusIsOrphaned(in window: NSWindow) -> Bool {
+        guard let responder = window.firstResponder as? NSView else {
+            return true
+        }
+        return responder === window.contentView
+    }
+
+    static func findBlockIDField(in view: NSView?) -> BlockIDNSTextField? {
+        guard let view else {
+            return nil
+        }
+        if let field = view as? BlockIDNSTextField,
+           field.accessibilityIdentifier() == blockIDFieldAccessibilityIdentifier
+        {
+            return field
+        }
+        for subview in view.subviews {
+            if let field = findBlockIDField(in: subview) {
+                return field
+            }
+        }
+        return nil
     }
 
     // Ctrl-J, Ctrl-U, the placeholder-row Backspace, and Tab/Shift-Tab bullet

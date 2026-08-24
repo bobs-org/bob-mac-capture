@@ -416,7 +416,7 @@ struct CapturePanelView: View {
     private var auxiliaryContent: some View {
         VStack(alignment: .leading, spacing: CapturePanelLayout.sectionSpacing) {
             if model.taskIDPromptVisible {
-                TaskIDPromptCard(model: model, focus: $focusedControl)
+                TaskIDPromptCard(model: model)
                     .frame(width: 430)
                     .padding(.leading, 14)
                     .layoutPriority(0)
@@ -512,7 +512,10 @@ struct CapturePanelView: View {
     }
 
     private func applyFocusRequest(_ request: CapturePanelFocusRequest) {
-        focusedControl = request.target
+        // Only `.editor` is resolved by SwiftUI. `.taskIDPromptBlockID` is owned by
+        // AppKit (`BlockIDField`), so SwiftUI's stored focus value is cleared while
+        // the prompt field claims first responder directly.
+        focusedControl = request.target == .editor ? .editor : nil
     }
 
     private var currentAuxiliaryHeight: CapturePanelAuxiliaryHeight? {
@@ -715,8 +718,9 @@ private struct CaptureFocusAdoption: ViewModifier {
             // that installed it commits, so it can claim a request published in the
             // same transaction that created the control, and can re-claim one that was
             // dropped when another control resigned first responder in that
-            // transaction. `id:` re-runs it for every later request (validation error,
-            // Bob failure) without re-stealing focus the control already holds.
+            // transaction. Its `focus.wrappedValue != target` guard also makes it a
+            // no-op if an eager mirror already stored the target, so this remains an
+            // editor-specific bridge rather than a general focus repair.
             .task(id: request) {
                 guard request.target == target, focus.wrappedValue != target else {
                     return
@@ -730,7 +734,7 @@ private struct CaptureFocusAdoption: ViewModifier {
 @available(macOS 26.0, *)
 private struct TaskIDPromptCard: View {
     @ObservedObject var model: CapturePanelModel
-    var focus: FocusState<CapturePanelFocusTarget?>.Binding
+    @State private var blockIDFieldIsFocused = false
 
     private var prompt: CaptureTaskIDPromptState? {
         model.taskIDPrompt
@@ -756,35 +760,30 @@ private struct TaskIDPromptCard: View {
                         .font(.system(.body, design: .monospaced).weight(.semibold))
                         .foregroundStyle(CaptureEditorPalette.color(for: .blockID))
                         .padding(.leading, 8)
-                    TextField(
-                        "block-id",
+                    BlockIDField(
                         text: Binding(
                             get: { model.taskIDPrompt?.authoredID ?? "" },
                             set: { model.updateTaskIDPromptBlockID($0) }
-                        )
+                        ),
+                        isEnabled: !prompt.isSaving,
+                        focusRequest: model.focusRequest,
+                        focusDidChange: { blockIDFieldIsFocused = $0 }
                     )
-                    .font(.system(.body, design: .monospaced))
-                    .textFieldStyle(.plain)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 6)
-                    .modifier(
-                        CaptureFocusAdoption(
-                            target: .taskIDPromptBlockID,
-                            request: model.focusRequest,
-                            focus: focus
-                        )
-                    )
-                    .disabled(prompt.isSaving)
-                    .onSubmit {
-                        model.submitTaskIDPrompt()
-                    }
-                    .accessibilityLabel("Block ID")
                 }
                 .background(.background.opacity(0.45), in: RoundedRectangle(cornerRadius: 6))
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(.secondary.opacity(0.24), lineWidth: 0.5)
+                        .strokeBorder(
+                            blockIDFieldIsFocused ? Color.accentColor.opacity(0.8) : Color.secondary.opacity(0.24),
+                            lineWidth: blockIDFieldIsFocused ? 1 : 0.5
+                        )
                 )
+                .onDisappear {
+                    blockIDFieldIsFocused = false
+                }
 
                 Text("Letters, numbers, and hyphens")
                     .font(.caption)
