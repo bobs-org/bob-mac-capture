@@ -377,6 +377,42 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
+    /// Plain Tab, first assist: expand an immediately preceding snippet trigger (`--` ->
+    /// em dash today) at a collapsed caret. Returns `false` without changing state
+    /// whenever `CaptureSnippetResolver.resolve` declines, so the caller can fall
+    /// through to bullet indentation and then to AppKit's normal focus traversal.
+    static func applySnippetExpansion(
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder),
+              let edit = CaptureSnippetResolver.resolve(
+                in: textView.string as NSString,
+                selectedRange: textView.selectedRange()
+              )
+        else {
+            return false
+        }
+
+        model.dismissCompletion()
+        textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
+        textView.setSelectedRange(edit.resultingSelection)
+        return true
+    }
+
+    /// Plain Tab's full ordered editor-assist chain: snippet expansion first, then
+    /// continuation-bullet indentation. Returns `false` without changing state when both
+    /// decline, so the key event falls through to AppKit's normal focus traversal.
+    static func applyTabEditorAssist(
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) -> Bool {
+        if applySnippetExpansion(firstResponder: firstResponder, model: model) {
+            return true
+        }
+        return applyBulletIndentation(.increase, firstResponder: firstResponder, model: model)
+    }
+
     /// Tab/Shift-Tab: indent or outdent the continuation bullet row the caret sits on
     /// between column zero and exactly two ASCII spaces. Returns `false` without
     /// changing state whenever `bulletIndentationEdit(direction:in:selectedRange:)`
@@ -567,9 +603,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 firstResponder: panel?.firstResponder,
                 model: model
             )
-        case .increaseBulletIndentation:
-            return Self.applyBulletIndentation(
-                .increase,
+        case .tabEditorAssist:
+            return Self.applyTabEditorAssist(
                 firstResponder: panel?.firstResponder,
                 model: model
             )

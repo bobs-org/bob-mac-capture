@@ -21,7 +21,7 @@ enum CaptureKeyCommand: Equatable {
     case acceptCompletion
     case nextCompletion
     case previousCompletion
-    case increaseBulletIndentation
+    case tabEditorAssist
     case decreaseBulletIndentation
     case submitTaskIDPrompt
     case cancelTaskIDPrompt
@@ -100,11 +100,13 @@ struct CaptureKeyCommandRouter {
             return modifiers == .control ? .stashDraftAndClose : nil
         case KeyCode.tab:
             // Plain Tab keeps the existing completion-acceptance contract and otherwise
-            // indents; Shift-Tab always outdents, deliberately replacing the accidental
-            // completion acceptance it used to trigger. Every other modifier combination
-            // (Command, Option, Control, or Shift plus another modifier) stays AppKit's.
+            // runs the ordered editor-assist chain (snippet expansion, then bullet
+            // indentation); Shift-Tab always outdents, deliberately replacing the
+            // accidental completion acceptance it used to trigger. Every other modifier
+            // combination (Command, Option, Control, or Shift plus another modifier)
+            // stays AppKit's.
             if modifiers.isEmpty {
-                return context.completionVisible ? .acceptCompletion : .increaseBulletIndentation
+                return context.completionVisible ? .acceptCompletion : .tabEditorAssist
             }
             return modifiers == .shift ? .decreaseBulletIndentation : nil
         case KeyCode.arrowDown:

@@ -731,10 +731,10 @@ final class BobMacCaptureTests: XCTestCase {
         )
     }
 
-    func testKeyRouterMatchesTabIndentationAndPreservesCompletionAcceptance() {
+    func testKeyRouterMatchesTabEditorAssistAndPreservesCompletionAcceptance() {
         let router = CaptureKeyCommandRouter()
 
-        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48)), .increaseBulletIndentation)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48)), .tabEditorAssist)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), completionVisible: true), .acceptCompletion)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 48, modifiers: .shift)), .decreaseBulletIndentation)
         XCTAssertEqual(
@@ -1733,6 +1733,173 @@ final class BobMacCaptureTests: XCTestCase {
             CapturePanelController.applyBulletIndentation(.increase, firstResponder: nil, model: model)
         )
         XCTAssertEqual(noneditable.string, "Parent\n- confirm owner")
+        XCTAssertNotNil(model.completionResponse)
+    }
+
+    func testCaptureSnippetResolverExpandsEmDashTriggerInVariousContexts() {
+        let onlyTrigger = "--" as NSString
+        XCTAssertEqual(
+            CaptureSnippetResolver.resolve(in: onlyTrigger, selectedRange: NSRange(location: 2, length: 0)),
+            CaptureSnippetEdit(
+                replacementRange: NSRange(location: 0, length: 2),
+                replacementText: "\u{2014}",
+                resultingSelection: NSRange(location: 1, length: 0)
+            ),
+            "draft containing only the trigger"
+        )
+
+        let afterOrdinaryPrefix = "wait--" as NSString
+        XCTAssertEqual(
+            CaptureSnippetResolver.resolve(in: afterOrdinaryPrefix, selectedRange: NSRange(location: 6, length: 0)),
+            CaptureSnippetEdit(
+                replacementRange: NSRange(location: 4, length: 2),
+                replacementText: "\u{2014}",
+                resultingSelection: NSRange(location: 5, length: 0)
+            ),
+            "trigger after ordinary prefix text"
+        )
+
+        let afterUnicodePrefix = "caf\u{00e9}--" as NSString
+        XCTAssertEqual(
+            CaptureSnippetResolver.resolve(in: afterUnicodePrefix, selectedRange: NSRange(location: 6, length: 0)),
+            CaptureSnippetEdit(
+                replacementRange: NSRange(location: 4, length: 2),
+                replacementText: "\u{2014}",
+                resultingSelection: NSRange(location: 5, length: 0)
+            ),
+            "trigger after non-ASCII prefix text"
+        )
+
+        let beforeSuffix = "--later" as NSString
+        XCTAssertEqual(
+            CaptureSnippetResolver.resolve(in: beforeSuffix, selectedRange: NSRange(location: 2, length: 0)),
+            CaptureSnippetEdit(
+                replacementRange: NSRange(location: 0, length: 2),
+                replacementText: "\u{2014}",
+                resultingSelection: NSRange(location: 1, length: 0)
+            ),
+            "trigger before suffix text, caret between trigger and suffix"
+        )
+    }
+
+    func testCaptureSnippetResolverDeclinesNonCollapsedInsufficientOrMismatchedText() {
+        let text = "wait--" as NSString
+
+        XCTAssertNil(
+            CaptureSnippetResolver.resolve(in: text, selectedRange: NSRange(location: 5, length: 1)),
+            "non-collapsed selection"
+        )
+        XCTAssertNil(
+            CaptureSnippetResolver.resolve(in: "-" as NSString, selectedRange: NSRange(location: 1, length: 0)),
+            "insufficient preceding text"
+        )
+        XCTAssertNil(
+            CaptureSnippetResolver.resolve(in: "a-" as NSString, selectedRange: NSRange(location: 2, length: 0)),
+            "mismatched preceding text"
+        )
+        XCTAssertNil(
+            CaptureSnippetResolver.resolve(in: text, selectedRange: NSRange(location: -1, length: 0)),
+            "invalid (negative) selection bounds"
+        )
+        XCTAssertNil(
+            CaptureSnippetResolver.resolve(in: text, selectedRange: NSRange(location: text.length + 1, length: 0)),
+            "invalid (past-end) selection bounds"
+        )
+        XCTAssertNil(
+            CaptureSnippetResolver.resolve(in: text, selectedRange: NSRange(location: 4, length: 0)),
+            "caret not immediately after the trigger"
+        )
+    }
+
+    @MainActor
+    func testApplySnippetExpansionReplacesTriggerAndDismissesCompletion() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "Parent\nfollow up--"
+        textView.setSelectedRange(NSRange(location: 18, length: 0))
+
+        XCTAssertTrue(CapturePanelController.applySnippetExpansion(firstResponder: textView, model: model))
+        XCTAssertEqual(textView.string, "Parent\nfollow up\u{2014}")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 17, length: 0))
+        XCTAssertNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testApplySnippetExpansionPreservesSuffixAfterTheCaret() {
+        let model = CapturePanelModel()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "Parent\n--later"
+        textView.setSelectedRange(NSRange(location: 9, length: 0))
+
+        XCTAssertTrue(CapturePanelController.applySnippetExpansion(firstResponder: textView, model: model))
+        XCTAssertEqual(textView.string, "Parent\n\u{2014}later")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 8, length: 0))
+    }
+
+    @MainActor
+    func testApplySnippetExpansionDeclinesAndPreservesCompletionWhenNoTriggerMatches() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "Parent\nJust prose"
+        textView.setSelectedRange(NSRange(location: 17, length: 0))
+
+        XCTAssertFalse(CapturePanelController.applySnippetExpansion(firstResponder: textView, model: model))
+        XCTAssertEqual(textView.string, "Parent\nJust prose")
+        XCTAssertNotNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testApplyTabEditorAssistExpandsSnippetBeforeAttemptingIndentation() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "Parent\n- confirm owner--"
+        textView.setSelectedRange(NSRange(location: 24, length: 0))
+
+        XCTAssertTrue(CapturePanelController.applyTabEditorAssist(firstResponder: textView, model: model))
+        XCTAssertEqual(textView.string, "Parent\n- confirm owner\u{2014}")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 23, length: 0))
+        XCTAssertNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testApplyTabEditorAssistFallsBackToBulletIndentationWhenNoSnippetMatches() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "Parent\n- confirm owner"
+        textView.setSelectedRange(NSRange(location: 9, length: 0))
+
+        XCTAssertTrue(CapturePanelController.applyTabEditorAssist(firstResponder: textView, model: model))
+        XCTAssertEqual(textView.string, "Parent\n  - confirm owner")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 11, length: 0))
+        XCTAssertNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testApplyTabEditorAssistDeclinesAndPreservesCompletionWhenNeitherAssistApplies() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "Parent\nJust prose"
+        textView.setSelectedRange(NSRange(location: 10, length: 0))
+
+        XCTAssertFalse(CapturePanelController.applyTabEditorAssist(firstResponder: textView, model: model))
+        XCTAssertEqual(textView.string, "Parent\nJust prose")
         XCTAssertNotNil(model.completionResponse)
     }
 

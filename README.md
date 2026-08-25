@@ -215,7 +215,7 @@ or expired certificate can require reauthorizing those system permissions.
 | Ctrl-U | Delete from the caret to the beginning of the current physical line | Delete to the beginning of the current physical line and close completion | Native text-field behavior |
 | Command-V | Insert the clipboard's plain text, discarding source formatting; when an empty bullet row receives a Markdown bullet list, consume the first pasted marker and align the list to that row | Same paste edit, and close completion | Native text-field paste |
 | Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace |
-| Tab | Indent the current column-zero continuation bullet to two spaces (normal focus traversal otherwise) | Accept the selected completion | Consume the key; do not indent or capture |
+| Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion | Consume the key; do not expand, indent, or capture |
 | Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion | Consume the key; do not outdent or capture |
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion | Consume the key; do not move completion selection |
 | Up / Ctrl-P | (normal focus traversal) | Select the previous completion | Consume the key; do not move completion selection |
@@ -330,18 +330,22 @@ current authored row's supported indentation (zero or two ASCII spaces). On a li
 contains only optional whitespace plus one `-`, `*`, or `+` marker, Ctrl-J replaces the
 placeholder with exactly one blank item separator and puts the caret at the beginning of
 the following line, reusing an existing line terminator when one is already there.
-To author a nested row, press Ctrl-J from an existing nested row, or press Ctrl-J for a
-fresh top-level placeholder and then Tab before or after typing its body to indent it
-under the preceding first-level bullet. Shift-Tab reverses that, returning a nested
-bullet to column zero. Tab/Shift-Tab only move a continuation bullet between Bob's two
-supported source prefixes, exactly two ASCII spaces, so pasted or hand-authored drafts
-must still use that exact two-space indent; they stop at that ceiling and floor and leave
-every other line untouched. Ctrl-U deletes from the caret to the beginning of the current
-physical line. Backspace on an empty `- ` row removes it in one action instead of
-requiring two ordinary backspaces. All five shortcuts act on the native text view
-directly, so undo, IME composition, and accessibility behave exactly as they do for
-any other edit, and Bob's live parse/preview remains the sole authority for whether the
-resulting hierarchy is contextually valid.
+Plain Tab first checks for a local editor snippet: with a collapsed caret immediately
+after `--`, it replaces those two ASCII hyphens with a single em dash `—` and leaves the
+caret right after it, everywhere else in the editor including inside prose. Only when no
+snippet matches does Tab fall through to bullet indentation. To author a nested row,
+press Ctrl-J from an existing nested row, or press Ctrl-J for a fresh top-level
+placeholder and then Tab before or after typing its body to indent it under the preceding
+first-level bullet. Shift-Tab reverses that, returning a nested bullet to column zero.
+Tab/Shift-Tab only move a continuation bullet between Bob's two supported source
+prefixes, exactly two ASCII spaces, so pasted or hand-authored drafts must still use that
+exact two-space indent; they stop at that ceiling and floor and leave every other line
+untouched. Ctrl-U deletes from the caret to the beginning of the current physical line.
+Backspace on an empty `- ` row removes it in one action instead of requiring two ordinary
+backspaces. All five shortcuts act on the native text view directly, so undo, IME
+composition, and accessibility behave exactly as they do for any other edit, and Bob's
+live parse/preview remains the sole authority for whether the resulting hierarchy is
+contextually valid.
 
 Command-V intentionally reads only the clipboard's plain-text flavor. Source formatting
 is discarded because Bob's capture grammar is plain text, and letting AppKit choose a
