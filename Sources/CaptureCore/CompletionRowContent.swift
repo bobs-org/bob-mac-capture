@@ -26,7 +26,7 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
     case "route", "task_block_id_route", "pomodoro_route", "sub_bullet_route",
          "global_route", "global_sub_bullet_route":
         return .route
-    case "section", "sub_bullet_section":
+    case "section", "sub_bullet_section", "pomodoro_name":
         return .section
     case "task_block_id", "pomodoro_block_id", "sub_bullet_block_id",
          "global_sub_bullet_block_id":
@@ -61,6 +61,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case route
     case section
     case pomodoroBlockID
+    case pomodoroName
     case task
     case taskSection
     case wikilinkNote
@@ -72,6 +73,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "route": self = .route
         case "section": self = .section
         case "pomodoro_block_id": self = .pomodoroBlockID
+        case "pomodoro_name": self = .pomodoroName
         case "task": self = .task
         case "task_section": self = .taskSection
         case "wikilink_note": self = .wikilinkNote
@@ -195,6 +197,40 @@ public func completionRowContent(
         accessibilityHint = needsBlockID
             ? "Adds a block ID, then selects this task."
             : "Nests the capture under this task."
+
+    case .pomodoroName:
+        let needsName = candidate.requiresName
+        category = needsName ? .priority : .section
+        symbolName = needsName ? "square.and.pencil" : "timer"
+        contextLabel = "Pomodoro"
+        if let name = candidate.name, !name.isEmpty {
+            primaryText = name
+        } else if let timeRange = candidate.timeRange, !timeRange.isEmpty {
+            primaryText = timeRange
+        } else {
+            primaryText = "Unnamed Pomodoro"
+        }
+        if let name = candidate.name, !name.isEmpty,
+           let timeRange = candidate.timeRange, !timeRange.isEmpty
+        {
+            secondaryText = timeRange
+        } else if candidate.placeholder {
+            secondaryText = "Planned"
+        }
+        if candidate.isCurrent {
+            badges.append("Current")
+        }
+        if let matchCount = candidate.matchCount, matchCount > 1 {
+            badges.append("\(matchCount) matches")
+        }
+        let childCount = candidate.childCount ?? 0
+        badges.append(childCount == 0 ? "Empty" : "\(childCount) links")
+        if needsName {
+            badges.append("Name it")
+        }
+        accessibilityHint = needsName
+            ? "Names this Pomodoro, then selects it."
+            : "Inserts this Pomodoro name."
 
     case .wikilinkNote:
         category = .wikilinkTarget

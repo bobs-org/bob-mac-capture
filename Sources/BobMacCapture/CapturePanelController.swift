@@ -665,6 +665,12 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .cancelTaskIDPrompt:
             model.cancelTaskIDPrompt()
             return true
+        case .submitPomodoroNamePrompt:
+            model.submitPomodoroNamePrompt()
+            return true
+        case .cancelPomodoroNamePrompt:
+            model.cancelPomodoroNamePrompt()
+            return true
         }
     }
 
@@ -685,14 +691,15 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             else {
                 return event
             }
-            self.repairBlockIDFocusIfOrphaned()
+            self.repairPromptFieldFocusIfOrphaned()
             guard let command = self.keyRouter.command(
                 for: event,
                 context: CaptureKeyRoutingContext(
                     completionVisible: self.model.completionVisible,
                     stashPickerVisible: self.model.isStashPickerPresented,
                     stashEntryCount: self.model.stashCount,
-                    taskIDPromptVisible: self.model.taskIDPromptVisible
+                    taskIDPromptVisible: self.model.taskIDPromptVisible,
+                    pomodoroNamePromptVisible: self.model.pomodoroNamePromptVisible
                 )
             ) else {
                 return event
@@ -702,20 +709,30 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// While the Add block ID prompt is open, a key event with no control holding first
+    /// While an inline naming prompt is open, a key event with no control holding first
     /// responder would be dropped. Re-claim only that orphaned state, leaving focused
     /// controls such as buttons alone.
-    private func repairBlockIDFocusIfOrphaned() {
-        guard model.taskIDPromptVisible,
-              model.taskIDPrompt?.isSaving != true,
-              let panel,
-              Self.blockIDFocusIsOrphaned(in: panel),
-              let field = Self.findBlockIDField(in: panel.contentView)
-        else {
+    private func repairPromptFieldFocusIfOrphaned() {
+        guard let panel, Self.blockIDFocusIsOrphaned(in: panel) else {
             return
         }
-        field.requestFirstResponder()
-        CaptureSignpost.event("block-id-focus-repaired")
+
+        if model.taskIDPromptVisible,
+           model.taskIDPrompt?.isSaving != true,
+           let field = Self.findBlockIDField(in: panel.contentView)
+        {
+            field.requestFirstResponder()
+            CaptureSignpost.event("block-id-focus-repaired")
+            return
+        }
+
+        if model.pomodoroNamePromptVisible,
+           model.pomodoroNamePrompt?.isSaving != true,
+           let field = Self.findPomodoroNameField(in: panel.contentView)
+        {
+            field.requestFirstResponder()
+            CaptureSignpost.event("pomodoro-name-focus-repaired")
+        }
     }
 
     static func blockIDFocusIsOrphaned(in window: NSWindow) -> Bool {
@@ -726,16 +743,33 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     static func findBlockIDField(in view: NSView?) -> BlockIDNSTextField? {
+        findTextField(
+            in: view,
+            identifier: blockIDFieldAccessibilityIdentifier
+        )
+    }
+
+    static func findPomodoroNameField(in view: NSView?) -> PomodoroNameNSTextField? {
+        findTextField(
+            in: view,
+            identifier: pomodoroNameFieldAccessibilityIdentifier
+        )
+    }
+
+    private static func findTextField<Field: NSTextField>(
+        in view: NSView?,
+        identifier: String
+    ) -> Field? {
         guard let view else {
             return nil
         }
-        if let field = view as? BlockIDNSTextField,
-           field.accessibilityIdentifier() == blockIDFieldAccessibilityIdentifier
+        if let field = view as? Field,
+           field.accessibilityIdentifier() == identifier
         {
             return field
         }
         for subview in view.subviews {
-            if let field = findBlockIDField(in: subview) {
+            if let field: Field = findTextField(in: subview, identifier: identifier) {
                 return field
             }
         }

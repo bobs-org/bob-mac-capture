@@ -2,6 +2,36 @@
 
 import PackageDescription
 
+// AppKit lives only on macOS. Linux hosts still build and test CaptureCore, which is
+// the process-client/JSON contract the app depends on.
+#if os(macOS)
+let macCaptureProducts: [Product] = [
+    .executable(
+        name: "BobMacCapture",
+        targets: ["BobMacCapture"]
+    )
+]
+let macCaptureTargets: [Target] = [
+    .executableTarget(
+        name: "BobMacCapture",
+        dependencies: ["CaptureCore"],
+        swiftSettings: [
+            .swiftLanguageMode(.v5)
+        ]
+    ),
+    .testTarget(
+        name: "BobMacCaptureTests",
+        dependencies: ["BobMacCapture", "CaptureCore"],
+        swiftSettings: [
+            .swiftLanguageMode(.v5)
+        ]
+    ),
+]
+#else
+let macCaptureProducts: [Product] = []
+let macCaptureTargets: [Target] = []
+#endif
+
 let package = Package(
     name: "BobMacCapture",
     platforms: [
@@ -11,22 +41,11 @@ let package = Package(
         .library(
             name: "CaptureCore",
             targets: ["CaptureCore"]
-        ),
-        .executable(
-            name: "BobMacCapture",
-            targets: ["BobMacCapture"]
-        ),
-    ],
+        )
+    ] + macCaptureProducts,
     targets: [
         .target(
             name: "CaptureCore",
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
-            ]
-        ),
-        .executableTarget(
-            name: "BobMacCapture",
-            dependencies: ["CaptureCore"],
             swiftSettings: [
                 .swiftLanguageMode(.v5)
             ]
@@ -38,12 +57,5 @@ let package = Package(
                 .swiftLanguageMode(.v5)
             ]
         ),
-        .testTarget(
-            name: "BobMacCaptureTests",
-            dependencies: ["BobMacCapture", "CaptureCore"],
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
-            ]
-        ),
-    ]
+    ] + macCaptureTargets
 )

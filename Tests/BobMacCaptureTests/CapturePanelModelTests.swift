@@ -1891,6 +1891,288 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.focusRequest, canceledFocusRequest)
     }
 
+    func testAcceptingSelectablePomodoroNameSplicesSlug() {
+        let model = CapturePanelModel()
+        installPomodoroNameCompletion(on: model, query: "")
+
+        model.acceptSelectedCompletion()
+
+        XCTAssertEqual(model.plainDraft, pomodoroNameDraft(query: "memory"))
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), pomodoroNameDraft(query: "memory").utf8.count)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertNil(model.pomodoroNamePrompt)
+    }
+
+    func testAcceptingNameablePomodoroOpensPromptWithoutChangingDraft() {
+        let model = CapturePanelModel()
+        installPomodoroNameCompletion(on: model, query: "")
+        model.selectedCompletionIndex = 1
+        let initialFocusSequence = model.focusRequest.sequence
+
+        model.acceptSelectedCompletion()
+
+        XCTAssertEqual(model.plainDraft, pomodoroNameDraft(query: ""))
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertEqual(model.pomodoroNamePrompt?.candidate.taskRef, "38:0b1c2d3e")
+        XCTAssertEqual(model.pomodoroNamePrompt?.authoredName, "")
+        XCTAssertEqual(model.pomodoroNamePrompt?.draftSnapshot, pomodoroNameDraft(query: ""))
+        XCTAssertEqual(model.pomodoroNamePrompt?.replacementRange, CaptureRange(start: 26, end: 26))
+        XCTAssertEqual(model.statusText, "Name Pomodoro")
+        XCTAssertEqual(model.focusRequest.target, .pomodoroNamePromptName)
+        XCTAssertGreaterThan(model.focusRequest.sequence, initialFocusSequence)
+        XCTAssertTrue(model.editorInputLocked)
+        XCTAssertNil(model.taskIDPrompt)
+    }
+
+    func testPomodoroNamePromptPrefillsFromHyphenatedQuery() {
+        let model = CapturePanelModel()
+        installPomodoroNameCompletion(on: model, query: "deep-work")
+        model.selectedCompletionIndex = 1
+
+        model.acceptSelectedCompletion()
+
+        XCTAssertEqual(model.pomodoroNamePrompt?.authoredName, "DEEP WORK")
+        XCTAssertEqual(model.plainDraft, pomodoroNameDraft(query: "deep-work"))
+        XCTAssertEqual(model.pomodoroNamePromptCanonicalName, "DEEP WORK")
+        XCTAssertTrue(model.pomodoroNamePromptCanSubmit)
+    }
+
+    func testDraftChangeWhilePomodoroNamePromptIsOpenCancelsIt() {
+        let model = CapturePanelModel()
+        installPomodoroNameCompletion(on: model, query: "")
+        model.selectedCompletionIndex = 1
+        model.acceptSelectedCompletion()
+        XCTAssertNotNil(model.pomodoroNamePrompt)
+
+        model.plainDraft = "changed draft"
+        model.editorTextDidChange()
+
+        XCTAssertNil(model.pomodoroNamePrompt)
+        XCTAssertFalse(model.editorInputLocked)
+        XCTAssertEqual(model.focusRequest.target, .editor)
+        XCTAssertEqual(model.plainDraft, "changed draft")
+    }
+
+    func testPomodoroNamePromptSuccessSplicesReturnedSlugAndRestoresEditorFocus() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installPomodoroNameCompletion(on: model, query: "")
+        model.selectedCompletionIndex = 1
+        model.acceptSelectedCompletion()
+        model.updatePomodoroNamePromptName("DEEP WORK")
+        var focusEvents: [(target: CapturePanelFocusTarget, draft: String, cursor: Int?)] = []
+        let focusCancellable = model.$focusRequest.dropFirst().sink { request in
+            focusEvents.append(
+                (
+                    target: request.target,
+                    draft: model.plainDraft,
+                    cursor: model.collapsedSelectionUTF8Offset()
+                )
+            )
+        }
+
+        model.submitPomodoroNamePrompt()
+        let namedDraft = pomodoroNameDraft(query: "deep-work")
+        await waitUntil { model.pomodoroNamePrompt == nil && model.plainDraft == namedDraft }
+
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), namedDraft.utf8.count)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertEqual(focusEvents.last?.target, .editor)
+        XCTAssertEqual(focusEvents.last?.draft, namedDraft)
+        XCTAssertFalse(model.editorInputLocked)
+        XCTAssertEqual(model.statusText, "Named DEEP WORK in 2026/20260828.md")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-pomodoro-name --pomodoro-ref 38:0b1c2d3e --name DEEP WORK --format json"
+            )
+        )
+        withExtendedLifetime(focusCancellable) {}
+    }
+
+    func testPomodoroNamePromptServerFailureRetainsDraftAndAuthoredName() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": #"{"ok":false,"error":"Pomodoro 38:0b1c2d3e already has a selectable name"}"#,
+                "FAKE_BOB_EXIT": "1",
+            ]
+        )
+        installPomodoroNameCompletion(on: model, query: "")
+        model.selectedCompletionIndex = 1
+        model.acceptSelectedCompletion()
+        let promptFocusSequence = model.focusRequest.sequence
+
+        model.updatePomodoroNamePromptName("DEEP WORK")
+        model.submitPomodoroNamePrompt()
+        await waitUntil { model.pomodoroNamePrompt?.isSaving == false }
+
+        XCTAssertEqual(model.plainDraft, pomodoroNameDraft(query: ""))
+        XCTAssertEqual(model.pomodoroNamePrompt?.authoredName, "DEEP WORK")
+        XCTAssertEqual(
+            model.pomodoroNamePrompt?.errorMessage,
+            "Pomodoro 38:0b1c2d3e already has a selectable name"
+        )
+        XCTAssertEqual(model.statusText, "Name Pomodoro failed")
+        XCTAssertEqual(model.focusRequest.target, .pomodoroNamePromptName)
+        XCTAssertGreaterThan(model.focusRequest.sequence, promptFocusSequence)
+        XCTAssertTrue(model.editorInputLocked)
+        XCTAssertNotNil(model.pomodoroNamePrompt)
+    }
+
+    func testPomodoroNamePromptTransportFailureRetainsDraft() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_EXIT": "64",
+            ]
+        )
+        installPomodoroNameCompletion(on: model, query: "")
+        model.selectedCompletionIndex = 1
+        model.acceptSelectedCompletion()
+
+        model.updatePomodoroNamePromptName("DEEP WORK")
+        model.submitPomodoroNamePrompt()
+        await waitUntil { model.pomodoroNamePrompt?.isSaving == false }
+
+        XCTAssertEqual(model.plainDraft, pomodoroNameDraft(query: ""))
+        XCTAssertEqual(model.pomodoroNamePrompt?.authoredName, "DEEP WORK")
+        XCTAssertTrue(model.pomodoroNamePrompt?.errorMessage?.contains("bob command failed (exit 64)") == true)
+        XCTAssertEqual(model.statusText, "Name Pomodoro failed")
+    }
+
+    func testPomodoroNamePromptRejectsInvalidNameWithoutCallingBob() throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installPomodoroNameCompletion(on: model, query: "")
+        model.selectedCompletionIndex = 1
+        model.acceptSelectedCompletion()
+        let promptFocusSequence = model.focusRequest.sequence
+
+        model.updatePomodoroNamePromptName("snake_case")
+        model.submitPomodoroNamePrompt()
+
+        XCTAssertEqual(model.plainDraft, pomodoroNameDraft(query: ""))
+        XCTAssertEqual(model.pomodoroNamePrompt?.authoredName, "snake_case")
+        XCTAssertEqual(
+            model.pomodoroNamePrompt?.errorMessage,
+            "Use only letters, numbers, spaces, and & ' ( ) , . / -."
+        )
+        XCTAssertEqual(model.focusRequest.target, .pomodoroNamePromptName)
+        XCTAssertGreaterThan(model.focusRequest.sequence, promptFocusSequence)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: recordURL.path))
+    }
+
+    func testCancelPomodoroNamePromptRestoresChooserSelectionWithoutMutation() {
+        let model = CapturePanelModel()
+        installPomodoroNameCompletion(on: model, query: "")
+        model.selectedCompletionIndex = 1
+        model.acceptSelectedCompletion()
+        model.updatePomodoroNamePromptName("DEEP WORK")
+        let promptFocusSequence = model.focusRequest.sequence
+
+        model.cancelPomodoroNamePrompt()
+
+        XCTAssertNil(model.pomodoroNamePrompt)
+        XCTAssertEqual(model.plainDraft, pomodoroNameDraft(query: ""))
+        XCTAssertTrue(model.completionVisible)
+        XCTAssertEqual(model.selectedCompletionIndex, 1)
+        XCTAssertEqual(model.completionResponse?.candidates[1].requiresName, true)
+        XCTAssertEqual(model.focusRequest.target, .editor)
+        XCTAssertGreaterThan(model.focusRequest.sequence, promptFocusSequence)
+    }
+
+    func testCanceledPomodoroNamePromptIgnoresLateAssignmentResponse() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_DELAY_SECONDS": "0.2",
+            ]
+        )
+        installPomodoroNameCompletion(on: model, query: "")
+        model.selectedCompletionIndex = 1
+        model.acceptSelectedCompletion()
+        model.updatePomodoroNamePromptName("DEEP WORK")
+
+        model.submitPomodoroNamePrompt()
+        XCTAssertEqual(model.pomodoroNamePrompt?.isSaving, true)
+        model.cancelPomodoroNamePrompt()
+        let canceledFocusRequest = model.focusRequest
+        try await Task.sleep(nanoseconds: 450_000_000)
+
+        XCTAssertNil(model.pomodoroNamePrompt)
+        XCTAssertEqual(model.plainDraft, pomodoroNameDraft(query: ""))
+        XCTAssertTrue(model.completionVisible)
+        XCTAssertEqual(model.focusRequest, canceledFocusRequest)
+    }
+
+    func testPomodoroNameAndTaskIDPromptsAreMutuallyExclusive() {
+        let model = CapturePanelModel()
+        installMissingTaskCompletion(on: model)
+        model.acceptSelectedCompletion()
+        XCTAssertNotNil(model.taskIDPrompt)
+        XCTAssertNil(model.pomodoroNamePrompt)
+
+        installPomodoroNameCompletion(on: model, query: "")
+        model.selectedCompletionIndex = 1
+        model.acceptSelectedCompletion()
+
+        XCTAssertNil(model.taskIDPrompt)
+        XCTAssertNotNil(model.pomodoroNamePrompt)
+        XCTAssertTrue(model.editorInputLocked)
+        XCTAssertEqual(model.focusRequest.target, .pomodoroNamePromptName)
+
+        installMissingTaskCompletion(on: model)
+        model.acceptSelectedCompletion()
+
+        XCTAssertNotNil(model.taskIDPrompt)
+        XCTAssertNil(model.pomodoroNamePrompt)
+        XCTAssertEqual(model.focusRequest.target, .taskIDPromptBlockID)
+    }
+
+    func testStashPickerDoesNotOpenWhilePomodoroNamePromptIsVisible() {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        stash.push("retained")
+        installPomodoroNameCompletion(on: model, query: "")
+        model.selectedCompletionIndex = 1
+        model.acceptSelectedCompletion()
+        let promptFocusSequence = model.focusRequest.sequence
+
+        model.presentStashPicker()
+
+        XCTAssertFalse(model.isStashPickerPresented)
+        XCTAssertNotNil(model.pomodoroNamePrompt)
+        XCTAssertEqual(model.statusText, "Finish or cancel the Pomodoro name prompt before opening stash")
+        XCTAssertEqual(model.focusRequest.target, .pomodoroNamePromptName)
+        XCTAssertGreaterThan(model.focusRequest.sequence, promptFocusSequence)
+    }
+
     func testLaterBatchCaptureFailureAfterTaskIDAssignmentReportsNoPartialSuccessOrDraftClearing() async throws {
         let model = CapturePanelModel()
         model.processClient = BobProcessClient(
@@ -2101,6 +2383,54 @@ final class CapturePanelModelTests: XCTestCase {
 
     private func laterTaskBatchDraft() -> String {
         "Plan café @Cash\n\nFile follow-up @file+hand"
+    }
+
+    private func pomodoroNameDraft(query: String) -> String {
+        "Fix startup @sase:some-id#\(query)"
+    }
+
+    private func installPomodoroNameCompletion(on model: CapturePanelModel, query: String) {
+        let draft = pomodoroNameDraft(query: query)
+        let start = pomodoroNameDraft(query: "").utf8.count
+        let end = draft.utf8.count
+        model.plainDraft = draft
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: end,
+            replacement: CaptureRange(start: start, end: end),
+            context: "pomodoro_name",
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "memory",
+                    taskRef: "31:1a2b3c4d",
+                    statusSymbol: " ",
+                    childCount: 5,
+                    name: "MEMORY",
+                    requiresName: false,
+                    line: 31,
+                    state: "open",
+                    timeRange: "1205-1230",
+                    placeholder: false,
+                    isCurrent: true,
+                    matchCount: 2
+                ),
+                CaptureCompletionCandidate(
+                    replacement: "",
+                    taskRef: "38:0b1c2d3e",
+                    statusSymbol: " ",
+                    childCount: 0,
+                    name: nil,
+                    requiresName: true,
+                    line: 38,
+                    state: "open",
+                    timeRange: nil,
+                    placeholder: true,
+                    isCurrent: false,
+                    matchCount: 1
+                ),
+            ]
+        )
+        model.selectedCompletionIndex = 0
     }
 
     private func laterTaskIDBatchDraft() -> String {

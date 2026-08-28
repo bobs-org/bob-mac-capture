@@ -154,6 +154,80 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.accessibilityHint, "Adds a block ID, then selects this task.")
     }
 
+    func testPomodoroNameSelectableRowShowsNameTimeAndCurrentDuplicateBadges() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "memory",
+            taskRef: "31:1a2b3c4d",
+            statusSymbol: " ",
+            childCount: 5,
+            name: "MEMORY",
+            requiresName: false,
+            line: 31,
+            state: "open",
+            timeRange: "1205-1230",
+            placeholder: false,
+            isCurrent: true,
+            matchCount: 2
+        )
+
+        let content = completionRowContent(for: candidate, context: "pomodoro_name", query: "mem")
+
+        XCTAssertEqual(content.category, .section)
+        XCTAssertEqual(content.symbolName, "timer")
+        XCTAssertEqual(content.contextLabel, "Pomodoro")
+        XCTAssertEqual(content.primaryText, "MEMORY")
+        XCTAssertEqual(content.secondaryText, "1205-1230")
+        XCTAssertEqual(content.badges, ["Current", "2 matches", "5 links"])
+        XCTAssertEqual(content.primaryMatchRange, 0..<3)
+        XCTAssertEqual(content.accessibilityHint, "Inserts this Pomodoro name.")
+    }
+
+    func testPomodoroNameNameableRowUsesPriorityCategoryAndNameItBadge() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "",
+            taskRef: "38:9f8e7d6c",
+            statusSymbol: " ",
+            childCount: 0,
+            name: nil,
+            requiresName: true,
+            line: 38,
+            state: "open",
+            timeRange: nil,
+            placeholder: true,
+            isCurrent: false,
+            matchCount: 1
+        )
+
+        let content = completionRowContent(for: candidate, context: "pomodoro_name", query: "")
+
+        XCTAssertEqual(content.category, .priority)
+        XCTAssertEqual(content.symbolName, "square.and.pencil")
+        XCTAssertEqual(content.contextLabel, "Pomodoro")
+        XCTAssertEqual(content.primaryText, "Unnamed Pomodoro")
+        XCTAssertEqual(content.secondaryText, "Planned")
+        XCTAssertEqual(content.badges, ["Empty", "Name it"])
+        XCTAssertEqual(content.accessibilityHint, "Names this Pomodoro, then selects it.")
+    }
+
+    func testPomodoroNameUnnamedTimedRowUsesTimeRangeAsPrimary() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "",
+            taskRef: "12:aaaabbbb",
+            childCount: 3,
+            name: nil,
+            requiresName: true,
+            timeRange: "0900-0930",
+            placeholder: false,
+            matchCount: 1
+        )
+
+        let content = completionRowContent(for: candidate, context: "pomodoro_name", query: "")
+
+        XCTAssertEqual(content.primaryText, "0900-0930")
+        XCTAssertNil(content.secondaryText)
+        XCTAssertEqual(content.badges, ["3 links", "Name it"])
+    }
+
     func testPomodoroBlockIDContextUsesItsOwnLabel() {
         let candidate = CaptureCompletionCandidate(
             replacement: "goog-exit",
@@ -269,6 +343,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "sub_bullet_route"), .route)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "section"), .section)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "sub_bullet_section"), .section)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_name"), .section)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "sub_bullet_block_id"), .blockID)
@@ -288,6 +363,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(CaptureCompletionContext(rawContext: "route"), .route)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "section"), .section)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "pomodoro_block_id"), .pomodoroBlockID)
+        XCTAssertEqual(CaptureCompletionContext(rawContext: "pomodoro_name"), .pomodoroName)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "task"), .task)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "task_section"), .taskSection)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "wikilink_note"), .wikilinkNote)

@@ -937,6 +937,87 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertNil(decoded.candidates[1].blockID)
         XCTAssertTrue(decoded.candidates[1].requiresBlockID)
         XCTAssertEqual(decoded.candidates[1].replacement, "")
+        XCTAssertFalse(decoded.candidates[0].requiresName)
+        XCTAssertNil(decoded.candidates[0].line)
+        XCTAssertNil(decoded.candidates[0].state)
+        XCTAssertNil(decoded.candidates[0].timeRange)
+        XCTAssertFalse(decoded.candidates[0].placeholder)
+        XCTAssertFalse(decoded.candidates[0].isCurrent)
+        XCTAssertNil(decoded.candidates[0].matchCount)
+    }
+
+    func testCompletionResponseDecodesPomodoroNameCandidatesIncludingAbsentAdditiveFields() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 26,
+              "replacement": { "start": 26, "end": 26 },
+              "context": "pomodoro_name",
+              "candidates": [
+                {
+                  "replacement": "memory",
+                  "ref": "31:1a2b3c4d",
+                  "name": "MEMORY",
+                  "requires_name": false,
+                  "line": 31,
+                  "state": "open",
+                  "status_symbol": " ",
+                  "time_range": "1205-1230",
+                  "placeholder": false,
+                  "is_current": true,
+                  "child_count": 5,
+                  "match_count": 2
+                },
+                {
+                  "replacement": "",
+                  "ref": "38:9f8e7d6c",
+                  "name": null,
+                  "requires_name": true,
+                  "line": 38,
+                  "state": "open",
+                  "status_symbol": " ",
+                  "time_range": null,
+                  "placeholder": true,
+                  "is_current": false,
+                  "child_count": 0,
+                  "match_count": 1
+                },
+                {
+                  "replacement": "bugs",
+                  "ref": "12:abcd1234",
+                  "name": "BUGS"
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+
+        XCTAssertEqual(decoded.context, "pomodoro_name")
+        XCTAssertEqual(decoded.candidates[0].taskRef, "31:1a2b3c4d")
+        XCTAssertEqual(decoded.candidates[0].name, "MEMORY")
+        XCTAssertFalse(decoded.candidates[0].requiresName)
+        XCTAssertEqual(decoded.candidates[0].line, 31)
+        XCTAssertEqual(decoded.candidates[0].state, "open")
+        XCTAssertEqual(decoded.candidates[0].timeRange, "1205-1230")
+        XCTAssertFalse(decoded.candidates[0].placeholder)
+        XCTAssertTrue(decoded.candidates[0].isCurrent)
+        XCTAssertEqual(decoded.candidates[0].childCount, 5)
+        XCTAssertEqual(decoded.candidates[0].matchCount, 2)
+        XCTAssertTrue(decoded.candidates[1].requiresName)
+        XCTAssertEqual(decoded.candidates[1].replacement, "")
+        XCTAssertNil(decoded.candidates[1].name)
+        XCTAssertTrue(decoded.candidates[1].placeholder)
+        XCTAssertEqual(decoded.candidates[1].childCount, 0)
+        XCTAssertFalse(decoded.candidates[2].requiresName)
+        XCTAssertNil(decoded.candidates[2].line)
+        XCTAssertNil(decoded.candidates[2].timeRange)
+        XCTAssertFalse(decoded.candidates[2].placeholder)
+        XCTAssertFalse(decoded.candidates[2].isCurrent)
+        XCTAssertNil(decoded.candidates[2].matchCount)
     }
 
     func testCompletionResponseDecodesTaskSectionCandidatesWithoutNewCodingKeys() throws {
@@ -1129,6 +1210,57 @@ final class CaptureModelTests: XCTestCase {
             return XCTFail("Expected task ID failure")
         }
         XCTAssertEqual(failure.error, "block ID ^new-id already exists in file.md")
+    }
+
+    func testCapturePomodoroNameResponseDecodesVersionedSuccessAndFailure() throws {
+        let successData = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "dry_run": false,
+              "day_file": "/tmp/bob/2026/20260828.md",
+              "relative_day_file": "2026/20260828.md",
+              "name": "DEEP WORK",
+              "slug": "deep-work",
+              "line": 38,
+              "ref": "38:0b1c2d3e",
+              "pomodoro": {
+                "ref": "38:0b1c2d3e",
+                "line": 38,
+                "state": "open",
+                "status_symbol": " ",
+                "name": "DEEP WORK",
+                "slug": "deep-work",
+                "selectable": true,
+                "time_range": null,
+                "placeholder": true,
+                "is_current": false,
+                "child_count": 0
+              }
+            }
+            """.utf8
+        )
+        let failureData = Data(#"{"ok":false,"error":"Pomodoro 38:0b1c2d3e already has a selectable name"}"#.utf8)
+
+        let successResponse = try JSONDecoder().decode(CapturePomodoroNameResponse.self, from: successData)
+        let failureResponse = try JSONDecoder().decode(CapturePomodoroNameResponse.self, from: failureData)
+
+        guard case .success(let success) = successResponse else {
+            return XCTFail("Expected pomodoro name success")
+        }
+        XCTAssertEqual(success.schemaVersion, 1)
+        XCTAssertEqual(success.name, "DEEP WORK")
+        XCTAssertEqual(success.slug, "deep-work")
+        XCTAssertEqual(success.relativeDayFile, "2026/20260828.md")
+        XCTAssertEqual(success.pomodoroRef, "38:0b1c2d3e")
+        XCTAssertEqual(success.pomodoro.name, "DEEP WORK")
+        XCTAssertTrue(success.pomodoro.selectable)
+
+        guard case .failure(let failure) = failureResponse else {
+            return XCTFail("Expected pomodoro name failure")
+        }
+        XCTAssertEqual(failure.error, "Pomodoro 38:0b1c2d3e already has a selectable name")
     }
 
     func testAttributedStringUtf8OffsetRoundTripsCollapsedCaret() throws {

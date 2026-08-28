@@ -363,7 +363,7 @@ struct CapturePanelView: View {
 
     private var hasAuxiliaryContent: Bool {
         model.isStashPickerPresented
-            || model.taskIDPromptVisible
+            || model.inlinePromptVisible
             || model.completionVisible
             || model.destinationSummary != nil
             || model.errorMessage != nil
@@ -421,6 +421,12 @@ struct CapturePanelView: View {
                     .padding(.leading, 14)
                     .layoutPriority(0)
                     .id(AuxiliarySection.taskIDPrompt)
+            } else if model.pomodoroNamePromptVisible {
+                PomodoroNamePromptCard(model: model)
+                    .frame(width: 430)
+                    .padding(.leading, 14)
+                    .layoutPriority(0)
+                    .id(AuxiliarySection.pomodoroNamePrompt)
             } else if model.completionVisible {
                 CompletionList(model: model)
                     .frame(width: 430)
@@ -512,9 +518,9 @@ struct CapturePanelView: View {
     }
 
     private func applyFocusRequest(_ request: CapturePanelFocusRequest) {
-        // Only `.editor` is resolved by SwiftUI. `.taskIDPromptBlockID` is owned by
-        // AppKit (`BlockIDField`), so SwiftUI's stored focus value is cleared while
-        // the prompt field claims first responder directly.
+        // Only `.editor` is resolved by SwiftUI. Prompt-field targets are owned by
+        // AppKit (`BlockIDField` / `PomodoroNameField`), so SwiftUI's stored focus
+        // value is cleared while the prompt field claims first responder directly.
         focusedControl = request.target == .editor ? .editor : nil
     }
 
@@ -540,6 +546,7 @@ struct CapturePanelView: View {
     private enum AuxiliarySection: Hashable {
         case stash
         case taskIDPrompt
+        case pomodoroNamePrompt
         case completion
         case destination
         case error
@@ -571,22 +578,27 @@ private struct CapturePanelFooter: View {
                 Label("Stash \(model.stashCount)", systemImage: "tray")
             }
             .help("Restore a draft canceled with Control-C (Control-S).")
-            .disabled(model.isSubmitting || model.taskIDPromptVisible)
+            .disabled(model.isSubmitting || model.inlinePromptVisible)
             Button("Discard") {
                 model.discardDraftAndClose()
             }
             .help("Permanently discards the draft and closes the panel.")
-            .disabled(!model.hasDraft || model.isSubmitting || model.taskIDPrompt?.isSaving == true)
+            .disabled(
+                !model.hasDraft
+                    || model.isSubmitting
+                    || model.taskIDPrompt?.isSaving == true
+                    || model.pomodoroNamePrompt?.isSaving == true
+            )
             Button("Preview") {
                 model.preview()
             }
             .help("Resolves the current clipboard/history and shows the exact destination without writing anything.")
-            .disabled(!model.hasDraft || model.isSubmitting || model.isPreviewing || model.taskIDPromptVisible)
+            .disabled(!model.hasDraft || model.isSubmitting || model.isPreviewing || model.inlinePromptVisible)
             Button("Capture") {
                 model.submit(openAfterCapture: false)
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(!model.hasDraft || model.isSubmitting || model.taskIDPromptVisible)
+            .disabled(!model.hasDraft || model.isSubmitting || model.inlinePromptVisible)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Capture actions")
@@ -839,6 +851,122 @@ private struct TaskIDPromptCard: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+@available(macOS 26.0, *)
+private struct PomodoroNamePromptCard: View {
+    @ObservedObject var model: CapturePanelModel
+    @State private var nameFieldIsFocused = false
+
+    private var prompt: CapturePomodoroNamePromptState? {
+        model.pomodoroNamePrompt
+    }
+
+    var body: some View {
+        if let prompt {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Label("Name Pomodoro", systemImage: "square.and.pencil")
+                        .font(.headline)
+                    Spacer(minLength: 8)
+                    if prompt.isSaving {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+
+                pomodoroSummary(prompt)
+
+                HStack(spacing: 0) {
+                    Text("\u{2014}")
+                        .font(.system(.body, design: .monospaced).weight(.semibold))
+                        .foregroundStyle(CaptureEditorPalette.color(for: .section))
+                        .padding(.leading, 8)
+                    PomodoroNameField(
+                        text: Binding(
+                            get: { model.pomodoroNamePrompt?.authoredName ?? "" },
+                            set: { model.updatePomodoroNamePromptName($0) }
+                        ),
+                        isEnabled: !prompt.isSaving,
+                        focusRequest: model.focusRequest,
+                        focusDidChange: { nameFieldIsFocused = $0 }
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 6)
+                }
+                .background(.background.opacity(0.45), in: RoundedRectangle(cornerRadius: 6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(
+                            nameFieldIsFocused ? Color.accentColor.opacity(0.8) : Color.secondary.opacity(0.24),
+                            lineWidth: nameFieldIsFocused ? 1 : 0.5
+                        )
+                )
+                .onDisappear {
+                    nameFieldIsFocused = false
+                }
+
+                if let canonical = model.pomodoroNamePromptCanonicalName {
+                    Text("Saves as \(canonical)")
+                        .font(.caption)
+                        .foregroundStyle(CaptureEditorPalette.color(for: .section))
+                }
+
+                Text("Letters, numbers, spaces, and & ' ( ) , . / -")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if let error = prompt.errorMessage {
+                    Text(error)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                        .accessibilityLabel("Pomodoro name error: \(error)")
+                }
+
+                HStack {
+                    Spacer()
+                    Button("Cancel") {
+                        model.cancelPomodoroNamePrompt()
+                    }
+                    .disabled(prompt.isSaving)
+                    Button("Name & Select") {
+                        model.submitPomodoroNamePrompt()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!model.pomodoroNamePromptCanSubmit)
+                }
+            }
+            .padding(10)
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .shadow(radius: 12, y: 6)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Name Pomodoro")
+        }
+    }
+
+    private func pomodoroSummary(_ prompt: CapturePomodoroNamePromptState) -> some View {
+        let candidate = prompt.candidate
+        let childCount = candidate.childCount ?? 0
+        return VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                if let timeRange = candidate.timeRange, !timeRange.isEmpty {
+                    Text(timeRange)
+                        .font(.system(.callout, design: .monospaced))
+                } else {
+                    Text(candidate.placeholder ? "Planned" : "Unnamed Pomodoro")
+                        .font(.system(.callout, design: .monospaced))
+                }
+            }
+            Text(childCount == 0 ? "Empty" : "\(childCount) links")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
     }
@@ -1156,10 +1284,10 @@ private struct CompletionRow: View {
                                 .lineLimit(1)
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 1)
-                                .background(badge == "Add ID" ? Color.clear : tint.opacity(0.15), in: Capsule())
+                                .background(isOutlinedBadge(badge) ? Color.clear : tint.opacity(0.15), in: Capsule())
                                 .overlay(
                                     Capsule()
-                                        .strokeBorder(badge == "Add ID" ? tint.opacity(0.55) : Color.clear, lineWidth: 0.7)
+                                        .strokeBorder(isOutlinedBadge(badge) ? tint.opacity(0.55) : Color.clear, lineWidth: 0.7)
                                 )
                                 .foregroundStyle(tint)
                         }
@@ -1177,6 +1305,10 @@ private struct CompletionRow: View {
         .accessibilityLabel(content.accessibilityLabel)
         .accessibilityHint(content.accessibilityHint)
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private func isOutlinedBadge(_ badge: String) -> Bool {
+        badge == "Add ID" || badge == "Name it"
     }
 
     private var selectionFill: Color {

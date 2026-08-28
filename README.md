@@ -42,10 +42,11 @@ mutation.
   - `/usr/local/bin/bob`
 - A `bob` build that supports `@@route` / `@@route+block-id` global destination
   declarations anywhere in the draft, `capture-rewrite`, `capture-complete --all-tasks`,
-  `capture-task-id`, and `task_section` completion for `@route+block-id#`. Older builds
+  `capture-task-id`, `capture-pomodoro-name`, `task_section` completion for
+  `@route+block-id#`, and `pomodoro_name` completion for `@route:block-id#`. Older builds
   can still capture ordinary drafts, but global declarations, bare-`@@` absorption, the
-  Add block ID flow, and the task-section popup report the local Bob error or an empty
-  list until Bob is upgraded.
+  Add block ID flow, the Name Pomodoro flow, and the task-section popup report the local
+  Bob error or an empty list until Bob is upgraded.
 
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.
@@ -132,7 +133,9 @@ or expired certificate can require reauthorizing those system permissions.
   untouched and announces Bob's notice.
   Typing `#` immediately after a resolved `@route+block-id` opens `task_section`
   completion for that task's ALL-CAPS section bullets; a standalone trailing `#` stays
-  the Pomodoro-note marker and `@route#` stays note-section completion. For
+  the Pomodoro-note marker and `@route#` stays note-section completion. Typing `#`
+  immediately after a resolved `@route:block-id` — or a bare `@route:#` — opens
+  `pomodoro_name` completion for today's open Pomodoros. For
   blank-line-separated drafts, completion still sends the complete draft as one argv
   value; Bob scopes the answer to the item or declaration containing the UTF-8 cursor and
   returns replacement ranges in draft-global byte offsets. See "Wikilink Completion"
@@ -146,6 +149,17 @@ or expired certificate can require reauthorizing those system permissions.
   `bob capture-task-id --route ROUTE --task-ref REF --block-id ID --format json`.
   Only a confirmed Bob success splices the returned canonical ID into the saved
   replacement range and reruns preview. Cancel and every error keep the draft unchanged.
+- In the `pomodoro_name` context, named open Pomodoros stay first and insert their slug
+  in one action. Unnamed and untypeable-name rows (`requires_name: true`, empty
+  `replacement`) replace the completion list with an inline **Name Pomodoro** prompt.
+  The two prompts can never both be open. Opening the prompt pre-fills the name field
+  from the in-progress completion query (`#deep-work` becomes `DEEP WORK`), moves
+  keyboard focus into the name field, and shows a live `Saves as DEEP WORK` hint. The
+  draft remains unchanged while the app calls
+  `bob capture-pomodoro-name --pomodoro-ref REF --name NAME --format json`. Only a
+  confirmed Bob success splices the returned canonical `slug` into the saved replacement
+  range, restores the caret after it, and reruns analysis. Cancel and every error keep
+  the draft unchanged.
 - Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through
   a dedicated process-client API that asserts `--no-clip`. `%` markers stay literal in
   continuous preview; clipboard-resolving preview is a separate explicit action.
@@ -206,29 +220,29 @@ or expired certificate can require reauthorizing those system permissions.
 
 ## Keyboard
 
-| Key | In the editor | While completion is visible | While Add block ID is open |
-| --- | --- | --- | --- |
-| Return | Capture, then close the panel | Accept the selected completion | Add the ID and select the task |
-| Command-Return | Capture, open the target in Obsidian, then close the panel | Accept, then submit | Consume the key; do not capture |
-| Shift-Return / Option-Return | Insert a newline | Insert a newline | Add the ID and select the task |
-| Ctrl-J | Insert a new indentation-aware `- ` row, or turn a marker-only placeholder into a blank item separator | Same edit, and close completion | Native text-field behavior |
-| Ctrl-U | Delete from the caret to the beginning of the current physical line | Delete to the beginning of the current physical line and close completion | Native text-field behavior |
-| Command-V | Insert the clipboard's plain text, discarding source formatting; when an empty bullet row receives a Markdown bullet list, consume the first pasted marker and align the list to that row | Same paste edit, and close completion | Native text-field paste |
-| Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace |
-| Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion | Consume the key; do not expand, indent, or capture |
-| Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion | Consume the key; do not outdent or capture |
-| Down / Ctrl-N | (normal focus traversal) | Select the next completion | Consume the key; do not move completion selection |
-| Up / Ctrl-P | (normal focus traversal) | Select the previous completion | Consume the key; do not move completion selection |
-| Escape / Ctrl-[ | Close the panel, retaining a nonempty draft without confirmation | Close completion | Cancel back to the task list |
-| Control-S | Open the canceled-draft stash picker | Open the canceled-draft stash picker | Consume the key; finish or cancel the prompt first |
-| Control-C | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close |
+| Key | In the editor | While completion is visible | While Add block ID is open | While Name Pomodoro is open |
+| --- | --- | --- | --- | --- |
+| Return | Capture, then close the panel | Accept the selected completion | Add the ID and select the task | Name the Pomodoro and select it |
+| Command-Return | Capture, open the target in Obsidian, then close the panel | Accept, then submit | Consume the key; do not capture | Consume the key; do not capture |
+| Shift-Return / Option-Return | Insert a newline | Insert a newline | Add the ID and select the task | Name the Pomodoro and select it |
+| Ctrl-J | Insert a new indentation-aware `- ` row, or turn a marker-only placeholder into a blank item separator | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
+| Ctrl-U | Delete from the caret to the beginning of the current physical line | Delete to the beginning of the current physical line and close completion | Native text-field behavior | Native text-field behavior |
+| Command-V | Insert the clipboard's plain text, discarding source formatting; when an empty bullet row receives a Markdown bullet list, consume the first pasted marker and align the list to that row | Same paste edit, and close completion | Native text-field paste | Native text-field paste |
+| Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace | Native text-field Backspace |
+| Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion | Consume the key; do not expand, indent, or capture | Consume the key; do not expand, indent, or capture |
+| Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion | Consume the key; do not outdent or capture | Consume the key; do not outdent or capture |
+| Down / Ctrl-N | (normal focus traversal) | Select the next completion | Consume the key; do not move completion selection | Consume the key; do not move completion selection |
+| Up / Ctrl-P | (normal focus traversal) | Select the previous completion | Consume the key; do not move completion selection | Consume the key; do not move completion selection |
+| Escape / Ctrl-[ | Close the panel, retaining a nonempty draft without confirmation | Close completion | Cancel back to the task list | Cancel back to the Pomodoro list |
+| Control-S | Open the canceled-draft stash picker | Open the canceled-draft stash picker | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
+| Control-C | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close |
 
 Every capture action is reachable from the keyboard alone; the hotkey, editor, completion
 list, Stash/Capture/Preview/Discard buttons, and stash picker never require a pointer.
-Opening the **Add block ID** prompt moves keyboard focus into the block-ID field;
-that field's first responder is owned directly by AppKit rather than SwiftUI focus, and
-a keystroke arriving while nothing holds focus re-claims the field. Canceling or
-completing the prompt restores focus to the capture editor. The editor starts at one
+Opening the **Add block ID** or **Name Pomodoro** prompt moves keyboard focus into that
+prompt's field; that field's first responder is owned directly by AppKit rather than
+SwiftUI focus, and a keystroke arriving while nothing holds focus re-claims the field.
+Canceling or completing the prompt restores focus to the capture editor. The editor starts at one
 visual line, grows and shrinks with rendered content through six visual lines, then
 scrolls internally for longer drafts.
 
@@ -318,12 +332,13 @@ Second task @bar
 
 Bob's routed marker syntax works directly in the editor. `@route^block-id` captures an
 ordinary `[ ]` task with a trailing `^block-id` and no Pomodoro task link, while
-`@route:block-id` keeps the Pomodoro-linked next-task behavior, `@route+block-id` nests
-beneath an existing task, and `@route+block-id#section` nests under that task's matching
-section bullet. Typing `#` right after a resolved `@route+block-id` opens the
-task-section popup. The app does not duplicate those grammar rules; it colors the span
-kinds Bob reports, asks Bob for completion at the real caret, and submits the original
-draft text.
+`@route:block-id` keeps the Pomodoro-linked next-task behavior, `@route:block-id#name`
+targets a named open Pomodoro by slug, `@route+block-id` nests beneath an existing task,
+and `@route+block-id#section` nests under that task's matching section bullet. Typing `#`
+right after a resolved `@route+block-id` opens the task-section popup; typing `#` right
+after a resolved `@route:block-id` opens the Pomodoro-name popup. The app does not
+duplicate those grammar rules; it colors the span kinds Bob reports, asks Bob for
+completion at the real caret, and submits the original draft text.
 
 Ctrl-J starts the next canonical `- ` row from anywhere in the draft, copying exactly the
 current authored row's supported indentation (zero or two ASCII spaces). On a line that

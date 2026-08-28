@@ -25,6 +25,8 @@ enum CaptureKeyCommand: Equatable {
     case decreaseBulletIndentation
     case submitTaskIDPrompt
     case cancelTaskIDPrompt
+    case submitPomodoroNamePrompt
+    case cancelPomodoroNamePrompt
 }
 
 struct CaptureKeyRoutingContext: Equatable {
@@ -32,6 +34,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var stashPickerVisible = false
     var stashEntryCount = 0
     var taskIDPromptVisible = false
+    var pomodoroNamePromptVisible = false
 }
 
 struct CaptureKeyCommandRouter {
@@ -64,6 +67,10 @@ struct CaptureKeyCommandRouter {
 
         if context.taskIDPromptVisible {
             return taskIDPromptCommand(for: event, modifiers: modifiers)
+        }
+
+        if context.pomodoroNamePromptVisible {
+            return pomodoroNamePromptCommand(for: event, modifiers: modifiers)
         }
 
         if event.keyCode == KeyCode.s, modifiers == .control {
@@ -130,16 +137,42 @@ struct CaptureKeyCommandRouter {
         for event: NSEvent,
         modifiers: NSEvent.ModifierFlags
     ) -> CaptureKeyCommand? {
+        isolatedPromptCommand(
+            for: event,
+            modifiers: modifiers,
+            submit: .submitTaskIDPrompt,
+            cancel: .cancelTaskIDPrompt
+        )
+    }
+
+    private func pomodoroNamePromptCommand(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags
+    ) -> CaptureKeyCommand? {
+        isolatedPromptCommand(
+            for: event,
+            modifiers: modifiers,
+            submit: .submitPomodoroNamePrompt,
+            cancel: .cancelPomodoroNamePrompt
+        )
+    }
+
+    private func isolatedPromptCommand(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags,
+        submit: CaptureKeyCommand,
+        cancel: CaptureKeyCommand
+    ) -> CaptureKeyCommand? {
         switch event.keyCode {
         case KeyCode.return, KeyCode.keypadEnter:
             if modifiers.contains(.command) {
                 return .consumeKey
             }
-            return .submitTaskIDPrompt
+            return submit
         case KeyCode.escape:
-            return .cancelTaskIDPrompt
+            return cancel
         case KeyCode.leftBracket:
-            return modifiers == .control ? .cancelTaskIDPrompt : nil
+            return modifiers == .control ? cancel : nil
         case KeyCode.c:
             return modifiers == .control ? .stashDraftAndClose : nil
         case KeyCode.tab, KeyCode.arrowDown, KeyCode.arrowUp:

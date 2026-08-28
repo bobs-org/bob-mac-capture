@@ -325,6 +325,84 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(failure.error, "block ID ^duplicate-id already exists in file.md")
     }
 
+    func testAssignPomodoroNameRunsDedicatedCommandAndDecodesSuccess() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let response = try await client.assignPomodoroName(
+            ref: "38:0b1c2d3e",
+            name: "DEEP WORK"
+        )
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected pomodoro name success")
+        }
+        XCTAssertEqual(success.schemaVersion, 1)
+        XCTAssertEqual(success.name, "DEEP WORK")
+        XCTAssertEqual(success.slug, "deep-work")
+        XCTAssertEqual(success.relativeDayFile, "2026/20260828.md")
+        XCTAssertEqual(success.pomodoro.name, "DEEP WORK")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-pomodoro-name --pomodoro-ref 38:0b1c2d3e --name DEEP WORK --format json"
+            )
+        )
+    }
+
+    func testAssignPomodoroNameDecodesJSONFailureOnNonZeroExit() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": #"{"ok":false,"error":"Pomodoro 38:0b1c2d3e already has a selectable name"}"#,
+                "FAKE_BOB_EXIT": "1",
+            ]
+        )
+
+        let response = try await client.assignPomodoroName(
+            ref: "38:0b1c2d3e",
+            name: "DEEP WORK"
+        )
+
+        guard case .failure(let failure) = response else {
+            return XCTFail("Expected pomodoro name failure")
+        }
+        XCTAssertEqual(failure.error, "Pomodoro 38:0b1c2d3e already has a selectable name")
+    }
+
+    func testCaptureCompletePomodoroNameContextDecodesNamedAndNameableRows() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "Fix startup @sase:some-id#"
+
+        let response = try await client.captureComplete(draft, cursor: draft.utf8.count)
+
+        XCTAssertEqual(response.context, "pomodoro_name")
+        XCTAssertEqual(response.replacement, CaptureRange(start: 26, end: 26))
+        XCTAssertEqual(response.candidates.count, 2)
+        XCTAssertEqual(response.candidates[0].replacement, "memory")
+        XCTAssertEqual(response.candidates[0].name, "MEMORY")
+        XCTAssertFalse(response.candidates[0].requiresName)
+        XCTAssertTrue(response.candidates[0].isCurrent)
+        XCTAssertEqual(response.candidates[0].matchCount, 2)
+        XCTAssertEqual(response.candidates[1].replacement, "")
+        XCTAssertTrue(response.candidates[1].requiresName)
+        XCTAssertTrue(response.candidates[1].placeholder)
+        XCTAssertEqual(response.candidates[1].taskRef, "38:0b1c2d3e")
+    }
+
     func testLivePreviewAlwaysUsesNoClipAndPrioritySeed() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

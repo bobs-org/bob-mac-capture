@@ -21,10 +21,22 @@ struct CaptureTaskIDPromptState: Equatable {
     var errorMessage: String?
 }
 
+struct CapturePomodoroNamePromptState: Equatable {
+    let candidate: CaptureCompletionCandidate
+    let draftSnapshot: String
+    let replacementRange: CaptureRange
+    let selectedCompletionIndex: Int
+    var authoredName: String
+    var isSaving: Bool
+    var errorMessage: String?
+}
+
 enum CapturePanelFocusTarget: Hashable {
     case editor
     /// Model-level focus intent owned by `BlockIDField` / AppKit, not `@FocusState`.
     case taskIDPromptBlockID
+    /// Model-level focus intent owned by `PomodoroNameField` / AppKit, not `@FocusState`.
+    case pomodoroNamePromptName
 }
 
 struct CapturePanelFocusRequest: Equatable {
@@ -63,6 +75,7 @@ final class CapturePanelModel: ObservableObject {
     @Published var isStashPickerPresented = false
     @Published var selectedStashIndex = 0
     @Published var taskIDPrompt: CaptureTaskIDPromptState?
+    @Published var pomodoroNamePrompt: CapturePomodoroNamePromptState?
     @Published private(set) var focusRequest = CapturePanelFocusRequest(sequence: 0, target: .editor)
     @Published private(set) var editorInputLocked = false
     /// Visible-frame height of the screen hosting the panel. `nil` until the controller
@@ -93,6 +106,7 @@ final class CapturePanelModel: ObservableObject {
     // state on behalf of a request that is no longer the active one.
     private var activeRequestID: UUID?
     private var activeTaskIDRequestID: UUID?
+    private var activePomodoroNameRequestID: UUID?
 
     init(
         processClient: BobProcessClient? = nil,
@@ -128,8 +142,12 @@ final class CapturePanelModel: ObservableObject {
 
     var completionVisible: Bool {
         !isStashPickerPresented
-            && taskIDPrompt == nil
+            && !inlinePromptVisible
             && completionResponse?.candidates.isEmpty == false
+    }
+
+    var inlinePromptVisible: Bool {
+        taskIDPrompt != nil || pomodoroNamePrompt != nil
     }
 
     var taskIDPromptVisible: Bool {
@@ -141,6 +159,25 @@ final class CapturePanelModel: ObservableObject {
             return false
         }
         return Self.isValidBlockID(prompt.authoredID)
+    }
+
+    var pomodoroNamePromptVisible: Bool {
+        pomodoroNamePrompt != nil
+    }
+
+    var pomodoroNamePromptCanSubmit: Bool {
+        guard let prompt = pomodoroNamePrompt, !prompt.isSaving else {
+            return false
+        }
+        return Self.isValidPomodoroName(prompt.authoredName)
+    }
+
+    var pomodoroNamePromptCanonicalName: String? {
+        guard let prompt = pomodoroNamePrompt else {
+            return nil
+        }
+        let canonical = Self.canonicalPomodoroName(prompt.authoredName)
+        return Self.isValidCanonicalPomodoroName(canonical) ? canonical : nil
     }
 
     var stashEntries: [CanceledDraftEntry] {
@@ -215,6 +252,9 @@ final class CapturePanelModel: ObservableObject {
         if let prompt = taskIDPrompt, prompt.draftSnapshot != draft {
             cancelTaskIDPrompt(clearCompletion: true)
         }
+        if let prompt = pomodoroNamePrompt, prompt.draftSnapshot != draft {
+            cancelPomodoroNamePrompt(clearCompletion: true)
+        }
 
         if let suppressedDraft = suppressedCompletionAcceptanceDraft {
             if draft == suppressedDraft {
@@ -227,7 +267,7 @@ final class CapturePanelModel: ObservableObject {
             priorityRollSeed = nil
             parseDiagnostics = []
             completionResponse = nil
-            clearTaskIDPrompt()
+            clearInlinePrompts()
             previewState = .idle
             statusText = ""
             invalidateAnalysis()
@@ -274,7 +314,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func submit(openAfterCapture: Bool) {
-        guard taskIDPrompt == nil, !isSubmitting, !isPreviewing, hasDraft else {
+        guard !inlinePromptVisible, !isSubmitting, !isPreviewing, hasDraft else {
             return
         }
         guard let processClient else {
@@ -312,7 +352,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func preview() {
-        guard taskIDPrompt == nil, !isSubmitting, !isPreviewing, hasDraft else {
+        guard !inlinePromptVisible, !isSubmitting, !isPreviewing, hasDraft else {
             return
         }
         guard let processClient else {
@@ -360,7 +400,7 @@ final class CapturePanelModel: ObservableObject {
     /// permanent discarding is an explicit action from the Discard button.
     func prepareForRetainedClose() {
         dismissStashPicker()
-        clearTaskIDPrompt()
+        clearInlinePrompts()
         if hasDraft {
             statusText = "Draft retained"
         }
@@ -378,7 +418,7 @@ final class CapturePanelModel: ObservableObject {
 
     func discardDraft() {
         dismissStashPicker()
-        clearTaskIDPrompt()
+        clearInlinePrompts()
         setPlainDraft("")
         suppressedCompletionAcceptanceDraft = nil
         priorityRollSeed = nil
@@ -406,9 +446,14 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func presentStashPicker() {
-        guard taskIDPrompt == nil else {
+        if taskIDPrompt != nil {
             announceStatus("Finish or cancel the block ID prompt before opening stash")
             requestFocus(.taskIDPromptBlockID)
+            return
+        }
+        if pomodoroNamePrompt != nil {
+            announceStatus("Finish or cancel the Pomodoro name prompt before opening stash")
+            requestFocus(.pomodoroNamePromptName)
             return
         }
         guard plainDraft.isEmpty else {
@@ -509,7 +554,7 @@ final class CapturePanelModel: ObservableObject {
 
     func prepareForDismissal() {
         dismissStashPicker()
-        clearTaskIDPrompt()
+        clearInlinePrompts()
     }
 
     func requestFocus(_ target: CapturePanelFocusTarget) {
@@ -522,7 +567,7 @@ final class CapturePanelModel: ObservableObject {
         invalidateRewrite()
         parseDiagnostics = []
         completionResponse = nil
-        clearTaskIDPrompt()
+        clearInlinePrompts()
         previewState = .idle
         statusText = ""
         errorMessage = nil
@@ -531,10 +576,25 @@ final class CapturePanelModel: ObservableObject {
         previewGlobalDestination = nil
     }
 
+    private func clearInlinePrompts() {
+        clearTaskIDPrompt()
+        clearPomodoroNamePrompt()
+    }
+
     private func clearTaskIDPrompt() {
         taskIDPrompt = nil
         activeTaskIDRequestID = nil
-        clearEditorInputLock()
+        if pomodoroNamePrompt == nil {
+            clearEditorInputLock()
+        }
+    }
+
+    private func clearPomodoroNamePrompt() {
+        pomodoroNamePrompt = nil
+        activePomodoroNameRequestID = nil
+        if taskIDPrompt == nil {
+            clearEditorInputLock()
+        }
     }
 
     private func clearEditorInputLock() {
@@ -599,6 +659,15 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
+        if completionResponse.context == "pomodoro_name", candidate.requiresName {
+            presentPomodoroNamePrompt(
+                candidate: candidate,
+                draftSnapshot: plainDraft,
+                replacementRange: completionResponse.replacement
+            )
+            return
+        }
+
         var text = plainDraft
         text.replaceSubrange(range, with: candidate.replacement)
         let cursor = candidate.cursorAfter ?? completionResponse.replacement.start + candidate.replacement.utf8.count
@@ -639,6 +708,91 @@ final class CapturePanelModel: ObservableObject {
             statusText = "Ready"
         }
         requestFocus(.editor)
+    }
+
+    func updatePomodoroNamePromptName(_ name: String) {
+        guard var prompt = pomodoroNamePrompt, !prompt.isSaving else {
+            return
+        }
+        prompt.authoredName = name
+        prompt.errorMessage = Self.pomodoroNameValidationMessage(for: name)
+        pomodoroNamePrompt = prompt
+    }
+
+    func cancelPomodoroNamePrompt(clearCompletion: Bool = false) {
+        guard let prompt = pomodoroNamePrompt else {
+            return
+        }
+        clearPomodoroNamePrompt()
+        selectedCompletionIndex = prompt.selectedCompletionIndex
+        if clearCompletion {
+            dismissCompletion()
+        } else {
+            statusText = "Ready"
+        }
+        requestFocus(.editor)
+    }
+
+    func submitPomodoroNamePrompt() {
+        guard var prompt = pomodoroNamePrompt, !prompt.isSaving else {
+            return
+        }
+        guard let processClient else {
+            prompt.errorMessage = "Bob is not resolved. Check Settings and Recheck Bob."
+            pomodoroNamePrompt = prompt
+            requestFocus(.pomodoroNamePromptName)
+            return
+        }
+        if let validationMessage = Self.pomodoroNameValidationMessage(for: prompt.authoredName) {
+            prompt.errorMessage = validationMessage
+            pomodoroNamePrompt = prompt
+            requestFocus(.pomodoroNamePromptName)
+            return
+        }
+        guard prompt.draftSnapshot == plainDraft else {
+            prompt.errorMessage = "Draft changed. Return to the Pomodoro list and choose again."
+            pomodoroNamePrompt = prompt
+            requestFocus(.pomodoroNamePromptName)
+            return
+        }
+        guard stringRange(in: prompt.draftSnapshot, byteRange: prompt.replacementRange) != nil else {
+            prompt.errorMessage = "Completion range is stale. Return to the Pomodoro list and choose again."
+            pomodoroNamePrompt = prompt
+            requestFocus(.pomodoroNamePromptName)
+            return
+        }
+        guard let pomodoroRef = prompt.candidate.taskRef else {
+            prompt.errorMessage = "Pomodoro candidate is missing a ref. Refresh the list and choose again."
+            pomodoroNamePrompt = prompt
+            requestFocus(.pomodoroNamePromptName)
+            return
+        }
+
+        let requestID = UUID()
+        activePomodoroNameRequestID = requestID
+        prompt.isSaving = true
+        prompt.errorMessage = nil
+        pomodoroNamePrompt = prompt
+        statusText = "Naming Pomodoro\u{2026}"
+        let name = prompt.authoredName
+
+        Task {
+            do {
+                let response = try await CaptureSignpost.measure("capture-pomodoro-name") {
+                    try await processClient.assignPomodoroName(
+                        ref: pomodoroRef,
+                        name: name
+                    )
+                }
+                await MainActor.run {
+                    self.completePomodoroNameAssignment(requestID: requestID, response: response)
+                }
+            } catch {
+                await MainActor.run {
+                    self.failPomodoroNameAssignment(requestID: requestID, error: error)
+                }
+            }
+        }
     }
 
     func submitTaskIDPrompt() {
@@ -736,6 +890,7 @@ final class CapturePanelModel: ObservableObject {
         draftSnapshot: String,
         replacementRange: CaptureRange
     ) {
+        clearPomodoroNamePrompt()
         invalidateAnalysis()
         activeTaskIDRequestID = nil
         taskIDPrompt = CaptureTaskIDPromptState(
@@ -750,6 +905,96 @@ final class CapturePanelModel: ObservableObject {
         statusText = "Add block ID"
         requestFocus(.taskIDPromptBlockID)
         editorInputLocked = true
+    }
+
+    private func presentPomodoroNamePrompt(
+        candidate: CaptureCompletionCandidate,
+        draftSnapshot: String,
+        replacementRange: CaptureRange
+    ) {
+        clearTaskIDPrompt()
+        invalidateAnalysis()
+        activePomodoroNameRequestID = nil
+        pomodoroNamePrompt = CapturePomodoroNamePromptState(
+            candidate: candidate,
+            draftSnapshot: draftSnapshot,
+            replacementRange: replacementRange,
+            selectedCompletionIndex: selectedCompletionIndex,
+            authoredName: Self.prefilledPomodoroName(from: completionQueryText()),
+            isSaving: false,
+            errorMessage: nil
+        )
+        statusText = "Name Pomodoro"
+        requestFocus(.pomodoroNamePromptName)
+        editorInputLocked = true
+    }
+
+    private func completePomodoroNameAssignment(
+        requestID: UUID,
+        response: CapturePomodoroNameResponse
+    ) {
+        guard activePomodoroNameRequestID == requestID,
+              var prompt = pomodoroNamePrompt
+        else {
+            return
+        }
+        activePomodoroNameRequestID = nil
+
+        switch response {
+        case .success(let success):
+            guard let range = stringRange(in: prompt.draftSnapshot, byteRange: prompt.replacementRange) else {
+                prompt.isSaving = false
+                prompt.errorMessage = "Completion range is stale. Return to the Pomodoro list and choose again."
+                pomodoroNamePrompt = prompt
+                statusText = "Name Pomodoro failed"
+                requestFocus(.pomodoroNamePromptName)
+                return
+            }
+
+            var text = prompt.draftSnapshot
+            text.replaceSubrange(range, with: success.slug)
+            let cursor = prompt.replacementRange.start + success.slug.utf8.count
+            guard stringRange(in: text, start: cursor, end: cursor) != nil else {
+                prompt.isSaving = false
+                prompt.errorMessage = "Completion cursor is stale. Return to the Pomodoro list and choose again."
+                pomodoroNamePrompt = prompt
+                statusText = "Name Pomodoro failed"
+                requestFocus(.pomodoroNamePromptName)
+                return
+            }
+
+            clearPomodoroNamePrompt()
+            dismissCompletion()
+            suppressedCompletionAcceptanceDraft = text
+            setPlainDraft(
+                text,
+                cursorUTF8Offset: cursor,
+                suppressSelectionCallbacks: true
+            )
+            scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false)
+            statusText = "Named \(success.name) in \(success.relativeDayFile)"
+            requestFocus(.editor)
+        case .failure(let failure):
+            prompt.isSaving = false
+            prompt.errorMessage = failure.error
+            pomodoroNamePrompt = prompt
+            statusText = "Name Pomodoro failed"
+            requestFocus(.pomodoroNamePromptName)
+        }
+    }
+
+    private func failPomodoroNameAssignment(requestID: UUID, error: Error) {
+        guard activePomodoroNameRequestID == requestID,
+              var prompt = pomodoroNamePrompt
+        else {
+            return
+        }
+        activePomodoroNameRequestID = nil
+        prompt.isSaving = false
+        prompt.errorMessage = String(describing: error)
+        pomodoroNamePrompt = prompt
+        statusText = "Name Pomodoro failed"
+        requestFocus(.pomodoroNamePromptName)
     }
 
     private func completeTaskIDAssignment(
@@ -1442,6 +1687,63 @@ final class CapturePanelModel: ObservableObject {
                     || (value >= 97 && value <= 122)
                     || value == 45
             }
+    }
+
+    private static func prefilledPomodoroName(from query: String) -> String {
+        canonicalPomodoroName(query.replacingOccurrences(of: "-", with: " "))
+    }
+
+    private static func canonicalPomodoroName(_ raw: String) -> String {
+        raw.split { $0.isWhitespace }.joined(separator: " ").uppercased()
+    }
+
+    private static func pomodoroNameValidationMessage(for name: String) -> String? {
+        if canonicalPomodoroName(name).isEmpty {
+            return "Enter a Pomodoro name."
+        }
+        return isValidPomodoroName(name)
+            ? nil
+            : "Use only letters, numbers, spaces, and & ' ( ) , . / -."
+    }
+
+    private static func isValidPomodoroName(_ name: String) -> Bool {
+        isValidCanonicalPomodoroName(canonicalPomodoroName(name))
+    }
+
+    private static func isValidCanonicalPomodoroName(_ name: String) -> Bool {
+        guard let first = name.first else {
+            return false
+        }
+        guard isPomodoroNameFirst(first) else {
+            return false
+        }
+        var hasLetter = first.isASCII && first.isLetter
+        for character in name.dropFirst() {
+            guard isPomodoroNameRest(character) else {
+                return false
+            }
+            hasLetter = hasLetter || (character.isASCII && character.isLetter)
+        }
+        return hasLetter
+    }
+
+    private static func isPomodoroNameFirst(_ character: Character) -> Bool {
+        character.isASCII && (character.isLetter || character.isNumber)
+    }
+
+    private static func isPomodoroNameRest(_ character: Character) -> Bool {
+        if isPomodoroNameFirst(character) {
+            return true
+        }
+        return character == " "
+            || character == "&"
+            || character == "'"
+            || character == "("
+            || character == ")"
+            || character == ","
+            || character == "."
+            || character == "/"
+            || character == "-"
     }
 
     private static func isBareAtAtTrigger(in draft: String, cursorUTF8Offset: Int) -> Bool {

@@ -750,6 +750,137 @@ public struct CaptureTaskIDTask: Codable, Equatable {
     }
 }
 
+public enum CapturePomodoroNameResponse: Equatable, Decodable {
+    case success(CapturePomodoroNameSuccess)
+    case failure(CaptureCommandFailure)
+
+    public var ok: Bool {
+        switch self {
+        case .success(let value):
+            return value.ok
+        case .failure(let value):
+            return value.ok
+        }
+    }
+
+    private enum DiscriminatorKeys: String, CodingKey {
+        case ok
+    }
+
+    public init(from decoder: Decoder) throws {
+        let discriminator = try decoder.container(keyedBy: DiscriminatorKeys.self)
+        if try discriminator.decode(Bool.self, forKey: .ok) {
+            self = .success(try CapturePomodoroNameSuccess(from: decoder))
+        } else {
+            self = .failure(try CaptureCommandFailure(from: decoder))
+        }
+    }
+}
+
+public struct CapturePomodoroNameSuccess: Codable, Equatable {
+    public let ok: Bool
+    public let schemaVersion: Int
+    public let dryRun: Bool
+    public let dayFile: String
+    public let relativeDayFile: String
+    public let name: String
+    public let slug: String
+    public let line: Int
+    public let pomodoroRef: String
+    public let pomodoro: CapturePomodoroEntry
+
+    public init(
+        ok: Bool,
+        schemaVersion: Int = 1,
+        dryRun: Bool,
+        dayFile: String,
+        relativeDayFile: String,
+        name: String,
+        slug: String,
+        line: Int,
+        pomodoroRef: String,
+        pomodoro: CapturePomodoroEntry
+    ) {
+        self.ok = ok
+        self.schemaVersion = schemaVersion
+        self.dryRun = dryRun
+        self.dayFile = dayFile
+        self.relativeDayFile = relativeDayFile
+        self.name = name
+        self.slug = slug
+        self.line = line
+        self.pomodoroRef = pomodoroRef
+        self.pomodoro = pomodoro
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case schemaVersion = "schema_version"
+        case dryRun = "dry_run"
+        case dayFile = "day_file"
+        case relativeDayFile = "relative_day_file"
+        case name
+        case slug
+        case line
+        case pomodoroRef = "ref"
+        case pomodoro
+    }
+}
+
+public struct CapturePomodoroEntry: Codable, Equatable {
+    public let pomodoroRef: String
+    public let line: Int
+    public let state: String
+    public let statusSymbol: String
+    public let name: String?
+    public let slug: String
+    public let selectable: Bool
+    public let timeRange: String?
+    public let placeholder: Bool
+    public let isCurrent: Bool
+    public let childCount: Int
+
+    public init(
+        pomodoroRef: String,
+        line: Int,
+        state: String,
+        statusSymbol: String,
+        name: String? = nil,
+        slug: String,
+        selectable: Bool,
+        timeRange: String? = nil,
+        placeholder: Bool,
+        isCurrent: Bool,
+        childCount: Int
+    ) {
+        self.pomodoroRef = pomodoroRef
+        self.line = line
+        self.state = state
+        self.statusSymbol = statusSymbol
+        self.name = name
+        self.slug = slug
+        self.selectable = selectable
+        self.timeRange = timeRange
+        self.placeholder = placeholder
+        self.isCurrent = isCurrent
+        self.childCount = childCount
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pomodoroRef = "ref"
+        case line
+        case state
+        case statusSymbol = "status_symbol"
+        case name
+        case slug
+        case selectable
+        case timeRange = "time_range"
+        case placeholder
+        case isCurrent = "is_current"
+        case childCount = "child_count"
+    }
+}
+
 // Keep callers on non-optional collection fields while tolerating older bob binaries
 // that omitted empty arrays from clip JSON.
 public struct CaptureClipOutput: Codable, Equatable {
@@ -986,6 +1117,13 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let matchKind: String?
     public let heading: String?
     public let preview: String?
+    public let requiresName: Bool
+    public let line: Int?
+    public let state: String?
+    public let timeRange: String?
+    public let placeholder: Bool
+    public let isCurrent: Bool
+    public let matchCount: Int?
 
     public var id: String {
         [
@@ -999,6 +1137,8 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
             alias,
             heading,
             preview,
+            line.map(String.init),
+            timeRange,
         ]
         .compactMap { $0 }
         .joined(separator: "\u{1f}")
@@ -1028,7 +1168,14 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         alias: String? = nil,
         matchKind: String? = nil,
         heading: String? = nil,
-        preview: String? = nil
+        preview: String? = nil,
+        requiresName: Bool = false,
+        line: Int? = nil,
+        state: String? = nil,
+        timeRange: String? = nil,
+        placeholder: Bool = false,
+        isCurrent: Bool = false,
+        matchCount: Int? = nil
     ) {
         self.replacement = replacement
         self.route = route
@@ -1054,6 +1201,13 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.matchKind = matchKind
         self.heading = heading
         self.preview = preview
+        self.requiresName = requiresName
+        self.line = line
+        self.state = state
+        self.timeRange = timeRange
+        self.placeholder = placeholder
+        self.isCurrent = isCurrent
+        self.matchCount = matchCount
     }
 
     public init(from decoder: Decoder) throws {
@@ -1082,6 +1236,13 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         matchKind = try container.decodeIfPresent(String.self, forKey: .matchKind)
         heading = try container.decodeIfPresent(String.self, forKey: .heading)
         preview = try container.decodeIfPresent(String.self, forKey: .preview)
+        requiresName = try container.decodeIfPresent(Bool.self, forKey: .requiresName) ?? false
+        line = try container.decodeIfPresent(Int.self, forKey: .line)
+        state = try container.decodeIfPresent(String.self, forKey: .state)
+        timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange)
+        placeholder = try container.decodeIfPresent(Bool.self, forKey: .placeholder) ?? false
+        isCurrent = try container.decodeIfPresent(Bool.self, forKey: .isCurrent) ?? false
+        matchCount = try container.decodeIfPresent(Int.self, forKey: .matchCount)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1109,5 +1270,12 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case matchKind = "match_kind"
         case heading
         case preview
+        case requiresName = "requires_name"
+        case line
+        case state
+        case timeRange = "time_range"
+        case placeholder
+        case isCurrent = "is_current"
+        case matchCount = "match_count"
     }
 }

@@ -920,6 +920,50 @@ JSON
   ]
 }
 JSON
+    elif [[ "${draft}" == "Fix startup @sase:some-id#"* ]]; then
+      prefix="Fix startup @sase:some-id#"
+      query="${draft#"${prefix}"}"
+      start=${#prefix}
+      end=$((start + ${#query}))
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": ${start}, "end": ${end} },
+  "context": "pomodoro_name",
+  "candidates": [
+    {
+      "replacement": "memory",
+      "ref": "31:1a2b3c4d",
+      "name": "MEMORY",
+      "requires_name": false,
+      "line": 31,
+      "state": "open",
+      "status_symbol": " ",
+      "time_range": "1205-1230",
+      "placeholder": false,
+      "is_current": true,
+      "child_count": 5,
+      "match_count": 2
+    },
+    {
+      "replacement": "",
+      "ref": "38:0b1c2d3e",
+      "name": null,
+      "requires_name": true,
+      "line": 38,
+      "state": "open",
+      "status_symbol": " ",
+      "time_range": null,
+      "placeholder": true,
+      "is_current": false,
+      "child_count": 0,
+      "match_count": 1
+    }
+  ]
+}
+JSON
     else
       cat <<'JSON'
 {
@@ -984,6 +1028,58 @@ JSON
     "text": "Plan the handoff",
     "section": "Tasks",
     "depth": 1,
+    "child_count": 0
+  }
+}
+JSON
+    ;;
+  capture-pomodoro-name)
+    pomodoro_ref=""
+    name=""
+    dry_run="false"
+    args=("$@")
+    for ((i = 0; i < ${#args[@]}; i++)); do
+      case "${args[$i]}" in
+        --pomodoro-ref|-p)
+          pomodoro_ref="${args[$((i + 1))]:-}"
+          ;;
+        --name|-n)
+          name="${args[$((i + 1))]:-}"
+          ;;
+        --dry-run|-d)
+          dry_run="true"
+          ;;
+      esac
+    done
+    if [[ "${name}" == "DUPLICATE" ]]; then
+      cat <<'JSON'
+{"ok":false,"error":"Pomodoro 38:0b1c2d3e already has a selectable name"}
+JSON
+      exit 1
+    fi
+    slug="$(printf '%s' "${name}" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
+    cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "dry_run": ${dry_run},
+  "day_file": "/tmp/bob/2026/20260828.md",
+  "relative_day_file": "2026/20260828.md",
+  "name": "${name}",
+  "slug": "${slug}",
+  "line": 38,
+  "ref": "${pomodoro_ref}",
+  "pomodoro": {
+    "ref": "${pomodoro_ref}",
+    "line": 38,
+    "state": "open",
+    "status_symbol": " ",
+    "name": "${name}",
+    "slug": "${slug}",
+    "selectable": true,
+    "time_range": null,
+    "placeholder": true,
+    "is_current": false,
     "child_count": 0
   }
 }

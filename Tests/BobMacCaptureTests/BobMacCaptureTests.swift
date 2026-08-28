@@ -592,6 +592,31 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertNil(router.command(for: keyEvent(keyCode: 0, characters: "a"), context: context))
     }
 
+    func testKeyRouterIsolatesPomodoroNamePromptCommands() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(
+            completionVisible: true,
+            stashPickerVisible: false,
+            stashEntryCount: 0,
+            taskIDPromptVisible: false,
+            pomodoroNamePromptVisible: true
+        )
+
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), context: context), .submitPomodoroNamePrompt)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 76), context: context), .submitPomodoroNamePrompt)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .command), context: context), .consumeKey)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 53), context: context), .cancelPomodoroNamePrompt)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 33, modifiers: .control), context: context),
+            .cancelPomodoroNamePrompt
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), context: context), .consumeKey)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 125), context: context), .consumeKey)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 126), context: context), .consumeKey)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 8, modifiers: .control), context: context), .stashDraftAndClose)
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 0, characters: "a"), context: context))
+    }
+
     func testKeyRouterMatchesStashPickerModalCommands() {
         let router = CaptureKeyCommandRouter()
         let context = CaptureKeyRoutingContext(
@@ -940,6 +965,25 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertTrue(controller.perform(.cancelTaskIDPrompt))
 
         XCTAssertNil(model.taskIDPrompt)
+        XCTAssertTrue(model.completionVisible)
+        XCTAssertEqual(model.selectedCompletionIndex, 1)
+        XCTAssertEqual(model.focusRequest.target, .editor)
+        XCTAssertGreaterThan(model.focusRequest.sequence, promptFocusSequence)
+    }
+
+    @MainActor
+    func testCancelPomodoroNamePromptCommandRestoresSelectionAndEditorFocus() {
+        let model = CapturePanelModel()
+        model.plainDraft = "Fix startup @sase:some-id#"
+        model.completionResponse = samplePomodoroNameCompletionResponse()
+        model.selectedCompletionIndex = 1
+        let controller = CapturePanelController(model: model)
+
+        XCTAssertTrue(controller.perform(.acceptCompletion))
+        let promptFocusSequence = model.focusRequest.sequence
+        XCTAssertTrue(controller.perform(.cancelPomodoroNamePrompt))
+
+        XCTAssertNil(model.pomodoroNamePrompt)
         XCTAssertTrue(model.completionVisible)
         XCTAssertEqual(model.selectedCompletionIndex, 1)
         XCTAssertEqual(model.focusRequest.target, .editor)
@@ -2261,6 +2305,35 @@ final class BobMacCaptureTests: XCTestCase {
                     label: "mac_inbox.md",
                     kind: "inbox"
                 )
+            ]
+        )
+    }
+
+    private func samplePomodoroNameCompletionResponse() -> CaptureCompletionResponse {
+        CaptureCompletionResponse(
+            ok: true,
+            cursor: 26,
+            replacement: CaptureRange(start: 26, end: 26),
+            context: "pomodoro_name",
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "memory",
+                    taskRef: "31:1a2b3c4d",
+                    childCount: 5,
+                    name: "MEMORY",
+                    requiresName: false,
+                    isCurrent: true,
+                    matchCount: 2
+                ),
+                CaptureCompletionCandidate(
+                    replacement: "",
+                    taskRef: "38:0b1c2d3e",
+                    childCount: 0,
+                    name: nil,
+                    requiresName: true,
+                    placeholder: true,
+                    matchCount: 1
+                ),
             ]
         )
     }

@@ -94,6 +94,19 @@ final class BlockIDFieldFocusTests: XCTestCase {
         XCTAssertNil(CapturePanelController.findBlockIDField(in: nil))
     }
 
+    func testFindPomodoroNameField() {
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 120))
+        let nested = NSView(frame: NSRect(x: 0, y: 0, width: 120, height: 60))
+        let field = makePomodoroNameField()
+        root.addSubview(nested)
+        nested.addSubview(field)
+
+        XCTAssertTrue(CapturePanelController.findPomodoroNameField(in: root) === field)
+        XCTAssertNil(CapturePanelController.findPomodoroNameField(in: NSView()))
+        XCTAssertNil(CapturePanelController.findPomodoroNameField(in: nil))
+        XCTAssertNil(CapturePanelController.findBlockIDField(in: root))
+    }
+
     func testHostedFieldIsReachableFromController() {
         let window = makeWindow()
         let hosted = NSHostingView(
@@ -128,6 +141,18 @@ final class BlockIDFieldFocusTests: XCTestCase {
         field.isEnabled = true
         field.usesSingleLineMode = true
         field.setAccessibilityIdentifier(blockIDFieldAccessibilityIdentifier)
+        return field
+    }
+
+    private func makePomodoroNameField(
+        frame: NSRect = NSRect(x: 0, y: 0, width: 120, height: 24)
+    ) -> PomodoroNameNSTextField {
+        let field = PomodoroNameNSTextField(frame: frame)
+        field.isEditable = true
+        field.isSelectable = true
+        field.isEnabled = true
+        field.usesSingleLineMode = true
+        field.setAccessibilityIdentifier(pomodoroNameFieldAccessibilityIdentifier)
         return field
     }
 }
