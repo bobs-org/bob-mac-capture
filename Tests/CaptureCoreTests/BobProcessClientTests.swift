@@ -395,10 +395,12 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(response.candidates[0].replacement, "memory")
         XCTAssertEqual(response.candidates[0].name, "MEMORY")
         XCTAssertFalse(response.candidates[0].requiresName)
+        XCTAssertFalse(response.candidates[0].createsPomodoro)
         XCTAssertTrue(response.candidates[0].isCurrent)
         XCTAssertEqual(response.candidates[0].matchCount, 2)
         XCTAssertEqual(response.candidates[1].replacement, "")
         XCTAssertTrue(response.candidates[1].requiresName)
+        XCTAssertFalse(response.candidates[1].createsPomodoro)
         XCTAssertTrue(response.candidates[1].placeholder)
         XCTAssertEqual(response.candidates[1].taskRef, "38:0b1c2d3e")
     }

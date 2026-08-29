@@ -988,6 +988,18 @@ final class CaptureModelTests: XCTestCase {
                   "replacement": "bugs",
                   "ref": "12:abcd1234",
                   "name": "BUGS"
+                },
+                {
+                  "replacement": "future",
+                  "name": "FUTURE",
+                  "requires_name": false,
+                  "creates_pomodoro": true,
+                  "state": "open",
+                  "status_symbol": " ",
+                  "placeholder": true,
+                  "is_current": false,
+                  "child_count": 0,
+                  "match_count": 1
                 }
               ]
             }
@@ -1018,6 +1030,16 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertFalse(decoded.candidates[2].placeholder)
         XCTAssertFalse(decoded.candidates[2].isCurrent)
         XCTAssertNil(decoded.candidates[2].matchCount)
+        XCTAssertFalse(decoded.candidates[0].createsPomodoro)
+        XCTAssertFalse(decoded.candidates[1].createsPomodoro)
+        XCTAssertFalse(decoded.candidates[2].createsPomodoro)
+        XCTAssertTrue(decoded.candidates[3].createsPomodoro)
+        XCTAssertEqual(decoded.candidates[3].replacement, "future")
+        XCTAssertEqual(decoded.candidates[3].name, "FUTURE")
+        XCTAssertNil(decoded.candidates[3].taskRef)
+        XCTAssertNil(decoded.candidates[3].line)
+        XCTAssertTrue(decoded.candidates[3].placeholder)
+        XCTAssertFalse(decoded.candidates[3].requiresName)
     }
 
     func testCompletionResponseDecodesTaskSectionCandidatesWithoutNewCodingKeys() throws {

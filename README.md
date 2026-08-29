@@ -43,10 +43,13 @@ mutation.
 - A `bob` build that supports `@@route` / `@@route+block-id` global destination
   declarations anywhere in the draft, `capture-rewrite`, `capture-complete --all-tasks`,
   `capture-task-id`, `capture-pomodoro-name`, `task_section` completion for
-  `@route+block-id#`, and `pomodoro_name` completion for `@route:block-id#`. Older builds
+  `@route+block-id#`, and `pomodoro_name` completion for `@route:block-id#`, including
+  the additive `creates_pomodoro` create-future-Pomodoro action. Older builds
   can still capture ordinary drafts, but global declarations, bare-`@@` absorption, the
   Add block ID flow, the Name Pomodoro flow, and the task-section popup report the local
-  Bob error or an empty list until Bob is upgraded.
+  Bob error or an empty list until Bob is upgraded. An older Bob that does not emit
+  `creates_pomodoro` still captures `@route:id#name` create-on-submit; the Mac app
+  decodes a missing flag as false and simply omits the explicit Create row.
 
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.
@@ -135,7 +138,9 @@ or expired certificate can require reauthorizing those system permissions.
   completion for that task's ALL-CAPS section bullets; a standalone trailing `#` stays
   the Pomodoro-note marker and `@route#` stays note-section completion. Typing `#`
   immediately after a resolved `@route:block-id` — or a bare `@route:#` — opens
-  `pomodoro_name` completion for today's open Pomodoros. For
+  `pomodoro_name` completion for today's open Pomodoros. Colon-Pomodoro
+  (`@route:id#name`) selects or creates a named Pomodoro; plus-task-section
+  (`@route+id#section`) stays a distinct family and is unchanged. For
   blank-line-separated drafts, completion still sends the complete draft as one argv
   value; Bob scopes the answer to the item or declaration containing the UTF-8 cursor and
   returns replacement ranges in draft-global byte offsets. See "Wikilink Completion"
@@ -149,17 +154,23 @@ or expired certificate can require reauthorizing those system permissions.
   `bob capture-task-id --route ROUTE --task-ref REF --block-id ID --format json`.
   Only a confirmed Bob success splices the returned canonical ID into the saved
   replacement range and reruns preview. Cancel and every error keep the draft unchanged.
-- In the `pomodoro_name` context, named open Pomodoros stay first and insert their slug
-  in one action. Unnamed and untypeable-name rows (`requires_name: true`, empty
-  `replacement`) replace the completion list with an inline **Name Pomodoro** prompt.
-  The two prompts can never both be open. Opening the prompt pre-fills the name field
-  from the in-progress completion query (`#deep-work` becomes `DEEP WORK`), moves
+- In the `pomodoro_name` context, a matching named open Pomodoro stays the default and
+  inserts its slug in one action. When Bob would create a new named future Pomodoro
+  instead, the first row is an explicit **Create** / **New future Pomodoro** action
+  (`creates_pomodoro: true`, canonical name, no ledger `ref`). Accepting it only
+  canonicalizes the `@route:id#name` marker, closes completion without opening **Name
+  Pomodoro**, restores the editor caret, and reruns live preview; the daily note is not
+  mutated until the later `bob capture` transaction creates the placeholder and task
+  link together. Unnamed and untypeable-name rows (`requires_name: true`, empty
+  `replacement`) still replace the completion list with an inline **Name Pomodoro**
+  prompt. The two prompts can never both be open. Opening the prompt pre-fills the name
+  field from the in-progress completion query (`#deep-work` becomes `DEEP WORK`), moves
   keyboard focus into the name field, and shows a live `Saves as DEEP WORK` hint. The
   draft remains unchanged while the app calls
   `bob capture-pomodoro-name --pomodoro-ref REF --name NAME --format json`. Only a
   confirmed Bob success splices the returned canonical `slug` into the saved replacement
   range, restores the caret after it, and reruns analysis. Cancel and every error keep
-  the draft unchanged.
+  the draft unchanged. The create-future row never calls `capture-pomodoro-name`.
 - Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through
   a dedicated process-client API that asserts `--no-clip`. `%` markers stay literal in
   continuous preview; clipboard-resolving preview is a separate explicit action.

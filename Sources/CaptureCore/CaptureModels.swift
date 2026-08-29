@@ -1124,6 +1124,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let placeholder: Bool
     public let isCurrent: Bool
     public let matchCount: Int?
+    public let createsPomodoro: Bool
 
     public var id: String {
         [
@@ -1139,6 +1140,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
             preview,
             line.map(String.init),
             timeRange,
+            createsPomodoro ? "create" : nil,
         ]
         .compactMap { $0 }
         .joined(separator: "\u{1f}")
@@ -1175,7 +1177,8 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         timeRange: String? = nil,
         placeholder: Bool = false,
         isCurrent: Bool = false,
-        matchCount: Int? = nil
+        matchCount: Int? = nil,
+        createsPomodoro: Bool = false
     ) {
         self.replacement = replacement
         self.route = route
@@ -1208,6 +1211,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.placeholder = placeholder
         self.isCurrent = isCurrent
         self.matchCount = matchCount
+        self.createsPomodoro = createsPomodoro
     }
 
     public init(from decoder: Decoder) throws {
@@ -1243,6 +1247,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         placeholder = try container.decodeIfPresent(Bool.self, forKey: .placeholder) ?? false
         isCurrent = try container.decodeIfPresent(Bool.self, forKey: .isCurrent) ?? false
         matchCount = try container.decodeIfPresent(Int.self, forKey: .matchCount)
+        createsPomodoro = try container.decodeIfPresent(Bool.self, forKey: .createsPomodoro) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1277,5 +1282,6 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case placeholder
         case isCurrent = "is_current"
         case matchCount = "match_count"
+        case createsPomodoro = "creates_pomodoro"
     }
 }

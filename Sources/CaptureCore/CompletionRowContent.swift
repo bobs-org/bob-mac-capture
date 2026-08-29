@@ -199,38 +199,52 @@ public func completionRowContent(
             : "Nests the capture under this task."
 
     case .pomodoroName:
-        let needsName = candidate.requiresName
-        category = needsName ? .priority : .section
-        symbolName = needsName ? "square.and.pencil" : "timer"
-        contextLabel = "Pomodoro"
-        if let name = candidate.name, !name.isEmpty {
-            primaryText = name
-        } else if let timeRange = candidate.timeRange, !timeRange.isEmpty {
-            primaryText = timeRange
+        if candidate.createsPomodoro {
+            category = .priority
+            symbolName = "timer.badge.plus"
+            contextLabel = "Pomodoro"
+            if let name = candidate.name, !name.isEmpty {
+                primaryText = name
+            } else {
+                primaryText = candidate.replacement
+            }
+            secondaryText = "New future Pomodoro"
+            badges = ["Create"]
+            accessibilityHint = "Creates this named future Pomodoro when the draft is captured."
         } else {
-            primaryText = "Unnamed Pomodoro"
+            let needsName = candidate.requiresName
+            category = needsName ? .priority : .section
+            symbolName = needsName ? "square.and.pencil" : "timer"
+            contextLabel = "Pomodoro"
+            if let name = candidate.name, !name.isEmpty {
+                primaryText = name
+            } else if let timeRange = candidate.timeRange, !timeRange.isEmpty {
+                primaryText = timeRange
+            } else {
+                primaryText = "Unnamed Pomodoro"
+            }
+            if let name = candidate.name, !name.isEmpty,
+               let timeRange = candidate.timeRange, !timeRange.isEmpty
+            {
+                secondaryText = timeRange
+            } else if candidate.placeholder {
+                secondaryText = "Planned"
+            }
+            if candidate.isCurrent {
+                badges.append("Current")
+            }
+            if let matchCount = candidate.matchCount, matchCount > 1 {
+                badges.append("\(matchCount) matches")
+            }
+            let childCount = candidate.childCount ?? 0
+            badges.append(childCount == 0 ? "Empty" : "\(childCount) links")
+            if needsName {
+                badges.append("Name it")
+            }
+            accessibilityHint = needsName
+                ? "Names this Pomodoro, then selects it."
+                : "Inserts this Pomodoro name."
         }
-        if let name = candidate.name, !name.isEmpty,
-           let timeRange = candidate.timeRange, !timeRange.isEmpty
-        {
-            secondaryText = timeRange
-        } else if candidate.placeholder {
-            secondaryText = "Planned"
-        }
-        if candidate.isCurrent {
-            badges.append("Current")
-        }
-        if let matchCount = candidate.matchCount, matchCount > 1 {
-            badges.append("\(matchCount) matches")
-        }
-        let childCount = candidate.childCount ?? 0
-        badges.append(childCount == 0 ? "Empty" : "\(childCount) links")
-        if needsName {
-            badges.append("Name it")
-        }
-        accessibilityHint = needsName
-            ? "Names this Pomodoro, then selects it."
-            : "Inserts this Pomodoro name."
 
     case .wikilinkNote:
         category = .wikilinkTarget

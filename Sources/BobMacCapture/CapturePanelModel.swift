@@ -659,6 +659,20 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
+        if completionResponse.context == "pomodoro_name", candidate.createsPomodoro {
+            guard applySelectedCompletionReplacement(
+                candidate: candidate,
+                range: range,
+                completionResponse: completionResponse
+            ) else {
+                return
+            }
+            let name = candidate.name.flatMap { $0.isEmpty ? nil : $0 } ?? candidate.replacement
+            announceStatus("\(name) will be created when captured")
+            requestFocus(.editor)
+            return
+        }
+
         if completionResponse.context == "pomodoro_name", candidate.requiresName {
             presentPomodoroNamePrompt(
                 candidate: candidate,
@@ -668,13 +682,26 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
+        _ = applySelectedCompletionReplacement(
+            candidate: candidate,
+            range: range,
+            completionResponse: completionResponse
+        )
+    }
+
+    @discardableResult
+    private func applySelectedCompletionReplacement(
+        candidate: CaptureCompletionCandidate,
+        range: Range<String.Index>,
+        completionResponse: CaptureCompletionResponse
+    ) -> Bool {
         var text = plainDraft
         text.replaceSubrange(range, with: candidate.replacement)
         let cursor = candidate.cursorAfter ?? completionResponse.replacement.start + candidate.replacement.utf8.count
         guard stringRange(in: text, start: cursor, end: cursor) != nil else {
             statusText = "Completion cursor is stale"
             dismissCompletion()
-            return
+            return false
         }
 
         dismissCompletion()
@@ -685,6 +712,7 @@ final class CapturePanelModel: ObservableObject {
             suppressSelectionCallbacks: true
         )
         scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false)
+        return true
     }
 
     func updateTaskIDPromptBlockID(_ blockID: String) {

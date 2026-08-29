@@ -1903,6 +1903,106 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertNil(model.pomodoroNamePrompt)
     }
 
+    func testAcceptingPomodoroCreationPreservesCanonicalMarkerWithoutNaming() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installPomodoroCreationCompletion(on: model, query: "fut", replacement: "future", name: "FUTURE")
+        let initialFocusSequence = model.focusRequest.sequence
+
+        model.acceptSelectedCompletion()
+
+        let accepted = pomodoroNameDraft(query: "future")
+        XCTAssertEqual(model.plainDraft, accepted)
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), accepted.utf8.count)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertNil(model.pomodoroNamePrompt)
+        XCTAssertNil(model.taskIDPrompt)
+        XCTAssertFalse(model.editorInputLocked)
+        XCTAssertEqual(model.focusRequest.target, .editor)
+        XCTAssertGreaterThan(model.focusRequest.sequence, initialFocusSequence)
+        XCTAssertEqual(model.statusText, "FUTURE will be created when captured")
+        await waitUntil {
+            if case .ready = model.previewState {
+                return true
+            }
+            return false
+        }
+        let record = try String(contentsOf: recordURL)
+        XCTAssertFalse(record.contains("capture-pomodoro-name"))
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- "))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- "))
+        XCTAssertTrue(record.contains(accepted))
+    }
+
+    func testAcceptingPomodoroCreationUsesGlobalRangeOnLaterNonASCIIItem() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = laterPomodoroCreationDraft(query: "fut")
+        let accepted = laterPomodoroCreationDraft(query: "future")
+        let marker = "@sase:some-id#"
+        let prefix = String(draft[..<draft.range(of: marker)!.upperBound])
+        installPomodoroCreationCompletion(
+            on: model,
+            draft: draft,
+            replacementStart: prefix.utf8.count,
+            replacement: "future",
+            name: "FUTURE"
+        )
+
+        model.acceptSelectedCompletion()
+
+        XCTAssertEqual(model.plainDraft, accepted)
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), accepted.utf8.count)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertNil(model.pomodoroNamePrompt)
+        XCTAssertEqual(model.statusText, "FUTURE will be created when captured")
+        await waitUntil {
+            if case .ready = model.previewState {
+                return true
+            }
+            return false
+        }
+        let record = try String(contentsOf: recordURL)
+        XCTAssertFalse(record.contains("capture-pomodoro-name"))
+        XCTAssertTrue(record.contains(accepted))
+    }
+
+    func testAcceptingNameableRowAfterCreationCandidateStillOpensNamePrompt() {
+        let model = CapturePanelModel()
+        installPomodoroCreationCompletion(on: model, query: "fut", replacement: "future", name: "FUTURE")
+        model.selectedCompletionIndex = 1
+        let initialFocusSequence = model.focusRequest.sequence
+
+        model.acceptSelectedCompletion()
+
+        XCTAssertEqual(model.plainDraft, pomodoroNameDraft(query: "fut"))
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertEqual(model.pomodoroNamePrompt?.candidate.taskRef, "38:0b1c2d3e")
+        XCTAssertEqual(model.pomodoroNamePrompt?.authoredName, "FUT")
+        XCTAssertEqual(model.statusText, "Name Pomodoro")
+        XCTAssertEqual(model.focusRequest.target, .pomodoroNamePromptName)
+        XCTAssertGreaterThan(model.focusRequest.sequence, initialFocusSequence)
+        XCTAssertTrue(model.editorInputLocked)
+        XCTAssertNil(model.taskIDPrompt)
+    }
+
     func testAcceptingNameablePomodoroOpensPromptWithoutChangingDraft() {
         let model = CapturePanelModel()
         installPomodoroNameCompletion(on: model, query: "")
@@ -2387,6 +2487,69 @@ final class CapturePanelModelTests: XCTestCase {
 
     private func pomodoroNameDraft(query: String) -> String {
         "Fix startup @sase:some-id#\(query)"
+    }
+
+    private func laterPomodoroCreationDraft(query: String) -> String {
+        "Plan café @Cash\n\nFix startup @sase:some-id#\(query)"
+    }
+
+    private func installPomodoroCreationCompletion(
+        on model: CapturePanelModel,
+        query: String,
+        replacement: String,
+        name: String
+    ) {
+        let draft = pomodoroNameDraft(query: query)
+        let start = pomodoroNameDraft(query: "").utf8.count
+        installPomodoroCreationCompletion(
+            on: model,
+            draft: draft,
+            replacementStart: start,
+            replacement: replacement,
+            name: name
+        )
+    }
+
+    private func installPomodoroCreationCompletion(
+        on model: CapturePanelModel,
+        draft: String,
+        replacementStart: Int,
+        replacement: String,
+        name: String
+    ) {
+        let end = draft.utf8.count
+        model.plainDraft = draft
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: end,
+            replacement: CaptureRange(start: replacementStart, end: end),
+            context: "pomodoro_name",
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: replacement,
+                    childCount: 0,
+                    name: name,
+                    requiresName: false,
+                    placeholder: true,
+                    createsPomodoro: true
+                ),
+                CaptureCompletionCandidate(
+                    replacement: "",
+                    taskRef: "38:0b1c2d3e",
+                    statusSymbol: " ",
+                    childCount: 0,
+                    name: nil,
+                    requiresName: true,
+                    line: 38,
+                    state: "open",
+                    timeRange: nil,
+                    placeholder: true,
+                    isCurrent: false,
+                    matchCount: 1
+                ),
+            ]
+        )
+        model.selectedCompletionIndex = 0
     }
 
     private func installPomodoroNameCompletion(on model: CapturePanelModel, query: String) {

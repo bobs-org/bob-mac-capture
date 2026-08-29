@@ -228,6 +228,54 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.badges, ["3 links", "Name it"])
     }
 
+    func testPomodoroNameCreationRowUsesTimerPlusAndCreateAffordance() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "future",
+            childCount: 0,
+            name: "FUTURE",
+            requiresName: false,
+            placeholder: true,
+            createsPomodoro: true
+        )
+
+        let content = completionRowContent(for: candidate, context: "pomodoro_name", query: "fut")
+
+        XCTAssertEqual(content.category, .priority)
+        XCTAssertEqual(content.symbolName, "timer.badge.plus")
+        XCTAssertEqual(content.contextLabel, "Pomodoro")
+        XCTAssertEqual(content.primaryText, "FUTURE")
+        XCTAssertEqual(content.secondaryText, "New future Pomodoro")
+        XCTAssertEqual(content.badges, ["Create"])
+        XCTAssertEqual(content.primaryMatchRange, 0..<3)
+        XCTAssertEqual(content.accessibilityLabel, "Pomodoro, FUTURE, New future Pomodoro, Create")
+        XCTAssertEqual(
+            content.accessibilityHint,
+            "Creates this named future Pomodoro when the draft is captured."
+        )
+    }
+
+    func testPomodoroNameNamedRowIgnoresAbsentCreatesPomodoro() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "memory",
+            taskRef: "31:1a2b3c4d",
+            childCount: 5,
+            name: "MEMORY",
+            requiresName: false,
+            timeRange: "1205-1230",
+            isCurrent: true,
+            matchCount: 2,
+            createsPomodoro: false
+        )
+
+        let content = completionRowContent(for: candidate, context: "pomodoro_name", query: "mem")
+
+        XCTAssertEqual(content.symbolName, "timer")
+        XCTAssertEqual(content.primaryText, "MEMORY")
+        XCTAssertEqual(content.secondaryText, "1205-1230")
+        XCTAssertEqual(content.badges, ["Current", "2 matches", "5 links"])
+        XCTAssertEqual(content.accessibilityHint, "Inserts this Pomodoro name.")
+    }
+
     func testPomodoroBlockIDContextUsesItsOwnLabel() {
         let candidate = CaptureCompletionCandidate(
             replacement: "goog-exit",
