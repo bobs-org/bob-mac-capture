@@ -500,7 +500,15 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .shift)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .option)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 38, modifiers: .control)), .insertBulletNewline)
-        XCTAssertEqual(router.command(for: keyEvent(keyCode: 32, modifiers: .control)), .deleteToBeginningOfLine)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 32, modifiers: .control)),
+            .deleteToBeginningOfLineOrPreviousLine
+        )
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 32)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: .command)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: [.control, .shift])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: [.control, .option])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: [.control, .command])))
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 53)), .escape)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 33, modifiers: .control)), .escape)
         XCTAssertEqual(
@@ -552,7 +560,7 @@ final class BobMacCaptureTests: XCTestCase {
         )
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 32, modifiers: .control), completionVisible: true),
-            .deleteToBeginningOfLine
+            .deleteToBeginningOfLineOrPreviousLine
         )
         XCTAssertNil(router.command(for: keyEvent(keyCode: 38, modifiers: [.control, .shift])))
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), completionVisible: true), .acceptCompletion)
@@ -781,10 +789,13 @@ final class BobMacCaptureTests: XCTestCase {
     func testKeyRouterMatchesControlUAsLinePrefixDeletionOnlyWithControlModifier() {
         let router = CaptureKeyCommandRouter()
 
-        XCTAssertEqual(router.command(for: keyEvent(keyCode: 32, modifiers: .control)), .deleteToBeginningOfLine)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 32, modifiers: .control)),
+            .deleteToBeginningOfLineOrPreviousLine
+        )
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 32, modifiers: .control), completionVisible: true),
-            .deleteToBeginningOfLine
+            .deleteToBeginningOfLineOrPreviousLine
         )
         XCTAssertNil(router.command(for: keyEvent(keyCode: 32)))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: .shift)))
@@ -793,6 +804,20 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: [.control, .shift])))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: [.control, .command])))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: [.control, .option])))
+
+        let taskIDContext = CaptureKeyRoutingContext(taskIDPromptVisible: true)
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: .control), context: taskIDContext))
+
+        let pomodoroContext = CaptureKeyRoutingContext(pomodoroNamePromptVisible: true)
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: .control), context: pomodoroContext))
+
+        let stashContext = CaptureKeyRoutingContext(stashPickerVisible: true, stashEntryCount: 2)
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 32, modifiers: .control, characters: "\u{15}"),
+                context: stashContext
+            )
+        )
     }
 
     func testKeyRouterMapsControlLineEdgeMovement() {
@@ -1662,6 +1687,129 @@ final class BobMacCaptureTests: XCTestCase {
         )
     }
 
+    func testPreviousLineDeletionRangeTargetsTheLineAboveAColumnZeroCaret() {
+        let text = "one\ntwo\nthree" as NSString
+        let cases: [(range: NSRange, expected: NSRange?)] = [
+            (NSRange(location: 6, length: 0), nil),
+            (NSRange(location: 4, length: 0), NSRange(location: 0, length: 4)),
+            (NSRange(location: 8, length: 0), NSRange(location: 4, length: 4)),
+            (NSRange(location: 0, length: 0), nil),
+            (NSRange(location: 13, length: 0), nil),
+            (NSRange(location: 4, length: 3), nil),
+            (NSRange(location: 0, length: 5), nil),
+            (NSRange(location: 99, length: 0), nil),
+        ]
+
+        for testCase in cases {
+            XCTAssertEqual(
+                CapturePanelController.previousLineDeletionRange(
+                    in: text,
+                    selectedRange: testCase.range
+                ),
+                testCase.expected,
+                "range \(testCase.range)"
+            )
+        }
+    }
+
+    func testPreviousLineDeletionRangeHandlesEdgeCaseDrafts() {
+        let empty = "" as NSString
+        XCTAssertNil(
+            CapturePanelController.previousLineDeletionRange(
+                in: empty,
+                selectedRange: NSRange(location: 0, length: 0)
+            )
+        )
+
+        let trailingNewline = "one\n" as NSString
+        XCTAssertEqual(
+            CapturePanelController.previousLineDeletionRange(
+                in: trailingNewline,
+                selectedRange: NSRange(location: 4, length: 0)
+            ),
+            NSRange(location: 0, length: 4)
+        )
+
+        let blankMiddle = "a\n\nb" as NSString
+        XCTAssertEqual(
+            CapturePanelController.previousLineDeletionRange(
+                in: blankMiddle,
+                selectedRange: NSRange(location: 2, length: 0)
+            ),
+            NSRange(location: 0, length: 2)
+        )
+        XCTAssertEqual(
+            CapturePanelController.previousLineDeletionRange(
+                in: blankMiddle,
+                selectedRange: NSRange(location: 3, length: 0)
+            ),
+            NSRange(location: 2, length: 1)
+        )
+
+        let crlf = "a\r\nb" as NSString
+        XCTAssertEqual(
+            CapturePanelController.previousLineDeletionRange(
+                in: crlf,
+                selectedRange: NSRange(location: 3, length: 0)
+            ),
+            NSRange(location: 0, length: 3)
+        )
+        XCTAssertNil(
+            CapturePanelController.previousLineDeletionRange(
+                in: crlf,
+                selectedRange: NSRange(location: 1, length: 0)
+            )
+        )
+
+        let indentedBullet = "- a\n  - b" as NSString
+        XCTAssertEqual(
+            CapturePanelController.previousLineDeletionRange(
+                in: indentedBullet,
+                selectedRange: NSRange(location: 4, length: 0)
+            ),
+            NSRange(location: 0, length: 4)
+        )
+        XCTAssertNil(
+            CapturePanelController.previousLineDeletionRange(
+                in: indentedBullet,
+                selectedRange: NSRange(location: 6, length: 0)
+            )
+        )
+
+        let astral = "🧪\nb" as NSString
+        XCTAssertEqual(
+            CapturePanelController.previousLineDeletionRange(
+                in: astral,
+                selectedRange: NSRange(location: 3, length: 0)
+            ),
+            NSRange(location: 0, length: 3)
+        )
+        XCTAssertNil(
+            CapturePanelController.previousLineDeletionRange(
+                in: astral,
+                selectedRange: NSRange(location: 2, length: 0)
+            )
+        )
+
+        let consecutiveBlanks = "\n\n" as NSString
+        XCTAssertEqual(
+            CapturePanelController.previousLineDeletionRange(
+                in: consecutiveBlanks,
+                selectedRange: NSRange(location: 2, length: 0)
+            ),
+            NSRange(location: 1, length: 1)
+        )
+
+        let blankFirst = "\nb" as NSString
+        XCTAssertEqual(
+            CapturePanelController.previousLineDeletionRange(
+                in: blankFirst,
+                selectedRange: NSRange(location: 1, length: 0)
+            ),
+            NSRange(location: 0, length: 1)
+        )
+    }
+
     func testBulletIndentationEditIncreasesColumnZeroMarkersToTwoSpaces() {
         for marker in ["-", "*", "+"] {
             let text = "Parent\n\(marker) confirm owner" as NSString
@@ -2211,6 +2359,75 @@ final class BobMacCaptureTests: XCTestCase {
             NSRange(location: ("Prior line\n" as NSString).length, length: 0)
         )
         XCTAssertNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testDeleteToBeginningOfLineRemovesPreviousLineFromColumnZero() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "one\ntwo\n"
+        textView.setSelectedRange(NSRange(location: 8, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.deleteToBeginningOfLineInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "one\n")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 4, length: 0))
+        XCTAssertNil(model.completionResponse)
+
+        XCTAssertTrue(
+            CapturePanelController.deleteToBeginningOfLineInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 0, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.deleteToBeginningOfLineInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 0, length: 0))
+    }
+
+    @MainActor
+    func testDeleteToBeginningOfLineKeepsNativeBehaviorForMidLineCarets() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "one\ntwo"
+        textView.setSelectedRange(NSRange(location: 6, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.deleteToBeginningOfLineInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "one\no")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 4, length: 0))
+        XCTAssertNil(model.completionResponse)
+
+        XCTAssertTrue(
+            CapturePanelController.deleteToBeginningOfLineInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "o")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 0, length: 0))
     }
 
     @MainActor

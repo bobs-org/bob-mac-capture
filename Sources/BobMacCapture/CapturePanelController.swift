@@ -620,8 +620,60 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// Ctrl-U: use AppKit's native physical-line deletion so line boundaries, undo, IME,
-    /// and accessibility stay owned by the text system.
+    /// Ctrl-U fallback: the range of the previous physical line, including its terminator,
+    /// for a collapsed caret that already sits at the start of its own physical line --
+    /// the state where deleting to the beginning of the line would remove nothing.
+    ///
+    /// Returns `nil` whenever the ordinary deletion still has work to do or there is no
+    /// line above, so the caller falls through to AppKit's native
+    /// `deleteToBeginningOfLine:`: a non-collapsed selection, an out-of-bounds selection, a
+    /// caret past column zero, or a caret on the draft's first line.
+    ///
+    /// "Line" means a physical line as `NSString.getLineStart(_:end:contentsEnd:for:)`
+    /// defines it, matching Ctrl-J, Ctrl-A/Ctrl-E, and Tab bullet indentation. Taking the
+    /// previous line as `[previousLineStart, lineStart)` rather than as raw offset
+    /// arithmetic keeps this correct for CRLF terminators, for blank lines, and for a draft
+    /// that ends in a newline.
+    nonisolated static func previousLineDeletionRange(
+        in text: NSString,
+        selectedRange: NSRange
+    ) -> NSRange? {
+        guard selectedRange.length == 0,
+              selectedRange.location > 0,
+              selectedRange.location <= text.length
+        else {
+            return nil
+        }
+
+        var lineStart = 0
+        text.getLineStart(
+            &lineStart,
+            end: nil,
+            contentsEnd: nil,
+            for: NSRange(location: selectedRange.location, length: 0)
+        )
+        // Anything left before the caret on this line is the ordinary Ctrl-U deletion.
+        guard selectedRange.location == lineStart else {
+            return nil
+        }
+
+        // `location > 0` already guarantees `lineStart > 0`, so a previous line exists.
+        var previousLineStart = 0
+        text.getLineStart(
+            &previousLineStart,
+            end: nil,
+            contentsEnd: nil,
+            for: NSRange(location: lineStart - 1, length: 0)
+        )
+        return NSRange(location: previousLineStart, length: lineStart - previousLineStart)
+    }
+
+    /// Ctrl-U: delete from the caret to the beginning of the current physical line. When
+    /// the caret is already at that line's start -- where the ordinary deletion would
+    /// remove nothing -- delete the whole previous physical line instead, so repeated
+    /// presses walk up the draft line by line and stop on the first line. The ordinary
+    /// branch stays AppKit's native deletion so line boundaries, undo, IME, and
+    /// accessibility remain owned by the text system.
     static func deleteToBeginningOfLineInEditableTextView(
         firstResponder: NSResponder?,
         model: CapturePanelModel
@@ -631,6 +683,16 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
 
         model.dismissCompletion()
+
+        if let deletionRange = previousLineDeletionRange(
+            in: textView.string as NSString,
+            selectedRange: textView.selectedRange()
+        ) {
+            textView.insertText("", replacementRange: deletionRange)
+            textView.scrollRangeToVisible(NSRange(location: deletionRange.location, length: 0))
+            return true
+        }
+
         textView.doCommand(by: Selector(("deleteToBeginningOfLine:")))
         return true
     }
@@ -699,7 +761,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 firstResponder: panel?.firstResponder,
                 model: model
             )
-        case .deleteToBeginningOfLine:
+        case .deleteToBeginningOfLineOrPreviousLine:
             return Self.deleteToBeginningOfLineInEditableTextView(
                 firstResponder: panel?.firstResponder,
                 model: model

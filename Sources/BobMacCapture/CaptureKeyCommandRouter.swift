@@ -5,7 +5,7 @@ enum CaptureKeyCommand: Equatable {
     case submitAndOpen
     case insertNewline
     case insertBulletNewline
-    case deleteToBeginningOfLine
+    case deleteToBeginningOfLineOrPreviousLine
     case moveToBeginningOfLineOrPreviousLine
     case moveToEndOfLineOrNextLine
     case deleteBackward
@@ -96,7 +96,7 @@ struct CaptureKeyCommandRouter {
         case KeyCode.j:
             return modifiers == .control ? .insertBulletNewline : nil
         case KeyCode.u:
-            return modifiers == .control ? .deleteToBeginningOfLine : nil
+            return modifiers == .control ? .deleteToBeginningOfLineOrPreviousLine : nil
         case KeyCode.a:
             return modifiers == .control ? .moveToBeginningOfLineOrPreviousLine : nil
         case KeyCode.e:

@@ -237,7 +237,7 @@ or expired certificate can require reauthorizing those system permissions.
 | Command-Return | Capture, open the target in Obsidian, then close the panel | Accept, then submit | Consume the key; do not capture | Consume the key; do not capture |
 | Shift-Return / Option-Return | Insert a newline | Insert a newline | Add the ID and select the task | Name the Pomodoro and select it |
 | Ctrl-J | Insert a new indentation-aware `- ` row, or turn a marker-only placeholder into a blank item separator | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
-| Ctrl-U | Delete from the caret to the beginning of the current physical line | Delete to the beginning of the current physical line and close completion | Native text-field behavior | Native text-field behavior |
+| Ctrl-U | Delete from the caret to the beginning of the current physical line; when the caret is already at that start, delete the previous line instead, stopping on the first line | Same deletion, closing completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-A | Move to the beginning of the current physical line; when the caret is already there, move to the beginning of the previous line, stopping on the first line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
 | Ctrl-E | Move to the end of the current physical line; when the caret is already there, move to the end of the next line, stopping on the last line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
 | Command-V | Insert the clipboard's plain text, discarding source formatting; when an empty bullet row receives a Markdown bullet list, consume the first pasted marker and align the list to that row | Same paste edit, and close completion | Native text-field paste | Native text-field paste |
@@ -368,7 +368,10 @@ first-level bullet. Shift-Tab reverses that, returning a nested bullet to column
 Tab/Shift-Tab only move a continuation bullet between Bob's two supported source
 prefixes, exactly two ASCII spaces, so pasted or hand-authored drafts must still use that
 exact two-space indent; they stop at that ceiling and floor and leave every other line
-untouched. Ctrl-U deletes from the caret to the beginning of the current physical line.
+untouched. Ctrl-U deletes from the caret to the beginning of the current physical line,
+and when the caret is already at that start -- where there is nothing left to delete --
+it removes the previous line entirely, so repeated presses walk up the draft line by line
+and stop on the first line.
 Backspace on an empty `- ` row removes it in one action instead of requiring two ordinary
 backspaces. All five shortcuts act on the native text view directly, so undo, IME
 composition, and accessibility behave exactly as they do for any other edit, and Bob's
