@@ -1,0 +1,310 @@
+import XCTest
+
+@testable import BobMacCaptureInstallHelper
+
+final class InstallRelauncherTests: XCTestCase {
+    private let applicationsPath = "/Applications/Bob Mac Capture.app"
+    private let homeApplicationsPath = "/Users/test/Applications/Bob Mac Capture.app"
+    private let rawExecutablePath = "/Users/test/bob-mac-capture/.build/debug/BobMacCapture"
+
+    func testNormalizedPathsTreatSymlinkPrefixesAndTrailingSlashesAsEqual() {
+        XCTAssertEqual(
+            InstallRelauncher.normalizedPath(applicationsPath),
+            InstallRelauncher.normalizedPath(applicationsPath + "/")
+        )
+        XCTAssertEqual(
+            InstallRelauncher.normalizedPath("/var/folders/xx/T/Bob Mac Capture.app"),
+            InstallRelauncher.normalizedPath("/private/var/folders/xx/T/Bob Mac Capture.app")
+        )
+    }
+
+    func testDiscoverSelectsTheExactInstalledBundleAndIgnoresOthers() {
+        let matching = record(
+            pid: 11,
+            path: applicationsPath
+        )
+        let otherInstall = record(
+            pid: 12,
+            path: homeApplicationsPath
+        )
+        let rawExecutable = record(
+            pid: 13,
+            path: rawExecutablePath
+        )
+        let missingURL = RunningApplicationRecord(
+            processIdentifier: 14,
+            bundleIdentifier: InstallRelauncher.bundleIdentifier,
+            bundleURL: nil
+        )
+        let unrelated = record(
+            pid: 15,
+            path: applicationsPath,
+            bundleIdentifier: "com.apple.Safari"
+        )
+        let trailingSlashMatch = record(
+            pid: 16,
+            path: applicationsPath + "/"
+        )
+
+        let relauncher = InstallRelauncher(
+            runningApplications: { bundleIdentifier in
+                XCTAssertEqual(bundleIdentifier, InstallRelauncher.bundleIdentifier)
+                return [
+                    matching,
+                    otherInstall,
+                    rawExecutable,
+                    missingURL,
+                    unrelated,
+                    trailingSlashMatch,
+                ]
+            },
+            terminate: { _ in
+                XCTFail("discover must not terminate")
+                return false
+            },
+            open: { _ in
+                XCTFail("discover must not open")
+            }
+        )
+
+        XCTAssertEqual(relauncher.discover(installPath: applicationsPath), [11, 16])
+        XCTAssertEqual(relauncher.discover(installPath: homeApplicationsPath), [12])
+        XCTAssertEqual(relauncher.discover(installPath: rawExecutablePath), [13])
+    }
+
+    func testDiscoverMatchesVarAndPrivateVarBundleSpellings() {
+        let relauncher = InstallRelauncher(
+            runningApplications: { _ in
+                [
+                    record(
+                        pid: 77,
+                        path: "/private/var/folders/xx/T/Bob Mac Capture.app"
+                    )
+                ]
+            },
+            terminate: { _ in
+                XCTFail("discover must not terminate")
+                return false
+            },
+            open: { _ in
+                XCTFail("discover must not open")
+            }
+        )
+
+        XCTAssertEqual(
+            relauncher.discover(installPath: "/var/folders/xx/T/Bob Mac Capture.app"),
+            [77]
+        )
+    }
+
+    func testRestartWithEmptySnapshotOrExitedPIDsIsANoOp() throws {
+        var terminateCalled = false
+        var openCalled = false
+        let relauncher = InstallRelauncher(
+            applicationForPID: { _ in nil },
+            terminate: { _ in
+                terminateCalled = true
+                return false
+            },
+            open: { _ in
+                openCalled = true
+            }
+        )
+
+        try relauncher.restart(installPath: applicationsPath, pids: [])
+        try relauncher.restart(installPath: applicationsPath, pids: [4242, 4243])
+
+        XCTAssertFalse(terminateCalled)
+        XCTAssertFalse(openCalled)
+    }
+
+    func testRestartTerminatesEveryLivePIDThenOpensOnce() throws {
+        var events: [String] = []
+        var live: Set<pid_t> = [21, 22]
+        let records: [pid_t: RunningApplicationRecord] = [
+            21: record(pid: 21, path: applicationsPath),
+            22: record(pid: 22, path: applicationsPath),
+        ]
+        let relauncher = InstallRelauncher(
+            applicationForPID: { records[$0] },
+            terminate: { pid in
+                events.append("terminate \(pid)")
+                live.remove(pid)
+                return true
+            },
+            isTerminated: { pid in
+                !live.contains(pid)
+            },
+            sleep: { _ in
+                XCTFail("must not wait when terminate already emptied the snapshot")
+            },
+            open: { path in
+                XCTAssertTrue(live.isEmpty, "open must wait until every PID has exited")
+                events.append("open")
+                XCTAssertEqual(path, applicationsPath)
+            }
+        )
+
+        try relauncher.restart(installPath: applicationsPath, pids: [21, 22])
+
+        XCTAssertEqual(events, ["terminate 21", "terminate 22", "open"])
+    }
+
+    func testRestartIgnoresAReusedPIDWithADifferentBundleIdentifier() throws {
+        var terminateCalled = false
+        var openCalled = false
+        let relauncher = InstallRelauncher(
+            applicationForPID: { pid in
+                record(
+                    pid: pid,
+                    path: "/Applications/Safari.app",
+                    bundleIdentifier: "com.apple.Safari"
+                )
+            },
+            terminate: { _ in
+                terminateCalled = true
+                return false
+            },
+            open: { _ in
+                openCalled = true
+            }
+        )
+
+        try relauncher.restart(installPath: applicationsPath, pids: [99])
+
+        XCTAssertFalse(terminateCalled)
+        XCTAssertFalse(openCalled)
+    }
+
+    func testRestartFailsWhenTerminateIsRefusedWithoutOpening() {
+        var opened = false
+        let relauncher = InstallRelauncher(
+            applicationForPID: { pid in record(pid: pid, path: applicationsPath) },
+            terminate: { _ in false },
+            isTerminated: { _ in
+                XCTFail("must not wait after a refused terminate")
+                return false
+            },
+            open: { _ in
+                opened = true
+            }
+        )
+
+        XCTAssertThrowsError(
+            try relauncher.restart(installPath: applicationsPath, pids: [31])
+        ) { error in
+            XCTAssertEqual(error as? InstallHelperError, .terminateRefused([31]))
+        }
+        XCTAssertFalse(opened)
+    }
+
+    func testRestartFailsOnExitTimeoutWithoutOpening() {
+        var openCount = 0
+        var sleepCount = 0
+        let relauncher = InstallRelauncher(
+            applicationForPID: { pid in record(pid: pid, path: applicationsPath) },
+            terminate: { _ in true },
+            isTerminated: { _ in false },
+            sleep: { interval in
+                XCTAssertEqual(interval, InstallRelauncher.exitWaitInterval)
+                sleepCount += 1
+            },
+            open: { _ in
+                openCount += 1
+            }
+        )
+
+        XCTAssertThrowsError(
+            try relauncher.restart(installPath: applicationsPath, pids: [41])
+        ) { error in
+            XCTAssertEqual(error as? InstallHelperError, .exitTimeout([41]))
+        }
+        XCTAssertEqual(sleepCount, InstallRelauncher.exitWaitAttempts)
+        XCTAssertEqual(openCount, 0)
+    }
+
+    func testRestartRetriesOpenAndFailsWithoutLaunchingEarly() {
+        var events: [String] = []
+        var live: Set<pid_t> = [51]
+        var openCount = 0
+        let relauncher = InstallRelauncher(
+            applicationForPID: { pid in record(pid: pid, path: applicationsPath) },
+            terminate: { pid in
+                events.append("terminate")
+                live.remove(pid)
+                return true
+            },
+            isTerminated: { pid in
+                !live.contains(pid)
+            },
+            sleep: { interval in
+                XCTAssertEqual(interval, InstallRelauncher.openRetryInterval)
+                events.append("sleep")
+            },
+            open: { path in
+                XCTAssertTrue(live.isEmpty)
+                XCTAssertEqual(path, "/tmp/Weird \"Bob\" Path/Bob Mac Capture.app")
+                openCount += 1
+                events.append("open")
+                throw InstallHelperError.openFailed("open exited 1")
+            }
+        )
+
+        XCTAssertThrowsError(
+            try relauncher.restart(
+                installPath: "/tmp/Weird \"Bob\" Path/Bob Mac Capture.app",
+                pids: [51]
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? InstallHelperError,
+                .openFailed("open exited 1")
+            )
+        }
+        XCTAssertEqual(openCount, InstallRelauncher.openAttempts)
+        XCTAssertEqual(events, ["terminate", "open", "sleep", "open", "sleep", "open"])
+    }
+
+    func testRestartWaitsUntilEveryPIDHasExitedBeforeOpening() throws {
+        var events: [String] = []
+        var live: Set<pid_t> = [61, 62]
+        var polls = 0
+        let relauncher = InstallRelauncher(
+            applicationForPID: { pid in record(pid: pid, path: applicationsPath) },
+            terminate: { pid in
+                events.append("terminate \(pid)")
+                return true
+            },
+            isTerminated: { pid in
+                polls += 1
+                if polls >= 3 {
+                    live.removeAll()
+                }
+                return !live.contains(pid)
+            },
+            sleep: { _ in
+                events.append("sleep")
+            },
+            open: { _ in
+                XCTAssertTrue(live.isEmpty)
+                events.append("open")
+            }
+        )
+
+        try relauncher.restart(installPath: applicationsPath, pids: [61, 62])
+
+        XCTAssertEqual(events, ["terminate 61", "terminate 62", "sleep", "open"])
+    }
+
+    private func record(
+        pid: pid_t,
+        path: String,
+        bundleIdentifier: String = InstallRelauncher.bundleIdentifier
+    ) -> RunningApplicationRecord {
+        RunningApplicationRecord(
+            processIdentifier: pid,
+            bundleIdentifier: bundleIdentifier,
+            bundleURL: URL(fileURLWithPath: path)
+        )
+    }
+}

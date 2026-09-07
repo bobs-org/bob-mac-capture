@@ -9,7 +9,11 @@ let macCaptureProducts: [Product] = [
     .executable(
         name: "BobMacCapture",
         targets: ["BobMacCapture"]
-    )
+    ),
+    .executable(
+        name: "BobMacCaptureInstallHelper",
+        targets: ["BobMacCaptureInstallHelper"]
+    ),
 ]
 let macCaptureTargets: [Target] = [
     .executableTarget(
@@ -22,6 +26,19 @@ let macCaptureTargets: [Target] = [
     .testTarget(
         name: "BobMacCaptureTests",
         dependencies: ["BobMacCapture", "CaptureCore"],
+        swiftSettings: [
+            .swiftLanguageMode(.v5)
+        ]
+    ),
+    .executableTarget(
+        name: "BobMacCaptureInstallHelper",
+        swiftSettings: [
+            .swiftLanguageMode(.v5)
+        ]
+    ),
+    .testTarget(
+        name: "BobMacCaptureInstallHelperTests",
+        dependencies: ["BobMacCaptureInstallHelper"],
         swiftSettings: [
             .swiftLanguageMode(.v5)
         ]

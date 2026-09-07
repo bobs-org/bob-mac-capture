@@ -71,6 +71,10 @@ just bundle "Apple Development: Name (TEAMID)"
 just install ~/Applications "Apple Development: Name (TEAMID)"
 ```
 
+`just install` is the complete update for the selected target: it restarts that installed
+copy if it was already running, and leaves it stopped otherwise. See "Updating,
+Reinstalling, and Rollback" below.
+
 Ad-hoc signatures are useful for local development, but notification permissions and
 launch-at-login trust are tied to the installed signed bundle. Reinstalling with a new
 or expired certificate can require reauthorizing those system permissions.
@@ -84,7 +88,8 @@ or expired certificate can require reauthorizing those system permissions.
   retained canceled drafts survive Restart and Quit. There is no confirmation dialog.
   Restart refuses to quit (reporting a failure instead) when the running process is not
   launched from an installed `.app` bundle or that bundle no longer exists on disk. See
-  "Updating, Reinstalling, and Rollback" below for what Restart is for.
+  "Updating, Reinstalling, and Rollback" below for automatic install restart and the
+  manual Restart item.
 - Production hotkey (the default): Control-Shift-Command-I.
 - Development/rollback hotkey: Control-Shift-Command-O, selectable in Settings.
 - The hotkey path uses a pre-warmed non-activating `NSPanel`; subprocess work is kept
@@ -518,17 +523,27 @@ just install ~/Applications "Apple Development: Name (TEAMID)"
 `Scripts/install.sh` fully verifies the newly staged bundle's signature and bundle
 identifier *before* touching the installed app, then swaps it into place by renaming the
 previous install to a same-directory backup, moving the new bundle in, and only deleting
-the backup after the installed copy re-verifies. If any step after the swap fails, the
-script automatically restores the previous app from that backup and exits non-zero — an
-interrupted or failed update never leaves `~/Applications` (or `/Applications`) without a
-working previous copy.
+the backup after the installed copy re-verifies. If the swap or post-install signature
+check fails, the script automatically restores the previous app from that backup and
+exits non-zero — an interrupted or failed update never leaves `~/Applications` (or
+`/Applications`) without a working previous copy. Restart-stage failures are different:
+they leave the verified new bundle in place, as described below.
 
-`just install` swaps the bundle on disk, but the already-running process keeps executing
-the old code in memory until it is restarted or the user logs in again. Choose
-`Bob → Restart Bob Mac Capture` from the menu bar to complete the update: it quits the
-running process and relaunches from `~/Applications/Bob Mac Capture.app` (or
-`/Applications`), which by then is the newly installed build. This is the last step of
-the update, not a separate manual quit-and-relaunch.
+`just install` is the complete update. After the new bundle verifies, it restarts the
+selected installed copy if that copy was already running, and only then returns. If that
+exact install was stopped, `just install` leaves it stopped. A copy launched from the
+other supported install target (`/Applications` versus `~/Applications`) or from
+`swift run` / a raw `.build` binary is not touched.
+
+Automatic restart uses the same quit-and-relaunch sequence as
+`Bob → Restart Bob Mac Capture`: an unsent draft is discarded, retained canceled drafts
+survive, and there is no confirmation dialog. The menu item remains the manual restart
+mechanism when you want to relaunch without reinstalling.
+
+If the new bundle is installed and verified but the running-process handoff fails,
+`just install` exits non-zero without rolling back that verified bundle. The error names
+the installed path so you can start that copy, or use `Bob → Restart Bob Mac Capture` if
+an old instance is still running.
 
 To roll back deliberately, keep the previous release's commit or tag and rerun
 `just bundle`/`just install` from that revision; there is no separate rollback command
@@ -668,4 +683,7 @@ checks Swift formatting, `swift build`, `swift test`, bundle assembly, `plutil -
 signature verification, and the bundle identifier. It also launches the bundled app and
 requires the `launch-complete` signpost to appear in the unified log before quitting it,
 so a broken entry point (no delegate assigned, no menu bar item, no hotkey) fails CI
-instead of shipping silently.
+instead of shipping silently. The installer gate then installs into a temporary `HOME`
+while stopped (must not auto-launch), relaunches that exact bundle through a running
+reinstall (old PID gone, one new PID, a fresh `launch-complete`), and reinstalls once
+more while stopped (must stay stopped).

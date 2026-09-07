@@ -50,6 +50,13 @@ jobs:
           codesign --verify --deep --strict "${app}"
           identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${app}/Contents/Info.plist")"
           test "${identifier}" = "org.bobs.bob-mac-capture"
+          # The install helper is a repository-side tool and must not land in the app.
+          test ! -e "${app}/Contents/MacOS/BobMacCaptureInstallHelper"
+          test "$(ls -1 "${app}/Contents/MacOS")" = "BobMacCapture"
+          if find "${app}" -name '*InstallHelper*' | grep -q .; then
+            echo "::error::BobMacCaptureInstallHelper leaked into the application bundle"
+            exit 1
+          fi
 
       - name: Launch smoke test
         id: launch_smoke_test
@@ -135,9 +142,104 @@ jobs:
           set -euo pipefail
           temp_home="$(mktemp -d)"
           stdout="$(mktemp)"
-          trap 'rm -rf "${temp_home}" "${stdout}"' EXIT
-
+          helper=""
           expected_path="${temp_home}/Applications/Bob Mac Capture.app"
+          bundle_id="org.bobs.bob-mac-capture"
+
+          count_lines() {
+            local output="$1"
+            local count=0
+            local line
+            if [[ -z "${output}" ]]; then
+              printf '0\n'
+              return
+            fi
+            while IFS= read -r line; do
+              if [[ -n "${line}" ]]; then
+                count=$((count + 1))
+              fi
+            done <<< "${output}"
+            printf '%s\n' "${count}"
+          }
+
+          discover_pids() {
+            "${helper}" discover "${expected_path}"
+          }
+
+          instance_count() {
+            count_lines "$(discover_pids || true)"
+          }
+
+          first_pid() {
+            local output
+            output="$(discover_pids || true)"
+            if [[ -z "${output}" ]]; then
+              return 1
+            fi
+            printf '%s\n' "${output}" | head -n 1
+          }
+
+          wait_for_instance() {
+            local found=""
+            local _i
+            for _i in $(seq 1 30); do
+              found="$(first_pid || true)"
+              if [[ -n "${found}" ]]; then
+                printf '%s\n' "${found}"
+                return 0
+              fi
+              sleep 1
+            done
+            return 1
+          }
+
+          wait_until_gone() {
+            local pid="$1"
+            local _i
+            for _i in $(seq 1 30); do
+              if ! kill -0 "${pid}" 2>/dev/null; then
+                return 0
+              fi
+              sleep 1
+            done
+            return 1
+          }
+
+          wait_for_launch_complete() {
+            local start="$1"
+            local _i
+            for _i in $(seq 1 20); do
+              if log show --signpost --predicate "subsystem == \"${bundle_id}\"" --start "${start}" 2>/dev/null \
+                  | grep -q "launch-complete"; then
+                return 0
+              fi
+              sleep 1
+            done
+            return 1
+          }
+
+          cleanup() {
+            if [[ -n "${helper}" && -x "${helper}" ]]; then
+              local pids
+              local pid
+              pids="$(discover_pids 2>/dev/null || true)"
+              if [[ -n "${pids}" ]]; then
+                while IFS= read -r pid; do
+                  if [[ -n "${pid}" ]]; then
+                    kill "${pid}" 2>/dev/null || true
+                  fi
+                done <<< "${pids}"
+                while IFS= read -r pid; do
+                  if [[ -n "${pid}" ]]; then
+                    wait_until_gone "${pid}" || true
+                  fi
+                done <<< "${pids}"
+              fi
+            fi
+            pkill -x BobMacCaptureInstallHelper 2>/dev/null || true
+            rm -rf "${temp_home}" "${stdout}"
+          }
+          trap cleanup EXIT
 
           verify_install() {
             test "$(cat "${stdout}")" = "${expected_path}"
@@ -146,10 +248,63 @@ jobs:
             codesign --verify --deep --strict "${expected_path}"
             identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${expected_path}/Contents/Info.plist")"
             test "${identifier}" = "org.bobs.bob-mac-capture"
+            test ! -e "${expected_path}/Contents/MacOS/BobMacCaptureInstallHelper"
           }
 
+          # 1. Fresh install while stopped: do not auto-launch.
           HOME="${temp_home}" ./Scripts/install.sh --target '~/Applications' --identity "-" >"${stdout}"
           verify_install
+          helper="$(./Scripts/xcode-swift.sh build --configuration release --show-bin-path)/BobMacCaptureInstallHelper"
+          test -x "${helper}"
+          sleep 3
+          test "$(instance_count)" -eq 0
+
+          # 2. Launch the temp-home bundle, then reinstall it and require PID turnover.
+          launch_start="$(date '+%Y-%m-%d %H:%M:%S')"
+          open "${expected_path}"
+          old_pid="$(wait_for_instance)" || {
+            echo "::error::installed Bob Mac Capture never appeared for ${expected_path}"
+            exit 1
+          }
+          test "$(instance_count)" -eq 1
+          wait_for_launch_complete "${launch_start}" || {
+            echo "::error::launch-complete signpost never appeared after the first install launch"
+            exit 1
+          }
+          # `log show --start` is second-resolution and inclusive; wait so the
+          # replacement's start stamp cannot include the first launch-complete.
+          sleep 1
+
+          reinstall_start="$(date '+%Y-%m-%d %H:%M:%S')"
+          HOME="${temp_home}" ./Scripts/install.sh --target '~/Applications' --identity "-" >"${stdout}"
+          verify_install
+          wait_until_gone "${old_pid}" || {
+            echo "::error::old Bob Mac Capture pid ${old_pid} still running after reinstall"
+            exit 1
+          }
+          new_pid="$(wait_for_instance)" || {
+            echo "::error::replacement Bob Mac Capture never appeared for ${expected_path}"
+            exit 1
+          }
+          test "${new_pid}" != "${old_pid}"
+          test "$(instance_count)" -eq 1
+          wait_for_launch_complete "${reinstall_start}" || {
+            echo "::error::launch-complete signpost never appeared for the replacement process"
+            exit 1
+          }
+
+          # 3. Stopped reinstall must not launch the app.
+          kill "${new_pid}" 2>/dev/null || true
+          wait_until_gone "${new_pid}"
+          for _i in $(seq 1 10); do
+            if [[ "$(instance_count)" -eq 0 ]]; then
+              break
+            fi
+            sleep 1
+          done
+          test "$(instance_count)" -eq 0
 
           HOME="${temp_home}" ./Scripts/install.sh --target '~/Applications' --identity "-" >"${stdout}"
           verify_install
+          sleep 3
+          test "$(instance_count)" -eq 0
