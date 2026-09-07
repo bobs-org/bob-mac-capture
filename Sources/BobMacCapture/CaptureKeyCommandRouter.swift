@@ -5,6 +5,7 @@ enum CaptureKeyCommand: Equatable {
     case submitAndOpen
     case insertNewline
     case insertBulletNewline
+    case insertLineAbove
     case deleteToBeginningOfLineOrPreviousLine
     case moveToBeginningOfLineOrPreviousLine
     case moveToEndOfLineOrNextLine
@@ -58,6 +59,7 @@ struct CaptureKeyCommandRouter {
         static let c: UInt16 = 8
         static let e: UInt16 = 14
         static let n: UInt16 = 45
+        static let o: UInt16 = 31
         static let p: UInt16 = 35
         static let u: UInt16 = 32
         static let leftBracket: UInt16 = 33
@@ -99,6 +101,8 @@ struct CaptureKeyCommandRouter {
             return .submit
         case KeyCode.i:
             return modifiers == .control ? .insertBulletNewline : nil
+        case KeyCode.o:
+            return modifiers == [.control, .shift] ? .insertLineAbove : nil
         case KeyCode.j:
             return modifiers == .control ? .moveToNextLineKeepingColumn : nil
         case KeyCode.k:

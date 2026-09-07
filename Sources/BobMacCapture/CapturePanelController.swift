@@ -42,6 +42,22 @@ struct CaptureBulletNewlineEdit: Equatable {
     let selectedRange: NSRange
 }
 
+struct CaptureLineAboveEdit: Equatable {
+    let replacementRange: NSRange
+    let replacementText: String
+    let resultingSelection: NSRange
+}
+
+private func preferredCaptureLineTerminator(in text: String) -> String {
+    if text.contains("\r\n") {
+        return "\r\n"
+    }
+    if text.contains("\r") {
+        return "\r"
+    }
+    return "\n"
+}
+
 enum CaptureBulletNewlineEditResolver {
     static func resolve(in text: String, selectedRange: NSRange) -> CaptureBulletNewlineEdit? {
         let nsText = text as NSString
@@ -76,7 +92,7 @@ enum CaptureBulletNewlineEditResolver {
                 replacementText = nsText.substring(with: terminatorRange)
             } else {
                 replacementRange = contentRange
-                replacementText = preferredLineTerminator(in: text)
+                replacementText = preferredCaptureLineTerminator(in: text)
             }
             let finalLocation = replacementRange.location + (replacementText as NSString).length
             return CaptureBulletNewlineEdit(
@@ -87,7 +103,7 @@ enum CaptureBulletNewlineEditResolver {
         }
 
         let indent = supportedAuthoredIndent(in: lineContent)
-        let replacementText = "\(preferredLineTerminator(in: text))\(indent)- "
+        let replacementText = "\(preferredCaptureLineTerminator(in: text))\(indent)- "
         let finalLocation = selectedRange.location + (replacementText as NSString).length
         return CaptureBulletNewlineEdit(
             replacementRange: selectedRange,
@@ -115,15 +131,32 @@ enum CaptureBulletNewlineEditResolver {
         }
         return ""
     }
+}
 
-    private static func preferredLineTerminator(in text: String) -> String {
-        if text.contains("\r\n") {
-            return "\r\n"
+enum CaptureLineAboveEditResolver {
+    static func resolve(in text: String, selectedRange: NSRange) -> CaptureLineAboveEdit? {
+        let nsText = text as NSString
+        guard selectedRange.location >= 0,
+              selectedRange.length == 0,
+              selectedRange.location <= nsText.length
+        else {
+            return nil
         }
-        if text.contains("\r") {
-            return "\r"
-        }
-        return "\n"
+
+        var lineStart = 0
+        nsText.getLineStart(
+            &lineStart,
+            end: nil,
+            contentsEnd: nil,
+            for: NSRange(location: selectedRange.location, length: 0)
+        )
+
+        let target = NSRange(location: lineStart, length: 0)
+        return CaptureLineAboveEdit(
+            replacementRange: target,
+            replacementText: preferredCaptureLineTerminator(in: text),
+            resultingSelection: target
+        )
     }
 }
 
@@ -398,6 +431,28 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         model.dismissCompletion()
         textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
         textView.setSelectedRange(edit.selectedRange)
+        return true
+    }
+
+    /// Ctrl-Shift-O: insert one blank physical line above the current caret line through
+    /// `NSTextView` so undo, IME, and accessibility stay AppKit-owned.
+    static func insertLineAboveInEditableTextView(
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder),
+              let edit = CaptureLineAboveEditResolver.resolve(
+                in: textView.string,
+                selectedRange: textView.selectedRange()
+              )
+        else {
+            return false
+        }
+
+        model.dismissCompletion()
+        textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
+        textView.setSelectedRange(edit.resultingSelection)
+        textView.scrollRangeToVisible(edit.resultingSelection)
         return true
     }
 
@@ -910,6 +965,15 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 firstResponder: panel?.firstResponder,
                 model: model
             )
+        case .insertLineAbove:
+            let inserted = Self.insertLineAboveInEditableTextView(
+                firstResponder: panel?.firstResponder,
+                model: model
+            )
+            if inserted {
+                verticalMovementGoal = nil
+            }
+            return inserted
         case .deleteToBeginningOfLineOrPreviousLine:
             return Self.deleteToBeginningOfLineInEditableTextView(
                 firstResponder: panel?.firstResponder,
@@ -1101,7 +1165,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return nil
     }
 
-    // Ctrl-I, Ctrl-U, the placeholder-row Backspace, and Tab/Shift-Tab bullet
+    // Ctrl-I, Ctrl-Shift-O, Ctrl-U, the placeholder-row Backspace, and Tab/Shift-Tab bullet
     // indentation all act directly on the draft's backing `NSTextView` (found via the
     // first responder) so undo, IME, and accessibility stay native instead of routing
     // through `CapturePanelModel`.

@@ -559,6 +559,10 @@ final class BobMacCaptureTests: XCTestCase {
             .insertBulletNewline
         )
         XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 31, modifiers: [.control, .shift]), completionVisible: true),
+            .insertLineAbove
+        )
+        XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 32, modifiers: .control), completionVisible: true),
             .deleteToBeginningOfLineOrPreviousLine
         )
@@ -766,6 +770,52 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertNotEqual(
             router.command(for: keyEvent(keyCode: 38, modifiers: .control)),
             .insertBulletNewline
+        )
+    }
+
+    func testKeyRouterMatchesControlShiftOAsLineAboveOnlyInEditor() {
+        let router = CaptureKeyCommandRouter()
+
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 31, modifiers: [.control, .shift])), .insertLineAbove)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 31, modifiers: [.control, .shift]), completionVisible: true),
+            .insertLineAbove
+        )
+
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 31, modifiers: .control, characters: "\u{0F}")))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 31)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 31, modifiers: .shift, characters: "O")))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 31, modifiers: .command, characters: "o")))
+        XCTAssertNil(
+            router.command(for: keyEvent(keyCode: 31, modifiers: [.control, .option], characters: "\u{0F}"))
+        )
+        XCTAssertNil(
+            router.command(for: keyEvent(keyCode: 31, modifiers: [.control, .command], characters: "\u{0F}"))
+        )
+        XCTAssertNil(
+            router.command(for: keyEvent(keyCode: 31, modifiers: [.control, .shift, .option], characters: "\u{0F}"))
+        )
+        XCTAssertNil(
+            router.command(for: keyEvent(keyCode: 31, modifiers: [.control, .shift, .command], characters: "\u{0F}"))
+        )
+
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 31, modifiers: [.control, .shift], characters: "\u{0F}"),
+                context: CaptureKeyRoutingContext(taskIDPromptVisible: true)
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 31, modifiers: [.control, .shift], characters: "\u{0F}"),
+                context: CaptureKeyRoutingContext(pomodoroNamePromptVisible: true)
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 31, modifiers: [.control, .shift], characters: "\u{0F}"),
+                context: CaptureKeyRoutingContext(stashPickerVisible: true, stashEntryCount: 2)
+            )
         )
     }
 
@@ -1598,6 +1648,18 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(resolved.selection, NSRange(location: "Parent\r\n\r\n".utf16.count, length: 0))
     }
 
+    func testBulletNewlineResolverReusesCROnlyTerminator() throws {
+        let text = "Parent\r+ \rChild"
+
+        let resolved = try applyBulletEdit(
+            text: text,
+            selectedRange: NSRange(location: "Parent\r+".utf16.count, length: 0)
+        )
+
+        XCTAssertEqual(resolved.text, "Parent\r\rChild")
+        XCTAssertEqual(resolved.selection, NSRange(location: "Parent\r\r".utf16.count, length: 0))
+    }
+
     func testBulletNewlineResolverKeepsSelectionReplacementBehaviorOnPlaceholderSelection() throws {
         let text = "Parent\n- \nChild"
 
@@ -1639,6 +1701,260 @@ final class BobMacCaptureTests: XCTestCase {
         )
         XCTAssertEqual(noneditable.string, "Prepare the launch review")
         XCTAssertNotNil(model.completionResponse)
+    }
+
+    func testLineAboveResolverInsertsBeforePhysicalLine() throws {
+        let middle = try applyLineAboveEdit(
+            text: "one\ntwo\nthree",
+            selectedRange: NSRange(location: 5, length: 0)
+        )
+        XCTAssertEqual(middle.edit.replacementRange, NSRange(location: 4, length: 0))
+        XCTAssertEqual(middle.edit.replacementText, "\n")
+        XCTAssertEqual(middle.text, "one\n\ntwo\nthree")
+        XCTAssertEqual(middle.selection, NSRange(location: 4, length: 0))
+
+        let first = try applyLineAboveEdit(
+            text: "one\ntwo",
+            selectedRange: NSRange(location: 2, length: 0)
+        )
+        XCTAssertEqual(first.edit.replacementRange, NSRange(location: 0, length: 0))
+        XCTAssertEqual(first.text, "\none\ntwo")
+        XCTAssertEqual(first.selection, NSRange(location: 0, length: 0))
+
+        let lastLineEnd = try applyLineAboveEdit(
+            text: "one\ntwo",
+            selectedRange: NSRange(location: 7, length: 0)
+        )
+        XCTAssertEqual(lastLineEnd.edit.replacementRange, NSRange(location: 4, length: 0))
+        XCTAssertEqual(lastLineEnd.text, "one\n\ntwo")
+        XCTAssertEqual(lastLineEnd.selection, NSRange(location: 4, length: 0))
+    }
+
+    func testLineAboveResolverTreatsEmptyPhysicalLinesAsTargets() throws {
+        let emptyDraft = try applyLineAboveEdit(
+            text: "",
+            selectedRange: NSRange(location: 0, length: 0)
+        )
+        XCTAssertEqual(emptyDraft.edit.replacementRange, NSRange(location: 0, length: 0))
+        XCTAssertEqual(emptyDraft.edit.replacementText, "\n")
+        XCTAssertEqual(emptyDraft.text, "\n")
+        XCTAssertEqual(emptyDraft.selection, NSRange(location: 0, length: 0))
+
+        let trailingEmptyLine = try applyLineAboveEdit(
+            text: "a\n",
+            selectedRange: NSRange(location: 2, length: 0)
+        )
+        XCTAssertEqual(trailingEmptyLine.edit.replacementRange, NSRange(location: 2, length: 0))
+        XCTAssertEqual(trailingEmptyLine.text, "a\n\n")
+        XCTAssertEqual(trailingEmptyLine.selection, NSRange(location: 2, length: 0))
+
+        let blankMiddleLine = try applyLineAboveEdit(
+            text: "a\n\nb",
+            selectedRange: NSRange(location: 2, length: 0)
+        )
+        XCTAssertEqual(blankMiddleLine.edit.replacementRange, NSRange(location: 2, length: 0))
+        XCTAssertEqual(blankMiddleLine.text, "a\n\n\nb")
+        XCTAssertEqual(blankMiddleLine.selection, NSRange(location: 2, length: 0))
+    }
+
+    func testLineAboveResolverPreservesLineTerminatorsAndUTF16Offsets() throws {
+        let crlf = try applyLineAboveEdit(
+            text: "one\r\ntwo",
+            selectedRange: NSRange(location: 7, length: 0)
+        )
+        XCTAssertEqual(crlf.edit.replacementRange, NSRange(location: 5, length: 0))
+        XCTAssertEqual(crlf.edit.replacementText, "\r\n")
+        XCTAssertEqual(crlf.text, "one\r\n\r\ntwo")
+        XCTAssertEqual(crlf.selection, NSRange(location: 5, length: 0))
+
+        let crOnly = try applyLineAboveEdit(
+            text: "one\rtwo",
+            selectedRange: NSRange(location: 6, length: 0)
+        )
+        XCTAssertEqual(crOnly.edit.replacementRange, NSRange(location: 4, length: 0))
+        XCTAssertEqual(crOnly.edit.replacementText, "\r")
+        XCTAssertEqual(crOnly.text, "one\r\rtwo")
+        XCTAssertEqual(crOnly.selection, NSRange(location: 4, length: 0))
+
+        let afterEmoji = try applyLineAboveEdit(
+            text: "😀\nsecond",
+            selectedRange: NSRange(location: 5, length: 0)
+        )
+        XCTAssertEqual(afterEmoji.edit.replacementRange, NSRange(location: 3, length: 0))
+        XCTAssertEqual(afterEmoji.text, "😀\n\nsecond")
+        XCTAssertEqual(afterEmoji.selection, NSRange(location: 3, length: 0))
+    }
+
+    func testLineAboveResolverDeclinesInvalidAndNonCollapsedSelections() {
+        XCTAssertNil(
+            CaptureLineAboveEditResolver.resolve(
+                in: "one\ntwo",
+                selectedRange: NSRange(location: 1, length: 2)
+            )
+        )
+        XCTAssertNil(
+            CaptureLineAboveEditResolver.resolve(
+                in: "one\ntwo",
+                selectedRange: NSRange(location: -1, length: 0)
+            )
+        )
+        XCTAssertNil(
+            CaptureLineAboveEditResolver.resolve(
+                in: "one\ntwo",
+                selectedRange: NSRange(location: 8, length: 0)
+            )
+        )
+    }
+
+    @MainActor
+    func testInsertLineAboveInEditableTextViewInsertsBlankLineAndDismissesCompletion() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "one\ntwo\nthree"
+        textView.setSelectedRange(NSRange(location: 5, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.insertLineAboveInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "one\n\ntwo\nthree")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 4, length: 0))
+        XCTAssertNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testInsertLineAboveInEditableTextViewCanRepeatAtSameCaret() {
+        let model = CapturePanelModel()
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "one\ntwo"
+        textView.setSelectedRange(NSRange(location: 5, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.insertLineAboveInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "one\n\ntwo")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 4, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.insertLineAboveInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "one\n\n\ntwo")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 4, length: 0))
+    }
+
+    @MainActor
+    func testInsertLineAboveInEditableTextViewWorksAtFirstLineAndEmptyDraft() {
+        let model = CapturePanelModel()
+        let firstLine = NSTextView()
+        firstLine.isEditable = true
+        firstLine.string = "one\ntwo"
+        firstLine.setSelectedRange(NSRange(location: 2, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.insertLineAboveInEditableTextView(
+                firstResponder: firstLine,
+                model: model
+            )
+        )
+        XCTAssertEqual(firstLine.string, "\none\ntwo")
+        XCTAssertEqual(firstLine.selectedRange(), NSRange(location: 0, length: 0))
+
+        let empty = NSTextView()
+        empty.isEditable = true
+        empty.string = ""
+        empty.setSelectedRange(NSRange(location: 0, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.insertLineAboveInEditableTextView(
+                firstResponder: empty,
+                model: model
+            )
+        )
+        XCTAssertEqual(empty.string, "\n")
+        XCTAssertEqual(empty.selectedRange(), NSRange(location: 0, length: 0))
+    }
+
+    @MainActor
+    func testInsertLineAboveInEditableTextViewDeclinesWithoutSideEffects() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let noneditable = NSTextView()
+        noneditable.isEditable = false
+        noneditable.string = "one\ntwo"
+        noneditable.setSelectedRange(NSRange(location: 5, length: 0))
+
+        XCTAssertFalse(
+            CapturePanelController.insertLineAboveInEditableTextView(
+                firstResponder: noneditable,
+                model: model
+            )
+        )
+        XCTAssertFalse(
+            CapturePanelController.insertLineAboveInEditableTextView(
+                firstResponder: NSButton(title: "Preview", target: nil, action: nil),
+                model: model
+            )
+        )
+        XCTAssertFalse(
+            CapturePanelController.insertLineAboveInEditableTextView(
+                firstResponder: nil,
+                model: model
+            )
+        )
+        XCTAssertEqual(noneditable.string, "one\ntwo")
+        XCTAssertEqual(noneditable.selectedRange(), NSRange(location: 5, length: 0))
+        XCTAssertNotNil(model.completionResponse)
+
+        let selected = NSTextView()
+        selected.isEditable = true
+        selected.string = "one\ntwo"
+        selected.setSelectedRange(NSRange(location: 1, length: 3))
+
+        XCTAssertFalse(
+            CapturePanelController.insertLineAboveInEditableTextView(
+                firstResponder: selected,
+                model: model
+            )
+        )
+        XCTAssertEqual(selected.string, "one\ntwo")
+        XCTAssertEqual(selected.selectedRange(), NSRange(location: 1, length: 3))
+        XCTAssertNotNil(model.completionResponse)
+    }
+
+    @MainActor
+    func testPerformInsertLineAboveClearsVerticalMovementGoal() {
+        let model = CapturePanelModel()
+        let controller = CapturePanelController(model: model)
+        let panel = controller.makePanelIfNeeded()
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "abcd\n\nnext"
+        panel.contentView = textView
+        XCTAssertTrue(panel.makeFirstResponder(textView))
+        textView.setSelectedRange(NSRange(location: 3, length: 0))
+
+        XCTAssertTrue(controller.moveVertically(.next, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 5, length: 0))
+
+        XCTAssertTrue(controller.perform(.insertLineAbove))
+        XCTAssertEqual(textView.string, "abcd\n\n\nnext")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 5, length: 0))
+
+        XCTAssertTrue(controller.moveVertically(.previous, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 0, length: 0))
     }
 
     func testLineEdgeCyclingLocationStepsAcrossPhysicalLines() {
@@ -3065,6 +3381,10 @@ final class BobMacCaptureTests: XCTestCase {
         case unresolved
     }
 
+    private enum LineAboveEditTestError: Error {
+        case unresolved
+    }
+
     private func applyBulletEdit(
         text: String,
         selectedRange: NSRange
@@ -3078,6 +3398,21 @@ final class BobMacCaptureTests: XCTestCase {
         let result = NSMutableString(string: text)
         result.replaceCharacters(in: edit.replacementRange, with: edit.replacementText)
         return (String(result), edit.selectedRange)
+    }
+
+    private func applyLineAboveEdit(
+        text: String,
+        selectedRange: NSRange
+    ) throws -> (text: String, selection: NSRange, edit: CaptureLineAboveEdit) {
+        guard let edit = CaptureLineAboveEditResolver.resolve(
+            in: text,
+            selectedRange: selectedRange
+        ) else {
+            throw LineAboveEditTestError.unresolved
+        }
+        let result = NSMutableString(string: text)
+        result.replaceCharacters(in: edit.replacementRange, with: edit.replacementText)
+        return (String(result), edit.resultingSelection, edit)
     }
 
     private func keyEvent(
