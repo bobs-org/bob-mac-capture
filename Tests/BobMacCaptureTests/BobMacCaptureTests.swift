@@ -499,7 +499,7 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .command)), .submitAndOpen)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .shift)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .option)), .insertNewline)
-        XCTAssertEqual(router.command(for: keyEvent(keyCode: 34, modifiers: .control)), .insertBulletNewline)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 38, modifiers: .control)), .insertBulletNewline)
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 32, modifiers: .control)),
             .deleteToBeginningOfLineOrPreviousLine
@@ -555,7 +555,7 @@ final class BobMacCaptureTests: XCTestCase {
             .insertNewline
         )
         XCTAssertEqual(
-            router.command(for: keyEvent(keyCode: 34, modifiers: .control), completionVisible: true),
+            router.command(for: keyEvent(keyCode: 38, modifiers: .control), completionVisible: true),
             .insertBulletNewline
         )
         XCTAssertEqual(
@@ -566,7 +566,7 @@ final class BobMacCaptureTests: XCTestCase {
             router.command(for: keyEvent(keyCode: 32, modifiers: .control), completionVisible: true),
             .deleteToBeginningOfLineOrPreviousLine
         )
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 34, modifiers: [.control, .shift])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 34, modifiers: .control)))
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), completionVisible: true), .acceptCompletion)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 125), completionVisible: true), .nextCompletion)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 126), completionVisible: true), .previousCompletion)
@@ -756,21 +756,23 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 49, characters: " "), context: shortContext), .consumeKey)
     }
 
-    func testKeyRouterMatchesControlIAsBulletNewlineOnlyWithControlModifier() {
+    func testKeyRouterMatchesControlJAsBulletNewlineOnlyWithControlModifier() {
         let router = CaptureKeyCommandRouter()
 
-        XCTAssertEqual(router.command(for: keyEvent(keyCode: 34, modifiers: .control)), .insertBulletNewline)
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 34)))
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 34, modifiers: .shift)))
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 38, modifiers: .control)), .insertBulletNewline)
         XCTAssertEqual(
-            router.command(for: keyEvent(keyCode: 34, modifiers: .control), completionVisible: true),
+            router.command(for: keyEvent(keyCode: 38, modifiers: .control), completionVisible: true),
             .insertBulletNewline
         )
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 34, modifiers: [.control, .shift, .command])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 38)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 38, modifiers: .shift)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 38, modifiers: [.control, .command])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 38, modifiers: [.control, .option])))
         XCTAssertNotEqual(
-            router.command(for: keyEvent(keyCode: 38, modifiers: .control)),
+            router.command(for: keyEvent(keyCode: 38, modifiers: [.control, .shift])),
             .insertBulletNewline
         )
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 34, modifiers: .control)))
     }
 
     func testKeyRouterMatchesControlShiftOAsLineAboveOnlyInEditor() {
@@ -819,42 +821,58 @@ final class BobMacCaptureTests: XCTestCase {
         )
     }
 
-    func testKeyRouterMapsControlVerticalCaretMovement() {
+    func testKeyRouterMapsControlShiftVerticalCaretMovement() {
         let router = CaptureKeyCommandRouter()
 
         XCTAssertEqual(
-            router.command(for: keyEvent(keyCode: 38, modifiers: .control)),
+            router.command(for: keyEvent(keyCode: 38, modifiers: [.control, .shift])),
             .moveToNextLineKeepingColumn
         )
         XCTAssertEqual(
-            router.command(for: keyEvent(keyCode: 40, modifiers: .control)),
+            router.command(for: keyEvent(keyCode: 40, modifiers: [.control, .shift])),
             .moveToPreviousLineKeepingColumn
         )
         XCTAssertEqual(
-            router.command(for: keyEvent(keyCode: 38, modifiers: .control), completionVisible: true),
+            router.command(for: keyEvent(keyCode: 38, modifiers: [.control, .shift]), completionVisible: true),
             .moveToNextLineKeepingColumn
         )
         XCTAssertEqual(
-            router.command(for: keyEvent(keyCode: 40, modifiers: .control), completionVisible: true),
+            router.command(for: keyEvent(keyCode: 40, modifiers: [.control, .shift]), completionVisible: true),
             .moveToPreviousLineKeepingColumn
         )
+
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 38, modifiers: .control)), .insertBulletNewline)
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 40, modifiers: .control)))
 
         for keyCode: UInt16 in [38, 40] {
             XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode)))
             XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode, modifiers: .shift)))
             XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode, modifiers: .command)))
             XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode, modifiers: .option)))
-            XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode, modifiers: [.control, .shift])))
             XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode, modifiers: [.control, .option])))
             XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode, modifiers: [.control, .command])))
+            XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode, modifiers: [.control, .shift, .option])))
+            XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode, modifiers: [.control, .shift, .command])))
         }
 
         let taskIDContext = CaptureKeyRoutingContext(taskIDPromptVisible: true)
         let pomodoroContext = CaptureKeyRoutingContext(pomodoroNamePromptVisible: true)
-        for keyCode: UInt16 in [34, 38, 40] {
-            XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode, modifiers: .control), context: taskIDContext))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 38, modifiers: .control), context: taskIDContext))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 38, modifiers: .control), context: pomodoroContext))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 34, modifiers: .control), context: taskIDContext))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 34, modifiers: .control), context: pomodoroContext))
+        for keyCode: UInt16 in [38, 40] {
             XCTAssertNil(
-                router.command(for: keyEvent(keyCode: keyCode, modifiers: .control), context: pomodoroContext)
+                router.command(
+                    for: keyEvent(keyCode: keyCode, modifiers: [.control, .shift]),
+                    context: taskIDContext
+                )
+            )
+            XCTAssertNil(
+                router.command(
+                    for: keyEvent(keyCode: keyCode, modifiers: [.control, .shift]),
+                    context: pomodoroContext
+                )
             )
         }
 
@@ -873,7 +891,19 @@ final class BobMacCaptureTests: XCTestCase {
         )
         XCTAssertNil(
             router.command(
+                for: keyEvent(keyCode: 38, modifiers: [.control, .shift], characters: "\u{0A}"),
+                context: stashContext
+            )
+        )
+        XCTAssertNil(
+            router.command(
                 for: keyEvent(keyCode: 40, modifiers: .control, characters: "\u{0B}"),
+                context: stashContext
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 40, modifiers: [.control, .shift], characters: "\u{0B}"),
                 context: stashContext
             )
         )
@@ -1009,7 +1039,7 @@ final class BobMacCaptureTests: XCTestCase {
         let textView = NSTextView(frame: .zero)
         textView.string = "Parent\n- \nChild"
         // Caret right after the placeholder's trailing space, before its own newline --
-        // exactly where the caret sits right after Ctrl-I inserted the row.
+        // exactly where the caret sits right after Ctrl-J inserted the row.
         textView.setSelectedRange(NSRange(location: 9, length: 0))
 
         let range = CapturePanelController.emptyBulletRowDeletionRange(in: textView)

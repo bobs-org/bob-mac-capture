@@ -241,13 +241,13 @@ or expired certificate can require reauthorizing those system permissions.
 | Return | Capture, then close the panel | Accept the selected completion | Add the ID and select the task | Name the Pomodoro and select it |
 | Command-Return | Capture, open the target in Obsidian, then close the panel | Accept, then submit | Consume the key; do not capture | Consume the key; do not capture |
 | Shift-Return / Option-Return | Insert a newline | Insert a newline | Add the ID and select the task | Name the Pomodoro and select it |
-| Ctrl-I | Insert a new indentation-aware `- ` row, or turn a marker-only placeholder into a blank item separator | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
+| Ctrl-J | Insert a new indentation-aware `- ` row, or turn a marker-only placeholder into a blank item separator | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-Shift-O | Insert a blank physical line immediately above the current line and move the caret onto it | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-U | Delete from the caret to the beginning of the current physical line; when the caret is already at that start, delete the previous line instead, stopping on the first line | Same deletion, closing completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-A | Move to the beginning of the current physical line; when the caret is already there, move to the beginning of the previous line, stopping on the first line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
 | Ctrl-E | Move to the end of the current physical line; when the caret is already there, move to the end of the next line, stopping on the last line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
-| Ctrl-J | Move the caret to the next physical line, keeping the current column when that line is long enough and clamping to its end when it is not; stops on the last line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
-| Ctrl-K | Move the caret to the previous physical line, keeping the current column when that line is long enough and clamping to its end when it is not; stops on the first line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
+| Ctrl-Shift-J | Move the caret to the next physical line, keeping the current column when that line is long enough and clamping to its end when it is not; stops on the last line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
+| Ctrl-Shift-K | Move the caret to the previous physical line, keeping the current column when that line is long enough and clamping to its end when it is not; stops on the first line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
 | Command-V | Insert the clipboard's plain text, discarding source formatting; when an empty bullet row receives a Markdown bullet list, consume the first pasted marker and align the list to that row | Same paste edit, and close completion | Native text-field paste | Native text-field paste |
 | Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace | Native text-field Backspace |
 | Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion | Consume the key; do not expand, indent, or capture | Consume the key; do not expand, indent, or capture |
@@ -361,16 +361,16 @@ after a resolved `@route:block-id` opens the Pomodoro-name popup. The app does n
 duplicate those grammar rules; it colors the span kinds Bob reports, asks Bob for
 completion at the real caret, and submits the original draft text.
 
-Ctrl-I starts the next canonical `- ` row from anywhere in the draft, copying exactly the
+Ctrl-J starts the next canonical `- ` row from anywhere in the draft, copying exactly the
 current authored row's supported indentation (zero or two ASCII spaces). On a line that
-contains only optional whitespace plus one `-`, `*`, or `+` marker, Ctrl-I replaces the
+contains only optional whitespace plus one `-`, `*`, or `+` marker, Ctrl-J replaces the
 placeholder with exactly one blank item separator and puts the caret at the beginning of
 the following line, reusing an existing line terminator when one is already there.
 Plain Tab first checks for a local editor snippet: with a collapsed caret immediately
 after `--`, it replaces those two ASCII hyphens with a single em dash `—` and leaves the
 caret right after it, everywhere else in the editor including inside prose. Only when no
 snippet matches does Tab fall through to bullet indentation. To author a nested row,
-press Ctrl-I from an existing nested row, or press Ctrl-I for a fresh top-level
+press Ctrl-J from an existing nested row, or press Ctrl-J for a fresh top-level
 placeholder and then Tab before or after typing its body to indent it under the preceding
 first-level bullet. Shift-Tab reverses that, returning a nested bullet to column zero.
 Tab/Shift-Tab only move a continuation bullet between Bob's two supported source
@@ -391,15 +391,16 @@ draft line by line. They stop at the first and last line rather than wrapping ar
 because they only move the caret they never touch the draft's text, undo history, or an
 in-flight IME composition.
 
-Ctrl-J and Ctrl-K move the caret to the next and previous physical line, keeping
-the column it started from: passing through a shorter line clamps the caret to that
-line's end, and the next press in the same direction restores the original column
-on the first line long enough to hold it. Any other keystroke, click, or edit
+Ctrl-Shift-J and Ctrl-Shift-K move the caret to the next and previous physical line,
+keeping the column it started from: passing through a shorter line clamps the caret
+to that line's end, and the next press in the same direction restores the original
+column on the first line long enough to hold it. Any other keystroke, click, or edit
 resets that remembered column. They stop at the last and first line rather than
 wrapping around, and like Ctrl-A and Ctrl-E they only move the caret, so they never
-touch the draft's text, undo history, or an in-flight IME composition. Because
-Ctrl-K now belongs to the editor, it no longer falls through to AppKit's
-delete-to-end-of-paragraph binding; Ctrl-U remains the line-deleting shortcut.
+touch the draft's text, undo history, or an in-flight IME composition. Exact Ctrl-K
+is again left to AppKit's native delete-to-end-of-paragraph binding, while
+Ctrl-Shift-K is the custom upward move and Ctrl-U remains Bob's custom line-deleting
+shortcut.
 
 Command-V intentionally reads only the clipboard's plain-text flavor. Source formatting
 is discarded because Bob's capture grammar is plain text, and letting AppKit choose a

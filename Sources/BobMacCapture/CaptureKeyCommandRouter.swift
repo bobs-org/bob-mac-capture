@@ -52,7 +52,6 @@ struct CaptureKeyCommandRouter {
         static let arrowDown: UInt16 = 125
         static let arrowUp: UInt16 = 126
         static let a: UInt16 = 0
-        static let i: UInt16 = 34
         static let j: UInt16 = 38
         static let k: UInt16 = 40
         static let s: UInt16 = 1
@@ -99,14 +98,15 @@ struct CaptureKeyCommandRouter {
                 return .acceptCompletion
             }
             return .submit
-        case KeyCode.i:
-            return modifiers == .control ? .insertBulletNewline : nil
         case KeyCode.o:
             return modifiers == [.control, .shift] ? .insertLineAbove : nil
         case KeyCode.j:
-            return modifiers == .control ? .moveToNextLineKeepingColumn : nil
+            if modifiers == .control {
+                return .insertBulletNewline
+            }
+            return modifiers == [.control, .shift] ? .moveToNextLineKeepingColumn : nil
         case KeyCode.k:
-            return modifiers == .control ? .moveToPreviousLineKeepingColumn : nil
+            return modifiers == [.control, .shift] ? .moveToPreviousLineKeepingColumn : nil
         case KeyCode.u:
             return modifiers == .control ? .deleteToBeginningOfLineOrPreviousLine : nil
         case KeyCode.a:

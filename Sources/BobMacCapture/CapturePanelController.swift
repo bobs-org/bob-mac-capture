@@ -14,13 +14,13 @@ enum CaptureLineEdge {
     case end
 }
 
-/// Which adjacent physical line Ctrl-J / Ctrl-K targets.
+/// Which adjacent physical line Ctrl-Shift-J / Ctrl-Shift-K targets.
 enum CaptureVerticalDirection {
     case next
     case previous
 }
 
-/// Where a Ctrl-J / Ctrl-K move lands, plus the goal column to carry into the next
+/// Where a Ctrl-Shift-J / Ctrl-Shift-K move lands, plus the goal column to carry into the next
 /// consecutive vertical move so a short line in between does not lose the column.
 struct CaptureVerticalMove: Equatable {
     var location: Int
@@ -166,7 +166,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     private let keyRouter = CaptureKeyCommandRouter()
     private var panel: NSPanel?
     private var localMonitor: Any?
-    /// Goal column for consecutive Ctrl-J/Ctrl-K moves, paired with the exact collapsed
+    /// Goal column for consecutive Ctrl-Shift-J/Ctrl-Shift-K moves, paired with the exact collapsed
     /// caret this controller last left behind. Any other edit, click, or caret move
     /// changes the text view's selection away from `caret`, so the pairing invalidates
     /// itself without this controller having to observe every other input path.
@@ -413,7 +413,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
-    /// Ctrl-I: resolve a deterministic native text edit, then apply it through
+    /// Ctrl-J: resolve a deterministic native text edit, then apply it through
     /// `NSTextView` so undo, IME, and accessibility stay AppKit-owned.
     static func insertBulletNewlineInEditableTextView(
         firstResponder: NSResponder?,
@@ -625,7 +625,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     /// (`.beginning`) or last (`.end`) physical line, where there is no line to step to.
     ///
     /// "Line" means a physical line as `NSString.getLineStart(_:end:contentsEnd:for:)`
-    /// defines it, matching Ctrl-U, Ctrl-I, and Tab bullet indentation. Working from
+    /// defines it, matching Ctrl-U, Ctrl-J, and Tab bullet indentation. Working from
     /// `lineStart` / `contentsEnd` / `lineEnd` rather than from raw offsets keeps this
     /// correct for CRLF terminators and for a draft that ends in a newline.
     nonisolated static func lineEdgeCyclingLocation(
@@ -693,7 +693,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// Ctrl-J / Ctrl-K target. Returns the new collapsed caret location and the goal
+    /// Ctrl-Shift-J / Ctrl-Shift-K target. Returns the new collapsed caret location and the goal
     /// column to carry forward, or `nil` when there is no adjacent physical line -- the
     /// last line for `.next`, the first line for `.previous` -- or when the selection is
     /// out of bounds. Unlike `lineEdgeCyclingLocation`, `nil` does **not** mean "fall
@@ -709,7 +709,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     /// sequence snaps back to that sequence's start.
     ///
     /// "Line" means a physical line as `NSString.getLineStart(_:end:contentsEnd:for:)`
-    /// defines it, matching Ctrl-I, Ctrl-U, and Ctrl-A/Ctrl-E. Working from `lineStart` /
+    /// defines it, matching Ctrl-J, Ctrl-U, and Ctrl-A/Ctrl-E. Working from `lineStart` /
     /// `contentsEnd` / `lineEnd` rather than from raw offsets keeps this correct for CRLF
     /// terminators and for a draft that ends in a newline.
     nonisolated static func verticalMovementTarget(
@@ -794,7 +794,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     /// caret past column zero, or a caret on the draft's first line.
     ///
     /// "Line" means a physical line as `NSString.getLineStart(_:end:contentsEnd:for:)`
-    /// defines it, matching Ctrl-I, Ctrl-A/Ctrl-E, and Tab bullet indentation. Taking the
+    /// defines it, matching Ctrl-J, Ctrl-A/Ctrl-E, and Tab bullet indentation. Taking the
     /// previous line as `[previousLineStart, lineStart)` rather than as raw offset
     /// arithmetic keeps this correct for CRLF terminators, for blank lines, and for a draft
     /// that ends in a newline.
@@ -887,14 +887,16 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
-    /// Ctrl-J / Ctrl-K: move the caret to the next / previous physical line, keeping the
-    /// column across consecutive presses. Returns `true` whenever the draft's text view
-    /// holds focus, **including** when the move declines at the first or last line:
-    /// letting Ctrl-K fall through to AppKit would run `deleteToEndOfParagraph:` and
-    /// delete the rest of the line. Returns `false` only when there is no editable text
-    /// view to move in, where falling through is harmless. Like Ctrl-A/Ctrl-E this never
-    /// dismisses completion: a caret move is not an edit, and `editorSelectionDidChange`
-    /// re-anchors the completion list at the new caret on its own.
+    /// Ctrl-Shift-J / Ctrl-Shift-K: move the caret to the next / previous physical line,
+    /// keeping the column across consecutive presses. Returns `true` whenever the draft's
+    /// text view holds focus, **including** when the move declines at the first or last
+    /// line: Ctrl-Shift-K is consumed at the first line so the binding stays symmetric
+    /// with Ctrl-Shift-J and a declined upward move cannot reach an unexpected native
+    /// command. Exact Ctrl-K is not claimed by this keymap. Returns `false` only when
+    /// there is no editable text view to move in, where falling through is harmless.
+    /// Like Ctrl-A/Ctrl-E this never dismisses completion: a caret move is not an edit,
+    /// and `editorSelectionDidChange` re-anchors the completion list at the new caret on
+    /// its own.
     func moveVertically(
         _ direction: CaptureVerticalDirection,
         firstResponder: NSResponder?
@@ -1165,7 +1167,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return nil
     }
 
-    // Ctrl-I, Ctrl-Shift-O, Ctrl-U, the placeholder-row Backspace, and Tab/Shift-Tab bullet
+    // Ctrl-J, Ctrl-Shift-O, Ctrl-U, the placeholder-row Backspace, and Tab/Shift-Tab bullet
     // indentation all act directly on the draft's backing `NSTextView` (found via the
     // first responder) so undo, IME, and accessibility stay native instead of routing
     // through `CapturePanelModel`.
@@ -1177,7 +1179,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     // Intervenes only when the caret's collapsed selection sits on a physical line whose
-    // complete content is exactly the empty-bullet placeholder `- ` that Ctrl-I inserts.
+    // complete content is exactly the empty-bullet placeholder `- ` that Ctrl-J inserts.
     // Every other selection, line, or content passes back `nil` so AppKit's ordinary
     // Backspace behavior is untouched.
     static func emptyBulletRowDeletionRange(in textView: NSTextView) -> NSRange? {
