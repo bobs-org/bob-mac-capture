@@ -499,7 +499,7 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .command)), .submitAndOpen)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .shift)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .option)), .insertNewline)
-        XCTAssertEqual(router.command(for: keyEvent(keyCode: 38, modifiers: .control)), .insertBulletNewline)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 34, modifiers: .control)), .insertBulletNewline)
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 32, modifiers: .control)),
             .deleteToBeginningOfLineOrPreviousLine
@@ -555,14 +555,14 @@ final class BobMacCaptureTests: XCTestCase {
             .insertNewline
         )
         XCTAssertEqual(
-            router.command(for: keyEvent(keyCode: 38, modifiers: .control), completionVisible: true),
+            router.command(for: keyEvent(keyCode: 34, modifiers: .control), completionVisible: true),
             .insertBulletNewline
         )
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 32, modifiers: .control), completionVisible: true),
             .deleteToBeginningOfLineOrPreviousLine
         )
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 38, modifiers: [.control, .shift])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 34, modifiers: [.control, .shift])))
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), completionVisible: true), .acceptCompletion)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 125), completionVisible: true), .nextCompletion)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 126), completionVisible: true), .previousCompletion)
@@ -752,15 +752,80 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 49, characters: " "), context: shortContext), .consumeKey)
     }
 
-    func testKeyRouterMatchesControlJAsBulletNewlineOnlyWithControlModifier() {
+    func testKeyRouterMatchesControlIAsBulletNewlineOnlyWithControlModifier() {
         let router = CaptureKeyCommandRouter()
 
-        XCTAssertEqual(router.command(for: keyEvent(keyCode: 38, modifiers: .control)), .insertBulletNewline)
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 38)))
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 38, modifiers: .shift)))
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 34, modifiers: .control)), .insertBulletNewline)
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 34)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 34, modifiers: .shift)))
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 34, modifiers: .control), completionVisible: true),
+            .insertBulletNewline
+        )
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 34, modifiers: [.control, .shift, .command])))
+        XCTAssertNotEqual(
+            router.command(for: keyEvent(keyCode: 38, modifiers: .control)),
+            .insertBulletNewline
+        )
+    }
+
+    func testKeyRouterMapsControlVerticalCaretMovement() {
+        let router = CaptureKeyCommandRouter()
+
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 38, modifiers: .control)),
+            .moveToNextLineKeepingColumn
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 40, modifiers: .control)),
+            .moveToPreviousLineKeepingColumn
+        )
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 38, modifiers: .control), completionVisible: true),
-            .insertBulletNewline
+            .moveToNextLineKeepingColumn
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 40, modifiers: .control), completionVisible: true),
+            .moveToPreviousLineKeepingColumn
+        )
+
+        for keyCode: UInt16 in [38, 40] {
+            XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode)))
+            XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode, modifiers: .shift)))
+            XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode, modifiers: .command)))
+            XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode, modifiers: .option)))
+            XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode, modifiers: [.control, .shift])))
+            XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode, modifiers: [.control, .option])))
+            XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode, modifiers: [.control, .command])))
+        }
+
+        let taskIDContext = CaptureKeyRoutingContext(taskIDPromptVisible: true)
+        let pomodoroContext = CaptureKeyRoutingContext(pomodoroNamePromptVisible: true)
+        for keyCode: UInt16 in [34, 38, 40] {
+            XCTAssertNil(router.command(for: keyEvent(keyCode: keyCode, modifiers: .control), context: taskIDContext))
+            XCTAssertNil(
+                router.command(for: keyEvent(keyCode: keyCode, modifiers: .control), context: pomodoroContext)
+            )
+        }
+
+        let stashContext = CaptureKeyRoutingContext(stashPickerVisible: true, stashEntryCount: 2)
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 34, modifiers: .control, characters: "\u{09}"),
+                context: stashContext
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 38, modifiers: .control, characters: "\u{0A}"),
+                context: stashContext
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 40, modifiers: .control, characters: "\u{0B}"),
+                context: stashContext
+            )
         )
     }
 
@@ -894,7 +959,7 @@ final class BobMacCaptureTests: XCTestCase {
         let textView = NSTextView(frame: .zero)
         textView.string = "Parent\n- \nChild"
         // Caret right after the placeholder's trailing space, before its own newline --
-        // exactly where the caret sits right after Ctrl-J inserted the row.
+        // exactly where the caret sits right after Ctrl-I inserted the row.
         textView.setSelectedRange(NSRange(location: 9, length: 0))
 
         let range = CapturePanelController.emptyBulletRowDeletionRange(in: textView)
@@ -962,6 +1027,58 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(textView.selectedRange(), NSRange(location: 13, length: 0))
 
         XCTAssertFalse(CapturePanelController.moveLineEdge(.beginning, firstResponder: nil))
+    }
+
+    @MainActor
+    func testMoveVerticallyKeepsColumnInEditableTextView() {
+        let model = CapturePanelModel()
+        let controller = CapturePanelController(model: model)
+        let textView = NSTextView(frame: .zero)
+        textView.string = "alpha\nhi\nbravo"
+        textView.setSelectedRange(NSRange(location: 4, length: 0))
+
+        XCTAssertTrue(controller.moveVertically(.next, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 8, length: 0))
+
+        // This is the regression test for the whole feature -- without the sticky
+        // column it would land at NSRange(11, 0), column 2 of "bravo".
+        XCTAssertTrue(controller.moveVertically(.next, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 13, length: 0))
+
+        // Consumed, not declined, at the last line (decision 4).
+        XCTAssertTrue(controller.moveVertically(.next, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 13, length: 0))
+
+        XCTAssertTrue(controller.moveVertically(.previous, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 8, length: 0))
+        XCTAssertTrue(controller.moveVertically(.previous, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 4, length: 0))
+
+        // Consumed, not declined, at the first line (decision 4).
+        XCTAssertTrue(controller.moveVertically(.previous, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 4, length: 0))
+
+        // Goal invalidation (decision 2): a manual selection change between presses --
+        // simulating a click or keystroke outside `moveVertically` -- must drop the
+        // carried column.
+        XCTAssertTrue(controller.moveVertically(.next, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 8, length: 0))
+        textView.setSelectedRange(NSRange(location: 7, length: 0))
+        XCTAssertTrue(controller.moveVertically(.next, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 10, length: 0))
+
+        // Two independent controllers must not share a goal.
+        let otherModel = CapturePanelModel()
+        let otherController = CapturePanelController(model: otherModel)
+        textView.setSelectedRange(NSRange(location: 8, length: 0))
+        XCTAssertTrue(otherController.moveVertically(.next, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 11, length: 0))
+
+        XCTAssertFalse(controller.moveVertically(.next, firstResponder: nil))
+
+        let noneditable = NSTextView()
+        noneditable.isEditable = false
+        XCTAssertFalse(controller.moveVertically(.next, firstResponder: noneditable))
     }
 
     @MainActor
@@ -1685,6 +1802,115 @@ final class BobMacCaptureTests: XCTestCase {
                 selectedRange: outOfBounds
             )
         )
+    }
+
+    func testVerticalMovementTargetKeepsColumnAcrossPhysicalLines() {
+        let ragged = "alpha\nhi\nbravo" as NSString
+        let raggedCases: [(
+            selection: NSRange, direction: CaptureVerticalDirection, goalColumn: Int?,
+            expected: CaptureVerticalMove?
+        )] = [
+            (NSRange(location: 4, length: 0), .next, nil, CaptureVerticalMove(location: 8, goalColumn: 4)),
+            (NSRange(location: 8, length: 0), .next, 4, CaptureVerticalMove(location: 13, goalColumn: 4)),
+            (NSRange(location: 13, length: 0), .next, 4, nil),
+            (NSRange(location: 13, length: 0), .previous, 4, CaptureVerticalMove(location: 8, goalColumn: 4)),
+            (NSRange(location: 8, length: 0), .previous, 4, CaptureVerticalMove(location: 4, goalColumn: 4)),
+            (NSRange(location: 4, length: 0), .previous, 4, nil),
+            (NSRange(location: 8, length: 0), .next, nil, CaptureVerticalMove(location: 11, goalColumn: 2)),
+        ]
+
+        for testCase in raggedCases {
+            XCTAssertEqual(
+                CapturePanelController.verticalMovementTarget(
+                    testCase.direction,
+                    in: ragged,
+                    selectedRange: testCase.selection,
+                    goalColumn: testCase.goalColumn
+                ),
+                testCase.expected,
+                "selection \(testCase.selection) direction \(testCase.direction) goalColumn \(String(describing: testCase.goalColumn))"
+            )
+        }
+
+        let evenLines = "one\ntwo\nthree" as NSString
+        let evenLineCases: [(
+            selection: NSRange, direction: CaptureVerticalDirection, goalColumn: Int?,
+            expected: CaptureVerticalMove?
+        )] = [
+            (NSRange(location: 1, length: 0), .next, nil, CaptureVerticalMove(location: 5, goalColumn: 1)),
+            (NSRange(location: 9, length: 0), .previous, nil, CaptureVerticalMove(location: 5, goalColumn: 1)),
+            (NSRange(location: 4, length: 3), .next, nil, CaptureVerticalMove(location: 11, goalColumn: 3)),
+            (NSRange(location: 4, length: 3), .previous, nil, CaptureVerticalMove(location: 0, goalColumn: 0)),
+            (NSRange(location: 99, length: 0), .next, nil, nil),
+            (NSRange(location: 99, length: 0), .previous, nil, nil),
+        ]
+
+        for testCase in evenLineCases {
+            XCTAssertEqual(
+                CapturePanelController.verticalMovementTarget(
+                    testCase.direction,
+                    in: evenLines,
+                    selectedRange: testCase.selection,
+                    goalColumn: testCase.goalColumn
+                ),
+                testCase.expected,
+                "selection \(testCase.selection) direction \(testCase.direction) goalColumn \(String(describing: testCase.goalColumn))"
+            )
+        }
+    }
+
+    func testVerticalMovementTargetHandlesEdgeCaseDrafts() {
+        let cases: [(
+            draft: String, selection: NSRange, direction: CaptureVerticalDirection, goalColumn: Int?,
+            expected: CaptureVerticalMove?
+        )] = [
+            ("", NSRange(location: 0, length: 0), .next, nil, nil),
+            ("", NSRange(location: 0, length: 0), .previous, nil, nil),
+            ("a\n", NSRange(location: 1, length: 0), .next, nil, CaptureVerticalMove(location: 2, goalColumn: 1)),
+            ("a\n", NSRange(location: 2, length: 0), .next, 1, nil),
+            ("a\n", NSRange(location: 2, length: 0), .previous, 1, CaptureVerticalMove(location: 1, goalColumn: 1)),
+            ("a\n\nb", NSRange(location: 1, length: 0), .next, nil, CaptureVerticalMove(location: 2, goalColumn: 1)),
+            ("a\n\nb", NSRange(location: 2, length: 0), .next, 1, CaptureVerticalMove(location: 4, goalColumn: 1)),
+            (
+                "a\n\nb", NSRange(location: 4, length: 0), .previous, 1,
+                CaptureVerticalMove(location: 2, goalColumn: 1)
+            ),
+            ("a\r\nb", NSRange(location: 1, length: 0), .next, nil, CaptureVerticalMove(location: 4, goalColumn: 1)),
+            (
+                "a\r\nb", NSRange(location: 4, length: 0), .previous, nil,
+                CaptureVerticalMove(location: 1, goalColumn: 1)
+            ),
+            (
+                "ab\n\u{1F600}x", NSRange(location: 1, length: 0), .next, nil,
+                CaptureVerticalMove(location: 3, goalColumn: 1)
+            ),
+            (
+                "ab\n\u{1F600}x", NSRange(location: 2, length: 0), .next, nil,
+                CaptureVerticalMove(location: 5, goalColumn: 2)
+            ),
+            (
+                "- alpha\n  - b", NSRange(location: 6, length: 0), .next, nil,
+                CaptureVerticalMove(location: 13, goalColumn: 6)
+            ),
+            (
+                "- alpha\n  - b", NSRange(location: 13, length: 0), .previous, nil,
+                CaptureVerticalMove(location: 5, goalColumn: 5)
+            ),
+        ]
+
+        for testCase in cases {
+            XCTAssertEqual(
+                CapturePanelController.verticalMovementTarget(
+                    testCase.direction,
+                    in: testCase.draft as NSString,
+                    selectedRange: testCase.selection,
+                    goalColumn: testCase.goalColumn
+                ),
+                testCase.expected,
+                "draft \(testCase.draft.debugDescription) selection \(testCase.selection) "
+                    + "direction \(testCase.direction) goalColumn \(String(describing: testCase.goalColumn))"
+            )
+        }
     }
 
     func testPreviousLineDeletionRangeTargetsTheLineAboveAColumnZeroCaret() {
