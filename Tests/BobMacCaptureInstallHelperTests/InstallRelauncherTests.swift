@@ -3,11 +3,23 @@ import XCTest
 
 @testable import BobMacCaptureInstallHelper
 
-final class InstallRelauncherTests: XCTestCase {
-    private let applicationsPath = "/Applications/Bob Mac Capture.app"
-    private let homeApplicationsPath = "/Users/test/Applications/Bob Mac Capture.app"
-    private let rawExecutablePath = "/Users/test/bob-mac-capture/.build/debug/BobMacCapture"
+private let applicationsPath = "/Applications/Bob Mac Capture.app"
+private let homeApplicationsPath = "/Users/test/Applications/Bob Mac Capture.app"
+private let rawExecutablePath = "/Users/test/bob-mac-capture/.build/debug/BobMacCapture"
 
+private func record(
+    pid: pid_t,
+    path: String,
+    bundleIdentifier: String = InstallRelauncher.bundleIdentifier
+) -> RunningApplicationRecord {
+    RunningApplicationRecord(
+        processIdentifier: pid,
+        bundleIdentifier: bundleIdentifier,
+        bundleURL: URL(fileURLWithPath: path)
+    )
+}
+
+final class InstallRelauncherTests: XCTestCase {
     func testNormalizedPathsTreatSymlinkPrefixesAndTrailingSlashesAsEqual() {
         XCTAssertEqual(
             InstallRelauncher.normalizedPath(applicationsPath),
@@ -339,18 +351,6 @@ final class InstallRelauncherTests: XCTestCase {
                 applicationArguments: []
             ),
             [applicationsPath]
-        )
-    }
-
-    private func record(
-        pid: pid_t,
-        path: String,
-        bundleIdentifier: String = InstallRelauncher.bundleIdentifier
-    ) -> RunningApplicationRecord {
-        RunningApplicationRecord(
-            processIdentifier: pid,
-            bundleIdentifier: bundleIdentifier,
-            bundleURL: URL(fileURLWithPath: path)
         )
     }
 }
