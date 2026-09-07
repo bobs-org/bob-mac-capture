@@ -795,6 +795,60 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertNil(router.command(for: keyEvent(keyCode: 32, modifiers: [.control, .option])))
     }
 
+    func testKeyRouterMapsControlLineEdgeMovement() {
+        let router = CaptureKeyCommandRouter()
+
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 0, modifiers: .control)),
+            .moveToBeginningOfLineOrPreviousLine
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 14, modifiers: .control)),
+            .moveToEndOfLineOrNextLine
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 0, modifiers: .control), completionVisible: true),
+            .moveToBeginningOfLineOrPreviousLine
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 14, modifiers: .control), completionVisible: true),
+            .moveToEndOfLineOrNextLine
+        )
+
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 0)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 14)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 0, modifiers: .command)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 14, modifiers: .command)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 0, modifiers: [.control, .shift])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 14, modifiers: [.control, .shift])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 0, modifiers: [.control, .option])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 14, modifiers: [.control, .option])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 0, modifiers: [.control, .command])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 14, modifiers: [.control, .command])))
+
+        let taskIDContext = CaptureKeyRoutingContext(taskIDPromptVisible: true)
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 0, modifiers: .control), context: taskIDContext))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 14, modifiers: .control), context: taskIDContext))
+
+        let pomodoroContext = CaptureKeyRoutingContext(pomodoroNamePromptVisible: true)
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 0, modifiers: .control), context: pomodoroContext))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 14, modifiers: .control), context: pomodoroContext))
+
+        let stashContext = CaptureKeyRoutingContext(stashPickerVisible: true, stashEntryCount: 2)
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 0, modifiers: .control, characters: "\u{01}"),
+                context: stashContext
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 14, modifiers: .control, characters: "\u{05}"),
+                context: stashContext
+            )
+        )
+    }
+
     func testKeyRouterMatchesPlainBackspaceButNotModifiedVariants() {
         let router = CaptureKeyCommandRouter()
 
@@ -859,6 +913,30 @@ final class BobMacCaptureTests: XCTestCase {
         textView.setSelectedRange(NSRange(location: 5, length: 0))
 
         XCTAssertNil(CapturePanelController.emptyBulletRowDeletionRange(in: textView))
+    }
+
+    @MainActor
+    func testMoveLineEdgeCyclesCaretInEditableTextView() {
+        let textView = NSTextView(frame: .zero)
+        textView.string = "one\ntwo\nthree"
+        textView.setSelectedRange(NSRange(location: 6, length: 0))
+
+        XCTAssertTrue(CapturePanelController.moveLineEdge(.beginning, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 4, length: 0))
+        XCTAssertTrue(CapturePanelController.moveLineEdge(.beginning, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 0, length: 0))
+        XCTAssertFalse(CapturePanelController.moveLineEdge(.beginning, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 0, length: 0))
+
+        textView.setSelectedRange(NSRange(location: 5, length: 0))
+        XCTAssertTrue(CapturePanelController.moveLineEdge(.end, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 7, length: 0))
+        XCTAssertTrue(CapturePanelController.moveLineEdge(.end, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 13, length: 0))
+        XCTAssertFalse(CapturePanelController.moveLineEdge(.end, firstResponder: textView))
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 13, length: 0))
+
+        XCTAssertFalse(CapturePanelController.moveLineEdge(.beginning, firstResponder: nil))
     }
 
     @MainActor
@@ -1419,6 +1497,169 @@ final class BobMacCaptureTests: XCTestCase {
         )
         XCTAssertEqual(noneditable.string, "Prepare the launch review")
         XCTAssertNotNil(model.completionResponse)
+    }
+
+    func testLineEdgeCyclingLocationStepsAcrossPhysicalLines() {
+        let text = "one\ntwo\nthree" as NSString
+        let cases: [(caret: Int, edge: CaptureLineEdge, expected: Int?)] = [
+            (6, .beginning, 4),
+            (4, .beginning, 0),
+            (8, .beginning, 4),
+            (0, .beginning, nil),
+            (5, .end, 7),
+            (7, .end, 13),
+            (3, .end, 7),
+            (13, .end, nil),
+        ]
+
+        for testCase in cases {
+            XCTAssertEqual(
+                CapturePanelController.lineEdgeCyclingLocation(
+                    testCase.edge,
+                    in: text,
+                    selectedRange: NSRange(location: testCase.caret, length: 0)
+                ),
+                testCase.expected,
+                "caret \(testCase.caret) edge \(testCase.edge)"
+            )
+        }
+    }
+
+    func testLineEdgeCyclingLocationHandlesEdgeCaseDrafts() {
+        let empty = "" as NSString
+        XCTAssertNil(
+            CapturePanelController.lineEdgeCyclingLocation(
+                .beginning,
+                in: empty,
+                selectedRange: NSRange(location: 0, length: 0)
+            )
+        )
+        XCTAssertNil(
+            CapturePanelController.lineEdgeCyclingLocation(
+                .end,
+                in: empty,
+                selectedRange: NSRange(location: 0, length: 0)
+            )
+        )
+
+        let trailingNewline = "a\n" as NSString
+        XCTAssertEqual(
+            CapturePanelController.lineEdgeCyclingLocation(
+                .end,
+                in: trailingNewline,
+                selectedRange: NSRange(location: 1, length: 0)
+            ),
+            2
+        )
+        XCTAssertNil(
+            CapturePanelController.lineEdgeCyclingLocation(
+                .end,
+                in: trailingNewline,
+                selectedRange: NSRange(location: 2, length: 0)
+            )
+        )
+        XCTAssertEqual(
+            CapturePanelController.lineEdgeCyclingLocation(
+                .beginning,
+                in: trailingNewline,
+                selectedRange: NSRange(location: 2, length: 0)
+            ),
+            0
+        )
+
+        let blankMiddle = "a\n\nb" as NSString
+        XCTAssertEqual(
+            CapturePanelController.lineEdgeCyclingLocation(
+                .beginning,
+                in: blankMiddle,
+                selectedRange: NSRange(location: 2, length: 0)
+            ),
+            0
+        )
+        XCTAssertEqual(
+            CapturePanelController.lineEdgeCyclingLocation(
+                .end,
+                in: blankMiddle,
+                selectedRange: NSRange(location: 2, length: 0)
+            ),
+            4
+        )
+        XCTAssertEqual(
+            CapturePanelController.lineEdgeCyclingLocation(
+                .end,
+                in: blankMiddle,
+                selectedRange: NSRange(location: 1, length: 0)
+            ),
+            2
+        )
+
+        let crlf = "a\r\nb" as NSString
+        XCTAssertEqual(
+            CapturePanelController.lineEdgeCyclingLocation(
+                .end,
+                in: crlf,
+                selectedRange: NSRange(location: 1, length: 0)
+            ),
+            4
+        )
+        XCTAssertEqual(
+            CapturePanelController.lineEdgeCyclingLocation(
+                .beginning,
+                in: crlf,
+                selectedRange: NSRange(location: 3, length: 0)
+            ),
+            0
+        )
+
+        let indentedBullet = "- a\n  - b" as NSString
+        XCTAssertEqual(
+            CapturePanelController.lineEdgeCyclingLocation(
+                .beginning,
+                in: indentedBullet,
+                selectedRange: NSRange(location: 6, length: 0)
+            ),
+            4
+        )
+        XCTAssertEqual(
+            CapturePanelController.lineEdgeCyclingLocation(
+                .beginning,
+                in: indentedBullet,
+                selectedRange: NSRange(location: 4, length: 0)
+            ),
+            0
+        )
+
+        let nonCollapsed = NSRange(location: 4, length: 3)
+        XCTAssertNil(
+            CapturePanelController.lineEdgeCyclingLocation(
+                .beginning,
+                in: indentedBullet,
+                selectedRange: nonCollapsed
+            )
+        )
+        XCTAssertNil(
+            CapturePanelController.lineEdgeCyclingLocation(
+                .end,
+                in: indentedBullet,
+                selectedRange: nonCollapsed
+            )
+        )
+
+        let outOfBounds = NSRange(location: 99, length: 0)
+        XCTAssertNil(
+            CapturePanelController.lineEdgeCyclingLocation(
+                .beginning,
+                in: indentedBullet,
+                selectedRange: outOfBounds
+            )
+        )
+        XCTAssertNil(
+            CapturePanelController.lineEdgeCyclingLocation(
+                .end,
+                in: indentedBullet,
+                selectedRange: outOfBounds
+            )
+        )
     }
 
     func testBulletIndentationEditIncreasesColumnZeroMarkersToTwoSpaces() {

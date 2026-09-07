@@ -8,6 +8,12 @@ enum CaptureBulletIndentationDirection {
     case decrease
 }
 
+/// Which edge of a physical line Ctrl-A / Ctrl-E targets.
+enum CaptureLineEdge {
+    case beginning
+    case end
+}
+
 /// A deterministic single-line source edit that indents or outdents one continuation
 /// bullet row, plus the selection that keeps the caret/selection at the same logical
 /// position in the bullet body after the edit is applied.
@@ -540,6 +546,80 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     private nonisolated static let asterisk: unichar = 0x2A
     private nonisolated static let plus: unichar = 0x2B
 
+    /// Ctrl-A / Ctrl-E target for a collapsed caret. Returns the new caret location, or
+    /// `nil` when the key should fall through to AppKit: a non-collapsed selection, an
+    /// out-of-bounds selection, or a caret already on the requested edge of the first
+    /// (`.beginning`) or last (`.end`) physical line, where there is no line to step to.
+    ///
+    /// "Line" means a physical line as `NSString.getLineStart(_:end:contentsEnd:for:)`
+    /// defines it, matching Ctrl-U, Ctrl-J, and Tab bullet indentation. Working from
+    /// `lineStart` / `contentsEnd` / `lineEnd` rather than from raw offsets keeps this
+    /// correct for CRLF terminators and for a draft that ends in a newline.
+    nonisolated static func lineEdgeCyclingLocation(
+        _ edge: CaptureLineEdge,
+        in text: NSString,
+        selectedRange: NSRange
+    ) -> Int? {
+        guard selectedRange.location >= 0,
+              selectedRange.length == 0,
+              selectedRange.location <= text.length
+        else {
+            return nil
+        }
+
+        var lineStart = 0
+        var lineEnd = 0
+        var contentsEnd = 0
+        text.getLineStart(
+            &lineStart,
+            end: &lineEnd,
+            contentsEnd: &contentsEnd,
+            for: NSRange(location: selectedRange.location, length: 0)
+        )
+
+        switch edge {
+        case .beginning:
+            if selectedRange.location > lineStart {
+                return lineStart
+            }
+            // A previous line exists exactly when this one does not start the draft.
+            guard lineStart > 0 else {
+                return nil
+            }
+            var previousLineStart = 0
+            text.getLineStart(
+                &previousLineStart,
+                end: nil,
+                contentsEnd: nil,
+                for: NSRange(location: lineStart - 1, length: 0)
+            )
+            return previousLineStart
+        case .end:
+            if selectedRange.location < contentsEnd {
+                return contentsEnd
+            }
+            // A next line exists exactly when this one carries a terminator; the draft's
+            // final line has `contentsEnd == lineEnd`.
+            guard contentsEnd < lineEnd else {
+                return nil
+            }
+            let nextLineStart = lineEnd
+            // A draft ending in a newline has an empty final line whose start, contents
+            // end, and end all equal the length.
+            guard nextLineStart < text.length else {
+                return nextLineStart
+            }
+            var nextContentsEnd = 0
+            text.getLineStart(
+                nil,
+                end: nil,
+                contentsEnd: &nextContentsEnd,
+                for: NSRange(location: nextLineStart, length: 0)
+            )
+            return nextContentsEnd
+        }
+    }
+
     /// Ctrl-U: use AppKit's native physical-line deletion so line boundaries, undo, IME,
     /// and accessibility stay owned by the text system.
     static func deleteToBeginningOfLineInEditableTextView(
@@ -552,6 +632,32 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
         model.dismissCompletion()
         textView.doCommand(by: Selector(("deleteToBeginningOfLine:")))
+        return true
+    }
+
+    /// Ctrl-A / Ctrl-E: move the caret to a physical-line edge, stepping to the adjacent
+    /// line when it is already there. Returns `false` without changing state whenever
+    /// `lineEdgeCyclingLocation` declines, so the key event falls through to AppKit's
+    /// native paragraph movement. This never dismisses completion: a caret move is not an
+    /// edit, and `editorSelectionDidChange` re-anchors the completion list at the new
+    /// caret on its own.
+    static func moveLineEdge(
+        _ edge: CaptureLineEdge,
+        firstResponder: NSResponder?
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder),
+              let location = lineEdgeCyclingLocation(
+                edge,
+                in: textView.string as NSString,
+                selectedRange: textView.selectedRange()
+              )
+        else {
+            return false
+        }
+
+        let target = NSRange(location: location, length: 0)
+        textView.setSelectedRange(target)
+        textView.scrollRangeToVisible(target)
         return true
     }
 
@@ -598,6 +704,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 firstResponder: panel?.firstResponder,
                 model: model
             )
+        case .moveToBeginningOfLineOrPreviousLine:
+            return Self.moveLineEdge(.beginning, firstResponder: panel?.firstResponder)
+        case .moveToEndOfLineOrNextLine:
+            return Self.moveLineEdge(.end, firstResponder: panel?.firstResponder)
         case .deleteBackward:
             return Self.deleteEmptyBulletRowInEditableTextView(
                 firstResponder: panel?.firstResponder,

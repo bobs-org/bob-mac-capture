@@ -238,6 +238,8 @@ or expired certificate can require reauthorizing those system permissions.
 | Shift-Return / Option-Return | Insert a newline | Insert a newline | Add the ID and select the task | Name the Pomodoro and select it |
 | Ctrl-J | Insert a new indentation-aware `- ` row, or turn a marker-only placeholder into a blank item separator | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-U | Delete from the caret to the beginning of the current physical line | Delete to the beginning of the current physical line and close completion | Native text-field behavior | Native text-field behavior |
+| Ctrl-A | Move to the beginning of the current physical line; when the caret is already there, move to the beginning of the previous line, stopping on the first line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
+| Ctrl-E | Move to the end of the current physical line; when the caret is already there, move to the end of the next line, stopping on the last line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
 | Command-V | Insert the clipboard's plain text, discarding source formatting; when an empty bullet row receives a Markdown bullet list, consume the first pasted marker and align the list to that row | Same paste edit, and close completion | Native text-field paste | Native text-field paste |
 | Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace | Native text-field Backspace |
 | Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion | Consume the key; do not expand, indent, or capture | Consume the key; do not expand, indent, or capture |
@@ -371,7 +373,12 @@ Backspace on an empty `- ` row removes it in one action instead of requiring two
 backspaces. All five shortcuts act on the native text view directly, so undo, IME
 composition, and accessibility behave exactly as they do for any other edit, and Bob's
 live parse/preview remains the sole authority for whether the resulting hierarchy is
-contextually valid.
+contextually valid. Ctrl-A and Ctrl-E move the caret to the beginning and end of the
+current physical line, and when the caret is already on that edge they step to the
+beginning of the previous line or the end of the next one, so repeated presses walk the
+draft line by line. They stop at the first and last line rather than wrapping around, and
+because they only move the caret they never touch the draft's text, undo history, or an
+in-flight IME composition.
 
 Command-V intentionally reads only the clipboard's plain-text flavor. Source formatting
 is discarded because Bob's capture grammar is plain text, and letting AppKit choose a
