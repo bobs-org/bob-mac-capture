@@ -32,13 +32,14 @@ let macCaptureTargets: [Target] = [
     ),
     .executableTarget(
         name: "BobMacCaptureInstallHelper",
+        dependencies: ["CaptureCore"],
         swiftSettings: [
             .swiftLanguageMode(.v5)
         ]
     ),
     .testTarget(
         name: "BobMacCaptureInstallHelperTests",
-        dependencies: ["BobMacCaptureInstallHelper"],
+        dependencies: ["BobMacCaptureInstallHelper", "CaptureCore"],
         swiftSettings: [
             .swiftLanguageMode(.v5)
         ]

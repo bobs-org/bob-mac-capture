@@ -261,8 +261,193 @@ final class NotificationServiceTests: XCTestCase {
             [
                 NotificationService.captureCategoryIdentifier,
                 NotificationService.captureBatchCategoryIdentifier,
+                NotificationService.installRestartCategoryIdentifier,
             ]
         )
+    }
+
+    func testInstallCompleteContentUsesStaticCopyDefaultSoundAndDedicatedCategory() {
+        let content = NotificationService.installCompleteContent()
+
+        XCTAssertEqual(content.title, "Install complete")
+        XCTAssertEqual(content.body, "Bob Mac Capture restarted successfully.")
+        XCTAssertTrue(content.sound?.isEqual(UNNotificationSound.default) == true)
+        XCTAssertEqual(
+            content.categoryIdentifier,
+            NotificationService.installRestartCategoryIdentifier
+        )
+        XCTAssertTrue(content.userInfo.isEmpty)
+        XCTAssertTrue(content.subtitle.isEmpty)
+        XCTAssertTrue(content.attachments.isEmpty)
+        XCTAssertNil(content.userInfo[NotificationService.targetPathKey])
+        XCTAssertNil(content.userInfo[NotificationService.targetPathsKey])
+    }
+
+    func testInstallRestartCategoryRegistersForegroundCaptureAction() {
+        let category = NotificationService.installRestartCategory()
+
+        XCTAssertEqual(
+            category.identifier,
+            NotificationService.installRestartCategoryIdentifier
+        )
+        XCTAssertEqual(
+            category.actions.map(\.identifier),
+            [NotificationService.captureActionIdentifier]
+        )
+        XCTAssertEqual(category.actions[0].title, "Capture")
+        XCTAssertTrue(category.actions[0].options.contains(.foreground))
+    }
+
+    func testInstallRestartRoutesBodyClickAndCaptureToShowCapture() {
+        XCTAssertEqual(
+            NotificationService.route(
+                forActionIdentifier: UNNotificationDefaultActionIdentifier,
+                categoryIdentifier: NotificationService.installRestartCategoryIdentifier,
+                userInfo: [:]
+            ),
+            .showCapture
+        )
+        XCTAssertEqual(
+            NotificationService.route(
+                forActionIdentifier: NotificationService.captureActionIdentifier,
+                categoryIdentifier: NotificationService.installRestartCategoryIdentifier,
+                userInfo: [:]
+            ),
+            .showCapture
+        )
+    }
+
+    func testInstallRestartDismissalAndMismatchedActionsAreNoOps() {
+        XCTAssertEqual(
+            NotificationService.route(
+                forActionIdentifier: UNNotificationDismissActionIdentifier,
+                categoryIdentifier: NotificationService.installRestartCategoryIdentifier,
+                userInfo: [:]
+            ),
+            .none
+        )
+        XCTAssertEqual(
+            NotificationService.route(
+                forActionIdentifier: NotificationService.openNoteActionIdentifier,
+                categoryIdentifier: NotificationService.installRestartCategoryIdentifier,
+                userInfo: [:]
+            ),
+            .none
+        )
+        XCTAssertEqual(
+            NotificationService.route(
+                forActionIdentifier: NotificationService.captureActionIdentifier,
+                categoryIdentifier: NotificationService.captureCategoryIdentifier,
+                userInfo: [
+                    NotificationService.targetPathKey: "/Users/bryan/bob/cash.md"
+                ]
+            ),
+            .none
+        )
+        XCTAssertEqual(
+            NotificationService.route(
+                forActionIdentifier: UNNotificationDefaultActionIdentifier,
+                categoryIdentifier: NotificationService.installRestartCategoryIdentifier,
+                userInfo: [
+                    NotificationService.targetPathKey: "/Users/bryan/bob/cash.md"
+                ]
+            ),
+            .showCapture
+        )
+    }
+
+    func testCaptureRoutesRemainObsidianURLsForDefaultClickAndOpenActions() {
+        let userInfo: [AnyHashable: Any] = [
+            NotificationService.targetPathKey: "/Users/bryan/bob/work.md",
+            NotificationService.targetPathsKey: [
+                "/Users/bryan/bob/work.md",
+                "/Users/bryan/bob/ideas.md",
+            ],
+        ]
+
+        let defaultClick = NotificationService.route(
+            forActionIdentifier: UNNotificationDefaultActionIdentifier,
+            categoryIdentifier: NotificationService.captureBatchCategoryIdentifier,
+            userInfo: userInfo
+        )
+        let openNotes = NotificationService.route(
+            forActionIdentifier: NotificationService.openNotesActionIdentifier,
+            categoryIdentifier: NotificationService.captureBatchCategoryIdentifier,
+            userInfo: userInfo
+        )
+        let openNote = NotificationService.route(
+            forActionIdentifier: NotificationService.openNoteActionIdentifier,
+            categoryIdentifier: NotificationService.captureCategoryIdentifier,
+            userInfo: [
+                NotificationService.targetPathKey: "/Users/bryan/bob/cash.md"
+            ]
+        )
+        let dismiss = NotificationService.route(
+            forActionIdentifier: UNNotificationDismissActionIdentifier,
+            categoryIdentifier: NotificationService.captureCategoryIdentifier,
+            userInfo: userInfo
+        )
+
+        guard case .openURLs(let defaultURLs) = defaultClick else {
+            return XCTFail("default click on a capture notification should open Obsidian URLs")
+        }
+        guard case .openURLs(let notesURLs) = openNotes else {
+            return XCTFail("Open Notes should open Obsidian URLs")
+        }
+        guard case .openURLs(let noteURLs) = openNote else {
+            return XCTFail("Open Note should open an Obsidian URL")
+        }
+        XCTAssertEqual(defaultURLs.count, 2)
+        XCTAssertEqual(notesURLs.count, 2)
+        XCTAssertEqual(defaultURLs.map(\.scheme), ["obsidian", "obsidian"])
+        XCTAssertEqual(noteURLs.map(\.scheme), ["obsidian"])
+        XCTAssertEqual(dismiss, .none)
+    }
+
+    func testExecuteShowCaptureInvokesPanelCallbackOnly() {
+        var opened: [URL] = []
+        var showCaptureCount = 0
+
+        NotificationService.execute(
+            .showCapture,
+            opener: { opened.append($0) },
+            showCapture: { showCaptureCount += 1 }
+        )
+
+        XCTAssertEqual(showCaptureCount, 1)
+        XCTAssertTrue(opened.isEmpty)
+    }
+
+    func testExecuteOpenURLsInvokesOpenerOnly() {
+        let urls = [
+            URL(string: "obsidian://open?path=work")!,
+            URL(string: "obsidian://open?path=ideas")!,
+        ]
+        var opened: [URL] = []
+        var showCaptureCount = 0
+
+        NotificationService.execute(
+            .openURLs(urls),
+            opener: { opened.append($0) },
+            showCapture: { showCaptureCount += 1 }
+        )
+
+        XCTAssertEqual(opened, urls)
+        XCTAssertEqual(showCaptureCount, 0)
+    }
+
+    func testExecuteNoneInvokesNeitherCallback() {
+        var opened: [URL] = []
+        var showCaptureCount = 0
+
+        NotificationService.execute(
+            .none,
+            opener: { opened.append($0) },
+            showCapture: { showCaptureCount += 1 }
+        )
+
+        XCTAssertTrue(opened.isEmpty)
+        XCTAssertEqual(showCaptureCount, 0)
     }
 
     func testTargetURLsOpenOnDefaultClickSingularPluralAndLegacyMetadata() {

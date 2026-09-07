@@ -112,7 +112,8 @@ jobs:
 
           # The real assertion: `applicationDidFinishLaunching` completing (delegate
           # assigned, status item configured, hotkey registered) is what emits this
-          # signpost as its last statement. A live process alone does not prove it ran.
+          # signpost after that setup. A live process alone does not prove it ran.
+          # Ordinary launches must not also emit the install-restart notification request.
           found_signpost=""
           for _ in $(seq 1 20); do
             if log show --signpost --predicate "subsystem == \"${bundle_id}\"" --start "${launch_start}" 2>/dev/null \
@@ -124,6 +125,11 @@ jobs:
           done
           if [[ -z "${found_signpost}" ]]; then
             echo "::error::launch-complete signpost never appeared in the unified log; applicationDidFinishLaunching did not complete"
+            exit 1
+          fi
+          if log show --signpost --predicate "subsystem == \"${bundle_id}\"" --start "${launch_start}" 2>/dev/null \
+              | grep -q "install-restart-notification-requested"; then
+            echo "::error::ordinary launch requested an install-restart notification"
             exit 1
           fi
 
@@ -205,17 +211,26 @@ jobs:
             return 1
           }
 
-          wait_for_launch_complete() {
+          wait_for_signpost() {
             local start="$1"
+            local name="$2"
             local _i
             for _i in $(seq 1 20); do
               if log show --signpost --predicate "subsystem == \"${bundle_id}\"" --start "${start}" 2>/dev/null \
-                  | grep -q "launch-complete"; then
+                  | grep -q "${name}"; then
                 return 0
               fi
               sleep 1
             done
             return 1
+          }
+
+          wait_for_launch_complete() {
+            wait_for_signpost "$1" "launch-complete"
+          }
+
+          wait_for_install_restart_notification() {
+            wait_for_signpost "$1" "install-restart-notification-requested"
           }
 
           cleanup() {
@@ -271,6 +286,11 @@ jobs:
             echo "::error::launch-complete signpost never appeared after the first install launch"
             exit 1
           }
+          if log show --signpost --predicate "subsystem == \"${bundle_id}\"" --start "${launch_start}" 2>/dev/null \
+              | grep -q "install-restart-notification-requested"; then
+            echo "::error::ordinary launch of the installed copy requested an install-restart notification"
+            exit 1
+          fi
           # `log show --start` is second-resolution and inclusive; wait so the
           # replacement's start stamp cannot include the first launch-complete.
           sleep 1
@@ -290,6 +310,10 @@ jobs:
           test "$(instance_count)" -eq 1
           wait_for_launch_complete "${reinstall_start}" || {
             echo "::error::launch-complete signpost never appeared for the replacement process"
+            exit 1
+          }
+          wait_for_install_restart_notification "${reinstall_start}" || {
+            echo "::error::install-restart-notification-requested signpost never appeared for the replacement process"
             exit 1
           }
 

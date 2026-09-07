@@ -1,3 +1,4 @@
+import CaptureCore
 import XCTest
 
 @testable import BobMacCaptureInstallHelper
@@ -62,7 +63,7 @@ final class InstallRelauncherTests: XCTestCase {
                 XCTFail("discover must not terminate")
                 return false
             },
-            open: { _ in
+            open: { _, _ in
                 XCTFail("discover must not open")
             }
         )
@@ -86,7 +87,7 @@ final class InstallRelauncherTests: XCTestCase {
                 XCTFail("discover must not terminate")
                 return false
             },
-            open: { _ in
+            open: { _, _ in
                 XCTFail("discover must not open")
             }
         )
@@ -106,7 +107,7 @@ final class InstallRelauncherTests: XCTestCase {
                 terminateCalled = true
                 return false
             },
-            open: { _ in
+            open: { _, _ in
                 openCalled = true
             }
         )
@@ -138,10 +139,14 @@ final class InstallRelauncherTests: XCTestCase {
             sleep: { _ in
                 XCTFail("must not wait when terminate already emptied the snapshot")
             },
-            open: { path in
+            open: { path, applicationArguments in
                 XCTAssertTrue(live.isEmpty, "open must wait until every PID has exited")
                 events.append("open")
                 XCTAssertEqual(path, applicationsPath)
+                XCTAssertEqual(
+                    applicationArguments,
+                    [BobMacCaptureLaunchContext.installRestartArgument]
+                )
             }
         )
 
@@ -165,7 +170,7 @@ final class InstallRelauncherTests: XCTestCase {
                 terminateCalled = true
                 return false
             },
-            open: { _ in
+            open: { _, _ in
                 openCalled = true
             }
         )
@@ -185,7 +190,7 @@ final class InstallRelauncherTests: XCTestCase {
                 XCTFail("must not wait after a refused terminate")
                 return false
             },
-            open: { _ in
+            open: { _, _ in
                 opened = true
             }
         )
@@ -209,7 +214,7 @@ final class InstallRelauncherTests: XCTestCase {
                 XCTAssertEqual(interval, InstallRelauncher.exitWaitInterval)
                 sleepCount += 1
             },
-            open: { _ in
+            open: { _, _ in
                 openCount += 1
             }
         )
@@ -241,9 +246,13 @@ final class InstallRelauncherTests: XCTestCase {
                 XCTAssertEqual(interval, InstallRelauncher.openRetryInterval)
                 events.append("sleep")
             },
-            open: { path in
+            open: { path, applicationArguments in
                 XCTAssertTrue(live.isEmpty)
                 XCTAssertEqual(path, "/tmp/Weird \"Bob\" Path/Bob Mac Capture.app")
+                XCTAssertEqual(
+                    applicationArguments,
+                    [BobMacCaptureLaunchContext.installRestartArgument]
+                )
                 openCount += 1
                 events.append("open")
                 throw InstallHelperError.openFailed("open exited 1")
@@ -285,8 +294,13 @@ final class InstallRelauncherTests: XCTestCase {
             sleep: { _ in
                 events.append("sleep")
             },
-            open: { _ in
+            open: { path, applicationArguments in
                 XCTAssertTrue(live.isEmpty)
+                XCTAssertEqual(path, applicationsPath)
+                XCTAssertEqual(
+                    applicationArguments,
+                    [BobMacCaptureLaunchContext.installRestartArgument]
+                )
                 events.append("open")
             }
         )
@@ -294,6 +308,38 @@ final class InstallRelauncherTests: XCTestCase {
         try relauncher.restart(installPath: applicationsPath, pids: [61, 62])
 
         XCTAssertEqual(events, ["terminate 61", "terminate 62", "sleep", "open"])
+    }
+
+    func testOpenArgumentsKeepsPathArgsFlagAndSignalAsDistinctTokens() {
+        XCTAssertEqual(
+            InstallRelauncher.openArguments(
+                bundlePath: applicationsPath,
+                applicationArguments: [BobMacCaptureLaunchContext.installRestartArgument]
+            ),
+            [
+                applicationsPath,
+                "--args",
+                BobMacCaptureLaunchContext.installRestartArgument,
+            ]
+        )
+        XCTAssertEqual(
+            InstallRelauncher.openArguments(
+                bundlePath: "/tmp/Weird \"Bob\" Path/Bob Mac Capture.app",
+                applicationArguments: [BobMacCaptureLaunchContext.installRestartArgument]
+            ),
+            [
+                "/tmp/Weird \"Bob\" Path/Bob Mac Capture.app",
+                "--args",
+                BobMacCaptureLaunchContext.installRestartArgument,
+            ]
+        )
+        XCTAssertEqual(
+            InstallRelauncher.openArguments(
+                bundlePath: applicationsPath,
+                applicationArguments: []
+            ),
+            [applicationsPath]
+        )
     }
 
     private func record(

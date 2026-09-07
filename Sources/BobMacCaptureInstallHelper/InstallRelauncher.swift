@@ -1,4 +1,5 @@
 import AppKit
+import CaptureCore
 
 struct RunningApplicationRecord: Equatable {
     var processIdentifier: pid_t
@@ -48,10 +49,13 @@ struct InstallRelauncher {
         return application.isTerminated
     }
     var sleep: (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }
-    var open: (String) throws -> Void = { bundlePath in
+    var open: (String, [String]) throws -> Void = { bundlePath, applicationArguments in
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        process.arguments = [bundlePath]
+        process.arguments = InstallRelauncher.openArguments(
+            bundlePath: bundlePath,
+            applicationArguments: applicationArguments
+        )
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try process.run()
@@ -59,6 +63,18 @@ struct InstallRelauncher {
         guard process.terminationStatus == 0 else {
             throw InstallHelperError.openFailed("open exited \(process.terminationStatus)")
         }
+    }
+
+    // `/usr/bin/open <bundle> --args <tokens...>` keeps the bundle path, the `--args`
+    // flag, and each application argument as distinct Process tokens. `--args` is an
+    // `open` switch, not something interpolated into the bundle path.
+    static func openArguments(bundlePath: String, applicationArguments: [String]) -> [String] {
+        var arguments = [bundlePath]
+        if !applicationArguments.isEmpty {
+            arguments.append("--args")
+            arguments.append(contentsOf: applicationArguments)
+        }
+        return arguments
     }
 
     static func normalizedPath(_ path: String) -> String {
@@ -130,10 +146,11 @@ struct InstallRelauncher {
     }
 
     private func openInstalledBundle(_ bundlePath: String) throws {
+        let applicationArguments = [BobMacCaptureLaunchContext.installRestartArgument]
         var lastFailure = "open failed"
         for attempt in 1...Self.openAttempts {
             do {
-                try open(bundlePath)
+                try open(bundlePath, applicationArguments)
                 return
             } catch {
                 switch error as? InstallHelperError {

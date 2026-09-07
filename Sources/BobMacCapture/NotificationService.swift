@@ -36,8 +36,10 @@ struct NotificationAuthorizationDisplay: Equatable {
 final class NotificationService: NSObject, ObservableObject {
     nonisolated static let openNoteActionIdentifier = "org.bobs.bob-mac-capture.open-note"
     nonisolated static let openNotesActionIdentifier = "org.bobs.bob-mac-capture.open-notes"
+    nonisolated static let captureActionIdentifier = "org.bobs.bob-mac-capture.install-restart.capture"
     nonisolated static let captureCategoryIdentifier = "org.bobs.bob-mac-capture.capture"
     nonisolated static let captureBatchCategoryIdentifier = "org.bobs.bob-mac-capture.capture-batch"
+    nonisolated static let installRestartCategoryIdentifier = "org.bobs.bob-mac-capture.install-restart"
     nonisolated static let targetPathKey = "targetPath"
     nonisolated static let targetPathsKey = "targetPaths"
     nonisolated static let foregroundPresentationOptions: UNNotificationPresentationOptions = [
@@ -48,13 +50,16 @@ final class NotificationService: NSObject, ObservableObject {
 
     private let center: UNUserNotificationCenter
     private let opener: (URL) -> Void
+    private let showCapture: () -> Void
 
     init(
         center: UNUserNotificationCenter = .current(),
-        opener: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) }
+        opener: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) },
+        showCapture: @escaping () -> Void = {}
     ) {
         self.center = center
         self.opener = opener
+        self.showCapture = showCapture
         super.init()
         // The delegate must be assigned before any authorization request so a foreground
         // notification delivered during the same launch is never silently suppressed.
@@ -99,6 +104,15 @@ final class NotificationService: NSObject, ObservableObject {
     func notifyRestartFailure(message: String) {
         Task {
             try? await add(Self.restartFailureContent(message: message))
+        }
+    }
+
+    // Best-effort confirmation that an install-triggered replacement reached a usable
+    // launch point. Must not request authorization; missing or denied permission is
+    // silent and non-fatal, matching the other notify paths.
+    func notifyInstallComplete() {
+        Task {
+            try? await add(Self.installCompleteContent())
         }
     }
 
@@ -198,6 +212,15 @@ final class NotificationService: NSObject, ObservableObject {
         return content
     }
 
+    nonisolated static func installCompleteContent() -> UNMutableNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.title = "Install complete"
+        content.body = "Bob Mac Capture restarted successfully."
+        content.sound = .default
+        content.categoryIdentifier = installRestartCategoryIdentifier
+        return content
+    }
+
     nonisolated static func captureCategory() -> UNNotificationCategory {
         let openNote = UNNotificationAction(
             identifier: openNoteActionIdentifier,
@@ -226,8 +249,68 @@ final class NotificationService: NSObject, ObservableObject {
         )
     }
 
+    nonisolated static func installRestartCategory() -> UNNotificationCategory {
+        let capture = UNNotificationAction(
+            identifier: captureActionIdentifier,
+            title: "Capture",
+            options: [.foreground]
+        )
+        return UNNotificationCategory(
+            identifier: installRestartCategoryIdentifier,
+            actions: [capture],
+            intentIdentifiers: [],
+            options: []
+        )
+    }
+
     nonisolated static func captureCategories() -> Set<UNNotificationCategory> {
-        [captureCategory(), captureBatchCategory()]
+        [captureCategory(), captureBatchCategory(), installRestartCategory()]
+    }
+
+    // Body click and Capture on the install-restart category show the capture panel.
+    // Capture notifications keep their existing default-click / Open Note / Open Notes
+    // Obsidian routing. Dismissal and mismatched category/action combinations are no-ops.
+    // Takes plain values instead of a live UNNotificationResponse, which the SDK gives
+    // no public initializer for, so this routing decision stays unit-testable.
+    nonisolated static func route(
+        forActionIdentifier actionIdentifier: String,
+        categoryIdentifier: String,
+        userInfo: [AnyHashable: Any]
+    ) -> NotificationRoute {
+        if actionIdentifier == UNNotificationDismissActionIdentifier {
+            return .none
+        }
+        if categoryIdentifier == installRestartCategoryIdentifier {
+            guard
+                actionIdentifier == UNNotificationDefaultActionIdentifier
+                    || actionIdentifier == captureActionIdentifier
+            else {
+                return .none
+            }
+            return .showCapture
+        }
+        let urls = targetURLs(forActionIdentifier: actionIdentifier, userInfo: userInfo)
+        if urls.isEmpty {
+            return .none
+        }
+        return .openURLs(urls)
+    }
+
+    nonisolated static func execute(
+        _ route: NotificationRoute,
+        opener: (URL) -> Void,
+        showCapture: () -> Void
+    ) {
+        switch route {
+        case .none:
+            return
+        case .showCapture:
+            showCapture()
+        case .openURLs(let urls):
+            for url in urls {
+                opener(url)
+            }
+        }
     }
 
     // Both the explicit Open Note action and clicking the notification body itself open
@@ -425,6 +508,12 @@ final class NotificationService: NSObject, ObservableObject {
     }
 }
 
+enum NotificationRoute: Equatable {
+    case none
+    case showCapture
+    case openURLs([URL])
+}
+
 private struct CaptureNotificationPresentation: Equatable {
     let title: String
     let subtitle: String
@@ -448,13 +537,20 @@ extension NotificationService: UNUserNotificationCenterDelegate {
     ) {
         let userInfo = response.notification.request.content.userInfo
         let actionIdentifier = response.actionIdentifier
+        let categoryIdentifier = response.notification.request.content.categoryIdentifier
         Task { @MainActor [weak self] in
             guard let self else {
                 return
             }
-            for url in Self.targetURLs(forActionIdentifier: actionIdentifier, userInfo: userInfo) {
-                self.opener(url)
-            }
+            Self.execute(
+                Self.route(
+                    forActionIdentifier: actionIdentifier,
+                    categoryIdentifier: categoryIdentifier,
+                    userInfo: userInfo
+                ),
+                opener: self.opener,
+                showCapture: self.showCapture
+            )
         }
         completionHandler()
     }

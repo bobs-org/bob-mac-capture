@@ -496,7 +496,8 @@ uses compact wording such as `2 tasks · foo.md` or `2 notes · file.md · under
 only items that locally override the global declaration repeat their actual destination.
 The raw `@@...` declaration is never included in notification text. The only newly
 authorized notification body content is the captured semantic text; failure
-notifications still carry only the bounded error message.
+notifications still carry only the bounded error message. The install-complete banner
+uses fixed copy with no path, identity, version, or capture text.
 
 Capture notifications register singular and plural foreground actions (`Open Note` and
 `Open Notes`). The notification stores the legacy first `targetPath` plus an ordered
@@ -510,6 +511,24 @@ Notification delivery and authorization persistence require the installed, signe
 `Bob Mac Capture.app` bundle (`just bundle` + `just install`), not `swift run` or a raw
 `.build` binary: macOS ties notification permission grants to a stable bundle identity
 and code signature, and Settings reports the current signing state under Diagnostics.
+
+When `just install` restarts a copy that was already running, the replacement process
+posts one native completion notification after it finishes launching:
+
+- title: `Install complete`
+- body: `Bob Mac Capture restarted successfully.`
+- sound: the default notification sound
+- action: `Capture`
+
+Clicking the banner or choosing `Capture` opens the capture panel; dismissing it does
+nothing. The banner is confirmation that the replacement process itself reached a usable
+launch point, not that the install helper merely asked LaunchServices to open the bundle.
+It is requested only for that one-shot install-triggered restart, and only when macOS
+already allows notifications for the signed bundle. An install never prompts for
+notification permission. Denied or not-yet-requested authorization is silent and
+non-fatal: the replacement still launches. A stopped install does not launch the app and
+does not notify. `Bob → Restart Bob Mac Capture` is a manual relaunch, not an install
+completion, and does not show this banner.
 
 ## Hotkey Conflicts and Launch at Login
 
@@ -551,6 +570,15 @@ Automatic restart uses the same quit-and-relaunch sequence as
 `Bob → Restart Bob Mac Capture`: an unsent draft is discarded, retained canceled drafts
 survive, and there is no confirmation dialog. The menu item remains the manual restart
 mechanism when you want to relaunch without reinstalling.
+
+When that automatic restart succeeds, the replacement process requests one
+`Install complete` notification after `applicationDidFinishLaunching` finishes its normal
+setup. Clicking the banner or `Capture` opens the capture panel; dismissing it does
+nothing. The banner is best-effort: `just install` never prompts for notification
+permission, and missing, denied, or reset authorization is silent and does not change
+installer output, restart ordering, or whether the replacement launches. A stopped
+install still does not launch or notify. `Bob → Restart Bob Mac Capture` does not show
+the install-complete notification.
 
 If the new bundle is installed and verified but the running-process handoff fails,
 `just install` exits non-zero without rolling back that verified bundle. The error names
@@ -635,6 +663,13 @@ text is stored separately in that Application Support directory (see Privacy).
   "Send Test Notification," and check Diagnostics → Signing — notification delivery
   requires the installed signed bundle, not `swift run`. If authorization shows "Denied,"
   use "Open System Notification Settings" to re-enable it there.
+- **The install-complete banner does not appear after `just install`**: that banner is
+  posted only when install restarts an already-running copy, and only if notifications
+  are already authorized for the signed bundle. A stopped install, `Bob → Restart Bob
+  Mac Capture`, `swift run`, and denied or not-yet-requested authorization are all
+  silent by design; installation still succeeds. Check Settings → Notifications and
+  Diagnostics → Signing, and look for `install-restart-notification-requested` in
+  `log show --signpost --predicate 'subsystem == "org.bobs.bob-mac-capture"'`.
 - **Target/route completion is empty or stale**: Diagnostics reports "Target cache stale"
   with the underlying scan error; fix the reported cause (for example, an unreadable
   vault path) and reopen the panel, which retries the refresh.
@@ -684,7 +719,8 @@ text is stored separately in that Application Support directory (see Privacy).
 The app emits `os_signpost` intervals/events (subsystem `org.bobs.bob-mac-capture`,
 category `capture`) around hotkey receipt, panel ordering, editor focus, parse,
 completion, preview, submit, block-ID focus claims, plain-text paste
-(`paste-plain-text`), and notification scheduling, visible in Instruments' Points of
+(`paste-plain-text`), notification scheduling, and install-restart notification
+requests (`install-restart-notification-requested`), visible in Instruments' Points of
 Interest / os_signpost templates. These, and the bounded Recent Activity list in
 Settings, are metadata-only by construction — see Privacy above.
 
@@ -697,5 +733,7 @@ requires the `launch-complete` signpost to appear in the unified log before quit
 so a broken entry point (no delegate assigned, no menu bar item, no hotkey) fails CI
 instead of shipping silently. The installer gate then installs into a temporary `HOME`
 while stopped (must not auto-launch), relaunches that exact bundle through a running
-reinstall (old PID gone, one new PID, a fresh `launch-complete`), and reinstalls once
-more while stopped (must stay stopped).
+reinstall (old PID gone, one new PID, a fresh `launch-complete` and
+`install-restart-notification-requested`), and reinstalls once more while stopped
+(must stay stopped). An ordinary launch of the installed copy must not emit the
+install-restart notification signpost.
