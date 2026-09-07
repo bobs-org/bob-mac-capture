@@ -82,7 +82,23 @@ struct InstallRelauncher {
     }
 
     static func normalizedPath(_ url: URL) -> String {
-        url.standardizedFileURL.resolvingSymlinksInPath().path
+        strippingPrivatePrefix(url.standardizedFileURL.resolvingSymlinksInPath().path)
+    }
+
+    // resolvingSymlinksInPath only walks existing components, so /var and
+    // /private/var miss each other unless the well-known /private prefixes fold.
+    private static func strippingPrivatePrefix(_ path: String) -> String {
+        for root in ["var", "tmp", "etc"] {
+            let privateRoot = "/private/\(root)"
+            if path == privateRoot {
+                return "/\(root)"
+            }
+            let prefix = privateRoot + "/"
+            if path.hasPrefix(prefix) {
+                return "/\(root)/" + path.dropFirst(prefix.count)
+            }
+        }
+        return path
     }
 
     func discover(installPath: String) -> [pid_t] {
