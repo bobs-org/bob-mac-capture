@@ -7,7 +7,7 @@ private let applicationsPath = "/Applications/Bob Mac Capture.app"
 private let homeApplicationsPath = "/Users/test/Applications/Bob Mac Capture.app"
 private let rawExecutablePath = "/Users/test/bob-mac-capture/.build/debug/BobMacCapture"
 
-private func record(
+private func applicationRecord(
     pid: pid_t,
     path: String,
     bundleIdentifier: String = InstallRelauncher.bundleIdentifier
@@ -32,15 +32,15 @@ final class InstallRelauncherTests: XCTestCase {
     }
 
     func testDiscoverSelectsTheExactInstalledBundleAndIgnoresOthers() {
-        let matching = record(
+        let matching = applicationRecord(
             pid: 11,
             path: applicationsPath
         )
-        let otherInstall = record(
+        let otherInstall = applicationRecord(
             pid: 12,
             path: homeApplicationsPath
         )
-        let rawExecutable = record(
+        let rawExecutable = applicationRecord(
             pid: 13,
             path: rawExecutablePath
         )
@@ -49,12 +49,12 @@ final class InstallRelauncherTests: XCTestCase {
             bundleIdentifier: InstallRelauncher.bundleIdentifier,
             bundleURL: nil
         )
-        let unrelated = record(
+        let unrelated = applicationRecord(
             pid: 15,
             path: applicationsPath,
             bundleIdentifier: "com.apple.Safari"
         )
-        let trailingSlashMatch = record(
+        let trailingSlashMatch = applicationRecord(
             pid: 16,
             path: applicationsPath + "/"
         )
@@ -89,7 +89,7 @@ final class InstallRelauncherTests: XCTestCase {
         let relauncher = InstallRelauncher(
             runningApplications: { _ in
                 [
-                    record(
+                    applicationRecord(
                         pid: 77,
                         path: "/private/var/folders/xx/T/Bob Mac Capture.app"
                     )
@@ -135,8 +135,8 @@ final class InstallRelauncherTests: XCTestCase {
         var events: [String] = []
         var live: Set<pid_t> = [21, 22]
         let records: [pid_t: RunningApplicationRecord] = [
-            21: record(pid: 21, path: applicationsPath),
-            22: record(pid: 22, path: applicationsPath),
+            21: applicationRecord(pid: 21, path: applicationsPath),
+            22: applicationRecord(pid: 22, path: applicationsPath),
         ]
         let relauncher = InstallRelauncher(
             applicationForPID: { records[$0] },
@@ -172,7 +172,7 @@ final class InstallRelauncherTests: XCTestCase {
         var openCalled = false
         let relauncher = InstallRelauncher(
             applicationForPID: { pid in
-                record(
+                applicationRecord(
                     pid: pid,
                     path: "/Applications/Safari.app",
                     bundleIdentifier: "com.apple.Safari"
@@ -196,7 +196,7 @@ final class InstallRelauncherTests: XCTestCase {
     func testRestartFailsWhenTerminateIsRefusedWithoutOpening() {
         var opened = false
         let relauncher = InstallRelauncher(
-            applicationForPID: { pid in record(pid: pid, path: applicationsPath) },
+            applicationForPID: { pid in applicationRecord(pid: pid, path: applicationsPath) },
             terminate: { _ in false },
             isTerminated: { _ in
                 XCTFail("must not wait after a refused terminate")
@@ -219,7 +219,7 @@ final class InstallRelauncherTests: XCTestCase {
         var openCount = 0
         var sleepCount = 0
         let relauncher = InstallRelauncher(
-            applicationForPID: { pid in record(pid: pid, path: applicationsPath) },
+            applicationForPID: { pid in applicationRecord(pid: pid, path: applicationsPath) },
             terminate: { _ in true },
             isTerminated: { _ in false },
             sleep: { interval in
@@ -245,7 +245,7 @@ final class InstallRelauncherTests: XCTestCase {
         var live: Set<pid_t> = [51]
         var openCount = 0
         let relauncher = InstallRelauncher(
-            applicationForPID: { pid in record(pid: pid, path: applicationsPath) },
+            applicationForPID: { pid in applicationRecord(pid: pid, path: applicationsPath) },
             terminate: { pid in
                 events.append("terminate")
                 live.remove(pid)
@@ -291,7 +291,7 @@ final class InstallRelauncherTests: XCTestCase {
         var live: Set<pid_t> = [61, 62]
         var polls = 0
         let relauncher = InstallRelauncher(
-            applicationForPID: { pid in record(pid: pid, path: applicationsPath) },
+            applicationForPID: { pid in applicationRecord(pid: pid, path: applicationsPath) },
             terminate: { pid in
                 events.append("terminate \(pid)")
                 return true
