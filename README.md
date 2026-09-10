@@ -252,7 +252,7 @@ or expired certificate can require reauthorizing those system permissions.
 | Return | Capture, then close the panel | Accept the selected completion | Add the ID and select the task | Name the Pomodoro and select it |
 | Command-Return | Capture, open the target in Obsidian, then close the panel | Accept, then submit | Consume the key; do not capture | Consume the key; do not capture |
 | Shift-Return / Option-Return | Insert a newline | Insert a newline | Add the ID and select the task | Name the Pomodoro and select it |
-| Ctrl-J | Insert a new indentation-aware `- ` row, or turn a marker-only placeholder into a blank item separator | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
+| Ctrl-J | Insert a new indentation-aware `- ` row; at or before a populated dash bullet's marker, remove the prefix into a blank separator and keep its body | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-Shift-O | Insert a blank physical line immediately above the current line and move the caret onto it | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-U | Delete from the caret to the beginning of the current physical line; when the caret is already at that start, delete the previous line instead, stopping on the first line | Same deletion, closing completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-A | Move to the beginning of the current physical line; when the caret is already there, move to the beginning of the previous line, stopping on the first line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
@@ -378,7 +378,12 @@ colors the span kinds Bob reports, asks Bob for completion at the real caret, an
 submits the original draft text.
 
 Ctrl-J starts the next canonical `- ` row from anywhere in the draft, copying exactly the
-current authored row's supported indentation (zero or two ASCII spaces). On a line that
+current authored row's supported indentation (zero or two ASCII spaces). With a
+collapsed caret at column zero, inside leading whitespace, or immediately before the
+hyphen of a populated `- ` row, Ctrl-J replaces that row's leading whitespace and `- `
+prefix with one line terminator while preserving the body. For example,
+`Parent\n|- child` becomes `Parent\n\n|child`. A caret after the hyphen, after the
+space, or inside the body keeps the normal new-row insertion behavior. On a line that
 contains only optional whitespace plus one `-`, `*`, or `+` marker, Ctrl-J replaces the
 placeholder with exactly one blank item separator and puts the caret at the beginning of
 the following line, reusing an existing line terminator when one is already there.

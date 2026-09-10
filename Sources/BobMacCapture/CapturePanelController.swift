@@ -102,6 +102,22 @@ enum CaptureBulletNewlineEditResolver {
             )
         }
 
+        if selectedRange.length == 0,
+           let prefixRange = removableDashBulletPrefixRange(
+               in: lineContent,
+               lineStart: lineStart,
+               caretLocation: selectedRange.location
+           )
+        {
+            let replacementText = preferredCaptureLineTerminator(in: text)
+            let finalLocation = prefixRange.location + (replacementText as NSString).length
+            return CaptureBulletNewlineEdit(
+                replacementRange: prefixRange,
+                replacementText: replacementText,
+                selectedRange: NSRange(location: finalLocation, length: 0)
+            )
+        }
+
         let indent = supportedAuthoredIndent(in: lineContent)
         let replacementText = "\(preferredCaptureLineTerminator(in: text))\(indent)- "
         let finalLocation = selectedRange.location + (replacementText as NSString).length
@@ -114,6 +130,36 @@ enum CaptureBulletNewlineEditResolver {
 
     private static func isPlaceholderLine(_ line: String) -> Bool {
         line.range(of: #"^\s*[-*+]\s*$"#, options: .regularExpression) != nil
+    }
+
+    private static func removableDashBulletPrefixRange(
+        in line: String,
+        lineStart: Int,
+        caretLocation: Int
+    ) -> NSRange? {
+        let nsLine = line as NSString
+        var hyphenOffset = 0
+        while hyphenOffset < nsLine.length {
+            let character = nsLine.character(at: hyphenOffset)
+            guard character == 0x20 || character == 0x09 else {
+                break
+            }
+            hyphenOffset += 1
+        }
+
+        guard hyphenOffset + 1 < nsLine.length,
+              nsLine.character(at: hyphenOffset) == 0x2D,
+              nsLine.character(at: hyphenOffset + 1) == 0x20
+        else {
+            return nil
+        }
+
+        let hyphenLocation = lineStart + hyphenOffset
+        guard caretLocation <= hyphenLocation else {
+            return nil
+        }
+
+        return NSRange(location: lineStart, length: hyphenOffset + 2)
     }
 
     private static func supportedAuthoredIndent(in line: String) -> String {

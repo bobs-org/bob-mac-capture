@@ -1644,6 +1644,150 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(parentRow.text, "Parent\n- ")
     }
 
+    func testBulletNewlineResolverRemovesPopulatedDashPrefixAtOrBeforeMarker() throws {
+        for indent in ["", "  ", "\t", "\t  ", "    "] {
+            let text = "Parent\n\(indent)- child"
+            let expectedText = "Parent\n\nchild"
+            let expectedSelection = NSRange(location: "Parent\n\n".utf16.count, length: 0)
+            let lineStart = "Parent\n".utf16.count
+            let hyphenOffset = indent.utf16.count
+
+            for caretOffset in 0...hyphenOffset {
+                let resolved = try applyBulletEdit(
+                    text: text,
+                    selectedRange: NSRange(location: lineStart + caretOffset, length: 0)
+                )
+
+                XCTAssertEqual(
+                    resolved.text,
+                    expectedText,
+                    "indent=\(indent.debugDescription), offset=\(caretOffset)"
+                )
+                XCTAssertEqual(
+                    resolved.selection,
+                    expectedSelection,
+                    "indent=\(indent.debugDescription), offset=\(caretOffset)"
+                )
+            }
+        }
+    }
+
+    func testBulletNewlineResolverRemovesPopulatedDashPrefixAcrossDocumentShapes() throws {
+        let cases: [(text: String, selectedLocation: Int, expectedText: String, expectedSelection: Int)] = [
+            (
+                "- child",
+                0,
+                "\nchild",
+                "\n".utf16.count
+            ),
+            (
+                "Parent\n  - child\nNext",
+                "Parent\n  ".utf16.count,
+                "Parent\n\nchild\nNext",
+                "Parent\n\n".utf16.count
+            ),
+            (
+                "Parent\n\n  - child",
+                "Parent\n\n ".utf16.count,
+                "Parent\n\n\nchild",
+                "Parent\n\n\n".utf16.count
+            ),
+            (
+                "Parent\n-   child",
+                "Parent\n".utf16.count,
+                "Parent\n\n  child",
+                "Parent\n\n".utf16.count
+            ),
+            (
+                "Prelude 😄\n\t- café",
+                "Prelude 😄\n".utf16.count,
+                "Prelude 😄\n\ncafé",
+                "Prelude 😄\n\n".utf16.count
+            ),
+        ]
+
+        for testCase in cases {
+            let resolved = try applyBulletEdit(
+                text: testCase.text,
+                selectedRange: NSRange(location: testCase.selectedLocation, length: 0)
+            )
+
+            XCTAssertEqual(resolved.text, testCase.expectedText)
+            XCTAssertEqual(resolved.selection, NSRange(location: testCase.expectedSelection, length: 0))
+        }
+    }
+
+    func testBulletNewlineResolverRemovesPopulatedDashPrefixWithExistingLineTerminators() throws {
+        let crlfText = "Parent\r\n  - child\r\nNext"
+        let crlfResolved = try applyBulletEdit(
+            text: crlfText,
+            selectedRange: NSRange(location: "Parent\r\n  ".utf16.count, length: 0)
+        )
+        XCTAssertEqual(crlfResolved.text, "Parent\r\n\r\nchild\r\nNext")
+        XCTAssertEqual(crlfResolved.selection, NSRange(location: "Parent\r\n\r\n".utf16.count, length: 0))
+
+        let crText = "Parent\r\t- child"
+        let crResolved = try applyBulletEdit(
+            text: crText,
+            selectedRange: NSRange(location: "Parent\r".utf16.count, length: 0)
+        )
+        XCTAssertEqual(crResolved.text, "Parent\r\rchild")
+        XCTAssertEqual(crResolved.selection, NSRange(location: "Parent\r\r".utf16.count, length: 0))
+    }
+
+    func testBulletNewlineResolverKeepsPopulatedDashBoundaryExclusionsOnNormalInsertionPath() throws {
+        let afterHyphen = try applyBulletEdit(
+            text: "Parent\n- child",
+            selectedRange: NSRange(location: "Parent\n-".utf16.count, length: 0)
+        )
+        XCTAssertEqual(afterHyphen.text, "Parent\n-\n-  child")
+        XCTAssertEqual(afterHyphen.selection, NSRange(location: "Parent\n-\n- ".utf16.count, length: 0))
+
+        let afterPrefix = try applyBulletEdit(
+            text: "Parent\n- child",
+            selectedRange: NSRange(location: "Parent\n- ".utf16.count, length: 0)
+        )
+        XCTAssertEqual(afterPrefix.text, "Parent\n- \n- child")
+        XCTAssertEqual(afterPrefix.selection, NSRange(location: "Parent\n- \n- ".utf16.count, length: 0))
+
+        let middleOfBody = try applyBulletEdit(
+            text: "Parent\n- child",
+            selectedRange: NSRange(location: "Parent\n- ch".utf16.count, length: 0)
+        )
+        XCTAssertEqual(middleOfBody.text, "Parent\n- ch\n- ild")
+        XCTAssertEqual(middleOfBody.selection, NSRange(location: "Parent\n- ch\n- ".utf16.count, length: 0))
+    }
+
+    func testBulletNewlineResolverLeavesNonDashPrefixesOnNormalInsertionPath() throws {
+        let star = try applyBulletEdit(
+            text: "Parent\n* child",
+            selectedRange: NSRange(location: "Parent\n".utf16.count, length: 0)
+        )
+        XCTAssertEqual(star.text, "Parent\n\n- * child")
+        XCTAssertEqual(star.selection, NSRange(location: "Parent\n\n- ".utf16.count, length: 0))
+
+        let plus = try applyBulletEdit(
+            text: "Parent\n+ child",
+            selectedRange: NSRange(location: "Parent\n".utf16.count, length: 0)
+        )
+        XCTAssertEqual(plus.text, "Parent\n\n- + child")
+        XCTAssertEqual(plus.selection, NSRange(location: "Parent\n\n- ".utf16.count, length: 0))
+
+        let noSpaceAfterDash = try applyBulletEdit(
+            text: "Parent\n-child",
+            selectedRange: NSRange(location: "Parent\n".utf16.count, length: 0)
+        )
+        XCTAssertEqual(noSpaceAfterDash.text, "Parent\n\n- -child")
+        XCTAssertEqual(noSpaceAfterDash.selection, NSRange(location: "Parent\n\n- ".utf16.count, length: 0))
+
+        let inlineHyphen = try applyBulletEdit(
+            text: "Parent\nword - child",
+            selectedRange: NSRange(location: "Parent\nword ".utf16.count, length: 0)
+        )
+        XCTAssertEqual(inlineHyphen.text, "Parent\nword \n- - child")
+        XCTAssertEqual(inlineHyphen.selection, NSRange(location: "Parent\nword \n- ".utf16.count, length: 0))
+    }
+
     func testBulletNewlineResolverTurnsPlaceholderIntoOneSeparatorAtEOF() throws {
         let resolved = try applyBulletEdit(
             text: "Parent\n- ",
@@ -1663,6 +1807,31 @@ final class BobMacCaptureTests: XCTestCase {
 
             XCTAssertEqual(resolved.text, "Parent\n\nChild")
             XCTAssertEqual(resolved.selection, NSRange(location: "Parent\n\n".utf16.count, length: 0))
+        }
+    }
+
+    func testBulletNewlineResolverTurnsPlaceholderIntoSeparatorFromEveryCaretOffset() throws {
+        for text in ["Parent\n- ", "Parent\n  -   "] {
+            let lineStart = "Parent\n".utf16.count
+            let lineLength = (text as NSString).length - lineStart
+
+            for caretOffset in 0...lineLength {
+                let resolved = try applyBulletEdit(
+                    text: text,
+                    selectedRange: NSRange(location: lineStart + caretOffset, length: 0)
+                )
+
+                XCTAssertEqual(
+                    resolved.text,
+                    "Parent\n\n",
+                    "text=\(text.debugDescription), offset=\(caretOffset)"
+                )
+                XCTAssertEqual(
+                    resolved.selection,
+                    NSRange(location: "Parent\n\n".utf16.count, length: 0),
+                    "text=\(text.debugDescription), offset=\(caretOffset)"
+                )
+            }
         }
     }
 
@@ -1700,6 +1869,43 @@ final class BobMacCaptureTests: XCTestCase {
 
         XCTAssertEqual(resolved.text, "Parent\n\n- Child")
         XCTAssertEqual(resolved.selection, NSRange(location: "Parent\n\n- ".utf16.count, length: 0))
+    }
+
+    func testBulletNewlineResolverKeepsSelectionReplacementBehaviorOnPopulatedDashPrefixSelections() throws {
+        let prefixSelection = try applyBulletEdit(
+            text: "Parent\n  - child",
+            selectedRange: NSRange(location: "Parent\n ".utf16.count, length: " -".utf16.count)
+        )
+        XCTAssertEqual(prefixSelection.text, "Parent\n \n-  child")
+        XCTAssertEqual(prefixSelection.selection, NSRange(location: "Parent\n \n- ".utf16.count, length: 0))
+
+        let multilineSelection = try applyBulletEdit(
+            text: "Parent\n  - child\nNext",
+            selectedRange: NSRange(location: "Parent\n ".utf16.count, length: " - child\n".utf16.count)
+        )
+        XCTAssertEqual(multilineSelection.text, "Parent\n \n- Next")
+        XCTAssertEqual(multilineSelection.selection, NSRange(location: "Parent\n \n- ".utf16.count, length: 0))
+    }
+
+    @MainActor
+    func testInsertBulletNewlineRemovesPopulatedDashPrefixAndDismissesCompletion() {
+        let model = CapturePanelModel()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "Parent\n  - child"
+        textView.setSelectedRange(NSRange(location: "Parent\n ".utf16.count, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.insertBulletNewlineInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "Parent\n\nchild")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: "Parent\n\n".utf16.count, length: 0))
+        XCTAssertNil(model.completionResponse)
     }
 
     @MainActor
