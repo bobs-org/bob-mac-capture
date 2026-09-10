@@ -24,12 +24,12 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
 public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemanticCategory {
     switch kind {
     case "route", "task_block_id_route", "pomodoro_route", "sub_bullet_route",
-         "global_route", "global_sub_bullet_route":
+         "global_route", "global_sub_bullet_route", "task_toggle_route":
         return .route
-    case "section", "sub_bullet_section", "pomodoro_name":
+    case "section", "sub_bullet_section", "pomodoro_name", "task_toggle_pomodoro_name":
         return .section
     case "task_block_id", "pomodoro_block_id", "sub_bullet_block_id",
-         "global_sub_bullet_block_id":
+         "global_sub_bullet_block_id", "task_toggle_block_id":
         return .blockID
     case "schedule":
         return .schedule

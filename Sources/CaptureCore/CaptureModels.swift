@@ -424,6 +424,22 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     public let parentText: String?
     public let parentStatusSymbol: String?
     public let parentStatusName: String?
+    // Additive: only present when `kind == "task_toggle"`. Bob always populates every
+    // one of these together, so a decoded toggle response either has all of them or
+    // none; `removedScheduled`, `scheduleLog`, and `pomodoroName` stay legitimately
+    // optional per-toggle depending on what the toggle actually did.
+    public let toggleDirection: String?
+    public let previousTaskLine: String?
+    public let statusSymbol: String?
+    public let statusName: String?
+    public let previousStatusSymbol: String?
+    public let previousStatusName: String?
+    public let pomodoroName: String?
+    public let createsPomodoro: Bool?
+    public let pomodoroAlreadyLinked: Bool?
+    public let removedPomodoroLinks: Int?
+    public let removedScheduled: String?
+    public let pomodoroSelectorUnused: Bool?
     public let captures: [CaptureCommandSuccess]
     public let globalDestination: CaptureGlobalDestination?
 
@@ -454,6 +470,18 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         parentText: String? = nil,
         parentStatusSymbol: String? = nil,
         parentStatusName: String? = nil,
+        toggleDirection: String? = nil,
+        previousTaskLine: String? = nil,
+        statusSymbol: String? = nil,
+        statusName: String? = nil,
+        previousStatusSymbol: String? = nil,
+        previousStatusName: String? = nil,
+        pomodoroName: String? = nil,
+        createsPomodoro: Bool? = nil,
+        pomodoroAlreadyLinked: Bool? = nil,
+        removedPomodoroLinks: Int? = nil,
+        removedScheduled: String? = nil,
+        pomodoroSelectorUnused: Bool? = nil,
         captures: [CaptureCommandSuccess] = [],
         globalDestination: CaptureGlobalDestination? = nil
     ) {
@@ -483,6 +511,18 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.parentText = parentText
         self.parentStatusSymbol = parentStatusSymbol
         self.parentStatusName = parentStatusName
+        self.toggleDirection = toggleDirection
+        self.previousTaskLine = previousTaskLine
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
+        self.previousStatusSymbol = previousStatusSymbol
+        self.previousStatusName = previousStatusName
+        self.pomodoroName = pomodoroName
+        self.createsPomodoro = createsPomodoro
+        self.pomodoroAlreadyLinked = pomodoroAlreadyLinked
+        self.removedPomodoroLinks = removedPomodoroLinks
+        self.removedScheduled = removedScheduled
+        self.pomodoroSelectorUnused = pomodoroSelectorUnused
         self.captures = captures
         self.globalDestination = globalDestination
     }
@@ -515,6 +555,18 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         parentText = try container.decodeIfPresent(String.self, forKey: .parentText)
         parentStatusSymbol = try container.decodeIfPresent(String.self, forKey: .parentStatusSymbol)
         parentStatusName = try container.decodeIfPresent(String.self, forKey: .parentStatusName)
+        toggleDirection = try container.decodeIfPresent(String.self, forKey: .toggleDirection)
+        previousTaskLine = try container.decodeIfPresent(String.self, forKey: .previousTaskLine)
+        statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol)
+        statusName = try container.decodeIfPresent(String.self, forKey: .statusName)
+        previousStatusSymbol = try container.decodeIfPresent(String.self, forKey: .previousStatusSymbol)
+        previousStatusName = try container.decodeIfPresent(String.self, forKey: .previousStatusName)
+        pomodoroName = try container.decodeIfPresent(String.self, forKey: .pomodoroName)
+        createsPomodoro = try container.decodeIfPresent(Bool.self, forKey: .createsPomodoro)
+        pomodoroAlreadyLinked = try container.decodeIfPresent(Bool.self, forKey: .pomodoroAlreadyLinked)
+        removedPomodoroLinks = try container.decodeIfPresent(Int.self, forKey: .removedPomodoroLinks)
+        removedScheduled = try container.decodeIfPresent(String.self, forKey: .removedScheduled)
+        pomodoroSelectorUnused = try container.decodeIfPresent(Bool.self, forKey: .pomodoroSelectorUnused)
         captures = try container.decodeIfPresent([CaptureCommandSuccess].self, forKey: .captures) ?? []
         globalDestination = try container.decodeIfPresent(
             CaptureGlobalDestination.self,
@@ -549,6 +601,18 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case parentText = "parent_text"
         case parentStatusSymbol = "parent_status_symbol"
         case parentStatusName = "parent_status_name"
+        case toggleDirection = "toggle_direction"
+        case previousTaskLine = "previous_task_line"
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
+        case previousStatusSymbol = "previous_status_symbol"
+        case previousStatusName = "previous_status_name"
+        case pomodoroName = "pomodoro_name"
+        case createsPomodoro = "creates_pomodoro"
+        case pomodoroAlreadyLinked = "pomodoro_already_linked"
+        case removedPomodoroLinks = "removed_pomodoro_links"
+        case removedScheduled = "removed_scheduled"
+        case pomodoroSelectorUnused = "pomodoro_selector_unused"
         case captures
         case globalDestination = "global_destination"
     }

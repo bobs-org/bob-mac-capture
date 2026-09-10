@@ -882,6 +882,104 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(success.parentLine, 1)
     }
 
+    func testCaptureCommandResponseDecodesTaskToggleSuccessAdditiveFields() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "cash",
+              "route_label": "cash.md",
+              "relative_target": "cash.md",
+              "target": "/tmp/bob/cash.md",
+              "text": "",
+              "task_line": "- [*] #task Finish Google Exit Packet! ^goog-exit",
+              "kind": "task_toggle",
+              "created": "2026-09-10",
+              "scheduled": null,
+              "placement": "toggled",
+              "block_id": "goog-exit",
+              "day_file": "/tmp/bob/2026/20260910.md",
+              "block_link": "[[cash#^goog-exit]]",
+              "toggle_direction": "next",
+              "previous_task_line": "- [ ] #task Finish Google Exit Packet! ^goog-exit",
+              "status_symbol": "*",
+              "status_name": "Next",
+              "previous_status_symbol": " ",
+              "previous_status_name": "Ready",
+              "pomodoro_name": "CODING",
+              "creates_pomodoro": true,
+              "pomodoro_already_linked": false,
+              "removed_pomodoro_links": 2,
+              "removed_scheduled": "2026-09-20",
+              "pomodoro_selector_unused": false
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.kind, "task_toggle")
+        XCTAssertEqual(success.placement, "toggled")
+        XCTAssertEqual(success.toggleDirection, "next")
+        XCTAssertEqual(success.previousTaskLine, "- [ ] #task Finish Google Exit Packet! ^goog-exit")
+        XCTAssertEqual(success.statusSymbol, "*")
+        XCTAssertEqual(success.statusName, "Next")
+        XCTAssertEqual(success.previousStatusSymbol, " ")
+        XCTAssertEqual(success.previousStatusName, "Ready")
+        XCTAssertEqual(success.pomodoroName, "CODING")
+        XCTAssertEqual(success.createsPomodoro, true)
+        XCTAssertEqual(success.pomodoroAlreadyLinked, false)
+        XCTAssertEqual(success.removedPomodoroLinks, 2)
+        XCTAssertEqual(success.removedScheduled, "2026-09-20")
+        XCTAssertEqual(success.pomodoroSelectorUnused, false)
+        XCTAssertEqual(success.previewBlockLines, [success.taskLine])
+    }
+
+    func testCaptureCommandResponseDecodesTaskToggleAdditiveFieldsAsNilWhenAbsent() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "dev",
+              "route_label": "dev.md",
+              "relative_target": "dev.md",
+              "target": "/tmp/bob/dev.md",
+              "text": "Do work",
+              "task_line": "- [ ] #task Do work ^new-id",
+              "kind": "task",
+              "created": "2026-08-14",
+              "placement": "inserted",
+              "block_id": "new-id"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertNil(success.toggleDirection)
+        XCTAssertNil(success.previousTaskLine)
+        XCTAssertNil(success.statusSymbol)
+        XCTAssertNil(success.statusName)
+        XCTAssertNil(success.previousStatusSymbol)
+        XCTAssertNil(success.previousStatusName)
+        XCTAssertNil(success.pomodoroName)
+        XCTAssertNil(success.createsPomodoro)
+        XCTAssertNil(success.pomodoroAlreadyLinked)
+        XCTAssertNil(success.removedPomodoroLinks)
+        XCTAssertNil(success.removedScheduled)
+        XCTAssertNil(success.pomodoroSelectorUnused)
+    }
+
     func testCompletionResponseDecodesRouteAndTaskCandidates() throws {
         let data = Data(
             """

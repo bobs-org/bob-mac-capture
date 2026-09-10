@@ -353,7 +353,7 @@ final class NotificationService: NSObject, ObservableObject {
         globalDestination: CaptureGlobalDestination?
     ) -> CaptureNotificationPresentation {
         let nonemptyCaptures = captures.isEmpty ? [] : captures
-        let targetPaths = orderedUniquePaths(nonemptyCaptures.map(\.target).filter { !$0.isEmpty })
+        let targetPaths = notificationTargetPaths(for: nonemptyCaptures)
         guard nonemptyCaptures.count != 1, !nonemptyCaptures.isEmpty else {
             guard let capture = nonemptyCaptures.first else {
                 return CaptureNotificationPresentation(
@@ -361,6 +361,14 @@ final class NotificationService: NSObject, ObservableObject {
                     subtitle: "",
                     body: "",
                     targetPaths: []
+                )
+            }
+            if let toggle = CaptureTogglePresentation(capture: capture) {
+                return CaptureNotificationPresentation(
+                    title: toggle.notificationTitle,
+                    subtitle: toggle.routeDestinationLabel,
+                    body: toggle.notificationBody,
+                    targetPaths: targetPaths
                 )
             }
             let kind = friendlyKindLabel(capture.kind)
@@ -459,6 +467,8 @@ final class NotificationService: NSObject, ObservableObject {
             return "Task"
         case "note", "bullet", "sub-bullet", "sub_bullet":
             return "Note"
+        case "task-toggle", "task_toggle":
+            return "Toggle"
         default:
             return kind
                 .split { $0 == "-" || $0 == "_" || $0 == " " }
@@ -494,6 +504,25 @@ final class NotificationService: NSObject, ObservableObject {
             return ""
         }
         return "\(labels.count) destination\(labels.count == 1 ? "" : "s")"
+    }
+
+    // A toggle's day file is only worth an "Open Note(s)" action when the toggle
+    // actually wrote to it (linked, unlinked, or cleaned up a duplicate) — matching the
+    // gate `CapturePanelModel.uniqueTargetURLs` uses for Command-Return.
+    nonisolated private static func notificationTargetPaths(
+        for captures: [CaptureCommandSuccess]
+    ) -> [String] {
+        var paths: [String] = []
+        for capture in captures {
+            paths.append(capture.target)
+            if let dayFile = capture.dayFile,
+               let toggle = CaptureTogglePresentation(capture: capture),
+               toggle.dayFileChanged
+            {
+                paths.append(dayFile)
+            }
+        }
+        return orderedUniquePaths(paths.filter { !$0.isEmpty })
     }
 
     nonisolated private static func orderedUniquePaths(_ paths: [String]) -> [String] {

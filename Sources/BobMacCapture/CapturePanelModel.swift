@@ -223,6 +223,23 @@ final class CapturePanelModel: ObservableObject {
         plainDraft.contains("%")
     }
 
+    /// The live preview's toggle presentation, when the current draft is exactly one
+    /// `task_toggle` item. `nil` for an empty draft, a non-toggle draft, or a batch of
+    /// more than one item, where "Set Next"/"Set Open" would misname the primary action.
+    var togglePresentation: CaptureTogglePresentation? {
+        guard previewResults.count == 1, let previewResult else {
+            return nil
+        }
+        return CaptureTogglePresentation(capture: previewResult)
+    }
+
+    /// The footer's primary action verb: `Capture` unless the draft is a single toggle
+    /// item, in which case it names the toggle direction so Return's meaning is never a
+    /// surprise. Never varies with `dryRun` — it always names what Return will do next.
+    var primaryActionTitle: String {
+        togglePresentation?.primaryActionTitle ?? "Capture"
+    }
+
     func setProcessClient(_ processClient: BobProcessClient?) {
         self.processClient = processClient
         if processClient == nil {
@@ -1121,11 +1138,15 @@ final class CapturePanelModel: ObservableObject {
             parseDiagnostics = []
             completionResponse = nil
             previewState = .idle
-            statusText = captureStatus(
-                prefix: "Captured",
-                captures: captures,
-                globalDestination: success.globalDestination
-            )
+            if let presentation = Self.soleTogglePresentation(for: captures) {
+                statusText = presentation.voiceOverAnnouncement
+            } else {
+                statusText = captureStatus(
+                    prefix: "Captured",
+                    captures: captures,
+                    globalDestination: success.globalDestination
+                )
+            }
             successAnnouncementTick += 1
             notificationService?.notifyCaptureSuccess(
                 captures: captures,
@@ -1171,15 +1192,31 @@ final class CapturePanelModel: ObservableObject {
             previewResults = captures
             previewGlobalDestination = success.globalDestination
             errorMessage = nil
-            statusText = captureStatus(
-                prefix: "Preview",
-                captures: captures,
-                globalDestination: success.globalDestination
-            )
+            if let presentation = Self.soleTogglePresentation(for: captures) {
+                statusText = presentation.statusText
+            } else {
+                statusText = captureStatus(
+                    prefix: "Preview",
+                    captures: captures,
+                    globalDestination: success.globalDestination
+                )
+            }
         case .failure(let failure):
             errorMessage = failure.error
             statusText = "Preview failed"
         }
+    }
+
+    /// A batch's toggle presentation, only when it is exactly one `task_toggle` item —
+    /// the same single-item gate `captureStatus`/`captureSummary` use before falling
+    /// back to their generic per-kind wording.
+    private static func soleTogglePresentation(
+        for captures: [CaptureCommandSuccess]
+    ) -> CaptureTogglePresentation? {
+        guard captures.count == 1 else {
+            return nil
+        }
+        return CaptureTogglePresentation(capture: captures[0])
     }
 
     private func failPreview(requestID: UUID, error: Error) {
@@ -1478,7 +1515,9 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func shouldRequestCompletion(parse: CaptureParseResponse, cursor: Int) -> Bool {
-        let completionNeeds = Set(["route", "section", "pomodoro_id", "task", "task_section"])
+        let completionNeeds = Set([
+            "route", "section", "pomodoro_id", "pomodoro_name", "task", "task_section",
+        ])
         if !completionNeeds.isDisjoint(with: Set(parse.needs)) {
             return true
         }
@@ -1489,9 +1528,13 @@ final class CapturePanelModel: ObservableObject {
             "task_block_id_route",
             "pomodoro_route",
             "pomodoro_block_id",
+            "pomodoro_name",
             "sub_bullet_route",
             "sub_bullet_block_id",
             "sub_bullet_section",
+            "task_toggle_route",
+            "task_toggle_block_id",
+            "task_toggle_pomodoro_name",
             "global_route",
             "global_sub_bullet_route",
             "global_sub_bullet_block_id",
@@ -1685,16 +1728,29 @@ final class CapturePanelModel: ObservableObject {
         capture.routeLabel.isEmpty ? capture.relativeTarget : capture.routeLabel
     }
 
+    // A toggle's route note and Bob's daily note may be the same file, or the daily
+    // note may be untouched (nothing was linked or removed) — both are handled by
+    // `seen` deduplication plus gating the day file on `dayFileChanged`, so Command-
+    // Return never opens a note the toggle didn't actually write to.
     private func uniqueTargetURLs(from captures: [CaptureCommandSuccess]) -> [URL] {
         var seen = Set<String>()
         var urls: [URL] = []
-        for capture in captures {
-            guard seen.insert(capture.target).inserted,
-                  let url = ObsidianOpenURL.url(forAbsolutePath: capture.target)
+        func appendURL(forAbsolutePath path: String) {
+            guard seen.insert(path).inserted,
+                  let url = ObsidianOpenURL.url(forAbsolutePath: path)
             else {
-                continue
+                return
             }
             urls.append(url)
+        }
+        for capture in captures {
+            appendURL(forAbsolutePath: capture.target)
+            if let dayFile = capture.dayFile,
+               let presentation = CaptureTogglePresentation(capture: capture),
+               presentation.dayFileChanged
+            {
+                appendURL(forAbsolutePath: dayFile)
+            }
         }
         return urls
     }

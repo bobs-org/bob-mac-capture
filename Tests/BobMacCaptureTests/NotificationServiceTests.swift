@@ -214,6 +214,36 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertNil(content.userInfo[NotificationService.targetPathsKey])
     }
 
+    func testTaskToggleSuccessContentUsesToggleCopyAndOpensBothChangedNotes() {
+        let content = NotificationService.successContent(captures: [
+            toggleCapture(direction: "next", dayFileChanged: true),
+        ])
+
+        XCTAssertEqual(content.title, "Set Next")
+        XCTAssertEqual(content.subtitle, "cash.md \u{00b7} ^goog-exit")
+        XCTAssertTrue(content.body.contains("Ready \u{2192} Next"))
+        XCTAssertTrue(content.body.contains("+ [[cash#^goog-exit]]"))
+        // Two files changed (the route note and the daily note), so this uses the
+        // plural "Open Notes" category the same way an ordinary multi-target batch does.
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureBatchCategoryIdentifier)
+        XCTAssertEqual(
+            content.userInfo[NotificationService.targetPathsKey] as? [String],
+            ["/tmp/bob/cash.md", "/tmp/bob/2026/20260910.md"]
+        )
+    }
+
+    func testTaskToggleSuccessContentOmitsDayFileFromTargetsWhenNothingChangedThere() {
+        let content = NotificationService.successContent(captures: [
+            toggleCapture(direction: "next", dayFileChanged: false),
+        ])
+
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureCategoryIdentifier)
+        XCTAssertEqual(
+            content.userInfo[NotificationService.targetPathsKey] as? [String],
+            ["/tmp/bob/cash.md"]
+        )
+    }
+
     func testFailureContentCarriesOnlyTheProvidedMessage() {
         let content = NotificationService.failureContent(message: "route not found")
 
@@ -538,6 +568,39 @@ final class NotificationServiceTests: XCTestCase {
             placement: "inserted",
             blockID: blockID,
             parentText: parentText
+        )
+    }
+
+    // `dayFileChanged: false` models an idempotent re-toggle onto an already-linked
+    // entry, the one path where `CaptureTogglePresentation.dayFileChanged` is false for
+    // direction `next` with no later-duplicate cleanup.
+    private func toggleCapture(direction: String, dayFileChanged: Bool) -> CaptureCommandSuccess {
+        CaptureCommandSuccess(
+            ok: true,
+            dryRun: false,
+            routed: true,
+            route: "cash",
+            routeLabel: "cash.md",
+            relativeTarget: "cash.md",
+            target: "/tmp/bob/cash.md",
+            text: "",
+            taskLine: "- [*] #task Finish Google Exit Packet! ^goog-exit",
+            kind: "task_toggle",
+            created: "2026-09-10",
+            placement: "toggled",
+            blockID: "goog-exit",
+            dayFile: "/tmp/bob/2026/20260910.md",
+            blockLink: "[[cash#^goog-exit]]",
+            toggleDirection: direction,
+            previousTaskLine: "- [ ] #task Finish Google Exit Packet! ^goog-exit",
+            statusSymbol: "*",
+            statusName: "Next",
+            previousStatusSymbol: " ",
+            previousStatusName: "Ready",
+            createsPomodoro: false,
+            pomodoroAlreadyLinked: !dayFileChanged,
+            removedPomodoroLinks: 0,
+            pomodoroSelectorUnused: false
         )
     }
 }

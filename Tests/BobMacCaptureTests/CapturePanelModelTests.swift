@@ -412,6 +412,32 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(dismissCount, 1)
     }
 
+    func testTogglePresentationAndPrimaryActionTitleReflectASingleItemLivePreview() {
+        let model = CapturePanelModel()
+        let toggle = toggleSuccess(direction: "next")
+        model.previewResult = toggle
+        model.previewResults = [toggle]
+
+        XCTAssertEqual(model.togglePresentation?.direction, .next)
+        XCTAssertEqual(model.primaryActionTitle, "Set Next")
+    }
+
+    func testPrimaryActionTitleDefaultsToCaptureWithoutAToggleAndForABatch() {
+        let model = CapturePanelModel()
+
+        XCTAssertNil(model.togglePresentation)
+        XCTAssertEqual(model.primaryActionTitle, "Capture")
+
+        let toggle = toggleSuccess(direction: "open")
+        model.previewResult = toggle
+        // A toggle participates normally in a multi-item draft, but "Set Open" would
+        // misname the primary action once other items are in the same batch.
+        model.previewResults = [toggle, sampleSuccess()]
+
+        XCTAssertNil(model.togglePresentation)
+        XCTAssertEqual(model.primaryActionTitle, "Capture")
+    }
+
     func testDefaultConstructionCreatesUsableCanceledDraftStash() {
         let model = CapturePanelModel()
         model.plainDraft = "Call bank @Cash"
@@ -2392,6 +2418,36 @@ final class CapturePanelModelTests: XCTestCase {
             kind: "task",
             created: "2026-08-14",
             placement: "append"
+        )
+    }
+
+    private func toggleSuccess(direction: String) -> CaptureCommandSuccess {
+        CaptureCommandSuccess(
+            ok: true,
+            dryRun: true,
+            routed: true,
+            route: "cash",
+            routeLabel: "cash.md",
+            relativeTarget: "cash.md",
+            target: "/tmp/bob/cash.md",
+            text: "",
+            taskLine: "- [*] #task Finish Google Exit Packet! ^goog-exit",
+            kind: "task_toggle",
+            created: "2026-09-10",
+            placement: "toggled",
+            blockID: "goog-exit",
+            dayFile: "/tmp/bob/2026/20260910.md",
+            blockLink: "[[cash#^goog-exit]]",
+            toggleDirection: direction,
+            previousTaskLine: "- [ ] #task Finish Google Exit Packet! ^goog-exit",
+            statusSymbol: direction == "next" ? "*" : " ",
+            statusName: direction == "next" ? "Next" : "Ready",
+            previousStatusSymbol: direction == "next" ? " " : "*",
+            previousStatusName: direction == "next" ? "Ready" : "Next",
+            createsPomodoro: false,
+            pomodoroAlreadyLinked: false,
+            removedPomodoroLinks: 0,
+            pomodoroSelectorUnused: false
         )
     }
 

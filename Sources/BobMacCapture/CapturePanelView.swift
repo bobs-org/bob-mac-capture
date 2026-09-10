@@ -594,7 +594,7 @@ private struct CapturePanelFooter: View {
             }
             .help("Resolves the current clipboard/history and shows the exact destination without writing anything.")
             .disabled(!model.hasDraft || model.isSubmitting || model.isPreviewing || model.inlinePromptVisible)
-            Button("Capture") {
+            Button(model.primaryActionTitle) {
                 model.submit(openAfterCapture: false)
             }
             .keyboardShortcut(.defaultAction)
