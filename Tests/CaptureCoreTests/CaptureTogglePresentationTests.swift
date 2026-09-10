@@ -39,9 +39,19 @@ final class CaptureTogglePresentationTests: XCTestCase {
         XCTAssertTrue(presentation.dayFileChanged)
         XCTAssertEqual(presentation.previousStatusMarker, "[ ]")
         XCTAssertEqual(presentation.statusMarker, "[*]")
+        XCTAssertEqual(presentation.taskPreviewText, "#task Finish Google Exit Packet!")
+        XCTAssertEqual(
+            presentation.transitionText,
+            "[ ] \u{2192} [*]  #task Finish Google Exit Packet!"
+        )
         XCTAssertEqual(presentation.addedLinkText, "[[cash#^goog-exit]]")
         XCTAssertNil(presentation.removedLinksText)
         XCTAssertEqual(presentation.chips, [])
+        XCTAssertEqual(
+            presentation.previewAccessibilitySummary,
+            "cash.md \u{00b7} ^goog-exit, [ ] to [*] #task Finish Google Exit Packet!, "
+                + "2026/20260910.md, adds [[cash#^goog-exit]]"
+        )
         XCTAssertEqual(presentation.primaryActionTitle, "Set Next")
         XCTAssertTrue(presentation.statusText.hasPrefix("Set Next \u{2192}"))
         XCTAssertTrue(presentation.voiceOverAnnouncement.contains("linked to today's Pomodoro"))
@@ -198,6 +208,32 @@ final class CaptureTogglePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.previousStatusMarker, "[?]")
         XCTAssertEqual(presentation.statusMarker, "[?]")
         XCTAssertEqual(presentation.previousTaskLine, presentation.taskLine)
+    }
+
+    func testTaskPreviewTextRemovesCheckboxInlineFieldsAndTrailingBlockID() throws {
+        let success = CaptureCommandSuccess(
+            ok: true,
+            dryRun: false,
+            routed: true,
+            routeLabel: "cash.md",
+            relativeTarget: "cash.md",
+            target: "/tmp/bob/cash.md",
+            text: "",
+            taskLine: "  12. [*] Finish packet [scheduled::2026-09-20] "
+                + "[dependsOn::x] ^goog-exit",
+            kind: "task_toggle",
+            created: "2026-09-10",
+            placement: "toggled",
+            blockID: "goog-exit",
+            toggleDirection: "next",
+            statusSymbol: "*",
+            previousStatusSymbol: " "
+        )
+
+        let presentation = try XCTUnwrap(CaptureTogglePresentation(capture: success))
+
+        XCTAssertEqual(presentation.taskPreviewText, "Finish packet")
+        XCTAssertEqual(presentation.transitionText, "[ ] \u{2192} [*]  Finish packet")
     }
 
     func testRelativeDayFileLabelFallsBackToAbsolutePathWhenPrefixesDoNotShareARoot() throws {

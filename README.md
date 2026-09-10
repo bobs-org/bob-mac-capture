@@ -43,13 +43,17 @@ mutation.
 - A `bob` build that supports `@@route` / `@@route+block-id` global destination
   declarations anywhere in the draft, `capture-rewrite`, `capture-complete --all-tasks`,
   `capture-task-id`, `capture-pomodoro-name`, `task_section` completion for
-  `@route+block-id#`, and `pomodoro_name` completion for `@route:block-id#`, including
-  the additive `creates_pomodoro` create-future-Pomodoro action. Older builds
-  can still capture ordinary drafts, but global declarations, bare-`@@` absorption, the
-  Add block ID flow, the Name Pomodoro flow, and the task-section popup report the local
-  Bob error or an empty list until Bob is upgraded. An older Bob that does not emit
-  `creates_pomodoro` still captures `@route:id#name` create-on-submit; the Mac app
-  decodes a missing flag as false and simply omits the explicit Create row.
+  `@route+block-id#`, `pomodoro_name` completion for `@route:block-id#` and bare
+  task-toggle `@route+block-id#`, the additive `creates_pomodoro`
+  create-future-Pomodoro action, `task_toggle` capture JSON, and the three
+  `task_toggle_*` parse spans. Older builds can still capture ordinary drafts, but
+  global declarations, bare-`@@` absorption, the Add block ID flow, the Name Pomodoro
+  flow, the task-section popup, and the task-toggle footer/preview report the local Bob
+  error or an empty list until Bob is upgraded. An older Bob that sees bare
+  `@route+block-id` as a missing-text sub-bullet reports `task text is required`, which
+  the panel surfaces unchanged. An older Bob that does not emit `creates_pomodoro` still
+  captures `@route:id#name` create-on-submit; the Mac app decodes a missing flag as false
+  and simply omits the explicit Create row.
 
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.
@@ -139,13 +143,15 @@ or expired certificate can require reauthorizing those system permissions.
   reruns parse/preview. When Bob cannot absorb a marker such as `@route#Section`,
   `@route^block-id`, `@route:block-id`, or a Pomodoro-note `#`, the app leaves the draft
   untouched and announces Bob's notice.
-  Typing `#` immediately after a resolved `@route+block-id` opens `task_section`
-  completion for that task's ALL-CAPS section bullets; a standalone trailing `#` stays
-  the Pomodoro-note marker and `@route#` stays note-section completion. Typing `#`
-  immediately after a resolved `@route:block-id` — or a bare `@route:#` — opens
-  `pomodoro_name` completion for today's open Pomodoros. Colon-Pomodoro
-  (`@route:id#name`) selects or creates a named Pomodoro; plus-task-section
-  (`@route+id#section`) stays a distinct family and is unchanged. For
+  Typing `#` immediately after a resolved `@route+block-id` follows the draft's mode:
+  while that item has no body text it opens `pomodoro_name` completion for the task
+  toggle, and once the item has body text it opens `task_section` completion for that
+  task's ALL-CAPS section bullets. A standalone trailing `#` stays the Pomodoro-note
+  marker and `@route#` stays note-section completion. Typing `#` immediately after a
+  resolved `@route:block-id` — or a bare `@route:#` — opens `pomodoro_name` completion
+  for today's open Pomodoros. Colon-Pomodoro (`@route:id#name`) selects or creates a
+  named Pomodoro; plus-sub-bullet (`@route+id#section`) keeps its task-section selector
+  as soon as body text exists. For
   blank-line-separated drafts, completion still sends the complete draft as one argv
   value; Bob scopes the answer to the item or declaration containing the UTF-8 cursor and
   returns replacement ranges in draft-global byte offsets. See "Wikilink Completion"
@@ -194,18 +200,23 @@ or expired certificate can require reauthorizing those system permissions.
   The app normalizes both shapes to one collection before updating preview, status,
   VoiceOver announcements, notification content, and Command-Return opening; it keeps the
   additive top-level `global_destination` summary alongside that normalized collection
-  and never splits a draft into multiple mutating `bob` subprocesses.
+  and never splits a draft into multiple mutating `bob` subprocesses. When live preview
+  reports exactly one `task_toggle`, the footer's primary action changes from
+  **Capture** to **Set Next** or **Set Open**; batches keep **Capture** because Return
+  will submit more than the toggle.
 - Preview shows every block Bob will write, in Bob's own order: each item's parent
   `task_line`, authored children, then `clip.lines` and `schedule_log.lines` when the
-  response carries them. One item stays compact; a batch renders an ordered stack with
-  item count, destination/kind metadata, dividers, and exact `previewBlockLines`. When
-  Bob reports a global destination, preview and the destination detail show one compact
-  shared-scope line (`All items → foo.md` or `All items → foo.md · under ^a-id`) and
-  mark item-level deviations as local overrides instead of repeating the shared target
-  on every item. The outer auxiliary detail region owns scrolling, so preview itself
-  never nests another scroll view. Continuous live preview passes `--no-clip`, so it has
-  no `clip` to show; the explicit **Preview** button and **Capture** resolve the
-  clipboard and therefore mirror the full block.
+  response carries them. Task-toggle items instead show the route/block destination, the
+  status transition, the daily-note destination, and the `+` or `−` Pomodoro-link line
+  Bob planned. One item stays compact; a batch renders an ordered stack with item count,
+  destination/kind metadata, dividers, and exact `previewBlockLines` or toggle
+  transition rows. When Bob reports a global destination, preview and the destination
+  detail show one compact shared-scope line (`All items → foo.md` or
+  `All items → foo.md · under ^a-id`) and mark item-level deviations as local overrides
+  instead of repeating the shared target on every item. The outer auxiliary detail region
+  owns scrolling, so preview itself never nests another scroll view. Continuous live
+  preview passes `--no-clip`, so it has no `clip` to show; the explicit **Preview**
+  button and **Capture** resolve the clipboard and therefore mirror the full block.
 - The preview path assigns a fixed `BOB_PRIORITY_ROLL_SEED` for the draft lifecycle so
   randomized `p:<N>` scheduled dates can be reused by submission. Bob derives
   item-specific rolls from that seed for batch drafts, and the seed resets only after a
@@ -317,15 +328,17 @@ authored `-`/`*`/`+` bullets. Column-zero bullets become first-level authored ch
 bullets prefixed by exactly two ASCII spaces become nested authored children under the
 nearest preceding first-level authored child.
 A marker (`@route`,
-`@route+block-id` for an existing-task sub-bullet, `@route+block-id#section` to nest
-under one of that task's ALL-CAPS section bullets, `@route^block-id` for an ordinary
-task with an authored block ID, `s:<N>`, `p:<N>`, `%`, …) at the end of any valid line
-configures that item even when it appears on a child line. The app never parses that
-punctuation itself: highlighting and completion follow bob-cli's semantic spans. Both
-families complete their route side; only the `+` family's right-hand side offers
-existing tasks, `#` after a resolved `@route+block-id` offers that task's sections, and
-the `^` family's authored ID has no picker. The retired `@route::block-id` spelling is a
-parse diagnostic from `bob capture-parse`, not a supported interactive form.
+`@route+block-id` alone for a task-toggle item, `@route+block-id` with body text for an
+existing-task sub-bullet, `@route+block-id#section` to nest under one of that task's
+ALL-CAPS section bullets, `@route^block-id` for an ordinary task with an authored block
+ID, `s:<N>`, `p:<N>`, `%`, …) at the end of any valid line configures that item even
+when it appears on a child line. The app never parses that punctuation itself:
+highlighting and completion follow bob-cli's semantic spans. Both families complete
+their route side; only the `+` family's right-hand side offers existing tasks, `#` after
+a resolved `@route+block-id` offers Pomodoro names while the item has no body text and
+task sections once it does, and the `^` family's authored ID has no picker. The retired
+`@route::block-id` spelling is a parse diagnostic from `bob capture-parse`, not a
+supported interactive form.
 
 ```text
 Prepare the launch review
@@ -354,12 +367,15 @@ Second task @bar
 Bob's routed marker syntax works directly in the editor. `@route^block-id` captures an
 ordinary `[ ]` task with a trailing `^block-id` and no Pomodoro task link, while
 `@route:block-id` keeps the Pomodoro-linked next-task behavior, `@route:block-id#name`
-targets a named open Pomodoro by slug, `@route+block-id` nests beneath an existing task,
-and `@route+block-id#section` nests under that task's matching section bullet. Typing `#`
-right after a resolved `@route+block-id` opens the task-section popup; typing `#` right
-after a resolved `@route:block-id` opens the Pomodoro-name popup. The app does not
-duplicate those grammar rules; it colors the span kinds Bob reports, asks Bob for
-completion at the real caret, and submits the original draft text.
+targets a named open Pomodoro by slug, a marker-only `@route+block-id` toggles that
+existing task between Ready and Next, and `@route+block-id` with body text nests beneath
+the task. `@route+block-id#section` nests under that task's matching section bullet once
+body text is present; the same `#` position opens the Pomodoro-name popup while the item
+is still marker-only, including the create-future-Pomodoro row and **Name Pomodoro**
+prompt. The unchanged `@route+` task picker and Add block ID prompt are still how a task
+without a block ID becomes selectable. The app does not duplicate those grammar rules; it
+colors the span kinds Bob reports, asks Bob for completion at the real caret, and
+submits the original draft text.
 
 Ctrl-J starts the next canonical `- ` row from anywhere in the draft, copying exactly the
 current authored row's supported indentation (zero or two ASCII spaces). On a line that

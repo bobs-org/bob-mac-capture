@@ -33,11 +33,16 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
 
     public let previousTaskLine: String
     public let taskLine: String
+    /// Task body used in preview after removing the Markdown checkbox, inline fields,
+    /// and trailing block ID when those can be identified from Bob's task line.
+    public let taskPreviewText: String
     /// `"[ ]"`, `"[*]"`, `"[?]"` — bracket-formatted, matching `style_task_status_marker`
     /// minus the color, which is a view concern. Falls back to `"[?]"` if Bob omitted
     /// the symbol, which a toggle result never does.
     public let previousStatusMarker: String
     public let statusMarker: String
+    /// `"[ ] → [*]  Finish task"` — the compact transition line shown in preview.
+    public let transitionText: String
 
     public let blockID: String?
     public let blockLink: String?
@@ -64,6 +69,7 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
     public let voiceOverAnnouncement: String
     public let notificationTitle: String
     public let notificationBody: String
+    public let previewAccessibilitySummary: String
 
     public init?(capture: CaptureCommandSuccess) {
         guard let rawDirection = capture.toggleDirection,
@@ -83,6 +89,12 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         taskLine = capture.taskLine
         previousStatusMarker = Self.marker(for: capture.previousStatusSymbol)
         statusMarker = Self.marker(for: capture.statusSymbol)
+        taskPreviewText = Self.taskPreviewText(
+            from: capture.taskLine,
+            blockID: capture.blockID
+        )
+        transitionText =
+            "\(previousStatusMarker) \u{2192} \(statusMarker)  \(taskPreviewText)"
 
         blockLink = capture.blockLink
         pomodoroName = capture.pomodoroName
@@ -179,6 +191,22 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
             bodyLines.append(chips.joined(separator: " \u{00b7} "))
         }
         notificationBody = bodyLines.joined(separator: "\n")
+
+        var previewParts = [
+            routeDestinationLabel,
+            "\(previousStatusMarker) to \(statusMarker) \(taskPreviewText)",
+        ]
+        if let dayFileDestinationLabel {
+            previewParts.append(dayFileDestinationLabel)
+        }
+        if let addedLinkText {
+            previewParts.append("adds \(addedLinkText)")
+        }
+        if let removedLinksText {
+            previewParts.append(removedLinksText)
+        }
+        previewParts.append(contentsOf: chips)
+        previewAccessibilitySummary = previewParts.joined(separator: ", ")
     }
 
     private static func marker(for symbol: String?) -> String {
@@ -212,5 +240,133 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
             return dayFile
         }
         return String(dayFile.dropFirst(bobDirPrefix.count))
+    }
+
+    private static func taskPreviewText(from taskLine: String, blockID: String?) -> String {
+        let body = taskBody(from: taskLine)
+        let withoutBlockID = removeTrailingBlockID(from: body, blockID: blockID)
+        let withoutInlineFields = removeInlineFields(from: withoutBlockID)
+        let normalized = normalizeWhitespace(withoutInlineFields)
+        return normalized.isEmpty ? taskLine : normalized
+    }
+
+    private static func taskBody(from taskLine: String) -> String {
+        let trimmed = taskLine.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let checkboxStart = checkboxStart(in: trimmed),
+              let close = trimmed[checkboxStart...].firstIndex(of: "]")
+        else {
+            return trimmed
+        }
+        var bodyStart = trimmed.index(after: close)
+        while bodyStart < trimmed.endIndex, trimmed[bodyStart].isWhitespace {
+            bodyStart = trimmed.index(after: bodyStart)
+        }
+        return String(trimmed[bodyStart...])
+    }
+
+    private static func checkboxStart(in trimmed: String) -> String.Index? {
+        guard trimmed.count >= 3 else {
+            return nil
+        }
+
+        let first = trimmed[trimmed.startIndex]
+        let second = trimmed.index(after: trimmed.startIndex)
+        if (first == "-" || first == "*" || first == "+"),
+           trimmed[second] == " "
+        {
+            let checkbox = trimmed.index(after: second)
+            return trimmed[checkbox] == "[" ? checkbox : nil
+        }
+
+        var cursor = trimmed.startIndex
+        while cursor < trimmed.endIndex, trimmed[cursor].isNumber {
+            cursor = trimmed.index(after: cursor)
+        }
+        guard cursor > trimmed.startIndex,
+              cursor < trimmed.endIndex,
+              trimmed[cursor] == "." || trimmed[cursor] == ")"
+        else {
+            return nil
+        }
+
+        cursor = trimmed.index(after: cursor)
+        var sawSpace = false
+        while cursor < trimmed.endIndex, trimmed[cursor].isWhitespace {
+            sawSpace = true
+            cursor = trimmed.index(after: cursor)
+        }
+        guard sawSpace, cursor < trimmed.endIndex, trimmed[cursor] == "[" else {
+            return nil
+        }
+        return cursor
+    }
+
+    private static func removeTrailingBlockID(from body: String, blockID: String?) -> String {
+        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let blockID, !blockID.isEmpty else {
+            return trimmed
+        }
+        let suffix = "^\(blockID)"
+        guard trimmed.hasSuffix(suffix) else {
+            return trimmed
+        }
+        return String(trimmed.dropLast(suffix.count))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func removeInlineFields(from text: String) -> String {
+        var output = ""
+        var cursor = text.startIndex
+        while cursor < text.endIndex {
+            if text[cursor] == "[",
+               let close = text[cursor...].firstIndex(of: "]"),
+               isInlineField(text[cursor...close])
+            {
+                output.append(" ")
+                cursor = text.index(after: close)
+            } else {
+                output.append(text[cursor])
+                cursor = text.index(after: cursor)
+            }
+        }
+        return output
+    }
+
+    private static func isInlineField(_ candidate: Substring) -> Bool {
+        guard candidate.first == "[", candidate.last == "]" else {
+            return false
+        }
+        let inner = candidate.dropFirst().dropLast()
+        guard let separator = inner.range(of: "::") else {
+            return false
+        }
+        let key = inner[..<separator.lowerBound]
+        guard let first = key.first, isInlineFieldKeyCharacter(first, isFirst: true) else {
+            return false
+        }
+        return key.dropFirst().allSatisfy {
+            isInlineFieldKeyCharacter($0, isFirst: false)
+        }
+    }
+
+    private static func isInlineFieldKeyCharacter(_ character: Character, isFirst: Bool) -> Bool {
+        guard character.unicodeScalars.count == 1,
+              let scalar = character.unicodeScalars.first
+        else {
+            return false
+        }
+        let value = scalar.value
+        let isAsciiLetter = (65 ... 90).contains(value) || (97 ... 122).contains(value)
+        guard !isFirst else {
+            return isAsciiLetter
+        }
+        return isAsciiLetter
+            || (48 ... 57).contains(value)
+            || value == 45
+            || value == 95
+    }
+
+    private static func normalizeWhitespace(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 }

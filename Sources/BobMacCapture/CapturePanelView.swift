@@ -1414,6 +1414,31 @@ private struct PreviewPane: View {
         let isLocalOverride = globalDestination.map {
             !captureUsesGlobalDestination(success, $0)
         } ?? false
+        if let toggle = CaptureTogglePresentation(capture: success) {
+            togglePreviewItem(
+                toggle,
+                success: success,
+                index: index,
+                total: total,
+                isLocalOverride: isLocalOverride
+            )
+        } else {
+            standardPreviewItem(
+                success,
+                index: index,
+                total: total,
+                isLocalOverride: isLocalOverride
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func standardPreviewItem(
+        _ success: CaptureCommandSuccess,
+        index: Int,
+        total: Int,
+        isLocalOverride: Bool
+    ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             if total > 1 {
                 Text("\(index + 1)")
@@ -1463,6 +1488,80 @@ private struct PreviewPane: View {
             .textSelection(.enabled)
     }
 
+    @ViewBuilder
+    private func togglePreviewItem(
+        _ toggle: CaptureTogglePresentation,
+        success: CaptureCommandSuccess,
+        index: Int,
+        total: Int,
+        isLocalOverride: Bool
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if total > 1 {
+                Text("\(index + 1)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text(toggle.routeDestinationLabel)
+                .fontWeight(.semibold)
+            if isLocalOverride {
+                Text("local override")
+                    .foregroundStyle(.secondary)
+            }
+            Text(success.kind)
+                .foregroundStyle(.secondary)
+        }
+        .lineLimit(1)
+
+        VStack(alignment: .leading, spacing: 3) {
+            Text(toggle.transitionText)
+                .font(.system(.callout, design: .monospaced))
+                .textSelection(.enabled)
+            if let dayFileDestinationLabel = toggle.dayFileDestinationLabel {
+                Text(dayFileDestinationLabel)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .textSelection(.enabled)
+            }
+            if let addedLinkText = toggle.addedLinkText {
+                toggleLinkLine(prefix: "+", color: .green, text: addedLinkText)
+            }
+            if let removedLinksText = toggle.removedLinksText {
+                toggleLinkLine(prefix: "\u{2212}", color: .red, text: removedLinksText)
+            }
+            if !toggle.chips.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(toggle.chips, id: \.self) { chip in
+                        Text(chip)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(togglePreviewAccessibilityLabel(
+            for: toggle,
+            success: success,
+            index: index,
+            total: total,
+            isLocalOverride: isLocalOverride
+        ))
+    }
+
+    private func toggleLinkLine(prefix: String, color: Color, text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(prefix)
+                .fontWeight(.semibold)
+                .foregroundStyle(color)
+            Text(text)
+                .font(.system(.callout, design: .monospaced))
+                .textSelection(.enabled)
+        }
+    }
+
     private func previewAccessibilityLabel(
         for success: CaptureCommandSuccess,
         index: Int,
@@ -1473,5 +1572,17 @@ private struct PreviewPane: View {
         let destination = success.routeLabel.isEmpty ? success.relativeTarget : success.routeLabel
         let override = isLocalOverride ? ", local override" : ""
         return "\(position)\(success.kind), \(destination)\(override), \(success.previewBlockLines.joined(separator: ", "))"
+    }
+
+    private func togglePreviewAccessibilityLabel(
+        for toggle: CaptureTogglePresentation,
+        success: CaptureCommandSuccess,
+        index: Int,
+        total: Int,
+        isLocalOverride: Bool
+    ) -> String {
+        let position = total > 1 ? "Item \(index + 1) of \(total), " : ""
+        let override = isLocalOverride ? ", local override" : ""
+        return "\(position)\(success.kind)\(override), \(toggle.previewAccessibilitySummary)"
     }
 }

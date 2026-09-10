@@ -419,6 +419,14 @@ final class CapturePanelModelTests: XCTestCase {
         model.previewResults = [toggle]
 
         XCTAssertEqual(model.togglePresentation?.direction, .next)
+        XCTAssertEqual(
+            model.togglePresentation?.transitionText,
+            "[ ] \u{2192} [*]  #task Finish Google Exit Packet!"
+        )
+        XCTAssertEqual(
+            model.togglePresentation?.dayFileDestinationLabel,
+            "2026/20260910.md"
+        )
         XCTAssertEqual(model.primaryActionTitle, "Set Next")
     }
 
