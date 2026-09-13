@@ -98,6 +98,9 @@ final class CapturePanelModel: ObservableObject {
     // SwiftUI can deliver the text-change callback after a programmatic binding update.
     // Remember the accepted value so that callback cannot start completion analysis again.
     private var suppressedCompletionAcceptanceDraft: String?
+    // The draft that produced the visible `completionResponse`, so a `+` commit can
+    // locate the route text by byte range instead of trusting the view-supplied caret.
+    private var completionDraftSnapshot: String?
     private var programmaticSelectionOffsetToIgnore: Int?
     private var priorityRollSeed: String?
     private var focusSequence: UInt64 = 0
@@ -246,6 +249,7 @@ final class CapturePanelModel: ObservableObject {
             statusText = "Bob is not resolved"
             previewState = .idle
             completionResponse = nil
+            completionDraftSnapshot = nil
             invalidateAnalysis()
             invalidateRewrite()
         } else if hasDraft {
@@ -284,11 +288,16 @@ final class CapturePanelModel: ObservableObject {
             priorityRollSeed = nil
             parseDiagnostics = []
             completionResponse = nil
+            completionDraftSnapshot = nil
             clearInlinePrompts()
             previewState = .idle
             statusText = ""
             invalidateAnalysis()
             invalidateRewrite()
+            return
+        }
+
+        if commitRouteCompletionOnPlus(draft: draft) {
             return
         }
 
@@ -303,6 +312,10 @@ final class CapturePanelModel: ObservableObject {
 
     func editorSelectionDidChange() {
         editorSelectionDidChange(cursorUTF8Offset: collapsedSelectionUTF8Offset())
+    }
+
+    func editorSelectionDidChange(to selection: AttributedTextSelection) {
+        editorSelectionDidChange(cursorUTF8Offset: collapsedSelectionUTF8Offset(of: selection))
     }
 
     func editorSelectionDidChange(cursorUTF8Offset: Int?) {
@@ -322,12 +335,79 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func collapsedSelectionUTF8Offset() -> Int? {
-        switch editorSelection.indices(in: attributedDraft) {
+        collapsedSelectionUTF8Offset(of: editorSelection)
+    }
+
+    func collapsedSelectionUTF8Offset(of selection: AttributedTextSelection) -> Int? {
+        switch selection.indices(in: attributedDraft) {
         case .insertionPoint(let index):
             return utf8Offset(in: attributedDraft, at: index)
         case .ranges(_):
             return nil
         }
+    }
+
+    // Treats `+` as "accept the visible route completion" the same way Return does,
+    // so the user never has to accept the route before opening the task picker.
+    // Decides purely from the draft diff against `completionDraftSnapshot` — never
+    // from the view-supplied caret, which SwiftUI can report one edit behind.
+    private func commitRouteCompletionOnPlus(draft: String) -> Bool {
+        guard completionVisible, completionResponse?.context == "route",
+              let completionResponse, let snapshot = completionDraftSnapshot
+        else {
+            return false
+        }
+
+        let r = completionResponse.replacement
+        guard let typedRange = stringRange(in: snapshot, byteRange: r) else {
+            return false
+        }
+        let typed = String(snapshot[typedRange])
+        guard !typed.isEmpty else {
+            return false
+        }
+
+        guard let prefixRange = stringRange(in: snapshot, start: 0, end: r.end),
+              let suffixRange = stringRange(in: snapshot, start: r.end, end: snapshot.utf8.count)
+        else {
+            return false
+        }
+        let expectedDraft = String(snapshot[prefixRange]) + "+" + String(snapshot[suffixRange])
+        guard draft == expectedDraft else {
+            return false
+        }
+
+        let hasExactTypedMatch = completionResponse.candidates.contains { candidate in
+            guard let route = candidate.route else {
+                return false
+            }
+            return route.caseInsensitiveCompare(typed) == .orderedSame
+        }
+
+        if hasExactTypedMatch {
+            dismissCompletion()
+            scheduleAnalysis(cursorUTF8Offset: r.end + 1, requestCompletion: true)
+            return true
+        }
+
+        guard let candidate = selectedCompletion,
+              let routeRange = stringRange(in: draft, start: r.start, end: r.end)
+        else {
+            return false
+        }
+
+        var text = draft
+        text.replaceSubrange(routeRange, with: candidate.replacement)
+        let caret = r.start + candidate.replacement.utf8.count + 1
+        guard stringRange(in: text, start: caret, end: caret) != nil else {
+            return false
+        }
+
+        dismissCompletion()
+        suppressedCompletionAcceptanceDraft = text
+        setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+        scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true)
+        return true
     }
 
     func submit(openAfterCapture: Bool) {
@@ -584,6 +664,7 @@ final class CapturePanelModel: ObservableObject {
         invalidateRewrite()
         parseDiagnostics = []
         completionResponse = nil
+        completionDraftSnapshot = nil
         clearInlinePrompts()
         previewState = .idle
         statusText = ""
@@ -640,6 +721,7 @@ final class CapturePanelModel: ObservableObject {
 
     func dismissCompletion() {
         completionResponse = nil
+        completionDraftSnapshot = nil
         selectedCompletionIndex = 0
     }
 
@@ -1137,6 +1219,7 @@ final class CapturePanelModel: ObservableObject {
             priorityRollSeed = nil
             parseDiagnostics = []
             completionResponse = nil
+            completionDraftSnapshot = nil
             previewState = .idle
             if let presentation = Self.soleTogglePresentation(for: captures) {
                 statusText = presentation.voiceOverAnnouncement
@@ -1307,6 +1390,7 @@ final class CapturePanelModel: ObservableObject {
                                 return
                             }
                             self?.completionResponse = cached
+                            self?.completionDraftSnapshot = draft
                             self?.selectedCompletionIndex = 0
                         }
                         return
@@ -1324,6 +1408,7 @@ final class CapturePanelModel: ObservableObject {
                                 return
                             }
                             self?.completionResponse = completion.candidates.isEmpty ? nil : completion
+                            self?.completionDraftSnapshot = completion.candidates.isEmpty ? nil : draft
                             self?.selectedCompletionIndex = 0
                             self?.applyCompletionWarnings(completion.warnings)
                         }

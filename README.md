@@ -136,6 +136,10 @@ or expired certificate can require reauthorizing those system permissions.
   cached route completion strips the complete `@@` sigil just like Bob's server
   response. The authored ID side has no existing-task picker and an empty completion
   result is shown as no list.
+  While route completion is visible, typing `+` directly after the route text accepts
+  the selected route and keeps the `+`: an exact typed route (case-insensitive) is kept
+  as typed, otherwise the selected candidate's route is spliced in, and the task picker
+  opens immediately without pressing Return first.
   Typing a bare `@@` after an item-local `@route` or `@route+block-id` marker calls
   `bob capture-rewrite --cursor BYTE --format json -- <draft>` immediately on its own
   lane. When Bob rewrites the draft, the app applies the returned text and cursor only
@@ -261,6 +265,7 @@ or expired certificate can require reauthorizing those system permissions.
 | Ctrl-Shift-K | Move the caret to the previous physical line, keeping the current column when that line is long enough and clamping to its end when it is not; stops on the first line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
 | Command-V | Insert the clipboard's plain text, discarding source formatting; when an empty bullet row receives a Markdown bullet list, consume the first pasted marker and align the list to that row | Same paste edit, and close completion | Native text-field paste | Native text-field paste |
 | Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace | Native text-field Backspace |
+| + | Insert `+` | While route completion is visible, directly after the route being completed: accept the selected route, keep the `+`, and open task completion | Native text-field behavior | Native text-field behavior |
 | Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion | Consume the key; do not expand, indent, or capture | Consume the key; do not expand, indent, or capture |
 | Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion | Consume the key; do not outdent or capture | Consume the key; do not outdent or capture |
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion | Consume the key; do not move completion selection | Consume the key; do not move completion selection |

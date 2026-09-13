@@ -1286,6 +1286,273 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertFalse(record.contains("capture-complete"))
     }
 
+    func testPlusCommitsPartialCachedRouteCompletionAndOpensTaskPicker() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(route: "cash", name: "cash", label: "cash.md", kind: "area", relativePath: "cash.md"),
+            ]
+        )
+
+        model.plainDraft = "Call bank @Ca"
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil { model.completionResponse?.context == "route" }
+        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "cash")
+
+        model.plainDraft = "Call bank @Ca+"
+        model.editorTextDidChange(cursorUTF8Offset: nil)
+
+        XCTAssertEqual(model.plainDraft, "Call bank @cash+")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 16)
+
+        await waitUntil { model.completionResponse?.context == "task" }
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-complete --all-tasks --cursor 16 --format json -- Call bank @cash+")
+        )
+    }
+
+    func testPlusOnExactTypedRouteKeepsDraftAndOpensTaskPicker() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(route: "cash", name: "cash", label: "cash.md", kind: "area", relativePath: "cash.md"),
+            ]
+        )
+
+        model.plainDraft = "Call bank @Cash"
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil { model.completionResponse?.context == "route" }
+        XCTAssertEqual(model.completionResponse?.candidates.count, 1)
+        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "cash")
+
+        model.plainDraft = "Call bank @Cash+"
+        model.editorTextDidChange(cursorUTF8Offset: nil)
+
+        // An exact typed route (case-insensitive) is kept as typed, never re-cased.
+        XCTAssertEqual(model.plainDraft, "Call bank @Cash+")
+
+        await waitUntil { model.completionResponse?.context == "task" }
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-complete --all-tasks --cursor 16 --format json -- Call bank @Cash+")
+        )
+    }
+
+    func testPlusWithNavigatedSelectionInsertsSecondCandidateRoute() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(route: "dev", name: "dev", label: "dev.md", kind: "area", relativePath: "dev.md"),
+                CaptureTarget(route: "design", name: "design", label: "design.md", kind: "area", relativePath: "design.md"),
+            ]
+        )
+
+        model.plainDraft = "Add note @de"
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil { model.completionResponse?.context == "route" }
+        XCTAssertEqual(model.completionResponse?.candidates.map(\.route), ["dev", "design"])
+
+        model.selectNextCompletion()
+        XCTAssertEqual(model.selectedCompletion?.route, "design")
+
+        model.plainDraft = "Add note @de+"
+        model.editorTextDidChange(cursorUTF8Offset: nil)
+
+        XCTAssertEqual(model.plainDraft, "Add note @design+")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 17)
+
+        await waitUntil { model.completionResponse?.context == "task" }
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-complete --all-tasks --cursor 17 --format json -- Add note @design+")
+        )
+    }
+
+    func testPlusDoesNotCommitOutsideCommitConditions() async throws {
+        // (a) The `+` lands inside the route text, not immediately after it.
+        let recordURLA = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let modelA = CapturePanelModel(debounceNanoseconds: 0)
+        modelA.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURLA.path,
+            ]
+        )
+        installTargetCache(
+            on: modelA,
+            targets: [
+                CaptureTarget(route: "cash", name: "cash", label: "cash.md", kind: "area", relativePath: "cash.md"),
+            ]
+        )
+        modelA.plainDraft = "Call bank @Cash"
+        modelA.editorTextDidChange(cursorUTF8Offset: modelA.plainDraft.utf8.count)
+        await waitUntil { modelA.completionResponse?.context == "route" }
+
+        modelA.plainDraft = "Call bank @Ca+sh"
+        modelA.editorTextDidChange(cursorUTF8Offset: nil)
+        XCTAssertEqual(modelA.plainDraft, "Call bank @Ca+sh")
+
+        // (b) The route query is still empty (a bare `@` trigger); a bare `@` followed
+        // by `+` must never be auto-filled.
+        let recordURLB = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let modelB = CapturePanelModel(debounceNanoseconds: 0)
+        modelB.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURLB.path,
+            ]
+        )
+        installTargetCache(
+            on: modelB,
+            targets: [
+                CaptureTarget(route: "cash", name: "cash", label: "cash.md", kind: "area", relativePath: "cash.md"),
+            ]
+        )
+        modelB.plainDraft = "note @"
+        modelB.editorTextDidChange(cursorUTF8Offset: modelB.plainDraft.utf8.count)
+        await waitUntil { modelB.completionResponse?.context == "route" }
+        XCTAssertFalse(modelB.completionResponse?.candidates.isEmpty ?? true)
+
+        modelB.plainDraft = "note @+"
+        modelB.editorTextDidChange(cursorUTF8Offset: nil)
+        XCTAssertEqual(modelB.plainDraft, "note @+")
+
+        // (c) The visible completion is not a route (e.g. an already-open task list).
+        let modelC = CapturePanelModel()
+        modelC.plainDraft = "Add context @file+"
+        modelC.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 19,
+            replacement: CaptureRange(start: 19, end: 19),
+            context: "task",
+            candidates: [
+                CaptureCompletionCandidate(replacement: "goog-exit", route: "file")
+            ]
+        )
+
+        modelC.plainDraft = "Add context @file++"
+        modelC.editorTextDidChange(cursorUTF8Offset: nil)
+        XCTAssertEqual(modelC.plainDraft, "Add context @file++")
+    }
+
+    func testPlusCommitsGlobalRouteDeclarationAndOpensTaskPicker() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(
+                    route: "mac_inbox",
+                    name: "mac_inbox",
+                    label: "mac_inbox.md",
+                    kind: "inbox",
+                    relativePath: "mac_inbox.md"
+                ),
+            ]
+        )
+
+        let draft = "@@ma\nFirst task"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: "@@ma".utf8.count)
+        await waitUntil { model.completionResponse?.context == "route" }
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 2, end: 4))
+        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "mac_inbox")
+
+        model.plainDraft = "@@ma+\nFirst task"
+        model.editorTextDidChange(cursorUTF8Offset: nil)
+
+        XCTAssertEqual(model.plainDraft, "@@mac_inbox+\nFirst task")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 12)
+
+        await waitUntil { model.completionResponse?.context == "task" }
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-complete --all-tasks --cursor 12 --format json -- @@mac_inbox+\nFirst task"
+            )
+        )
+    }
+
+    func testEditorSelectionDidChangeUsesEmittedSelectionNotStaleModelState() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(route: "cash", name: "cash", label: "cash.md", kind: "area", relativePath: "cash.md"),
+            ]
+        )
+        model.plainDraft = "Call bank @Cash+"
+
+        // Simulate the `@Published` willSet ordering: `model.editorSelection` still
+        // holds the caret from before the edit (15) while the freshly emitted value
+        // from the selection publisher already reflects the new caret (16).
+        let staleIndex = try XCTUnwrap(attributedStringIndex(in: model.attributedDraft, utf8Offset: 15))
+        model.editorSelection = AttributedTextSelection(insertionPoint: staleIndex)
+
+        let emittedIndex = try XCTUnwrap(attributedStringIndex(in: model.attributedDraft, utf8Offset: 16))
+        model.editorSelectionDidChange(to: AttributedTextSelection(insertionPoint: emittedIndex))
+
+        await waitUntil {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return record.contains("argv=capture-complete --all-tasks --cursor 16 --format json -- Call bank @Cash+")
+        }
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertFalse(record.contains("argv=capture-complete --all-tasks --cursor 15"))
+    }
+
     func testRouteCompletionFallsBackToBobWhenCacheHasNoMatch() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)

@@ -222,12 +222,44 @@ JSON
   "diagnostics": []
 }
 JSON
-    elif [[ "${draft}" == "Call bank @Cash+" ]]; then
+    elif [[ "${draft}" == "Call bank @Ca" ]]; then
       cat <<'JSON'
 {
   "ok": true,
   "schema_version": 1,
-  "input": "Call bank @Cash+",
+  "input": "Call bank @Ca",
+  "body": "Call bank",
+  "mode": "task",
+  "route": "ca",
+  "needs": [],
+  "spans": [
+    { "start": 10, "end": 13, "kind": "route" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "Call bank @Cash" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Call bank @Cash",
+  "body": "Call bank",
+  "mode": "task",
+  "route": "cash",
+  "needs": [],
+  "spans": [
+    { "start": 10, "end": 15, "kind": "route" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "Call bank @Cash+" || "${draft}" == "Call bank @cash+" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "${draft}",
   "body": "Call bank",
   "mode": "incomplete",
   "route": "cash",
@@ -238,6 +270,63 @@ JSON
   ],
   "diagnostics": []
 }
+JSON
+    elif [[ "${draft}" == "Add note @de" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Add note @de",
+  "body": "Add note",
+  "mode": "task",
+  "route": "de",
+  "needs": [],
+  "spans": [
+    { "start": 9, "end": 12, "kind": "route" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "Add note @design+" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Add note @design+",
+  "body": "Add note",
+  "mode": "incomplete",
+  "route": "design",
+  "needs": ["task"],
+  "spans": [
+    { "start": 9, "end": 16, "kind": "sub_bullet_route" },
+    { "start": 16, "end": 17, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "note @" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "note @",
+  "body": "note",
+  "mode": "task",
+  "needs": [],
+  "spans": [
+    { "start": 5, "end": 6, "kind": "route" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "@@mac_inbox+"$'\n'"First task" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"body":"First task","mode":"incomplete","route":"mac_inbox","needs":["task"],
+"spans":[{"start":0,"end":11,"kind":"global_sub_bullet_route"},{"start":11,"end":12,"kind":"interactive_placeholder"}],
+"diagnostics":[],
+"global_destination":{"range":{"start":0,"end":12},"mode":"incomplete","route":"mac_inbox","block_id":null,"needs":["task"]}}
 JSON
     elif [[ "${draft}" == "Add context @file+parent-id" ]]; then
       cat <<'JSON'
@@ -564,6 +653,32 @@ JSON
   ]
 }
 JSON
+    elif [[ "${draft}" == "@@mac_inbox+"$'\n'"First task" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 12, "end": 12 },
+  "context": "task",
+  "candidates": [
+    {
+      "replacement": "hand-ready",
+      "ref": "4:handready",
+      "block_id": "hand-ready",
+      "route": "mac_inbox",
+      "requires_block_id": false,
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Handoff ready",
+      "section": "Tasks",
+      "depth": 1,
+      "child_count": 0
+    }
+  ]
+}
+JSON
     elif [[ "${draft}" == "@@file+"$'\n'"First note" ]]; then
       cat <<JSON
 {
@@ -706,6 +821,54 @@ JSON
   "context": "route",
   "candidates": [
     { "replacement": "mac_inbox", "route": "mac_inbox", "label": "mac_inbox.md", "kind": "inbox", "status": null }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "Call bank @Cash+" || "${draft}" == "Call bank @cash+" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 16, "end": 16 },
+  "context": "task",
+  "candidates": [
+    {
+      "replacement": "goog-exit",
+      "ref": "4:googexit",
+      "block_id": "goog-exit",
+      "route": "cash",
+      "requires_block_id": false,
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Finish Google Exit Packet!",
+      "section": "Tasks"
+    }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "Add note @design+" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 17, "end": 17 },
+  "context": "task",
+  "candidates": [
+    {
+      "replacement": "goog-exit",
+      "ref": "4:googexit",
+      "block_id": "goog-exit",
+      "route": "design",
+      "requires_block_id": false,
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Finish Google Exit Packet!",
+      "section": "Tasks"
+    }
   ]
 }
 JSON

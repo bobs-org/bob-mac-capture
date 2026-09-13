@@ -648,8 +648,8 @@ private struct AutosizingCaptureEditor: View {
                     .onChange(of: String(model.attributedDraft.characters)) { _, _ in
                         model.editorTextDidChange(cursorUTF8Offset: model.collapsedSelectionUTF8Offset())
                     }
-                    .onReceive(model.$editorSelection.dropFirst()) { _ in
-                        model.editorSelectionDidChange(cursorUTF8Offset: model.collapsedSelectionUTF8Offset())
+                    .onReceive(model.$editorSelection.dropFirst()) { selection in
+                        model.editorSelectionDidChange(to: selection)
                     }
 
                 if !model.hasDraft {
