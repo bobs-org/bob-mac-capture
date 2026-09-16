@@ -1876,15 +1876,15 @@ final class BobMacCaptureTests: XCTestCase {
             text: "Parent\n  - child",
             selectedRange: NSRange(location: "Parent\n ".utf16.count, length: " -".utf16.count)
         )
-        XCTAssertEqual(prefixSelection.text, "Parent\n \n-  child")
-        XCTAssertEqual(prefixSelection.selection, NSRange(location: "Parent\n \n- ".utf16.count, length: 0))
+        XCTAssertEqual(prefixSelection.text, "Parent\n \n  -  child")
+        XCTAssertEqual(prefixSelection.selection, NSRange(location: "Parent\n \n  - ".utf16.count, length: 0))
 
         let multilineSelection = try applyBulletEdit(
             text: "Parent\n  - child\nNext",
             selectedRange: NSRange(location: "Parent\n ".utf16.count, length: " - child\n".utf16.count)
         )
-        XCTAssertEqual(multilineSelection.text, "Parent\n \n- Next")
-        XCTAssertEqual(multilineSelection.selection, NSRange(location: "Parent\n \n- ".utf16.count, length: 0))
+        XCTAssertEqual(multilineSelection.text, "Parent\n \n  - Next")
+        XCTAssertEqual(multilineSelection.selection, NSRange(location: "Parent\n \n  - ".utf16.count, length: 0))
     }
 
     @MainActor
