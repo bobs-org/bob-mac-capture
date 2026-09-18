@@ -112,6 +112,24 @@ JSON
   "diagnostics": []
 }
 JSON
+    elif [[ "${draft}" == "@file+goog-exit" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "@file+goog-exit",
+  "body": "",
+  "mode": "task_toggle",
+  "route": "file",
+  "block_id": "goog-exit",
+  "needs": [],
+  "spans": [
+    { "start": 0, "end": 5, "kind": "task_toggle_route" },
+    { "start": 6, "end": 15, "kind": "task_toggle_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
     elif [[ "${draft}" == "@file+goog-exit!" ]]; then
       cat <<'JSON'
 {
@@ -126,7 +144,7 @@ JSON
   "spans": [
     { "start": 0, "end": 5, "kind": "task_toggle_route" },
     { "start": 6, "end": 15, "kind": "task_toggle_block_id" },
-    { "start": 15, "end": 16, "kind": "task_toggle_force_next" }
+    { "start": 15, "end": 16, "kind": "task_toggle_explicit_toggle" }
   ],
   "diagnostics": []
 }
@@ -1450,7 +1468,7 @@ JSON
   "placement": "inserted"
 }
 JSON
-    elif [[ "${draft}" == "@file+goog-exit!" ]]; then
+    elif [[ "${draft}" == "@file+goog-exit" ]]; then
       cat <<JSON
 {
   "ok": true,
@@ -1484,6 +1502,38 @@ JSON
   "pomodoro_link_action": "moved",
   "pomodoro_link_source": { "line": 4, "name": "LATER" },
   "pomodoro_link_destination": { "line": 2, "name": "CURRENT", "time_range": "0900-0930" }
+}
+JSON
+    elif [[ "${draft}" == "@file+goog-exit!" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "file",
+  "route_label": "file.md",
+  "relative_target": "file.md",
+  "target": "/tmp/bob/file.md",
+  "text": "",
+  "task_line": "- [*] #task Finish Google Exit Packet! ^goog-exit",
+  "kind": "task_toggle",
+  "created": "2026-09-10",
+  "scheduled": null,
+  "placement": "toggled",
+  "block_id": "goog-exit",
+  "day_file": "/tmp/bob/2026/20260910.md",
+  "block_link": "[[file#^goog-exit]]",
+  "toggle_direction": "next",
+  "previous_task_line": "- [ ] #task Finish Google Exit Packet! ^goog-exit",
+  "status_symbol": "*",
+  "status_name": "Next",
+  "previous_status_symbol": " ",
+  "previous_status_name": "Ready",
+  "pomodoro_name": "CURRENT",
+  "pomodoro_link_placement": "appended",
+  "creates_pomodoro": false,
+  "pomodoro_already_linked": false,
+  "removed_pomodoro_links": 0
 }
 JSON
     elif [[ "${draft}" == "Add context @file+parent-id" ]]; then

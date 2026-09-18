@@ -407,7 +407,8 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "wikilink_block_id"), .wikilinkBlock)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "wikilink_alias"), .wikilinkAlias)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "interactive_placeholder"), .interactivePlaceholder)
-        XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_toggle_force_next"), .forceNext)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_toggle_explicit_toggle"), .explicitToggle)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_toggle_force_next"), .explicitToggle)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "unrecognized_future_kind"), .neutral)
     }
 

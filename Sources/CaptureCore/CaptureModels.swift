@@ -458,8 +458,9 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     public let removedPomodoroLinks: Int?
     public let removedScheduled: String?
     public let pomodoroSelectorUnused: Bool?
-    // Additive to schema version 1 for `@route+block-id!`. Older Bob binaries and
-    // two-way toggles omit these keys; missing values preserve compatibility.
+    // Additive to schema version 1 for Bob's ensure-Next task-toggle behavior. Older
+    // Bob binaries and two-way toggles omit these keys; missing values preserve
+    // compatibility.
     public let toggleBehavior: String?
     public let statusChanged: Bool?
     public let pomodoroLinkAction: String?

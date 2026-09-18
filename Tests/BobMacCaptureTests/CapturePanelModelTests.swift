@@ -430,7 +430,46 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.primaryActionTitle, "Set Next")
     }
 
-    func testForceNextMarkerKeepsCompletedDraftValidAndUsesEnsureNextAction() async throws {
+    func testPlainTaskToggleDefaultKeepsCompletedDraftValidAndUsesEnsureNextAction() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        model.plainDraft = "@file+goog-exit"
+        model.editorTextDidChange(cursorUTF8Offset: "@file+goog-exit".utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.previewResult?.kind, "task_toggle")
+        XCTAssertEqual(model.previewResult?.toggleBehavior, "ensure_next")
+        XCTAssertEqual(model.previewResult?.blockID, "goog-exit")
+        XCTAssertEqual(model.togglePresentation?.primaryActionTitle, "Ensure Next")
+        XCTAssertEqual(model.primaryActionTitle, "Ensure Next")
+        XCTAssertEqual(model.togglePresentation?.notificationTitle, "Ensured Next and moved")
+        XCTAssertTrue(model.togglePresentation?.dayFileChanged == true)
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.lastSuccess?.toggleBehavior, "ensure_next")
+        XCTAssertEqual(model.lastSuccess?.pomodoroLinkAction, "moved")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- @file+goog-exit"))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- @file+goog-exit"))
+        XCTAssertTrue(record.contains("argv=capture --format json -- @file+goog-exit"))
+        XCTAssertFalse(record.contains(" -- @file+goog-exit!\n"))
+    }
+
+    func testExplicitToggleBangKeepsSuffixAndUsesSetNextAction() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
@@ -450,18 +489,18 @@ final class CapturePanelModelTests: XCTestCase {
         }
 
         XCTAssertEqual(model.previewResult?.kind, "task_toggle")
-        XCTAssertEqual(model.previewResult?.toggleBehavior, "ensure_next")
+        XCTAssertNil(model.previewResult?.toggleBehavior)
         XCTAssertEqual(model.previewResult?.blockID, "goog-exit")
-        XCTAssertEqual(model.togglePresentation?.primaryActionTitle, "Ensure Next")
-        XCTAssertEqual(model.primaryActionTitle, "Ensure Next")
-        XCTAssertEqual(model.togglePresentation?.notificationTitle, "Ensured Next and moved")
+        XCTAssertEqual(model.togglePresentation?.primaryActionTitle, "Set Next")
+        XCTAssertEqual(model.primaryActionTitle, "Set Next")
+        XCTAssertEqual(model.togglePresentation?.notificationTitle, "Set Next")
         XCTAssertTrue(model.togglePresentation?.dayFileChanged == true)
 
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
 
-        XCTAssertEqual(model.lastSuccess?.toggleBehavior, "ensure_next")
-        XCTAssertEqual(model.lastSuccess?.pomodoroLinkAction, "moved")
+        XCTAssertNil(model.lastSuccess?.toggleBehavior)
+        XCTAssertEqual(model.lastSuccess?.toggleDirection, "next")
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture-parse --format json -- @file+goog-exit!"))
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- @file+goog-exit!"))

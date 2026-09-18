@@ -45,18 +45,22 @@ mutation.
   `capture-task-id`, `capture-pomodoro-name`, `task_section` completion for
   `@route+block-id#`, `pomodoro_name` completion for `@route:block-id#` and bare
   task-toggle `@route+block-id#`, the additive `creates_pomodoro`
-  create-future-Pomodoro action, `task_toggle` capture JSON, the three
-  `task_toggle_*` parse spans, and `@route+block-id!` force-Next (`toggle_behavior`,
-  `task_toggle_force_next`, and the Ensure Next preview/notification). Older builds can still capture ordinary drafts, but
+  create-future-Pomodoro action, `task_toggle` capture JSON, the
+  `task_toggle_*` parse spans, and the current task-toggle spellings:
+  plain `@route+block-id` for Ensure Next relocation and suffixed
+  `@route+block-id!` for the explicit two-way toggle (`toggle_behavior` and
+  `task_toggle_explicit_toggle`). Older builds can still capture ordinary drafts, but
   global declarations, bare-`@@` absorption, the Add block ID flow, the Name Pomodoro
   flow, the task-section popup, and the task-toggle footer/preview report the local Bob
   error or an empty list until Bob is upgraded. An older Bob that sees bare
   `@route+block-id` as a missing-text sub-bullet reports `task text is required`, which
   the panel surfaces unchanged. An older Bob that does not emit `creates_pomodoro` still
   captures `@route:id#name` create-on-submit; the Mac app decodes a missing flag as false
-  and simply omits the explicit Create row. An older Bob that does not understand
-  `@route+block-id!` reports a usage error; one that captures it but omits
-  `toggle_behavior` still shows the two-way Set Next footer, never Ensure Next.
+  and simply omits the explicit Create row. Older Bob builds may implement the
+  previous task-toggle spellings. The app labels
+  actions and notifications from Bob's returned behavior metadata, so a response
+  that omits `toggle_behavior` still shows the two-way Set Next/Open footer,
+  never Ensure Next.
 
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.
@@ -212,8 +216,9 @@ or expired certificate can require reauthorizing those system permissions.
   additive top-level `global_destination` summary alongside that normalized collection
   and never splits a draft into multiple mutating `bob` subprocesses. When live preview
   reports exactly one `task_toggle`, the footer's primary action changes from
-  **Capture** to **Set Next**, **Set Open**, or **Ensure Next** for `@route+id!`;
-  batches keep **Capture** because Return will submit more than the toggle.
+  **Capture** to **Set Next**, **Set Open**, or **Ensure Next** according to
+  Bob's returned behavior metadata; batches keep **Capture** because Return will
+  submit more than the toggle.
   Ensure Next preview, VoiceOver, and notifications present status and relocation
   independently ("Ready → Next" vs "Next unchanged", "Moved LATER → CURRENT" vs
   "Already in CURRENT; no Pomodoro changes") and never show the two-way "adds
@@ -346,8 +351,9 @@ authored `-`/`*`/`+` bullets. Column-zero bullets become first-level authored ch
 bullets prefixed by exactly two ASCII spaces become nested authored children under the
 nearest preceding first-level authored child.
 A marker (`@route`,
-`@route+block-id` alone for a task-toggle item, `@route+block-id!` to ensure Next and
-relocate an existing Task Link, `@route+block-id` with body text for an
+`@route+block-id` alone to ensure Next and relocate an existing Task Link,
+`@route+block-id!` alone for the explicit two-way task-toggle item,
+`@route+block-id` with body text for an
 existing-task sub-bullet, `@route+block-id#section` to nest under one of that task's
 ALL-CAPS section bullets, `@route^block-id` for an ordinary task with an authored block
 ID, `s:<N>`, `p:<N>`, `%`, …) at the end of any valid line configures that item even

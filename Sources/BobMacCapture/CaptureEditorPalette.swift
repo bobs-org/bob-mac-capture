@@ -36,7 +36,7 @@ enum CaptureEditorPalette {
             return .teal
         case .interactivePlaceholder:
             return .secondary
-        case .forceNext:
+        case .explicitToggle:
             return .yellow
         case .neutral:
             return .primary
