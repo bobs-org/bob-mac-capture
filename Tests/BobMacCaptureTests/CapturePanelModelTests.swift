@@ -1286,6 +1286,133 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertFalse(record.contains("capture-complete"))
     }
 
+    func testLeadingBareAtUsesCachedRouteCompletionAfterSigil() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(route: "file", name: "file", label: "file.md", kind: "area", relativePath: "file.md"),
+            ]
+        )
+
+        model.plainDraft = "@"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.completionResponse?.context == "route" }
+
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 1, end: 1))
+        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "file")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- @"))
+        XCTAssertFalse(record.contains("capture-complete"))
+    }
+
+    func testLeadingRouteFragmentKeepsCachedCompletionDespiteLiteralParse() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(route: "file", name: "file", label: "file.md", kind: "area", relativePath: "file.md"),
+                CaptureTarget(route: "cash", name: "cash", label: "cash.md", kind: "area", relativePath: "cash.md"),
+            ]
+        )
+
+        model.plainDraft = "@fi"
+        model.editorTextDidChange(cursorUTF8Offset: 3)
+        await waitUntil { self.analysisSettled(for: model, recordURL: recordURL, draft: "@fi") }
+
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 1, end: 3))
+        XCTAssertEqual(model.completionResponse?.candidates.map(\.route), ["file"])
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- @fi"))
+        XCTAssertFalse(record.contains("capture-complete"))
+    }
+
+    func testLeadingRouteFragmentCacheMissFallsBackToBobCompletion() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(route: "today", name: "today", label: "today.md", kind: "inbox", relativePath: "today.md"),
+            ]
+        )
+
+        model.plainDraft = "@fi"
+        model.editorTextDidChange(cursorUTF8Offset: 3)
+        await waitUntil { model.completionResponse?.context == "route" }
+
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 1, end: 3))
+        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "file")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- @fi"))
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 3 --format json -- @fi"))
+    }
+
+    func testPlusCommitsLeadingRouteCompletionAndSelectsTask() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(route: "file", name: "file", label: "file.md", kind: "area", relativePath: "file.md"),
+            ]
+        )
+
+        model.plainDraft = "@fi"
+        model.editorTextDidChange(cursorUTF8Offset: 3)
+        await waitUntil { model.completionResponse?.context == "route" }
+
+        model.plainDraft = "@fi+"
+        model.editorTextDidChange(cursorUTF8Offset: nil)
+
+        XCTAssertEqual(model.plainDraft, "@file+")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 6)
+        await waitUntil { model.completionResponse?.context == "task" }
+        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 6, end: 6))
+        XCTAssertEqual(model.completionResponse?.candidates.first?.blockID, "goog-exit")
+
+        model.acceptSelectedCompletion()
+
+        XCTAssertEqual(model.plainDraft, "@file+goog-exit")
+        XCTAssertNil(model.completionResponse)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 6 --format json -- @file+"))
+    }
+
     func testPlusCommitsPartialCachedRouteCompletionAndOpensTaskPicker() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)

@@ -132,10 +132,13 @@ or expired certificate can require reauthorizing those system permissions.
   ordinary candidates apply the server-provided byte replacement range and
   `cursor_after` exactly, restoring a collapsed caret at that offset. Route completion
   also covers the route side of Bob's `@route^block-id` ordinary task-with-ID marker and
-  the route side of a `@@route` or `@@route+block-id` declaration anywhere in the draft;
-  cached route completion strips the complete `@@` sigil just like Bob's server
-  response. The authored ID side has no existing-task picker and an empty completion
-  result is shown as no list.
+  the route side of a `@@route` or `@@route+block-id` declaration anywhere in the draft.
+  A single leading `@` and its still-typing route fragment also remain
+  completion-active before the draft has enough syntax to be submitted as a routed
+  capture, so an empty editor can complete the marker-only task-toggle form
+  `@route+block-id` entirely from the keyboard. Cached route completion strips the
+  complete `@@` sigil just like Bob's server response. The authored ID side has no
+  existing-task picker and an empty completion result is shown as no list.
   While route completion is visible, typing `+` directly after the route text accepts
   the selected route and keeps the `+`: an exact typed route (case-insensitive) is kept
   as typed, otherwise the selected candidate's route is spliced in, and the task picker

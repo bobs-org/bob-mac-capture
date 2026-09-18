@@ -67,6 +67,51 @@ case "${command}" in
       printf ',"body":'
       json_string "${draft}"
       printf ',"mode":"task","needs":[],"spans":[{"start":%s,"end":%s,"kind":"wikilink_target"}],"diagnostics":[]}\n' "${start}" "${end}"
+    elif [[ "${draft}" == "@" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "@",
+  "body": "",
+  "mode": "incomplete",
+  "needs": ["route"],
+  "spans": [
+    { "start": 0, "end": 1, "kind": "route" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "@fi" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "@fi",
+  "body": "@fi",
+  "mode": "task",
+  "needs": [],
+  "spans": [],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "@file+" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "@file+",
+  "body": "",
+  "mode": "incomplete",
+  "route": "file",
+  "needs": ["task"],
+  "spans": [
+    { "start": 0, "end": 5, "kind": "task_toggle_route" },
+    { "start": 5, "end": 6, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": []
+}
+JSON
     elif [[ "${draft}" == "@@ma"$'\n'"First task" ]]; then
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
@@ -638,6 +683,56 @@ JSON
     }
   ],
   "warnings": ["skipped unreadable note"]
+}
+JSON
+    elif [[ "${draft}" == "@" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 1, "end": 1 },
+  "context": "route",
+  "candidates": [
+    { "replacement": "file", "route": "file", "label": "file.md", "kind": "area", "status": null }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "@fi" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 1, "end": 3 },
+  "context": "route",
+  "candidates": [
+    { "replacement": "file", "route": "file", "label": "file.md", "kind": "area", "status": null }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "@file+" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 6, "end": 6 },
+  "context": "task",
+  "candidates": [
+    {
+      "replacement": "goog-exit",
+      "ref": "4:googexit",
+      "block_id": "goog-exit",
+      "route": "file",
+      "requires_block_id": false,
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Finish Google Exit Packet!",
+      "section": "Tasks"
+    }
+  ]
 }
 JSON
     elif [[ "${draft}" == "@@ma"$'\n'"First task" ]]; then

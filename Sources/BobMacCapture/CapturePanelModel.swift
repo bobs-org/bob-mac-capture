@@ -1378,7 +1378,11 @@ final class CapturePanelModel: ObservableObject {
 
                 if let cursorUTF8Offset,
                    requestCompletion,
-                   await self?.shouldRequestCompletion(parse: parse, cursor: cursorUTF8Offset) == true
+                   await self?.shouldRequestCompletion(
+                       parse: parse,
+                       cursor: cursorUTF8Offset,
+                       draft: draft
+                   ) == true
                 {
                     if let cached = await self?.cachedRouteCompletion(
                         parse: parse,
@@ -1599,7 +1603,15 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
-    private func shouldRequestCompletion(parse: CaptureParseResponse, cursor: Int) -> Bool {
+    private func shouldRequestCompletion(
+        parse: CaptureParseResponse,
+        cursor: Int,
+        draft: String
+    ) -> Bool {
+        if Self.leadingSingleAtRouteReplacementRange(in: draft, cursor: cursor) != nil {
+            return true
+        }
+
         let completionNeeds = Set([
             "route", "section", "pomodoro_id", "pomodoro_name", "task", "task_section",
         ])
@@ -1711,7 +1723,40 @@ final class CapturePanelModel: ObservableObject {
             }
         }
 
-        return nil
+        return Self.leadingSingleAtRouteReplacementRange(in: draft, cursor: cursor)
+    }
+
+    private static func leadingSingleAtRouteReplacementRange(in draft: String, cursor: Int) -> CaptureRange? {
+        guard draft.utf8.first == 64,
+              !draft.hasPrefix("@@"),
+              cursor >= 1,
+              cursor <= draft.utf8.count,
+              stringRange(in: draft, start: cursor, end: cursor) != nil
+        else {
+            return nil
+        }
+
+        var offset = 0
+        for character in draft {
+            let nextOffset = offset + String(character).utf8.count
+            if offset == 0 {
+                offset = nextOffset
+                continue
+            }
+            if character.isWhitespace || Self.isRouteBoundary(character) {
+                return nil
+            }
+            offset = nextOffset
+        }
+
+        return CaptureRange(start: 1, end: draft.utf8.count)
+    }
+
+    private static func isRouteBoundary(_ character: Character) -> Bool {
+        character == "#"
+            || character == "^"
+            || character == ":"
+            || character == "+"
     }
 
     private func rankedTargets(_ targets: [CaptureTarget], query: String) -> [CaptureTarget] {
