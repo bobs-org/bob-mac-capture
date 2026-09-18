@@ -393,6 +393,24 @@ public enum CaptureCommandResponse: Equatable, Decodable {
     }
 }
 
+public struct PomodoroLinkEndpoint: Codable, Equatable, Sendable {
+    public let line: Int
+    public let name: String?
+    public let timeRange: String?
+
+    public init(line: Int, name: String? = nil, timeRange: String? = nil) {
+        self.line = line
+        self.name = name
+        self.timeRange = timeRange
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case line
+        case name
+        case timeRange = "time_range"
+    }
+}
+
 public struct CaptureCommandSuccess: Codable, Equatable {
     public let ok: Bool
     public let dryRun: Bool
@@ -440,6 +458,13 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     public let removedPomodoroLinks: Int?
     public let removedScheduled: String?
     public let pomodoroSelectorUnused: Bool?
+    // Additive to schema version 1 for `@route+block-id!`. Older Bob binaries and
+    // two-way toggles omit these keys; missing values preserve compatibility.
+    public let toggleBehavior: String?
+    public let statusChanged: Bool?
+    public let pomodoroLinkAction: String?
+    public let pomodoroLinkSource: PomodoroLinkEndpoint?
+    public let pomodoroLinkDestination: PomodoroLinkEndpoint?
     public let captures: [CaptureCommandSuccess]
     public let globalDestination: CaptureGlobalDestination?
 
@@ -482,6 +507,11 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         removedPomodoroLinks: Int? = nil,
         removedScheduled: String? = nil,
         pomodoroSelectorUnused: Bool? = nil,
+        toggleBehavior: String? = nil,
+        statusChanged: Bool? = nil,
+        pomodoroLinkAction: String? = nil,
+        pomodoroLinkSource: PomodoroLinkEndpoint? = nil,
+        pomodoroLinkDestination: PomodoroLinkEndpoint? = nil,
         captures: [CaptureCommandSuccess] = [],
         globalDestination: CaptureGlobalDestination? = nil
     ) {
@@ -523,6 +553,11 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.removedPomodoroLinks = removedPomodoroLinks
         self.removedScheduled = removedScheduled
         self.pomodoroSelectorUnused = pomodoroSelectorUnused
+        self.toggleBehavior = toggleBehavior
+        self.statusChanged = statusChanged
+        self.pomodoroLinkAction = pomodoroLinkAction
+        self.pomodoroLinkSource = pomodoroLinkSource
+        self.pomodoroLinkDestination = pomodoroLinkDestination
         self.captures = captures
         self.globalDestination = globalDestination
     }
@@ -567,6 +602,17 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         removedPomodoroLinks = try container.decodeIfPresent(Int.self, forKey: .removedPomodoroLinks)
         removedScheduled = try container.decodeIfPresent(String.self, forKey: .removedScheduled)
         pomodoroSelectorUnused = try container.decodeIfPresent(Bool.self, forKey: .pomodoroSelectorUnused)
+        toggleBehavior = try container.decodeIfPresent(String.self, forKey: .toggleBehavior)
+        statusChanged = try container.decodeIfPresent(Bool.self, forKey: .statusChanged)
+        pomodoroLinkAction = try container.decodeIfPresent(String.self, forKey: .pomodoroLinkAction)
+        pomodoroLinkSource = try container.decodeIfPresent(
+            PomodoroLinkEndpoint.self,
+            forKey: .pomodoroLinkSource
+        )
+        pomodoroLinkDestination = try container.decodeIfPresent(
+            PomodoroLinkEndpoint.self,
+            forKey: .pomodoroLinkDestination
+        )
         captures = try container.decodeIfPresent([CaptureCommandSuccess].self, forKey: .captures) ?? []
         globalDestination = try container.decodeIfPresent(
             CaptureGlobalDestination.self,
@@ -613,6 +659,11 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case removedPomodoroLinks = "removed_pomodoro_links"
         case removedScheduled = "removed_scheduled"
         case pomodoroSelectorUnused = "pomodoro_selector_unused"
+        case toggleBehavior = "toggle_behavior"
+        case statusChanged = "status_changed"
+        case pomodoroLinkAction = "pomodoro_link_action"
+        case pomodoroLinkSource = "pomodoro_link_source"
+        case pomodoroLinkDestination = "pomodoro_link_destination"
         case captures
         case globalDestination = "global_destination"
     }

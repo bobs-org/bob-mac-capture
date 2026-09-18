@@ -60,10 +60,15 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
     /// "#<name> not used when clearing".
     public let chips: [String]
 
-    /// `"Set Next"` / `"Set Open"` — the footer's primary action verb. Does not vary
-    /// with `isDryRun`: it always names what pressing Return will do next, not what a
-    /// preview already computed.
+    /// `"Set Next"` / `"Set Open"` / `"Ensure Next"` — the footer's primary action
+    /// verb. Does not vary with `isDryRun`: it always names what pressing Return will
+    /// do next, not what a preview already computed.
     public let primaryActionTitle: String
+    /// True when Bob reported `toggle_behavior: "ensure_next"`.
+    public let isEnsureNext: Bool
+    /// `"Moved LATER → CURRENT"` or `"Already in CURRENT; no Pomodoro changes"` for
+    /// the bang form; `nil` for the two-way toggle.
+    public let relocationText: String?
 
     public let statusText: String
     public let voiceOverAnnouncement: String
@@ -93,8 +98,15 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
             from: capture.taskLine,
             blockID: capture.blockID
         )
-        transitionText =
-            "\(previousStatusMarker) \u{2192} \(statusMarker)  \(taskPreviewText)"
+        let ensureNext = capture.toggleBehavior == "ensure_next"
+        let statusChanged = capture.statusChanged
+            ?? (capture.previousStatusSymbol != capture.statusSymbol)
+        if ensureNext, !statusChanged {
+            transitionText = "\(statusMarker) unchanged  \(taskPreviewText)"
+        } else {
+            transitionText =
+                "\(previousStatusMarker) \u{2192} \(statusMarker)  \(taskPreviewText)"
+        }
 
         blockLink = capture.blockLink
         pomodoroName = capture.pomodoroName
@@ -102,16 +114,23 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         let removedLinks = capture.removedPomodoroLinks ?? 0
         let pomodoroAlreadyLinked = capture.pomodoroAlreadyLinked ?? false
         let pomodoroSelectorUnused = capture.pomodoroSelectorUnused ?? false
+        isEnsureNext = ensureNext
+        let moved = capture.pomodoroLinkAction == "moved"
 
-        switch direction {
-        case .next:
-            addedLinkText = capture.blockLink
-            removedLinksText = removedLinks > 0
-                ? Self.removedLinksSummary(count: removedLinks, qualifier: "later ")
-                : nil
-        case .open:
+        if ensureNext {
             addedLinkText = nil
-            removedLinksText = Self.removedLinksSummary(count: removedLinks, qualifier: "")
+            removedLinksText = nil
+        } else {
+            switch direction {
+            case .next:
+                addedLinkText = capture.blockLink
+                removedLinksText = removedLinks > 0
+                    ? Self.removedLinksSummary(count: removedLinks, qualifier: "later ")
+                    : nil
+            case .open:
+                addedLinkText = nil
+                removedLinksText = Self.removedLinksSummary(count: removedLinks, qualifier: "")
+            }
         }
 
         var chips: [String] = []
@@ -121,7 +140,7 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         if capture.scheduleLog != nil {
             chips.append("logged schedule change")
         }
-        if pomodoroAlreadyLinked {
+        if !ensureNext, pomodoroAlreadyLinked {
             chips.append("already linked")
         }
         if pomodoroSelectorUnused {
@@ -130,56 +149,102 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         }
         self.chips = chips
 
+        let destinationLabel = Self.endpointLabel(capture.pomodoroLinkDestination)
+            ?? capture.pomodoroName
+        let sourceLabel = Self.endpointLabel(capture.pomodoroLinkSource)
+        if ensureNext {
+            if moved {
+                let destination = destinationLabel ?? "current/next"
+                let source = sourceLabel ?? "source"
+                relocationText = "Moved \(source) \u{2192} \(destination)"
+            } else {
+                let destination = destinationLabel ?? "current/next"
+                relocationText = "Already in \(destination); no Pomodoro changes"
+            }
+        } else {
+            relocationText = nil
+        }
+
         if let dayFile = capture.dayFile {
             let relativeDayFile = Self.relativeDayFileLabel(
                 dayFile: dayFile,
                 target: capture.target,
                 relativeTarget: capture.relativeTarget
             )
-            let under = (direction == .next ? capture.pomodoroName : nil)
-                .map { " \u{00b7} under \($0)" } ?? ""
+            let namedUnder = ensureNext
+                ? destinationLabel
+                : (direction == .next ? capture.pomodoroName : nil)
+            let under = namedUnder.map { " \u{00b7} under \($0)" } ?? ""
             dayFileDestinationLabel = "\(relativeDayFile)\(under)"
         } else {
             dayFileDestinationLabel = nil
         }
 
-        switch direction {
-        case .next:
-            dayFileChanged = !pomodoroAlreadyLinked || removedLinks > 0
-        case .open:
-            dayFileChanged = removedLinks > 0
+        if ensureNext {
+            dayFileChanged = moved
+            primaryActionTitle = "Ensure Next"
+        } else {
+            switch direction {
+            case .next:
+                dayFileChanged = !pomodoroAlreadyLinked || removedLinks > 0
+            case .open:
+                dayFileChanged = removedLinks > 0
+            }
+            primaryActionTitle = direction == .next ? "Set Next" : "Set Open"
         }
-
-        primaryActionTitle = direction == .next ? "Set Next" : "Set Open"
-
-        let statusVerb: String
-        switch (capture.dryRun, direction) {
-        case (true, .next): statusVerb = "Would Set Next"
-        case (true, .open): statusVerb = "Would Set Open"
-        case (false, .next): statusVerb = "Set Next"
-        case (false, .open): statusVerb = "Set Open"
-        }
-        statusText =
-            "\(statusVerb) \u{2192} \(routeDestinationLabel) (\(previousStatusMarker) \u{2192} \(statusMarker))"
 
         let fromStatusName = capture.previousStatusName ?? "Unknown"
         let toStatusName = capture.statusName ?? "Unknown"
+        let statusPhrase: String
+        if ensureNext, !statusChanged {
+            statusPhrase = "\(toStatusName) unchanged"
+        } else {
+            statusPhrase = "\(fromStatusName) \u{2192} \(toStatusName)"
+        }
 
-        var announcementParts = ["\(statusVerb): \(routeLabel), \(fromStatusName) to \(toStatusName)"]
-        if direction == .next, removedLinks == 0, !pomodoroAlreadyLinked {
+        let statusVerb: String
+        if ensureNext {
+            statusVerb = capture.dryRun ? "Would Ensure Next" : "Ensure Next"
+        } else {
+            switch (capture.dryRun, direction) {
+            case (true, .next): statusVerb = "Would Set Next"
+            case (true, .open): statusVerb = "Would Set Open"
+            case (false, .next): statusVerb = "Set Next"
+            case (false, .open): statusVerb = "Set Open"
+            }
+        }
+        statusText =
+            "\(statusVerb) \u{2192} \(routeDestinationLabel) (\(statusPhrase))"
+
+        var announcementParts = ["\(statusVerb): \(routeLabel), \(statusPhrase)"]
+        if let relocationText {
+            announcementParts.append(relocationText)
+        } else if direction == .next, removedLinks == 0, !pomodoroAlreadyLinked {
             announcementParts.append("linked to today's Pomodoro")
         }
-        if removedLinks > 0 {
+        if !ensureNext, removedLinks > 0 {
             let qualifier = direction == .next ? "later " : ""
             announcementParts.append(Self.removedLinksSummary(count: removedLinks, qualifier: qualifier))
         }
         announcementParts.append(contentsOf: chips)
         voiceOverAnnouncement = announcementParts.joined(separator: ". ")
 
-        notificationTitle = primaryActionTitle
-        var bodyLines = ["\(fromStatusName) \u{2192} \(toStatusName)  \(routeDestinationLabel)"]
+        if ensureNext {
+            switch (statusChanged, moved) {
+            case (true, true): notificationTitle = "Ensured Next and moved"
+            case (true, false): notificationTitle = "Ensured Next"
+            case (false, true): notificationTitle = "Moved Task Link"
+            case (false, false): notificationTitle = "Already Next"
+            }
+        } else {
+            notificationTitle = primaryActionTitle
+        }
+        var bodyLines = ["\(statusPhrase)  \(routeDestinationLabel)"]
         if let dayFileDestinationLabel {
             bodyLines.append(dayFileDestinationLabel)
+        }
+        if let relocationText {
+            bodyLines.append(relocationText)
         }
         if let addedLinkText {
             bodyLines.append("+ \(addedLinkText)")
@@ -194,10 +259,15 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
 
         var previewParts = [
             routeDestinationLabel,
-            "\(previousStatusMarker) to \(statusMarker) \(taskPreviewText)",
+            ensureNext
+                ? "\(statusPhrase) \(taskPreviewText)"
+                : "\(previousStatusMarker) to \(statusMarker) \(taskPreviewText)",
         ]
         if let dayFileDestinationLabel {
             previewParts.append(dayFileDestinationLabel)
+        }
+        if let relocationText {
+            previewParts.append(relocationText)
         }
         if let addedLinkText {
             previewParts.append("adds \(addedLinkText)")
@@ -207,6 +277,19 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         }
         previewParts.append(contentsOf: chips)
         previewAccessibilitySummary = previewParts.joined(separator: ", ")
+    }
+
+    private static func endpointLabel(_ endpoint: PomodoroLinkEndpoint?) -> String? {
+        guard let endpoint else {
+            return nil
+        }
+        if let name = endpoint.name, !name.isEmpty {
+            return name
+        }
+        if let range = endpoint.timeRange, !range.isEmpty {
+            return range
+        }
+        return "line \(endpoint.line)"
     }
 
     private static func marker(for symbol: String?) -> String {

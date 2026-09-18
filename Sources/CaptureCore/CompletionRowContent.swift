@@ -16,6 +16,7 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case wikilinkBlock
     case wikilinkAlias
     case interactivePlaceholder
+    case forceNext
     case neutral
 }
 
@@ -49,6 +50,8 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .wikilinkAlias
     case "interactive_placeholder":
         return .interactivePlaceholder
+    case "task_toggle_force_next":
+        return .forceNext
     default:
         return .neutral
     }

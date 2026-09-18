@@ -232,6 +232,37 @@ final class NotificationServiceTests: XCTestCase {
         )
     }
 
+    func testEnsureNextSuccessContentUsesCombinedTitleAndOpensBothNotes() {
+        let content = NotificationService.successContent(captures: [
+            ensureNextCapture(statusChanged: true, linkAction: "moved"),
+        ])
+
+        XCTAssertEqual(content.title, "Ensured Next and moved")
+        XCTAssertEqual(content.subtitle, "cash.md \u{00b7} ^goog-exit")
+        XCTAssertTrue(content.body.contains("Ready \u{2192} Next"))
+        XCTAssertTrue(content.body.contains("Moved LATER \u{2192} CURRENT"))
+        XCTAssertFalse(content.body.contains("+ [["))
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureBatchCategoryIdentifier)
+        XCTAssertEqual(
+            content.userInfo[NotificationService.targetPathsKey] as? [String],
+            ["/tmp/bob/cash.md", "/tmp/bob/2026/20260910.md"]
+        )
+    }
+
+    func testEnsureNextNoOpOpensOnlyTheRouteNote() {
+        let content = NotificationService.successContent(captures: [
+            ensureNextCapture(statusChanged: false, linkAction: "already_current"),
+        ])
+
+        XCTAssertEqual(content.title, "Already Next")
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureCategoryIdentifier)
+        XCTAssertEqual(
+            content.userInfo[NotificationService.targetPathKey] as? String,
+            "/tmp/bob/cash.md"
+        )
+        XCTAssertNil(content.userInfo[NotificationService.targetPathsKey])
+    }
+
     func testTaskToggleSuccessContentOmitsDayFileFromTargetsWhenNothingChangedThere() {
         let content = NotificationService.successContent(captures: [
             toggleCapture(direction: "next", dayFileChanged: false),
@@ -601,6 +632,47 @@ final class NotificationServiceTests: XCTestCase {
             pomodoroAlreadyLinked: !dayFileChanged,
             removedPomodoroLinks: 0,
             pomodoroSelectorUnused: false
+        )
+    }
+
+    private func ensureNextCapture(statusChanged: Bool, linkAction: String) -> CaptureCommandSuccess {
+        CaptureCommandSuccess(
+            ok: true,
+            dryRun: false,
+            routed: true,
+            route: "cash",
+            routeLabel: "cash.md",
+            relativeTarget: "cash.md",
+            target: "/tmp/bob/cash.md",
+            text: "",
+            taskLine: "- [*] #task Finish Google Exit Packet! ^goog-exit",
+            kind: "task_toggle",
+            created: "2026-09-10",
+            placement: "toggled",
+            blockID: "goog-exit",
+            dayFile: "/tmp/bob/2026/20260910.md",
+            blockLink: "[[cash#^goog-exit]]",
+            toggleDirection: "next",
+            previousTaskLine: statusChanged
+                ? "- [ ] #task Finish Google Exit Packet! ^goog-exit"
+                : "- [*] #task Finish Google Exit Packet! ^goog-exit",
+            statusSymbol: "*",
+            statusName: "Next",
+            previousStatusSymbol: statusChanged ? " " : "*",
+            previousStatusName: statusChanged ? "Ready" : "Next",
+            createsPomodoro: false,
+            pomodoroAlreadyLinked: linkAction == "already_current",
+            removedPomodoroLinks: 0,
+            pomodoroSelectorUnused: false,
+            toggleBehavior: "ensure_next",
+            statusChanged: statusChanged,
+            pomodoroLinkAction: linkAction,
+            pomodoroLinkSource: PomodoroLinkEndpoint(line: 4, name: "LATER"),
+            pomodoroLinkDestination: PomodoroLinkEndpoint(
+                line: 2,
+                name: "CURRENT",
+                timeRange: "0900-0930"
+            )
         )
     }
 }

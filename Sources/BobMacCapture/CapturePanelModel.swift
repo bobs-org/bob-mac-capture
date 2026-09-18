@@ -1519,7 +1519,14 @@ final class CapturePanelModel: ObservableObject {
                     }
                     switch preview {
                     case .success(let success):
+                        let captures = success.normalizedCaptures
                         self?.previewState = .ready(success)
+                        self?.previewResult = captures.first
+                        self?.previewResults = captures
+                        self?.previewGlobalDestination = success.globalDestination
+                        if let presentation = Self.soleTogglePresentation(for: captures) {
+                            self?.statusText = presentation.statusText
+                        }
                     case .failure(let failure):
                         self?.previewState = .failed(failure.error)
                     }
