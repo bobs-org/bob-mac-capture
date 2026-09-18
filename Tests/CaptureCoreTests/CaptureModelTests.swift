@@ -995,6 +995,57 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(success.pomodoroLinkDestination?.timeRange, "0900-0930")
     }
 
+    func testCaptureCommandResponseDecodesNamedEnsureNextCreationFields() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "cash",
+              "route_label": "cash.md",
+              "relative_target": "cash.md",
+              "target": "/tmp/bob/cash.md",
+              "text": "",
+              "task_line": "- [*] #task Finish Google Exit Packet! ^goog-exit",
+              "kind": "task_toggle",
+              "created": "2026-09-10",
+              "placement": "toggled",
+              "block_id": "goog-exit",
+              "day_file": "/tmp/bob/2026/20260910.md",
+              "block_link": "[[cash#^goog-exit]]",
+              "toggle_direction": "next",
+              "previous_task_line": "- [ ] #task Finish Google Exit Packet! ^goog-exit",
+              "status_symbol": "*",
+              "status_name": "Next",
+              "previous_status_symbol": " ",
+              "previous_status_name": "Ready",
+              "pomodoro_name": "FRESH",
+              "creates_pomodoro": true,
+              "pomodoro_already_linked": false,
+              "removed_pomodoro_links": 0,
+              "toggle_behavior": "ensure_next",
+              "status_changed": true,
+              "pomodoro_link_action": "moved",
+              "pomodoro_link_source": { "line": 4, "name": "LATER" },
+              "pomodoro_link_destination": { "line": 5, "name": "FRESH" }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.toggleBehavior, "ensure_next")
+        XCTAssertEqual(success.createsPomodoro, true)
+        XCTAssertEqual(success.pomodoroName, "FRESH")
+        XCTAssertEqual(success.pomodoroLinkAction, "moved")
+        XCTAssertEqual(success.pomodoroLinkDestination?.name, "FRESH")
+        XCTAssertEqual(success.removedPomodoroLinks, 0)
+        XCTAssertNotEqual(success.pomodoroSelectorUnused, true)
+    }
+
     func testCaptureCommandResponseDecodesTaskToggleAdditiveFieldsAsNilWhenAbsent() throws {
         let data = Data(
             """

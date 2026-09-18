@@ -263,6 +263,25 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertNil(content.userInfo[NotificationService.targetPathsKey])
     }
 
+    func testEnsureNextNamedCreationOpensBothNotes() {
+        let content = NotificationService.successContent(captures: [
+            ensureNextCapture(
+                statusChanged: true,
+                linkAction: "moved",
+                createsPomodoro: true,
+                destinationName: "FRESH"
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "Ensured Next and created")
+        XCTAssertTrue(content.body.contains("created FRESH"))
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureBatchCategoryIdentifier)
+        XCTAssertEqual(
+            content.userInfo[NotificationService.targetPathsKey] as? [String],
+            ["/tmp/bob/cash.md", "/tmp/bob/2026/20260910.md"]
+        )
+    }
+
     func testTaskToggleSuccessContentOmitsDayFileFromTargetsWhenNothingChangedThere() {
         let content = NotificationService.successContent(captures: [
             toggleCapture(direction: "next", dayFileChanged: false),
@@ -635,7 +654,12 @@ final class NotificationServiceTests: XCTestCase {
         )
     }
 
-    private func ensureNextCapture(statusChanged: Bool, linkAction: String) -> CaptureCommandSuccess {
+    private func ensureNextCapture(
+        statusChanged: Bool,
+        linkAction: String,
+        createsPomodoro: Bool = false,
+        destinationName: String = "CURRENT"
+    ) -> CaptureCommandSuccess {
         CaptureCommandSuccess(
             ok: true,
             dryRun: false,
@@ -660,7 +684,8 @@ final class NotificationServiceTests: XCTestCase {
             statusName: "Next",
             previousStatusSymbol: statusChanged ? " " : "*",
             previousStatusName: statusChanged ? "Ready" : "Next",
-            createsPomodoro: false,
+            pomodoroName: destinationName,
+            createsPomodoro: createsPomodoro,
             pomodoroAlreadyLinked: linkAction == "already_current",
             removedPomodoroLinks: 0,
             pomodoroSelectorUnused: false,
@@ -669,9 +694,9 @@ final class NotificationServiceTests: XCTestCase {
             pomodoroLinkAction: linkAction,
             pomodoroLinkSource: PomodoroLinkEndpoint(line: 4, name: "LATER"),
             pomodoroLinkDestination: PomodoroLinkEndpoint(
-                line: 2,
-                name: "CURRENT",
-                timeRange: "0900-0930"
+                line: createsPomodoro ? 5 : 2,
+                name: destinationName,
+                timeRange: createsPomodoro ? nil : "0900-0930"
             )
         )
     }

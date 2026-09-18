@@ -275,6 +275,89 @@ final class CaptureTogglePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.primaryActionTitle, "Ensure Next")
     }
 
+    func testEnsureNextNamedNoOpNamesTheDestination() throws {
+        let success = try decodeCaptureSuccess(
+            Self.ensureNextJSON(
+                previousStatusSymbol: "*",
+                previousStatusName: "Next",
+                statusChanged: false,
+                linkAction: "already_current",
+                destinationName: "CODING",
+                destinationTimeRange: nil
+            )
+        )
+        let presentation = try XCTUnwrap(CaptureTogglePresentation(capture: success))
+
+        XCTAssertEqual(presentation.primaryActionTitle, "Ensure Next")
+        XCTAssertEqual(
+            presentation.relocationText,
+            "Already in CODING; no Pomodoro changes"
+        )
+        XCTAssertEqual(presentation.notificationTitle, "Already Next")
+        XCTAssertFalse(presentation.dayFileChanged)
+        XCTAssertEqual(
+            presentation.dayFileDestinationLabel,
+            "2026/20260910.md \u{00b7} under CODING"
+        )
+        XCTAssertNil(presentation.removedLinksText)
+        XCTAssertFalse(presentation.notificationBody.contains("removed"))
+        XCTAssertFalse(presentation.notificationBody.contains("not used when clearing"))
+    }
+
+    func testEnsureNextNamedCreationIsVisibleInPreviewAndNotificationCopy() throws {
+        let success = try decodeCaptureSuccess(
+            Self.ensureNextJSON(
+                createsPomodoro: true,
+                destinationName: "FRESH",
+                destinationTimeRange: nil
+            )
+        )
+        let presentation = try XCTUnwrap(CaptureTogglePresentation(capture: success))
+
+        XCTAssertEqual(presentation.primaryActionTitle, "Ensure Next")
+        XCTAssertTrue(presentation.dayFileChanged)
+        XCTAssertEqual(
+            presentation.relocationText,
+            "Moved LATER \u{2192} FRESH (created FRESH)"
+        )
+        XCTAssertEqual(presentation.notificationTitle, "Ensured Next and created")
+        XCTAssertTrue(presentation.voiceOverAnnouncement.contains("created FRESH"))
+        XCTAssertTrue(presentation.notificationBody.contains("created FRESH"))
+        XCTAssertEqual(
+            presentation.dayFileDestinationLabel,
+            "2026/20260910.md \u{00b7} under FRESH"
+        )
+    }
+
+    func testEnsureNextNamedCreationWithoutStatusChangeUsesCreatedTitle() throws {
+        let success = try decodeCaptureSuccess(
+            Self.ensureNextJSON(
+                previousStatusSymbol: "*",
+                previousStatusName: "Next",
+                statusChanged: false,
+                createsPomodoro: true,
+                destinationName: "FRESH",
+                destinationTimeRange: nil
+            )
+        )
+        let presentation = try XCTUnwrap(CaptureTogglePresentation(capture: success))
+
+        XCTAssertEqual(presentation.notificationTitle, "Created named Pomodoro")
+        XCTAssertTrue(presentation.dayFileChanged)
+    }
+
+    func testExplicitToggleStillUsesSetNextAndCanPresentLinkDeletion() throws {
+        let success = try decodeCaptureSuccess(
+            Self.openDirectionJSON(removedPomodoroLinks: 1)
+        )
+        let presentation = try XCTUnwrap(CaptureTogglePresentation(capture: success))
+
+        XCTAssertEqual(presentation.primaryActionTitle, "Set Open")
+        XCTAssertFalse(presentation.isEnsureNext)
+        XCTAssertEqual(presentation.removedLinksText, "removed 1 Pomodoro task link")
+        XCTAssertEqual(presentation.notificationTitle, "Set Open")
+    }
+
     func testOpenDirectionWithUnusedPomodoroSelectorAndNoNameFallsBackToGenericChip() throws {
         let success = try decodeCaptureSuccess(
             Self.openDirectionJSON(pomodoroSelectorUnused: true)
@@ -402,6 +485,7 @@ final class CaptureTogglePresentationTests: XCTestCase {
         previousStatusName: String = "Ready",
         statusChanged: Bool = true,
         linkAction: String = "moved",
+        createsPomodoro: Bool = false,
         sourceName: String? = "LATER",
         sourceTimeRange: String? = nil,
         destinationName: String? = "CURRENT",
@@ -433,7 +517,7 @@ final class CaptureTogglePresentationTests: XCTestCase {
           "status_name": "Next",
           "previous_status_symbol": "\(previousStatusSymbol)",
           "previous_status_name": "\(previousStatusName)",
-          "creates_pomodoro": false,
+          "creates_pomodoro": \(createsPomodoro),
           "pomodoro_already_linked": \(linkAction == "already_current"),
           "removed_pomodoro_links": 0,
           "toggle_behavior": "ensure_next",

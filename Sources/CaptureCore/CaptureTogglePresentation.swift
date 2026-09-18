@@ -66,8 +66,9 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
     public let primaryActionTitle: String
     /// True when Bob reported `toggle_behavior: "ensure_next"`.
     public let isEnsureNext: Bool
-    /// `"Moved LATER → CURRENT"` or `"Already in CURRENT; no Pomodoro changes"` for
-    /// the bang form; `nil` for the two-way toggle.
+    /// `"Moved LATER → CURRENT"`, `"Already in CODING; no Pomodoro changes"`, or
+    /// `"Moved LATER → FRESH (created FRESH)"` for Ensure Next; `nil` for the
+    /// two-way toggle.
     public let relocationText: String?
 
     public let statusText: String
@@ -116,6 +117,7 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         let pomodoroSelectorUnused = capture.pomodoroSelectorUnused ?? false
         isEnsureNext = ensureNext
         let moved = capture.pomodoroLinkAction == "moved"
+        let createdPomodoro = capture.createsPomodoro ?? false
 
         if ensureNext {
             addedLinkText = nil
@@ -156,7 +158,12 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
             if moved {
                 let destination = destinationLabel ?? "current/next"
                 let source = sourceLabel ?? "source"
-                relocationText = "Moved \(source) \u{2192} \(destination)"
+                if createdPomodoro {
+                    relocationText =
+                        "Moved \(source) \u{2192} \(destination) (created \(destination))"
+                } else {
+                    relocationText = "Moved \(source) \u{2192} \(destination)"
+                }
             } else {
                 let destination = destinationLabel ?? "current/next"
                 relocationText = "Already in \(destination); no Pomodoro changes"
@@ -181,7 +188,7 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         }
 
         if ensureNext {
-            dayFileChanged = moved
+            dayFileChanged = moved || createdPomodoro
             primaryActionTitle = "Ensure Next"
         } else {
             switch direction {
@@ -230,11 +237,13 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         voiceOverAnnouncement = announcementParts.joined(separator: ". ")
 
         if ensureNext {
-            switch (statusChanged, moved) {
-            case (true, true): notificationTitle = "Ensured Next and moved"
-            case (true, false): notificationTitle = "Ensured Next"
-            case (false, true): notificationTitle = "Moved Task Link"
-            case (false, false): notificationTitle = "Already Next"
+            switch (statusChanged, moved, createdPomodoro) {
+            case (true, true, true): notificationTitle = "Ensured Next and created"
+            case (true, true, false): notificationTitle = "Ensured Next and moved"
+            case (true, false, _): notificationTitle = "Ensured Next"
+            case (false, true, true): notificationTitle = "Created named Pomodoro"
+            case (false, true, false): notificationTitle = "Moved Task Link"
+            case (false, false, _): notificationTitle = "Already Next"
             }
         } else {
             notificationTitle = primaryActionTitle

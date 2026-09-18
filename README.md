@@ -47,8 +47,10 @@ mutation.
   task-toggle `@route+block-id#`, the additive `creates_pomodoro`
   create-future-Pomodoro action, `task_toggle` capture JSON, the
   `task_toggle_*` parse spans, and the current task-toggle spellings:
-  plain `@route+block-id` for Ensure Next relocation and suffixed
-  `@route+block-id!` for the explicit two-way toggle (`toggle_behavior` and
+  plain `@route+block-id` for Ensure Next relocation to the implicit
+  current/next Pomodoro, `@route+block-id#pomodoro` for named Ensure Next
+  relocation or named-future creation, and suffixed `@route+block-id!` for
+  the explicit two-way toggle (`toggle_behavior` and
   `task_toggle_explicit_toggle`). Older builds can still capture ordinary drafts, but
   global declarations, bare-`@@` absorption, the Add block ID flow, the Name Pomodoro
   flow, the task-section popup, and the task-toggle footer/preview report the local Bob
@@ -352,6 +354,7 @@ bullets prefixed by exactly two ASCII spaces become nested authored children und
 nearest preceding first-level authored child.
 A marker (`@route`,
 `@route+block-id` alone to ensure Next and relocate an existing Task Link,
+`@route+block-id#pomodoro` alone to ensure Next onto a named Pomodoro,
 `@route+block-id!` alone for the explicit two-way task-toggle item,
 `@route+block-id` with body text for an
 existing-task sub-bullet, `@route+block-id#section` to nest under one of that task's
@@ -392,12 +395,15 @@ Second task @bar
 Bob's routed marker syntax works directly in the editor. `@route^block-id` captures an
 ordinary `[ ]` task with a trailing `^block-id` and no Pomodoro task link, while
 `@route:block-id` keeps the Pomodoro-linked next-task behavior, `@route:block-id#name`
-targets a named open Pomodoro by slug, a marker-only `@route+block-id` toggles that
-existing task between Ready and Next, and `@route+block-id` with body text nests beneath
-the task. `@route+block-id#section` nests under that task's matching section bullet once
-body text is present; the same `#` position opens the Pomodoro-name popup while the item
-is still marker-only, including the create-future-Pomodoro row and **Name Pomodoro**
-prompt. The unchanged `@route+` task picker and Add block ID prompt are still how a task
+targets a named open Pomodoro by slug, a marker-only `@route+block-id` ensures that
+existing task is Next and relocates its Task Link, `@route+block-id#pomodoro` does the
+same onto a named Pomodoro (creating the named future Pomodoro if needed),
+`@route+block-id!` is the explicit two-way add/clear toggle, and `@route+block-id` with
+body text nests beneath the task. `@route+block-id#section` nests under that task's
+matching section bullet once body text is present; the same `#` position opens the
+Pomodoro-name popup while the item is still marker-only, including the
+create-future-Pomodoro row and **Name Pomodoro** prompt. The app labels Ensure Next
+versus Set Next/Open from Bob's returned `toggle_behavior`, never by parsing `#` or `!`. The unchanged `@route+` task picker and Add block ID prompt are still how a task
 without a block ID becomes selectable. The app does not duplicate those grammar rules; it
 colors the span kinds Bob reports, asks Bob for completion at the real caret, and
 submits the original draft text.

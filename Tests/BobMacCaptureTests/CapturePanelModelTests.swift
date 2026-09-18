@@ -508,6 +508,108 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertFalse(record.contains(" -- @file+goog-exit\n"))
     }
 
+    func testNamedEnsureNextMoveKeepsDraftAndUsesEnsureNextAction() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        model.plainDraft = "@file+goog-exit#coding"
+        model.editorTextDidChange(cursorUTF8Offset: "@file+goog-exit#coding".utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.previewResult?.kind, "task_toggle")
+        XCTAssertEqual(model.previewResult?.toggleBehavior, "ensure_next")
+        XCTAssertEqual(model.previewResult?.pomodoroLinkAction, "moved")
+        XCTAssertEqual(model.previewResult?.pomodoroName, "CODING")
+        XCTAssertEqual(model.togglePresentation?.primaryActionTitle, "Ensure Next")
+        XCTAssertEqual(model.primaryActionTitle, "Ensure Next")
+        XCTAssertEqual(model.togglePresentation?.notificationTitle, "Ensured Next and moved")
+        XCTAssertEqual(
+            model.togglePresentation?.relocationText,
+            "Moved LATER \u{2192} CODING"
+        )
+        XCTAssertTrue(model.togglePresentation?.dayFileChanged == true)
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.lastSuccess?.toggleBehavior, "ensure_next")
+        XCTAssertEqual(model.lastSuccess?.pomodoroLinkAction, "moved")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- @file+goog-exit#coding"))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- @file+goog-exit#coding"))
+        XCTAssertTrue(record.contains("argv=capture --format json -- @file+goog-exit#coding"))
+        XCTAssertFalse(record.contains(" -- @file+goog-exit!\n"))
+    }
+
+    func testNamedEnsureNextAlreadyAtNameIsANoOpAndStillEnsureNext() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+            ]
+        )
+
+        model.plainDraft = "@file+goog-exit#already"
+        model.editorTextDidChange(cursorUTF8Offset: "@file+goog-exit#already".utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.previewResult?.toggleBehavior, "ensure_next")
+        XCTAssertEqual(model.previewResult?.pomodoroLinkAction, "already_current")
+        XCTAssertEqual(model.togglePresentation?.primaryActionTitle, "Ensure Next")
+        XCTAssertEqual(model.togglePresentation?.notificationTitle, "Already Next")
+        XCTAssertEqual(
+            model.togglePresentation?.relocationText,
+            "Already in CODING; no Pomodoro changes"
+        )
+        XCTAssertTrue(model.togglePresentation?.dayFileChanged == false)
+        XCTAssertNil(model.togglePresentation?.removedLinksText)
+    }
+
+    func testNamedEnsureNextCreationAnnouncesCreatedDestination() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+            ]
+        )
+
+        model.plainDraft = "@file+goog-exit#fresh"
+        model.editorTextDidChange(cursorUTF8Offset: "@file+goog-exit#fresh".utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.previewResult?.toggleBehavior, "ensure_next")
+        XCTAssertEqual(model.previewResult?.createsPomodoro, true)
+        XCTAssertEqual(model.togglePresentation?.primaryActionTitle, "Ensure Next")
+        XCTAssertEqual(model.togglePresentation?.notificationTitle, "Ensured Next and created")
+        XCTAssertEqual(
+            model.togglePresentation?.relocationText,
+            "Moved LATER \u{2192} FRESH (created FRESH)"
+        )
+        XCTAssertTrue(model.togglePresentation?.dayFileChanged == true)
+        XCTAssertTrue(model.togglePresentation?.voiceOverAnnouncement.contains("created FRESH") == true)
+    }
+
     func testPrimaryActionTitleDefaultsToCaptureWithoutAToggleAndForABatch() {
         let model = CapturePanelModel()
 
