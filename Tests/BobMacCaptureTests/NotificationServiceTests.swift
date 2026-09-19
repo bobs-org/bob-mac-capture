@@ -260,7 +260,11 @@ final class NotificationServiceTests: XCTestCase {
             content.userInfo[NotificationService.targetPathKey] as? String,
             "/tmp/bob/cash.md"
         )
-        XCTAssertNil(content.userInfo[NotificationService.targetPathsKey])
+        // The unchanged day file is excluded; the single route note still yields ordered paths.
+        XCTAssertEqual(
+            content.userInfo[NotificationService.targetPathsKey] as? [String],
+            ["/tmp/bob/cash.md"]
+        )
     }
 
     func testEnsureNextNamedCreationOpensBothNotes() {
