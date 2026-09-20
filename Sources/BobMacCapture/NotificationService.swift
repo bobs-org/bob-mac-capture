@@ -469,6 +469,8 @@ final class NotificationService: NSObject, ObservableObject {
             return "Note"
         case "task-toggle", "task_toggle":
             return "Toggle"
+        case "project-note", "project_note":
+            return "Project"
         default:
             return kind
                 .split { $0 == "-" || $0 == "_" || $0 == " " }

@@ -50,7 +50,7 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .wikilinkAlias
     case "interactive_placeholder":
         return .interactivePlaceholder
-    case "task_toggle_explicit_toggle", "task_toggle_force_next":
+    case "task_toggle_explicit_toggle", "task_toggle_force_next", "project_note_marker":
         return .explicitToggle
     default:
         return .neutral

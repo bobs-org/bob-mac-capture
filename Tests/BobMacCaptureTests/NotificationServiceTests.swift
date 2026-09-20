@@ -51,6 +51,21 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertEqual(content.body, "Sketch notification polish")
     }
 
+    func testSingleProjectNoteSuccessContentUsesProjectTitle() {
+        let content = NotificationService.successContent(captures: [
+            capture(
+                kind: "project_note",
+                routeLabel: "cash_goog_exit.md",
+                target: "/Users/bryan/bob/cash_goog_exit.md",
+                text: "Finish the Google exit packet!"
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "Project captured")
+        XCTAssertEqual(content.subtitle, "cash_goog_exit.md")
+        XCTAssertEqual(content.body, "Finish the Google exit packet!")
+    }
+
     func testSameTargetBatchUsesOrderedBodyLinesAndSingleOpenAction() {
         let content = NotificationService.successContent(captures: [
             capture(
