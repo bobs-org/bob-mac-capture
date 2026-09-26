@@ -1870,49 +1870,59 @@ final class CapturePanelModelTests: XCTestCase {
     }
 
     func testPlusCommitsGlobalRouteDeclarationAndOpensTaskPicker() async throws {
-        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        let model = CapturePanelModel(debounceNanoseconds: 0)
-        model.processClient = BobProcessClient(
-            executablePath: try fakeBobPath(),
-            environment: [
-                "HOME": "/tmp",
-                "PATH": "/usr/bin:/bin",
-                "FAKE_BOB_RECORD_PATH": recordURL.path,
-            ]
-        )
-        installTargetCache(
-            on: model,
-            targets: [
-                CaptureTarget(
-                    route: "mac_inbox",
-                    name: "mac_inbox",
-                    label: "mac_inbox.md",
-                    kind: "inbox",
-                    relativePath: "mac_inbox.md"
-                ),
-            ]
-        )
-
-        let draft = "@@ma\nFirst task"
-        model.plainDraft = draft
-        model.editorTextDidChange(cursorUTF8Offset: "@@ma".utf8.count)
-        await waitUntil { model.completionResponse?.context == "route" }
-        XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 2, end: 4))
-        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "mac_inbox")
-
-        model.plainDraft = "@@ma+\nFirst task"
-        model.editorTextDidChange(cursorUTF8Offset: nil)
-
-        XCTAssertEqual(model.plainDraft, "@@mac_inbox+\nFirst task")
-        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 12)
-
-        await waitUntil { model.completionResponse?.context == "task" }
-        let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(
-            record.contains(
-                "argv=capture-complete --all-tasks --cursor 12 --format json -- @@mac_inbox+\nFirst task"
+        // DEBUG amplification for bead bob-cli-26.4.3.1: repeat the scenario to
+        // catch the intermittent cursor mismatch with the record attached.
+        for iteration in 0..<20 {
+            let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(
+                UUID().uuidString
             )
-        )
+            let model = CapturePanelModel(debounceNanoseconds: 0)
+            model.processClient = BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            )
+            installTargetCache(
+                on: model,
+                targets: [
+                    CaptureTarget(
+                        route: "mac_inbox",
+                        name: "mac_inbox",
+                        label: "mac_inbox.md",
+                        kind: "inbox",
+                        relativePath: "mac_inbox.md"
+                    ),
+                ]
+            )
+
+            let draft = "@@ma\nFirst task"
+            model.plainDraft = draft
+            model.editorTextDidChange(cursorUTF8Offset: "@@ma".utf8.count)
+            await waitUntil { model.completionResponse?.context == "route" }
+            XCTAssertEqual(model.completionResponse?.replacement, CaptureRange(start: 2, end: 4))
+            XCTAssertEqual(model.completionResponse?.candidates.first?.route, "mac_inbox")
+
+            model.plainDraft = "@@ma+\nFirst task"
+            model.editorTextDidChange(cursorUTF8Offset: nil)
+
+            XCTAssertEqual(model.plainDraft, "@@mac_inbox+\nFirst task")
+            XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 12)
+
+            await waitUntil { model.completionResponse?.context == "task" }
+            let record = try String(contentsOf: recordURL)
+            let completeLines = record.components(separatedBy: "\n").filter {
+                $0.contains("capture-complete")
+            }
+            XCTAssertTrue(
+                record.contains(
+                    "argv=capture-complete --all-tasks --cursor 12 --format json -- @@mac_inbox+\nFirst task"
+                ),
+                "DEBUG iteration \(iteration) complete lines:\n\(completeLines.joined(separator: "\n"))"
+            )
+        }
     }
 
     func testEditorSelectionDidChangeUsesEmittedSelectionNotStaleModelState() async throws {
