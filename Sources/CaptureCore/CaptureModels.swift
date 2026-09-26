@@ -248,17 +248,20 @@ public struct CaptureDiagnostic: Codable, Equatable {
         // Bob serializes diagnostic ranges as a nullable `[start, end]` pair, while
         // older fixtures use the `{"start":..,"end":..}` object. Accept both so an
         // `invalid_pomodoro_start` diagnostic never breaks parse decoding.
-        if let object = try? container.decodeIfPresent(CaptureRange.self, forKey: .range),
-           let object
-        {
-            range = object
-        } else if let pair = try? container.decodeIfPresent([Int].self, forKey: .range),
-                  let pair,
-                  pair.count == 2
-        {
-            range = CaptureRange(start: pair[0], end: pair[1])
+        // `decodeIfPresent` returns an optional and `try?` adds a second layer, so
+        // flatten (`?? nil`) before binding: `if let` unwraps only one layer.
+        let objectRange: CaptureRange? =
+            (try? container.decodeIfPresent(CaptureRange.self, forKey: .range)) ?? nil
+        if let objectRange {
+            range = objectRange
         } else {
-            range = nil
+            let pairRange: [Int]? =
+                (try? container.decodeIfPresent([Int].self, forKey: .range)) ?? nil
+            if let pairRange, pairRange.count == 2 {
+                range = CaptureRange(start: pairRange[0], end: pairRange[1])
+            } else {
+                range = nil
+            }
         }
     }
 

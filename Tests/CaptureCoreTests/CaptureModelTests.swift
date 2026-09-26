@@ -1688,6 +1688,38 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertNil(CapturePomodoroStartPresentation(capture: success))
     }
 
+    func testCaptureDiagnosticDecodesAllRangeShapesTolerantly() throws {
+        let decoder = JSONDecoder()
+        func decodeRange(_ rangeJSON: String) throws -> CaptureRange? {
+            let data = Data(
+                """
+                {"severity":"error","code":"invalid_pomodoro_start","message":"Bad start","range":\(rangeJSON)}
+                """.utf8
+            )
+            return try decoder.decode(CaptureDiagnostic.self, from: data).range
+        }
+
+        XCTAssertEqual(
+            try decodeRange(#"{"start":3,"end":9}"#),
+            CaptureRange(start: 3, end: 9)
+        )
+        XCTAssertEqual(
+            try decodeRange("[3,9]"),
+            CaptureRange(start: 3, end: 9)
+        )
+        XCTAssertNil(try decodeRange("null"))
+        XCTAssertNil(try decodeRange("[3]"))
+        XCTAssertNil(try decodeRange(#"{"start":"x"}"#))
+
+        let absent = try decoder.decode(
+            CaptureDiagnostic.self,
+            from: Data(
+                #"{"severity":"error","code":"invalid_pomodoro_start","message":"Bad start"}"#.utf8
+            )
+        )
+        XCTAssertNil(absent.range)
+    }
+
     private func decodeCaptureSuccess(_ json: String) throws -> CaptureCommandSuccess {
         let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: Data(json.utf8))
         guard case .success(let success) = decoded else {
