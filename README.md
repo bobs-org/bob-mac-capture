@@ -54,7 +54,9 @@ mutation.
   `task_toggle_explicit_toggle`), plus the atomic-start `@route:block-id=<X>` and
   `@route:block-id#name=<X>` suffix (`pomodoro_start` parse/capture JSON and the
   `pomodoro_start` span, where `<X>` mirrors the `se<X>` snippet: empty is 25
-  minutes, `-` offsets one 5-minute unit). Older builds can still capture ordinary drafts, but
+  minutes, `-` offsets one 5-minute unit), plus whole-item `+N`/`-N` duration
+  adjustments (`pomodoro_adjust` parse/capture JSON and the `pomodoro_adjust`
+  span, where each unit is 5 minutes and subtraction clamps at zero). Older builds can still capture ordinary drafts, but
   global declarations, bare-`@@` absorption, the Add block ID flow, the Name Pomodoro
   flow, the task-section popup, and the task-toggle footer/preview report the local Bob
   error or an empty list until Bob is upgraded. An older Bob that sees bare
@@ -65,7 +67,10 @@ mutation.
   still previews and captures `@route:block-id` without a session; the Mac app
   decodes a missing start object as no session and shows no timer row, while a
   malformed `=<X>` suffix surfaces Bob's `invalid_pomodoro_start` diagnostic
-  unchanged. Older Bob builds may implement the
+  unchanged. An older Bob that omits `pomodoro_adjust` still parses `+5` as an
+  ordinary task; the Mac app decodes a missing adjustment object as no
+  adjustment and shows no adjustment row, while an invalid magnitude surfaces
+  Bob's `invalid_pomodoro_adjustment` diagnostic unchanged. Older Bob builds may implement the
   previous task-toggle spellings. The app labels
   actions and notifications from Bob's returned behavior metadata, so a response
   that omits `toggle_behavior` still shows the two-way Set Next/Open footer,
@@ -411,7 +416,15 @@ typed duration. Preview renders Bob's resolved session — selected Pomodoro,
 5-minute-rounded start/end, duration, and created-entry state — sourced only from
 `bob capture --dry-run --no-clip --format json`, and submission runs the same Bob
 command; conflicts such as an already-running session surface as ordinary preview
-errors. A marker-only `@route+block-id` ensures that
+errors. A whole-item `+N`/`-N` draft adjusts the current Pomodoro instead of
+capturing a task: each unit is 5 minutes (`+5` extends by 25 minutes),
+subtraction clamps at zero and reports requested versus applied minutes, and the
+item must contain only the signed count. The `+N` token highlights as its own
+`pomodoro_adjust` span and never offers route or task completion. Preview renders
+Bob's resolved before-to-after timing, signed minute effect, and target line —
+sourced only from `bob capture --dry-run --no-clip --format json`, including in
+mixed drafts — and submission runs the same Bob command; a missing or ambiguous
+target surfaces Bob's error as an ordinary preview failure. A marker-only `@route+block-id` ensures that
 existing task is Next and relocates its Task Link, `@route+block-id#pomodoro` does the
 same onto a named Pomodoro (creating the named future Pomodoro if needed),
 `@route+block-id!` is the explicit two-way add/clear toggle, and `@route+block-id` with

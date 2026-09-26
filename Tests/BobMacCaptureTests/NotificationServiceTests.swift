@@ -61,6 +61,70 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertTrue(content.body.contains("Started next session 0930-0945 (15m) at line 12"))
     }
 
+    func testSinglePomodoroAdjustSuccessContentAppendsBeforeAfterDetail() {
+        let content = NotificationService.successContent(captures: [
+            capture(
+                kind: "pomodoro_adjust",
+                routeLabel: "",
+                relativeTarget: "day.md",
+                target: "/Users/bryan/bob/2026/20260814.md",
+                text: "+5",
+                pomodoroAdjust: PomodoroAdjustSummary(
+                    direction: "plus",
+                    requestedUnits: 5,
+                    requestedMinutes: 25,
+                    deltaMinutes: 25,
+                    beforeStart: "0900",
+                    beforeEnd: "0930",
+                    beforeDurationMinutes: 30,
+                    afterStart: "0900",
+                    afterEnd: "0955",
+                    afterDurationMinutes: 55,
+                    pomodoroLine: 3,
+                    pomodoroName: "FOCUS",
+                    timeRange: "(**0900-0955** [t:: 55m])",
+                    clamped: false
+                )
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "Adjustment captured")
+        XCTAssertEqual(content.subtitle, "day.md")
+        XCTAssertTrue(content.body.contains("+5"))
+        XCTAssertTrue(content.body.contains("Adjusted FOCUS 0900-0930 (30m) to 0900-0955 (55m), +25m at line 3"))
+    }
+
+    func testSingleClampedAdjustSuccessContentKeepsRequestedNote() {
+        let content = NotificationService.successContent(captures: [
+            capture(
+                kind: "pomodoro_adjust",
+                routeLabel: "",
+                relativeTarget: "day.md",
+                target: "/Users/bryan/bob/2026/20260814.md",
+                text: "-9",
+                pomodoroAdjust: PomodoroAdjustSummary(
+                    direction: "minus",
+                    requestedUnits: 9,
+                    requestedMinutes: -45,
+                    deltaMinutes: -10,
+                    beforeStart: "0900",
+                    beforeEnd: "0910",
+                    beforeDurationMinutes: 10,
+                    afterStart: "0900",
+                    afterEnd: "0900",
+                    afterDurationMinutes: 0,
+                    pomodoroLine: 3,
+                    pomodoroName: "FOCUS",
+                    timeRange: "(**0900-0900** [t:: 0m])",
+                    clamped: true
+                )
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "Adjustment captured")
+        XCTAssertTrue(content.body.contains("(requested -45m in 9 units clamped)"))
+    }
+
     func testSingleNoteSuccessContentUsesNoteTitleAndSafeBodyFallback() {
         let content = NotificationService.successContent(captures: [
             capture(
@@ -647,14 +711,16 @@ final class NotificationServiceTests: XCTestCase {
         scheduled: String? = nil,
         parentText: String? = nil,
         blockID: String? = nil,
-        pomodoroStart: PomodoroStartSummary? = nil
+        pomodoroStart: PomodoroStartSummary? = nil,
+        pomodoroAdjust: PomodoroAdjustSummary? = nil,
+        relativeTarget: String? = nil
     ) -> CaptureCommandSuccess {
         CaptureCommandSuccess(
             ok: true,
             dryRun: false,
             routed: !target.isEmpty,
             routeLabel: routeLabel,
-            relativeTarget: routeLabel,
+            relativeTarget: relativeTarget ?? routeLabel,
             target: target,
             text: text,
             taskLine: "- [ ] #task \(text)",
@@ -664,7 +730,8 @@ final class NotificationServiceTests: XCTestCase {
             placement: "inserted",
             blockID: blockID,
             parentText: parentText,
-            pomodoroStart: pomodoroStart
+            pomodoroStart: pomodoroStart,
+            pomodoroAdjust: pomodoroAdjust
         )
     }
 

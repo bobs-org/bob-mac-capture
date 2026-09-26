@@ -374,7 +374,10 @@ final class NotificationService: NSObject, ObservableObject {
             let kind = friendlyKindLabel(capture.kind)
             return CaptureNotificationPresentation(
                 title: "\(kind) captured",
-                subtitle: capture.routeLabel,
+                // Adjustments are unrouted daily-note edits, so fall back to
+                // the relative target (the day file) when there is no route
+                // label rather than notifying with an empty subtitle.
+                subtitle: displayLabel(for: capture),
                 body: singleCaptureBody(capture),
                 targetPaths: targetPaths
             )
@@ -400,7 +403,7 @@ final class NotificationService: NSObject, ObservableObject {
             .joined(separator: " across ")
         let lines = nonemptyCaptures.enumerated().map { index, capture in
             let scheduled = capture.scheduled.map { " scheduled \($0)" } ?? ""
-            return "\(index + 1). \(friendlyKindLabel(capture.kind)) -> \(capture.routeLabel): \(semanticText(capture))\(scheduled)\(startedSuffix(for: capture))"
+            return "\(index + 1). \(friendlyKindLabel(capture.kind)) -> \(capture.routeLabel): \(semanticText(capture))\(scheduled)\(startedSuffix(for: capture))\(adjustedSuffix(for: capture))"
         }
         return CaptureNotificationPresentation(
             title: "\(nonemptyCaptures.count) items captured",
@@ -432,7 +435,7 @@ final class NotificationService: NSObject, ObservableObject {
             let override = captureUsesGlobalDestination(capture, globalDestination)
                 ? ""
                 : " \u{2192} \(displayLabel(for: capture))"
-            return "\(index + 1). \(semanticText(capture))\(override)\(scheduled)\(startedSuffix(for: capture))"
+            return "\(index + 1). \(semanticText(capture))\(override)\(scheduled)\(startedSuffix(for: capture))\(adjustedSuffix(for: capture))"
         }
         return CaptureNotificationPresentation(
             title: "\(captures.count) items captured",
@@ -446,11 +449,18 @@ final class NotificationService: NSObject, ObservableObject {
         let scheduled = capture.scheduled.map { "\nScheduled: \($0)" } ?? ""
         let started = CapturePomodoroStartPresentation(capture: capture)
             .map { "\n\($0.notificationDetail)" } ?? ""
-        return "\(semanticText(capture))\(scheduled)\(started)"
+        let adjusted = CapturePomodoroAdjustPresentation(capture: capture)
+            .map { "\n\($0.notificationDetail)" } ?? ""
+        return "\(semanticText(capture))\(scheduled)\(started)\(adjusted)"
     }
 
     nonisolated private static func startedSuffix(for capture: CaptureCommandSuccess) -> String {
         CapturePomodoroStartPresentation(capture: capture)
+            .map { " (\($0.sessionText))" } ?? ""
+    }
+
+    nonisolated private static func adjustedSuffix(for capture: CaptureCommandSuccess) -> String {
+        CapturePomodoroAdjustPresentation(capture: capture)
             .map { " (\($0.sessionText))" } ?? ""
     }
 
@@ -476,6 +486,8 @@ final class NotificationService: NSObject, ObservableObject {
             return "Note"
         case "task-toggle", "task_toggle":
             return "Toggle"
+        case "pomodoro-adjust", "pomodoro_adjust":
+            return "Adjustment"
         case "project-note", "project_note":
             return "Project"
         default:

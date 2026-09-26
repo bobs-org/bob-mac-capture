@@ -55,6 +55,11 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .explicitToggle
     case "pomodoro_start":
         return .pomodoroStart
+    case "pomodoro_adjust":
+        // The whole-item `+N`/`-N` token is Pomodoro-family syntax like the
+        // `=<X>` suffix, so it shares the Pomodoro highlight rather than taking
+        // a distinct palette category.
+        return .pomodoroStart
     default:
         return .neutral
     }

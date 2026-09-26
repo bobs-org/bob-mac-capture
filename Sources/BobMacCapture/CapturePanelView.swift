@@ -1482,6 +1482,27 @@ private struct PreviewPane: View {
             .accessibilityLabel(pomodoroStart.accessibilitySummary)
         }
 
+        // The duration adjustment comes straight from Bob's resolved
+        // `pomodoro_adjust` object (dry-run JSON for preview, committed JSON
+        // after capture). No Swift-side clock or ledger math: show the
+        // before-to-after timing, signed minute effect, and target line exactly
+        // as Bob reported them.
+        if let pomodoroAdjust = CapturePomodoroAdjustPresentation(capture: success) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "timer.badge.plus")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(pomodoroAdjust.sessionText)
+                    .font(.system(.callout, design: .monospaced))
+                    .fontWeight(.semibold)
+                Text(pomodoroAdjust.destinationText)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(pomodoroAdjust.accessibilitySummary)
+        }
+
         // `previewBlockLines` is the parent line, the authored children, the clipboard
         // children, and the schedule log in the exact order Bob writes them, already
         // carrying the target note's indentation.
@@ -1593,7 +1614,9 @@ private struct PreviewPane: View {
         let override = isLocalOverride ? ", local override" : ""
         let startSummary = CapturePomodoroStartPresentation(capture: success)
             .map { ", \($0.accessibilitySummary)" } ?? ""
-        return "\(position)\(success.kind), \(destination)\(override)\(startSummary), \(success.previewBlockLines.joined(separator: ", "))"
+        let adjustSummary = CapturePomodoroAdjustPresentation(capture: success)
+            .map { ", \($0.accessibilitySummary)" } ?? ""
+        return "\(position)\(success.kind), \(destination)\(override)\(startSummary)\(adjustSummary), \(success.previewBlockLines.joined(separator: ", "))"
     }
 
     private func togglePreviewAccessibilityLabel(

@@ -1688,6 +1688,216 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertNil(CapturePomodoroStartPresentation(capture: success))
     }
 
+    func testParseResponseDecodesPomodoroAdjustSpec() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "+5",
+              "body": "+5",
+              "mode": "pomodoro_adjust",
+              "route": null,
+              "section": null,
+              "block_id": null,
+              "needs": [],
+              "spans": [
+                { "start": 0, "end": 2, "kind": "pomodoro_adjust" }
+              ],
+              "diagnostics": [],
+              "pomodoro_adjust": { "raw": "+5", "plus": true, "units": 5 }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(
+            decoded.pomodoroAdjust,
+            PomodoroAdjustSpec(raw: "+5", plus: true, units: 5)
+        )
+        XCTAssertEqual(
+            decoded.spans.map { captureSemanticCategory(forSpanKind: $0.kind) },
+            [.pomodoroStart]
+        )
+    }
+
+    func testParseResponseDecodesMixedDraftAdjustItem() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "+5\\n\\njot idea\\n",
+              "body": "+5",
+              "mode": "pomodoro_adjust",
+              "needs": [],
+              "spans": [
+                { "start": 0, "end": 2, "kind": "pomodoro_adjust" }
+              ],
+              "diagnostics": [],
+              "items": [
+                {
+                  "index": 1,
+                  "range": { "start": 0, "end": 2 },
+                  "line_start": 1,
+                  "line_end": 1,
+                  "body": "+5",
+                  "mode": "pomodoro_adjust",
+                  "needs": [],
+                  "pomodoro_adjust": { "raw": "+5", "plus": true, "units": 5 }
+                },
+                {
+                  "index": 2,
+                  "range": { "start": 4, "end": 12 },
+                  "line_start": 3,
+                  "line_end": 3,
+                  "body": "jot idea",
+                  "mode": "task",
+                  "needs": []
+                }
+              ],
+              "pomodoro_adjust": { "raw": "+5", "plus": true, "units": 5 }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(decoded.items.count, 2)
+        XCTAssertEqual(
+            decoded.items[0].pomodoroAdjust,
+            PomodoroAdjustSpec(raw: "+5", plus: true, units: 5)
+        )
+        XCTAssertNil(decoded.items[1].pomodoroAdjust)
+    }
+
+    func testParseResponseOmitsPomodoroAdjustForOlderBobBinaries() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Call bank",
+              "body": "Call bank",
+              "mode": "task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": []
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertNil(decoded.pomodoroAdjust)
+    }
+
+    func testParseResponseSurfacesInvalidAdjustMagnitudeAsDiagnostic() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "+0",
+              "body": "+0",
+              "mode": "pomodoro_adjust",
+              "needs": [],
+              "spans": [
+                { "start": 0, "end": 2, "kind": "pomodoro_adjust" }
+              ],
+              "diagnostics": [
+                {
+                  "severity": "error",
+                  "code": "invalid_pomodoro_adjustment",
+                  "message": "bad magnitude",
+                  "range": [0, 2]
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertNil(decoded.pomodoroAdjust)
+        XCTAssertEqual(decoded.diagnostics.first?.code, "invalid_pomodoro_adjustment")
+        XCTAssertEqual(decoded.diagnostics.first?.range, CaptureRange(start: 0, end: 2))
+    }
+
+    func testCaptureCommandDecodesPomodoroAdjustSummary() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {
+              "ok": true,
+              "dry_run": true,
+              "routed": false,
+              "route": null,
+              "route_label": "",
+              "relative_target": "day.md",
+              "target": "/tmp/bob/day.md",
+              "text": "-9",
+              "task_line": "- [ ] (**0900-0900** [t:: 0m]) — FOCUS",
+              "kind": "pomodoro_adjust",
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "toggled",
+              "pomodoro_name": "FOCUS",
+              "pomodoro_adjust": {
+                "direction": "minus",
+                "requested_units": 9,
+                "requested_minutes": -45,
+                "delta_minutes": -10,
+                "before_start": "0900",
+                "before_end": "0910",
+                "before_duration_minutes": 10,
+                "after_start": "0900",
+                "after_end": "0900",
+                "after_duration_minutes": 0,
+                "pomodoro_line": 3,
+                "pomodoro_name": "FOCUS",
+                "time_range": "(**0900-0900** [t:: 0m])",
+                "clamped": true
+              }
+            }
+            """
+        )
+
+        XCTAssertEqual(
+            success.pomodoroAdjust,
+            PomodoroAdjustSummary(
+                direction: "minus",
+                requestedUnits: 9,
+                requestedMinutes: -45,
+                deltaMinutes: -10,
+                beforeStart: "0900",
+                beforeEnd: "0910",
+                beforeDurationMinutes: 10,
+                afterStart: "0900",
+                afterEnd: "0900",
+                afterDurationMinutes: 0,
+                pomodoroLine: 3,
+                pomodoroName: "FOCUS",
+                timeRange: "(**0900-0900** [t:: 0m])",
+                clamped: true
+            )
+        )
+    }
+
+    func testCaptureCommandOmitsPomodoroAdjustForOlderBobBinaries() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
+             "relative_target":"cash.md","target":"/tmp/bob/cash.md","text":"Call bank",
+             "task_line":"- [ ] #task Call bank [created::2026-08-14]","kind":"task",
+             "created":"2026-08-14","scheduled":null,"placement":"inserted"}
+            """
+        )
+
+        XCTAssertNil(success.pomodoroAdjust)
+        XCTAssertNil(CapturePomodoroAdjustPresentation(capture: success))
+    }
+
     func testCaptureDiagnosticDecodesAllRangeShapesTolerantly() throws {
         let decoder = JSONDecoder()
         func decodeRange(_ rangeJSON: String) throws -> CaptureRange? {

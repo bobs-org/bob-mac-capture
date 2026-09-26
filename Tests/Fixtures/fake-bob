@@ -747,6 +747,115 @@ JSON
   ]
 }
 JSON
+    elif [[ "${draft}" == "+5" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "+5",
+  "body": "+5",
+  "mode": "pomodoro_adjust",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": [],
+  "spans": [
+    { "start": 0, "end": 2, "kind": "pomodoro_adjust" }
+  ],
+  "diagnostics": [],
+  "pomodoro_adjust": { "raw": "+5", "plus": true, "units": 5 }
+}
+JSON
+    elif [[ "${draft}" == "-2" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "-2",
+  "body": "-2",
+  "mode": "pomodoro_adjust",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": [],
+  "spans": [
+    { "start": 0, "end": 2, "kind": "pomodoro_adjust" }
+  ],
+  "diagnostics": [],
+  "pomodoro_adjust": { "raw": "-2", "plus": false, "units": 2 }
+}
+JSON
+    elif [[ "${draft}" == "+0" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "+0",
+  "body": "+0",
+  "mode": "pomodoro_adjust",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": [],
+  "spans": [
+    { "start": 0, "end": 2, "kind": "pomodoro_adjust" }
+  ],
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "invalid_pomodoro_adjustment",
+      "message": "Pomodoro adjustment magnitude must be positive; `+0` and `-0` adjust nothing (for example `+5` extends by 25 minutes)",
+      "range": [0, 2]
+    }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "+5"$'\n\n'"jot idea" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "+5\n\njot idea\n",
+  "body": "+5",
+  "mode": "pomodoro_adjust",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": [],
+  "spans": [
+    { "start": 0, "end": 2, "kind": "pomodoro_adjust" }
+  ],
+  "diagnostics": [],
+  "items": [
+    {
+      "index": 1,
+      "range": { "start": 0, "end": 2 },
+      "line_start": 1,
+      "line_end": 1,
+      "body": "+5",
+      "mode": "pomodoro_adjust",
+      "route": null,
+      "section": null,
+      "block_id": null,
+      "needs": [],
+      "pomodoro_adjust": { "raw": "+5", "plus": true, "units": 5 }
+    },
+    {
+      "index": 2,
+      "range": { "start": 4, "end": 12 },
+      "line_start": 3,
+      "line_end": 3,
+      "body": "jot idea",
+      "mode": "task",
+      "route": null,
+      "section": null,
+      "block_id": null,
+      "needs": []
+    }
+  ],
+  "pomodoro_adjust": { "raw": "+5", "plus": true, "units": 5 }
+}
+JSON
     else
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
@@ -1497,6 +1606,20 @@ JSON
   ]
 }
 JSON
+    elif [[ "${draft}" == "+5" || "${draft}" == "-2" ]]; then
+      # An adjustment is an action, so Bob offers no route or task completion
+      # candidates for it (mirrors `bob capture-complete --cursor 2 -- '+5'`).
+      end=${#draft}
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": ${end}, "end": ${end} },
+  "context": null,
+  "candidates": []
+}
+JSON
     else
       cat <<'JSON'
 {
@@ -1693,6 +1816,200 @@ JSON
 {"ok":false,"error":"finish the current Pomodoro first"}
 JSON
       exit 1
+    elif [[ "${draft}" == "+5" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": false,
+  "route": null,
+  "route_label": "",
+  "relative_target": "day.md",
+  "target": "/tmp/bob/day.md",
+  "text": "+5",
+  "task_line": "- [ ] (**0900-0955** [t:: 55m]) — FOCUS",
+  "kind": "pomodoro_adjust",
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "toggled",
+  "pomodoro_name": "FOCUS",
+  "pomodoro_adjust": {
+    "direction": "plus",
+    "requested_units": 5,
+    "requested_minutes": 25,
+    "delta_minutes": 25,
+    "before_start": "0900",
+    "before_end": "0930",
+    "before_duration_minutes": 30,
+    "after_start": "0900",
+    "after_end": "0955",
+    "after_duration_minutes": 55,
+    "pomodoro_line": 3,
+    "pomodoro_name": "FOCUS",
+    "time_range": "(**0900-0955** [t:: 55m])",
+    "clamped": false
+  }
+}
+JSON
+    elif [[ "${draft}" == "-2" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": false,
+  "route": null,
+  "route_label": "",
+  "relative_target": "day.md",
+  "target": "/tmp/bob/day.md",
+  "text": "-2",
+  "task_line": "- [ ] (**0900-0920** [t:: 20m]) — FOCUS",
+  "kind": "pomodoro_adjust",
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "toggled",
+  "pomodoro_name": "FOCUS",
+  "pomodoro_adjust": {
+    "direction": "minus",
+    "requested_units": 2,
+    "requested_minutes": -10,
+    "delta_minutes": -10,
+    "before_start": "0900",
+    "before_end": "0930",
+    "before_duration_minutes": 30,
+    "after_start": "0900",
+    "after_end": "0920",
+    "after_duration_minutes": 20,
+    "pomodoro_line": 3,
+    "pomodoro_name": "FOCUS",
+    "time_range": "(**0900-0920** [t:: 20m])",
+    "clamped": false
+  }
+}
+JSON
+    elif [[ "${draft}" == "-9" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": false,
+  "route": null,
+  "route_label": "",
+  "relative_target": "day.md",
+  "target": "/tmp/bob/day.md",
+  "text": "-9",
+  "task_line": "- [ ] (**0900-0900** [t:: 0m]) — FOCUS",
+  "kind": "pomodoro_adjust",
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "toggled",
+  "pomodoro_name": "FOCUS",
+  "pomodoro_adjust": {
+    "direction": "minus",
+    "requested_units": 9,
+    "requested_minutes": -45,
+    "delta_minutes": -10,
+    "before_start": "0900",
+    "before_end": "0910",
+    "before_duration_minutes": 10,
+    "after_start": "0900",
+    "after_end": "0900",
+    "after_duration_minutes": 0,
+    "pomodoro_line": 3,
+    "pomodoro_name": "FOCUS",
+    "time_range": "(**0900-0900** [t:: 0m])",
+    "clamped": true
+  }
+}
+JSON
+    elif [[ "${draft}" == "+0" ]]; then
+      cat <<'JSON'
+{"ok":false,"error":"capture item 1 starting on line 1: Pomodoro adjustment magnitude must be positive; `+0` and `-0` adjust nothing (for example `+5` extends by 25 minutes)"}
+JSON
+      exit 1
+    elif [[ "${draft}" == "+5"$'\n\n'"jot idea" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": false,
+  "route": null,
+  "route_label": "",
+  "relative_target": "day.md",
+  "target": "/tmp/bob/day.md",
+  "text": "+5",
+  "task_line": "- [ ] (**0900-0955** [t:: 55m]) — FOCUS",
+  "kind": "pomodoro_adjust",
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "toggled",
+  "pomodoro_name": "FOCUS",
+  "pomodoro_adjust": {
+    "direction": "plus",
+    "requested_units": 5,
+    "requested_minutes": 25,
+    "delta_minutes": 25,
+    "before_start": "0900",
+    "before_end": "0930",
+    "before_duration_minutes": 30,
+    "after_start": "0900",
+    "after_end": "0955",
+    "after_duration_minutes": 55,
+    "pomodoro_line": 3,
+    "pomodoro_name": "FOCUS",
+    "time_range": "(**0900-0955** [t:: 55m])",
+    "clamped": false
+  },
+  "captures": [
+    {
+      "ok": true,
+      "dry_run": ${dry_run},
+      "routed": false,
+      "route": null,
+      "route_label": "",
+      "relative_target": "day.md",
+      "target": "/tmp/bob/day.md",
+      "text": "+5",
+      "task_line": "- [ ] (**0900-0955** [t:: 55m]) — FOCUS",
+      "kind": "pomodoro_adjust",
+      "created": "2026-08-14",
+      "scheduled": null,
+      "placement": "toggled",
+      "pomodoro_name": "FOCUS",
+      "pomodoro_adjust": {
+        "direction": "plus",
+        "requested_units": 5,
+        "requested_minutes": 25,
+        "delta_minutes": 25,
+        "before_start": "0900",
+        "before_end": "0930",
+        "before_duration_minutes": 30,
+        "after_start": "0900",
+        "after_end": "0955",
+        "after_duration_minutes": 55,
+        "pomodoro_line": 3,
+        "pomodoro_name": "FOCUS",
+        "time_range": "(**0900-0955** [t:: 55m])",
+        "clamped": false
+      }
+    },
+    {
+      "ok": true,
+      "dry_run": ${dry_run},
+      "routed": false,
+      "route": null,
+      "route_label": "mac_inbox.md",
+      "relative_target": "mac_inbox.md",
+      "target": "/tmp/bob/mac_inbox.md",
+      "text": "jot idea",
+      "task_line": "- [ ] #task jot idea [created::2026-08-14]",
+      "kind": "task",
+      "created": "2026-08-14",
+      "scheduled": null,
+      "placement": "created"
+    }
+  ]
+}
+JSON
     elif [[ "${draft}" == "idea @mac_inbox" ]]; then
       cat <<JSON
 {

@@ -411,6 +411,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_toggle_force_next"), .explicitToggle)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "project_note_marker"), .explicitToggle)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_start"), .pomodoroStart)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_adjust"), .pomodoroStart)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "unrecognized_future_kind"), .neutral)
     }
 

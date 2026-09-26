@@ -600,6 +600,92 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, draft)
     }
 
+    func testLivePreviewWithAdjustmentRecordsBeforeAfterAndKeepsDraft() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "+5"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.plainDraft, draft)
+        XCTAssertEqual(model.previewResult?.kind, "pomodoro_adjust")
+        XCTAssertEqual(model.previewResult?.pomodoroAdjust?.beforeStart, "0900")
+        XCTAssertEqual(model.previewResult?.pomodoroAdjust?.afterEnd, "0955")
+        XCTAssertEqual(model.previewResult?.pomodoroAdjust?.deltaMinutes, 25)
+        let presentation = try XCTUnwrap(model.previewResult.flatMap(CapturePomodoroAdjustPresentation.init))
+        XCTAssertEqual(presentation.sessionText, "0900-0930 (30m) → 0900-0955 (55m), +25m")
+        XCTAssertEqual(presentation.destinationText, "FOCUS · line 3")
+        XCTAssertEqual(
+            presentation.statusText,
+            "Would adjust FOCUS 0900-0930 (30m) to 0900-0955 (55m), +25m at line 3"
+        )
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.lastSuccess?.pomodoroAdjust?.deltaMinutes, 25)
+        XCTAssertFalse(model.lastSuccess?.dryRun ?? true)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"))
+        XCTAssertTrue(record.contains("argv=capture --format json -- \(draft)"))
+    }
+
+    func testLivePreviewWithInvalidAdjustmentSurfacesActionableError() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "+0"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .failed(let message) = model.previewState {
+                return message.contains("Pomodoro adjustment magnitude must be positive")
+            }
+            return false
+        }
+
+        XCTAssertEqual(model.plainDraft, draft)
+    }
+
+    func testLivePreviewWithMixedAdjustDraftKeepsBothItems() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "+5\n\njot idea"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.plainDraft, draft)
+        XCTAssertEqual(
+            model.previewResult?.normalizedCaptures.map(\.kind),
+            ["pomodoro_adjust", "task"]
+        )
+        XCTAssertEqual(model.previewResult?.normalizedCaptures[0].pomodoroAdjust?.deltaMinutes, 25)
+    }
+
     func testNamedEnsureNextMoveKeepsDraftAndUsesEnsureNextAction() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
