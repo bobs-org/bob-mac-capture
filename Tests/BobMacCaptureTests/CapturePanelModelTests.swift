@@ -1908,10 +1908,14 @@ final class CapturePanelModelTests: XCTestCase {
 
         await waitUntil { model.completionResponse?.context == "task" }
         let record = try String(contentsOf: recordURL)
+        let completeLines = record.components(separatedBy: "\n").filter {
+            $0.contains("capture-complete")
+        }
         XCTAssertTrue(
             record.contains(
                 "argv=capture-complete --all-tasks --cursor 12 --format json -- @@mac_inbox+\nFirst task"
-            )
+            ),
+            "DEBUG complete lines:\n\(completeLines.joined(separator: "\n"))"
         )
     }
 
