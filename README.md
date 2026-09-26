@@ -51,14 +51,21 @@ mutation.
   current/next Pomodoro, `@route+block-id#pomodoro` for named Ensure Next
   relocation or named-future creation, and suffixed `@route+block-id!` for
   the explicit two-way toggle (`toggle_behavior` and
-  `task_toggle_explicit_toggle`). Older builds can still capture ordinary drafts, but
+  `task_toggle_explicit_toggle`), plus the atomic-start `@route:block-id=<X>` and
+  `@route:block-id#name=<X>` suffix (`pomodoro_start` parse/capture JSON and the
+  `pomodoro_start` span, where `<X>` mirrors the `se<X>` snippet: empty is 25
+  minutes, `-` offsets one 5-minute unit). Older builds can still capture ordinary drafts, but
   global declarations, bare-`@@` absorption, the Add block ID flow, the Name Pomodoro
   flow, the task-section popup, and the task-toggle footer/preview report the local Bob
   error or an empty list until Bob is upgraded. An older Bob that sees bare
   `@route+block-id` as a missing-text sub-bullet reports `task text is required`, which
   the panel surfaces unchanged. An older Bob that does not emit `creates_pomodoro` still
   captures `@route:id#name` create-on-submit; the Mac app decodes a missing flag as false
-  and simply omits the explicit Create row. Older Bob builds may implement the
+  and simply omits the explicit Create row. An older Bob that omits `pomodoro_start`
+  still previews and captures `@route:block-id` without a session; the Mac app
+  decodes a missing start object as no session and shows no timer row, while a
+  malformed `=<X>` suffix surfaces Bob's `invalid_pomodoro_start` diagnostic
+  unchanged. Older Bob builds may implement the
   previous task-toggle spellings. The app labels
   actions and notifications from Bob's returned behavior metadata, so a response
   that omits `toggle_behavior` still shows the two-way Set Next/Open footer,
@@ -395,7 +402,16 @@ Second task @bar
 Bob's routed marker syntax works directly in the editor. `@route^block-id` captures an
 ordinary `[ ]` task with a trailing `^block-id` and no Pomodoro task link, while
 `@route:block-id` keeps the Pomodoro-linked next-task behavior, `@route:block-id#name`
-targets a named open Pomodoro by slug, a marker-only `@route+block-id` ensures that
+targets a named open Pomodoro by slug, and `@route:block-id=<X>` or
+`@route:block-id#name=<X>` atomically starts that session (`<X>` mirrors the
+`se<X>` snippet; empty is 25 minutes). The `=<X>` suffix highlights as its own
+`pomodoro_start` span, never offers completion inside the suffix, and keeps
+`#name` completion ranges ending before `=` so accepting a name never erases a
+typed duration. Preview renders Bob's resolved session — selected Pomodoro,
+5-minute-rounded start/end, duration, and created-entry state — sourced only from
+`bob capture --dry-run --no-clip --format json`, and submission runs the same Bob
+command; conflicts such as an already-running session surface as ordinary preview
+errors. A marker-only `@route+block-id` ensures that
 existing task is Next and relocates its Task Link, `@route+block-id#pomodoro` does the
 same onto a named Pomodoro (creating the named future Pomodoro if needed),
 `@route+block-id!` is the explicit two-way add/clear toggle, and `@route+block-id` with

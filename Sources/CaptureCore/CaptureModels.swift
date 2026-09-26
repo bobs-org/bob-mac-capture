@@ -20,6 +20,9 @@ public struct CaptureParseResponse: Codable, Equatable {
     public let subBullets: [String]
     public let subBulletDepths: [Int]
     public let items: [CaptureParseItem]
+    // Additive `=<X>` start suffix on a `@<route>:<block-id>[#<name>]` marker.
+    // Omitted for every older marker shape, so older bob output decodes as nil.
+    public let pomodoroStart: PomodoroStartSpec?
 
     public init(
         ok: Bool,
@@ -36,7 +39,8 @@ public struct CaptureParseResponse: Codable, Equatable {
         globalDestination: CaptureGlobalDestination? = nil,
         subBullets: [String] = [],
         subBulletDepths: [Int]? = nil,
-        items: [CaptureParseItem] = []
+        items: [CaptureParseItem] = [],
+        pomodoroStart: PomodoroStartSpec? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -56,6 +60,7 @@ public struct CaptureParseResponse: Codable, Equatable {
             bodyCount: subBullets.count
         )
         self.items = items
+        self.pomodoroStart = pomodoroStart
     }
 
     public init(from decoder: Decoder) throws {
@@ -86,6 +91,7 @@ public struct CaptureParseResponse: Codable, Equatable {
             bodyCount: subBullets.count
         )
         items = try container.decodeIfPresent([CaptureParseItem].self, forKey: .items) ?? []
+        pomodoroStart = try container.decodeIfPresent(PomodoroStartSpec.self, forKey: .pomodoroStart)
     }
 
     private static func normalizedSubBulletDepths(
@@ -120,6 +126,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         case subBullets = "sub_bullets"
         case subBulletDepths = "sub_bullet_depths"
         case items
+        case pomodoroStart = "pomodoro_start"
     }
 }
 
@@ -136,6 +143,8 @@ public struct CaptureParseItem: Codable, Equatable {
     public let needs: [String]
     public let subBullets: [String]
     public let subBulletDepths: [Int]
+    // Per-item additive `=<X>` start suffix. Omitted for items without one.
+    public let pomodoroStart: PomodoroStartSpec?
 
     public init(
         index: Int,
@@ -149,7 +158,8 @@ public struct CaptureParseItem: Codable, Equatable {
         blockID: String? = nil,
         needs: [String] = [],
         subBullets: [String] = [],
-        subBulletDepths: [Int] = []
+        subBulletDepths: [Int] = [],
+        pomodoroStart: PomodoroStartSpec? = nil
     ) {
         self.index = index
         self.range = range
@@ -163,6 +173,7 @@ public struct CaptureParseItem: Codable, Equatable {
         self.needs = needs
         self.subBullets = subBullets
         self.subBulletDepths = subBulletDepths
+        self.pomodoroStart = pomodoroStart
     }
 
     public init(from decoder: Decoder) throws {
@@ -179,6 +190,7 @@ public struct CaptureParseItem: Codable, Equatable {
         needs = try container.decodeIfPresent([String].self, forKey: .needs) ?? []
         subBullets = try container.decodeIfPresent([String].self, forKey: .subBullets) ?? []
         subBulletDepths = try container.decodeIfPresent([Int].self, forKey: .subBulletDepths) ?? []
+        pomodoroStart = try container.decodeIfPresent(PomodoroStartSpec.self, forKey: .pomodoroStart)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -194,6 +206,7 @@ public struct CaptureParseItem: Codable, Equatable {
         case needs
         case subBullets = "sub_bullets"
         case subBulletDepths = "sub_bullet_depths"
+        case pomodoroStart = "pomodoro_start"
     }
 }
 
@@ -226,6 +239,35 @@ public struct CaptureDiagnostic: Codable, Equatable {
         self.message = message
         self.range = range
     }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        severity = try container.decode(String.self, forKey: .severity)
+        code = try container.decode(String.self, forKey: .code)
+        message = try container.decode(String.self, forKey: .message)
+        // Bob serializes diagnostic ranges as a nullable `[start, end]` pair, while
+        // older fixtures use the `{"start":..,"end":..}` object. Accept both so an
+        // `invalid_pomodoro_start` diagnostic never breaks parse decoding.
+        if let object = try? container.decodeIfPresent(CaptureRange.self, forKey: .range),
+           let object
+        {
+            range = object
+        } else if let pair = try? container.decodeIfPresent([Int].self, forKey: .range),
+                  let pair,
+                  pair.count == 2
+        {
+            range = CaptureRange(start: pair[0], end: pair[1])
+        } else {
+            range = nil
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case severity
+        case code
+        case message
+        case range
+    }
 }
 
 public struct CaptureRange: Codable, Equatable {
@@ -235,6 +277,73 @@ public struct CaptureRange: Codable, Equatable {
     public init(start: Int, end: Int) {
         self.start = start
         self.end = end
+    }
+}
+
+/// Validated additive `@<route>:<block-id>[#<name>]=<X>` start suffix from
+/// `bob capture-parse`: the raw `<X>` text plus its 5-minute duration/offset units.
+/// Omitted for every older marker shape, so decoding stays backward compatible.
+public struct PomodoroStartSpec: Codable, Equatable, Sendable {
+    public let raw: String
+    public let durationUnits: Int
+    public let offsetUnits: Int
+
+    public init(raw: String, durationUnits: Int, offsetUnits: Int) {
+        self.raw = raw
+        self.durationUnits = durationUnits
+        self.offsetUnits = offsetUnits
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case raw
+        case durationUnits = "duration_units"
+        case offsetUnits = "offset_units"
+    }
+}
+
+/// Resolved atomic start from `bob capture --format json`: the 5-minute-rounded
+/// `start`/`end` clock times, duration, destination ledger line, and whether Bob
+/// created the entry. Omitted when the draft carries no `=<X>` suffix, so older
+/// bob binaries decode as nil.
+public struct PomodoroStartSummary: Codable, Equatable, Sendable {
+    public let start: String
+    public let end: String
+    public let durationMinutes: Int
+    public let offsetUnits: Int
+    public let pomodoroName: String?
+    public let pomodoroLine: Int
+    public let createdPomodoro: Bool
+    public let timeRange: String
+
+    public init(
+        start: String,
+        end: String,
+        durationMinutes: Int,
+        offsetUnits: Int,
+        pomodoroName: String? = nil,
+        pomodoroLine: Int,
+        createdPomodoro: Bool,
+        timeRange: String
+    ) {
+        self.start = start
+        self.end = end
+        self.durationMinutes = durationMinutes
+        self.offsetUnits = offsetUnits
+        self.pomodoroName = pomodoroName
+        self.pomodoroLine = pomodoroLine
+        self.createdPomodoro = createdPomodoro
+        self.timeRange = timeRange
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case start
+        case end
+        case durationMinutes = "duration_minutes"
+        case offsetUnits = "offset_units"
+        case pomodoroName = "pomodoro_name"
+        case pomodoroLine = "pomodoro_line"
+        case createdPomodoro = "created_pomodoro"
+        case timeRange = "time_range"
     }
 }
 
@@ -466,6 +575,9 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     public let pomodoroLinkAction: String?
     public let pomodoroLinkSource: PomodoroLinkEndpoint?
     public let pomodoroLinkDestination: PomodoroLinkEndpoint?
+    // Additive atomic-start summary for `@<route>:<block-id>[#<name>]=<X>`.
+    // Older bob binaries omit it entirely; decode as nil.
+    public let pomodoroStart: PomodoroStartSummary?
     public let captures: [CaptureCommandSuccess]
     public let globalDestination: CaptureGlobalDestination?
 
@@ -513,6 +625,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         pomodoroLinkAction: String? = nil,
         pomodoroLinkSource: PomodoroLinkEndpoint? = nil,
         pomodoroLinkDestination: PomodoroLinkEndpoint? = nil,
+        pomodoroStart: PomodoroStartSummary? = nil,
         captures: [CaptureCommandSuccess] = [],
         globalDestination: CaptureGlobalDestination? = nil
     ) {
@@ -559,6 +672,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.pomodoroLinkAction = pomodoroLinkAction
         self.pomodoroLinkSource = pomodoroLinkSource
         self.pomodoroLinkDestination = pomodoroLinkDestination
+        self.pomodoroStart = pomodoroStart
         self.captures = captures
         self.globalDestination = globalDestination
     }
@@ -614,6 +728,10 @@ public struct CaptureCommandSuccess: Codable, Equatable {
             PomodoroLinkEndpoint.self,
             forKey: .pomodoroLinkDestination
         )
+        pomodoroStart = try container.decodeIfPresent(
+            PomodoroStartSummary.self,
+            forKey: .pomodoroStart
+        )
         captures = try container.decodeIfPresent([CaptureCommandSuccess].self, forKey: .captures) ?? []
         globalDestination = try container.decodeIfPresent(
             CaptureGlobalDestination.self,
@@ -665,6 +783,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case pomodoroLinkAction = "pomodoro_link_action"
         case pomodoroLinkSource = "pomodoro_link_source"
         case pomodoroLinkDestination = "pomodoro_link_destination"
+        case pomodoroStart = "pomodoro_start"
         case captures
         case globalDestination = "global_destination"
     }

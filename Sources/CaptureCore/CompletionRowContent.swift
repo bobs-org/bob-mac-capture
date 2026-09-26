@@ -17,6 +17,7 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case wikilinkAlias
     case interactivePlaceholder
     case explicitToggle
+    case pomodoroStart
     case neutral
 }
 
@@ -52,6 +53,8 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .interactivePlaceholder
     case "task_toggle_explicit_toggle", "task_toggle_force_next", "project_note_marker":
         return .explicitToggle
+    case "pomodoro_start":
+        return .pomodoroStart
     default:
         return .neutral
     }

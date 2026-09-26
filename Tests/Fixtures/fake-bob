@@ -670,6 +670,68 @@ JSON
   "diagnostics": []
 }
 JSON
+    elif [[ "${draft}" == "Write outline @sase:outline=3" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Write outline @sase:outline=3",
+  "body": "Write outline",
+  "mode": "pomodoro_task",
+  "route": "sase",
+  "block_id": "outline",
+  "needs": [],
+  "spans": [
+    { "start": 14, "end": 19, "kind": "pomodoro_route" },
+    { "start": 20, "end": 27, "kind": "pomodoro_block_id" },
+    { "start": 27, "end": 29, "kind": "pomodoro_start" }
+  ],
+  "diagnostics": [],
+  "pomodoro_start": { "raw": "3", "duration_units": 3, "offset_units": 0 }
+}
+JSON
+    elif [[ "${draft}" == "Do work @sase:outline#deep=-2" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Do work @sase:outline#deep=-2",
+  "body": "Do work",
+  "mode": "pomodoro_task",
+  "route": "sase",
+  "section": "deep",
+  "block_id": "outline",
+  "needs": [],
+  "spans": [
+    { "start": 8, "end": 13, "kind": "pomodoro_route" },
+    { "start": 14, "end": 21, "kind": "pomodoro_block_id" },
+    { "start": 22, "end": 26, "kind": "pomodoro_name" },
+    { "start": 26, "end": 29, "kind": "pomodoro_start" }
+  ],
+  "diagnostics": [],
+  "pomodoro_start": { "raw": "-2", "duration_units": 5, "offset_units": 2 }
+}
+JSON
+    elif [[ "${draft}" == "Do work @sase:outline=abc" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Do work @sase:outline=abc",
+  "body": "Do work",
+  "mode": "task",
+  "needs": [],
+  "spans": [],
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "invalid_pomodoro_start",
+      "message": "Pomodoro start suffix must mirror se<X>: use `=<X>` where <X> is empty, digits, `-`, `-digits`, or `digits-` with optional digits",
+      "range": [8, 25]
+    }
+  ]
+}
+JSON
     else
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
@@ -1334,6 +1396,48 @@ JSON
   ]
 }
 JSON
+    elif [[ "${draft}" == "Do work @sase:outline#dee=-2" ]]; then
+      # The `=<X>` suffix is never completable: a cursor on the `=` boundary (25)
+      # completes the name with a range ending before `=`, while a cursor inside the
+      # suffix offers no completion. Accepting "deep" replaces only `dee`.
+      if (( cursor <= 25 )); then
+        cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 22, "end": 25 },
+  "context": "pomodoro_name",
+  "candidates": [
+    {
+      "replacement": "deep",
+      "ref": "12:0b1c2d3e",
+      "name": "deep",
+      "requires_name": false,
+      "line": 12,
+      "state": "open",
+      "status_symbol": " ",
+      "time_range": null,
+      "placeholder": true,
+      "is_current": false,
+      "child_count": 0,
+      "match_count": 1
+    }
+  ]
+}
+JSON
+      else
+        cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": ${cursor}, "end": ${cursor} },
+  "context": null,
+  "candidates": []
+}
+JSON
+      fi
     elif [[ "${draft}" == "Fix startup @sase:some-id#"* ]]; then
       prefix="Fix startup @sase:some-id#"
       query="${draft#"${prefix}"}"
@@ -1507,7 +1611,74 @@ JSON
       fi
     done
     draft="${*: -1}"
-    if [[ "${draft}" == "idea @mac_inbox" ]]; then
+    if [[ "${draft}" == "Write outline @sase:outline=3" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "sase",
+  "route_label": "sase.md",
+  "relative_target": "sase.md",
+  "target": "/tmp/bob/sase.md",
+  "text": "Write outline",
+  "task_line": "- [*] #task Write outline [created::2026-08-14] ^outline",
+  "kind": "pomodoro_task",
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "inserted",
+  "block_id": "outline",
+  "day_file": "/tmp/bob/2026/20260814.md",
+  "block_link": "[[sase#^outline]]",
+  "pomodoro_start": {
+    "start": "0930",
+    "end": "0945",
+    "duration_minutes": 15,
+    "offset_units": 0,
+    "pomodoro_name": null,
+    "pomodoro_line": 12,
+    "created_pomodoro": false,
+    "time_range": "(**0930-0945** [t:: 15m])"
+  }
+}
+JSON
+    elif [[ "${draft}" == "Do work @sase:outline#deep=-2" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "sase",
+  "route_label": "sase.md",
+  "relative_target": "sase.md",
+  "target": "/tmp/bob/sase.md",
+  "text": "Do work",
+  "task_line": "- [*] #task Do work [created::2026-08-14] ^outline",
+  "kind": "pomodoro_task",
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "inserted",
+  "block_id": "outline",
+  "day_file": "/tmp/bob/2026/20260814.md",
+  "block_link": "[[sase#^outline]]",
+  "pomodoro_start": {
+    "start": "0930",
+    "end": "0955",
+    "duration_minutes": 25,
+    "offset_units": 2,
+    "pomodoro_name": "deep",
+    "pomodoro_line": 14,
+    "created_pomodoro": true,
+    "time_range": "(**0930-0955** [t:: 25m])"
+  }
+}
+JSON
+    elif [[ "${draft}" == "Busy work @sase:outline=3" ]]; then
+      cat <<'JSON'
+{"ok":false,"error":"finish the current Pomodoro first"}
+JSON
+      exit 1
+    elif [[ "${draft}" == "idea @mac_inbox" ]]; then
       cat <<JSON
 {
   "ok": true,

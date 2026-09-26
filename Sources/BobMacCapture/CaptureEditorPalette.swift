@@ -38,6 +38,8 @@ enum CaptureEditorPalette {
             return .secondary
         case .explicitToggle:
             return .yellow
+        case .pomodoroStart:
+            return .pink
         case .neutral:
             return .primary
         }

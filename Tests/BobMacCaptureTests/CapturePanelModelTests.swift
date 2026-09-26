@@ -508,6 +508,98 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertFalse(record.contains(" -- @file+goog-exit\n"))
     }
 
+    func testAcceptingPomodoroNameWithStartSuffixPreservesSuffix() {
+        let model = CapturePanelModel()
+        model.plainDraft = "Do work @sase:outline#dee=-2"
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 25,
+            replacement: CaptureRange(start: 22, end: 25),
+            context: "pomodoro_name",
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "deep",
+                    taskRef: "12:0b1c2d3e",
+                    statusSymbol: " ",
+                    childCount: 0,
+                    name: "deep",
+                    requiresName: false,
+                    line: 12,
+                    state: "open",
+                    timeRange: nil,
+                    placeholder: true,
+                    isCurrent: false,
+                    matchCount: 1
+                ),
+            ]
+        )
+        model.selectedCompletionIndex = 0
+
+        model.acceptSelectedCompletion()
+
+        XCTAssertEqual(model.plainDraft, "Do work @sase:outline#deep=-2")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 26)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertNil(model.pomodoroNamePrompt)
+    }
+
+    func testLivePreviewWithStartSuffixRecordsSessionAndKeepsDraft() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "Write outline @sase:outline=3"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.plainDraft, draft)
+        XCTAssertEqual(model.previewResult?.pomodoroStart?.start, "0930")
+        XCTAssertEqual(model.previewResult?.pomodoroStart?.end, "0945")
+        XCTAssertEqual(model.previewResult?.pomodoroStart?.durationMinutes, 15)
+        let presentation = try XCTUnwrap(model.previewResult.flatMap(CapturePomodoroStartPresentation.init))
+        XCTAssertEqual(presentation.sessionText, "0930-0945 (15m)")
+        XCTAssertEqual(presentation.destinationText, "next session · line 12")
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.lastSuccess?.pomodoroStart?.durationMinutes, 15)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"))
+        XCTAssertTrue(record.contains("argv=capture --format json -- \(draft)"))
+    }
+
+    func testLivePreviewWithStartConflictSurfacesActionableError() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "Busy work @sase:outline=3"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .failed(let message) = model.previewState {
+                return message == "finish the current Pomodoro first"
+            }
+            return false
+        }
+
+        XCTAssertEqual(model.plainDraft, draft)
+    }
+
     func testNamedEnsureNextMoveKeepsDraftAndUsesEnsureNextAction() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)

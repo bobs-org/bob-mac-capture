@@ -106,6 +106,38 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(response.spans.map(\.kind), ["task_block_id_route", "task_block_id"])
     }
 
+    func testCaptureParseDecodesPomodoroStartSuffix() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.captureParse("Write outline @sase:outline=3")
+
+        XCTAssertEqual(response.mode, "pomodoro_task")
+        XCTAssertEqual(
+            response.pomodoroStart,
+            PomodoroStartSpec(raw: "3", durationUnits: 3, offsetUnits: 0)
+        )
+        XCTAssertEqual(
+            response.spans.map(\.kind),
+            ["pomodoro_route", "pomodoro_block_id", "pomodoro_start"]
+        )
+    }
+
+    func testCaptureParseSurfacesInvalidStartSuffixAsDiagnostic() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.captureParse("Do work @sase:outline=abc")
+
+        XCTAssertNil(response.pomodoroStart)
+        XCTAssertEqual(response.diagnostics.first?.code, "invalid_pomodoro_start")
+        XCTAssertEqual(response.diagnostics.first?.range, CaptureRange(start: 8, end: 25))
+    }
+
     func testCaptureRewriteRunsCursorAwareEndpoint() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -405,6 +437,28 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(response.candidates[1].taskRef, "38:0b1c2d3e")
     }
 
+    func testCaptureCompleteKeepsNameReplacementBeforeStartSuffix() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "Do work @sase:outline#dee=-2"
+
+        // A cursor on the `=` boundary completes the name; the range ends before
+        // `=`, so accepting the candidate leaves `=-2` in place.
+        let boundary = try await client.captureComplete(draft, cursor: 25)
+
+        XCTAssertEqual(boundary.context, "pomodoro_name")
+        XCTAssertEqual(boundary.replacement, CaptureRange(start: 22, end: 25))
+        XCTAssertEqual(boundary.candidates.first?.replacement, "deep")
+
+        // A cursor inside the suffix offers no completion at all.
+        let inside = try await client.captureComplete(draft, cursor: 27)
+
+        XCTAssertNil(inside.context)
+        XCTAssertTrue(inside.candidates.isEmpty)
+    }
+
     func testLivePreviewAlwaysUsesNoClipAndPrioritySeed() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -427,6 +481,58 @@ final class BobProcessClientTests: XCTestCase {
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- buy milk % p:1"))
         XCTAssertTrue(record.contains("BOB_PRIORITY_ROLL_SEED=fixed"))
+    }
+
+    func testLivePreviewDecodesPomodoroStartFromDryRunJSON() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let response = try await client.captureLivePreview(
+            "Write outline @sase:outline=3",
+            priorityRollSeed: "fixed"
+        )
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful live preview response")
+        }
+        XCTAssertTrue(success.dryRun)
+        XCTAssertEqual(
+            success.pomodoroStart?.start,
+            "0930"
+        )
+        XCTAssertEqual(success.pomodoroStart?.end, "0945")
+        XCTAssertEqual(success.pomodoroStart?.durationMinutes, 15)
+        XCTAssertEqual(
+            CapturePomodoroStartPresentation(capture: success)?.sessionText,
+            "0930-0945 (15m)"
+        )
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- Write outline @sase:outline=3"))
+    }
+
+    func testLivePreviewSurfacesStartConflictAsActionableFailure() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.captureLivePreview(
+            "Busy work @sase:outline=3",
+            priorityRollSeed: "fixed"
+        )
+
+        guard case .failure(let failure) = response else {
+            return XCTFail("Expected a failed live preview response")
+        }
+        XCTAssertEqual(failure.error, "finish the current Pomodoro first")
     }
 
     func testLivePreviewDecodesBatchCapturesFromOneProcess() async throws {

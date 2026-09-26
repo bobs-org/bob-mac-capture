@@ -1539,6 +1539,155 @@ final class CaptureModelTests: XCTestCase {
         case expectedSuccess
     }
 
+    func testParseResponseDecodesPomodoroStartSuffix() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Do work @sase:outline#deep=-2",
+              "body": "Do work",
+              "mode": "pomodoro_task",
+              "route": "sase",
+              "section": "deep",
+              "block_id": "outline",
+              "needs": [],
+              "spans": [
+                { "start": 8, "end": 13, "kind": "pomodoro_route" },
+                { "start": 14, "end": 21, "kind": "pomodoro_block_id" },
+                { "start": 22, "end": 26, "kind": "pomodoro_name" },
+                { "start": 26, "end": 29, "kind": "pomodoro_start" }
+              ],
+              "diagnostics": [],
+              "pomodoro_start": { "raw": "-2", "duration_units": 5, "offset_units": 2 }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(
+            decoded.pomodoroStart,
+            PomodoroStartSpec(raw: "-2", durationUnits: 5, offsetUnits: 2)
+        )
+        XCTAssertEqual(
+            decoded.spans.map { captureSemanticCategory(forSpanKind: $0.kind) },
+            [.route, .blockID, .section, .pomodoroStart]
+        )
+    }
+
+    func testParseResponseOmitsPomodoroStartForOlderMarkers() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Do work @dev:id#bugs",
+              "body": "Do work",
+              "mode": "pomodoro_task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": []
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertNil(decoded.pomodoroStart)
+    }
+
+    func testParseResponseDecodesArrayPairDiagnosticRanges() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Do work @sase:outline=abc",
+              "body": "Do work",
+              "mode": "task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": [
+                {
+                  "severity": "error",
+                  "code": "invalid_pomodoro_start",
+                  "message": "bad suffix",
+                  "range": [8, 25]
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertNil(decoded.pomodoroStart)
+        XCTAssertEqual(decoded.diagnostics.first?.code, "invalid_pomodoro_start")
+        XCTAssertEqual(decoded.diagnostics.first?.range, CaptureRange(start: 8, end: 25))
+    }
+
+    func testCaptureCommandDecodesPomodoroStartSummary() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {
+              "ok": true,
+              "dry_run": true,
+              "routed": true,
+              "route": "sase",
+              "route_label": "sase.md",
+              "relative_target": "sase.md",
+              "target": "/tmp/bob/sase.md",
+              "text": "Write outline",
+              "task_line": "- [*] #task Write outline [created::2026-08-14] ^outline",
+              "kind": "pomodoro_task",
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "inserted",
+              "block_id": "outline",
+              "pomodoro_start": {
+                "start": "0930",
+                "end": "0945",
+                "duration_minutes": 15,
+                "offset_units": 0,
+                "pomodoro_name": null,
+                "pomodoro_line": 12,
+                "created_pomodoro": false,
+                "time_range": "(**0930-0945** [t:: 15m])"
+              }
+            }
+            """
+        )
+
+        XCTAssertEqual(
+            success.pomodoroStart,
+            PomodoroStartSummary(
+                start: "0930",
+                end: "0945",
+                durationMinutes: 15,
+                offsetUnits: 0,
+                pomodoroName: nil,
+                pomodoroLine: 12,
+                createdPomodoro: false,
+                timeRange: "(**0930-0945** [t:: 15m])"
+            )
+        )
+    }
+
+    func testCaptureCommandOmitsPomodoroStartForOlderBobBinaries() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
+             "relative_target":"cash.md","target":"/tmp/bob/cash.md","text":"Call bank",
+             "task_line":"- [ ] #task Call bank [created::2026-08-14]","kind":"task",
+             "created":"2026-08-14","scheduled":null,"placement":"inserted"}
+            """
+        )
+
+        XCTAssertNil(success.pomodoroStart)
+        XCTAssertNil(CapturePomodoroStartPresentation(capture: success))
+    }
+
     private func decodeCaptureSuccess(_ json: String) throws -> CaptureCommandSuccess {
         let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: Data(json.utf8))
         guard case .success(let success) = decoded else {

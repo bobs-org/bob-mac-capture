@@ -1462,6 +1462,26 @@ private struct PreviewPane: View {
         }
         .lineLimit(1)
 
+        // The atomic-start session comes straight from Bob's resolved `pomodoro_start`
+        // object (dry-run JSON for preview, committed JSON after capture). No Swift-side
+        // clock or ledger math: show the 5-minute-rounded start/end, duration, and
+        // created-entry state exactly as Bob reported them.
+        if let pomodoroStart = CapturePomodoroStartPresentation(capture: success) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "timer")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(pomodoroStart.sessionText)
+                    .font(.system(.callout, design: .monospaced))
+                    .fontWeight(.semibold)
+                Text(pomodoroStart.destinationText)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(pomodoroStart.accessibilitySummary)
+        }
+
         // `previewBlockLines` is the parent line, the authored children, the clipboard
         // children, and the schedule log in the exact order Bob writes them, already
         // carrying the target note's indentation.
@@ -1571,7 +1591,9 @@ private struct PreviewPane: View {
         let position = total > 1 ? "Item \(index + 1) of \(total), " : ""
         let destination = success.routeLabel.isEmpty ? success.relativeTarget : success.routeLabel
         let override = isLocalOverride ? ", local override" : ""
-        return "\(position)\(success.kind), \(destination)\(override), \(success.previewBlockLines.joined(separator: ", "))"
+        let startSummary = CapturePomodoroStartPresentation(capture: success)
+            .map { ", \($0.accessibilitySummary)" } ?? ""
+        return "\(position)\(success.kind), \(destination)\(override)\(startSummary), \(success.previewBlockLines.joined(separator: ", "))"
     }
 
     private func togglePreviewAccessibilityLabel(

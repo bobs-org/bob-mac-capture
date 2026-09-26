@@ -1626,6 +1626,11 @@ final class CapturePanelModel: ObservableObject {
             return true
         }
 
+        // The additive `pomodoro_start` (`=<X>`) span is deliberately absent: a cursor
+        // inside the suffix offers no completion, while a cursor on its leading edge
+        // still matches `pomodoro_name`/`pomodoro_block_id` so accepting a candidate
+        // replaces only the name and leaves the typed suffix in place (Bob's
+        // replacement range already ends before `=`).
         let completionSpanKinds = Set([
             "route",
             "section",

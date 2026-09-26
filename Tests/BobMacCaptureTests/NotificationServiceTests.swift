@@ -35,6 +35,32 @@ final class NotificationServiceTests: XCTestCase {
         )
     }
 
+    func testSinglePomodoroStartSuccessContentAppendsSessionDetail() {
+        let content = NotificationService.successContent(captures: [
+            capture(
+                kind: "pomodoro_task",
+                routeLabel: "sase.md",
+                target: "/Users/bryan/bob/sase.md",
+                text: "Write outline",
+                pomodoroStart: PomodoroStartSummary(
+                    start: "0930",
+                    end: "0945",
+                    durationMinutes: 15,
+                    offsetUnits: 0,
+                    pomodoroName: nil,
+                    pomodoroLine: 12,
+                    createdPomodoro: false,
+                    timeRange: "(**0930-0945** [t:: 15m])"
+                )
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "Task captured")
+        XCTAssertEqual(content.subtitle, "sase.md")
+        XCTAssertTrue(content.body.contains("Write outline"))
+        XCTAssertTrue(content.body.contains("Started next session 0930-0945 (15m) at line 12"))
+    }
+
     func testSingleNoteSuccessContentUsesNoteTitleAndSafeBodyFallback() {
         let content = NotificationService.successContent(captures: [
             capture(
@@ -620,7 +646,8 @@ final class NotificationServiceTests: XCTestCase {
         text: String,
         scheduled: String? = nil,
         parentText: String? = nil,
-        blockID: String? = nil
+        blockID: String? = nil,
+        pomodoroStart: PomodoroStartSummary? = nil
     ) -> CaptureCommandSuccess {
         CaptureCommandSuccess(
             ok: true,
@@ -636,7 +663,8 @@ final class NotificationServiceTests: XCTestCase {
             scheduled: scheduled,
             placement: "inserted",
             blockID: blockID,
-            parentText: parentText
+            parentText: parentText,
+            pomodoroStart: pomodoroStart
         )
     }
 
