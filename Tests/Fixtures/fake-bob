@@ -6,12 +6,27 @@ if [[ -n "${FAKE_BOB_TERM_PATH:-}" ]]; then
 fi
 
 if [[ -n "${FAKE_BOB_RECORD_PATH:-}" ]]; then
+  record_lock_dir="${FAKE_BOB_RECORD_PATH}.lock"
+  # Live preview and completion overlap, so concurrent appends can splice one
+  # block inside another's multiline argv and break substring assertions.
+  # mkdir is atomic: it serializes the append. The trap keeps lane
+  # cancellation (SIGTERM) from leaking the lock and wedging later appends,
+  # while preserving the FAKE_BOB_TERM_PATH behavior when both are set.
+  while ! mkdir "${record_lock_dir}" 2>/dev/null; do
+    sleep 0.01
+  done
+  trap 'rmdir "${record_lock_dir}" 2>/dev/null || true; if [[ -n "${FAKE_BOB_TERM_PATH:-}" ]]; then printf "terminated\n" >"${FAKE_BOB_TERM_PATH}"; fi; exit 143' TERM INT
   printf 'argv=%s\nHOME=%s\nPATH=%s\nBOB_DIR=%s\nBOB_PRIORITY_ROLL_SEED=%s\n' \
     "$*" \
     "${HOME:-}" \
     "${PATH:-}" \
     "${BOB_DIR:-}" \
     "${BOB_PRIORITY_ROLL_SEED:-}" >>"${FAKE_BOB_RECORD_PATH}"
+  rmdir "${record_lock_dir}" 2>/dev/null || true
+  trap - TERM INT
+  if [[ -n "${FAKE_BOB_TERM_PATH:-}" ]]; then
+    trap 'printf "terminated\n" >"${FAKE_BOB_TERM_PATH}"; exit 143' TERM INT
+  fi
 fi
 
 if [[ -n "${FAKE_BOB_DELAY_SECONDS:-}" ]]; then
