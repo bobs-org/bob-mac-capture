@@ -66,7 +66,6 @@ final class NotificationServiceTests: XCTestCase {
             capture(
                 kind: "pomodoro_adjust",
                 routeLabel: "",
-                relativeTarget: "day.md",
                 target: "/Users/bryan/bob/2026/20260814.md",
                 text: "+5",
                 pomodoroAdjust: PomodoroAdjustSummary(
@@ -84,7 +83,8 @@ final class NotificationServiceTests: XCTestCase {
                     pomodoroName: "FOCUS",
                     timeRange: "(**0900-0955** [t:: 55m])",
                     clamped: false
-                )
+                ),
+                relativeTarget: "day.md"
             ),
         ])
 
@@ -99,7 +99,6 @@ final class NotificationServiceTests: XCTestCase {
             capture(
                 kind: "pomodoro_adjust",
                 routeLabel: "",
-                relativeTarget: "day.md",
                 target: "/Users/bryan/bob/2026/20260814.md",
                 text: "-9",
                 pomodoroAdjust: PomodoroAdjustSummary(
@@ -117,7 +116,8 @@ final class NotificationServiceTests: XCTestCase {
                     pomodoroName: "FOCUS",
                     timeRange: "(**0900-0900** [t:: 0m])",
                     clamped: true
-                )
+                ),
+                relativeTarget: "day.md"
             ),
         ])
 
