@@ -543,6 +543,165 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertNil(model.pomodoroNamePrompt)
     }
 
+    func testCaretActiveTaskCompletionAcceptsRouteBlockIDWithoutReopening() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "^dee"
+        model.editorTextDidChange(cursorUTF8Offset: 4)
+        await waitUntil { model.completionVisible }
+
+        // `active_task` (not cached `route`) proves the `^` spans never hit the
+        // route cache and `routeReplacementRange` never overwrote the caret sigil.
+        XCTAssertEqual(model.completionResponse?.context, "active_task")
+        XCTAssertEqual(
+            model.completionResponse?.replacement,
+            CaptureRange(start: 1, end: 4)
+        )
+        let candidate = try XCTUnwrap(model.completionResponse?.candidates.first)
+        XCTAssertEqual(candidate.replacement, "sase:deep-fix")
+        let row = model.rowContent(for: candidate)
+        XCTAssertEqual(row.contextLabel, "Active Task")
+        XCTAssertEqual(row.primaryText, "Fix deep bug")
+        XCTAssertEqual(row.primaryMatchRange, 4..<7)
+
+        model.acceptSelectedCompletion()
+        XCTAssertEqual(model.plainDraft, "^sase:deep-fix")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 14)
+        XCTAssertNil(model.completionResponse)
+
+        // Mirror SwiftUI's delayed callback for the programmatic binding update.
+        // The exact `route:block-id` must not immediately re-open the popup.
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil {
+            guard case .ready(let preview) = model.previewState else {
+                return false
+            }
+            return preview.kind == "pomodoro_link"
+        }
+
+        XCTAssertNil(model.completionResponse)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
+        XCTAssertTrue(
+            record.contains("argv=capture --dry-run --no-clip --format json -- ^sase:deep-fix")
+        )
+    }
+
+    func testAcceptingPomodoroNameAfterCaretLinkPreservesStartSuffix() {
+        let model = CapturePanelModel()
+        model.plainDraft = "^sase:deep-fix#bu=3"
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 16,
+            replacement: CaptureRange(start: 15, end: 17),
+            context: "pomodoro_name",
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "bugs",
+                    taskRef: "8:49ff9cb6",
+                    statusSymbol: " ",
+                    childCount: 1,
+                    name: "BUGS",
+                    requiresName: false,
+                    line: 8,
+                    placeholder: true,
+                    isCurrent: false
+                ),
+            ]
+        )
+        model.selectedCompletionIndex = 0
+
+        model.acceptSelectedCompletion()
+
+        XCTAssertEqual(model.plainDraft, "^sase:deep-fix#bugs=3")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 19)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertNil(model.pomodoroNamePrompt)
+    }
+
+    func testLinkPreviewUsesLinkActionAndLinkFooter() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "^sase:deep-fix"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready(let preview) = model.previewState {
+                return preview.kind == "pomodoro_link"
+            }
+            return false
+        }
+
+        XCTAssertNil(model.togglePresentation)
+        let link = try XCTUnwrap(model.linkPresentation)
+        XCTAssertEqual(link.transitionText, "[*] already Next  #task Fix deep bug")
+        XCTAssertEqual(link.ledgerText, "Task Link already in BUGS; no ledger change.")
+        XCTAssertEqual(model.primaryActionTitle, "Link")
+        XCTAssertTrue(model.statusText.hasPrefix("Would link \u{2192}"))
+    }
+
+    func testLinkStartPreviewUsesStartFooter() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "^sase:outline="
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready(let preview) = model.previewState {
+                return preview.kind == "pomodoro_link"
+            }
+            return false
+        }
+
+        let link = try XCTUnwrap(model.linkPresentation)
+        XCTAssertEqual(link.transitionText, "[/] stays In Progress  #task Outline talk")
+        XCTAssertEqual(link.ledgerText, "Linked under BUGS")
+        XCTAssertEqual(model.primaryActionTitle, "Start")
+        XCTAssertEqual(link.notificationTitle, "Started BUGS")
+        let session = try XCTUnwrap(model.previewResult.flatMap(CapturePomodoroStartPresentation.init))
+        XCTAssertEqual(session.sessionText, "0905-0930 (25m)")
+    }
+
+    func testNearMissLinkPreviewSurfacesInvalidLinkError() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "^sase:deep-fix extra words"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .failed(let message) = model.previewState {
+                return message.contains("must be the whole capture item")
+            }
+            return false
+        }
+
+        XCTAssertEqual(model.plainDraft, draft)
+        XCTAssertNil(model.linkPresentation)
+        XCTAssertEqual(model.primaryActionTitle, "Capture")
+    }
+
     func testLivePreviewWithStartSuffixRecordsSessionAndKeepsDraft() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)

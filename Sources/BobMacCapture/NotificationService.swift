@@ -371,6 +371,14 @@ final class NotificationService: NSObject, ObservableObject {
                     targetPaths: targetPaths
                 )
             }
+            if let link = CapturePomodoroLinkPresentation(capture: capture) {
+                return CaptureNotificationPresentation(
+                    title: link.notificationTitle,
+                    subtitle: link.routeDestinationLabel,
+                    body: link.notificationBody,
+                    targetPaths: targetPaths
+                )
+            }
             let kind = friendlyKindLabel(capture.kind)
             return CaptureNotificationPresentation(
                 title: "\(kind) captured",
@@ -403,7 +411,7 @@ final class NotificationService: NSObject, ObservableObject {
             .joined(separator: " across ")
         let lines = nonemptyCaptures.enumerated().map { index, capture in
             let scheduled = capture.scheduled.map { " scheduled \($0)" } ?? ""
-            return "\(index + 1). \(friendlyKindLabel(capture.kind)) -> \(capture.routeLabel): \(semanticText(capture))\(scheduled)\(startedSuffix(for: capture))\(adjustedSuffix(for: capture))"
+            return "\(index + 1). \(friendlyKindLabel(capture.kind)) -> \(capture.routeLabel): \(batchLineText(capture))\(scheduled)\(startedSuffix(for: capture))\(adjustedSuffix(for: capture))"
         }
         return CaptureNotificationPresentation(
             title: "\(nonemptyCaptures.count) items captured",
@@ -435,7 +443,7 @@ final class NotificationService: NSObject, ObservableObject {
             let override = captureUsesGlobalDestination(capture, globalDestination)
                 ? ""
                 : " \u{2192} \(displayLabel(for: capture))"
-            return "\(index + 1). \(semanticText(capture))\(override)\(scheduled)\(startedSuffix(for: capture))\(adjustedSuffix(for: capture))"
+            return "\(index + 1). \(batchLineText(capture))\(override)\(scheduled)\(startedSuffix(for: capture))\(adjustedSuffix(for: capture))"
         }
         return CaptureNotificationPresentation(
             title: "\(captures.count) items captured",
@@ -464,6 +472,16 @@ final class NotificationService: NSObject, ObservableObject {
             .map { " (\($0.sessionText))" } ?? ""
     }
 
+    // Batch lines name the link transition (`[ ] → [*]  Ready thing`) instead of
+    // the raw post-image task line, which a `pomodoro_link` capture leaves empty
+    // or Markdown-formatted. Every other kind keeps the semantic text.
+    nonisolated private static func batchLineText(_ capture: CaptureCommandSuccess) -> String {
+        if let link = CapturePomodoroLinkPresentation(capture: capture) {
+            return link.transitionText
+        }
+        return semanticText(capture)
+    }
+
     nonisolated private static func semanticText(_ capture: CaptureCommandSuccess) -> String {
         if !capture.text.isEmpty {
             return capture.text
@@ -486,6 +504,8 @@ final class NotificationService: NSObject, ObservableObject {
             return "Note"
         case "task-toggle", "task_toggle":
             return "Toggle"
+        case "pomodoro-link", "pomodoro_link":
+            return "Link"
         case "pomodoro-adjust", "pomodoro_adjust":
             return "Adjustment"
         case "project-note", "project_note":
@@ -527,23 +547,31 @@ final class NotificationService: NSObject, ObservableObject {
         return "\(labels.count) destination\(labels.count == 1 ? "" : "s")"
     }
 
-    // A toggle's day file is only worth an "Open Note(s)" action when the toggle
-    // actually wrote to it (linked, unlinked, or cleaned up a duplicate) — matching the
-    // gate `CapturePanelModel.uniqueTargetURLs` uses for Command-Return.
+    // A toggle's or link's day file is only worth an "Open Note(s)" action when the
+    // capture actually wrote to it (linked, unlinked, moved, started, or cleaned up
+    // a duplicate) — matching the gate `CapturePanelModel.uniqueTargetURLs` uses for
+    // Command-Return.
     nonisolated private static func notificationTargetPaths(
         for captures: [CaptureCommandSuccess]
     ) -> [String] {
         var paths: [String] = []
         for capture in captures {
             paths.append(capture.target)
-            if let dayFile = capture.dayFile,
-               let toggle = CaptureTogglePresentation(capture: capture),
-               toggle.dayFileChanged
-            {
+            if let dayFile = capture.dayFile, dayFileChanged(for: capture) {
                 paths.append(dayFile)
             }
         }
         return orderedUniquePaths(paths.filter { !$0.isEmpty })
+    }
+
+    nonisolated private static func dayFileChanged(for capture: CaptureCommandSuccess) -> Bool {
+        if let toggle = CaptureTogglePresentation(capture: capture) {
+            return toggle.dayFileChanged
+        }
+        if let link = CapturePomodoroLinkPresentation(capture: capture) {
+            return link.dayFileChanged
+        }
+        return false
     }
 
     nonisolated private static func orderedUniquePaths(_ paths: [String]) -> [String] {

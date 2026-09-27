@@ -856,6 +856,87 @@ JSON
   "pomodoro_adjust": { "raw": "+5", "plus": true, "units": 5 }
 }
 JSON
+    elif [[ "${draft}" == "^" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "^",
+  "body": "",
+  "mode": "incomplete",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": ["active_task"],
+  "spans": [
+    { "start": 0, "end": 1, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "^dee" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "^dee",
+  "body": "",
+  "mode": "incomplete",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": ["active_task"],
+  "spans": [
+    { "start": 0, "end": 4, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "^sase:deep-fix" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "^sase:deep-fix",
+  "body": "",
+  "mode": "pomodoro_link",
+  "route": "sase",
+  "section": null,
+  "block_id": "deep-fix",
+  "needs": [],
+  "spans": [
+    { "start": 0, "end": 5, "kind": "active_task_route" },
+    { "start": 6, "end": 14, "kind": "active_task_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "^sase:deep-fix extra words" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "^sase:deep-fix extra words",
+  "body": "^sase:deep-fix extra words",
+  "mode": "pomodoro_link",
+  "route": "sase",
+  "section": null,
+  "block_id": "deep-fix",
+  "needs": [],
+  "spans": [
+    { "start": 0, "end": 5, "kind": "active_task_route" },
+    { "start": 6, "end": 14, "kind": "active_task_block_id" }
+  ],
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "invalid_pomodoro_link",
+      "message": "`^route:block-id` must be the whole capture item; to create a new Pomodoro-linked task use `<text> @route:block-id`",
+      "range": [0, 14]
+    }
+  ]
+}
+JSON
     else
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
@@ -1618,6 +1699,122 @@ JSON
   "replacement": { "start": ${end}, "end": ${end} },
   "context": null,
   "candidates": []
+}
+JSON
+    elif [[ "${draft}" == "^" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 1, "end": 1 },
+  "context": "active_task",
+  "candidates": [
+    {
+      "replacement": "sase:deep-fix",
+      "ref": "5:41d049f2",
+      "route": "sase",
+      "block_id": "deep-fix",
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Fix deep bug",
+      "section": "Tasks",
+      "pomodoro": { "line": 5, "name": "BUGS", "time_range": null, "is_current": false }
+    },
+    {
+      "replacement": "sase:outline",
+      "ref": "1:f867fe6b",
+      "route": "sase",
+      "block_id": "outline",
+      "status_symbol": "/",
+      "status_name": "In Progress",
+      "status_type": "IN_PROGRESS",
+      "text": "Outline talk",
+      "section": "Tasks",
+      "pomodoro": null
+    }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "^dee" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 1, "end": 4 },
+  "context": "active_task",
+  "candidates": [
+    {
+      "replacement": "sase:deep-fix",
+      "ref": "5:41d049f2",
+      "route": "sase",
+      "block_id": "deep-fix",
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Fix deep bug",
+      "section": "Tasks",
+      "pomodoro": { "line": 5, "name": "BUGS", "time_range": null, "is_current": false }
+    }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "^sase:deep-fix" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 1, "end": 14 },
+  "context": "active_task",
+  "candidates": [
+    {
+      "replacement": "sase:deep-fix",
+      "ref": "5:41d049f2",
+      "route": "sase",
+      "block_id": "deep-fix",
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Fix deep bug",
+      "section": "Tasks",
+      "pomodoro": { "line": 5, "name": "BUGS", "time_range": null, "is_current": false }
+    }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "^sase:deep-fix#b" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 15, "end": 16 },
+  "context": "pomodoro_name",
+  "candidates": [
+    {
+      "replacement": "bugs",
+      "ref": "5:49ff9cb6",
+      "name": "BUGS",
+      "requires_name": false,
+      "line": 5,
+      "state": "open",
+      "status_symbol": " ",
+      "time_range": null,
+      "placeholder": true,
+      "is_current": false,
+      "child_count": 1,
+      "creates_pomodoro": false
+    },
+    {
+      "replacement": "B",
+      "name": "B",
+      "requires_name": false,
+      "creates_pomodoro": true
+    }
+  ]
 }
 JSON
     else
@@ -2548,6 +2745,202 @@ JSON
   ]
 }
 JSON
+    elif [[ "${draft}" == "^sase:deep-fix" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "sase",
+  "route_label": "sase.md",
+  "relative_target": "sase.md",
+  "target": "/tmp/bob/sase.md",
+  "text": "",
+  "task_line": "- [*] #task Fix deep bug ^deep-fix",
+  "kind": "pomodoro_link",
+  "created": "2026-07-10",
+  "scheduled": null,
+  "placement": "linked",
+  "block_id": "deep-fix",
+  "day_file": "/tmp/bob/2026/20260710.md",
+  "block_link": "[[sase#^deep-fix]]",
+  "previous_task_line": "- [*] #task Fix deep bug ^deep-fix",
+  "status_symbol": "*",
+  "status_name": "Next",
+  "previous_status_symbol": "*",
+  "previous_status_name": "Next",
+  "pomodoro_name": "BUGS",
+  "creates_pomodoro": false,
+  "status_changed": false,
+  "pomodoro_link_action": "already_current",
+  "pomodoro_link_source": { "line": 5, "name": "BUGS" },
+  "pomodoro_link_destination": { "line": 5, "name": "BUGS" }
+}
+JSON
+    elif [[ "${draft}" == "@sase:ready" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "sase",
+  "route_label": "sase.md",
+  "relative_target": "sase.md",
+  "target": "/tmp/bob/sase.md",
+  "text": "",
+  "task_line": "- [*] #task Ready thing ^ready",
+  "kind": "pomodoro_link",
+  "created": "2026-07-10",
+  "scheduled": null,
+  "placement": "linked",
+  "block_id": "ready",
+  "day_file": "/tmp/bob/2026/20260710.md",
+  "block_link": "[[sase#^ready]]",
+  "pomodoro_link_placement": "inserted",
+  "previous_task_line": "- [ ] #task Ready thing ^ready",
+  "status_symbol": "*",
+  "status_name": "Next",
+  "previous_status_symbol": " ",
+  "previous_status_name": "Todo",
+  "pomodoro_name": "BUGS",
+  "creates_pomodoro": false,
+  "status_changed": true,
+  "pomodoro_link_action": "linked",
+  "pomodoro_link_destination": { "line": 5, "name": "BUGS" }
+}
+JSON
+    elif [[ "${draft}" == "^sase:deep-fix#focus=3" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "sase",
+  "route_label": "sase.md",
+  "relative_target": "sase.md",
+  "target": "/tmp/bob/sase.md",
+  "text": "",
+  "task_line": "- [*] #task Fix deep bug ^deep-fix",
+  "kind": "pomodoro_link",
+  "created": "2026-07-10",
+  "scheduled": null,
+  "placement": "linked",
+  "block_id": "deep-fix",
+  "day_file": "/tmp/bob/2026/20260710.md",
+  "block_link": "[[sase#^deep-fix]]",
+  "pomodoro_link_placement": "inserted",
+  "previous_task_line": "- [*] #task Fix deep bug ^deep-fix",
+  "status_symbol": "*",
+  "status_name": "Next",
+  "previous_status_symbol": "*",
+  "previous_status_name": "Next",
+  "pomodoro_name": "FOCUS",
+  "creates_pomodoro": true,
+  "status_changed": false,
+  "pomodoro_link_action": "moved",
+  "pomodoro_link_source": { "line": 5, "name": "BUGS" },
+  "pomodoro_link_destination": { "line": 5, "name": "FOCUS", "time_range": "0905-0920" },
+  "pomodoro_start": {
+    "start": "0905",
+    "end": "0920",
+    "duration_minutes": 15,
+    "offset_units": 0,
+    "pomodoro_name": "FOCUS",
+    "pomodoro_line": 5,
+    "created_pomodoro": true,
+    "time_range": "(**0905-0920** [t:: 15m])"
+  }
+}
+JSON
+    elif [[ "${draft}" == "^sase:outline=" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "sase",
+  "route_label": "sase.md",
+  "relative_target": "sase.md",
+  "target": "/tmp/bob/sase.md",
+  "text": "",
+  "task_line": "- [/] #task Outline talk ^outline",
+  "kind": "pomodoro_link",
+  "created": "2026-07-10",
+  "scheduled": null,
+  "placement": "linked",
+  "block_id": "outline",
+  "day_file": "/tmp/bob/2026/20260710.md",
+  "block_link": "[[sase#^outline]]",
+  "pomodoro_link_placement": "inserted",
+  "previous_task_line": "- [/] #task Outline talk ^outline",
+  "status_symbol": "/",
+  "status_name": "In Progress",
+  "previous_status_symbol": "/",
+  "previous_status_name": "In Progress",
+  "pomodoro_name": "BUGS",
+  "creates_pomodoro": false,
+  "status_changed": false,
+  "pomodoro_link_action": "linked",
+  "pomodoro_link_destination": { "line": 5, "name": "BUGS" },
+  "pomodoro_start": {
+    "start": "0905",
+    "end": "0930",
+    "duration_minutes": 25,
+    "offset_units": 0,
+    "pomodoro_name": "BUGS",
+    "pomodoro_line": 5,
+    "created_pomodoro": false,
+    "time_range": "(**0905-0930** [t:: 25m])"
+  }
+}
+JSON
+    elif [[ "${draft}" == "@sase:deep-fix=" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "sase",
+  "route_label": "sase.md",
+  "relative_target": "sase.md",
+  "target": "/tmp/bob/sase.md",
+  "text": "",
+  "task_line": "- [*] #task Fix deep bug ^deep-fix",
+  "kind": "pomodoro_link",
+  "created": "2026-07-10",
+  "scheduled": null,
+  "placement": "linked",
+  "block_id": "deep-fix",
+  "day_file": "/tmp/bob/2026/20260710.md",
+  "block_link": "[[sase#^deep-fix]]",
+  "previous_task_line": "- [*] #task Fix deep bug ^deep-fix",
+  "status_symbol": "*",
+  "status_name": "Next",
+  "previous_status_symbol": "*",
+  "previous_status_name": "Next",
+  "pomodoro_name": "BUGS",
+  "creates_pomodoro": false,
+  "status_changed": false,
+  "pomodoro_link_action": "already_current",
+  "pomodoro_link_source": { "line": 5, "name": "BUGS" },
+  "pomodoro_link_destination": { "line": 5, "name": "BUGS", "time_range": "0905-0930" },
+  "pomodoro_start": {
+    "start": "0905",
+    "end": "0930",
+    "duration_minutes": 25,
+    "offset_units": 0,
+    "pomodoro_name": "BUGS",
+    "pomodoro_line": 5,
+    "created_pomodoro": false,
+    "time_range": "(**0905-0930** [t:: 25m])"
+  }
+}
+JSON
+    elif [[ "${draft}" == "^sase:deep-fix extra words" ]]; then
+      cat <<'JSON'
+{"ok":false,"error":"capture item 1 starting on line 1: `^route:block-id` must be the whole capture item; to create a new Pomodoro-linked task use `<text> @route:block-id`"}
+JSON
+      exit 1
     else
       cat <<JSON
 {

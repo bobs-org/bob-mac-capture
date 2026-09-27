@@ -391,6 +391,85 @@ final class NotificationServiceTests: XCTestCase {
         )
     }
 
+    func testPomodoroLinkSuccessContentUsesLinkCopyAndOpensBothNotes() {
+        let content = NotificationService.successContent(captures: [
+            linkCapture(action: "linked", statusChanged: true),
+        ])
+
+        XCTAssertEqual(content.title, "Linked to BUGS")
+        XCTAssertEqual(content.subtitle, "sase.md \u{00b7} ^ready")
+        XCTAssertTrue(content.body.contains("Todo \u{2192} Next"))
+        XCTAssertTrue(content.body.contains("Linked under BUGS"))
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureBatchCategoryIdentifier)
+        XCTAssertEqual(
+            content.userInfo[NotificationService.targetPathsKey] as? [String],
+            ["/tmp/bob/sase.md", "/tmp/bob/2026/20260710.md"]
+        )
+    }
+
+    func testPomodoroLinkAlreadyCurrentOpensOnlyTheRouteNote() {
+        let content = NotificationService.successContent(captures: [
+            linkCapture(action: "already_current", statusChanged: false),
+        ])
+
+        XCTAssertEqual(content.title, "Already in BUGS")
+        XCTAssertTrue(content.body.contains("Task Link already in BUGS; no ledger change."))
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureCategoryIdentifier)
+        // The unchanged day file is excluded; the single route note still yields ordered paths.
+        XCTAssertEqual(
+            content.userInfo[NotificationService.targetPathsKey] as? [String],
+            ["/tmp/bob/sase.md"]
+        )
+    }
+
+    func testPomodoroLinkStartUsesStartedTitleAndSessionDetail() {
+        let content = NotificationService.successContent(captures: [
+            linkCapture(
+                action: "moved",
+                statusChanged: false,
+                destinationName: "FOCUS",
+                createsPomodoro: true,
+                pomodoroStart: PomodoroStartSummary(
+                    start: "0905",
+                    end: "0920",
+                    durationMinutes: 15,
+                    offsetUnits: 0,
+                    pomodoroName: "FOCUS",
+                    pomodoroLine: 5,
+                    createdPomodoro: true,
+                    timeRange: "(**0905-0920** [t:: 15m])"
+                )
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "Started FOCUS")
+        XCTAssertTrue(content.body.contains("Moved Task Link BUGS \u{2192} FOCUS (created FOCUS)"))
+        XCTAssertTrue(
+            content.body.contains("Started FOCUS 0905-0920 (15m) (created) at line 5")
+        )
+        XCTAssertEqual(
+            content.userInfo[NotificationService.targetPathsKey] as? [String],
+            ["/tmp/bob/sase.md", "/tmp/bob/2026/20260710.md"]
+        )
+    }
+
+    func testPomodoroLinkBatchLineUsesTransitionTextAndLinkKind() {
+        let content = NotificationService.successContent(captures: [
+            linkCapture(action: "linked", statusChanged: true),
+            capture(
+                kind: "task",
+                routeLabel: "sase.md",
+                target: "/tmp/bob/sase.md",
+                text: "Follow up"
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "2 items captured")
+        XCTAssertEqual(content.subtitle, "1 link, 1 task across 2 destinations")
+        XCTAssertTrue(content.body.contains("1. Link -> sase.md: [ ] \u{2192} [*]  #task Ready thing"))
+        XCTAssertTrue(content.body.contains("2. Task -> sase.md: Follow up"))
+    }
+
     func testTaskToggleSuccessContentOmitsDayFileFromTargetsWhenNothingChangedThere() {
         let content = NotificationService.successContent(captures: [
             toggleCapture(direction: "next", dayFileChanged: false),
@@ -765,6 +844,53 @@ final class NotificationServiceTests: XCTestCase {
             pomodoroAlreadyLinked: !dayFileChanged,
             removedPomodoroLinks: 0,
             pomodoroSelectorUnused: false
+        )
+    }
+
+    // A committed `pomodoro_link` capture. `linked` models a fresh insert with a
+    // Ready-to-Next promotion; the other actions model an already-queued task.
+    private func linkCapture(
+        action: String,
+        statusChanged: Bool,
+        destinationName: String = "BUGS",
+        createsPomodoro: Bool = false,
+        pomodoroStart: PomodoroStartSummary? = nil
+    ) -> CaptureCommandSuccess {
+        let changed = statusChanged
+        return CaptureCommandSuccess(
+            ok: true,
+            dryRun: false,
+            routed: true,
+            route: "sase",
+            routeLabel: "sase.md",
+            relativeTarget: "sase.md",
+            target: "/tmp/bob/sase.md",
+            text: "",
+            taskLine: changed
+                ? "- [*] #task Ready thing ^ready"
+                : "- [*] #task Fix deep bug ^deep-fix",
+            kind: "pomodoro_link",
+            created: "2026-07-10",
+            placement: "linked",
+            blockID: changed ? "ready" : "deep-fix",
+            dayFile: "/tmp/bob/2026/20260710.md",
+            blockLink: changed ? "[[sase#^ready]]" : "[[sase#^deep-fix]]",
+            previousTaskLine: changed
+                ? "- [ ] #task Ready thing ^ready"
+                : "- [*] #task Fix deep bug ^deep-fix",
+            statusSymbol: "*",
+            statusName: "Next",
+            previousStatusSymbol: changed ? " " : "*",
+            previousStatusName: changed ? "Todo" : "Next",
+            pomodoroName: destinationName,
+            createsPomodoro: createsPomodoro,
+            statusChanged: changed,
+            pomodoroLinkAction: action,
+            pomodoroLinkSource: action == "linked"
+                ? nil
+                : PomodoroLinkEndpoint(line: 5, name: "BUGS"),
+            pomodoroLinkDestination: PomodoroLinkEndpoint(line: 5, name: destinationName),
+            pomodoroStart: pomodoroStart
         )
     }
 

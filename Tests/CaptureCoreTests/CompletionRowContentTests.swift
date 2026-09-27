@@ -288,6 +288,101 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.contextLabel, "Pomodoro Task")
     }
 
+    func testActiveTaskQueuedNextRowShowsTaskTextRouteBlockAndPomodoroBadge() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "sase:deep-fix",
+            route: "sase",
+            blockID: "deep-fix",
+            statusSymbol: "*",
+            statusName: "Next",
+            statusType: "ON_HOLD",
+            text: "Fix deep bug",
+            section: "Tasks",
+            pomodoro: ActiveTaskPomodoro(line: 5, name: "BUGS", isCurrent: false)
+        )
+
+        let content = completionRowContent(for: candidate, context: "active_task", query: "dee")
+
+        XCTAssertEqual(content.category, .blockID)
+        XCTAssertEqual(content.symbolName, "bookmark")
+        XCTAssertEqual(content.contextLabel, "Active Task")
+        XCTAssertEqual(content.primaryText, "Fix deep bug")
+        XCTAssertEqual(content.primaryMatchRange, 4..<7)
+        XCTAssertEqual(content.secondaryText, "sase:deep-fix · Tasks")
+        XCTAssertEqual(content.badges, ["BUGS"])
+        XCTAssertEqual(
+            content.accessibilityLabel,
+            "Active Task, Fix deep bug, sase:deep-fix · Tasks, BUGS"
+        )
+        XCTAssertEqual(
+            content.accessibilityHint,
+            "Inserts this task's route and block ID."
+        )
+    }
+
+    func testActiveTaskInProgressRowUsesDistinctGlyphAndTint() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "sase:outline",
+            route: "sase",
+            blockID: "outline",
+            statusSymbol: "/",
+            statusName: "In Progress",
+            statusType: "IN_PROGRESS",
+            text: "Outline talk",
+            pomodoro: nil
+        )
+
+        let content = completionRowContent(for: candidate, context: "active_task", query: "")
+
+        XCTAssertEqual(content.category, .schedule)
+        XCTAssertEqual(content.symbolName, "play.circle")
+        XCTAssertEqual(content.primaryText, "Outline talk")
+        XCTAssertEqual(content.secondaryText, "sase:outline")
+        XCTAssertEqual(content.badges, ["Not queued"])
+        XCTAssertNil(content.primaryMatchRange)
+    }
+
+    func testActiveTaskCurrentPomodoroBadgeNamesNowAndTimeRange() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "sase:focus",
+            route: "sase",
+            blockID: "focus",
+            statusSymbol: "/",
+            statusName: "In Progress",
+            statusType: "IN_PROGRESS",
+            text: "Focus work",
+            pomodoro: ActiveTaskPomodoro(
+                line: 3,
+                name: "CODING",
+                timeRange: "0900-0930",
+                isCurrent: true
+            )
+        )
+
+        let content = completionRowContent(for: candidate, context: "active_task", query: "")
+
+        XCTAssertEqual(content.badges, ["Now · CODING 0900-0930"])
+    }
+
+    func testActiveTaskUnnamedPlaceholderBadgeReadsPlanned() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "sase:focus",
+            route: "sase",
+            blockID: "focus",
+            statusSymbol: "*",
+            statusName: "Next",
+            statusType: "ON_HOLD",
+            text: "Focus work",
+            pomodoro: ActiveTaskPomodoro(line: 8)
+        )
+
+        let content = completionRowContent(for: candidate, context: "active_task", query: "")
+
+        XCTAssertEqual(content.category, .blockID)
+        XCTAssertEqual(content.symbolName, "bookmark")
+        XCTAssertEqual(content.badges, ["Planned"])
+    }
+
     func testWikilinkNoteContextPrefersAliasAsPrimaryAndFlagsAliasBadge() {
         let candidate = CaptureCompletionCandidate(
             replacement: "Artificial Intelligence|AI]]",
@@ -390,6 +485,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_route"), .route)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "sub_bullet_route"), .route)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_toggle_route"), .route)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "active_task_route"), .route)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "section"), .section)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "sub_bullet_section"), .section)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_name"), .section)
@@ -398,6 +494,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "sub_bullet_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_toggle_block_id"), .blockID)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "active_task_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "schedule"), .schedule)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "priority"), .priority)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "clipboard"), .clipboard)
@@ -422,6 +519,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(CaptureCompletionContext(rawContext: "pomodoro_name"), .pomodoroName)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "task"), .task)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "task_section"), .taskSection)
+        XCTAssertEqual(CaptureCompletionContext(rawContext: "active_task"), .activeTask)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "wikilink_note"), .wikilinkNote)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "wikilink_heading"), .wikilinkHeading)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "wikilink_block"), .wikilinkBlock)

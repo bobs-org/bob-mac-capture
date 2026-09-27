@@ -171,6 +171,17 @@ or expired certificate can require reauthorizing those system permissions.
   reruns parse/preview. When Bob cannot absorb a marker such as `@route#Section`,
   `@route^block-id`, `@route:block-id`, or a Pomodoro-note `#`, the app leaves the draft
   untouched and announces Bob's notice.
+  Typing `^` as the whole capture item opens the active-task picker (`active_task`
+  context): only In Progress and Next tasks, in Bob's ledger order, inserting the
+  full `route:block-id` in one accept. Bob's replacement range always stops before a
+  typed `#name`/`=<X>` suffix so the suffix survives the accept, and accepting an
+  exact `route:block-id` never immediately re-opens the popup. Cached route
+  completion never intercepts `^`, and the `active_task_route`/`active_task_block_id`
+  spans reuse the route and block-ID highlight colors. `^` rows show the task text
+  with the query emphasized, a `route:block-id` (plus section) secondary line, one
+  Pomodoro badge (`Now · NAME HHMM-HHMM` for the current entry, the name for a queued
+  entry, `Planned` for an unnamed placeholder, `Not queued` otherwise), and an
+  "Active Task" label; In Progress and Next rows use distinct glyphs and tints.
   Typing `#` immediately after a resolved `@route+block-id` follows the draft's mode:
   while that item has no body text it opens `pomodoro_name` completion for the task
   toggle, and once the item has body text it opens `task_section` completion for that
@@ -231,20 +242,29 @@ or expired certificate can require reauthorizing those system permissions.
   and never splits a draft into multiple mutating `bob` subprocesses. When live preview
   reports exactly one `task_toggle`, the footer's primary action changes from
   **Capture** to **Set Next**, **Set Open**, or **Ensure Next** according to
-  Bob's returned behavior metadata; batches keep **Capture** because Return will
-  submit more than the toggle.
+  Bob's returned behavior metadata; when it reports exactly one `pomodoro_link`,
+  the action becomes **Start** if the link starts a session and **Link** otherwise;
+  batches keep **Capture** because Return will submit more than the toggle.
   Ensure Next preview, VoiceOver, and notifications present status and relocation
   independently ("Ready → Next" vs "Next unchanged", "Moved LATER → CURRENT" vs
   "Already in CURRENT; no Pomodoro changes") and never show the two-way "adds
   link" or "removed later links" rows. Committed notification titles summarize
   the actual result (combined, status-only, move-only, or already-Next no-op);
   Open Note/Open Notes includes the daily note only when `pomodoro_link_action`
-  is `moved`.
+  is `moved`. Pomodoro-link captures notify as `Started NAME`, `Linked to NAME`,
+  `Moved to NAME`, or `Already in NAME`, batch lines use the link transition text
+  under a `Link` kind, and Open Note/Open Notes includes the daily note whenever
+  the link inserted, moved, or started a session.
 - Preview shows every block Bob will write, in Bob's own order: each item's parent
   `task_line`, authored children, then `clip.lines` and `schedule_log.lines` when the
   response carries them. Task-toggle items instead show the route/block destination, the
   status transition, the daily-note destination, and the `+` or `−` Pomodoro-link line
-  Bob planned. One item stays compact; a batch renders an ordered stack with item count,
+  Bob planned. Pomodoro-link items show the route/block destination, the status
+  transition (`[ ] → [*]`, `[*] already Next`, `[/] stays In Progress`), the daily-note
+  destination, and the ledger outcome Bob planned (`Linked under BUGS`,
+  `Moved Task Link BUGS → FOCUS (created FOCUS)`, or
+  `Task Link already in BUGS; no ledger change.`), plus the atomic-start session row
+  when the link starts one. One item stays compact; a batch renders an ordered stack with item count,
   destination/kind metadata, dividers, and exact `previewBlockLines` or toggle
   transition rows. When Bob reports a global destination, preview and the destination
   detail show one compact shared-scope line (`All items → foo.md` or
@@ -539,10 +559,12 @@ decodes and presents it.
 
 Each completion row shows a compact SF Symbol and context label for what will be
 inserted (Note/Heading/Block, alongside Destination/Section/Parent Task/Task Section
-rows), a primary line with restrained emphasis on the part of the text that matched
-what you typed, and a secondary line with the canonical vault-relative path or parent
-task plus small badges — `Alias`, a heading level like `H2`, a short block preview,
-`^block-id`, `Add ID`, `N items`, or `Empty`. `@route+` task suggestions are grouped as
+and Active Task rows), a primary line with restrained emphasis on the part of the text
+that matched what you typed, and a secondary line with the canonical vault-relative
+path, parent task, or `route:block-id` plus small badges — `Alias`, a heading level
+like `H2`, a short block preview, `^block-id`, `Add ID`, `N items`, `Empty`, or the
+active-task Pomodoro badge (`Now · NAME HHMM-HHMM`, a queued name, `Planned`, or
+`Not queued`). `@route+` task suggestions are grouped as
 **Ready to use** followed by **Needs block ID**, preserving Bob's order inside each
 group; task-section rows stay a plain ungrouped list. Long paths truncate from the
 middle, keeping the filename intact rather than the leading directory. The selected

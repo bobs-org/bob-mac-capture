@@ -26,12 +26,13 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
 public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemanticCategory {
     switch kind {
     case "route", "task_block_id_route", "pomodoro_route", "sub_bullet_route",
-         "global_route", "global_sub_bullet_route", "task_toggle_route":
+         "global_route", "global_sub_bullet_route", "task_toggle_route",
+         "active_task_route":
         return .route
     case "section", "sub_bullet_section", "pomodoro_name", "task_toggle_pomodoro_name":
         return .section
     case "task_block_id", "pomodoro_block_id", "sub_bullet_block_id",
-         "global_sub_bullet_block_id", "task_toggle_block_id":
+         "global_sub_bullet_block_id", "task_toggle_block_id", "active_task_block_id":
         return .blockID
     case "schedule":
         return .schedule
@@ -75,6 +76,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case pomodoroName
     case task
     case taskSection
+    case activeTask
     case wikilinkNote
     case wikilinkHeading
     case wikilinkBlock
@@ -87,6 +89,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "pomodoro_name": self = .pomodoroName
         case "task": self = .task
         case "task_section": self = .taskSection
+        case "active_task": self = .activeTask
         case "wikilink_note": self = .wikilinkNote
         case "wikilink_heading": self = .wikilinkHeading
         case "wikilink_block": self = .wikilinkBlock
@@ -257,6 +260,31 @@ public func completionRowContent(
                 : "Inserts this Pomodoro name."
         }
 
+    case .activeTask:
+        // In Progress tasks are already being worked; Next tasks are queued but
+        // untouched. The glyph and the palette tint both say which, so the row
+        // needs no extra status badge to stay calm and legible.
+        if candidate.statusSymbol == "/" {
+            category = .schedule
+            symbolName = "play.circle"
+        } else {
+            category = .blockID
+            symbolName = "bookmark"
+        }
+        contextLabel = "Active Task"
+        primaryText = candidate.text ?? candidate.replacement
+        if let route = candidate.route, let blockID = candidate.blockID {
+            var secondary = "\(route):\(blockID)"
+            if let section = candidate.section, !section.isEmpty {
+                secondary += " · \(section)"
+            }
+            secondaryText = secondary
+        } else {
+            secondaryText = candidate.section
+        }
+        badges = [activeTaskPomodoroBadge(for: candidate.pomodoro)]
+        accessibilityHint = "Inserts this task's route and block ID."
+
     case .wikilinkNote:
         category = .wikilinkTarget
         symbolName = "doc.text"
@@ -317,6 +345,26 @@ public func completionRowContent(
         accessibilityLabel: accessibilityLabel,
         accessibilityHint: accessibilityHint
     )
+}
+
+/// The single Pomodoro badge for an active-task row: the current entry shows when
+/// it runs, a queued entry shows its name, an unnamed placeholder shows that the
+/// task is planned but not yet named, and an unqueued task says so outright.
+private func activeTaskPomodoroBadge(for pomodoro: ActiveTaskPomodoro?) -> String {
+    guard let pomodoro else {
+        return "Not queued"
+    }
+    if pomodoro.isCurrent {
+        let name = pomodoro.name.flatMap { $0.isEmpty ? nil : $0 } ?? "current"
+        guard let timeRange = pomodoro.timeRange, !timeRange.isEmpty else {
+            return "Now · \(name)"
+        }
+        return "Now · \(name) \(timeRange)"
+    }
+    if let name = pomodoro.name, !name.isEmpty {
+        return name
+    }
+    return "Planned"
 }
 
 private func completionAccessibilityLabel(

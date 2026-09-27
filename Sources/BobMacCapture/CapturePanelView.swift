@@ -1422,6 +1422,14 @@ private struct PreviewPane: View {
                 total: total,
                 isLocalOverride: isLocalOverride
             )
+        } else if let link = CapturePomodoroLinkPresentation(capture: success) {
+            linkPreviewItem(
+                link,
+                success: success,
+                index: index,
+                total: total,
+                isLocalOverride: isLocalOverride
+            )
         } else {
             standardPreviewItem(
                 success,
@@ -1592,6 +1600,86 @@ private struct PreviewPane: View {
         ))
     }
 
+    @ViewBuilder
+    private func linkPreviewItem(
+        _ link: CapturePomodoroLinkPresentation,
+        success: CaptureCommandSuccess,
+        index: Int,
+        total: Int,
+        isLocalOverride: Bool
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if total > 1 {
+                Text("\(index + 1)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text(link.routeDestinationLabel)
+                .fontWeight(.semibold)
+            if isLocalOverride {
+                Text("local override")
+                    .foregroundStyle(.secondary)
+            }
+            Text(success.kind)
+                .foregroundStyle(.secondary)
+        }
+        .lineLimit(1)
+
+        VStack(alignment: .leading, spacing: 3) {
+            Text(link.transitionText)
+                .font(.system(.callout, design: .monospaced))
+                .textSelection(.enabled)
+            if let dayFileDestinationLabel = link.dayFileDestinationLabel {
+                Text(dayFileDestinationLabel)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .textSelection(.enabled)
+            }
+            Text(link.ledgerText)
+                .font(.system(.callout, design: .monospaced))
+                .textSelection(.enabled)
+            if !link.chips.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(link.chips, id: \.self) { chip in
+                        Text(chip)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(linkPreviewAccessibilityLabel(
+            for: link,
+            success: success,
+            index: index,
+            total: total,
+            isLocalOverride: isLocalOverride
+        ))
+
+        // The atomic-start session comes straight from Bob's resolved
+        // `pomodoro_start` object, exactly like the standard item row above: show
+        // the 5-minute-rounded start/end, duration, and created-entry state as Bob
+        // reported them.
+        if let pomodoroStart = CapturePomodoroStartPresentation(capture: success) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "timer")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(pomodoroStart.sessionText)
+                    .font(.system(.callout, design: .monospaced))
+                    .fontWeight(.semibold)
+                Text(pomodoroStart.destinationText)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(pomodoroStart.accessibilitySummary)
+        }
+    }
+
     private func toggleLinkLine(prefix: String, color: Color, text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(prefix)
@@ -1629,5 +1717,17 @@ private struct PreviewPane: View {
         let position = total > 1 ? "Item \(index + 1) of \(total), " : ""
         let override = isLocalOverride ? ", local override" : ""
         return "\(position)\(success.kind)\(override), \(toggle.previewAccessibilitySummary)"
+    }
+
+    private func linkPreviewAccessibilityLabel(
+        for link: CapturePomodoroLinkPresentation,
+        success: CaptureCommandSuccess,
+        index: Int,
+        total: Int,
+        isLocalOverride: Bool
+    ) -> String {
+        let position = total > 1 ? "Item \(index + 1) of \(total), " : ""
+        let override = isLocalOverride ? ", local override" : ""
+        return "\(position)\(success.kind)\(override), \(link.previewAccessibilitySummary)"
     }
 }

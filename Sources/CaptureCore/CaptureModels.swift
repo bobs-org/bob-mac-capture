@@ -1453,6 +1453,44 @@ public struct CaptureCompletionResponse: Codable, Equatable {
 
 }
 
+/// Queued-task annotation on an `active_task` completion candidate: the first open
+/// Pomodoro entry holding the task's dedicated `[[route#^id]]` link, or `nil` when
+/// the task is not queued. Older `bob` binaries predate `active_task` completion
+/// and omit the whole object, so candidates decode it tolerantly.
+public struct ActiveTaskPomodoro: Codable, Equatable, Sendable {
+    public let line: Int
+    public let name: String?
+    public let timeRange: String?
+    public let isCurrent: Bool
+
+    public init(
+        line: Int,
+        name: String? = nil,
+        timeRange: String? = nil,
+        isCurrent: Bool = false
+    ) {
+        self.line = line
+        self.name = name
+        self.timeRange = timeRange
+        self.isCurrent = isCurrent
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        line = try container.decode(Int.self, forKey: .line)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange)
+        isCurrent = try container.decodeIfPresent(Bool.self, forKey: .isCurrent) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case line
+        case name
+        case timeRange = "time_range"
+        case isCurrent = "is_current"
+    }
+}
+
 public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let replacement: String
     public let route: String?
@@ -1486,6 +1524,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let isCurrent: Bool
     public let matchCount: Int?
     public let createsPomodoro: Bool
+    public let pomodoro: ActiveTaskPomodoro?
 
     public var id: String {
         [
@@ -1539,7 +1578,8 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         placeholder: Bool = false,
         isCurrent: Bool = false,
         matchCount: Int? = nil,
-        createsPomodoro: Bool = false
+        createsPomodoro: Bool = false,
+        pomodoro: ActiveTaskPomodoro? = nil
     ) {
         self.replacement = replacement
         self.route = route
@@ -1573,6 +1613,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.isCurrent = isCurrent
         self.matchCount = matchCount
         self.createsPomodoro = createsPomodoro
+        self.pomodoro = pomodoro
     }
 
     public init(from decoder: Decoder) throws {
@@ -1609,6 +1650,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         isCurrent = try container.decodeIfPresent(Bool.self, forKey: .isCurrent) ?? false
         matchCount = try container.decodeIfPresent(Int.self, forKey: .matchCount)
         createsPomodoro = try container.decodeIfPresent(Bool.self, forKey: .createsPomodoro) ?? false
+        pomodoro = try container.decodeIfPresent(ActiveTaskPomodoro.self, forKey: .pomodoro)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1644,5 +1686,6 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case isCurrent = "is_current"
         case matchCount = "match_count"
         case createsPomodoro = "creates_pomodoro"
+        case pomodoro
     }
 }

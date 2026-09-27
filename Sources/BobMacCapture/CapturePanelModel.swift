@@ -236,11 +236,23 @@ final class CapturePanelModel: ObservableObject {
         return CaptureTogglePresentation(capture: previewResult)
     }
 
+    /// The live preview's link presentation, when the current draft is exactly one
+    /// `pomodoro_link` item — the same single-item gate as the toggle presentation.
+    var linkPresentation: CapturePomodoroLinkPresentation? {
+        guard previewResults.count == 1, let previewResult else {
+            return nil
+        }
+        return CapturePomodoroLinkPresentation(capture: previewResult)
+    }
+
     /// The footer's primary action verb: `Capture` unless the draft is a single toggle
-    /// item, in which case it names the toggle direction so Return's meaning is never a
-    /// surprise. Never varies with `dryRun` — it always names what Return will do next.
+    /// or link item, in which case it names the toggle direction or the link outcome
+    /// (`Start` when the link starts a session, else `Link`) so Return's meaning is
+    /// never a surprise. Never varies with `dryRun` — it always names what Return
+    /// will do next.
     var primaryActionTitle: String {
-        togglePresentation?.primaryActionTitle ?? "Capture"
+        togglePresentation?.primaryActionTitle
+            ?? linkPresentation?.primaryActionTitle ?? "Capture"
     }
 
     func setProcessClient(_ processClient: BobProcessClient?) {
@@ -1302,6 +1314,17 @@ final class CapturePanelModel: ObservableObject {
         return CaptureTogglePresentation(capture: captures[0])
     }
 
+    /// A batch's link presentation, only when it is exactly one `pomodoro_link`
+    /// item — the same single-item gate as the toggle presentation.
+    private static func soleLinkPresentation(
+        for captures: [CaptureCommandSuccess]
+    ) -> CapturePomodoroLinkPresentation? {
+        guard captures.count == 1 else {
+            return nil
+        }
+        return CapturePomodoroLinkPresentation(capture: captures[0])
+    }
+
     private func failPreview(requestID: UUID, error: Error) {
         guard activeRequestID == requestID else {
             return
@@ -1526,6 +1549,8 @@ final class CapturePanelModel: ObservableObject {
                         self?.previewGlobalDestination = success.globalDestination
                         if let presentation = Self.soleTogglePresentation(for: captures) {
                             self?.statusText = presentation.statusText
+                        } else if let link = Self.soleLinkPresentation(for: captures) {
+                            self?.statusText = link.statusText
                         }
                     case .failure(let failure):
                         self?.previewState = .failed(failure.error)
@@ -1621,6 +1646,7 @@ final class CapturePanelModel: ObservableObject {
 
         let completionNeeds = Set([
             "route", "section", "pomodoro_id", "pomodoro_name", "task", "task_section",
+            "active_task",
         ])
         if !completionNeeds.isDisjoint(with: Set(parse.needs)) {
             return true
@@ -1631,6 +1657,10 @@ final class CapturePanelModel: ObservableObject {
         // still matches `pomodoro_name`/`pomodoro_block_id` so accepting a candidate
         // replaces only the name and leaves the typed suffix in place (Bob's
         // replacement range already ends before `=`).
+        // `active_task_route`/`active_task_block_id` request `^` completion from Bob.
+        // They stay out of `routeSpanKinds` below so cached route completion never
+        // intercepts `^` and `routeReplacementRange` never overwrites it; Bob's
+        // `needs` covers the lone-`^` case, so there is no Swift-side `^` sniffing.
         let completionSpanKinds = Set([
             "route",
             "section",
@@ -1644,6 +1674,8 @@ final class CapturePanelModel: ObservableObject {
             "task_toggle_route",
             "task_toggle_block_id",
             "task_toggle_pomodoro_name",
+            "active_task_route",
+            "active_task_block_id",
             "global_route",
             "global_sub_bullet_route",
             "global_sub_bullet_block_id",
@@ -1870,10 +1902,11 @@ final class CapturePanelModel: ObservableObject {
         capture.routeLabel.isEmpty ? capture.relativeTarget : capture.routeLabel
     }
 
-    // A toggle's route note and Bob's daily note may be the same file, or the daily
-    // note may be untouched (nothing was linked or removed) — both are handled by
-    // `seen` deduplication plus gating the day file on `dayFileChanged`, so Command-
-    // Return never opens a note the toggle didn't actually write to.
+    // A toggle's or link's route note and Bob's daily note may be the same file, or
+    // the daily note may be untouched (nothing was linked, moved, or started) — both
+    // are handled by `seen` deduplication plus gating the day file on
+    // `dayFileChanged`, so Command-Return never opens a note the capture didn't
+    // actually write to.
     private func uniqueTargetURLs(from captures: [CaptureCommandSuccess]) -> [URL] {
         var seen = Set<String>()
         var urls: [URL] = []
@@ -1887,14 +1920,21 @@ final class CapturePanelModel: ObservableObject {
         }
         for capture in captures {
             appendURL(forAbsolutePath: capture.target)
-            if let dayFile = capture.dayFile,
-               let presentation = CaptureTogglePresentation(capture: capture),
-               presentation.dayFileChanged
-            {
+            if let dayFile = capture.dayFile, Self.captureWroteDayFile(capture) {
                 appendURL(forAbsolutePath: dayFile)
             }
         }
         return urls
+    }
+
+    private static func captureWroteDayFile(_ capture: CaptureCommandSuccess) -> Bool {
+        if let toggle = CaptureTogglePresentation(capture: capture) {
+            return toggle.dayFileChanged
+        }
+        if let link = CapturePomodoroLinkPresentation(capture: capture) {
+            return link.dayFileChanged
+        }
+        return false
     }
 
     private static func blockIDValidationMessage(for blockID: String) -> String? {

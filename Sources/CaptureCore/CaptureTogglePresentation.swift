@@ -288,7 +288,9 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         previewAccessibilitySummary = previewParts.joined(separator: ", ")
     }
 
-    private static func endpointLabel(_ endpoint: PomodoroLinkEndpoint?) -> String? {
+    // Shared with `CapturePomodoroLinkPresentation`, which reports the same
+    // pre/post-image link endpoints for a `pomodoro_link` capture.
+    static func endpointLabel(_ endpoint: PomodoroLinkEndpoint?) -> String? {
         guard let endpoint else {
             return nil
         }
@@ -301,7 +303,9 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         return "line \(endpoint.line)"
     }
 
-    private static func marker(for symbol: String?) -> String {
+    // Shared with `CapturePomodoroLinkPresentation` so both surfaces bracket
+    // task status symbols the same way.
+    static func marker(for symbol: String?) -> String {
         guard let symbol, !symbol.isEmpty else {
             return "[?]"
         }
@@ -319,7 +323,9 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
     /// relate: by stripping the bob-directory prefix they share. Falls back to the
     /// absolute path if `target` doesn't end with `relativeTarget` (should not happen
     /// for a real Bob response, but a display helper must not crash on it).
-    private static func relativeDayFileLabel(
+    // Shared with `CapturePomodoroLinkPresentation`, which names the same daily
+    // note destination for a `pomodoro_link` capture.
+    static func relativeDayFileLabel(
         dayFile: String,
         target: String,
         relativeTarget: String
@@ -334,7 +340,9 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         return String(dayFile.dropFirst(bobDirPrefix.count))
     }
 
-    private static func taskPreviewText(from taskLine: String, blockID: String?) -> String {
+    // Shared with `CapturePomodoroLinkPresentation`: Bob's post-image `task_line`
+    // is the same full Markdown task line for both kinds.
+    static func taskPreviewText(from taskLine: String, blockID: String?) -> String {
         let body = taskBody(from: taskLine)
         let withoutBlockID = removeTrailingBlockID(from: body, blockID: blockID)
         let withoutInlineFields = removeInlineFields(from: withoutBlockID)

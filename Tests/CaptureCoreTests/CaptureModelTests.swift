@@ -1091,6 +1091,173 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertNil(success.pomodoroSelectorUnused)
     }
 
+    func testCaptureCommandResponseDecodesPomodoroLinkSuccessFields() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": true,
+              "routed": true,
+              "route": "sase",
+              "route_label": "sase.md",
+              "relative_target": "sase.md",
+              "target": "/tmp/bob/sase.md",
+              "text": "",
+              "task_line": "- [*] #task Fix deep bug ^deep-fix",
+              "kind": "pomodoro_link",
+              "created": "2026-07-10",
+              "scheduled": null,
+              "placement": "linked",
+              "block_id": "deep-fix",
+              "day_file": "/tmp/bob/2026/20260710.md",
+              "block_link": "[[sase#^deep-fix]]",
+              "previous_task_line": "- [*] #task Fix deep bug ^deep-fix",
+              "status_symbol": "*",
+              "status_name": "Next",
+              "previous_status_symbol": "*",
+              "previous_status_name": "Next",
+              "pomodoro_name": "BUGS",
+              "creates_pomodoro": false,
+              "status_changed": false,
+              "pomodoro_link_action": "already_current",
+              "pomodoro_link_source": { "line": 5, "name": "BUGS" },
+              "pomodoro_link_destination": { "line": 5, "name": "BUGS" }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.kind, "pomodoro_link")
+        XCTAssertEqual(success.placement, "linked")
+        XCTAssertEqual(success.pomodoroLinkAction, "already_current")
+        XCTAssertEqual(
+            success.pomodoroLinkSource,
+            PomodoroLinkEndpoint(line: 5, name: "BUGS")
+        )
+        XCTAssertEqual(
+            success.pomodoroLinkDestination,
+            PomodoroLinkEndpoint(line: 5, name: "BUGS")
+        )
+        XCTAssertEqual(success.statusChanged, false)
+        XCTAssertNil(success.toggleDirection)
+        XCTAssertNil(success.toggleBehavior)
+        XCTAssertNil(success.pomodoroStart)
+        XCTAssertNotNil(CapturePomodoroLinkPresentation(capture: success))
+        XCTAssertNil(CaptureTogglePresentation(capture: success))
+    }
+
+    func testCaptureCommandResponseDecodesPomodoroLinkFieldsAsNilForOlderBob() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "sase",
+              "route_label": "sase.md",
+              "relative_target": "sase.md",
+              "target": "/tmp/bob/sase.md",
+              "text": "Write outline",
+              "task_line": "- [*] #task Write outline [created::2026-08-14] ^outline",
+              "kind": "pomodoro_task",
+              "created": "2026-08-14",
+              "placement": "inserted",
+              "block_id": "outline"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertNil(success.pomodoroLinkAction)
+        XCTAssertNil(success.pomodoroLinkSource)
+        XCTAssertNil(success.pomodoroLinkDestination)
+        XCTAssertNil(CapturePomodoroLinkPresentation(capture: success))
+    }
+
+    func testCompletionResponseDecodesActiveTaskCandidatesWithPomodoro() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 1,
+              "replacement": { "start": 1, "end": 1 },
+              "context": "active_task",
+              "candidates": [
+                {
+                  "replacement": "sase:deep-fix",
+                  "ref": "5:41d049f2",
+                  "route": "sase",
+                  "block_id": "deep-fix",
+                  "status_symbol": "*",
+                  "status_name": "Next",
+                  "status_type": "ON_HOLD",
+                  "text": "Fix deep bug",
+                  "section": "Tasks",
+                  "pomodoro": { "line": 5, "name": "BUGS", "time_range": null, "is_current": false }
+                },
+                {
+                  "replacement": "sase:outline",
+                  "ref": "1:f867fe6b",
+                  "route": "sase",
+                  "block_id": "outline",
+                  "status_symbol": "/",
+                  "status_name": "In Progress",
+                  "status_type": "IN_PROGRESS",
+                  "text": "Outline talk",
+                  "pomodoro": null
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+
+        XCTAssertEqual(decoded.context, "active_task")
+        XCTAssertEqual(decoded.candidates.count, 2)
+        XCTAssertEqual(
+            decoded.candidates[0].pomodoro,
+            ActiveTaskPomodoro(line: 5, name: "BUGS", isCurrent: false)
+        )
+        XCTAssertEqual(decoded.candidates[0].statusSymbol, "*")
+        XCTAssertNil(decoded.candidates[1].pomodoro)
+        XCTAssertEqual(
+            CaptureCompletionContext(rawContext: decoded.context),
+            .activeTask
+        )
+    }
+
+    func testCompletionResponseDecodesCandidatesWithoutPomodoroForOlderBob() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 6,
+              "replacement": { "start": 6, "end": 6 },
+              "context": "route",
+              "candidates": [
+                { "replacement": "today", "route": "today", "label": "today.md", "kind": "inbox" }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+
+        XCTAssertEqual(decoded.candidates.count, 1)
+        XCTAssertNil(decoded.candidates[0].pomodoro)
+    }
+
     func testCompletionResponseDecodesRouteAndTaskCandidates() throws {
         let data = Data(
             """
