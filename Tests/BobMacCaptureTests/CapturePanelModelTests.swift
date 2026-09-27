@@ -680,10 +680,10 @@ final class CapturePanelModelTests: XCTestCase {
 
         XCTAssertEqual(model.plainDraft, draft)
         XCTAssertEqual(
-            model.previewResult?.normalizedCaptures.map(\.kind),
+            model.previewResults.map(\.kind),
             ["pomodoro_adjust", "task"]
         )
-        XCTAssertEqual(model.previewResult?.normalizedCaptures[0].pomodoroAdjust?.deltaMinutes, 25)
+        XCTAssertEqual(model.previewResults[0].pomodoroAdjust?.deltaMinutes, 25)
     }
 
     func testNamedEnsureNextMoveKeepsDraftAndUsesEnsureNextAction() async throws {
