@@ -397,7 +397,8 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         ] {
             let success = try decodeFixture(name)
             XCTAssertNotNil(
-                success.pomodoroClose ?? success.captures.first?.pomodoroClose,
+                success.pomodoroClose
+                    ?? success.captures.first(where: { $0.pomodoroClose != nil })?.pomodoroClose,
                 name
             )
         }

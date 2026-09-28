@@ -764,6 +764,9 @@ final class CapturePanelModelTests: XCTestCase {
         // and the timing resolve fresh instead of going stale.
         model.prepareForPresentation()
         await waitUntil {
+            guard case .ready = model.previewState else {
+                return false
+            }
             let runs = (try? String(contentsOf: recordURL))?
                 .components(separatedBy: dryRunLine).count ?? 1
             return runs - 1 == 2
