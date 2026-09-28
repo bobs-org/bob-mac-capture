@@ -194,17 +194,36 @@ or expired certificate can require reauthorizing those system permissions.
   reruns parse/preview. When Bob cannot absorb a marker such as `@route#Section`,
   `@route^block-id`, `@route:block-id`, or a Pomodoro-note `#`, the app leaves the draft
   untouched and announces Bob's notice.
-  Typing `^` as the whole capture item opens the active-task picker (`active_task`
-  context): only In Progress and Next tasks, in Bob's ledger order, inserting the
-  full `route:block-id` in one accept. Bob's replacement range always stops before a
-  typed `#name`/`=<X>` suffix so the suffix survives the accept, and accepting an
-  exact `route:block-id` never immediately re-opens the popup. Cached route
-  completion never intercepts `^`, and the `active_task_route`/`active_task_block_id`
-  spans reuse the route and block-ID highlight colors. `^` rows show the task text
-  with the query emphasized, a `route:block-id` (plus section) secondary line, one
-  Pomodoro badge (`Now · NAME HHMM-HHMM` for the current entry, the name for a queued
-  entry, `Planned` for an unnamed placeholder, `Not queued` otherwise), and an
-  "Active Task" label; In Progress and Next rows use distinct glyphs and tints.
+  Typing `^` as the whole capture item opens the Active Task Picker (`active_task`
+  context), a modal mode of the capture panel — not a second window. Bob supplies one
+  full snapshot (every In Progress and Next task with a block ID, in Bob's ledger
+  order); the app filters that snapshot locally with a fuzzy matcher in `CaptureCore`
+  so each keystroke is instant and flicker-free, and filter text never touches the
+  draft. Local filtering is a deliberate presentation-only responsibility, the same
+  precedent as the locally ranked `capture-targets` route cache. The picker opens when
+  you edit the `route:block-id` part of a `^` item that is not already an exact
+  candidate; a caret-only move shows a compact "Browse active tasks ⇥" chip instead,
+  and Escape suppresses auto-open for that token while the chip offers a one-key
+  reopen. Fast typing is safe: text typed before the picker appears seeds the filter.
+  Return (or Tab, or a click) inserts exactly Bob's `route:block-id` into Bob's range
+  and returns to the editor, keeping any typed `#name`/`=<X>`/`=x` suffix — the app
+  never synthesizes that grammar, you type it after the insert. Command-Return inserts
+  and captures in one step. An exact `route:block-id` never opens anything. When
+  `capture-parse` reports `active_task` in `needs`, the app skips the doomed live dry
+  run and shows "Pick an active task — press Tab to browse" instead of red
+  incomplete-marker errors. Cached route completion never intercepts `^`, and the
+  `active_task_route`/`active_task_block_id` spans reuse the route and block-ID
+  highlight colors. The inline completion list is unchanged for every other context.
+- While the Active Task Picker is open, printable keys edit the filter field natively
+  (as do Cmd-A/C/V/X/Z, Ctrl-A/E, and Left/Right). Return/Tab inserts the selected
+  task and returns to the editor; Command-Return inserts and captures;
+  Shift/Option-Return and Shift-Tab are consumed. Down/Ctrl-N/Ctrl-J and Up/Ctrl-P/Ctrl-K
+  move (wrapping); Page Up/Page Down move one page; Cmd-Up/Home and Cmd-Down/End jump
+  to the first/last row. Escape clears a non-empty filter, then cancels (draft
+  unchanged, caret restored, auto-open suppressed, chip shown). Backspace on an empty
+  filter removes the `^` trigger and its fragment. Ctrl-S is consumed; Ctrl-C still
+  stashes the draft and closes. While the chip is visible, Tab, Down, and Ctrl-N reopen
+  the picker and Escape hides the chip.
   Typing `#` immediately after a resolved `@route+block-id` follows the draft's mode:
   while that item has no body text it opens `pomodoro_name` completion for the task
   toggle, and once the item has body text it opens `task_section` completion for that
@@ -643,12 +662,12 @@ decodes and presents it.
 
 Each completion row shows a compact SF Symbol and context label for what will be
 inserted (Note/Heading/Block, alongside Destination/Section/Parent Task/Task Section
-and Active Task rows), a primary line with restrained emphasis on the part of the text
+rows), a primary line with restrained emphasis on the part of the text
 that matched what you typed, and a secondary line with the canonical vault-relative
 path, parent task, or `route:block-id` plus small badges — `Alias`, a heading level
-like `H2`, a short block preview, `^block-id`, `Add ID`, `N items`, `Empty`, or the
-active-task Pomodoro badge (`Now · NAME HHMM-HHMM`, a queued name, `Planned`, or
-`Not queued`). `@route+` task suggestions are grouped as
+like `H2`, a short block preview, `^block-id`, `Add ID`, `N items`, or `Empty`.
+`^` active tasks no longer use this list; they open the Active Task Picker above.
+`@route+` task suggestions are grouped as
 **Ready to use** followed by **Needs block ID**, preserving Bob's order inside each
 group; task-section rows stay a plain ungrouped list. Long paths truncate from the
 middle, keeping the filename intact rather than the leading directory. The selected

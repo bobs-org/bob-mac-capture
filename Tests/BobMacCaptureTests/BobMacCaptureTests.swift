@@ -604,6 +604,141 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertNil(router.command(for: keyEvent(keyCode: 0, characters: "a"), context: context))
     }
 
+    func testKeyRouterMatchesActiveTaskPickerTable() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(activeTaskPickerVisible: true)
+
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), context: context), .acceptActiveTask)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 76), context: context), .acceptActiveTask)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .command), context: context),
+            .acceptActiveTaskAndSubmit
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .shift), context: context),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .option), context: context),
+            .consumeKey
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), context: context), .acceptActiveTask)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 48, modifiers: .shift), context: context),
+            .consumeKey
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 125), context: context), .nextActiveTask)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 45, modifiers: .control), context: context),
+            .nextActiveTask
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 38, modifiers: .control), context: context),
+            .nextActiveTask
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 126), context: context), .previousActiveTask)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 35, modifiers: .control), context: context),
+            .previousActiveTask
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 40, modifiers: .control), context: context),
+            .previousActiveTask
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 121), context: context), .pageActiveTasksDown)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 116), context: context), .pageActiveTasksUp)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 126, modifiers: .command), context: context),
+            .firstActiveTask
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 115), context: context), .firstActiveTask)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 125, modifiers: .command), context: context),
+            .lastActiveTask
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 119), context: context), .lastActiveTask)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 53), context: context), .escapeActiveTaskPicker)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 33, modifiers: .control), context: context),
+            .escapeActiveTaskPicker
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 51), context: context), .removeActiveTaskTrigger)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 1, modifiers: .control), context: context),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 8, modifiers: .control), context: context),
+            .stashDraftAndClose
+        )
+    }
+
+    func testKeyRouterLeavesPickerFilterEditingToNativeField() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(activeTaskPickerVisible: true)
+
+        // Printable keys, clipboard/undo shortcuts, line-edge commands, and
+        // horizontal arrows all stay with the AppKit filter field.
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 0, characters: "a"), context: context))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 9, modifiers: .command, characters: "v"), context: context))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 0, modifiers: .control), context: context))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 14, modifiers: .control), context: context))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 123), context: context))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 124), context: context))
+        // A non-empty filter keeps Backspace native so it deletes filter text.
+        let typing = CaptureKeyRoutingContext(
+            activeTaskPickerVisible: true,
+            activeTaskFilterIsEmpty: false
+        )
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 51), context: typing))
+        XCTAssertNil(
+            router.command(for: keyEvent(keyCode: 51, modifiers: .shift), context: context)
+        )
+    }
+
+    func testKeyRouterRoutesChipReopen() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(activeTaskChipVisible: true)
+
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), context: context), .openActiveTaskPicker)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 125), context: context), .openActiveTaskPicker)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 45, modifiers: .control), context: context),
+            .openActiveTaskPicker
+        )
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 126), context: context))
+        // Without the chip, the same keys keep their editor behavior.
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 48), context: CaptureKeyRoutingContext()),
+            .tabEditorAssist
+        )
+        XCTAssertNil(
+            router.command(for: keyEvent(keyCode: 125), context: CaptureKeyRoutingContext())
+        )
+    }
+
+    func testKeyRouterPrefersModalsOverActiveTaskPicker() {
+        let router = CaptureKeyCommandRouter()
+        let stash = CaptureKeyRoutingContext(
+            stashPickerVisible: true,
+            stashEntryCount: 2,
+            activeTaskPickerVisible: true
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 53), context: stash), .dismissStashPicker)
+
+        let taskID = CaptureKeyRoutingContext(
+            taskIDPromptVisible: true,
+            activeTaskPickerVisible: true
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 53), context: taskID), .cancelTaskIDPrompt)
+
+        let name = CaptureKeyRoutingContext(
+            pomodoroNamePromptVisible: true,
+            activeTaskPickerVisible: true
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 53), context: name), .cancelPomodoroNamePrompt)
+    }
+
     func testKeyRouterIsolatesPomodoroNamePromptCommands() {
         let router = CaptureKeyCommandRouter()
         let context = CaptureKeyRoutingContext(

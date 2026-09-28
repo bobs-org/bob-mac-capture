@@ -294,6 +294,10 @@ struct CapturePanelView: View {
                 measuredAuxiliaryContentHeight = 0
                 reportContentMetrics()
             }
+            .onChange(of: model.activeTaskPickerVisible) { _, _ in
+                measuredAuxiliaryContentHeight = 0
+                reportContentMetrics()
+            }
             .onChange(of: model.stashCount) { _, _ in
                 reportContentMetrics()
             }
@@ -364,6 +368,8 @@ struct CapturePanelView: View {
     private var hasAuxiliaryContent: Bool {
         model.isStashPickerPresented
             || model.inlinePromptVisible
+            || model.activeTaskPickerVisible
+            || model.activeTaskChipVisible
             || model.completionVisible
             || model.destinationSummary != nil
             || model.errorMessage != nil
@@ -372,7 +378,17 @@ struct CapturePanelView: View {
 
     @ViewBuilder
     private var auxiliaryRegion: some View {
-        if model.isStashPickerPresented {
+        if model.activeTaskPickerVisible {
+            ActiveTaskPickerPanel(model: model)
+                .layoutPriority(0)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Active task picker")
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    updateMeasuredAuxiliaryContentHeight(height)
+                }
+        } else if model.isStashPickerPresented {
             CanceledDraftStashPicker(model: model)
                 .frame(width: 520)
                 .padding(.leading, 14)
@@ -415,6 +431,15 @@ struct CapturePanelView: View {
 
     private var auxiliaryContent: some View {
         VStack(alignment: .leading, spacing: CapturePanelLayout.sectionSpacing) {
+            if model.activeTaskChipVisible {
+                Button {
+                    model.openActiveTaskPickerFromChip()
+                } label: {
+                    Label("Browse active tasks ⇥", systemImage: "list.bullet.rectangle.portrait")
+                }
+                .help("Reopen the Active Task Picker for the ^ item (Tab).")
+                .id(AuxiliarySection.activeTaskChip)
+            }
             if model.taskIDPromptVisible {
                 TaskIDPromptCard(model: model)
                     .frame(width: 430)
@@ -518,9 +543,10 @@ struct CapturePanelView: View {
     }
 
     private func applyFocusRequest(_ request: CapturePanelFocusRequest) {
-        // Only `.editor` is resolved by SwiftUI. Prompt-field targets are owned by
-        // AppKit (`BlockIDField` / `PomodoroNameField`), so SwiftUI's stored focus
-        // value is cleared while the prompt field claims first responder directly.
+        // Only `.editor` is resolved by SwiftUI. Prompt and filter targets are
+        // owned by AppKit (`BlockIDField` / `PomodoroNameField` /
+        // `ActiveTaskFilterField`), so SwiftUI's stored focus value is cleared
+        // while the AppKit field claims first responder directly.
         focusedControl = request.target == .editor ? .editor : nil
     }
 
@@ -548,6 +574,7 @@ struct CapturePanelView: View {
         case taskIDPrompt
         case pomodoroNamePrompt
         case completion
+        case activeTaskChip
         case destination
         case error
         case preview
@@ -578,7 +605,7 @@ private struct CapturePanelFooter: View {
                 Label("Stash \(model.stashCount)", systemImage: "tray")
             }
             .help("Restore a draft canceled with Control-C (Control-S).")
-            .disabled(model.isSubmitting || model.inlinePromptVisible)
+            .disabled(model.isSubmitting || model.inlinePromptVisible || model.activeTaskPickerVisible)
             Button("Discard") {
                 model.discardDraftAndClose()
             }
@@ -588,17 +615,24 @@ private struct CapturePanelFooter: View {
                     || model.isSubmitting
                     || model.taskIDPrompt?.isSaving == true
                     || model.pomodoroNamePrompt?.isSaving == true
+                    || model.activeTaskPickerVisible
             )
             Button("Preview") {
                 model.preview()
             }
             .help("Resolves the current clipboard/history and shows the exact destination without writing anything.")
-            .disabled(!model.hasDraft || model.isSubmitting || model.isPreviewing || model.inlinePromptVisible)
+            .disabled(
+                !model.hasDraft || model.isSubmitting || model.isPreviewing || model.inlinePromptVisible
+                    || model.activeTaskPickerVisible
+            )
             Button(model.primaryActionTitle) {
                 model.submit(openAfterCapture: false)
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(!model.hasDraft || model.isSubmitting || model.inlinePromptVisible)
+            .disabled(
+                !model.hasDraft || model.isSubmitting || model.inlinePromptVisible
+                    || model.activeTaskPickerVisible
+            )
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Capture actions")
@@ -2087,5 +2121,183 @@ private struct PreviewPane: View {
         let position = total > 1 ? "Item \(index + 1) of \(total), " : ""
         let override = isLocalOverride ? ", local override" : ""
         return "\(position)\(success.kind)\(override), \(link.previewAccessibilitySummary)"
+    }
+}
+
+/// Plain but fully working Active Task Picker. The `picker-design` phase
+/// replaces this with the final card; the model and routing contracts stay.
+@available(macOS 26.0, *)
+private struct ActiveTaskPickerPanel: View {
+    @ObservedObject var model: CapturePanelModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                ActiveTaskFilterField(
+                    text: model.activeTaskPicker?.filterText ?? "",
+                    focusRequest: model.focusRequest,
+                    onTextChange: { model.updateActiveTaskFilter($0) }
+                )
+                .frame(maxWidth: .infinity)
+                Text(model.activeTaskPickerPresentation?.countText ?? "")
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            ScrollView(.vertical) {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(sections, id: \.id) { section in
+                        if section.kind != .matches {
+                            Text(sectionHeaderText(section))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .textCase(.uppercase)
+                                .padding(.horizontal, 8)
+                                .padding(.top, 4)
+                                .accessibilityAddTraits(.isHeader)
+                        }
+                        ForEach(section.rows, id: \.id) { row in
+                            ActiveTaskPickerRowView(model: model, row: row)
+                        }
+                    }
+                }
+                .padding(6)
+            }
+            .frame(maxHeight: CapturePanelLayout.completionViewportHeight, alignment: .top)
+            detailLine
+        }
+        .padding(6)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .shadow(radius: 12, y: 6)
+    }
+
+    private var sections: [ActiveTaskPickerSection] {
+        model.activeTaskPickerPresentation?.sections ?? []
+    }
+
+    private func sectionHeaderText(_ section: ActiveTaskPickerSection) -> String {
+        var title = section.title
+        if section.ordinal > 0 {
+            title = "\(section.ordinal)  \(title)"
+        }
+        if section.isCurrent {
+            title += " · NOW"
+        }
+        if let timeRangeText = section.timeRangeText {
+            title += " \(timeRangeText)"
+        }
+        let count = section.rows.count
+        title += " · \(count) task\(count == 1 ? "" : "s")"
+        return title
+    }
+
+    @ViewBuilder
+    private var detailLine: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if let picker = model.activeTaskPicker, picker.snapshotIsPartial {
+                Text("Showing Bob's matches only")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let emptyState = model.activeTaskPickerPresentation?.emptyState {
+                Text("\(emptyState.title): \(emptyState.message)")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else if let row = model.selectedActiveTaskRow {
+                Text("↩ inserts \(row.insertionText)")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(model.activeTaskPicker?.warnings ?? [], id: \.self) { warning in
+                Text(warning)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(.horizontal, 8)
+    }
+}
+
+@available(macOS 26.0, *)
+private struct ActiveTaskPickerRowView: View {
+    @ObservedObject var model: CapturePanelModel
+    let row: ActiveTaskPickerRow
+
+    var body: some View {
+        Button {
+            model.acceptActiveTask(id: row.id, submitAfterInsert: false)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: statusSymbol)
+                    .foregroundStyle(statusColor)
+                emphasizedText(row.displayText, ranges: row.textMatchRanges)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 8)
+                locatorText
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(model.activeTaskPicker?.selectedRowID == row.id ? Color.accentColor.opacity(0.16) : .clear)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(row.accessibilityLabel)
+    }
+
+    private var statusSymbol: String {
+        switch row.status {
+        case .inProgress:
+            return "circle.lefthalf.filled"
+        case .next:
+            return "circle.inset.filled"
+        case .other:
+            return "circle.dashed"
+        }
+    }
+
+    private var statusColor: Color {
+        switch row.status {
+        case .inProgress:
+            return .orange
+        case .next:
+            return .blue
+        case .other:
+            return .secondary
+        }
+    }
+
+    private var locatorText: some View {
+        HStack(spacing: 0) {
+            if let route = row.route {
+                emphasizedText(route, ranges: row.routeMatchRanges)
+            }
+            if row.route != nil, row.blockID != nil {
+                Text(":")
+            }
+            if let blockID = row.blockID {
+                emphasizedText(blockID, ranges: row.blockIDMatchRanges)
+            }
+        }
+        .font(.caption.monospaced())
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .truncationMode(.middle)
+    }
+
+    private func emphasizedText(_ text: String, ranges: [Range<Int>]) -> Text {
+        var attributed = AttributedString(text)
+        for range in ranges {
+            guard range.lowerBound >= 0,
+                  range.upperBound <= attributed.characters.count,
+                  range.lowerBound < range.upperBound
+            else {
+                continue
+            }
+            let lower = attributed.index(attributed.startIndex, offsetByCharacters: range.lowerBound)
+            let upper = attributed.index(attributed.startIndex, offsetByCharacters: range.upperBound)
+            attributed[lower..<upper].inlinePresentationIntent = .stronglyEmphasized
+        }
+        return Text(attributed)
     }
 }

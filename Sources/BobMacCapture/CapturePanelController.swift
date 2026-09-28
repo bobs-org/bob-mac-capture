@@ -1060,9 +1060,44 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .escape:
             if model.completionVisible {
                 model.dismissCompletion()
+            } else if model.activeTaskChipVisible {
+                model.dismissActiveTaskChip()
             } else {
                 model.closeRetainingDraft()
             }
+            return true
+        case .acceptActiveTask:
+            model.acceptSelectedActiveTask(submitAfterInsert: false)
+            return true
+        case .acceptActiveTaskAndSubmit:
+            model.acceptSelectedActiveTask(submitAfterInsert: true)
+            return true
+        case .nextActiveTask:
+            model.selectNextActiveTask()
+            return true
+        case .previousActiveTask:
+            model.selectPreviousActiveTask()
+            return true
+        case .pageActiveTasksDown:
+            model.pageActiveTasksDown()
+            return true
+        case .pageActiveTasksUp:
+            model.pageActiveTasksUp()
+            return true
+        case .firstActiveTask:
+            model.selectFirstActiveTask()
+            return true
+        case .lastActiveTask:
+            model.selectLastActiveTask()
+            return true
+        case .escapeActiveTaskPicker:
+            model.escapeActiveTaskPicker()
+            return true
+        case .removeActiveTaskTrigger:
+            model.removeActiveTaskTrigger()
+            return true
+        case .openActiveTaskPicker:
+            model.openActiveTaskPickerFromChip()
             return true
         case .discardAndClose:
             model.discardDraftAndClose()
@@ -1135,6 +1170,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 return event
             }
             self.repairPromptFieldFocusIfOrphaned()
+            self.repairActiveTaskFilterFocusIfNeeded()
             guard let command = self.keyRouter.command(
                 for: event,
                 context: CaptureKeyRoutingContext(
@@ -1142,7 +1178,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     stashPickerVisible: self.model.isStashPickerPresented,
                     stashEntryCount: self.model.stashCount,
                     taskIDPromptVisible: self.model.taskIDPromptVisible,
-                    pomodoroNamePromptVisible: self.model.pomodoroNamePromptVisible
+                    pomodoroNamePromptVisible: self.model.pomodoroNamePromptVisible,
+                    activeTaskPickerVisible: self.model.activeTaskPickerVisible,
+                    activeTaskFilterIsEmpty: self.model.activeTaskFilterIsEmpty,
+                    activeTaskChipVisible: self.model.activeTaskChipVisible
                 )
             ) else {
                 return event
@@ -1197,6 +1236,28 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             in: view,
             identifier: pomodoroNameFieldAccessibilityIdentifier
         )
+    }
+
+    static func findActiveTaskFilterField(in view: NSView?) -> ActiveTaskFilterNSTextField? {
+        findTextField(
+            in: view,
+            identifier: activeTaskFilterFieldAccessibilityIdentifier
+        )
+    }
+
+    /// While the picker is visible the filter field owns keystrokes. A key
+    /// that raced the open lands in the disabled editor's view otherwise, so
+    /// claim the filter field before routing, like `findBlockIDField`.
+    private func repairActiveTaskFilterFocusIfNeeded() {
+        guard model.activeTaskPickerVisible,
+              let panel,
+              let field = Self.findActiveTaskFilterField(in: panel.contentView),
+              !field.holdsFirstResponder
+        else {
+            return
+        }
+        field.requestFirstResponder()
+        CaptureSignpost.event("active-task-filter-focus-repaired")
     }
 
     private static func findTextField<Field: NSTextField>(

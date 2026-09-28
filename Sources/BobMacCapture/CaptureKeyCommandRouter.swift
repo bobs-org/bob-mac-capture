@@ -32,6 +32,17 @@ enum CaptureKeyCommand: Equatable {
     case cancelTaskIDPrompt
     case submitPomodoroNamePrompt
     case cancelPomodoroNamePrompt
+    case acceptActiveTask
+    case acceptActiveTaskAndSubmit
+    case nextActiveTask
+    case previousActiveTask
+    case pageActiveTasksDown
+    case pageActiveTasksUp
+    case firstActiveTask
+    case lastActiveTask
+    case escapeActiveTaskPicker
+    case removeActiveTaskTrigger
+    case openActiveTaskPicker
 }
 
 struct CaptureKeyRoutingContext: Equatable {
@@ -40,6 +51,9 @@ struct CaptureKeyRoutingContext: Equatable {
     var stashEntryCount = 0
     var taskIDPromptVisible = false
     var pomodoroNamePromptVisible = false
+    var activeTaskPickerVisible = false
+    var activeTaskFilterIsEmpty = true
+    var activeTaskChipVisible = false
 }
 
 struct CaptureKeyCommandRouter {
@@ -51,6 +65,12 @@ struct CaptureKeyCommandRouter {
         static let delete: UInt16 = 51
         static let arrowDown: UInt16 = 125
         static let arrowUp: UInt16 = 126
+        static let arrowLeft: UInt16 = 123
+        static let arrowRight: UInt16 = 124
+        static let pageUp: UInt16 = 116
+        static let pageDown: UInt16 = 121
+        static let home: UInt16 = 115
+        static let end: UInt16 = 119
         static let a: UInt16 = 0
         static let j: UInt16 = 38
         static let k: UInt16 = 40
@@ -80,6 +100,10 @@ struct CaptureKeyCommandRouter {
 
         if context.pomodoroNamePromptVisible {
             return pomodoroNamePromptCommand(for: event, modifiers: modifiers)
+        }
+
+        if context.activeTaskPickerVisible {
+            return activeTaskPickerCommand(for: event, modifiers: modifiers, context: context)
         }
 
         if event.keyCode == KeyCode.s, modifiers == .control {
@@ -131,17 +155,27 @@ struct CaptureKeyCommandRouter {
             // indentation); Shift-Tab always outdents, deliberately replacing the
             // accidental completion acceptance it used to trigger. Every other modifier
             // combination (Command, Option, Control, or Shift plus another modifier)
-            // stays AppKit's.
+            // stays AppKit's. While the reopen chip is visible, plain Tab reopens
+            // the picker instead.
             if modifiers.isEmpty {
-                return context.completionVisible ? .acceptCompletion : .tabEditorAssist
+                if context.completionVisible {
+                    return .acceptCompletion
+                }
+                return context.activeTaskChipVisible ? .openActiveTaskPicker : .tabEditorAssist
             }
             return modifiers == .shift ? .decreaseBulletIndentation : nil
         case KeyCode.arrowDown:
-            return context.completionVisible ? .nextCompletion : nil
+            if context.completionVisible {
+                return .nextCompletion
+            }
+            return context.activeTaskChipVisible && modifiers.isEmpty ? .openActiveTaskPicker : nil
         case KeyCode.arrowUp:
             return context.completionVisible ? .previousCompletion : nil
         case KeyCode.n:
-            return context.completionVisible && modifiers.contains(.control) ? .nextCompletion : nil
+            if context.completionVisible, modifiers.contains(.control) {
+                return .nextCompletion
+            }
+            return context.activeTaskChipVisible && modifiers == .control ? .openActiveTaskPicker : nil
         case KeyCode.p:
             return context.completionVisible && modifiers.contains(.control) ? .previousCompletion : nil
         default:
@@ -175,6 +209,75 @@ struct CaptureKeyCommandRouter {
             submit: .submitPomodoroNamePrompt,
             cancel: .cancelPomodoroNamePrompt
         )
+    }
+
+    /// Keyboard while the Active Task Picker is open. Every key the picker
+    /// table leaves to native field editing (printables, Cmd-A/C/V/X/Z,
+    /// Ctrl-A/E, Left/Right) returns nil here — notably Ctrl-A/E, which must
+    /// not fall through to the editor line-edge commands.
+    private func activeTaskPickerCommand(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags,
+        context: CaptureKeyRoutingContext
+    ) -> CaptureKeyCommand? {
+        switch event.keyCode {
+        case KeyCode.return, KeyCode.keypadEnter:
+            if modifiers.contains(.command) {
+                return .acceptActiveTaskAndSubmit
+            }
+            if modifiers.contains(.shift) || modifiers.contains(.option) {
+                return .consumeKey
+            }
+            return modifiers.isEmpty ? .acceptActiveTask : nil
+        case KeyCode.tab:
+            if modifiers.isEmpty {
+                return .acceptActiveTask
+            }
+            return modifiers == .shift ? .consumeKey : nil
+        case KeyCode.arrowDown:
+            if modifiers.isEmpty {
+                return .nextActiveTask
+            }
+            return modifiers == .command ? .lastActiveTask : nil
+        case KeyCode.arrowUp:
+            if modifiers.isEmpty {
+                return .previousActiveTask
+            }
+            return modifiers == .command ? .firstActiveTask : nil
+        case KeyCode.pageDown:
+            return modifiers.isEmpty ? .pageActiveTasksDown : nil
+        case KeyCode.pageUp:
+            return modifiers.isEmpty ? .pageActiveTasksUp : nil
+        case KeyCode.home:
+            return modifiers.isEmpty || modifiers == .command ? .firstActiveTask : nil
+        case KeyCode.end:
+            return modifiers.isEmpty || modifiers == .command ? .lastActiveTask : nil
+        case KeyCode.escape:
+            return .escapeActiveTaskPicker
+        case KeyCode.leftBracket:
+            return modifiers == .control ? .escapeActiveTaskPicker : nil
+        case KeyCode.delete:
+            // Only an unmodified Backspace on an empty filter removes the
+            // trigger; any other Backspace edits the filter natively.
+            guard modifiers.intersection([.command, .option, .control, .shift]).isEmpty else {
+                return nil
+            }
+            return context.activeTaskFilterIsEmpty ? .removeActiveTaskTrigger : nil
+        case KeyCode.n:
+            return modifiers == .control ? .nextActiveTask : nil
+        case KeyCode.p:
+            return modifiers == .control ? .previousActiveTask : nil
+        case KeyCode.j:
+            return modifiers == .control ? .nextActiveTask : nil
+        case KeyCode.k:
+            return modifiers == .control ? .previousActiveTask : nil
+        case KeyCode.s:
+            return modifiers == .control ? .consumeKey : nil
+        case KeyCode.c:
+            return modifiers == .control ? .stashDraftAndClose : nil
+        default:
+            return nil
+        }
     }
 
     private func isolatedPromptCommand(

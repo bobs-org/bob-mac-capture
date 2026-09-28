@@ -928,6 +928,24 @@ JSON
   "diagnostics": []
 }
 JSON
+    elif [[ "${draft}" == "^zzz" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "^zzz",
+  "body": "",
+  "mode": "incomplete",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": ["active_task"],
+  "spans": [
+    { "start": 0, "end": 4, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": []
+}
+JSON
     elif [[ "${draft}" == "^sase:deep-fix" ]]; then
       cat <<'JSON'
 {
@@ -1770,12 +1788,73 @@ JSON
       "text": "Outline talk",
       "section": "Tasks",
       "pomodoro": null
+    },
+    {
+      "replacement": "misc:quick-note",
+      "ref": "9:77aa88bb",
+      "route": "misc",
+      "block_id": "quick-note",
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Jot quick note",
+      "section": "Tasks",
+      "pomodoro": null
     }
   ]
 }
 JSON
     elif [[ "${draft}" == "^dee" ]]; then
-      cat <<JSON
+      if [[ "${cursor}" == "1" ]]; then
+        cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 1,
+  "replacement": { "start": 1, "end": 4 },
+  "context": "active_task",
+  "candidates": [
+    {
+      "replacement": "sase:deep-fix",
+      "ref": "5:41d049f2",
+      "route": "sase",
+      "block_id": "deep-fix",
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Fix deep bug",
+      "section": "Tasks",
+      "pomodoro": { "line": 5, "name": "BUGS", "time_range": null, "is_current": false }
+    },
+    {
+      "replacement": "sase:outline",
+      "ref": "1:f867fe6b",
+      "route": "sase",
+      "block_id": "outline",
+      "status_symbol": "/",
+      "status_name": "In Progress",
+      "status_type": "IN_PROGRESS",
+      "text": "Outline talk",
+      "section": "Tasks",
+      "pomodoro": null
+    },
+    {
+      "replacement": "misc:quick-note",
+      "ref": "9:77aa88bb",
+      "route": "misc",
+      "block_id": "quick-note",
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Jot quick note",
+      "section": "Tasks",
+      "pomodoro": null
+    }
+  ]
+}
+JSON
+      else
+        cat <<JSON
 {
   "ok": true,
   "schema_version": 1,
@@ -1798,6 +1877,68 @@ JSON
   ]
 }
 JSON
+      fi
+    elif [[ "${draft}" == "^zzz" ]]; then
+      if [[ "${cursor}" == "1" ]]; then
+        cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 1,
+  "replacement": { "start": 1, "end": 4 },
+  "context": "active_task",
+  "candidates": [
+    {
+      "replacement": "sase:deep-fix",
+      "ref": "5:41d049f2",
+      "route": "sase",
+      "block_id": "deep-fix",
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Fix deep bug",
+      "section": "Tasks",
+      "pomodoro": { "line": 5, "name": "BUGS", "time_range": null, "is_current": false }
+    },
+    {
+      "replacement": "sase:outline",
+      "ref": "1:f867fe6b",
+      "route": "sase",
+      "block_id": "outline",
+      "status_symbol": "/",
+      "status_name": "In Progress",
+      "status_type": "IN_PROGRESS",
+      "text": "Outline talk",
+      "section": "Tasks",
+      "pomodoro": null
+    },
+    {
+      "replacement": "misc:quick-note",
+      "ref": "9:77aa88bb",
+      "route": "misc",
+      "block_id": "quick-note",
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Jot quick note",
+      "section": "Tasks",
+      "pomodoro": null
+    }
+  ]
+}
+JSON
+      else
+        cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 1, "end": 4 },
+  "context": "active_task",
+  "candidates": []
+}
+JSON
+      fi
     elif [[ "${draft}" == "^sase:deep-fix" ]]; then
       cat <<JSON
 {

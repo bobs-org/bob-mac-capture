@@ -543,7 +543,47 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertNil(model.pomodoroNamePrompt)
     }
 
-    func testCaretActiveTaskCompletionAcceptsRouteBlockIDWithoutReopening() async throws {
+    func testTypingCaretOpensPickerWithQuietPreview() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "^"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.activeTaskPickerVisible }
+
+        // `active_task` never populates the inline list.
+        XCTAssertNil(model.completionResponse)
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertEqual(model.focusRequest.target, .activeTaskFilter)
+        XCTAssertTrue(model.editorInputLocked)
+        XCTAssertEqual(model.activeTaskPicker?.filterText, "")
+        XCTAssertEqual(model.activeTaskPicker?.candidates.count, 3)
+        XCTAssertEqual(
+            model.activeTaskPicker?.selectedRowID,
+            model.activeTaskPickerPresentation?.orderedRowIDs.first
+        )
+        // An incomplete `^` is a state, not an error: no doomed dry run, no
+        // red error, just the calm status line.
+        XCTAssertEqual(model.previewState, .idle)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertNil(model.previewResult)
+        XCTAssertTrue(model.previewResults.isEmpty)
+        XCTAssertEqual(model.statusText, "Pick an active task — press Tab to browse")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertFalse(record.contains("argv=capture --dry-run"))
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
+    }
+
+    func testCaretFragmentFetchesFullSnapshotAndSeedsFilter() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(
             processClient: BobProcessClient(
@@ -558,29 +598,105 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "^dee"
         model.editorTextDidChange(cursorUTF8Offset: 4)
-        await waitUntil { model.completionVisible }
+        await waitUntil { model.activeTaskPickerVisible }
 
-        // `active_task` (not cached `route`) proves the `^` spans never hit the
-        // route cache and `routeReplacementRange` never overwrote the caret sigil.
-        XCTAssertEqual(model.completionResponse?.context, "active_task")
-        XCTAssertEqual(
-            model.completionResponse?.replacement,
-            CaptureRange(start: 1, end: 4)
+        // The caret response is partial (one candidate), so the picker
+        // refetches the full snapshot at the token start in the same task.
+        XCTAssertEqual(model.activeTaskPicker?.filterText, "dee")
+        XCTAssertEqual(model.activeTaskPicker?.candidates.count, 3)
+        XCTAssertEqual(model.activeTaskPicker?.snapshotIsPartial, false)
+        XCTAssertEqual(model.activeTaskPickerPresentation?.mode, .filtered)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 2)
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 1 "))
+    }
+
+    func testZeroCandidateCaretResponseOpensFromFullSnapshot() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
         )
-        let candidate = try XCTUnwrap(model.completionResponse?.candidates.first)
-        XCTAssertEqual(candidate.replacement, "sase:deep-fix")
-        let row = model.rowContent(for: candidate)
-        XCTAssertEqual(row.contextLabel, "Active Task")
-        XCTAssertEqual(row.primaryText, "Fix deep bug")
-        XCTAssertEqual(row.primaryMatchRange, 4..<7)
+        model.plainDraft = "^zzz"
+        model.editorTextDidChange(cursorUTF8Offset: 4)
+        await waitUntil { model.activeTaskPickerVisible }
 
-        model.acceptSelectedCompletion()
+        XCTAssertEqual(model.activeTaskPicker?.filterText, "zzz")
+        XCTAssertEqual(model.activeTaskPicker?.candidates.count, 3)
+        XCTAssertEqual(model.activeTaskPicker?.snapshotIsPartial, false)
+    }
+
+    func testCaretOnlyMoveShowsChipNotPicker() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "^"
+        model.editorSelectionDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.activeTaskChipVisible }
+
+        XCTAssertFalse(model.activeTaskPickerVisible)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertEqual(model.activeTaskChip?.candidates.count, 3)
+    }
+
+    func testExactPartShowsNeitherPickerNorChip() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 0
+        )
+        let draft = "^sase:deep-fix"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready(let preview) = model.previewState {
+                return preview.kind == "pomodoro_link"
+            }
+            return false
+        }
+
+        XCTAssertFalse(model.activeTaskPickerVisible)
+        XCTAssertFalse(model.activeTaskChipVisible)
+        XCTAssertNil(model.completionResponse)
+    }
+
+    func testCaretActiveTaskAcceptInsertsRouteBlockIDWithoutReopening() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "^dee"
+        model.editorTextDidChange(cursorUTF8Offset: 4)
+        await waitUntil { model.activeTaskPickerVisible }
+        XCTAssertEqual(model.activeTaskPicker?.candidates.count, 3)
+
+        model.selectActiveTask(id: "sase:deep-fix")
+        model.acceptSelectedActiveTask(submitAfterInsert: false)
         XCTAssertEqual(model.plainDraft, "^sase:deep-fix")
         XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 14)
-        XCTAssertNil(model.completionResponse)
+        XCTAssertFalse(model.activeTaskPickerVisible)
+        XCTAssertFalse(model.editorInputLocked)
+        XCTAssertEqual(model.focusRequest.target, .editor)
+        XCTAssertEqual(model.statusText, "Inserted ^sase:deep-fix")
 
         // Mirror SwiftUI's delayed callback for the programmatic binding update.
-        // The exact `route:block-id` must not immediately re-open the popup.
+        // The exact `route:block-id` must not reopen the picker.
         model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
         await waitUntil {
             guard case .ready(let preview) = model.previewState else {
@@ -589,12 +705,173 @@ final class CapturePanelModelTests: XCTestCase {
             return preview.kind == "pomodoro_link"
         }
 
+        XCTAssertFalse(model.activeTaskPickerVisible)
+        XCTAssertFalse(model.activeTaskChipVisible)
         XCTAssertNil(model.completionResponse)
         let record = try String(contentsOf: recordURL)
-        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
         XCTAssertTrue(
             record.contains("argv=capture --dry-run --no-clip --format json -- ^sase:deep-fix")
         )
+    }
+
+    func testCommandAcceptInsertsAndSubmits() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "^"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.activeTaskPickerVisible }
+
+        model.acceptSelectedActiveTask(submitAfterInsert: true)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertFalse(model.activeTaskPickerVisible)
+        XCTAssertEqual(model.lastSuccess?.kind, "pomodoro_link")
+    }
+
+    func testTwoStageEscapeSuppressesAndChipReopens() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "^"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.activeTaskPickerVisible }
+
+        // A seeded filter clears first; the picker stays open.
+        model.updateActiveTaskFilter("dee")
+        XCTAssertEqual(model.activeTaskPickerPresentation?.mode, .filtered)
+        model.escapeActiveTaskPicker()
+        XCTAssertTrue(model.activeTaskPickerVisible)
+        XCTAssertEqual(model.activeTaskPicker?.filterText, "")
+        XCTAssertEqual(model.activeTaskPickerPresentation?.mode, .grouped)
+
+        // An empty filter cancels: suppression plus the chip.
+        model.escapeActiveTaskPicker()
+        XCTAssertFalse(model.activeTaskPickerVisible)
+        XCTAssertEqual(model.focusRequest.target, .editor)
+        await waitUntil { model.activeTaskChipVisible }
+
+        // Further edits of the same token show the chip, not the picker.
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.activeTaskChipVisible }
+        XCTAssertFalse(model.activeTaskPickerVisible)
+
+        // The chip reopens the picker from its snapshot without a fetch.
+        model.openActiveTaskPickerFromChip()
+        XCTAssertTrue(model.activeTaskPickerVisible)
+        XCTAssertFalse(model.activeTaskChipVisible)
+        XCTAssertEqual(model.activeTaskPicker?.candidates.count, 3)
+    }
+
+    func testBackspaceOnEmptyFilterRemovesTrigger() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "^"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.activeTaskPickerVisible }
+
+        model.removeActiveTaskTrigger()
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 0)
+        XCTAssertFalse(model.activeTaskPickerVisible)
+    }
+
+    func testBackspaceWithStaleDraftCancels() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "^"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.activeTaskPickerVisible }
+
+        model.plainDraft = "^changed"
+        model.removeActiveTaskTrigger()
+        XCTAssertFalse(model.activeTaskPickerVisible)
+        XCTAssertNotNil(model.activeTaskChip)
+    }
+
+    func testStaleDraftAcceptRefusesEdit() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "^"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.activeTaskPickerVisible }
+
+        model.plainDraft = "^changed"
+        model.acceptSelectedActiveTask(submitAfterInsert: false)
+        XCTAssertEqual(model.plainDraft, "^changed")
+        XCTAssertFalse(model.activeTaskPickerVisible)
+        XCTAssertEqual(model.statusText, "Draft changed — reopen the task picker")
+    }
+
+    func testHideClosesPickerAndReshowReopens() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "^"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.activeTaskPickerVisible }
+
+        model.prepareForDismissal()
+        XCTAssertFalse(model.activeTaskPickerVisible)
+        XCTAssertFalse(model.activeTaskChipVisible)
+        XCTAssertFalse(model.editorInputLocked)
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 1)
+
+        model.prepareForPresentation()
+        await waitUntil { model.activeTaskPickerVisible }
+    }
+
+    func testLeavingTokenClearsSuppressionAndChip() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "^"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.activeTaskPickerVisible }
+
+        model.escapeActiveTaskPicker()
+        await waitUntil { model.activeTaskChipVisible }
+
+        model.plainDraft = "hello"
+        model.editorTextDidChange(cursorUTF8Offset: 5)
+        await waitUntil { model.activeTaskChip == nil }
+
+        // Suppression went with the token: typing `^` fresh opens the picker.
+        model.plainDraft = "^"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.activeTaskPickerVisible }
     }
 
     func testAcceptingPomodoroNameAfterCaretLinkPreservesStartSuffix() {
