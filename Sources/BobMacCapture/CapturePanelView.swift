@@ -1720,6 +1720,28 @@ private struct PreviewPane: View {
             .accessibilityLabel(pomodoroAdjust.accessibilitySummary)
         }
 
+        // The whole-session shift comes straight from Bob's resolved
+        // `pomodoro_shift` object (dry-run JSON for preview, committed JSON
+        // after capture). No Swift-side clock or ledger math: show the
+        // before-to-after timing, minute effect with direction, and target
+        // line exactly as Bob reported them. The doubled chevron echoes the
+        // doubled sign.
+        if let pomodoroShift = CapturePomodoroShiftPresentation(capture: success) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: pomodoroShift.symbolName)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(pomodoroShift.sessionText)
+                    .font(.system(.callout, design: .monospaced))
+                    .fontWeight(.semibold)
+                Text(pomodoroShift.destinationText)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(pomodoroShift.accessibilitySummary)
+        }
+
         // `previewBlockLines` is the parent line, the authored children, the clipboard
         // children, and the schedule log in the exact order Bob writes them, already
         // carrying the target note's indentation.
@@ -1913,9 +1935,11 @@ private struct PreviewPane: View {
             .map { ", \($0.accessibilitySummary)" } ?? ""
         let adjustSummary = CapturePomodoroAdjustPresentation(capture: success)
             .map { ", \($0.accessibilitySummary)" } ?? ""
+        let shiftSummary = CapturePomodoroShiftPresentation(capture: success)
+            .map { ", \($0.accessibilitySummary)" } ?? ""
         let closeSummary = CapturePomodoroClosePresentation(capture: success)
             .map { ", \($0.accessibilitySummary)" } ?? ""
-        return "\(position)\(success.kind), \(destination)\(override)\(startSummary)\(adjustSummary)\(closeSummary), \(success.previewBlockLines.joined(separator: ", "))"
+        return "\(position)\(success.kind), \(destination)\(override)\(startSummary)\(adjustSummary)\(shiftSummary)\(closeSummary), \(success.previewBlockLines.joined(separator: ", "))"
     }
 
     private func togglePreviewAccessibilityLabel(

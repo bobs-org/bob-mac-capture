@@ -61,6 +61,11 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         // `=<X>` suffix, so it shares the Pomodoro highlight rather than taking
         // a distinct palette category.
         return .pomodoroStart
+    case "pomodoro_shift":
+        // The whole-item `++N`/`--N` token shifts the running session, so it
+        // shares the Pomodoro-session highlight with the start and adjust
+        // spans.
+        return .pomodoroStart
     case "pomodoro_close":
         // The whole-item `=x` token and the `=x` link suffix close the running
         // session, so they share the Pomodoro-session highlight with the start

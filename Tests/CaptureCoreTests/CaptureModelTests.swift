@@ -2065,6 +2065,178 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertNil(CapturePomodoroAdjustPresentation(capture: success))
     }
 
+    func testParseResponseDecodesPomodoroShiftSpec() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "++3",
+              "body": "++3",
+              "mode": "pomodoro_shift",
+              "route": null,
+              "section": null,
+              "block_id": null,
+              "needs": [],
+              "spans": [
+                { "start": 0, "end": 3, "kind": "pomodoro_shift" }
+              ],
+              "diagnostics": [],
+              "pomodoro_shift": { "raw": "++3", "later": true, "units": 3 }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(
+            decoded.pomodoroShift,
+            PomodoroShiftSpec(raw: "++3", later: true, units: 3)
+        )
+        XCTAssertEqual(
+            decoded.spans.map { captureSemanticCategory(forSpanKind: $0.kind) },
+            [.pomodoroStart]
+        )
+    }
+
+    func testParseResponseDecodesMixedDraftShiftItem() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "++3\\n\\nTest note\\n",
+              "body": "++3",
+              "mode": "pomodoro_shift",
+              "needs": [],
+              "spans": [
+                { "start": 0, "end": 3, "kind": "pomodoro_shift" }
+              ],
+              "diagnostics": [],
+              "items": [
+                {
+                  "index": 1,
+                  "range": { "start": 0, "end": 3 },
+                  "line_start": 1,
+                  "line_end": 1,
+                  "body": "++3",
+                  "mode": "pomodoro_shift",
+                  "needs": [],
+                  "pomodoro_shift": { "raw": "++3", "later": true, "units": 3 }
+                },
+                {
+                  "index": 2,
+                  "range": { "start": 5, "end": 14 },
+                  "line_start": 3,
+                  "line_end": 3,
+                  "body": "Test note",
+                  "mode": "task",
+                  "needs": []
+                }
+              ],
+              "pomodoro_shift": { "raw": "++3", "later": true, "units": 3 }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(decoded.items.count, 2)
+        XCTAssertEqual(
+            decoded.items[0].pomodoroShift,
+            PomodoroShiftSpec(raw: "++3", later: true, units: 3)
+        )
+        XCTAssertNil(decoded.items[1].pomodoroShift)
+    }
+
+    func testParseResponseOmitsPomodoroShiftForOlderBobBinaries() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Call bank",
+              "body": "Call bank",
+              "mode": "task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": []
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertNil(decoded.pomodoroShift)
+    }
+
+    func testCaptureCommandDecodesPomodoroShiftSummary() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {
+              "ok": true,
+              "dry_run": true,
+              "routed": false,
+              "route": null,
+              "route_label": "",
+              "relative_target": "2026/20260928.md",
+              "target": "/tmp/bob/2026/20260928.md",
+              "text": "++3",
+              "task_line": "- [ ] (**0915-0940** [t:: 25m]) — FOCUS",
+              "kind": "pomodoro_shift",
+              "created": "2026-09-28",
+              "scheduled": null,
+              "placement": "toggled",
+              "pomodoro_name": "FOCUS",
+              "pomodoro_shift": {
+                "direction": "later",
+                "requested_units": 3,
+                "delta_minutes": 15,
+                "before_start": "0900",
+                "before_end": "0925",
+                "after_start": "0915",
+                "after_end": "0940",
+                "duration_minutes": 25,
+                "pomodoro_line": 3,
+                "pomodoro_name": "FOCUS",
+                "time_range": "(**0915-0940** [t:: 25m])"
+              }
+            }
+            """
+        )
+
+        XCTAssertEqual(
+            success.pomodoroShift,
+            PomodoroShiftSummary(
+                direction: "later",
+                requestedUnits: 3,
+                deltaMinutes: 15,
+                beforeStart: "0900",
+                beforeEnd: "0925",
+                afterStart: "0915",
+                afterEnd: "0940",
+                durationMinutes: 25,
+                pomodoroLine: 3,
+                pomodoroName: "FOCUS",
+                timeRange: "(**0915-0940** [t:: 25m])"
+            )
+        )
+    }
+
+    func testCaptureCommandOmitsPomodoroShiftForOlderBobBinaries() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
+             "relative_target":"cash.md","target":"/tmp/bob/cash.md","text":"Call bank",
+             "task_line":"- [ ] #task Call bank [created::2026-08-14]","kind":"task",
+             "created":"2026-08-14","scheduled":null,"placement":"inserted"}
+            """
+        )
+
+        XCTAssertNil(success.pomodoroShift)
+        XCTAssertNil(CapturePomodoroShiftPresentation(capture: success))
+    }
+
     func testCaptureDiagnosticDecodesAllRangeShapesTolerantly() throws {
         let decoder = JSONDecoder()
         func decodeRange(_ rangeJSON: String) throws -> CaptureRange? {

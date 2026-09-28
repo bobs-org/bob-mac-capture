@@ -143,6 +143,66 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertTrue(content.body.contains("1 close"))
     }
 
+    func testSinglePomodoroShiftSuccessContentUsesShiftTitleAndDayFileSubtitle() {
+        let content = NotificationService.successContent(captures: [
+            capture(
+                kind: "pomodoro_shift",
+                routeLabel: "",
+                target: "/Users/bryan/bob/2026/20260928.md",
+                text: "++3",
+                pomodoroShift: PomodoroShiftSummary(
+                    direction: "later",
+                    requestedUnits: 3,
+                    deltaMinutes: 15,
+                    beforeStart: "0900",
+                    beforeEnd: "0925",
+                    afterStart: "0915",
+                    afterEnd: "0940",
+                    durationMinutes: 25,
+                    pomodoroLine: 3,
+                    pomodoroName: "FOCUS",
+                    timeRange: "(**0915-0940** [t:: 25m])"
+                ),
+                relativeTarget: "2026/20260928.md"
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "Shift captured")
+        XCTAssertEqual(content.subtitle, "2026/20260928.md")
+        XCTAssertTrue(content.body.contains("++3"))
+        XCTAssertTrue(content.body.contains("Shifted FOCUS 0900-0925 to 0915-0940 (25m), 15m later at line 3"))
+    }
+
+    func testPomodoroShiftBatchLinesUseShiftedSuffix() {
+        let content = NotificationService.successContent(captures: [
+            capture(kind: "task", routeLabel: "cash.md", target: "/tmp/bob/cash.md", text: "Call bank"),
+            capture(
+                kind: "pomodoro_shift",
+                routeLabel: "",
+                target: "/tmp/bob/2026/20260928.md",
+                text: "++3",
+                pomodoroShift: PomodoroShiftSummary(
+                    direction: "later",
+                    requestedUnits: 3,
+                    deltaMinutes: 15,
+                    beforeStart: "0900",
+                    beforeEnd: "0925",
+                    afterStart: "0915",
+                    afterEnd: "0940",
+                    durationMinutes: 25,
+                    pomodoroLine: 3,
+                    pomodoroName: "FOCUS",
+                    timeRange: "(**0915-0940** [t:: 25m])"
+                ),
+                relativeTarget: "2026/20260928.md"
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "2 items captured")
+        XCTAssertTrue(content.body.contains("(0900-0925 → 0915-0940 (25m), 15m later)"))
+        XCTAssertTrue(content.body.contains("1 shift"))
+    }
+
     func testSingleClampedAdjustSuccessContentKeepsRequestedNote() {
         let content = NotificationService.successContent(captures: [
             capture(
@@ -841,6 +901,7 @@ final class NotificationServiceTests: XCTestCase {
         blockID: String? = nil,
         pomodoroStart: PomodoroStartSummary? = nil,
         pomodoroAdjust: PomodoroAdjustSummary? = nil,
+        pomodoroShift: PomodoroShiftSummary? = nil,
         relativeTarget: String? = nil
     ) -> CaptureCommandSuccess {
         CaptureCommandSuccess(
@@ -859,7 +920,8 @@ final class NotificationServiceTests: XCTestCase {
             blockID: blockID,
             parentText: parentText,
             pomodoroStart: pomodoroStart,
-            pomodoroAdjust: pomodoroAdjust
+            pomodoroAdjust: pomodoroAdjust,
+            pomodoroShift: pomodoroShift
         )
     }
 

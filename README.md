@@ -54,10 +54,14 @@ mutation.
   `task_toggle_explicit_toggle`), plus the atomic-start `@route:block-id=<X>` and
   `@route:block-id#name=<X>` suffix (`pomodoro_start` parse/capture JSON and the
   `pomodoro_start` span, where `<X>` mirrors the `se<X>` snippet: empty is 25
-  minutes, `-` offsets one 5-minute unit), plus whole-item `+N`/`-N` duration
-  adjustments (`pomodoro_adjust` parse/capture JSON and the `pomodoro_adjust`
-  span, where each unit is 5 minutes and subtraction clamps at zero), plus Pomodoro
-  close `=x` and its additive `pomodoro_close` capture summary. Older builds can still capture ordinary drafts, but
+  minutes, `-` offsets one 5-minute unit), plus whole-item `+[N]`/`-[N]`
+  duration adjustments (`pomodoro_adjust` parse/capture JSON and the
+  `pomodoro_adjust` span, where each unit is 5 minutes and subtraction clamps
+  at zero), plus whole-item `++[N]`/`--[N]` session shifts (`pomodoro_shift`
+  parse/capture JSON and the `pomodoro_shift` span, where each unit is 5
+  minutes and the count defaults to 1, so `+`, `-`, `++`, and `--` all work),
+  plus Pomodoro close `=x` and its additive `pomodoro_close` capture summary.
+  Older builds can still capture ordinary drafts, but
   global declarations, bare-`@@` absorption, the Add block ID flow, the Name Pomodoro
   flow, the task-section popup, and the task-toggle footer/preview report the local Bob
   error or an empty list until Bob is upgraded. An older Bob that sees bare
@@ -71,7 +75,11 @@ mutation.
   unchanged. An older Bob that omits `pomodoro_adjust` still parses `+5` as an
   ordinary task; the Mac app decodes a missing adjustment object as no
   adjustment and shows no adjustment row, while an invalid magnitude surfaces
-  Bob's `invalid_pomodoro_adjustment` diagnostic unchanged. An older Bob that omits
+  Bob's `invalid_pomodoro_adjustment` diagnostic unchanged. An older Bob that
+  omits `pomodoro_shift` still parses `++3` as an ordinary task; the Mac app
+  decodes a missing shift object as no shift and shows no shift row, while an
+  invalid magnitude surfaces Bob's `invalid_pomodoro_shift` diagnostic
+  unchanged. An older Bob that omits
   `pomodoro_close` has no close preview or Close footer; upgrade Bob before using
   `=x`. A close summary whose task, carried, notes, or next fields are absent
   still previews: booleans read as false, arrays as empty, and missing lines as
@@ -463,15 +471,26 @@ typed duration. Preview renders Bob's resolved session — selected Pomodoro,
 5-minute-rounded start/end, duration, and created-entry state — sourced only from
 `bob capture --dry-run --no-clip --format json`, and submission runs the same Bob
 command; conflicts such as an already-running session surface as ordinary preview
-errors. A whole-item `+N`/`-N` draft adjusts the current Pomodoro instead of
-capturing a task: each unit is 5 minutes (`+5` extends by 25 minutes),
-subtraction clamps at zero and reports requested versus applied minutes, and the
-item must contain only the signed count. The `+N` token highlights as its own
-`pomodoro_adjust` span and never offers route or task completion. Preview renders
-Bob's resolved before-to-after timing, signed minute effect, and target line —
-sourced only from `bob capture --dry-run --no-clip --format json`, including in
-mixed drafts — and submission runs the same Bob command; a missing or ambiguous
-target surfaces Bob's error as an ordinary preview failure. A whole-item `=x` closes
+errors. A whole-item `+[N]`/`-[N]` draft adjusts the current Pomodoro instead
+of capturing a task: each unit is 5 minutes (`+5` extends by 25 minutes), the
+count defaults to 1 (a bare `+` is one unit), subtraction clamps at zero and
+reports requested versus applied minutes, and the item must contain only the
+signed count. The `+N` token highlights as its own `pomodoro_adjust` span and
+never offers route or task completion. Preview renders Bob's resolved
+before-to-after timing, signed minute effect, and target line — sourced only
+from `bob capture --dry-run --no-clip --format json`, including in mixed
+drafts — and submission runs the same Bob command; a missing or ambiguous
+target surfaces Bob's error as an ordinary preview failure. A whole-item
+`++[N]`/`--[N]` draft shifts the whole running session instead of capturing a
+task: each unit is 5 minutes (`++3` moves 15 minutes later), the count defaults
+to 1 (a bare `--` is one unit earlier), the duration is unchanged, and the item
+must contain only the operator. The `++N` token highlights as its own
+`pomodoro_shift` span and never offers route or task completion. Preview renders
+Bob's resolved before-to-after timing, minute effect with later/earlier, and
+target line with a double-chevron row — sourced only from
+`bob capture --dry-run --no-clip --format json`, including in mixed drafts —
+and submission runs the same Bob command; the footer says **Shift** and the
+notification summarizes the same returned shift. A whole-item `=x` closes
 the running Pomodoro; `@route:block-id=x` links an existing task first, and
 `<text> @route:block-id=x` creates a task inside that session before closing it. The
 dedicated close preview shows Bob's session timing, task transitions, Work Log entries,
@@ -500,10 +519,14 @@ space, or inside the body keeps the normal new-row insertion behavior. On a line
 contains only optional whitespace plus one `-`, `*`, or `+` marker, Ctrl-J replaces the
 placeholder with exactly one blank item separator and puts the caret at the beginning of
 the following line, reusing an existing line terminator when one is already there.
-Plain Tab first checks for a local editor snippet: with a collapsed caret immediately
-after `--`, it replaces those two ASCII hyphens with a single em dash `—` and leaves the
-caret right after it, everywhere else in the editor including inside prose. Only when no
-snippet matches does Tab fall through to bullet indentation. To author a nested row,
+macOS smart-dash substitution is disabled in the draft editor so `--3` and `-2`
+stay literal ASCII hyphens; smart quotes are unchanged. Plain Tab first checks
+for a local editor snippet: with a collapsed caret immediately after `--`, it
+replaces those two ASCII hyphens with a single em dash `—` and leaves the caret
+right after it, everywhere else in the editor including inside prose. To submit
+a one-unit earlier shift, type `--` and press Return without pressing Tab first.
+Only when no snippet matches does Tab fall through to bullet indentation. To
+author a nested row,
 press Ctrl-J from an existing nested row, or press Ctrl-J for a fresh top-level
 placeholder and then Tab before or after typing its body to indent it under the preceding
 first-level bullet. Shift-Tab reverses that, returning a nested bullet to column zero.

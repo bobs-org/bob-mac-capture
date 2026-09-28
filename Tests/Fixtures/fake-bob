@@ -793,6 +793,29 @@ JSON
   "pomodoro_adjust": { "raw": "-2", "plus": false, "units": 2 }
 }
 JSON
+    elif [[ "${draft}" == "++3" ]]; then
+      cat "${fixtures_dir}/pomodoro-shift-parse-session.json"
+    elif [[ "${draft}" == "--" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "--",
+  "body": "--",
+  "mode": "pomodoro_shift",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": [],
+  "spans": [
+    { "start": 0, "end": 2, "kind": "pomodoro_shift" }
+  ],
+  "diagnostics": [],
+  "pomodoro_shift": { "raw": "--", "later": false, "units": 1 }
+}
+JSON
+    elif [[ "${draft}" == "-" ]]; then
+      cat "${fixtures_dir}/pomodoro-shift-parse-adjust.json"
     elif [[ "${draft}" == "+0" ]]; then
       cat <<'JSON'
 {
@@ -1695,9 +1718,9 @@ JSON
   ]
 }
 JSON
-    elif [[ "${draft}" == "+5" || "${draft}" == "-2" ]]; then
-      # An adjustment is an action, so Bob offers no route or task completion
-      # candidates for it (mirrors `bob capture-complete --cursor 2 -- '+5'`).
+    elif [[ "${draft}" == "+5" || "${draft}" == "-2" || "${draft}" == "++3" || "${draft}" == "--" || "${draft}" == "--2" ]]; then
+      # An adjustment or shift is an action, so Bob offers no route or task
+      # completion candidates for it (mirrors `bob capture-complete --cursor 2 -- '+5'`).
       end=${#draft}
       cat <<JSON
 {
@@ -2147,6 +2170,19 @@ JSON
 {"ok":false,"error":"capture item 1 starting on line 1: Pomodoro adjustment magnitude must be positive; `+0` and `-0` adjust nothing (for example `+5` extends by 25 minutes)"}
 JSON
       exit 1
+    elif [[ "${draft}" == "++3" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-shift-later.json"
+    elif [[ "${draft}" == "--2" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-shift-earlier.json"
+    elif [[ "${draft}" == "--" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-shift-bare.json"
+    elif [[ "${draft}" == "++0" ]]; then
+      cat <<'JSON'
+{"ok":false,"error":"capture item 1 starting on line 1: Pomodoro shift magnitude must be positive; `++0` and `--0` move nothing (for example `++3` moves todays Pomodoro 15 minutes later)"}
+JSON
+      exit 1
+    elif [[ "${draft}" == "++3"$'\n\n'"Test note" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/g" "${fixtures_dir}/pomodoro-shift-mixed.json"
     elif [[ "${draft}" == "+5"$'\n\n'"jot idea" ]]; then
       cat <<JSON
 {

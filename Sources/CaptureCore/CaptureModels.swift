@@ -26,6 +26,9 @@ public struct CaptureParseResponse: Codable, Equatable {
     // Additive whole-item `+N`/`-N` adjustment spec. Omitted for every
     // non-adjustment mode, so older bob output decodes as nil.
     public let pomodoroAdjust: PomodoroAdjustSpec?
+    // Additive whole-item `++N`/`--N` shift spec. Omitted for every
+    // non-shift mode, so older bob output decodes as nil.
+    public let pomodoroShift: PomodoroShiftSpec?
     // Additive `=x` close suffix on a whole item or a `@`/`^` link item.
     // Omitted for every non-close mode, so older bob output decodes as nil.
     public let pomodoroClose: PomodoroCloseSpec?
@@ -48,6 +51,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         items: [CaptureParseItem] = [],
         pomodoroStart: PomodoroStartSpec? = nil,
         pomodoroAdjust: PomodoroAdjustSpec? = nil,
+        pomodoroShift: PomodoroShiftSpec? = nil,
         pomodoroClose: PomodoroCloseSpec? = nil
     ) {
         self.ok = ok
@@ -70,6 +74,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         self.items = items
         self.pomodoroStart = pomodoroStart
         self.pomodoroAdjust = pomodoroAdjust
+        self.pomodoroShift = pomodoroShift
         self.pomodoroClose = pomodoroClose
     }
 
@@ -105,6 +110,10 @@ public struct CaptureParseResponse: Codable, Equatable {
         pomodoroAdjust = try container.decodeIfPresent(
             PomodoroAdjustSpec.self,
             forKey: .pomodoroAdjust
+        )
+        pomodoroShift = try container.decodeIfPresent(
+            PomodoroShiftSpec.self,
+            forKey: .pomodoroShift
         )
         pomodoroClose = try container.decodeIfPresent(
             PomodoroCloseSpec.self,
@@ -146,6 +155,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         case items
         case pomodoroStart = "pomodoro_start"
         case pomodoroAdjust = "pomodoro_adjust"
+        case pomodoroShift = "pomodoro_shift"
         case pomodoroClose = "pomodoro_close"
     }
 }
@@ -168,6 +178,9 @@ public struct CaptureParseItem: Codable, Equatable {
     // Per-item additive whole-item `+N`/`-N` adjustment spec. Omitted for
     // items without one.
     public let pomodoroAdjust: PomodoroAdjustSpec?
+    // Per-item additive whole-item `++N`/`--N` shift spec. Omitted for
+    // items without one.
+    public let pomodoroShift: PomodoroShiftSpec?
     // Per-item additive `=x` close suffix. Omitted for items without one.
     public let pomodoroClose: PomodoroCloseSpec?
 
@@ -186,6 +199,7 @@ public struct CaptureParseItem: Codable, Equatable {
         subBulletDepths: [Int] = [],
         pomodoroStart: PomodoroStartSpec? = nil,
         pomodoroAdjust: PomodoroAdjustSpec? = nil,
+        pomodoroShift: PomodoroShiftSpec? = nil,
         pomodoroClose: PomodoroCloseSpec? = nil
     ) {
         self.index = index
@@ -202,6 +216,7 @@ public struct CaptureParseItem: Codable, Equatable {
         self.subBulletDepths = subBulletDepths
         self.pomodoroStart = pomodoroStart
         self.pomodoroAdjust = pomodoroAdjust
+        self.pomodoroShift = pomodoroShift
         self.pomodoroClose = pomodoroClose
     }
 
@@ -224,6 +239,10 @@ public struct CaptureParseItem: Codable, Equatable {
             PomodoroAdjustSpec.self,
             forKey: .pomodoroAdjust
         )
+        pomodoroShift = try container.decodeIfPresent(
+            PomodoroShiftSpec.self,
+            forKey: .pomodoroShift
+        )
         pomodoroClose = try container.decodeIfPresent(
             PomodoroCloseSpec.self,
             forKey: .pomodoroClose
@@ -245,6 +264,7 @@ public struct CaptureParseItem: Codable, Equatable {
         case subBulletDepths = "sub_bullet_depths"
         case pomodoroStart = "pomodoro_start"
         case pomodoroAdjust = "pomodoro_adjust"
+        case pomodoroShift = "pomodoro_shift"
         case pomodoroClose = "pomodoro_close"
     }
 }
@@ -499,6 +519,101 @@ public struct PomodoroAdjustSummary: Codable, Equatable, Sendable {
         case pomodoroName = "pomodoro_name"
         case timeRange = "time_range"
         case clamped
+    }
+}
+
+/// Validated whole-item `++N`/`--N` shift spec from `bob capture-parse`: the
+/// trimmed doubled-sign token plus its direction and 5-minute unit count
+/// (`++3` is three units, 15 minutes). Omitted for every non-shift mode, so
+/// decoding stays backward compatible. Older Bob output decodes as nil.
+public struct PomodoroShiftSpec: Codable, Equatable, Sendable {
+    public let raw: String
+    public let later: Bool
+    public let units: Int
+
+    public init(raw: String, later: Bool, units: Int) {
+        self.raw = raw
+        self.later = later
+        self.units = units
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case raw
+        case later
+        case units
+    }
+}
+
+/// Resolved whole-session shift from `bob capture --format json`: the requested
+/// direction/units, the signed applied delta, before/after start/end, unchanged
+/// duration, destination ledger line, and rendered new range. Omitted when the
+/// draft carries no shift, so older bob binaries decode as nil.
+public struct PomodoroShiftSummary: Codable, Equatable, Sendable {
+    public let direction: String
+    public let requestedUnits: Int
+    public let deltaMinutes: Int
+    public let beforeStart: String
+    public let beforeEnd: String
+    public let afterStart: String
+    public let afterEnd: String
+    public let durationMinutes: Int
+    public let pomodoroLine: Int
+    public let pomodoroName: String?
+    public let timeRange: String
+
+    public init(
+        direction: String,
+        requestedUnits: Int,
+        deltaMinutes: Int,
+        beforeStart: String,
+        beforeEnd: String,
+        afterStart: String,
+        afterEnd: String,
+        durationMinutes: Int,
+        pomodoroLine: Int,
+        pomodoroName: String? = nil,
+        timeRange: String
+    ) {
+        self.direction = direction
+        self.requestedUnits = requestedUnits
+        self.deltaMinutes = deltaMinutes
+        self.beforeStart = beforeStart
+        self.beforeEnd = beforeEnd
+        self.afterStart = afterStart
+        self.afterEnd = afterEnd
+        self.durationMinutes = durationMinutes
+        self.pomodoroLine = pomodoroLine
+        self.pomodoroName = pomodoroName
+        self.timeRange = timeRange
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        direction = try container.decodeIfPresent(String.self, forKey: .direction) ?? ""
+        requestedUnits = try container.decodeIfPresent(Int.self, forKey: .requestedUnits) ?? 0
+        deltaMinutes = try container.decodeIfPresent(Int.self, forKey: .deltaMinutes) ?? 0
+        beforeStart = try container.decodeIfPresent(String.self, forKey: .beforeStart) ?? ""
+        beforeEnd = try container.decodeIfPresent(String.self, forKey: .beforeEnd) ?? ""
+        afterStart = try container.decodeIfPresent(String.self, forKey: .afterStart) ?? ""
+        afterEnd = try container.decodeIfPresent(String.self, forKey: .afterEnd) ?? ""
+        durationMinutes = try container.decodeIfPresent(Int.self, forKey: .durationMinutes) ?? 0
+        pomodoroLine = try container.decodeIfPresent(Int.self, forKey: .pomodoroLine) ?? 0
+        pomodoroName = try container.decodeIfPresent(String.self, forKey: .pomodoroName)
+        timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case direction
+        case requestedUnits = "requested_units"
+        case deltaMinutes = "delta_minutes"
+        case beforeStart = "before_start"
+        case beforeEnd = "before_end"
+        case afterStart = "after_start"
+        case afterEnd = "after_end"
+        case durationMinutes = "duration_minutes"
+        case pomodoroLine = "pomodoro_line"
+        case pomodoroName = "pomodoro_name"
+        case timeRange = "time_range"
     }
 }
 
@@ -1054,6 +1169,9 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     // Additive adjustment summary for whole-item `+N`/`-N`.
     // Older bob binaries omit it entirely; decode as nil.
     public let pomodoroAdjust: PomodoroAdjustSummary?
+    // Additive shift summary for whole-item `++N`/`--N`.
+    // Older bob binaries omit it entirely; decode as nil.
+    public let pomodoroShift: PomodoroShiftSummary?
     // Additive session-close result for `=x` and task-link closes. Older Bob
     // binaries omit it entirely; decode as nil.
     public let pomodoroClose: PomodoroCloseSummary?
@@ -1107,6 +1225,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         pomodoroLinkDestination: PomodoroLinkEndpoint? = nil,
         pomodoroStart: PomodoroStartSummary? = nil,
         pomodoroAdjust: PomodoroAdjustSummary? = nil,
+        pomodoroShift: PomodoroShiftSummary? = nil,
         pomodoroClose: PomodoroCloseSummary? = nil,
         captures: [CaptureCommandSuccess] = [],
         globalDestination: CaptureGlobalDestination? = nil,
@@ -1157,6 +1276,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.pomodoroLinkDestination = pomodoroLinkDestination
         self.pomodoroStart = pomodoroStart
         self.pomodoroAdjust = pomodoroAdjust
+        self.pomodoroShift = pomodoroShift
         self.pomodoroClose = pomodoroClose
         self.captures = captures
         self.globalDestination = globalDestination
@@ -1222,6 +1342,10 @@ public struct CaptureCommandSuccess: Codable, Equatable {
             PomodoroAdjustSummary.self,
             forKey: .pomodoroAdjust
         )
+        pomodoroShift = try container.decodeIfPresent(
+            PomodoroShiftSummary.self,
+            forKey: .pomodoroShift
+        )
         pomodoroClose = try container.decodeIfPresent(
             PomodoroCloseSummary.self,
             forKey: .pomodoroClose
@@ -1280,6 +1404,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case pomodoroLinkDestination = "pomodoro_link_destination"
         case pomodoroStart = "pomodoro_start"
         case pomodoroAdjust = "pomodoro_adjust"
+        case pomodoroShift = "pomodoro_shift"
         case pomodoroClose = "pomodoro_close"
         case captures
         case globalDestination = "global_destination"

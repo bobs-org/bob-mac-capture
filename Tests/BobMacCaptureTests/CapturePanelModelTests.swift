@@ -1001,6 +1001,152 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, draft)
     }
 
+    func testLivePreviewWithShiftRecordsBeforeAfterAndUsesShiftAction() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "++3"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.previewResult?.kind, "pomodoro_shift")
+        XCTAssertEqual(model.previewResult?.pomodoroShift?.beforeStart, "0900")
+        XCTAssertEqual(model.previewResult?.pomodoroShift?.afterStart, "0915")
+        XCTAssertEqual(model.previewResult?.pomodoroShift?.afterEnd, "0940")
+        XCTAssertEqual(model.previewResult?.pomodoroShift?.deltaMinutes, 15)
+        let presentation = try XCTUnwrap(model.previewResult.flatMap(CapturePomodoroShiftPresentation.init))
+        XCTAssertEqual(presentation.sessionText, "0900-0925 → 0915-0940 (25m), 15m later")
+        XCTAssertEqual(presentation.destinationText, "FOCUS · line 3")
+        XCTAssertEqual(presentation.symbolName, "chevron.forward.2")
+        XCTAssertEqual(model.shiftPresentation?.sessionText, "0900-0925 → 0915-0940 (25m), 15m later")
+        XCTAssertEqual(model.primaryActionTitle, "Shift")
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.lastSuccess?.pomodoroShift?.deltaMinutes, 15)
+        XCTAssertFalse(model.lastSuccess?.dryRun ?? true)
+    }
+
+    func testLivePreviewWithBareShiftDefaultsToOneUnitAndEarlierChevron() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "--"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.previewResult?.kind, "pomodoro_shift")
+        XCTAssertEqual(model.previewResult?.pomodoroShift?.requestedUnits, 1)
+        XCTAssertEqual(
+            model.previewResult.flatMap(CapturePomodoroShiftPresentation.init)?.symbolName,
+            "chevron.backward.2"
+        )
+        XCTAssertEqual(model.primaryActionTitle, "Shift")
+    }
+
+    func testLivePreviewWithInvalidShiftSurfacesActionableError() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "++0"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .failed(let message) = model.previewState {
+                return message.contains("Pomodoro shift magnitude must be positive")
+            }
+            return false
+        }
+
+        XCTAssertEqual(model.plainDraft, draft)
+    }
+
+    func testLivePreviewWithMixedShiftDraftKeepsBothItemsAndShiftAction() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "++3\n\nTest note"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(
+            model.previewResults.map(\.kind),
+            ["pomodoro_shift", "task"]
+        )
+        XCTAssertEqual(model.previewResults[0].pomodoroShift?.deltaMinutes, 15)
+        // A batch never names a single-item action.
+        XCTAssertEqual(model.primaryActionTitle, "Capture")
+    }
+
+    func testSingleAdjustPreviewUsesAdjustFooterAction() throws {
+        let adjust = CaptureCommandSuccess(
+            ok: true,
+            dryRun: true,
+            routed: false,
+            routeLabel: "",
+            relativeTarget: "day.md",
+            target: "/tmp/bob/day.md",
+            text: "+5",
+            taskLine: "- [ ] (**0900-0955** [t:: 55m]) — FOCUS",
+            kind: "pomodoro_adjust",
+            created: "2026-08-14",
+            placement: "toggled",
+            pomodoroName: "FOCUS",
+            pomodoroAdjust: PomodoroAdjustSummary(
+                direction: "plus",
+                requestedUnits: 5,
+                requestedMinutes: 25,
+                deltaMinutes: 25,
+                beforeStart: "0900",
+                beforeEnd: "0930",
+                beforeDurationMinutes: 30,
+                afterStart: "0900",
+                afterEnd: "0955",
+                afterDurationMinutes: 55,
+                pomodoroLine: 3,
+                pomodoroName: "FOCUS",
+                timeRange: "(**0900-0955** [t:: 55m])",
+                clamped: false
+            )
+        )
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.previewResult = adjust
+        model.previewResults = [adjust]
+
+        XCTAssertEqual(model.adjustPresentation?.sessionText, "0900-0930 (30m) → 0900-0955 (55m), +25m")
+        XCTAssertEqual(model.primaryActionTitle, "Adjust")
+    }
+
     func testLivePreviewWithMixedAdjustDraftKeepsBothItems() async throws {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(

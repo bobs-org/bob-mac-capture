@@ -245,6 +245,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let panel = makePanelIfNeeded()
         replayLatestContentMetricsForPresentation()
         panel.makeKeyAndOrderFront(nil)
+        // The SwiftUI TextEditor's backing NSTextView enables smart dashes by
+        // default, which would rewrite `--3` as `–3`/`—3` before Bob ever sees
+        // the draft. Disable only dash substitution; smart quotes and the
+        // app's own Tab `--` → `—` snippet stay enabled.
+        CaptureEditorTextConfiguration.configureEditorTextViews(in: panel.contentView)
         installKeyMonitorIfNeeded()
         model.requestFocus(.editor)
         CaptureSignpost.end(token)
@@ -394,6 +399,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         created.contentView = hostingView
         updateAvailableScreenHeight()
         created.contentView?.layoutSubtreeIfNeeded()
+        CaptureEditorTextConfiguration.configureEditorTextViews(in: created.contentView)
         applyLatestContentMetricsIfPossible()
         return created
     }

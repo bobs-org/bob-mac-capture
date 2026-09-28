@@ -622,6 +622,128 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(failure.error.contains("Pomodoro adjustment magnitude must be positive"))
     }
 
+    func testLivePreviewDecodesPomodoroShiftFromDryRunJSON() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let response = try await client.captureLivePreview("++3", priorityRollSeed: "fixed")
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful live preview response")
+        }
+        XCTAssertTrue(success.dryRun)
+        XCTAssertEqual(success.kind, "pomodoro_shift")
+        XCTAssertEqual(success.pomodoroShift?.beforeStart, "0900")
+        XCTAssertEqual(success.pomodoroShift?.afterStart, "0915")
+        XCTAssertEqual(success.pomodoroShift?.afterEnd, "0940")
+        XCTAssertEqual(success.pomodoroShift?.deltaMinutes, 15)
+        XCTAssertEqual(success.pomodoroShift?.direction, "later")
+        XCTAssertEqual(
+            CapturePomodoroShiftPresentation(capture: success)?.sessionText,
+            "0900-0925 → 0915-0940 (25m), 15m later"
+        )
+        XCTAssertEqual(
+            CapturePomodoroShiftPresentation(capture: success)?.symbolName,
+            "chevron.forward.2"
+        )
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- ++3"))
+    }
+
+    func testLivePreviewDecodesBareShiftDefaultingToOneUnit() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.captureLivePreview("--", priorityRollSeed: "fixed")
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful live preview response")
+        }
+        XCTAssertEqual(success.kind, "pomodoro_shift")
+        XCTAssertEqual(success.pomodoroShift?.requestedUnits, 1)
+        XCTAssertEqual(success.pomodoroShift?.deltaMinutes, -5)
+        XCTAssertEqual(
+            CapturePomodoroShiftPresentation(capture: success)?.symbolName,
+            "chevron.backward.2"
+        )
+    }
+
+    func testLivePreviewSurfacesInvalidShiftMagnitudeAsActionableFailure() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.captureLivePreview("++0", priorityRollSeed: "fixed")
+
+        guard case .failure(let failure) = response else {
+            return XCTFail("Expected a failed live preview response")
+        }
+        XCTAssertTrue(failure.error.contains("Pomodoro shift magnitude must be positive"))
+    }
+
+    func testLivePreviewDecodesMixedDraftShiftBatchFromOneProcess() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let response = try await client.captureLivePreview(
+            "++3\n\nTest note",
+            priorityRollSeed: "fixed"
+        )
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful live preview response")
+        }
+        XCTAssertEqual(success.normalizedCaptures.map(\.kind), ["pomodoro_shift", "task"])
+        XCTAssertEqual(success.normalizedCaptures[0].pomodoroShift?.deltaMinutes, 15)
+        XCTAssertNil(success.normalizedCaptures[1].pomodoroShift)
+    }
+
+    func testCaptureParseDecodesPomodoroShiftSpec() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.captureParse("++3")
+        XCTAssertEqual(response.mode, "pomodoro_shift")
+        XCTAssertEqual(
+            response.pomodoroShift,
+            PomodoroShiftSpec(raw: "++3", later: true, units: 3)
+        )
+        XCTAssertEqual(response.spans.map(\.kind), ["pomodoro_shift"])
+    }
+
+    func testCaptureCompleteOffersNoCandidatesForShift() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.captureComplete("++3", cursor: 3)
+
+        XCTAssertNil(response.context)
+        XCTAssertTrue(response.candidates.isEmpty)
+    }
+
     func testLivePreviewDecodesMixedDraftAdjustBatchFromOneProcess() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

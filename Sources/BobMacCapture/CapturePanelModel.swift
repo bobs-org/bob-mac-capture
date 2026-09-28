@@ -254,13 +254,33 @@ final class CapturePanelModel: ObservableObject {
         return CapturePomodoroClosePresentation(capture: previewResult)
     }
 
-    /// The footer's primary action verb. Single close, toggle, and link previews name
-    /// their action so Return's meaning is clear. It never varies with `dryRun` — it
-    /// always names what Return will do next.
+    /// The live preview's adjustment presentation for a single `pomodoro_adjust`
+    /// item — the same single-item gate as the toggle presentation.
+    var adjustPresentation: CapturePomodoroAdjustPresentation? {
+        guard previewResults.count == 1, let previewResult else {
+            return nil
+        }
+        return CapturePomodoroAdjustPresentation(capture: previewResult)
+    }
+
+    /// The live preview's shift presentation for a single `pomodoro_shift`
+    /// item — the same single-item gate as the toggle presentation.
+    var shiftPresentation: CapturePomodoroShiftPresentation? {
+        guard previewResults.count == 1, let previewResult else {
+            return nil
+        }
+        return CapturePomodoroShiftPresentation(capture: previewResult)
+    }
+
+    /// The footer's primary action verb. Single close, toggle, link, adjust, and
+    /// shift previews name their action so Return's meaning is clear. It never
+    /// varies with `dryRun` — it always names what Return will do next.
     var primaryActionTitle: String {
         closePresentation.map { _ in "Close" }
             ?? togglePresentation?.primaryActionTitle
-            ?? linkPresentation?.primaryActionTitle ?? "Capture"
+            ?? linkPresentation?.primaryActionTitle
+            ?? shiftPresentation.map { _ in "Shift" }
+            ?? adjustPresentation.map { _ in "Adjust" } ?? "Capture"
     }
 
     func setProcessClient(_ processClient: BobProcessClient?) {
