@@ -124,7 +124,7 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         let presentation = try XCTUnwrap(
             CapturePomodoroStartPresentation(
                 capture: decodeCaptureSuccess(
-                    sessionStartJSON(dryRun: true, name: "CAPTURE", tasks: queuedTasksJSON)
+                    sessionStartJSON(dryRun: true, name: "CAPTURE", tasks: "[\(queuedTasksJSON)]")
                 )
             )
         )

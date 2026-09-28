@@ -1643,12 +1643,15 @@ final class CapturePanelModel: ObservableObject {
                         self?.previewResult = captures.first
                         self?.previewResults = captures
                         self?.previewGlobalDestination = success.globalDestination
+                        self?.errorMessage = nil
                         if let presentation = Self.soleTogglePresentation(for: captures) {
                             self?.statusText = presentation.statusText
                         } else if let link = Self.soleLinkPresentation(for: captures) {
                             self?.statusText = link.statusText
                         } else if let close = Self.soleClosePresentation(for: captures) {
                             self?.statusText = close.statusText
+                        } else if let start = Self.soleSessionStartPresentation(for: captures) {
+                            self?.statusText = start.statusText
                         }
                     case .failure(let failure):
                         self?.previewState = .failed(failure.error)
@@ -1657,6 +1660,8 @@ final class CapturePanelModel: ObservableObject {
                         self?.previewResult = nil
                         self?.previewResults = []
                         self?.previewGlobalDestination = nil
+                        self?.errorMessage = failure.error
+                        self?.statusText = "Preview failed"
                     }
                 }
             } catch is CancellationError {
