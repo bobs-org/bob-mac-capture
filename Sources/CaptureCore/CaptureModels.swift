@@ -463,6 +463,120 @@ public struct PomodoroAdjustSummary: Codable, Equatable, Sendable {
     }
 }
 
+/// One timing value from Bob's additive `pomodoro_close` result.
+public struct PomodoroCloseTiming: Codable, Equatable, Sendable {
+    public let start: String
+    public let end: String
+    public let durationMinutes: Int
+    public let timeRange: String
+
+    public init(start: String, end: String, durationMinutes: Int, timeRange: String) {
+        self.start = start
+        self.end = end
+        self.durationMinutes = durationMinutes
+        self.timeRange = timeRange
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case start
+        case end
+        case durationMinutes = "duration_minutes"
+        case timeRange = "time_range"
+    }
+}
+
+/// A task or block-link effect Bob resolved while closing a Pomodoro.
+public struct PomodoroCloseTask: Codable, Equatable, Sendable {
+    public let role: String
+    public let blockLink: String
+    public let ledgerLine: Int
+    public let resolved: Bool
+    public let relativeTarget: String?
+    public let blockID: String
+    public let text: String?
+    public let previousStatusSymbol: String?
+    public let previousStatusName: String?
+    public let statusSymbol: String?
+    public let statusName: String?
+    public let statusChanged: Bool
+    public let carried: Bool
+    public let workLog: [String]
+    public let workLogCreated: Bool
+    public let warning: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case role
+        case blockLink = "block_link"
+        case ledgerLine = "ledger_line"
+        case resolved
+        case relativeTarget = "relative_target"
+        case blockID = "block_id"
+        case text
+        case previousStatusSymbol = "previous_status_symbol"
+        case previousStatusName = "previous_status_name"
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
+        case statusChanged = "status_changed"
+        case carried
+        case workLog = "work_log"
+        case workLogCreated = "work_log_created"
+        case warning
+    }
+}
+
+public struct PomodoroCloseCarriedItem: Codable, Equatable, Sendable {
+    public let kind: String
+    public let text: String
+}
+
+public struct PomodoroCloseNext: Codable, Equatable, Sendable {
+    public let line: Int
+    public let name: String?
+    public let timeRange: String?
+    public let created: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case line
+        case name
+        case timeRange = "time_range"
+        case created
+    }
+}
+
+/// Bob's complete, resolved preview for a Pomodoro close. Every value is additive
+/// to capture schema v1 and absent on older Bob binaries.
+public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
+    public let raw: String
+    public let pomodoroLine: Int
+    public let pomodoroName: String?
+    public let entryLine: String
+    public let planned: PomodoroCloseTiming
+    public let closed: PomodoroCloseTiming
+    public let closedAt: String
+    public let remainingMinutes: Int
+    public let decrementedMinutes: Int
+    public let tasks: [PomodoroCloseTask]
+    public let carried: [PomodoroCloseCarriedItem]
+    public let notes: [String]
+    public let nextPomodoro: PomodoroCloseNext?
+
+    private enum CodingKeys: String, CodingKey {
+        case raw
+        case pomodoroLine = "pomodoro_line"
+        case pomodoroName = "pomodoro_name"
+        case entryLine = "entry_line"
+        case planned
+        case closed
+        case closedAt = "closed_at"
+        case remainingMinutes = "remaining_minutes"
+        case decrementedMinutes = "decremented_minutes"
+        case tasks
+        case carried
+        case notes
+        case nextPomodoro = "next_pomodoro"
+    }
+}
+
 public struct CaptureRewriteResponse: Codable, Equatable {
     public let ok: Bool
     public let schemaVersion: Int
@@ -697,8 +811,12 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     // Additive adjustment summary for whole-item `+N`/`-N`.
     // Older bob binaries omit it entirely; decode as nil.
     public let pomodoroAdjust: PomodoroAdjustSummary?
+    // Additive session-close result for `=x` and task-link closes. Older Bob
+    // binaries omit it entirely; decode as nil.
+    public let pomodoroClose: PomodoroCloseSummary?
     public let captures: [CaptureCommandSuccess]
     public let globalDestination: CaptureGlobalDestination?
+    public let warnings: [String]
 
     public init(
         ok: Bool,
@@ -746,8 +864,10 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         pomodoroLinkDestination: PomodoroLinkEndpoint? = nil,
         pomodoroStart: PomodoroStartSummary? = nil,
         pomodoroAdjust: PomodoroAdjustSummary? = nil,
+        pomodoroClose: PomodoroCloseSummary? = nil,
         captures: [CaptureCommandSuccess] = [],
-        globalDestination: CaptureGlobalDestination? = nil
+        globalDestination: CaptureGlobalDestination? = nil,
+        warnings: [String] = []
     ) {
         self.ok = ok
         self.dryRun = dryRun
@@ -794,8 +914,10 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.pomodoroLinkDestination = pomodoroLinkDestination
         self.pomodoroStart = pomodoroStart
         self.pomodoroAdjust = pomodoroAdjust
+        self.pomodoroClose = pomodoroClose
         self.captures = captures
         self.globalDestination = globalDestination
+        self.warnings = warnings
     }
 
     public init(from decoder: Decoder) throws {
@@ -857,11 +979,16 @@ public struct CaptureCommandSuccess: Codable, Equatable {
             PomodoroAdjustSummary.self,
             forKey: .pomodoroAdjust
         )
+        pomodoroClose = try container.decodeIfPresent(
+            PomodoroCloseSummary.self,
+            forKey: .pomodoroClose
+        )
         captures = try container.decodeIfPresent([CaptureCommandSuccess].self, forKey: .captures) ?? []
         globalDestination = try container.decodeIfPresent(
             CaptureGlobalDestination.self,
             forKey: .globalDestination
         )
+        warnings = try container.decodeIfPresent([String].self, forKey: .warnings) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -910,8 +1037,10 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case pomodoroLinkDestination = "pomodoro_link_destination"
         case pomodoroStart = "pomodoro_start"
         case pomodoroAdjust = "pomodoro_adjust"
+        case pomodoroClose = "pomodoro_close"
         case captures
         case globalDestination = "global_destination"
+        case warnings
     }
 
     /// The exact Markdown block `bob capture` writes beneath the destination, in the

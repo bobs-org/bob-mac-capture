@@ -371,6 +371,14 @@ final class NotificationService: NSObject, ObservableObject {
                     targetPaths: targetPaths
                 )
             }
+            if let close = CapturePomodoroClosePresentation(capture: capture) {
+                return CaptureNotificationPresentation(
+                    title: close.notificationTitle,
+                    subtitle: displayLabel(for: capture),
+                    body: close.notificationBody,
+                    targetPaths: targetPaths
+                )
+            }
             if let link = CapturePomodoroLinkPresentation(capture: capture) {
                 return CaptureNotificationPresentation(
                     title: link.notificationTitle,
@@ -411,7 +419,10 @@ final class NotificationService: NSObject, ObservableObject {
             .joined(separator: " across ")
         let lines = nonemptyCaptures.enumerated().map { index, capture in
             let scheduled = capture.scheduled.map { " scheduled \($0)" } ?? ""
-            return "\(index + 1). \(friendlyKindLabel(capture.kind)) -> \(capture.routeLabel): \(batchLineText(capture))\(scheduled)\(startedSuffix(for: capture))\(adjustedSuffix(for: capture))"
+            let suffix = "\(scheduled)\(startedSuffix(for: capture))"
+                + "\(adjustedSuffix(for: capture))\(closedSuffix(for: capture))"
+            return "\(index + 1). \(friendlyKindLabel(capture.kind)) -> \(capture.routeLabel): "
+                + "\(batchLineText(capture))\(suffix)"
         }
         return CaptureNotificationPresentation(
             title: "\(nonemptyCaptures.count) items captured",
@@ -443,7 +454,9 @@ final class NotificationService: NSObject, ObservableObject {
             let override = captureUsesGlobalDestination(capture, globalDestination)
                 ? ""
                 : " \u{2192} \(displayLabel(for: capture))"
-            return "\(index + 1). \(batchLineText(capture))\(override)\(scheduled)\(startedSuffix(for: capture))\(adjustedSuffix(for: capture))"
+            let suffix = "\(scheduled)\(startedSuffix(for: capture))"
+                + "\(adjustedSuffix(for: capture))\(closedSuffix(for: capture))"
+            return "\(index + 1). \(batchLineText(capture))\(override)\(suffix)"
         }
         return CaptureNotificationPresentation(
             title: "\(captures.count) items captured",
@@ -454,6 +467,9 @@ final class NotificationService: NSObject, ObservableObject {
     }
 
     nonisolated private static func singleCaptureBody(_ capture: CaptureCommandSuccess) -> String {
+        if let close = CapturePomodoroClosePresentation(capture: capture) {
+            return close.notificationBody
+        }
         let scheduled = capture.scheduled.map { "\nScheduled: \($0)" } ?? ""
         let started = CapturePomodoroStartPresentation(capture: capture)
             .map { "\n\($0.notificationDetail)" } ?? ""
@@ -469,6 +485,11 @@ final class NotificationService: NSObject, ObservableObject {
 
     nonisolated private static func adjustedSuffix(for capture: CaptureCommandSuccess) -> String {
         CapturePomodoroAdjustPresentation(capture: capture)
+            .map { " (\($0.sessionText))" } ?? ""
+    }
+
+    nonisolated private static func closedSuffix(for capture: CaptureCommandSuccess) -> String {
+        CapturePomodoroClosePresentation(capture: capture)
             .map { " (\($0.sessionText))" } ?? ""
     }
 
@@ -498,6 +519,8 @@ final class NotificationService: NSObject, ObservableObject {
 
     nonisolated private static func friendlyKindLabel(_ kind: String) -> String {
         switch kind.lowercased() {
+        case "pomodoro-close", "pomodoro_close":
+            return "Pomodoro close"
         case "task", "pomodoro-task", "pomodoro_task":
             return "Task"
         case "note", "bullet", "sub-bullet", "sub_bullet":
@@ -565,6 +588,9 @@ final class NotificationService: NSObject, ObservableObject {
     }
 
     nonisolated private static func dayFileChanged(for capture: CaptureCommandSuccess) -> Bool {
+        if CapturePomodoroClosePresentation(capture: capture) != nil {
+            return true
+        }
         if let toggle = CaptureTogglePresentation(capture: capture) {
             return toggle.dayFileChanged
         }

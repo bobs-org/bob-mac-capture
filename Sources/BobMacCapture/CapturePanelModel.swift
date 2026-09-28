@@ -245,13 +245,21 @@ final class CapturePanelModel: ObservableObject {
         return CapturePomodoroLinkPresentation(capture: previewResult)
     }
 
-    /// The footer's primary action verb: `Capture` unless the draft is a single toggle
-    /// or link item, in which case it names the toggle direction or the link outcome
-    /// (`Start` when the link starts a session, else `Link`) so Return's meaning is
-    /// never a surprise. Never varies with `dryRun` — it always names what Return
-    /// will do next.
+    /// The live preview's close presentation for a single plain, linked-task, or
+    /// new-task close. Bob's additive summary is the sole source of close effects.
+    var closePresentation: CapturePomodoroClosePresentation? {
+        guard previewResults.count == 1, let previewResult else {
+            return nil
+        }
+        return CapturePomodoroClosePresentation(capture: previewResult)
+    }
+
+    /// The footer's primary action verb. Single close, toggle, and link previews name
+    /// their action so Return's meaning is clear. It never varies with `dryRun` — it
+    /// always names what Return will do next.
     var primaryActionTitle: String {
-        togglePresentation?.primaryActionTitle
+        closePresentation.map { _ in "Close" }
+            ?? togglePresentation?.primaryActionTitle
             ?? linkPresentation?.primaryActionTitle ?? "Capture"
     }
 
@@ -260,6 +268,9 @@ final class CapturePanelModel: ObservableObject {
         if processClient == nil {
             statusText = "Bob is not resolved"
             previewState = .idle
+            previewResult = nil
+            previewResults = []
+            previewGlobalDestination = nil
             completionResponse = nil
             completionDraftSnapshot = nil
             invalidateAnalysis()
@@ -1235,6 +1246,8 @@ final class CapturePanelModel: ObservableObject {
             previewState = .idle
             if let presentation = Self.soleTogglePresentation(for: captures) {
                 statusText = presentation.voiceOverAnnouncement
+            } else if let presentation = Self.soleClosePresentation(for: captures) {
+                statusText = presentation.statusText
             } else {
                 statusText = captureStatus(
                     prefix: "Captured",
@@ -1287,7 +1300,9 @@ final class CapturePanelModel: ObservableObject {
             previewResults = captures
             previewGlobalDestination = success.globalDestination
             errorMessage = nil
-            if let presentation = Self.soleTogglePresentation(for: captures) {
+            if let presentation = Self.soleClosePresentation(for: captures) {
+                statusText = presentation.statusText
+            } else if let presentation = Self.soleTogglePresentation(for: captures) {
                 statusText = presentation.statusText
             } else {
                 statusText = captureStatus(
@@ -1323,6 +1338,15 @@ final class CapturePanelModel: ObservableObject {
             return nil
         }
         return CapturePomodoroLinkPresentation(capture: captures[0])
+    }
+
+    private static func soleClosePresentation(
+        for captures: [CaptureCommandSuccess]
+    ) -> CapturePomodoroClosePresentation? {
+        guard captures.count == 1 else {
+            return nil
+        }
+        return CapturePomodoroClosePresentation(capture: captures[0])
     }
 
     private func failPreview(requestID: UUID, error: Error) {
@@ -1371,6 +1395,12 @@ final class CapturePanelModel: ObservableObject {
         let debounceNanoseconds = self.debounceNanoseconds
         analysisTask?.cancel()
         previewState = .loading
+        // A changed draft can still have the prior response in these caches while
+        // the debounce is running. Clear it before calculating the next preview so
+        // the footer and preview card always describe the same draft.
+        previewResult = nil
+        previewResults = []
+        previewGlobalDestination = nil
 
         analysisTask = Task { [weak self, processClient] in
             do {
@@ -1551,6 +1581,8 @@ final class CapturePanelModel: ObservableObject {
                             self?.statusText = presentation.statusText
                         } else if let link = Self.soleLinkPresentation(for: captures) {
                             self?.statusText = link.statusText
+                        } else if let close = Self.soleClosePresentation(for: captures) {
+                            self?.statusText = close.statusText
                         }
                     case .failure(let failure):
                         self?.previewState = .failed(failure.error)
@@ -1928,6 +1960,9 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private static func captureWroteDayFile(_ capture: CaptureCommandSuccess) -> Bool {
+        if CapturePomodoroClosePresentation(capture: capture) != nil {
+            return true
+        }
         if let toggle = CaptureTogglePresentation(capture: capture) {
             return toggle.dayFileChanged
         }

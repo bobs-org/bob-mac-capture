@@ -56,7 +56,8 @@ mutation.
   `pomodoro_start` span, where `<X>` mirrors the `se<X>` snippet: empty is 25
   minutes, `-` offsets one 5-minute unit), plus whole-item `+N`/`-N` duration
   adjustments (`pomodoro_adjust` parse/capture JSON and the `pomodoro_adjust`
-  span, where each unit is 5 minutes and subtraction clamps at zero). Older builds can still capture ordinary drafts, but
+  span, where each unit is 5 minutes and subtraction clamps at zero), plus Pomodoro
+  close `=x` and its additive `pomodoro_close` capture summary. Older builds can still capture ordinary drafts, but
   global declarations, bare-`@@` absorption, the Add block ID flow, the Name Pomodoro
   flow, the task-section popup, and the task-toggle footer/preview report the local Bob
   error or an empty list until Bob is upgraded. An older Bob that sees bare
@@ -70,7 +71,9 @@ mutation.
   unchanged. An older Bob that omits `pomodoro_adjust` still parses `+5` as an
   ordinary task; the Mac app decodes a missing adjustment object as no
   adjustment and shows no adjustment row, while an invalid magnitude surfaces
-  Bob's `invalid_pomodoro_adjustment` diagnostic unchanged. Older Bob builds may implement the
+  Bob's `invalid_pomodoro_adjustment` diagnostic unchanged. An older Bob that omits
+  `pomodoro_close` has no close preview or Close footer; upgrade Bob before using
+  `=x`. Older Bob builds may implement the
   previous task-toggle spellings. The app labels
   actions and notifications from Bob's returned behavior metadata, so a response
   that omits `toggle_behavior` still shows the two-way Set Next/Open footer,
@@ -444,8 +447,14 @@ item must contain only the signed count. The `+N` token highlights as its own
 Bob's resolved before-to-after timing, signed minute effect, and target line —
 sourced only from `bob capture --dry-run --no-clip --format json`, including in
 mixed drafts — and submission runs the same Bob command; a missing or ambiguous
-target surfaces Bob's error as an ordinary preview failure. A marker-only `@route+block-id` ensures that
-existing task is Next and relocates its Task Link, `@route+block-id#pomodoro` does the
+target surfaces Bob's error as an ordinary preview failure. A whole-item `=x` closes
+the running Pomodoro; `@route:block-id=x` links an existing task first, and
+`<text> @route:block-id=x` creates a task inside that session before closing it. The
+dedicated close preview shows Bob's session timing, task transitions, Work Log entries,
+and next session. The footer says **Close**, and the notification summarizes the same
+returned close. Missing or ambiguous running sessions surface Bob's error in the
+preview. A marker-only `@route+block-id` ensures that existing task is Next and
+relocates its Task Link, `@route+block-id#pomodoro` does the
 same onto a named Pomodoro (creating the named future Pomodoro if needed),
 `@route+block-id!` is the explicit two-way add/clear toggle, and `@route+block-id` with
 body text nests beneath the task. `@route+block-id#section` nests under that task's

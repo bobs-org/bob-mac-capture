@@ -1414,7 +1414,9 @@ private struct PreviewPane: View {
         let isLocalOverride = globalDestination.map {
             !captureUsesGlobalDestination(success, $0)
         } ?? false
-        if let toggle = CaptureTogglePresentation(capture: success) {
+        if let close = CapturePomodoroClosePresentation(capture: success) {
+            closePreviewItem(close, success: success, index: index, total: total)
+        } else if let toggle = CaptureTogglePresentation(capture: success) {
             togglePreviewItem(
                 toggle,
                 success: success,
@@ -1438,6 +1440,95 @@ private struct PreviewPane: View {
                 isLocalOverride: isLocalOverride
             )
         }
+    }
+
+    @ViewBuilder
+    private func closePreviewItem(
+        _ close: CapturePomodoroClosePresentation,
+        success: CaptureCommandSuccess,
+        index: Int,
+        total: Int
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if total > 1 {
+                    Text("\(index + 1)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text(close.headline)
+                    .fontWeight(.semibold)
+                Text(success.relativeTarget)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "timer")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(close.sessionText)
+                    .font(.system(.callout, design: .monospaced))
+                    .fontWeight(.semibold)
+                Text(close.timingChip)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(.quaternary, in: Capsule())
+            }
+
+            if !close.taskRows.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(Array(close.taskRows.enumerated()), id: \.offset) { _, row in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(row.transitionText)
+                                    .font(.system(.callout, design: .monospaced))
+                                    .textSelection(.enabled)
+                                Text(row.role)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                if row.carried {
+                                    Text("carried")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            ForEach(Array(row.workLog.enumerated()), id: \.offset) { _, entry in
+                                Text("Work Log · \(entry)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                                    .padding(.leading, 12)
+                            }
+                            if let warning = row.warning {
+                                Text(warning)
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if let nextSessionText = close.nextSessionText {
+                Text(nextSessionText)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            ForEach(Array(close.warnings.enumerated()), id: \.offset) { _, warning in
+                Text(warning)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .textSelection(.enabled)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(close.accessibilitySummary)
     }
 
     @ViewBuilder

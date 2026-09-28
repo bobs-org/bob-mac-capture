@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+fixtures_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ -n "${FAKE_BOB_TERM_PATH:-}" ]]; then
   trap 'printf "terminated\n" >"${FAKE_BOB_TERM_PATH}"; exit 143' TERM INT
@@ -73,7 +74,9 @@ later_task_id_batch_suffix=$'\n\nFile follow-up @file+new-id'
 case "${command}" in
   capture-parse)
     draft="${*: -1}"
-    if [[ "${draft}" == *"[[AI"* ]]; then
+    if [[ "${draft}" == "=x" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-session.json"
+    elif [[ "${draft}" == *"[[AI"* ]]; then
       prefix="${draft%%"[[AI"*}"
       start=$((${#prefix} + 2))
       end=$((start + 2))
@@ -1946,7 +1949,13 @@ JSON
       fi
     done
     draft="${*: -1}"
-    if [[ "${draft}" == "Write outline @sase:outline=3" ]]; then
+    if [[ "${draft}" == "=x" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-worked.json"
+    elif [[ "${draft}" == "^bob:ready=x" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-link.json"
+    elif [[ "${draft}" == "Draft docs @bob:draft-docs=x" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-new-task.json"
+    elif [[ "${draft}" == "Write outline @sase:outline=3" ]]; then
       cat <<JSON
 {
   "ok": true,

@@ -1,4 +1,5 @@
 import CaptureCore
+import Foundation
 import UserNotifications
 import XCTest
 
@@ -92,6 +93,19 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertEqual(content.subtitle, "day.md")
         XCTAssertTrue(content.body.contains("+5"))
         XCTAssertTrue(content.body.contains("Adjusted FOCUS 0900-0930 (30m) to 0900-0955 (55m), +25m at line 3"))
+    }
+
+    func testPomodoroCloseNotificationIncludesResolvedSessionWorkLogAndNextSession() throws {
+        let closed = try closeSuccessFixture("pomodoro-close-worked.json")
+        let content = NotificationService.successContent(captures: [closed])
+
+        XCTAssertEqual(content.title, "Closed CAPTURE")
+        XCTAssertEqual(content.subtitle, "2026/20260928.md")
+        XCTAssertTrue(content.body.contains("0920-0940 (20m)"))
+        XCTAssertTrue(content.body.contains("0920-0950 → 0920-0940 · stopped 0937 · −10m"))
+        XCTAssertTrue(content.body.contains("*2026-09-28* — Designed the `=x` grammar"))
+        XCTAssertTrue(content.body.contains("Next: CAPTURE · untimed · line 13 · created"))
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureCategoryIdentifier)
     }
 
     func testSingleClampedAdjustSuccessContentKeepsRequestedNote() {
@@ -812,6 +826,20 @@ final class NotificationServiceTests: XCTestCase {
             pomodoroStart: pomodoroStart,
             pomodoroAdjust: pomodoroAdjust
         )
+    }
+
+    private func closeSuccessFixture(_ name: String) throws -> CaptureCommandSuccess {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let data = try Data(contentsOf: fixtures.appendingPathComponent(name))
+        let response = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+        guard case .success(let success) = response else {
+            XCTFail("expected a successful Bob close response")
+            throw NSError(domain: "NotificationServiceTests", code: 1)
+        }
+        return success
     }
 
     // `dayFileChanged: false` models an idempotent re-toggle onto an already-linked

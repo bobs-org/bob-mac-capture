@@ -654,6 +654,59 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(model.statusText.hasPrefix("Would link \u{2192}"))
     }
 
+    func testClosePresentationUsesBobSummaryAndOffersCloseFooterAction() throws {
+        let close = try closeSuccessFixture("pomodoro-close-worked.json")
+        let model = CapturePanelModel()
+        model.previewResult = close
+        model.previewResults = [close]
+
+        XCTAssertEqual(model.closePresentation?.variant, .session)
+        XCTAssertEqual(model.closePresentation?.sessionText, "0920-0940 (20m)")
+        XCTAssertEqual(model.primaryActionTitle, "Close")
+    }
+
+    func testCloseLivePreviewDecodesFakeBobFixtureAndShowsCloseAction() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "=x"
+        model.editorTextDidChange(cursorUTF8Offset: 2)
+
+        await waitUntil {
+            if case .ready(let preview) = model.previewState {
+                return preview.pomodoroClose != nil
+            }
+            return false
+        }
+
+        XCTAssertEqual(model.closePresentation?.variant, .session)
+        XCTAssertEqual(model.primaryActionTitle, "Close")
+        XCTAssertTrue(model.statusText.hasPrefix("Would close CAPTURE"))
+    }
+
+    func testEditingDraftClearsStaleClosePreviewAndFooterAction() throws {
+        let close = try closeSuccessFixture("pomodoro-close-worked.json")
+        let model = CapturePanelModel(debounceNanoseconds: 10_000_000_000)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.previewResult = close
+        model.previewResults = [close]
+        model.previewState = .ready(close)
+        model.plainDraft = "Call bank @cash"
+
+        model.editorTextDidChange()
+
+        XCTAssertNil(model.closePresentation)
+        XCTAssertNil(model.previewResult)
+        XCTAssertTrue(model.previewResults.isEmpty)
+        XCTAssertEqual(model.primaryActionTitle, "Capture")
+        XCTAssertEqual(model.previewState, .loading)
+    }
+
     func testLinkStartPreviewUsesStartFooter() async throws {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
@@ -3290,6 +3343,20 @@ final class CapturePanelModelTests: XCTestCase {
         return packageRoot
             .appendingPathComponent("Tests/Fixtures/fake-bob")
             .path
+    }
+
+    private func closeSuccessFixture(_ name: String) throws -> CaptureCommandSuccess {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let data = try Data(contentsOf: fixtures.appendingPathComponent(name))
+        let response = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+        guard case .success(let success) = response else {
+            XCTFail("expected a successful Bob close response")
+            throw NSError(domain: "CapturePanelModelTests", code: 1)
+        }
+        return success
     }
 
     private func analysisSettled(
