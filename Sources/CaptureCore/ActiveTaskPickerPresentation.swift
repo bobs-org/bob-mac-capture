@@ -680,7 +680,7 @@ private struct ActiveTaskFieldMatch: Sendable {
 
 /// Coalesced highlight positions gathered from every token's best field.
 /// Section and Pomodoro-name matches raise the rank without highlighting.
-private struct ActiveTaskMatchHighlights: Sendable {
+struct ActiveTaskMatchHighlights: Sendable {
     var textPositions: [Int] = []
     var routePositions: [Int] = []
     var blockPositions: [Int] = []
@@ -722,14 +722,14 @@ private struct ActiveTaskMatchHighlights: Sendable {
     static func coalesced(_ positions: [Int]) -> [Range<Int>] {
         let sorted = Array(Set(positions)).sorted()
         var ranges: [Range<Int>] = []
-        var index = 0
-        while index < sorted.count {
-            var end = sorted[index]
+        var start = 0
+        while start < sorted.count {
+            var end = start
             while end + 1 < sorted.count, sorted[end + 1] == sorted[end] + 1 {
                 end += 1
             }
-            ranges.append(sorted[index]..<sorted[end] + 1)
-            index = end + 1
+            ranges.append(sorted[start]..<sorted[end] + 1)
+            start = end + 1
         }
         return ranges
     }

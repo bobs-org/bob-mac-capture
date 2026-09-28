@@ -60,12 +60,26 @@ final class ActiveTaskDisplayTextTests: XCTestCase {
         assertTilesExactly(parsed)
     }
 
-    func testUnmatchedBacktickStaysLiteral() {
-        let parsed = ActiveTaskDisplayText(parsing: "fix `oops and `ok`")
-        XCTAssertEqual(parsed.text, "fix `oops and ok")
+    func testNextBacktickClosesCodeSpan() {
+        let parsed = ActiveTaskDisplayText(parsing: "fix `oops and `ok``")
+        XCTAssertEqual(parsed.text, "fix oops and ok``")
         XCTAssertEqual(
-            parsed.segments.map { $0.kind },
-            [.plain, .code]
+            parsed.segments,
+            [
+                ActiveTaskDisplaySegment(kind: .plain, range: 0..<4),
+                ActiveTaskDisplaySegment(kind: .code, range: 4..<13),
+                ActiveTaskDisplaySegment(kind: .plain, range: 13..<17),
+            ]
+        )
+        assertTilesExactly(parsed)
+    }
+
+    func testTrulyUnmatchedSingleBacktickStaysLiteral() {
+        let parsed = ActiveTaskDisplayText(parsing: "fix `oops")
+        XCTAssertEqual(parsed.text, "fix `oops")
+        XCTAssertEqual(
+            parsed.segments,
+            [ActiveTaskDisplaySegment(kind: .plain, range: 0..<9)]
         )
         assertTilesExactly(parsed)
     }

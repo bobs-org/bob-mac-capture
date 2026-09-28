@@ -265,41 +265,41 @@ final class ActiveTaskPickerDesignTests: XCTestCase {
             CaptureCompletionCandidate(
                 replacement: "sase:recovery-panel",
                 route: "sase",
+                blockID: "recovery-panel",
                 statusSymbol: "/",
                 statusName: "In Progress",
                 text: "Read and act on core_schema_skew_outage_recovery_ux!",
                 section: "Next & In Progress",
-                blockID: "recovery-panel",
                 pomodoro: ActiveTaskPomodoro(line: 53, name: "SASE")
             ),
             CaptureCompletionCandidate(
                 replacement: "sase:tui-cli",
                 route: "sase",
+                blockID: "tui-cli",
                 statusSymbol: "/",
                 statusName: "In Progress",
                 text: "Bug bash and improve sase TUI `command-mode` panel",
                 section: "Next & In Progress",
-                blockID: "tui-cli",
                 pomodoro: ActiveTaskPomodoro(line: 53, name: "SASE")
             ),
             CaptureCompletionCandidate(
                 replacement: "sase:card-blocks",
                 route: "sase",
+                blockID: "card-blocks",
                 statusSymbol: "*",
                 statusName: "Next",
                 text: "Add support for “card blocks”",
                 section: "Next & In Progress",
-                blockID: "card-blocks",
                 pomodoro: ActiveTaskPomodoro(line: 68, name: "SASE")
             ),
             CaptureCompletionCandidate(
                 replacement: "sase:weight-queue",
                 route: "sase",
+                blockID: "weight-queue",
                 statusSymbol: "*",
                 statusName: "Next",
                 text: "Queue weight calibration from [[ref/chat/notes|review notes]]",
                 section: "Next & In Progress",
-                blockID: "weight-queue",
                 pomodoro: ActiveTaskPomodoro(
                     line: 71,
                     name: "FAST TESTS",
@@ -310,40 +310,40 @@ final class ActiveTaskPickerDesignTests: XCTestCase {
             CaptureCompletionCandidate(
                 replacement: "bob:later-cleanup",
                 route: "bob",
+                blockID: "later-cleanup",
                 statusSymbol: "*",
                 statusName: "Next",
                 text: "Tidy [[ref/chat/later]] follow-ups",
                 section: "Next & In Progress",
-                blockID: "later-cleanup",
                 pomodoro: ActiveTaskPomodoro(line: 90, name: "LATER")
             ),
             CaptureCompletionCandidate(
                 replacement: "bob:unnamed-plan",
                 route: "bob",
+                blockID: "unnamed-plan",
                 statusSymbol: "/",
                 statusName: "In Progress",
                 text: "Draft the unnamed plan",
                 section: "Next & In Progress",
-                blockID: "unnamed-plan",
                 pomodoro: ActiveTaskPomodoro(line: 95)
             ),
             CaptureCompletionCandidate(
                 replacement: "sase:solo-fix",
                 route: "sase",
+                blockID: "solo-fix",
                 statusSymbol: "/",
                 statusName: "In Progress",
                 text: "Fix solo `glitch` without a Pomodoro",
-                section: "Next & In Progress",
-                blockID: "solo-fix"
+                section: "Next & In Progress"
             ),
             CaptureCompletionCandidate(
                 replacement: "bob:solo-next",
                 route: "bob",
+                blockID: "solo-next",
                 statusSymbol: "*",
                 statusName: "Next",
                 text: "Queue the solo next step",
-                section: "Next & In Progress",
-                blockID: "solo-next"
+                section: "Next & In Progress"
             ),
         ]
     }

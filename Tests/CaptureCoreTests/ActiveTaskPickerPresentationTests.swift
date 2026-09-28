@@ -271,6 +271,14 @@ final class ActiveTaskPickerPresentationTests: XCTestCase {
         XCTAssertEqual(bob.row(id: "bob:later-bob")?.blockIDMatchRanges, [])
     }
 
+    func testCoalescedMergesNonzeroAndSparsePositions() {
+        XCTAssertEqual(ActiveTaskMatchHighlights.coalesced([]), [])
+        XCTAssertEqual(ActiveTaskMatchHighlights.coalesced([5]), [5..<6])
+        XCTAssertEqual(ActiveTaskMatchHighlights.coalesced([5, 6, 7]), [5..<8])
+        XCTAssertEqual(ActiveTaskMatchHighlights.coalesced([5, 10]), [5..<6, 10..<11])
+        XCTAssertEqual(ActiveTaskMatchHighlights.coalesced([10, 5, 6, 6]), [5..<7, 10..<11])
+    }
+
     func testFilteredPomodoroChips() {
         let presentation = fixtureIndex().presentation(filter: "plan")
         XCTAssertEqual(presentation.orderedRowIDs, ["sase:planned-thing"])
