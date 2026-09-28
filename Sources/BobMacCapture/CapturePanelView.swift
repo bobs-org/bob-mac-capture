@@ -1449,6 +1449,11 @@ private struct PreviewPane: View {
         index: Int,
         total: Int
     ) -> some View {
+        // The close card renders Bob's resolved `pomodoro_close` object exactly
+        // as the presentation words it: no Swift-side clock or ledger math.
+        // The locator truncates first at narrow widths, so the task text and
+        // transition always stay legible.
+        let sessionTint = CaptureEditorPalette.color(for: .pomodoroStart)
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if total > 1 {
@@ -1456,68 +1461,136 @@ private struct PreviewPane: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Text(close.headline)
+                Image(systemName: "stop.circle.fill")
+                    .foregroundStyle(sessionTint)
+                    .accessibilityHidden(true)
+                Text(close.title)
                     .fontWeight(.semibold)
-                Text(success.relativeTarget)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                Spacer(minLength: 4)
+                HStack(spacing: 0) {
+                    Text(close.sessionPlannedText)
+                        .font(.system(.callout, design: .monospaced))
+                        .fontWeight(.semibold)
+                    if let decrement = close.sessionDecrementText {
+                        Text(" \(decrement)")
+                            .font(.system(.callout, design: .monospaced))
+                            .fontWeight(.semibold)
+                            .foregroundStyle(sessionTint)
+                    }
+                }
+                .lineLimit(1)
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: "timer")
+                Text(close.destinationText)
                     .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-                Text(close.sessionText)
-                    .font(.system(.callout, design: .monospaced))
-                    .fontWeight(.semibold)
-                Text(close.timingChip)
+                    .lineLimit(1)
+                    .textSelection(.enabled)
+                Text(close.timingText)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(closeTimingChipColor(close.timingTone))
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(.quaternary, in: Capsule())
             }
 
-            if !close.taskRows.isEmpty {
+            if let viaText = close.viaText {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(
+                        systemName: close.variant == .newTask
+                            ? "plus.circle" : "link"
+                    )
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                    Text(viaText)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                }
+            }
+
+            if close.taskRows.isEmpty {
+                Text(close.emptyText)
+                    .foregroundStyle(.secondary)
+            } else {
                 VStack(alignment: .leading, spacing: 5) {
-                    ForEach(Array(close.taskRows.enumerated()), id: \.offset) { _, row in
+                    ForEach(Array(close.visibleTaskRows.enumerated()), id: \.offset) {
+                        _, row in
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                Text(row.transitionText)
-                                    .font(.system(.callout, design: .monospaced))
+                                closeTaskGlyph(for: row)
+                                Text(row.taskText)
+                                    .strikethrough(row.isStruck)
+                                    .layoutPriority(1)
+                                    .lineLimit(1)
                                     .textSelection(.enabled)
-                                Text(row.role)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                if row.carried {
-                                    Text("carried")
+                                if let tag = row.tag {
+                                    Text(tag)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
-                            }
-                            ForEach(Array(row.workLog.enumerated()), id: \.offset) { _, entry in
-                                Text("Work Log · \(entry)")
+                                Spacer(minLength: 4)
+                                Text(row.locatorText)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
                                     .textSelection(.enabled)
-                                    .padding(.leading, 12)
+                            }
+                            ForEach(
+                                Array(row.workLogPreviews.enumerated()),
+                                id: \.offset
+                            ) { _, entry in
+                                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                    Image(systemName: "square.and.pencil")
+                                        .foregroundStyle(.secondary)
+                                        .accessibilityHidden(true)
+                                    Text(entry)
+                                        .font(.callout)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                        .textSelection(.enabled)
+                                }
                             }
                             if let warning = row.warning {
                                 Text(warning)
                                     .font(.caption)
                                     .foregroundStyle(.orange)
+                                    .textSelection(.enabled)
                             }
                         }
+                    }
+                    if close.overflowTaskCount > 0 {
+                        Text("+\(close.overflowTaskCount) more")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            if let nextSessionText = close.nextSessionText {
-                Text(nextSessionText)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+            if let notesText = close.notesText {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "text.alignleft")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(notesText)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let nextText = close.nextText {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "arrow.turn.down.right")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(nextText)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
             }
             ForEach(Array(close.warnings.enumerated()), id: \.offset) { _, warning in
                 Text(warning)
@@ -1529,6 +1602,51 @@ private struct PreviewPane: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(close.accessibilitySummary)
+    }
+
+    @ViewBuilder
+    private func closeTaskGlyph(
+        for row: CapturePomodoroClosePresentation.TaskRow
+    ) -> some View {
+        switch row.glyph {
+        case .transition:
+            Text(row.transitionText)
+                .font(.system(.callout, design: .monospaced))
+                .textSelection(.enabled)
+        case .deferred:
+            Image(systemName: "arrow.uturn.forward")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        case .struck:
+            Image(systemName: "checkmark.circle")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        case .embedded:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        case .unresolved:
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(.yellow)
+                .accessibilityHidden(true)
+        case .neutral:
+            Image(systemName: "questionmark.circle")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func closeTimingChipColor(
+        _ tone: CapturePomodoroClosePresentation.TimingTone
+    ) -> Color {
+        switch tone {
+        case .early:
+            return .orange
+        case .onTime:
+            return .green
+        case .over:
+            return .secondary
+        }
     }
 
     @ViewBuilder
@@ -1795,7 +1913,9 @@ private struct PreviewPane: View {
             .map { ", \($0.accessibilitySummary)" } ?? ""
         let adjustSummary = CapturePomodoroAdjustPresentation(capture: success)
             .map { ", \($0.accessibilitySummary)" } ?? ""
-        return "\(position)\(success.kind), \(destination)\(override)\(startSummary)\(adjustSummary), \(success.previewBlockLines.joined(separator: ", "))"
+        let closeSummary = CapturePomodoroClosePresentation(capture: success)
+            .map { ", \($0.accessibilitySummary)" } ?? ""
+        return "\(position)\(success.kind), \(destination)\(override)\(startSummary)\(adjustSummary)\(closeSummary), \(success.previewBlockLines.joined(separator: ", "))"
     }
 
     private func togglePreviewAccessibilityLabel(

@@ -73,7 +73,12 @@ mutation.
   adjustment and shows no adjustment row, while an invalid magnitude surfaces
   Bob's `invalid_pomodoro_adjustment` diagnostic unchanged. An older Bob that omits
   `pomodoro_close` has no close preview or Close footer; upgrade Bob before using
-  `=x`. Older Bob builds may implement the
+  `=x`. A close summary whose task, carried, notes, or next fields are absent
+  still previews: booleans read as false, arrays as empty, and missing lines as
+  zero, and unknown task roles degrade to a neutral row. Whole-item `=x`
+  reports `pomodoro_close` mode with a `pomodoro_close` span and a
+  `{"raw": "=x"}` parse spec; link items keep `pomodoro_link`/`pomodoro_task`
+  mode with a `pomodoro_close` span kind over the suffix. Older Bob builds may implement the
   previous task-toggle spellings. The app labels
   actions and notifications from Bob's returned behavior metadata, so a response
   that omits `toggle_behavior` still shows the two-way Set Next/Open footer,
@@ -247,7 +252,8 @@ or expired certificate can require reauthorizing those system permissions.
   **Capture** to **Set Next**, **Set Open**, or **Ensure Next** according to
   Bob's returned behavior metadata; when it reports exactly one `pomodoro_link`,
   the action becomes **Start** if the link starts a session and **Link** otherwise;
-  batches keep **Capture** because Return will submit more than the toggle.
+  a single close — whole-item `=x`, link `=x`, or new-task `=x` — becomes
+  **Close**; batches keep **Capture** because Return will submit more than the toggle.
   Ensure Next preview, VoiceOver, and notifications present status and relocation
   independently ("Ready → Next" vs "Next unchanged", "Moved LATER → CURRENT" vs
   "Already in CURRENT; no Pomodoro changes") and never show the two-way "adds
@@ -257,7 +263,11 @@ or expired certificate can require reauthorizing those system permissions.
   is `moved`. Pomodoro-link captures notify as `Started NAME`, `Linked to NAME`,
   `Moved to NAME`, or `Already in NAME`, batch lines use the link transition text
   under a `Link` kind, and Open Note/Open Notes includes the daily note whenever
-  the link inserted, moved, or started a session.
+  the link inserted, moved, or started a session. A Pomodoro close notifies as
+  `Closed NAME` with a session-and-timing line, a tasks-and-Work-Log line, and
+  the next-session line; link and new-task closes use the same title and body,
+  batch lines append ` (closed NAME)` under a `Close` kind, and Open Note
+  targets the day file, which a close always writes.
 - Preview shows every block Bob will write, in Bob's own order: each item's parent
   `task_line`, authored children, then `clip.lines` and `schedule_log.lines` when the
   response carries them. Task-toggle items instead show the route/block destination, the
@@ -267,7 +277,21 @@ or expired certificate can require reauthorizing those system permissions.
   destination, and the ledger outcome Bob planned (`Linked under BUGS`,
   `Moved Task Link BUGS → FOCUS (created FOCUS)`, or
   `Task Link already in BUGS; no ledger change.`), plus the atomic-start session row
-  when the link starts one. One item stays compact; a batch renders an ordered stack with item count,
+  when the link starts one. A Pomodoro close instead shows its own card whenever
+  `pomodoro_close` is present: a `stop.circle.fill` header with the `Close NAME`
+  title and the monospaced session range (the shortened half tinted with the
+  Pomodoro-session colour), the day-file destination plus a timing chip that is
+  orange when early, green when on time, and secondary when over, a `link` via
+  row for link closes (`Linked bob.md · ^ready into CAPTURE`, `Moved from SASE`)
+  or a `plus.circle` row for new-task closes, up to six task rows with per-role
+  glyphs, transitions (`[*] → [/]`, `[*] deferred`, `[x] closed`, `[x]`), text
+  with strikethrough on struck rows, trailing locators, and dated Work Log
+  previews, then a notes row (`1 note stays`), a next-session footer row, and an
+  empty state (`No Task Links — the session simply closes`) when there are no
+  task rows. The footer's primary action becomes **Close**, the live-preview,
+  preview, and submit status read `Would close …` / `Closed …` with started and
+  Work Log counts, and a failed dry run clears the card so no stale preview sits
+  beside the error. One item stays compact; a batch renders an ordered stack with item count,
   destination/kind metadata, dividers, and exact `previewBlockLines` or toggle
   transition rows. When Bob reports a global destination, preview and the destination
   detail show one compact shared-scope line (`All items → foo.md` or
@@ -603,9 +627,11 @@ The app posts success and failure `UNUserNotificationCenter` notifications and n
 makes capture correctness depend on them. Success notifications use Bob's semantic
 capture text rather than raw draft syntax: a single capture is titled `Task captured` or
 `Note captured`, names the destination, and includes scheduled-date metadata when Bob
-returns it. A batch is titled with the item count, summarizes task/note and destination
+returns it. A close is titled `Closed NAME` and its body carries the session and
+timing line, the tasks and Work Log line, and the next-session line. A batch is titled with the item count, summarizes task/note and destination
 counts, and emits one ordered body line per captured item without substituting an
-ellipsis for later entries. When Bob reports a global destination, a same-scope batch
+ellipsis for later entries. Close batch lines append ` (closed NAME)` and count
+under a `Close` kind. When Bob reports a global destination, a same-scope batch
 uses compact wording such as `2 tasks · foo.md` or `2 notes · file.md · under ^a-id`;
 only items that locally override the global declaration repeat their actual destination.
 The raw `@@...` declaration is never included in notification text. The only newly

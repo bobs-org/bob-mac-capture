@@ -661,8 +661,131 @@ final class CapturePanelModelTests: XCTestCase {
         model.previewResults = [close]
 
         XCTAssertEqual(model.closePresentation?.variant, .session)
-        XCTAssertEqual(model.closePresentation?.sessionText, "0920-0940 (20m)")
+        XCTAssertEqual(model.closePresentation?.title, "Close CAPTURE")
+        XCTAssertEqual(model.closePresentation?.sessionText, "0920-0950 → 0920-0940 · 20m")
+        XCTAssertEqual(model.closePresentation?.timingText, "13m early")
+        XCTAssertEqual(model.closePresentation?.destinationText, "2026/20260928.md · line 5")
         XCTAssertEqual(model.primaryActionTitle, "Close")
+    }
+
+    func testCloseLivePreviewAndSubmitUseCloseArgvFooterAndStatus() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "=x"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.closePresentation?.variant, .session)
+        XCTAssertEqual(model.primaryActionTitle, "Close")
+        XCTAssertEqual(
+            model.statusText,
+            "Would close CAPTURE · 1 started · 3 Work Log entries"
+        )
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(
+            model.statusText,
+            "Closed CAPTURE · 1 started · 3 Work Log entries"
+        )
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"))
+        XCTAssertTrue(record.contains("argv=capture --format json -- \(draft)"))
+    }
+
+    func testFailedCloseDryRunClearsStaleCard() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        // A live close card is showing; then the draft becomes `=`, whose
+        // dry run fails. The stale card must go away with the red error.
+        model.plainDraft = "=x"
+        model.editorTextDidChange(cursorUTF8Offset: 2)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+        XCTAssertNotNil(model.closePresentation)
+
+        model.plainDraft = "="
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil {
+            if case .failed = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertNil(model.closePresentation)
+        XCTAssertNil(model.previewResult)
+        XCTAssertTrue(model.previewResults.isEmpty)
+        XCTAssertNil(model.previewGlobalDestination)
+        XCTAssertEqual(model.primaryActionTitle, "Capture")
+    }
+
+    func testRepresentationRefreshesStaleCloseTiming() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        model.plainDraft = "=x"
+        model.editorTextDidChange(cursorUTF8Offset: 2)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+        XCTAssertNotNil(model.closePresentation)
+        let dryRunLine = "argv=capture --dry-run --no-clip --format json -- =x"
+        let runsBefore = try String(contentsOf: recordURL)
+            .components(separatedBy: dryRunLine).count - 1
+        XCTAssertEqual(runsBefore, 1)
+
+        // Re-presenting with the retained draft re-runs analysis so `closed_at`
+        // and the timing resolve fresh instead of going stale.
+        model.prepareForPresentation()
+        await waitUntil {
+            let runs = (try? String(contentsOf: recordURL))?
+                .components(separatedBy: dryRunLine).count ?? 1
+            return runs - 1 == 2
+        }
+        XCTAssertNotNil(model.closePresentation)
+        XCTAssertEqual(model.primaryActionTitle, "Close")
+    }
+
+    func testCloseSpanStaysOutOfCompletionGating() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        // Inside the `=x` suffix there is nothing to complete.
+        model.plainDraft = "=x"
+        model.editorTextDidChange(cursorUTF8Offset: 2)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+        XCTAssertNil(model.completionResponse)
     }
 
     func testCloseLivePreviewDecodesFakeBobFixtureAndShowsCloseAction() async throws {

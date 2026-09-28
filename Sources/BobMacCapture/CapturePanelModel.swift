@@ -659,10 +659,13 @@ final class CapturePanelModel: ObservableObject {
     // Called before the panel is (re)shown. A retained draft (from Escape or a failed
     // capture) must reopen exactly as the user left it, error and all; only a panel with
     // no draft — i.e. one that just dismissed after a success — needs its leftover
-    // success summary and status cleared so the next capture starts clean.
+    // success summary and status cleared so the next capture starts clean. A retained
+    // non-empty draft still re-runs analysis: a close preview's `closed_at` and timing
+    // go stale while the panel is hidden, so the card must resolve them fresh.
     func prepareForPresentation() {
         dismissStashPicker()
         guard !hasDraft else {
+            editorTextDidChange()
             return
         }
         resetAnalysisState()
@@ -1312,6 +1315,11 @@ final class CapturePanelModel: ObservableObject {
                 )
             }
         case .failure(let failure):
+            // A failed explicit dry run drops the preview result for the same
+            // reason `failPreview` does: no stale card beside the red error.
+            previewResult = nil
+            previewResults = []
+            previewGlobalDestination = nil
             errorMessage = failure.error
             statusText = "Preview failed"
         }
@@ -1355,6 +1363,12 @@ final class CapturePanelModel: ObservableObject {
         }
         activeRequestID = nil
         isPreviewing = false
+        // A failed live dry run must never leave a stale card beside the red
+        // error: a close preview's `closed_at` and timing describe a moment
+        // that has already passed, so drop the whole preview result.
+        previewResult = nil
+        previewResults = []
+        previewGlobalDestination = nil
         errorMessage = String(describing: error)
         statusText = "Preview failed"
     }
@@ -1586,6 +1600,11 @@ final class CapturePanelModel: ObservableObject {
                         }
                     case .failure(let failure):
                         self?.previewState = .failed(failure.error)
+                        // Like `failPreview`: a failed live dry run must never
+                        // leave a stale card beside the red error.
+                        self?.previewResult = nil
+                        self?.previewResults = []
+                        self?.previewGlobalDestination = nil
                     }
                 }
             } catch is CancellationError {
@@ -1684,8 +1703,9 @@ final class CapturePanelModel: ObservableObject {
             return true
         }
 
-        // The additive `pomodoro_start` (`=<X>`) span is deliberately absent: a cursor
-        // inside the suffix offers no completion, while a cursor on its leading edge
+        // The additive `pomodoro_start` (`=<X>`) and `pomodoro_close` (`=x`)
+        // spans are deliberately absent: a cursor inside either suffix offers no
+        // completion, while a cursor on its leading edge
         // still matches `pomodoro_name`/`pomodoro_block_id` so accepting a candidate
         // replaces only the name and leaves the typed suffix in place (Bob's
         // replacement range already ends before `=`).

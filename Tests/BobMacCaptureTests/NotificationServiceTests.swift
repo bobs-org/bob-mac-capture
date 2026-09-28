@@ -101,11 +101,46 @@ final class NotificationServiceTests: XCTestCase {
 
         XCTAssertEqual(content.title, "Closed CAPTURE")
         XCTAssertEqual(content.subtitle, "2026/20260928.md")
-        XCTAssertTrue(content.body.contains("0920-0940 (20m)"))
-        XCTAssertTrue(content.body.contains("0920-0950 → 0920-0940 · stopped 0937 · −10m"))
-        XCTAssertTrue(content.body.contains("*2026-09-28* — Designed the `=x` grammar"))
-        XCTAssertTrue(content.body.contains("Next: CAPTURE · untimed · line 13 · created"))
+        XCTAssertEqual(
+            content.body,
+            """
+            CAPTURE 0920-0950 → 0920-0940 · 20m · 13m early
+            3 tasks · 3 Work Log entries
+            Next: CAPTURE · new · carries 2 links
+            """
+        )
         XCTAssertEqual(content.categoryIdentifier, NotificationService.captureCategoryIdentifier)
+    }
+
+    func testPomodoroLinkCloseNotificationUsesCloseTitleAndBody() throws {
+        let closed = try closeSuccessFixture("pomodoro-close-link.json")
+        let content = NotificationService.successContent(captures: [closed])
+
+        XCTAssertEqual(content.title, "Closed CAPTURE")
+        XCTAssertEqual(content.subtitle, "bob.md")
+        XCTAssertTrue(content.body.contains("CAPTURE 0920-0950 → 0920-0940 · 20m · 13m early"))
+        XCTAssertTrue(content.body.contains("Next: CAPTURE · new · carries 3 links"))
+    }
+
+    func testPomodoroTaskCloseNotificationUsesCloseTitleAndBody() throws {
+        let closed = try closeSuccessFixture("pomodoro-close-new-task.json")
+        let content = NotificationService.successContent(captures: [closed])
+
+        XCTAssertEqual(content.title, "Closed CAPTURE")
+        XCTAssertEqual(content.subtitle, "bob.md")
+        XCTAssertTrue(content.body.contains("4 tasks · 3 Work Log entries"))
+    }
+
+    func testPomodoroCloseBatchLinesUseClosedSuffix() throws {
+        let closed = try closeSuccessFixture("pomodoro-close-worked.json")
+        let content = NotificationService.successContent(captures: [
+            capture(kind: "task", routeLabel: "cash.md", target: "/tmp/bob/cash.md", text: "Call bank"),
+            closed,
+        ])
+
+        XCTAssertEqual(content.title, "2 items captured")
+        XCTAssertTrue(content.body.contains("(closed CAPTURE)"))
+        XCTAssertTrue(content.body.contains("1 close"))
     }
 
     func testSingleClampedAdjustSuccessContentKeepsRequestedNote() {

@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"^bob:ready=x","body":"","mode":"pomodoro_link","route":"bob","section":null,"block_id":"ready","needs":[],"spans":[{"start":0,"end":4,"kind":"active_task_route"},{"start":5,"end":10,"kind":"active_task_block_id"},{"start":10,"end":12,"kind":"pomodoro_close"}],"diagnostics":[],"pomodoro_close":{"raw":"=x"}}

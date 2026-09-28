@@ -490,7 +490,7 @@ final class NotificationService: NSObject, ObservableObject {
 
     nonisolated private static func closedSuffix(for capture: CaptureCommandSuccess) -> String {
         CapturePomodoroClosePresentation(capture: capture)
-            .map { " (\($0.sessionText))" } ?? ""
+            .map(\.batchSuffix) ?? ""
     }
 
     // Batch lines name the link transition (`[ ] → [*]  Ready thing`) instead of
@@ -520,7 +520,7 @@ final class NotificationService: NSObject, ObservableObject {
     nonisolated private static func friendlyKindLabel(_ kind: String) -> String {
         switch kind.lowercased() {
         case "pomodoro-close", "pomodoro_close":
-            return "Pomodoro close"
+            return "Close"
         case "task", "pomodoro-task", "pomodoro_task":
             return "Task"
         case "note", "bullet", "sub-bullet", "sub_bullet":
