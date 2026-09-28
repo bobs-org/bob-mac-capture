@@ -685,7 +685,7 @@ struct ActiveTaskMatchHighlights: Sendable {
     var routePositions: [Int] = []
     var blockPositions: [Int] = []
 
-    mutating func add(_ match: ActiveTaskFieldMatch) {
+    fileprivate mutating func add(_ match: ActiveTaskFieldMatch) {
         switch match.target {
         case .text:
             textPositions += match.positions
