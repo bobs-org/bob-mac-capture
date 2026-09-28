@@ -60,6 +60,9 @@ mutation.
   at zero), plus whole-item `++[N]`/`--[N]` session shifts (`pomodoro_shift`
   parse/capture JSON and the `pomodoro_shift` span, where each unit is 5
   minutes and the count defaults to 1, so `+`, `-`, `++`, and `--` all work),
+  plus whole-item `=`/`=<X>` session starts (`pomodoro_start` parse/capture
+  JSON and the `pomodoro_start` span, where `<X>` mirrors the `se<X>` snippet
+  and the capture summary carries the session's queued Task Links),
   plus Pomodoro close `=x` and its additive `pomodoro_close` capture summary.
   Older builds can still capture ordinary drafts, but
   global declarations, bare-`@@` absorption, the Add block ID flow, the Name Pomodoro
@@ -79,7 +82,11 @@ mutation.
   omits `pomodoro_shift` still parses `++3` as an ordinary task; the Mac app
   decodes a missing shift object as no shift and shows no shift row, while an
   invalid magnitude surfaces Bob's `invalid_pomodoro_shift` diagnostic
-  unchanged. An older Bob that omits
+  unchanged. An older Bob that reports `=` as incomplete and `=3` as a task
+  shows no start card or Start footer for whole-item starts; the panel simply
+  previews that older behavior, so upgrade Bob before using `=`/`=<X>`. A start
+  summary whose `tasks` array is absent still previews: the card shows the
+  session with no queued rows. An older Bob that omits
   `pomodoro_close` has no close preview or Close footer; upgrade Bob before using
   `=x`. A close summary whose task, carried, notes, or next fields are absent
   still previews: booleans read as false, arrays as empty, and missing lines as
@@ -261,7 +268,8 @@ or expired certificate can require reauthorizing those system permissions.
   Bob's returned behavior metadata; when it reports exactly one `pomodoro_link`,
   the action becomes **Start** if the link starts a session and **Link** otherwise;
   a single close — whole-item `=x`, link `=x`, or new-task `=x` — becomes
-  **Close**; batches keep **Capture** because Return will submit more than the toggle.
+  **Close**; a single whole-item `=`/`=<X>` start becomes **Start**;
+  batches keep **Capture** because Return will submit more than the toggle.
   Ensure Next preview, VoiceOver, and notifications present status and relocation
   independently ("Ready → Next" vs "Next unchanged", "Moved LATER → CURRENT" vs
   "Already in CURRENT; no Pomodoro changes") and never show the two-way "adds
@@ -299,7 +307,17 @@ or expired certificate can require reauthorizing those system permissions.
   task rows. The footer's primary action becomes **Close**, the live-preview,
   preview, and submit status read `Would close …` / `Closed …` with started and
   Work Log counts, and a failed dry run clears the card so no stale preview sits
-  beside the error. One item stays compact; a batch renders an ordered stack with item count,
+  beside the error. A whole-item `=`/`=<X>` start instead shows its own card
+  whenever `kind` is `pomodoro_start`: a `play.circle.fill` header with the
+  `Start NAME` title and the monospaced session range, the day-file destination,
+  up to six queued-task rows with status glyphs (`circle` Ready,
+  `circle.inset.filled` Next, `circle.lefthalf.filled` In Progress,
+  `questionmark.circle` other, `exclamationmark.triangle` unresolved with the
+  warning as help text), task text with a truncating `note ^id` locator, then a
+  `+N more` row or the `Nothing queued` empty state. The footer's primary action
+  becomes **Start**, the live-preview, preview, and submit status read
+  `Would start …` / `Started …` with the session and line, and the notification
+  reads `Started NAME` with the session and queued-task count. One item stays compact; a batch renders an ordered stack with item count,
   destination/kind metadata, dividers, and exact `previewBlockLines` or toggle
   transition rows. When Bob reports a global destination, preview and the destination
   detail show one compact shared-scope line (`All items → foo.md` or
@@ -490,7 +508,17 @@ Bob's resolved before-to-after timing, minute effect with later/earlier, and
 target line with a double-chevron row — sourced only from
 `bob capture --dry-run --no-clip --format json`, including in mixed drafts —
 and submission runs the same Bob command; the footer says **Shift** and the
-notification summarizes the same returned shift. A whole-item `=x` closes
+notification summarizes the same returned shift. A whole-item `=`/`=<X>`
+starts the next future Pomodoro instead of capturing a task: empty is 25
+minutes and `<X>` mirrors the `se<X>` snippet, the item must contain only the
+operator, and the `=` token highlights as its own `pomodoro_start` span and
+never offers route or task completion. Preview renders Bob's resolved session,
+day-file destination, and queued Task Links — sourced only from
+`bob capture --dry-run --no-clip --format json`, including in mixed
+drafts — and submission runs the same Bob command; the footer says **Start**
+and the notification summarizes the same returned start. Type `=x`, a blank
+line, then `=` to close the running session and start the next one in a single
+draft. A whole-item `=x` closes
 the running Pomodoro; `@route:block-id=x` links an existing task first, and
 `<text> @route:block-id=x` creates a task inside that session before closing it. The
 dedicated close preview shows Bob's session timing, task transitions, Work Log entries,

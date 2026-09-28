@@ -372,13 +372,6 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertEqual(response.pomodoroClose?.raw, "=x")
         XCTAssertEqual(response.spans.map(\.kind), ["pomodoro_close"])
 
-        let incomplete = try JSONDecoder().decode(
-            CaptureParseResponse.self,
-            from: Data(fixtureText("pomodoro-close-parse-incomplete.json").utf8)
-        )
-        XCTAssertEqual(incomplete.mode, "incomplete")
-        XCTAssertNil(incomplete.pomodoroClose)
-
         let link = try JSONDecoder().decode(
             CaptureParseResponse.self,
             from: Data(fixtureText("pomodoro-close-parse-link.json").utf8)
@@ -404,7 +397,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         }
         for name in [
             "pomodoro-close-no-running.json",
-            "pomodoro-close-incomplete.json",
+            "pomodoro-start-running.json",
             "pomodoro-close-bad-name.json",
         ] {
             let raw = try fixtureText(name)

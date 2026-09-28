@@ -744,6 +744,140 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(response.candidates.isEmpty)
     }
 
+    func testLivePreviewDecodesWholeItemStartFromDryRunJSON() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let response = try await client.captureLivePreview("=", priorityRollSeed: "fixed")
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful live preview response")
+        }
+        XCTAssertTrue(success.dryRun)
+        XCTAssertEqual(success.kind, "pomodoro_start")
+        XCTAssertEqual(success.placement, "started")
+        XCTAssertEqual(success.pomodoroStart?.pomodoroName, "CAPTURE")
+        XCTAssertEqual(success.pomodoroStart?.pomodoroLine, 4)
+        XCTAssertEqual(success.pomodoroStart?.createdPomodoro, false)
+        let tasks = try XCTUnwrap(success.pomodoroStart?.tasks)
+        XCTAssertEqual(tasks.count, 4)
+        XCTAssertEqual(tasks.first?.blockID, "capture-stop")
+        XCTAssertEqual(tasks.first?.statusSymbol, "/")
+        XCTAssertEqual(tasks.last?.resolved, false)
+        XCTAssertEqual(
+            tasks.last?.warning,
+            "bob.md has no task with block ID ^gone"
+        )
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+        XCTAssertEqual(presentation.title, "Start CAPTURE")
+        XCTAssertEqual(presentation.sessionText, "0945-1010 (25m)")
+        XCTAssertEqual(presentation.taskRows.count, 4)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- ="))
+    }
+
+    func testLivePreviewDecodesTimedStartWithOffsetUnits() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.captureLivePreview("=-2", priorityRollSeed: "fixed")
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful live preview response")
+        }
+        XCTAssertEqual(success.kind, "pomodoro_start")
+        XCTAssertEqual(success.pomodoroStart?.start, "0935")
+        XCTAssertEqual(success.pomodoroStart?.end, "1000")
+        XCTAssertEqual(success.pomodoroStart?.offsetUnits, 2)
+    }
+
+    func testLivePreviewSurfacesRunningStartAsActionableFailure() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.captureLivePreview("=3", priorityRollSeed: "fixed")
+
+        guard case .failure(let failure) = response else {
+            return XCTFail("Expected a failed live preview response")
+        }
+        XCTAssertTrue(failure.error.contains("still running"))
+        XCTAssertTrue(failure.error.contains("`=x`, a blank line, then `=3`"))
+    }
+
+    func testLivePreviewDecodesStartSwitchBatchFromOneProcess() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.captureLivePreview(
+            "=x\n\n=",
+            priorityRollSeed: "fixed"
+        )
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful live preview response")
+        }
+        XCTAssertEqual(success.normalizedCaptures.map(\.kind), ["pomodoro_close", "pomodoro_start"])
+        XCTAssertNotNil(success.normalizedCaptures[0].pomodoroClose)
+        let started = success.normalizedCaptures[1]
+        XCTAssertEqual(started.placement, "started")
+        XCTAssertEqual(started.pomodoroStart?.tasks?.count, 1)
+        XCTAssertEqual(started.pomodoroStart?.tasks?.first?.blockID, "capture-stop")
+    }
+
+    func testCaptureParseDecodesWholeItemStart() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let bare = try await client.captureParse("=")
+        XCTAssertEqual(bare.mode, "pomodoro_start")
+        XCTAssertEqual(
+            bare.pomodoroStart,
+            PomodoroStartSpec(raw: "", durationUnits: 5, offsetUnits: 0)
+        )
+        XCTAssertEqual(bare.spans.map(\.kind), ["pomodoro_start"])
+
+        let counted = try await client.captureParse("=3")
+        XCTAssertEqual(counted.mode, "pomodoro_start")
+        XCTAssertEqual(
+            counted.pomodoroStart,
+            PomodoroStartSpec(raw: "3", durationUnits: 3, offsetUnits: 0)
+        )
+
+        let nearMiss = try await client.captureParse("=3 more")
+        XCTAssertEqual(nearMiss.mode, "pomodoro_start")
+        XCTAssertNil(nearMiss.pomodoroStart)
+        XCTAssertEqual(nearMiss.diagnostics.first?.code, "invalid_pomodoro_start")
+    }
+
+    func testCaptureCompleteOffersNoCandidatesForStart() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        for (draft, cursor) in [("=", 1), ("=3", 2), ("=-2", 3)] {
+            let response = try await client.captureComplete(draft, cursor: cursor)
+            XCTAssertNil(response.context, draft)
+            XCTAssertTrue(response.candidates.isEmpty, draft)
+        }
+    }
+
     func testLivePreviewDecodesMixedDraftAdjustBatchFromOneProcess() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

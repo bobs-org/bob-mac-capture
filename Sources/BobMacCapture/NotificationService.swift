@@ -379,6 +379,16 @@ final class NotificationService: NSObject, ObservableObject {
                     targetPaths: targetPaths
                 )
             }
+            if CapturePomodoroStartPresentation.isSessionStart(capture),
+               let start = CapturePomodoroStartPresentation(capture: capture)
+            {
+                return CaptureNotificationPresentation(
+                    title: start.notificationTitle,
+                    subtitle: displayLabel(for: capture),
+                    body: start.notificationBody,
+                    targetPaths: targetPaths
+                )
+            }
             if let link = CapturePomodoroLinkPresentation(capture: capture) {
                 return CaptureNotificationPresentation(
                     title: link.notificationTitle,
@@ -482,7 +492,7 @@ final class NotificationService: NSObject, ObservableObject {
 
     nonisolated private static func startedSuffix(for capture: CaptureCommandSuccess) -> String {
         CapturePomodoroStartPresentation(capture: capture)
-            .map { " (\($0.sessionText))" } ?? ""
+            .map(\.batchSuffix) ?? ""
     }
 
     nonisolated private static func adjustedSuffix(for capture: CaptureCommandSuccess) -> String {
@@ -540,6 +550,8 @@ final class NotificationService: NSObject, ObservableObject {
             return "Adjustment"
         case "pomodoro-shift", "pomodoro_shift":
             return "Shift"
+        case "pomodoro-start", "pomodoro_start":
+            return "Start"
         case "project-note", "project_note":
             return "Project"
         default:
@@ -598,6 +610,9 @@ final class NotificationService: NSObject, ObservableObject {
 
     nonisolated private static func dayFileChanged(for capture: CaptureCommandSuccess) -> Bool {
         if CapturePomodoroClosePresentation(capture: capture) != nil {
+            return true
+        }
+        if CapturePomodoroStartPresentation.isSessionStart(capture) {
             return true
         }
         if let toggle = CaptureTogglePresentation(capture: capture) {

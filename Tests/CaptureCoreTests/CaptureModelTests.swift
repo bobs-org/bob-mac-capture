@@ -1743,6 +1743,41 @@ final class CaptureModelTests: XCTestCase {
         )
     }
 
+    func testParseResponseDecodesWholeItemStart() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "=",
+              "body": "=",
+              "mode": "pomodoro_start",
+              "route": null,
+              "section": null,
+              "block_id": null,
+              "needs": [],
+              "spans": [
+                { "start": 0, "end": 1, "kind": "pomodoro_start" }
+              ],
+              "diagnostics": [],
+              "pomodoro_start": { "raw": "", "duration_units": 5, "offset_units": 0 }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(decoded.mode, "pomodoro_start")
+        XCTAssertEqual(
+            decoded.pomodoroStart,
+            PomodoroStartSpec(raw: "", durationUnits: 5, offsetUnits: 0)
+        )
+        XCTAssertEqual(
+            decoded.spans.map { captureSemanticCategory(forSpanKind: $0.kind) },
+            [.pomodoroStart]
+        )
+    }
+
     func testParseResponseOmitsPomodoroStartForOlderMarkers() throws {
         let data = Data(
             """
@@ -1837,6 +1872,141 @@ final class CaptureModelTests: XCTestCase {
                 pomodoroLine: 12,
                 createdPomodoro: false,
                 timeRange: "(**0930-0945** [t:: 15m])"
+            )
+        )
+    }
+
+    func testCaptureCommandDecodesWholeItemStartTasks() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {
+              "ok": true,
+              "dry_run": true,
+              "routed": false,
+              "route": null,
+              "route_label": "",
+              "relative_target": "2026/20260928.md",
+              "target": "/tmp/bob/2026/20260928.md",
+              "text": "=",
+              "task_line": "- [ ] (**0945-1010** [t:: 25m]) — CAPTURE",
+              "kind": "pomodoro_start",
+              "created": "2026-09-28",
+              "scheduled": null,
+              "placement": "started",
+              "pomodoro_name": "CAPTURE",
+              "pomodoro_start": {
+                "start": "0945",
+                "end": "1010",
+                "duration_minutes": 25,
+                "offset_units": 0,
+                "pomodoro_name": "CAPTURE",
+                "pomodoro_line": 4,
+                "created_pomodoro": false,
+                "time_range": "(**0945-1010** [t:: 25m])",
+                "tasks": [
+                  {
+                    "block_link": "[[bob#^capture-stop]]",
+                    "embedded": false,
+                    "ledger_line": 5,
+                    "resolved": true,
+                    "relative_target": "bob.md",
+                    "block_id": "capture-stop",
+                    "text": "Stop capture from the panel",
+                    "status_symbol": "/",
+                    "status_name": "In Progress",
+                    "warning": null
+                  },
+                  {
+                    "block_link": "[[bob#^gone]]",
+                    "embedded": false,
+                    "ledger_line": 6,
+                    "resolved": false,
+                    "relative_target": "bob.md",
+                    "block_id": "gone",
+                    "text": null,
+                    "status_symbol": null,
+                    "status_name": null,
+                    "warning": "bob.md has no task with block ID ^gone"
+                  }
+                ]
+              }
+            }
+            """
+        )
+
+        XCTAssertEqual(
+            success.pomodoroStart,
+            PomodoroStartSummary(
+                start: "0945",
+                end: "1010",
+                durationMinutes: 25,
+                offsetUnits: 0,
+                pomodoroName: "CAPTURE",
+                pomodoroLine: 4,
+                createdPomodoro: false,
+                timeRange: "(**0945-1010** [t:: 25m])",
+                tasks: [
+                    PomodoroStartTask(
+                        blockLink: "[[bob#^capture-stop]]",
+                        ledgerLine: 5,
+                        resolved: true,
+                        relativeTarget: "bob.md",
+                        blockID: "capture-stop",
+                        text: "Stop capture from the panel",
+                        statusSymbol: "/",
+                        statusName: "In Progress"
+                    ),
+                    PomodoroStartTask(
+                        blockLink: "[[bob#^gone]]",
+                        ledgerLine: 6,
+                        relativeTarget: "bob.md",
+                        blockID: "gone",
+                        warning: "bob.md has no task with block ID ^gone"
+                    ),
+                ]
+            )
+        )
+    }
+
+    func testCaptureCommandOmitsStartTasksForLinkStartsAndOlderBob() throws {
+        let linkStart = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"sase","route_label":"sase.md",
+             "relative_target":"sase.md","target":"/tmp/bob/sase.md","text":"Do work",
+             "task_line":"- [*] #task Do work [created::2026-08-14] ^outline",
+             "kind":"pomodoro_task","created":"2026-08-14","scheduled":null,
+             "placement":"inserted","block_id":"outline",
+             "pomodoro_start":{"start":"0930","end":"0945","duration_minutes":15,
+              "offset_units":0,"pomodoro_name":null,"pomodoro_line":12,
+              "created_pomodoro":false,"time_range":"(**0930-0945** [t:: 15m])"}}
+            """
+        )
+
+        XCTAssertNil(linkStart.pomodoroStart?.tasks)
+    }
+
+    func testSparsePomodoroStartSummaryStillDecodes() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"",
+             "relative_target":"2026/20260928.md","target":"/tmp/bob/2026/20260928.md",
+             "text":"=","task_line":"- [ ] entry","kind":"pomodoro_start",
+             "created":"2026-09-28","scheduled":null,"placement":"started",
+             "pomodoro_start":{"tasks":[{}]}}
+            """
+        )
+
+        XCTAssertEqual(
+            success.pomodoroStart,
+            PomodoroStartSummary(
+                start: "",
+                end: "",
+                durationMinutes: 0,
+                offsetUnits: 0,
+                pomodoroLine: 0,
+                createdPomodoro: false,
+                timeRange: "",
+                tasks: [PomodoroStartTask(blockLink: "")]
             )
         )
     }

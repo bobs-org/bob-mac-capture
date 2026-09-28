@@ -272,11 +272,25 @@ final class CapturePanelModel: ObservableObject {
         return CapturePomodoroShiftPresentation(capture: previewResult)
     }
 
-    /// The footer's primary action verb. Single close, toggle, link, adjust, and
-    /// shift previews name their action so Return's meaning is clear. It never
-    /// varies with `dryRun` — it always names what Return will do next.
+    /// The live preview's session-start presentation for a single whole-item
+    /// `=`/`=<X>` start — the same single-item gate as the toggle
+    /// presentation. Link and task starts keep their own presentations.
+    var sessionStartPresentation: CapturePomodoroStartPresentation? {
+        guard previewResults.count == 1, let previewResult,
+              CapturePomodoroStartPresentation.isSessionStart(previewResult)
+        else {
+            return nil
+        }
+        return CapturePomodoroStartPresentation(capture: previewResult)
+    }
+
+    /// The footer's primary action verb. Single close, start, toggle, link,
+    /// adjust, and shift previews name their action so Return's meaning is
+    /// clear. It never varies with `dryRun` — it always names what Return will
+    /// do next.
     var primaryActionTitle: String {
         closePresentation.map { _ in "Close" }
+            ?? sessionStartPresentation.map { _ in "Start" }
             ?? togglePresentation?.primaryActionTitle
             ?? linkPresentation?.primaryActionTitle
             ?? shiftPresentation.map { _ in "Shift" }
@@ -1271,6 +1285,8 @@ final class CapturePanelModel: ObservableObject {
                 statusText = presentation.voiceOverAnnouncement
             } else if let presentation = Self.soleClosePresentation(for: captures) {
                 statusText = presentation.statusText
+            } else if let presentation = Self.soleSessionStartPresentation(for: captures) {
+                statusText = presentation.statusText
             } else {
                 statusText = captureStatus(
                     prefix: "Captured",
@@ -1325,6 +1341,8 @@ final class CapturePanelModel: ObservableObject {
             errorMessage = nil
             if let presentation = Self.soleClosePresentation(for: captures) {
                 statusText = presentation.statusText
+            } else if let presentation = Self.soleSessionStartPresentation(for: captures) {
+                statusText = presentation.statusText
             } else if let presentation = Self.soleTogglePresentation(for: captures) {
                 statusText = presentation.statusText
             } else {
@@ -1375,6 +1393,20 @@ final class CapturePanelModel: ObservableObject {
             return nil
         }
         return CapturePomodoroClosePresentation(capture: captures[0])
+    }
+
+    /// A batch's session-start presentation, only when it is exactly one
+    /// whole-item `=`/`=<X>` start — the same single-item gate as the close
+    /// presentation.
+    private static func soleSessionStartPresentation(
+        for captures: [CaptureCommandSuccess]
+    ) -> CapturePomodoroStartPresentation? {
+        guard captures.count == 1,
+              CapturePomodoroStartPresentation.isSessionStart(captures[0])
+        else {
+            return nil
+        }
+        return CapturePomodoroStartPresentation(capture: captures[0])
     }
 
     private func failPreview(requestID: UUID, error: Error) {
@@ -2001,6 +2033,9 @@ final class CapturePanelModel: ObservableObject {
 
     private static func captureWroteDayFile(_ capture: CaptureCommandSuccess) -> Bool {
         if CapturePomodoroClosePresentation(capture: capture) != nil {
+            return true
+        }
+        if CapturePomodoroStartPresentation.isSessionStart(capture) {
             return true
         }
         if let toggle = CaptureTogglePresentation(capture: capture) {

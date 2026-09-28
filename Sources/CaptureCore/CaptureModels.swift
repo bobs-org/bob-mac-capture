@@ -363,17 +363,25 @@ public struct CaptureRange: Codable, Equatable {
 }
 
 /// Validated additive `@<route>:<block-id>[#<name>]=<X>` start suffix from
-/// `bob capture-parse`: the raw `<X>` text plus its 5-minute duration/offset units.
-/// Omitted for every older marker shape, so decoding stays backward compatible.
+/// `bob capture-parse`, and the whole-item `=`/`=<X>` start token's spec: the
+/// raw `<X>` text plus its 5-minute duration/offset units. Omitted for every
+/// older marker shape, so decoding stays backward compatible.
 public struct PomodoroStartSpec: Codable, Equatable, Sendable {
     public let raw: String
     public let durationUnits: Int
     public let offsetUnits: Int
 
-    public init(raw: String, durationUnits: Int, offsetUnits: Int) {
+    public init(raw: String, durationUnits: Int = 0, offsetUnits: Int = 0) {
         self.raw = raw
         self.durationUnits = durationUnits
         self.offsetUnits = offsetUnits
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        raw = try container.decodeIfPresent(String.self, forKey: .raw) ?? ""
+        durationUnits = try container.decodeIfPresent(Int.self, forKey: .durationUnits) ?? 0
+        offsetUnits = try container.decodeIfPresent(Int.self, forKey: .offsetUnits) ?? 0
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -383,10 +391,82 @@ public struct PomodoroStartSpec: Codable, Equatable, Sendable {
     }
 }
 
+/// One queued Task Link row on a started Pomodoro, following the close row's
+/// explicit-null convention: unresolved rows carry nil text/symbols and a
+/// `warning` instead of failing the start. Every field decodes tolerantly so a
+/// partial object still yields a (neutral, unresolved) row instead of failing
+/// the whole capture.
+public struct PomodoroStartTask: Codable, Equatable, Sendable {
+    public let blockLink: String
+    public let embedded: Bool
+    public let ledgerLine: Int
+    public let resolved: Bool
+    public let relativeTarget: String?
+    public let blockID: String
+    public let text: String?
+    public let statusSymbol: String?
+    public let statusName: String?
+    public let warning: String?
+
+    public init(
+        blockLink: String,
+        embedded: Bool = false,
+        ledgerLine: Int = 0,
+        resolved: Bool = false,
+        relativeTarget: String? = nil,
+        blockID: String = "",
+        text: String? = nil,
+        statusSymbol: String? = nil,
+        statusName: String? = nil,
+        warning: String? = nil
+    ) {
+        self.blockLink = blockLink
+        self.embedded = embedded
+        self.ledgerLine = ledgerLine
+        self.resolved = resolved
+        self.relativeTarget = relativeTarget
+        self.blockID = blockID
+        self.text = text
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
+        self.warning = warning
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        blockLink = try container.decodeIfPresent(String.self, forKey: .blockLink) ?? ""
+        embedded = try container.decodeIfPresent(Bool.self, forKey: .embedded) ?? false
+        ledgerLine = try container.decodeIfPresent(Int.self, forKey: .ledgerLine) ?? 0
+        resolved = try container.decodeIfPresent(Bool.self, forKey: .resolved) ?? false
+        relativeTarget = try container.decodeIfPresent(String.self, forKey: .relativeTarget)
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID) ?? ""
+        text = try container.decodeIfPresent(String.self, forKey: .text)
+        statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol)
+        statusName = try container.decodeIfPresent(String.self, forKey: .statusName)
+        warning = try container.decodeIfPresent(String.self, forKey: .warning)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case blockLink = "block_link"
+        case embedded
+        case ledgerLine = "ledger_line"
+        case resolved
+        case relativeTarget = "relative_target"
+        case blockID = "block_id"
+        case text
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
+        case warning
+    }
+}
+
 /// Resolved atomic start from `bob capture --format json`: the 5-minute-rounded
 /// `start`/`end` clock times, duration, destination ledger line, and whether Bob
 /// created the entry. Omitted when the draft carries no `=<X>` suffix, so older
-/// bob binaries decode as nil.
+/// bob binaries decode as nil. Every field decodes tolerantly (strings default
+/// to empty, numbers to zero) so a partial object still previews instead of
+/// failing the whole capture. `tasks` is present — possibly empty — only for a
+/// whole-item `=`/`=<X>` start; link and task starts omit it and decode as nil.
 public struct PomodoroStartSummary: Codable, Equatable, Sendable {
     public let start: String
     public let end: String
@@ -396,6 +476,7 @@ public struct PomodoroStartSummary: Codable, Equatable, Sendable {
     public let pomodoroLine: Int
     public let createdPomodoro: Bool
     public let timeRange: String
+    public let tasks: [PomodoroStartTask]?
 
     public init(
         start: String,
@@ -405,7 +486,8 @@ public struct PomodoroStartSummary: Codable, Equatable, Sendable {
         pomodoroName: String? = nil,
         pomodoroLine: Int,
         createdPomodoro: Bool,
-        timeRange: String
+        timeRange: String,
+        tasks: [PomodoroStartTask]? = nil
     ) {
         self.start = start
         self.end = end
@@ -415,6 +497,20 @@ public struct PomodoroStartSummary: Codable, Equatable, Sendable {
         self.pomodoroLine = pomodoroLine
         self.createdPomodoro = createdPomodoro
         self.timeRange = timeRange
+        self.tasks = tasks
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        start = try container.decodeIfPresent(String.self, forKey: .start) ?? ""
+        end = try container.decodeIfPresent(String.self, forKey: .end) ?? ""
+        durationMinutes = try container.decodeIfPresent(Int.self, forKey: .durationMinutes) ?? 0
+        offsetUnits = try container.decodeIfPresent(Int.self, forKey: .offsetUnits) ?? 0
+        pomodoroName = try container.decodeIfPresent(String.self, forKey: .pomodoroName)
+        pomodoroLine = try container.decodeIfPresent(Int.self, forKey: .pomodoroLine) ?? 0
+        createdPomodoro = try container.decodeIfPresent(Bool.self, forKey: .createdPomodoro) ?? false
+        timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange) ?? ""
+        tasks = try container.decodeIfPresent([PomodoroStartTask].self, forKey: .tasks)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -426,6 +522,7 @@ public struct PomodoroStartSummary: Codable, Equatable, Sendable {
         case pomodoroLine = "pomodoro_line"
         case createdPomodoro = "created_pomodoro"
         case timeRange = "time_range"
+        case tasks
     }
 }
 
@@ -1163,8 +1260,9 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     public let pomodoroLinkAction: String?
     public let pomodoroLinkSource: PomodoroLinkEndpoint?
     public let pomodoroLinkDestination: PomodoroLinkEndpoint?
-    // Additive atomic-start summary for `@<route>:<block-id>[#<name>]=<X>`.
-    // Older bob binaries omit it entirely; decode as nil.
+    // Additive atomic-start summary for `@<route>:<block-id>[#<name>]=<X>`
+    // and whole-item `=`/`=<X>` starts. Older bob binaries omit it entirely;
+    // decode as nil.
     public let pomodoroStart: PomodoroStartSummary?
     // Additive adjustment summary for whole-item `+N`/`-N`.
     // Older bob binaries omit it entirely; decode as nil.

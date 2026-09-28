@@ -23,7 +23,7 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.pomodoroName, "next session")
         XCTAssertEqual(presentation.sessionText, "0930-0945 (15m)")
-        XCTAssertEqual(presentation.destinationText, "next session · line 12")
+        XCTAssertEqual(presentation.destinationText, "sase.md · line 12")
         XCTAssertEqual(
             presentation.statusText,
             "Would start next session 0930-0945 (15m) at line 12"
@@ -39,7 +39,7 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
 
         XCTAssertEqual(presentation.pomodoroName, "deep")
         XCTAssertEqual(presentation.sessionText, "0930-0955 (25m)")
-        XCTAssertEqual(presentation.destinationText, "deep · line 14 · created entry")
+        XCTAssertEqual(presentation.destinationText, "sase.md · line 14")
         XCTAssertEqual(
             presentation.statusText,
             "Would start deep 0930-0955 (25m) (created) at line 14"
@@ -55,6 +55,257 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
 
         XCTAssertFalse(presentation.isDryRun)
         XCTAssertTrue(presentation.statusText.hasPrefix("Started deep 0930-0955 (25m)"))
+    }
+
+    func testSessionStartGateRequiresWholeItemKind() throws {
+        let session = try decodeCaptureSuccess(
+            sessionStartJSON(dryRun: true, name: "CAPTURE", tasks: "[]")
+        )
+        XCTAssertTrue(CapturePomodoroStartPresentation.isSessionStart(session))
+
+        let linkStart = try decodeCaptureSuccess(startJSON(dryRun: true, created: false, name: "deep"))
+        XCTAssertFalse(CapturePomodoroStartPresentation.isSessionStart(linkStart))
+
+        let plain = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
+             "relative_target":"cash.md","target":"/tmp/bob/cash.md","text":"Call bank",
+             "task_line":"- [ ] #task Call bank [created::2026-08-14]","kind":"task",
+             "created":"2026-08-14","scheduled":null,"placement":"inserted"}
+            """
+        )
+        XCTAssertFalse(CapturePomodoroStartPresentation.isSessionStart(plain))
+    }
+
+    func testSessionStartCardTitleAndFooterAction() throws {
+        let preview = try XCTUnwrap(
+            CapturePomodoroStartPresentation(
+                capture: decodeCaptureSuccess(
+                    sessionStartJSON(dryRun: true, name: "CAPTURE", tasks: "[]")
+                )
+            )
+        )
+        XCTAssertEqual(preview.title, "Start CAPTURE")
+        XCTAssertEqual(preview.primaryActionTitle, "Start")
+
+        let committed = try XCTUnwrap(
+            CapturePomodoroStartPresentation(
+                capture: decodeCaptureSuccess(
+                    sessionStartJSON(dryRun: false, name: "CAPTURE", tasks: "[]")
+                )
+            )
+        )
+        XCTAssertEqual(committed.title, "Started CAPTURE")
+    }
+
+    func testUnnamedEmptyStartReadsNextSessionAndNothingQueued() throws {
+        let presentation = try XCTUnwrap(
+            CapturePomodoroStartPresentation(
+                capture: decodeCaptureSuccess(
+                    sessionStartJSON(dryRun: true, name: nil, tasks: "[]")
+                )
+            )
+        )
+
+        XCTAssertEqual(presentation.pomodoroName, "next session")
+        XCTAssertEqual(presentation.title, "Start next session")
+        XCTAssertEqual(
+            presentation.statusText,
+            "Would start next session 0945-1010 (25m) at line 4"
+        )
+        XCTAssertEqual(presentation.destinationText, "2026/20260928.md · line 4")
+        XCTAssertTrue(presentation.taskRows.isEmpty)
+        XCTAssertEqual(presentation.emptyText, "Nothing queued")
+        XCTAssertEqual(presentation.notificationBody, "0945-1010 (25m) · Nothing queued")
+        XCTAssertTrue(presentation.accessibilitySummary.contains("nothing queued"))
+    }
+
+    func testQueuedTaskRowsMapStatusGlyphsAndLocators() throws {
+        let presentation = try XCTUnwrap(
+            CapturePomodoroStartPresentation(
+                capture: decodeCaptureSuccess(
+                    sessionStartJSON(dryRun: true, name: "CAPTURE", tasks: queuedTasksJSON)
+                )
+            )
+        )
+
+        XCTAssertEqual(presentation.taskRows.map(\.glyph), [.inProgress, .ready, .other, .unresolved])
+        XCTAssertEqual(
+            presentation.taskRows.map(\.taskText),
+            [
+                "Stop capture from the panel",
+                "Plain ready task",
+                "Blocked follow-up",
+                "[[bob#^gone]]",
+            ]
+        )
+        XCTAssertEqual(
+            presentation.taskRows.map(\.locatorText),
+            ["bob ^capture-stop", "bob ^ready", "bob ^blocked", "bob ^gone"]
+        )
+        XCTAssertEqual(presentation.visibleTaskRows.count, 4)
+        XCTAssertEqual(presentation.overflowTaskCount, 0)
+        XCTAssertEqual(
+            presentation.taskRows.last?.warning,
+            "bob.md has no task with block ID ^gone"
+        )
+        XCTAssertEqual(
+            presentation.notificationBody,
+            "0945-1010 (25m) · 4 queued tasks"
+        )
+        XCTAssertEqual(presentation.batchSuffix, " (started CAPTURE 0945-1010)")
+        XCTAssertEqual(presentation.notificationTitle, "Started CAPTURE")
+    }
+
+    func testSingleQueuedTaskUsesSingularNotificationBody() throws {
+        let presentation = try XCTUnwrap(
+            CapturePomodoroStartPresentation(
+                capture: decodeCaptureSuccess(
+                    sessionStartJSON(dryRun: false, name: "CAPTURE", tasks: "[\(readyTaskJSON)]")
+                )
+            )
+        )
+
+        XCTAssertEqual(presentation.notificationBody, "0945-1010 (25m) · 1 queued task")
+    }
+
+    func testTaskRowOverflowCountsBeyondCloseCardCap() throws {
+        let rows = (0..<8).map { index in
+            """
+            {"block_link":"[[bob#^task-\(index)]]","embedded":false,"ledger_line":\(5 + index),
+             "resolved":true,"relative_target":"bob.md","block_id":"task-\(index)",
+             "text":"Task \(index)","status_symbol":" ","status_name":"Ready","warning":null}
+            """
+        }.joined(separator: ",")
+        let presentation = try XCTUnwrap(
+            CapturePomodoroStartPresentation(
+                capture: decodeCaptureSuccess(
+                    sessionStartJSON(dryRun: true, name: "CAPTURE", tasks: "[\(rows)]")
+                )
+            )
+        )
+
+        XCTAssertEqual(presentation.taskRows.count, 8)
+        XCTAssertEqual(
+            presentation.visibleTaskRows.count,
+            CapturePomodoroClosePresentation.maxVisibleTaskRows
+        )
+        XCTAssertEqual(
+            presentation.overflowTaskCount,
+            8 - CapturePomodoroClosePresentation.maxVisibleTaskRows
+        )
+    }
+
+    func testLinkStartWithoutTasksKeepsEmptyLineup() throws {
+        let presentation = try XCTUnwrap(
+            CapturePomodoroStartPresentation(
+                capture: decodeCaptureSuccess(
+                    startJSON(dryRun: true, created: false, name: "deep")
+                )
+            )
+        )
+
+        XCTAssertTrue(presentation.taskRows.isEmpty)
+        XCTAssertEqual(presentation.notificationTitle, "Started deep")
+    }
+
+    private var readyTaskJSON: String {
+        """
+        {"block_link":"[[bob#^ready]]","embedded":false,"ledger_line":6,
+         "resolved":true,"relative_target":"bob.md","block_id":"ready",
+         "text":"Plain ready task","status_symbol":" ","status_name":"Ready","warning":null}
+        """
+    }
+
+    private var queuedTasksJSON: String {
+        """
+        {"block_link":"[[bob#^capture-stop]]","embedded":false,"ledger_line":5,
+         "resolved":true,"relative_target":"bob.md","block_id":"capture-stop",
+         "text":"Stop capture from the panel","status_symbol":"/","status_name":"In Progress",
+         "warning":null},
+        \(readyTaskJSON),
+        {"block_link":"[[bob#^blocked]]","embedded":false,"ledger_line":7,
+         "resolved":true,"relative_target":"bob.md","block_id":"blocked",
+         "text":"Blocked follow-up","status_symbol":"?","status_name":"Blocked","warning":null},
+        {"block_link":"[[bob#^gone]]","embedded":false,"ledger_line":8,
+         "resolved":false,"relative_target":"bob.md","block_id":"gone",
+         "text":null,"status_symbol":null,"status_name":null,
+         "warning":"bob.md has no task with block ID ^gone"}
+        """
+    }
+
+    func testEveryStartFixtureDecodes() throws {
+        for name in [
+            "pomodoro-start-next.json",
+            "pomodoro-start-timed.json",
+            "pomodoro-start-empty.json",
+            "pomodoro-start-switch.json",
+        ] {
+            let success = try decodeFixture(name)
+            XCTAssertNotNil(
+                success.pomodoroStart
+                    ?? success.captures.first(where: { $0.pomodoroStart != nil })?.pomodoroStart,
+                name
+            )
+        }
+        for name in [
+            "pomodoro-start-running.json",
+            "pomodoro-start-none.json",
+        ] {
+            let raw = try fixtureText(name)
+            let response = try JSONDecoder().decode(
+                CaptureCommandResponse.self,
+                from: Data(raw.utf8)
+            )
+            guard case .failure(let failure) = response else {
+                XCTFail("expected failed Bob response for \(name)")
+                continue
+            }
+            XCTAssertFalse(failure.error.isEmpty, name)
+        }
+        for name in [
+            "pomodoro-start-parse.json",
+            "pomodoro-start-parse-counted.json",
+            "pomodoro-start-parse-near-miss.json",
+        ] {
+            let response = try JSONDecoder().decode(
+                CaptureParseResponse.self,
+                from: Data(fixtureText(name).utf8)
+            )
+            XCTAssertEqual(response.mode, "pomodoro_start", name)
+        }
+    }
+
+    private func sessionStartJSON(dryRun: Bool, name: String?, tasks: String) -> String {
+        let nameValue = name.map { "\"\($0)\"" } ?? "null"
+        return """
+        {
+          "ok": true,
+          "dry_run": \(dryRun ? "true" : "false"),
+          "routed": false,
+          "route": null,
+          "route_label": "",
+          "relative_target": "2026/20260928.md",
+          "target": "/tmp/bob/2026/20260928.md",
+          "text": "=",
+          "task_line": "- [ ] (**0945-1010** [t:: 25m]) — CAPTURE",
+          "kind": "pomodoro_start",
+          "created": "2026-09-28",
+          "scheduled": null,
+          "placement": "started",
+          "pomodoro_start": {
+            "start": "0945",
+            "end": "1010",
+            "duration_minutes": 25,
+            "offset_units": 0,
+            "pomodoro_name": \(nameValue),
+            "pomodoro_line": 4,
+            "created_pomodoro": false,
+            "time_range": "(**0945-1010** [t:: 25m])",
+            "tasks": \(tasks)
+          }
+        }
+        """
     }
 
     private func startJSON(dryRun: Bool, created: Bool, name: String?) -> String {
@@ -99,5 +350,25 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
             throw CaptureFixtureError.expectedSuccess
         }
         return success
+    }
+
+    private func decodeFixture(_ name: String) throws -> CaptureCommandSuccess {
+        let response = try JSONDecoder().decode(
+            CaptureCommandResponse.self,
+            from: Data(fixtureText(name).utf8)
+        )
+        guard case .success(let success) = response else {
+            XCTFail("expected successful Bob response for \(name)")
+            throw CaptureFixtureError.expectedSuccess
+        }
+        return success
+    }
+
+    private func fixtureText(_ name: String) throws -> String {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        return try String(contentsOf: fixtures.appendingPathComponent(name), encoding: .utf8)
     }
 }

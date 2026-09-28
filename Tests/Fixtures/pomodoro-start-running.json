@@ -1,0 +1,1 @@
+{"error":"capture item 1 starting on line 1: cannot start the next Pomodoro: CAPTURE 0920-0950 is still running at line 4; close it with `=x` first, or capture `=x`, a blank line, then `=3` to switch sessions","ok":false}

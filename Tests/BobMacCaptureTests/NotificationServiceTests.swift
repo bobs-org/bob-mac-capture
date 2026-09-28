@@ -62,6 +62,109 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertTrue(content.body.contains("Started next session 0930-0945 (15m) at line 12"))
     }
 
+    func testSingleSessionStartSuccessUsesStartTitleAndQueuedBody() {
+        let content = NotificationService.successContent(captures: [
+            capture(
+                kind: "pomodoro_start",
+                routeLabel: "",
+                target: "/tmp/bob/2026/20260928.md",
+                text: "=",
+                pomodoroStart: PomodoroStartSummary(
+                    start: "0945",
+                    end: "1010",
+                    durationMinutes: 25,
+                    offsetUnits: 0,
+                    pomodoroName: "CAPTURE",
+                    pomodoroLine: 4,
+                    createdPomodoro: false,
+                    timeRange: "(**0945-1010** [t:: 25m])",
+                    tasks: [
+                        PomodoroStartTask(
+                            blockLink: "[[bob#^capture-stop]]",
+                            ledgerLine: 5,
+                            resolved: true,
+                            relativeTarget: "bob.md",
+                            blockID: "capture-stop",
+                            text: "Stop capture from the panel",
+                            statusSymbol: "/",
+                            statusName: "In Progress"
+                        ),
+                        PomodoroStartTask(
+                            blockLink: "[[bob#^gone]]",
+                            ledgerLine: 6,
+                            relativeTarget: "bob.md",
+                            blockID: "gone",
+                            warning: "bob.md has no task with block ID ^gone"
+                        ),
+                    ]
+                ),
+                relativeTarget: "2026/20260928.md",
+                dayFile: "/tmp/bob/2026/20260928.md"
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "Started CAPTURE")
+        XCTAssertEqual(content.subtitle, "2026/20260928.md")
+        XCTAssertEqual(content.body, "0945-1010 (25m) · 2 queued tasks")
+        XCTAssertEqual(
+            content.userInfo[NotificationService.targetPathsKey] as? [String],
+            ["/tmp/bob/2026/20260928.md"]
+        )
+    }
+
+    func testSingleEmptySessionStartReportsNothingQueued() {
+        let content = NotificationService.successContent(captures: [
+            capture(
+                kind: "pomodoro_start",
+                routeLabel: "",
+                target: "/tmp/bob/2026/20260928.md",
+                text: "=",
+                pomodoroStart: PomodoroStartSummary(
+                    start: "0945",
+                    end: "1010",
+                    durationMinutes: 25,
+                    offsetUnits: 0,
+                    pomodoroLine: 3,
+                    createdPomodoro: false,
+                    timeRange: "(**0945-1010** [t:: 25m])",
+                    tasks: []
+                ),
+                relativeTarget: "2026/20260928.md"
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "Started next session")
+        XCTAssertEqual(content.body, "0945-1010 (25m) · Nothing queued")
+    }
+
+    func testSessionStartBatchLinesUseStartedSuffix() {
+        let content = NotificationService.successContent(captures: [
+            capture(kind: "task", routeLabel: "cash.md", target: "/tmp/bob/cash.md", text: "Call bank"),
+            capture(
+                kind: "pomodoro_start",
+                routeLabel: "",
+                target: "/tmp/bob/2026/20260928.md",
+                text: "=",
+                pomodoroStart: PomodoroStartSummary(
+                    start: "0945",
+                    end: "1010",
+                    durationMinutes: 25,
+                    offsetUnits: 0,
+                    pomodoroName: "CAPTURE",
+                    pomodoroLine: 4,
+                    createdPomodoro: false,
+                    timeRange: "(**0945-1010** [t:: 25m])",
+                    tasks: []
+                ),
+                relativeTarget: "2026/20260928.md"
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "2 items captured")
+        XCTAssertTrue(content.body.contains(" (started CAPTURE 0945-1010)"))
+        XCTAssertTrue(content.body.contains("1 start"))
+    }
+
     func testSinglePomodoroAdjustSuccessContentAppendsBeforeAfterDetail() {
         let content = NotificationService.successContent(captures: [
             capture(
@@ -902,7 +1005,8 @@ final class NotificationServiceTests: XCTestCase {
         pomodoroStart: PomodoroStartSummary? = nil,
         pomodoroAdjust: PomodoroAdjustSummary? = nil,
         pomodoroShift: PomodoroShiftSummary? = nil,
-        relativeTarget: String? = nil
+        relativeTarget: String? = nil,
+        dayFile: String? = nil
     ) -> CaptureCommandSuccess {
         CaptureCommandSuccess(
             ok: true,
@@ -918,6 +1022,7 @@ final class NotificationServiceTests: XCTestCase {
             scheduled: scheduled,
             placement: "inserted",
             blockID: blockID,
+            dayFile: dayFile,
             parentText: parentText,
             pomodoroStart: pomodoroStart,
             pomodoroAdjust: pomodoroAdjust,

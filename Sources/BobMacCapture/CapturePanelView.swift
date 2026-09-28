@@ -1416,6 +1416,10 @@ private struct PreviewPane: View {
         } ?? false
         if let close = CapturePomodoroClosePresentation(capture: success) {
             closePreviewItem(close, success: success, index: index, total: total)
+        } else if CapturePomodoroStartPresentation.isSessionStart(success),
+                  let start = CapturePomodoroStartPresentation(capture: success)
+        {
+            startPreviewItem(start, success: success, index: index, total: total)
         } else if let toggle = CaptureTogglePresentation(capture: success) {
             togglePreviewItem(
                 toggle,
@@ -1646,6 +1650,125 @@ private struct PreviewPane: View {
             return .green
         case .over:
             return .secondary
+        }
+    }
+
+    @ViewBuilder
+    private func startPreviewItem(
+        _ start: CapturePomodoroStartPresentation,
+        success: CaptureCommandSuccess,
+        index: Int,
+        total: Int
+    ) -> some View {
+        // The start card renders Bob's resolved `pomodoro_start` object exactly
+        // as the presentation words it: no Swift-side clock or ledger math. It
+        // is the visual sibling of the close card — a play glyph answering its
+        // stop glyph — with the session, the day-file destination, and the
+        // queued Task Links Bob reported. The locator truncates first at narrow
+        // widths, so the task text always stays legible.
+        let sessionTint = CaptureEditorPalette.color(for: .pomodoroStart)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if total > 1 {
+                    Text("\(index + 1)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "play.circle.fill")
+                    .foregroundStyle(sessionTint)
+                    .accessibilityHidden(true)
+                Text(start.title)
+                    .fontWeight(.semibold)
+                Spacer(minLength: 4)
+                Text(start.sessionText)
+                    .font(.system(.callout, design: .monospaced))
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(start.destinationText)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .textSelection(.enabled)
+            }
+
+            if start.taskRows.isEmpty {
+                Text(start.emptyText)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(Array(start.visibleTaskRows.enumerated()), id: \.offset) {
+                        _, row in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                startTaskGlyph(for: row)
+                                Text(row.taskText)
+                                    .layoutPriority(1)
+                                    .lineLimit(1)
+                                    .textSelection(.enabled)
+                                Spacer(minLength: 4)
+                                Text(row.locatorText)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .textSelection(.enabled)
+                            }
+                            if let warning = row.warning {
+                                Text(warning)
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                                    .textSelection(.enabled)
+                                    .accessibilityLabel("Warning: \(warning)")
+                            }
+                        }
+                    }
+                    if start.overflowTaskCount > 0 {
+                        Text("+\(start.overflowTaskCount) more")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            ForEach(Array(success.warnings.enumerated()), id: \.offset) { _, warning in
+                Text(warning)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .textSelection(.enabled)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(start.accessibilitySummary)
+    }
+
+    @ViewBuilder
+    private func startTaskGlyph(
+        for row: CapturePomodoroStartPresentation.TaskRow
+    ) -> some View {
+        switch row.glyph {
+        case .ready:
+            Image(systemName: "circle")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        case .next:
+            Image(systemName: "circle.inset.filled")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        case .inProgress:
+            Image(systemName: "circle.lefthalf.filled")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        case .other:
+            Image(systemName: "questionmark.circle")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        case .unresolved:
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(.yellow)
+                .accessibilityHidden(true)
         }
     }
 

@@ -713,8 +713,9 @@ final class CapturePanelModelTests: XCTestCase {
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
-        // A live close card is showing; then the draft becomes `=`, whose
-        // dry run fails. The stale card must go away with the red error.
+        // A live close card is showing; then the draft becomes `=3`, whose
+        // dry run fails with the still-running error. The stale card must go
+        // away with the red error.
         model.plainDraft = "=x"
         model.editorTextDidChange(cursorUTF8Offset: 2)
         await waitUntil {
@@ -723,17 +724,126 @@ final class CapturePanelModelTests: XCTestCase {
         }
         XCTAssertNotNil(model.closePresentation)
 
-        model.plainDraft = "="
-        model.editorTextDidChange(cursorUTF8Offset: 1)
+        model.plainDraft = "=3"
+        model.editorTextDidChange(cursorUTF8Offset: 2)
         await waitUntil {
             if case .failed = model.previewState { return true }
             return false
         }
 
         XCTAssertNil(model.closePresentation)
+        XCTAssertNil(model.sessionStartPresentation)
         XCTAssertNil(model.previewResult)
         XCTAssertTrue(model.previewResults.isEmpty)
         XCTAssertNil(model.previewGlobalDestination)
+        XCTAssertEqual(model.primaryActionTitle, "Capture")
+    }
+
+    func testStartPresentationUsesBobSummaryAndOffersStartFooterAction() throws {
+        let start = try startSuccessFixture("pomodoro-start-next.json")
+        let model = CapturePanelModel()
+        model.previewResult = start
+        model.previewResults = [start]
+
+        XCTAssertEqual(model.sessionStartPresentation?.title, "Started CAPTURE")
+        XCTAssertEqual(
+            model.sessionStartPresentation?.destinationText,
+            "2026/20260928.md · line 4"
+        )
+        XCTAssertEqual(model.sessionStartPresentation?.taskRows.count, 4)
+        XCTAssertEqual(model.sessionStartPresentation?.visibleTaskRows.count, 4)
+        XCTAssertEqual(model.sessionStartPresentation?.overflowTaskCount, 0)
+        XCTAssertNil(model.closePresentation)
+        XCTAssertEqual(model.primaryActionTitle, "Start")
+    }
+
+    func testStartLivePreviewAndSubmitUseStartArgvFooterAndStatus() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "="
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.sessionStartPresentation?.title, "Start CAPTURE")
+        XCTAssertEqual(model.primaryActionTitle, "Start")
+        XCTAssertEqual(
+            model.statusText,
+            "Would start CAPTURE 0945-1010 (25m) at line 4"
+        )
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(
+            model.statusText,
+            "Started CAPTURE 0945-1010 (25m) at line 4"
+        )
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"))
+        XCTAssertTrue(record.contains("argv=capture --format json -- \(draft)"))
+    }
+
+    func testLivePreviewWithStartSwitchDraftKeepsBothItemsAndCaptureAction() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "=x\n\n="
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(
+            model.previewResults.map(\.kind),
+            ["pomodoro_close", "pomodoro_start"]
+        )
+        XCTAssertNil(model.closePresentation)
+        XCTAssertNil(model.sessionStartPresentation)
+        // A batch never names a single-item action.
+        XCTAssertEqual(model.primaryActionTitle, "Capture")
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.primaryActionTitle, "Capture")
+    }
+
+    func testRunningStartDryRunSurfacesStillRunningError() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "=3"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .failed = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertNil(model.sessionStartPresentation)
+        XCTAssertEqual(model.statusText, "Preview failed")
+        XCTAssertTrue(model.errorMessage?.contains("still running") ?? false)
         XCTAssertEqual(model.primaryActionTitle, "Capture")
     }
 
@@ -907,7 +1017,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.previewResult?.pomodoroStart?.durationMinutes, 15)
         let presentation = try XCTUnwrap(model.previewResult.flatMap(CapturePomodoroStartPresentation.init))
         XCTAssertEqual(presentation.sessionText, "0930-0945 (15m)")
-        XCTAssertEqual(presentation.destinationText, "next session · line 12")
+        XCTAssertEqual(presentation.destinationText, "sase.md · line 12")
 
         model.submit(openAfterCapture: false)
         await waitUntil { !model.isSubmitting }
@@ -3626,6 +3736,20 @@ final class CapturePanelModelTests: XCTestCase {
         let response = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
         guard case .success(let success) = response else {
             XCTFail("expected a successful Bob close response")
+            throw NSError(domain: "CapturePanelModelTests", code: 1)
+        }
+        return success
+    }
+
+    private func startSuccessFixture(_ name: String) throws -> CaptureCommandSuccess {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let data = try Data(contentsOf: fixtures.appendingPathComponent(name))
+        let response = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+        guard case .success(let success) = response else {
+            XCTFail("expected a successful Bob start response")
             throw NSError(domain: "CapturePanelModelTests", code: 1)
         }
         return success
