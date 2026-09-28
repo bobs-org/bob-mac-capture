@@ -1,0 +1,736 @@
+import Foundation
+
+/// Which bucket of the picker a section belongs to. Pomodoro sections follow
+/// Bob's order; the unqueued and other buckets come after them, and the
+/// filtered view uses a single header-less `.matches` section.
+public enum ActiveTaskPickerSectionKind: Equatable, Sendable {
+    case pomodoro
+    case unqueuedInProgress
+    case unqueuedNext
+    case other
+    case matches
+}
+
+/// One picker section: a queued Pomodoro entry, an unqueued status bucket, or
+/// the flat filtered match list.
+public struct ActiveTaskPickerSection: Equatable, Sendable {
+    public let id: String
+    public let kind: ActiveTaskPickerSectionKind
+    public let title: String
+    /// `0900-0930` rendered as `09:00–09:30`; anything else shown raw.
+    public let timeRangeText: String?
+    /// 1-based position among the Pomodoro sections; 0 for other sections.
+    public let ordinal: Int
+    public let isCurrent: Bool
+    public let rows: [ActiveTaskPickerRow]
+
+    public init(
+        id: String,
+        kind: ActiveTaskPickerSectionKind,
+        title: String,
+        timeRangeText: String? = nil,
+        ordinal: Int = 0,
+        isCurrent: Bool = false,
+        rows: [ActiveTaskPickerRow] = []
+    ) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.timeRangeText = timeRangeText
+        self.ordinal = ordinal
+        self.isCurrent = isCurrent
+        self.rows = rows
+    }
+}
+
+/// Task status derived from the candidate's status symbol: `/` is In
+/// Progress, `*` is Next, and anything else keeps its status name (or symbol)
+/// for display.
+public enum ActiveTaskRowStatus: Equatable, Sendable {
+    case inProgress
+    case next
+    case other(String)
+}
+
+/// One pickable row. `id` is Bob's `replacement`, so accepting a row inserts
+/// exactly what Bob offered. Match ranges are `Character` offsets into
+/// `displayText`, `route`, and `blockID`.
+public struct ActiveTaskPickerRow: Equatable, Sendable {
+    public let id: String
+    public let bobIndex: Int
+    public let status: ActiveTaskRowStatus
+    public let displayText: String
+    public let textMatchRanges: [Range<Int>]
+    public let route: String?
+    public let blockID: String?
+    public let routeMatchRanges: [Range<Int>]
+    public let blockIDMatchRanges: [Range<Int>]
+    /// Small Pomodoro chip for filtered rows; nil in grouped mode (the header
+    /// already says it) and for unqueued tasks.
+    public let pomodoroChipText: String?
+    /// Detail-strip Pomodoro wording ("Queued in SASE (#1)", "Not in a
+    /// Pomodoro", ...).
+    public let pomodoroSummary: String
+    public let section: String?
+    /// `"^" + replacement`: the exact text an accept inserts.
+    public let insertionText: String
+    public let accessibilityLabel: String
+
+    public init(
+        id: String,
+        bobIndex: Int,
+        status: ActiveTaskRowStatus,
+        displayText: String,
+        textMatchRanges: [Range<Int>] = [],
+        route: String? = nil,
+        blockID: String? = nil,
+        routeMatchRanges: [Range<Int>] = [],
+        blockIDMatchRanges: [Range<Int>] = [],
+        pomodoroChipText: String? = nil,
+        pomodoroSummary: String,
+        section: String? = nil,
+        insertionText: String,
+        accessibilityLabel: String
+    ) {
+        self.id = id
+        self.bobIndex = bobIndex
+        self.status = status
+        self.displayText = displayText
+        self.textMatchRanges = textMatchRanges
+        self.route = route
+        self.blockID = blockID
+        self.routeMatchRanges = routeMatchRanges
+        self.blockIDMatchRanges = blockIDMatchRanges
+        self.pomodoroChipText = pomodoroChipText
+        self.pomodoroSummary = pomodoroSummary
+        self.section = section
+        self.insertionText = insertionText
+        self.accessibilityLabel = accessibilityLabel
+    }
+}
+
+/// Grouped (empty filter) or filtered (non-empty filter) presentation.
+public enum ActiveTaskPickerMode: Equatable, Sendable {
+    case grouped
+    case filtered
+}
+
+/// What the list shows when there is nothing to pick.
+public enum ActiveTaskPickerEmptyState: Equatable, Sendable {
+    case noActiveTasks
+    case noMatches(query: String)
+
+    public var title: String {
+        switch self {
+        case .noActiveTasks:
+            return "No active tasks"
+        case .noMatches:
+            return "No matches"
+        }
+    }
+
+    public var message: String {
+        switch self {
+        case .noActiveTasks:
+            return "No In Progress or Next tasks \u{2014} a task needs `[/]` or `[*]` and a `^block-id` to appear here."
+        case .noMatches(let query):
+            return "No active tasks match \u{201C}\(query)\u{201D} \u{2014} Esc clears the filter."
+        }
+    }
+}
+
+/// The picker's view of one fetched snapshot for one filter string.
+public struct ActiveTaskPickerPresentation: Equatable, Sendable {
+    public let mode: ActiveTaskPickerMode
+    public let sections: [ActiveTaskPickerSection]
+    /// Row IDs in display order (section order grouped, ranked flat filtered).
+    public let orderedRowIDs: [String]
+    public let rowsByID: [String: ActiveTaskPickerRow]
+    /// Deduped snapshot size.
+    public let totalCount: Int
+    public let matchCount: Int
+    /// `"72 tasks"`, `"1 task"`, or `"5 of 72"`.
+    public let countText: String
+    public let emptyState: ActiveTaskPickerEmptyState?
+    /// Rows plus headers of the grouped view, clamped to 4...11 (4 when
+    /// empty). The panel fixes its height from this once at open; filtering
+    /// never resizes it.
+    public let groupedVisibleRowBudget: Int
+
+    public init(
+        mode: ActiveTaskPickerMode,
+        sections: [ActiveTaskPickerSection],
+        orderedRowIDs: [String],
+        rowsByID: [String: ActiveTaskPickerRow],
+        totalCount: Int,
+        matchCount: Int,
+        countText: String,
+        emptyState: ActiveTaskPickerEmptyState?,
+        groupedVisibleRowBudget: Int
+    ) {
+        self.mode = mode
+        self.sections = sections
+        self.orderedRowIDs = orderedRowIDs
+        self.rowsByID = rowsByID
+        self.totalCount = totalCount
+        self.matchCount = matchCount
+        self.countText = countText
+        self.emptyState = emptyState
+        self.groupedVisibleRowBudget = groupedVisibleRowBudget
+    }
+
+    public func row(id: String) -> ActiveTaskPickerRow? {
+        rowsByID[id]
+    }
+}
+
+/// Pure navigation helpers over `orderedRowIDs`.
+public enum ActiveTaskPickerNavigation: Sendable {
+    /// The next row, wrapping around. Nil for an empty list or unknown ID.
+    public static func next(after id: String, in orderedRowIDs: [String]) -> String? {
+        guard let index = orderedRowIDs.firstIndex(of: id) else {
+            return nil
+        }
+        return orderedRowIDs[(index + 1) % orderedRowIDs.count]
+    }
+
+    /// The previous row, wrapping around. Nil for an empty list or unknown ID.
+    public static func previous(before id: String, in orderedRowIDs: [String]) -> String? {
+        guard let index = orderedRowIDs.firstIndex(of: id) else {
+            return nil
+        }
+        return orderedRowIDs[(index + orderedRowIDs.count - 1) % orderedRowIDs.count]
+    }
+
+    /// Moves `offset` rows from `id`, clamped to the ends. Nil for an empty
+    /// list or unknown ID.
+    public static func page(from id: String, by offset: Int, in orderedRowIDs: [String]) -> String? {
+        guard let index = orderedRowIDs.firstIndex(of: id) else {
+            return nil
+        }
+        let clamped = min(max(index + offset, 0), orderedRowIDs.count - 1)
+        return orderedRowIDs[clamped]
+    }
+
+    public static func first(in orderedRowIDs: [String]) -> String? {
+        orderedRowIDs.first
+    }
+
+    public static func last(in orderedRowIDs: [String]) -> String? {
+        orderedRowIDs.last
+    }
+
+    /// Keeps the preferred row when still visible, else the first row, else
+    /// nil.
+    public static func resolvedSelection(
+        preferred: String?,
+        in orderedRowIDs: [String]
+    ) -> String? {
+        if let preferred, orderedRowIDs.contains(preferred) {
+            return preferred
+        }
+        return orderedRowIDs.first
+    }
+}
+
+/// One fetched `active_task` snapshot in Bob order, with display text and
+/// weighted search fields precomputed so every keystroke filters locally.
+public struct ActiveTaskPickerIndex: Sendable {
+    private let entries: [ActiveTaskPickerIndexEntry]
+    /// Pomodoro line to its 1-based section ordinal (first-appearance order).
+    private let pomodoroOrdinals: [Int: Int]
+
+    public init(candidates: [CaptureCompletionCandidate]) {
+        var seen: Set<String> = []
+        var entries: [ActiveTaskPickerIndexEntry] = []
+        for candidate in candidates {
+            if seen.contains(candidate.replacement) {
+                continue
+            }
+            seen.insert(candidate.replacement)
+            entries.append(ActiveTaskPickerIndexEntry(candidate: candidate, bobIndex: entries.count))
+        }
+        self.entries = entries
+        var ordinals: [Int: Int] = [:]
+        for entry in entries {
+            guard let line = entry.pomodoroLine, ordinals[line] == nil else {
+                continue
+            }
+            ordinals[line] = ordinals.count + 1
+        }
+        self.pomodoroOrdinals = ordinals
+    }
+
+    public var count: Int {
+        entries.count
+    }
+
+    /// Presents the snapshot for `filter`: grouped sections for an empty
+    /// query, one ranked flat section otherwise.
+    public func presentation(filter: String) -> ActiveTaskPickerPresentation {
+        let groupedSections = groupedRows()
+        let groupedRowCount = groupedSections.reduce(0) { $0 + $1.rows.count }
+        let budget: Int
+        if entries.isEmpty {
+            budget = 4
+        } else {
+            budget = min(max(groupedRowCount + groupedSections.count, 4), 11)
+        }
+
+        let query = FuzzyQuery(filter)
+        if query.isEmpty {
+            let ids = groupedSections.flatMap { $0.rows.map { $0.id } }
+            let byID = Dictionary(uniqueKeysWithValues: groupedSections.flatMap { $0.rows }.map { ($0.id, $0) })
+            let countText = entries.count == 1 ? "1 task" : "\(entries.count) tasks"
+            return ActiveTaskPickerPresentation(
+                mode: .grouped,
+                sections: groupedSections,
+                orderedRowIDs: ids,
+                rowsByID: byID,
+                totalCount: entries.count,
+                matchCount: entries.count,
+                countText: countText,
+                emptyState: entries.isEmpty ? .noActiveTasks : nil,
+                groupedVisibleRowBudget: budget
+            )
+        }
+
+        let ranked = rank(tokens: query.tokens)
+        let rows = ranked.map { scored in
+            self.filteredRow(for: scored.entry, highlights: scored.highlights)
+        }
+        let section = ActiveTaskPickerSection(
+            id: "matches",
+            kind: .matches,
+            title: "",
+            rows: rows
+        )
+        let ids = rows.map { $0.id }
+        let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+        return ActiveTaskPickerPresentation(
+            mode: .filtered,
+            sections: [section],
+            orderedRowIDs: ids,
+            rowsByID: byID,
+            totalCount: entries.count,
+            matchCount: rows.count,
+            countText: "\(rows.count) of \(entries.count)",
+            emptyState: rows.isEmpty ? .noMatches(query: filter) : nil,
+            groupedVisibleRowBudget: budget
+        )
+    }
+
+    // MARK: - Grouped view
+
+    private func groupedRows() -> [ActiveTaskPickerSection] {
+        var pomodoroOrder: [Int] = []
+        var pomodoroRows: [Int: [ActiveTaskPickerRow]] = [:]
+        var inProgress: [ActiveTaskPickerRow] = []
+        var next: [ActiveTaskPickerRow] = []
+        var other: [ActiveTaskPickerRow] = []
+        for entry in entries {
+            let row = baseRow(for: entry)
+            if entry.pomodoroLine != nil {
+                let line = entry.pomodoroLine!
+                if pomodoroRows[line] == nil {
+                    pomodoroOrder.append(line)
+                    pomodoroRows[line] = []
+                }
+                pomodoroRows[line]!.append(row)
+            } else {
+                switch entry.status {
+                case .inProgress:
+                    inProgress.append(row)
+                case .next:
+                    next.append(row)
+                case .other:
+                    other.append(row)
+                }
+            }
+        }
+        var sections: [ActiveTaskPickerSection] = []
+        for line in pomodoroOrder {
+            let ordinal = pomodoroOrdinals[line] ?? 0
+            let pomodoro = entries.first { $0.pomodoroLine == line }?.pomodoro
+            let name = pomodoro?.name.flatMap { $0.isEmpty ? nil : $0 }
+            sections.append(ActiveTaskPickerSection(
+                id: "pomodoro-\(line)",
+                kind: .pomodoro,
+                title: name ?? "Unnamed Pomodoro",
+                timeRangeText: pomodoro?.timeRange.map { Self.formattedTimeRange($0) },
+                ordinal: ordinal,
+                isCurrent: pomodoro?.isCurrent ?? false,
+                rows: pomodoroRows[line] ?? []
+            ))
+        }
+        if !inProgress.isEmpty {
+            sections.append(ActiveTaskPickerSection(
+                id: "unqueued-in-progress",
+                kind: .unqueuedInProgress,
+                title: "In Progress",
+                rows: inProgress
+            ))
+        }
+        if !next.isEmpty {
+            sections.append(ActiveTaskPickerSection(
+                id: "unqueued-next",
+                kind: .unqueuedNext,
+                title: "Next",
+                rows: next
+            ))
+        }
+        if !other.isEmpty {
+            sections.append(ActiveTaskPickerSection(
+                id: "other",
+                kind: .other,
+                title: "Other",
+                rows: other
+            ))
+        }
+        return sections
+    }
+
+    // MARK: - Filtered view
+
+    private struct RankedEntry {
+        let entry: ActiveTaskPickerIndexEntry
+        let score: Int
+        let highlights: ActiveTaskMatchHighlights
+    }
+
+    private func rank(tokens: [String]) -> [RankedEntry] {
+        var ranked: [RankedEntry] = []
+        for entry in entries {
+            var total = 0
+            var highlights = ActiveTaskMatchHighlights()
+            var matchesAll = true
+            for token in tokens {
+                guard let fieldMatch = entry.bestFieldMatch(for: token) else {
+                    matchesAll = false
+                    break
+                }
+                total += fieldMatch.weightedScore
+                highlights.add(fieldMatch)
+            }
+            if matchesAll {
+                ranked.append(RankedEntry(entry: entry, score: total, highlights: highlights))
+            }
+        }
+        return ranked.sorted {
+            if $0.score != $1.score {
+                return $0.score > $1.score
+            }
+            return $0.entry.bobIndex < $1.entry.bobIndex
+        }
+    }
+
+    // MARK: - Rows
+
+    private func baseRow(for entry: ActiveTaskPickerIndexEntry) -> ActiveTaskPickerRow {
+        ActiveTaskPickerRow(
+            id: entry.candidate.replacement,
+            bobIndex: entry.bobIndex,
+            status: entry.status,
+            displayText: entry.display.text,
+            route: entry.candidate.route,
+            blockID: entry.candidate.blockID,
+            pomodoroChipText: nil,
+            pomodoroSummary: pomodoroSummary(for: entry),
+            section: entry.candidate.section,
+            insertionText: "^\(entry.candidate.replacement)",
+            accessibilityLabel: accessibilityLabel(for: entry)
+        )
+    }
+
+    private func filteredRow(
+        for entry: ActiveTaskPickerIndexEntry,
+        highlights: ActiveTaskMatchHighlights
+    ) -> ActiveTaskPickerRow {
+        ActiveTaskPickerRow(
+            id: entry.candidate.replacement,
+            bobIndex: entry.bobIndex,
+            status: entry.status,
+            displayText: entry.display.text,
+            textMatchRanges: highlights.textRanges,
+            route: entry.candidate.route,
+            blockID: entry.candidate.blockID,
+            routeMatchRanges: highlights.routeRanges,
+            blockIDMatchRanges: highlights.blockRanges,
+            pomodoroChipText: chipText(for: entry),
+            pomodoroSummary: pomodoroSummary(for: entry),
+            section: entry.candidate.section,
+            insertionText: "^\(entry.candidate.replacement)",
+            accessibilityLabel: accessibilityLabel(for: entry)
+        )
+    }
+
+    private func chipText(for entry: ActiveTaskPickerIndexEntry) -> String? {
+        guard let pomodoro = entry.pomodoro else {
+            return nil
+        }
+        let name = pomodoro.name.flatMap { $0.isEmpty ? nil : $0 }
+        if pomodoro.isCurrent {
+            let label = "Now \u{00B7} \(name ?? "Unnamed Pomodoro")"
+            if let raw = pomodoro.timeRange, !raw.isEmpty {
+                return "\(label) \(Self.formattedTimeRange(raw))"
+            }
+            return label
+        }
+        return name ?? "Planned"
+    }
+
+    private func pomodoroSummary(for entry: ActiveTaskPickerIndexEntry) -> String {
+        guard let pomodoro = entry.pomodoro else {
+            return "Not in a Pomodoro"
+        }
+        let name = pomodoro.name.flatMap { $0.isEmpty ? nil : $0 }
+        if pomodoro.isCurrent {
+            let label = "Now \u{00B7} \(name ?? "Unnamed Pomodoro")"
+            if let raw = pomodoro.timeRange, !raw.isEmpty {
+                return "\(label) \(Self.formattedTimeRange(raw))"
+            }
+            return label
+        }
+        guard let name else {
+            return "Queued in an unnamed Pomodoro"
+        }
+        let ordinal = entry.pomodoroLine.flatMap { pomodoroOrdinals[$0] } ?? 0
+        return "Queued in \(name) (#\(ordinal))"
+    }
+
+    private func accessibilityLabel(for entry: ActiveTaskPickerIndexEntry) -> String {
+        let statusText: String
+        switch entry.status {
+        case .inProgress:
+            statusText = entry.candidate.statusName.flatMap { $0.isEmpty ? nil : $0 } ?? "In Progress"
+        case .next:
+            statusText = entry.candidate.statusName.flatMap { $0.isEmpty ? nil : $0 } ?? "Next"
+        case .other(let name):
+            statusText = name
+        }
+        var parts = [statusText, entry.display.text]
+        if let route = entry.candidate.route, let blockID = entry.candidate.blockID {
+            parts.append("Note \(route), block \(blockID)")
+        } else if let route = entry.candidate.route {
+            parts.append("Note \(route)")
+        } else if let blockID = entry.candidate.blockID {
+            parts.append("Block \(blockID)")
+        }
+        if let pomodoro = entry.pomodoro {
+            let name = pomodoro.name.flatMap { $0.isEmpty ? nil : $0 }
+            if pomodoro.isCurrent {
+                parts.append(pomodoroSummary(for: entry))
+            } else if let name {
+                let ordinal = entry.pomodoroLine.flatMap { pomodoroOrdinals[$0] } ?? 0
+                parts.append("Queued in \(name), Pomodoro \(ordinal)")
+            } else {
+                parts.append("Queued in an unnamed Pomodoro")
+            }
+        } else {
+            parts.append("Not in a Pomodoro")
+        }
+        return parts.joined(separator: ". ") + "."
+    }
+
+    /// `0900-0930` becomes `09:00–09:30`; anything not in `HHMM-HHMM` form is
+    /// shown raw.
+    static func formattedTimeRange(_ raw: String) -> String {
+        let parts = raw.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 2,
+              parts[0].count == 4,
+              parts[1].count == 4,
+              parts[0].allSatisfy({ $0.isNumber }),
+              parts[1].allSatisfy({ $0.isNumber })
+        else {
+            return raw
+        }
+        func split(_ part: Substring) -> (Int, Int)? {
+            let hour = Int(String(part.prefix(2))) ?? 99
+            let minute = Int(String(part.suffix(2))) ?? 99
+            guard (0...23).contains(hour), (0...59).contains(minute) else {
+                return nil
+            }
+            return (hour, minute)
+        }
+        guard let start = split(parts[0]), let end = split(parts[1]) else {
+            return raw
+        }
+        func two(_ value: Int) -> String {
+            value < 10 ? "0\(value)" : "\(value)"
+        }
+        return "\(two(start.0)):\(two(start.1))\u{2013}\(two(end.0)):\(two(end.1))"
+    }
+}
+
+// MARK: - Index entries
+
+/// One deduped candidate with its display text and weighted search fields.
+/// Weights: display text 100%, block ID 90%, `route:block-id` 90%, Pomodoro
+/// name 70%, route 60%, section 40%.
+private struct ActiveTaskPickerIndexEntry: Sendable {
+    let candidate: CaptureCompletionCandidate
+    let bobIndex: Int
+    let display: ActiveTaskDisplayText
+    let status: ActiveTaskRowStatus
+    let pomodoro: ActiveTaskPomodoro?
+    let pomodoroLine: Int?
+    let textField: FuzzyField
+    let blockField: FuzzyField?
+    let combinedField: FuzzyField?
+    let combinedRouteLength: Int
+    let pomodoroField: FuzzyField?
+    let routeField: FuzzyField?
+    let sectionField: FuzzyField?
+
+    init(candidate: CaptureCompletionCandidate, bobIndex: Int) {
+        self.candidate = candidate
+        self.bobIndex = bobIndex
+        let display = ActiveTaskDisplayText(parsing: candidate.text ?? candidate.replacement)
+        self.display = display
+        if candidate.statusSymbol == "/" {
+            self.status = .inProgress
+        } else if candidate.statusSymbol == "*" {
+            self.status = .next
+        } else {
+            let name = candidate.statusName.flatMap { $0.isEmpty ? nil : $0 }
+                ?? candidate.statusSymbol.flatMap { $0.isEmpty ? nil : $0 }
+                ?? "Other"
+            self.status = .other(name)
+        }
+        self.pomodoro = candidate.pomodoro
+        self.pomodoroLine = candidate.pomodoro?.line
+        self.textField = FuzzyField(display.text)
+        if let blockID = candidate.blockID, !blockID.isEmpty {
+            self.blockField = FuzzyField(blockID)
+        } else {
+            self.blockField = nil
+        }
+        if let route = candidate.route, !route.isEmpty,
+           let blockID = candidate.blockID, !blockID.isEmpty
+        {
+            self.combinedField = FuzzyField("\(route):\(blockID)")
+            self.combinedRouteLength = route.count
+        } else {
+            self.combinedField = nil
+            self.combinedRouteLength = 0
+        }
+        if let name = candidate.pomodoro?.name, !name.isEmpty {
+            self.pomodoroField = FuzzyField(name)
+        } else {
+            self.pomodoroField = nil
+        }
+        if let route = candidate.route, !route.isEmpty {
+            self.routeField = FuzzyField(route)
+        } else {
+            self.routeField = nil
+        }
+        if let section = candidate.section, !section.isEmpty {
+            self.sectionField = FuzzyField(section)
+        } else {
+            self.sectionField = nil
+        }
+    }
+
+    /// The token's best weighted field match (`score * weight / 100`), or nil
+    /// when the token matches no field. Preference order breaks weighted ties
+    /// toward highlightable fields (display text first).
+    func bestFieldMatch(for token: String) -> ActiveTaskFieldMatch? {
+        var best: ActiveTaskFieldMatch?
+        func consider(weight: Int, field: FuzzyField?, target: ActiveTaskMatchTarget) {
+            guard let field,
+                  let match = FuzzyMatcher.match(token: token, in: field)
+            else {
+                return
+            }
+            let weighted = match.score * weight / 100
+            if best == nil || weighted > best!.weightedScore {
+                best = ActiveTaskFieldMatch(
+                    weightedScore: weighted,
+                    target: target,
+                    positions: match.positions,
+                    combinedRouteLength: combinedRouteLength
+                )
+            }
+        }
+        consider(weight: 100, field: textField, target: .text)
+        consider(weight: 90, field: combinedField, target: .combined)
+        consider(weight: 90, field: blockField, target: .blockID)
+        consider(weight: 70, field: pomodoroField, target: .pomodoroName)
+        consider(weight: 60, field: routeField, target: .route)
+        consider(weight: 40, field: sectionField, target: .section)
+        return best
+    }
+}
+
+private enum ActiveTaskMatchTarget: Sendable {
+    case text
+    case combined
+    case blockID
+    case route
+    case pomodoroName
+    case section
+}
+
+private struct ActiveTaskFieldMatch: Sendable {
+    let weightedScore: Int
+    let target: ActiveTaskMatchTarget
+    let positions: [Int]
+    let combinedRouteLength: Int
+}
+
+/// Coalesced highlight positions gathered from every token's best field.
+/// Section and Pomodoro-name matches raise the rank without highlighting.
+private struct ActiveTaskMatchHighlights: Sendable {
+    var textPositions: [Int] = []
+    var routePositions: [Int] = []
+    var blockPositions: [Int] = []
+
+    mutating func add(_ match: ActiveTaskFieldMatch) {
+        switch match.target {
+        case .text:
+            textPositions += match.positions
+        case .combined:
+            for position in match.positions {
+                if position < match.combinedRouteLength {
+                    routePositions.append(position)
+                } else if position > match.combinedRouteLength {
+                    blockPositions.append(position - match.combinedRouteLength - 1)
+                }
+            }
+        case .blockID:
+            blockPositions += match.positions
+        case .route:
+            routePositions += match.positions
+        case .pomodoroName, .section:
+            break
+        }
+    }
+
+    var textRanges: [Range<Int>] {
+        Self.coalesced(textPositions)
+    }
+
+    var routeRanges: [Range<Int>] {
+        Self.coalesced(routePositions)
+    }
+
+    var blockRanges: [Range<Int>] {
+        Self.coalesced(blockPositions)
+    }
+
+    /// Merges sorted unique positions into ranges of consecutive offsets.
+    static func coalesced(_ positions: [Int]) -> [Range<Int>] {
+        let sorted = Array(Set(positions)).sorted()
+        var ranges: [Range<Int>] = []
+        var index = 0
+        while index < sorted.count {
+            var end = sorted[index]
+            while end + 1 < sorted.count, sorted[end + 1] == sorted[end] + 1 {
+                end += 1
+            }
+            ranges.append(sorted[index]..<sorted[end] + 1)
+            index = end + 1
+        }
+        return ranges
+    }
+}
