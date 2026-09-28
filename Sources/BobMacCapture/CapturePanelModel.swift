@@ -846,6 +846,33 @@ final class CapturePanelModel: ObservableObject {
 
     // MARK: - Active task picker
 
+    /// Test and render support: installs a picker session directly from a
+    /// snapshot, bypassing the subprocess round trip. Production code opens
+    /// the picker through `scheduleAnalysis`; this exists so design tests and
+    /// the `BOB_MAC_CAPTURE_RENDER_DIR` image review can mount
+    /// `ActiveTaskPickerCard` on fixture data.
+    func installActiveTaskPickerForPreviews(
+        candidates: [CaptureCompletionCandidate],
+        warnings: [String] = [],
+        filter: String = ""
+    ) {
+        let index = ActiveTaskPickerIndex(candidates: candidates)
+        let presentation = index.presentation(filter: filter)
+        activeTaskPickerIndex = index
+        activeTaskPickerPresentation = presentation
+        activeTaskPicker = ActiveTaskPickerState(
+            draftSnapshot: "^",
+            replacementRange: CaptureRange(start: 0, end: 1),
+            restoreCursor: 1,
+            candidates: candidates,
+            warnings: warnings,
+            filterText: filter,
+            selectedRowID: ActiveTaskPickerNavigation.first(in: presentation.orderedRowIDs),
+            visibleRowBudget: presentation.groupedVisibleRowBudget,
+            snapshotIsPartial: false
+        )
+    }
+
     /// Routes one completion result: `active_task` responses feed the picker
     /// or the reopen chip and never populate the inline list; every other
     /// context keeps the inline list and clears the chip.

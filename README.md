@@ -224,6 +224,31 @@ or expired certificate can require reauthorizing those system permissions.
   filter removes the `^` trigger and its fragment. Ctrl-S is consumed; Ctrl-C still
   stashes the draft and closes. While the chip is visible, Tab, Down, and Ctrl-N reopen
   the picker and Escape hides the chip.
+- The picker renders as one large elevated card spanning the full panel width: a
+  46pt filter bar (a `^` scope token, the filter field, and a monospaced task
+  count), a scrollable list with pinned Pomodoro headers, an 80pt detail strip,
+  and key-hint chips in the footer (↑↓ Move · ↩ Insert · ⌘↩ Insert & Capture ·
+  esc Clear/Cancel). The editor dims to 50% while picking; tapping it cancels.
+  With an empty filter, tasks group by Pomodoro entry in Bob's order, each
+  header showing its ordinal, name (or "Unnamed Pomodoro"), `HH:MM–HH:MM` time
+  range when present, a pink NOW pill for the current entry, and a task count;
+  unqueued In Progress and Next tasks follow under their own headers. A
+  non-empty filter replaces the groups with one ranked flat list and a small
+  pink Pomodoro chip per row. Rows are 34pt single lines: a status glyph
+  (orange In Progress, blue Next), proportional text where `` `code` `` spans
+  render monospaced on a faint fill and `[[wikilinks]]` render accent-tinted,
+  fuzzy matches in semibold accent, and a trailing `route:block-id` locator in
+  route/block-ID colors. The detail strip shows the full text (two lines), a
+  metadata line (status, note label with its inbox/area/project icon,
+  `› section`, Pomodoro wording), and `↩ inserts ^route:block-id`; after the
+  first insert it also teaches `#name`, `=`, and `=x`. Empty states explain
+  what a task needs to appear, Bob warnings collapse to one orange line
+  (`+N more`), and a partial snapshot notes "Showing Bob's matches only". The
+  panel grows once when the picker opens and never resizes while filtering; on
+  short screens the card keeps a three-row minimum and scrolls. VoiceOver
+  announces the open ("Active tasks, N tasks"), match-count changes, and each
+  keyboard move; rows expose the full task label as a button, and selection
+  and hover fills strengthen under Increase Contrast.
   Typing `#` immediately after a resolved `@route+block-id` follows the draft's mode:
   while that item has no body text it opens `pomodoro_name` completion for the task
   toggle, and once the item has body text it opens `task_section` completion for that
