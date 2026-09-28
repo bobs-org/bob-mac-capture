@@ -1038,13 +1038,13 @@ final class BobProcessClientTests: XCTestCase {
         }
         try await Task.sleep(nanoseconds: 200_000_000)
         task.cancel()
-        _ = try? await task.value
 
         let deadline = Date().addingTimeInterval(3)
         while Date() < deadline && !FileManager.default.fileExists(atPath: termURL.path) {
             try await Task.sleep(nanoseconds: 100_000_000)
         }
         XCTAssertTrue(FileManager.default.fileExists(atPath: termURL.path))
+        _ = try? await task.value
     }
 
     func testTerminationIgnoresProcessThatHasNotLaunched() {

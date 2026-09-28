@@ -1,4 +1,9 @@
 @preconcurrency import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 public struct BobProcessResult: Equatable {
     public let generation: UInt64
@@ -260,7 +265,7 @@ public final class BobProcessClient: @unchecked Sendable {
                 }
 
                 do {
-                    try process.run()
+                    try Self.launch(process)
                 } catch {
                     timeoutWorkItem.cancel()
                     guard resumeGuard.markResumed() else { return }
@@ -291,6 +296,25 @@ public final class BobProcessClient: @unchecked Sendable {
             return
         }
         process.terminate()
+    }
+
+    private static func launch(_ process: Process) throws {
+        // Foundation inherits the calling thread's signal mask when it starts a
+        // process. Swift concurrency workers can block SIGTERM (and other signals),
+        // which makes terminate() ineffective and can disrupt normal child handling.
+        var childSignalMask = sigset_t()
+        sigemptyset(&childSignalMask)
+
+        var previousSignalMask = sigset_t()
+        let maskError = pthread_sigmask(SIG_SETMASK, &childSignalMask, &previousSignalMask)
+        guard maskError == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: Int32(maskError)) ?? .EINVAL)
+        }
+
+        defer {
+            pthread_sigmask(SIG_SETMASK, &previousSignalMask, nil)
+        }
+        try process.run()
     }
 
     public static func preconditionLivePreviewArguments(_ arguments: [String]) {
