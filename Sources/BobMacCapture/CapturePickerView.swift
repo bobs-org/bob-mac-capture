@@ -452,7 +452,7 @@ private struct CapturePickerSectionHeader: View {
     private var suggestionHeader: some View {
         HStack(spacing: 6) {
             Image(systemName: "sparkles")
-                .foregroundStyle(.accentColor)
+                .foregroundStyle(Color.accentColor)
             Text(section.title)
                 .font(.callout.weight(.semibold))
                 .lineLimit(1)
