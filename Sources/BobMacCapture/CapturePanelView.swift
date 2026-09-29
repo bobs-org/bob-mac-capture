@@ -1739,15 +1739,13 @@ struct PreviewPane: View {
                     // Example tokens share the editor span colors of the
                     // badges they select; prose stays secondary.
                     Text(
-                        AttributedString(
-                            hint.tokens.map { token in
-                                var part = AttributedString(token.text)
-                                part.foregroundColor = token.category == .neutral
-                                    ? .secondary
-                                    : CaptureEditorPalette.color(for: token.category)
-                                return part
-                            }.reduce(AttributedString()) { $0 + $1 }
-                        )
+                        hint.tokens.map { token in
+                            var part = AttributedString(token.text)
+                            part.foregroundColor = token.category == .neutral
+                                ? .secondary
+                                : CaptureEditorPalette.color(for: token.category)
+                            return part
+                        }.reduce(AttributedString()) { $0 + $1 }
                     )
                     .font(.caption)
                     .textSelection(.enabled)
