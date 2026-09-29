@@ -151,7 +151,7 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
     // MARK: - Failure code
 
     func testStrictRefusalFixtureDecodesCode() throws {
-        let data = Data(fixtureText("plan-budget-strict-refusal.json").utf8)
+        let data = Data(try fixtureText("plan-budget-strict-refusal.json").utf8)
         let response = try JSONDecoder().decode(
             CaptureCommandResponse.self,
             from: data
