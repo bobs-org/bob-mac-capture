@@ -1101,7 +1101,7 @@ final class CapturePanelModelTests: XCTestCase {
         model.acceptSelectedPickerRow(submitAfterInsert: false)
 
         XCTAssertEqual(model.plainDraft, "Follow up @file^taken-2")
-        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 24)
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 23)
         XCTAssertFalse(model.pickerVisible)
         XCTAssertEqual(model.statusText, "Inserted @file^taken-2")
     }
