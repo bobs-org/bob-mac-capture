@@ -130,7 +130,7 @@ final class CapturePickerPresentationTests: XCTestCase {
         let presentation = fixtureIndex().presentation(filter: "")
         let row = presentation.row(id: "sase:recovery-panel")
         XCTAssertEqual(row?.bobIndex, 3)
-        XCTAssertEqual(row?.insertion, "^sase:recovery-panel")
+        XCTAssertEqual(row?.insertion, "sase:recovery-panel")
         XCTAssertEqual(row?.route, "sase")
         XCTAssertEqual(row?.blockID, "recovery-panel")
         XCTAssertEqual(row?.displayText, "Read and act on core_schema_skew_outage_recovery_ux!")

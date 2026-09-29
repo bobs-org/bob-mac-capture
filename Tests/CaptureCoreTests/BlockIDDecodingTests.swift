@@ -49,8 +49,8 @@ final class BlockIDDecodingTests: XCTestCase {
         XCTAssertEqual(field.markerRange, CaptureRange(start: 0, end: 7))
         XCTAssertEqual(field.intent, .link)
         XCTAssertEqual(field.body, "")
-        XCTAssertEqual(field.allowedCharacter, "[A-Za-z0-9_-]")
-        XCTAssertEqual(field.allowedDescription, "A-Z, a-z, 0-9, '_' or '-'")
+        XCTAssertEqual(field.allowedCharacter, "[A-Za-z0-9-]")
+        XCTAssertEqual(field.allowedDescription, "A-Z, a-z, 0-9 or '-'")
         XCTAssertEqual(field.suggestions, [])
         XCTAssertEqual(field.used.map { $0.id }, [
             "anchor", "recovery-plan", "fix-flaky", "release-v18",
@@ -141,7 +141,7 @@ final class BlockIDDecodingTests: XCTestCase {
 
         XCTAssertEqual(field.marker, ":")
         XCTAssertEqual(field.intent, .new)
-        XCTAssertEqual(field.allowedCharacter, "[A-Za-z0-9_-]")
+        XCTAssertEqual(field.allowedCharacter, "[A-Za-z0-9-]")
         XCTAssertEqual(field.body, "Fix flaky test")
         XCTAssertFalse(field.suggestions.isEmpty)
     }

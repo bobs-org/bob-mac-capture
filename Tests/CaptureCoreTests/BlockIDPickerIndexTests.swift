@@ -39,8 +39,8 @@ final class BlockIDPickerIndexTests: XCTestCase {
         relativeTarget: String = "notes.md",
         noteExists: Bool = true,
         body: String = "",
-        allowedCharacter: String = "[A-Za-z0-9_-]",
-        allowedDescription: String = "A-Z, a-z, 0-9, '_' or '-'",
+        allowedCharacter: String = "[A-Za-z0-9-]",
+        allowedDescription: String = "A-Z, a-z, 0-9 or '-'",
         suggestions: [String] = [],
         used: [CaptureUsedBlockID] = []
     ) -> CaptureBlockIDField {

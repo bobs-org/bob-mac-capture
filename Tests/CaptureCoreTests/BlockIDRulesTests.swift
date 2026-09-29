@@ -5,8 +5,8 @@ import XCTest
 final class BlockIDRulesTests: XCTestCase {
     private func colonRules() -> BlockIDRules {
         BlockIDRules(
-            allowedCharacter: "[A-Za-z0-9_-]",
-            description: "A-Z, a-z, 0-9, '_' or '-'"
+            allowedCharacter: "[A-Za-z0-9-]",
+            description: "A-Z, a-z, 0-9 or '-'"
         )!
     }
 
@@ -34,12 +34,12 @@ final class BlockIDRulesTests: XCTestCase {
 
     // MARK: - Character membership
 
-    func testColonGrammarAllowsUnderscore() {
+    func testColonGrammarRejectsUnderscore() {
         let rules = colonRules()
         XCTAssertTrue(rules.isAllowed("a"))
         XCTAssertTrue(rules.isAllowed("Z"))
         XCTAssertTrue(rules.isAllowed("0"))
-        XCTAssertTrue(rules.isAllowed("_"))
+        XCTAssertFalse(rules.isAllowed("_"))
         XCTAssertTrue(rules.isAllowed("-"))
         XCTAssertFalse(rules.isAllowed(" "))
         XCTAssertFalse(rules.isAllowed("#"))
@@ -47,6 +47,15 @@ final class BlockIDRulesTests: XCTestCase {
         XCTAssertFalse(rules.isAllowed("+"))
         XCTAssertFalse(rules.isAllowed("."))
         XCTAssertFalse(rules.isAllowed("é"))
+    }
+
+    func testRulesHonorWhateverRegexBobSends() {
+        let legacy = BlockIDRules(
+            allowedCharacter: "[A-Za-z0-9_-]",
+            description: "A-Z, a-z, 0-9, '_' or '-'"
+        )!
+        XCTAssertTrue(legacy.isAllowed("_"))
+        XCTAssertTrue(legacy.isValid("a_b"))
     }
 
     func testCaretGrammarRejectsUnderscore() {
@@ -65,7 +74,7 @@ final class BlockIDRulesTests: XCTestCase {
         XCTAssertFalse(colon.isValid(""))
         XCTAssertTrue(colon.isValid("tool"))
         XCTAssertTrue(colon.isValid("tool-2"))
-        XCTAssertTrue(colon.isValid("a_b"))
+        XCTAssertFalse(colon.isValid("a_b"))
         XCTAssertFalse(colon.isValid("x y"))
         XCTAssertFalse(colon.isValid("a#b"))
 

@@ -203,7 +203,7 @@ public struct ActiveTaskPickerIndex: Sendable {
             textSegments: entry.display.segments,
             route: entry.candidate.route,
             blockID: entry.candidate.blockID,
-            insertion: "^\(entry.candidate.replacement)",
+            insertion: entry.candidate.replacement,
             detail: CapturePickerRowDetail(
                 statusText: entry.status.displayName,
                 route: entry.candidate.route,
@@ -231,7 +231,7 @@ public struct ActiveTaskPickerIndex: Sendable {
             routeMatchRanges: highlights.routeRanges,
             blockIDMatchRanges: highlights.blockRanges,
             chipText: chipText(for: entry),
-            insertion: "^\(entry.candidate.replacement)",
+            insertion: entry.candidate.replacement,
             detail: CapturePickerRowDetail(
                 statusText: entry.status.displayName,
                 route: entry.candidate.route,

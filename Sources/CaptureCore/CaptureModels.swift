@@ -2310,7 +2310,7 @@ public enum CaptureBlockIDIntent: String, Equatable, Sendable {
 extension CaptureBlockIDIntent: Codable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        let raw = try container.decodeIfPresent(String.self)
+        let raw = try? container.decode(String.self)
         self.init(wireValue: raw)
     }
 

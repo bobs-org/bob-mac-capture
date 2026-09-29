@@ -13,7 +13,7 @@ public struct BlockIDRules: Equatable, Sendable {
     private let allowed: Set<Character>
 
     /// Compiles Bob's one-character `allowed_character` class (for example
-    /// `[A-Za-z0-9_-]` for `:` or `[A-Za-z0-9-]` for `^`). Returns nil when
+    /// `[A-Za-z0-9-]` for both `:` and `^`). Returns nil when
     /// the pattern is missing or not a plain character class; nil disables
     /// type-through and New ID rows.
     public init?(allowedCharacter: String, description: String) {

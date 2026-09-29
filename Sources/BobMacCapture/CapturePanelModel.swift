@@ -1706,10 +1706,12 @@ final class CapturePanelModel: ObservableObject {
         setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
         scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: false, trigger: .edit)
         // Block-ID insertions are bare IDs; name the marker they landed on.
+        // Active-task insertions are bare locators; prefix the `^` so the
+        // announcement matches the pre-epic "Inserted ^route:block-id".
         if case .blockID(let context) = source {
             announceStatus("Inserted @\(context.route)\(context.marker)\(insertion)")
         } else {
-            announceStatus("Inserted \(insertion)")
+            announceStatus("Inserted \(row.detail.insertionPrefix)\(insertion)")
         }
         if submitAfterInsert {
             submit(openAfterCapture: false)

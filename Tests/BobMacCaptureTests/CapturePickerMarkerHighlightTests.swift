@@ -131,8 +131,8 @@ final class CapturePickerMarkerHighlightTests: XCTestCase {
             marker: ":",
             markerRange: CaptureRange(start: 0, end: 6),
             intent: .link,
-            allowedCharacter: "[A-Za-z0-9_-]",
-            allowedDescription: "A-Z, a-z, 0-9, '_' or '-'"
+            allowedCharacter: "[A-Za-z0-9-]",
+            allowedDescription: "A-Z, a-z, 0-9 or '-'"
         )
     }
 

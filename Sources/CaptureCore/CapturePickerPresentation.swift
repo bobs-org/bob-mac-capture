@@ -475,7 +475,8 @@ public struct CapturePickerRow: Equatable, Sendable {
     /// False for informational rows navigation must skip. Always true for
     /// `^`.
     public let isSelectable: Bool
-    /// The exact string an accept inserts; nil when not selectable.
+    /// The exact string an accept places into Bob's replacement range; nil
+    /// when not selectable.
     public let insertion: String?
     public let detail: CapturePickerRowDetail
     public let accessibilityLabel: String
