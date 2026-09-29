@@ -32,7 +32,9 @@ enum CapturePanelLayout {
     static let stashClearButtonHorizontalPadding: CGFloat = 8
     static let stashClearButtonVerticalPadding: CGFloat = 5
     static let stashClearButtonHeight = stashClearButtonKeyHeight + stashClearButtonVerticalPadding * 2
-    static let previewIdealHeight: CGFloat = 92
+    /// Floor for the live-preview card. The pane always takes its natural height;
+    /// this only keeps a tiny preview or the loading spinner from collapsing.
+    static let previewMinimumHeight: CGFloat = 92
 
     /// First-frame fallback used only until SwiftUI reports rendered editor/footer
     /// metrics. The steady-state panel size is always measured, not inferred.
@@ -162,6 +164,10 @@ struct CapturePanelContentHeightPolicy: Equatable {
     var titlebarDragInset: CGFloat = CapturePanelLayout.titlebarDragInset
     var rootPadding: CGFloat = CapturePanelLayout.rootPadding
     var sectionSpacing: CGFloat = CapturePanelLayout.sectionSpacing
+    /// Top safe-area inset imposed by the full-size-content panel's titlebar strip.
+    /// Read from AppKit and published through the model; 0 until the controller
+    /// observes a panel.
+    var safeAreaTopInset: CGFloat = 0
     var displayScale: CGFloat = 1
 
     func metrics(
@@ -197,12 +203,14 @@ struct CapturePanelContentHeightPolicy: Equatable {
         )
     }
 
-    /// Persistent chrome excluding the editor: titlebar inset, inter-section spacing,
-    /// footer, and root padding. Shared with `CaptureEditorHeightBudget` so the editor
-    /// ceiling and the panel metrics agree on spacing count.
+    /// Persistent chrome excluding the editor: titlebar safe-area inset, titlebar
+    /// drag inset, inter-section spacing, footer, and root padding. Shared with
+    /// `CaptureEditorHeightBudget` so the editor ceiling and the panel metrics
+    /// agree on spacing count.
     func nonEditorChromeHeight(footerHeight: CGFloat, hasAuxiliary: Bool) -> CGFloat {
         let spacingCount = hasAuxiliary ? 2 : 1
-        return titlebarDragInset
+        return sanitizedHeight(safeAreaTopInset)
+            + titlebarDragInset
             + sectionSpacing * CGFloat(spacingCount)
             + sanitizedHeight(footerHeight)
             + rootPadding
@@ -265,6 +273,31 @@ struct CaptureEditorHeightBudget: Equatable {
     }
 }
 
+/// Steady-height policy for the live-preview card. Every keystroke replaces the
+/// rendered card with a spinner; without a hold the pane would collapse to its
+/// floor and regrow on each keystroke, visibly resizing the window. While
+/// loading, the pane keeps its last settled height so the window stays steady.
+struct CapturePreviewPaneHeightPolicy: Equatable {
+    /// Returns the pane's minimum height for the given preview state and the
+    /// last settled pane height. `.ready` and `.failed` always return the
+    /// floor; `.loading` holds the settled height when it exceeds the floor.
+    static func minimumHeight(
+        for state: CapturePreviewState,
+        settledHeight: CGFloat?
+    ) -> CGFloat {
+        let floor = CapturePanelLayout.previewMinimumHeight
+        switch state {
+        case .loading:
+            guard let settledHeight, settledHeight.isFinite else {
+                return floor
+            }
+            return max(floor, settledHeight)
+        case .idle, .ready, .failed:
+            return floor
+        }
+    }
+}
+
 @available(macOS 26.0, *)
 struct CapturePanelView: View {
     @ObservedObject var model: CapturePanelModel
@@ -307,13 +340,19 @@ struct CapturePanelView: View {
             .onChange(of: model.availableScreenHeight) { _, _ in
                 reportContentMetrics()
             }
+            .onChange(of: model.titlebarSafeAreaInset) { _, _ in
+                reportContentMetrics()
+            }
             .onChange(of: measuredFooterHeight) { _, _ in
                 reportContentMetrics()
             }
     }
 
     private var editorHeightPolicy: CaptureEditorHeightPolicy {
-        let contentPolicy = CapturePanelContentHeightPolicy(displayScale: displayScale)
+        let contentPolicy = CapturePanelContentHeightPolicy(
+            safeAreaTopInset: model.titlebarSafeAreaInset,
+            displayScale: displayScale
+        )
         let budget = CaptureEditorHeightBudget(
             availableScreenHeight: model.availableScreenHeight,
             footerHeight: measuredFooterHeight,
@@ -547,7 +586,10 @@ struct CapturePanelView: View {
             return
         }
 
-        let policy = CapturePanelContentHeightPolicy(displayScale: displayScale)
+        let policy = CapturePanelContentHeightPolicy(
+            safeAreaTopInset: model.titlebarSafeAreaInset,
+            displayScale: displayScale
+        )
         let metrics = policy.metrics(
             editorHeight: measuredEditorHeight,
             auxiliary: currentAuxiliaryHeight,
@@ -1399,8 +1441,16 @@ private struct CompletionRow: View {
 }
 
 @available(macOS 26.0, *)
-private struct PreviewPane: View {
+struct PreviewPane: View {
     @ObservedObject var model: CapturePanelModel
+    @State private var settledPaneHeight: CGFloat?
+
+    private var paneMinimumHeight: CGFloat {
+        CapturePreviewPaneHeightPolicy.minimumHeight(
+            for: model.previewState,
+            settledHeight: settledPaneHeight
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -1423,10 +1473,23 @@ private struct PreviewPane: View {
         .font(.callout)
         .frame(
             maxWidth: .infinity,
-            minHeight: CapturePanelLayout.previewIdealHeight,
-            idealHeight: CapturePanelLayout.previewIdealHeight,
-            alignment: .leading
+            minHeight: paneMinimumHeight,
+            alignment: .topLeading
         )
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGFloat.self) { geometry in
+            geometry.size.height
+        } action: { height in
+            guard height.isFinite, height > 0 else {
+                return
+            }
+            switch model.previewState {
+            case .ready, .failed:
+                settledPaneHeight = height
+            case .idle, .loading:
+                break
+            }
+        }
         .padding(10)
         .background(.thinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 8))

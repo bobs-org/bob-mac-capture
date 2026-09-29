@@ -89,6 +89,12 @@ final class CapturePanelModel: ObservableObject {
     /// observes a screen; the editor height budget then falls back to
     /// `CapturePanelLayout.panelMaximumContentHeight`.
     @Published var availableScreenHeight: CGFloat?
+    /// Top safe-area inset imposed by the full-size-content panel's titlebar strip.
+    /// Published by the controller from the hosting view's `safeAreaInsets.top`
+    /// (equivalently, the part of the content rect above `contentLayoutRect`); 0
+    /// until the controller observes a panel. Counted in the content-height policy
+    /// so measured heights describe the whole content view.
+    @Published var titlebarSafeAreaInset: CGFloat = 0
 
     var processClient: BobProcessClient?
     var notificationService: NotificationService?

@@ -147,9 +147,12 @@ or expired certificate can require reauthorizing those system permissions.
   conservative compact fallback only until SwiftUI reports rendered editor, auxiliary,
   and footer metrics. After that, the window's height tracks measured content as the
   editor grows with the draft, the completion list appears, the live preview arrives,
-  and errors show or clear, staying anchored at the window's top edge. The editor's
-  ceiling is a screen-derived budget — the visible frame minus margins, persistent
-  chrome, and a reserved minimum for the auxiliary region — not a fixed line count.
+  and errors show or clear, staying anchored at the window's top edge. Measured
+  heights include the titlebar safe-area inset of the full-size-content panel, so
+  the applied content height already accounts for the titlebar strip SwiftUI lays
+  out inside. The editor's ceiling is a screen-derived budget — the visible frame
+  minus margins, persistent chrome, and a reserved minimum for the auxiliary
+  region — not a fixed line count.
   The window's ceiling is the screen's visible frame minus the 24 pt margins. Resizing
   is instant and unanimated so the content and window never desynchronize. Height is
   content-owned and not user-draggable; width remains user-resizable and reflows the
@@ -367,7 +370,10 @@ or expired certificate can require reauthorizing those system permissions.
   detail show one compact shared-scope line (`All items → foo.md` or
   `All items → foo.md · under ^a-id`) and mark item-level deviations as local overrides
   instead of repeating the shared target on every item. The outer auxiliary detail region
-  owns scrolling, so preview itself never nests another scroll view. Continuous live
+  owns scrolling, so preview itself never nests another scroll view. The preview card
+  always takes its natural height: the window grows to show it in full up to the screen
+  limit before the auxiliary region scrolls, and the card keeps its last rendered height
+  while a live preview reloads. Continuous live
   preview passes `--no-clip`, so it has no `clip` to show; the explicit **Preview**
   button and **Capture** resolve the clipboard and therefore mirror the full block.
 - The preview path assigns a fixed `BOB_PRIORITY_ROLL_SEED` for the draft lifecycle so

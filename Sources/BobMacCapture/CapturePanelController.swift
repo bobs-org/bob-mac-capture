@@ -270,6 +270,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
     func windowDidChangeScreen(_: Notification) {
         updateAvailableScreenHeight()
+        updateTitlebarSafeAreaInset()
         applyLatestContentMetricsIfPossible()
     }
 
@@ -294,6 +295,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
         pendingRecenter = true
         updateAvailableScreenHeight()
+        updateTitlebarSafeAreaInset()
         panel.contentView?.layoutSubtreeIfNeeded()
         if latestContentMetrics == nil {
             applyFallbackContentHeight(force: true)
@@ -322,6 +324,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
         let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
         updateAvailableScreenHeight(visibleFrame?.height)
+        updateTitlebarSafeAreaInset()
         let sizer = CapturePanelWindowSizer(
             maximumContentHeight: visibleFrame == nil ? CapturePanelLayout.panelMaximumContentHeight : nil,
             displayScale: panel.screen?.backingScaleFactor ?? 1
@@ -398,6 +401,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         hostingView.sizingOptions = []
         created.contentView = hostingView
         updateAvailableScreenHeight()
+        updateTitlebarSafeAreaInset()
         created.contentView?.layoutSubtreeIfNeeded()
         CaptureEditorTextConfiguration.configureEditorTextViews(in: created.contentView)
         applyLatestContentMetricsIfPossible()
@@ -416,6 +420,22 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return
         }
         model.availableScreenHeight = resolved
+    }
+
+    /// Publishes the full-size-content panel's titlebar safe-area inset to the
+    /// model so measured heights describe the whole content view. Reads the top
+    /// safe-area inset the hosting view actually imposes on SwiftUI
+    /// (equivalently, the part of the content rect above `contentLayoutRect`).
+    /// Assigns only on an actual change to avoid a metrics feedback loop; the
+    /// value depends only on the window's style and screen, never on the
+    /// applied height, so it cannot oscillate.
+    private func updateTitlebarSafeAreaInset() {
+        let raw = panel?.contentView?.safeAreaInsets.top ?? 0
+        let resolved: CGFloat = raw.isFinite ? max(0, raw) : 0
+        guard model.titlebarSafeAreaInset != resolved else {
+            return
+        }
+        model.titlebarSafeAreaInset = resolved
     }
 
     private static func chromeHeight(for panel: NSPanel) -> CGFloat {
