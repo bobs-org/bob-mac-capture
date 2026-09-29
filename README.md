@@ -114,6 +114,13 @@ just test
 just bundle
 ```
 
+Rendered picker review images come from the `Render picker review images`
+workflow (`.github/workflows/render.yml`, `workflow_dispatch` on
+`macos-26`): it checks out the requested `ref`, runs the requested test
+`filter` with `BOB_MAC_CAPTURE_RENDER_DIR` set, and uploads the PNGs.
+Locally, the same render tests run with the variable pointed at a
+writable directory; without it they skip.
+
 `just bundle` creates `.build/bundle/Bob Mac Capture.app` and signs it with the ad-hoc
 identity `-`. Release installs should prefer an Apple Development identity:
 
