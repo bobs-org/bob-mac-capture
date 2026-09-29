@@ -288,6 +288,23 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.contextLabel, "Pomodoro Task")
     }
 
+    func testProjectTaskBlockIDContextUsesBlockIDLabel() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "draft-memo",
+            blockID: "draft-memo",
+            text: "Draft the memo"
+        )
+
+        let content = completionRowContent(
+            for: candidate,
+            context: "project_task_block_id",
+            query: ""
+        )
+
+        XCTAssertEqual(content.category, .blockID)
+        XCTAssertEqual(content.contextLabel, "Block ID")
+    }
+
     func testActiveTaskQueuedNextRowShowsTaskTextRouteBlockAndPomodoroBadge() {
         let candidate = CaptureCompletionCandidate(
             replacement: "sase:deep-fix",
@@ -492,6 +509,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_toggle_pomodoro_name"), .section)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_block_id"), .blockID)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "project_task_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "sub_bullet_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_toggle_block_id"), .blockID)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "active_task_block_id"), .blockID)
@@ -507,6 +525,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_toggle_explicit_toggle"), .explicitToggle)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_toggle_force_next"), .explicitToggle)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "project_note_marker"), .explicitToggle)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "project_task_link_marker"), .explicitToggle)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_start"), .pomodoroStart)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_adjust"), .pomodoroStart)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_shift"), .pomodoroStart)
@@ -526,6 +545,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(CaptureCompletionContext(rawContext: "route"), .route)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "section"), .section)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "pomodoro_block_id"), .pomodoroBlockID)
+        XCTAssertEqual(CaptureCompletionContext(rawContext: "project_task_block_id"), .projectTaskBlockID)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "pomodoro_name"), .pomodoroName)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "task"), .task)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "task_section"), .taskSection)

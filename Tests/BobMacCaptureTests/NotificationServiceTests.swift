@@ -368,6 +368,70 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertEqual(content.body, "Finish the Google exit packet!")
     }
 
+    func testSingleProjectNoteWithLinksAddsLinkedLineAndDayFile() {
+        let content = NotificationService.successContent(captures: [
+            capture(
+                kind: "project_note",
+                routeLabel: "cash_goog_exit.md",
+                target: "/Users/bryan/bob/cash_goog_exit.md",
+                text: "Finish the Google exit packet!",
+                dayFile: "/Users/bryan/bob/2026/20260920.md",
+                projectNote: CaptureProjectNoteSummary(
+                    basename: "cash_goog_exit.md",
+                    parentRoute: "cash",
+                    parentLink: "[[cash]]",
+                    tasks: 3,
+                    taskLinks: [
+                        CaptureProjectTaskLink(
+                            blockID: "draft-memo",
+                            blockLink: "[[cash_goog_exit#^draft-memo]]",
+                            text: "Draft the resignation memo",
+                            taskLine: "- [*] #task Draft the resignation memo ^draft-memo"
+                        ),
+                        CaptureProjectTaskLink(
+                            blockID: "call-ms",
+                            blockLink: "[[cash_goog_exit#^call-ms]]",
+                            text: "Call Morgan Stanley about the 401k",
+                            taskLine: "- [*] #task Call Morgan Stanley about the 401k ^call-ms"
+                        ),
+                    ]
+                )
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "Project captured")
+        XCTAssertEqual(
+            content.body,
+            "Finish the Google exit packet!\nLinked 2 tasks into today's Pomodoro"
+        )
+        XCTAssertEqual(
+            content.userInfo[NotificationService.targetPathsKey] as? [String],
+            ["/Users/bryan/bob/cash_goog_exit.md", "/Users/bryan/bob/2026/20260920.md"]
+        )
+    }
+
+    func testSingleProjectNoteWithoutLinksOmitsDayFile() {
+        let content = NotificationService.successContent(captures: [
+            capture(
+                kind: "project_note",
+                routeLabel: "cash_goog_exit.md",
+                target: "/Users/bryan/bob/cash_goog_exit.md",
+                text: "Finish the Google exit packet!",
+                dayFile: "/Users/bryan/bob/2026/20260920.md",
+                projectNote: CaptureProjectNoteSummary(
+                    basename: "cash_goog_exit.md",
+                    taskLinks: []
+                )
+            ),
+        ])
+
+        XCTAssertEqual(content.body, "Finish the Google exit packet!")
+        XCTAssertEqual(
+            content.userInfo[NotificationService.targetPathsKey] as? [String],
+            ["/Users/bryan/bob/cash_goog_exit.md"]
+        )
+    }
+
     func testSameTargetBatchUsesOrderedBodyLinesAndSingleOpenAction() {
         let content = NotificationService.successContent(captures: [
             capture(
@@ -1006,7 +1070,8 @@ final class NotificationServiceTests: XCTestCase {
         pomodoroAdjust: PomodoroAdjustSummary? = nil,
         pomodoroShift: PomodoroShiftSummary? = nil,
         relativeTarget: String? = nil,
-        dayFile: String? = nil
+        dayFile: String? = nil,
+        projectNote: CaptureProjectNoteSummary? = nil
     ) -> CaptureCommandSuccess {
         CaptureCommandSuccess(
             ok: true,
@@ -1026,7 +1091,8 @@ final class NotificationServiceTests: XCTestCase {
             parentText: parentText,
             pomodoroStart: pomodoroStart,
             pomodoroAdjust: pomodoroAdjust,
-            pomodoroShift: pomodoroShift
+            pomodoroShift: pomodoroShift,
+            projectNote: projectNote
         )
     }
 

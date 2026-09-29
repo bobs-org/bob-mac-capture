@@ -1084,6 +1084,58 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.statusText, "Inserted @file^new-id")
     }
 
+    func testProjectTaskPickerOpensLinkedTaskScope() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "Finish it @cash^goog-exit+\n- Draft the memo :"
+        model.editorTextDidChange(cursorUTF8Offset: 45)
+        await waitUntil { model.pickerVisible }
+
+        guard case .blockID(let context) = model.picker?.source else {
+            XCTFail("expected a block-ID picker source")
+            return
+        }
+        XCTAssertEqual(context.scope, .projectTask)
+        XCTAssertEqual(context.marker, ":")
+        XCTAssertTrue(context.isNewIDMode)
+        XCTAssertEqual(context.scopeToken, " :")
+        XCTAssertEqual(model.picker?.source.scopeCaption, "Linked task")
+        XCTAssertEqual(
+            model.pickerPresentation?.orderedRowIDs.first,
+            "suggestion:draft-memo"
+        )
+        XCTAssertEqual(model.picker?.selectedRowID, "suggestion:draft-memo")
+    }
+
+    func testProjectTaskAcceptInsertsBareIDWithoutRoute() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "Finish it @cash^goog-exit+\n- Draft the memo :"
+        model.editorTextDidChange(cursorUTF8Offset: 45)
+        await waitUntil { model.pickerVisible }
+
+        model.updatePickerFilter("draft-memo")
+        XCTAssertEqual(model.picker?.selectedRowID, "new:draft-memo")
+        model.acceptSelectedPickerRow(submitAfterInsert: false)
+
+        XCTAssertEqual(
+            model.plainDraft,
+            "Finish it @cash^goog-exit+\n- Draft the memo :draft-memo"
+        )
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertEqual(model.statusText, "Inserted :draft-memo")
+    }
+
     func testBlockIDNewIDTakenSelectsAlternative() async throws {
         let model = CapturePanelModel(
             processClient: BobProcessClient(

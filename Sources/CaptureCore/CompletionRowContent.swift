@@ -34,7 +34,8 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
     case "section", "sub_bullet_section", "pomodoro_name", "task_toggle_pomodoro_name":
         return .section
     case "task_block_id", "pomodoro_block_id", "sub_bullet_block_id",
-         "global_sub_bullet_block_id", "task_toggle_block_id", "active_task_block_id":
+         "global_sub_bullet_block_id", "task_toggle_block_id", "active_task_block_id",
+         "project_task_block_id":
         return .blockID
     case "schedule":
         return .schedule
@@ -54,7 +55,8 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .wikilinkAlias
     case "interactive_placeholder":
         return .interactivePlaceholder
-    case "task_toggle_explicit_toggle", "task_toggle_force_next", "project_note_marker":
+    case "task_toggle_explicit_toggle", "task_toggle_force_next", "project_note_marker",
+         "project_task_link_marker":
         return .explicitToggle
     case "pomodoro_start":
         return .pomodoroStart
@@ -94,6 +96,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case section
     case pomodoroBlockID
     case taskBlockID
+    case projectTaskBlockID
     case pomodoroName
     case task
     case taskSection
@@ -108,6 +111,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "section": self = .section
         case "pomodoro_block_id": self = .pomodoroBlockID
         case "task_block_id": self = .taskBlockID
+        case "project_task_block_id": self = .projectTaskBlockID
         case "pomodoro_name": self = .pomodoroName
         case "task": self = .task
         case "task_section": self = .taskSection
@@ -213,13 +217,14 @@ public func completionRowContent(
         badges.append(childCount == 0 ? "Empty" : "\(childCount) items")
         accessibilityHint = "Nests the capture under this task section."
 
-    case .pomodoroBlockID, .taskBlockID, .task:
+    case .pomodoroBlockID, .taskBlockID, .projectTaskBlockID, .task:
         let needsBlockID = context == .task && candidate.requiresBlockID
         category = needsBlockID ? .priority : .blockID
         symbolName = needsBlockID ? "link.badge.plus" : "link"
-        // `task_block_id` candidates are always empty per the contract, so
-        // this branch is defensive; label it honestly rather than as a task.
-        if context == .taskBlockID {
+        // `task_block_id` and `project_task_block_id` candidates are always
+        // empty per the contract, so this branch is defensive; label them
+        // honestly rather than as tasks.
+        if context == .taskBlockID || context == .projectTaskBlockID {
             contextLabel = "Block ID"
         } else {
             contextLabel = context == .pomodoroBlockID ? "Pomodoro Task" : "Parent Task"

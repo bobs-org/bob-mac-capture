@@ -502,6 +502,63 @@ final class BlockIDPickerIndexTests: XCTestCase {
         XCTAssertTrue(status.isProjectNote)
     }
 
+    func testProjectTaskScopeDropsRouteAndNamesLinkedOutcome() throws {
+        let response = try fixtureResponse("block-id-project-task.json")
+        let field = try XCTUnwrap(response.blockID)
+        let index = BlockIDPickerIndex(
+            field: field,
+            candidates: response.candidates,
+            route: "cash_goog_exit",
+            scope: .projectTask
+        )
+
+        let presentation = index.presentation(filter: "draft")
+        XCTAssertEqual(presentation.orderedRowIDs, ["new:draft", "suggestion:draft-memo"])
+        let row = try XCTUnwrap(presentation.row(id: "new:draft"))
+        XCTAssertNil(row.route)
+        XCTAssertEqual(row.blockID, "draft")
+        XCTAssertEqual(row.insertion, "draft")
+        XCTAssertEqual(row.detail.insertionPrefix, "")
+        XCTAssertTrue(
+            row.detail.summary.contains(
+                "Next task in ▣ cash_goog_exit.md, linked into today's Pomodoro"
+            )
+        )
+
+        let suggestion = try XCTUnwrap(presentation.row(id: "suggestion:draft-memo"))
+        XCTAssertNil(suggestion.route)
+        XCTAssertEqual(suggestion.detail.insertionPrefix, "")
+    }
+
+    func testProjectTaskCaretScopeNamesPlainTaskOutcome() throws {
+        let field = blockField(
+            intent: .new,
+            marker: "^",
+            route: "cash_goog_exit",
+            relativeTarget: "cash_goog_exit.md",
+            noteExists: false,
+            body: "Collect docs",
+            suggestions: ["collect-docs"],
+            used: [usedID("prj", line: 1, symbol: nil, name: nil, text: "Finish it")]
+        )
+        let index = BlockIDPickerIndex(
+            field: field,
+            candidates: [],
+            route: "cash_goog_exit",
+            scope: .projectTask
+        )
+
+        let row = try XCTUnwrap(index.presentation(filter: "collect-docs").row(id: "new:collect-docs"))
+        XCTAssertNil(row.route)
+        XCTAssertEqual(row.detail.insertionPrefix, "")
+        XCTAssertTrue(
+            row.detail.summary.contains("Task in ▣ cash_goog_exit.md")
+        )
+        XCTAssertFalse(
+            row.detail.summary.contains("linked into today's Pomodoro")
+        )
+    }
+
     func testNewIDEmptyStateNamesGrammarCountsAndMissingBody() {
         let emptyBody = newCaretIndex(suggestions: [], used: [], body: "")
             .presentation(filter: "")

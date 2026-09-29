@@ -46,6 +46,7 @@ public struct CapturePickerBlockIDStatus: Equatable, Sendable {
 public struct BlockIDPickerIndex: Sendable {
     private let field: CaptureBlockIDField?
     private let route: String
+    private let scope: CaptureBlockIDScope
     private let entries: [BlockIDLinkEntry]
     private let rules: BlockIDRules?
     private let usedByID: [String: CaptureUsedBlockID]
@@ -58,7 +59,8 @@ public struct BlockIDPickerIndex: Sendable {
     public init(
         field: CaptureBlockIDField?,
         candidates: [CaptureCompletionCandidate],
-        route: String
+        route: String,
+        scope: CaptureBlockIDScope = .note
     ) {
         self.field = field
         if let fieldRoute = field?.route, !fieldRoute.isEmpty {
@@ -66,6 +68,7 @@ public struct BlockIDPickerIndex: Sendable {
         } else {
             self.route = route
         }
+        self.scope = scope
         var seen: Set<String> = []
         var entries: [BlockIDLinkEntry] = []
         for candidate in candidates {
@@ -161,6 +164,21 @@ public struct BlockIDPickerIndex: Sendable {
             return relative
         }
         return "\(route).md"
+    }
+
+    /// Project-task rows name an ID inside the new project note rather than
+    /// addressing a routed note, so they carry no route and their `↩ inserts`
+    /// line reads `:id` / `^id` with no `@` prefix.
+    private var isProjectTask: Bool {
+        scope == .projectTask
+    }
+
+    private var displayRoute: String? {
+        isProjectTask ? nil : route
+    }
+
+    private var rowInsertionPrefix: String {
+        isProjectTask ? "" : "@"
     }
 
     // MARK: - Link presentation
@@ -635,7 +653,7 @@ public struct BlockIDPickerIndex: Sendable {
             bobIndex: entries.count,
             glyph: .newID(availability),
             displayText: "^\(id)",
-            route: route,
+            route: displayRoute,
             blockID: id,
             locatorStyle: .blockOnly,
             badgeText: badgeWord(for: availability),
@@ -651,7 +669,7 @@ public struct BlockIDPickerIndex: Sendable {
             bobIndex: entries.count + 1,
             glyph: .alternativeID,
             displayText: "^\(id)",
-            route: route,
+            route: displayRoute,
             blockID: id,
             locatorStyle: .blockOnly,
             badgeText: "Next free",
@@ -668,17 +686,17 @@ public struct BlockIDPickerIndex: Sendable {
             bobIndex: entries.count + 2,
             glyph: .newID(.taken(line: used.line, text: used.text)),
             displayText: message,
-            route: route,
+            route: displayRoute,
             blockID: id,
             locatorStyle: .blockOnly,
             isSelectable: false,
             insertion: nil,
             detail: CapturePickerRowDetail(
                 statusText: message,
-                route: route,
+                route: displayRoute,
                 section: nil,
                 summary: availabilitySummary(for: .taken(line: used.line, text: used.text), id: id),
-                insertionPrefix: "@"
+                insertionPrefix: rowInsertionPrefix
             ),
             accessibilityLabel: "\(id) is already used on line \(used.line) by \(truncated(used.text))."
         )
@@ -691,7 +709,7 @@ public struct BlockIDPickerIndex: Sendable {
             bobIndex: entries.count + 2,
             glyph: .newID(.invalid(description)),
             displayText: message,
-            route: route,
+            route: displayRoute,
             blockID: id,
             locatorStyle: .blockOnly,
             badgeText: description,
@@ -699,10 +717,10 @@ public struct BlockIDPickerIndex: Sendable {
             insertion: nil,
             detail: CapturePickerRowDetail(
                 statusText: message,
-                route: route,
+                route: displayRoute,
                 section: nil,
                 summary: description,
-                insertionPrefix: "@"
+                insertionPrefix: rowInsertionPrefix
             ),
             accessibilityLabel: "\(id) is invalid: \(description)."
         )
@@ -715,7 +733,7 @@ public struct BlockIDPickerIndex: Sendable {
             bobIndex: bobIndex,
             glyph: .suggestion,
             displayText: "^\(suggestion)",
-            route: route,
+            route: displayRoute,
             blockID: suggestion,
             locatorStyle: .blockOnly,
             badgeText: rules == nil ? nil : badgeWord(for: availability),
@@ -736,7 +754,7 @@ public struct BlockIDPickerIndex: Sendable {
             glyph: glyph,
             displayText: display.text,
             textSegments: display.segments,
-            route: route,
+            route: displayRoute,
             blockID: used.id,
             blockIDMatchRanges: ActiveTaskMatchHighlights.coalesced(positions),
             locatorStyle: .blockOnly,
@@ -744,10 +762,10 @@ public struct BlockIDPickerIndex: Sendable {
             insertion: nil,
             detail: CapturePickerRowDetail(
                 statusText: nonEmpty(used.statusName) ?? (used.isTask ? "Task" : "Not a task"),
-                route: route,
+                route: displayRoute,
                 section: nil,
                 summary: "Line \(used.line) · \(noteTarget())",
-                insertionPrefix: "@"
+                insertionPrefix: rowInsertionPrefix
             ),
             accessibilityLabel: "\(truncated(used.text)). Block \(used.id). Line \(used.line)."
         )
@@ -760,6 +778,12 @@ public struct BlockIDPickerIndex: Sendable {
             title = field.body.isEmpty ? "New task" : "“\(field.body)”"
             if field.intent == .projectNote {
                 outcome = "Names the new project note"
+            } else if isProjectTask {
+                if field.marker == ":" {
+                    outcome = "Next task in ▣ \(noteTarget()), linked into today's Pomodoro"
+                } else {
+                    outcome = "Task in ▣ \(noteTarget())"
+                }
             } else if field.marker == ":" {
                 outcome = "New Next task in ▣ \(noteTarget()), linked into today's Pomodoro"
             } else {
@@ -771,10 +795,10 @@ public struct BlockIDPickerIndex: Sendable {
         }
         return CapturePickerRowDetail(
             statusText: title,
-            route: route,
+            route: displayRoute,
             section: nil,
             summary: "\(outcome) · \(availabilitySummary(for: availability, id: id))",
-            insertionPrefix: "@"
+            insertionPrefix: rowInsertionPrefix
         )
     }
 

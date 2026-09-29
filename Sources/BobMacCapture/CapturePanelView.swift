@@ -2094,6 +2094,31 @@ struct PreviewPane: View {
             .accessibilityLabel(pomodoroShift.accessibilitySummary)
         }
 
+        // A project note that links tasks into the Pomodoro names them from
+        // Bob's resolved `project_note.task_links`: a link symbol, the
+        // destination header, then one row per task showing its text and
+        // `^id`. No Swift-side ledger math — only Bob's rows and wording.
+        if let projectNote = CaptureProjectNotePresentation(capture: success) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "link")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(projectNote.headerText)
+                        .font(.system(.callout, design: .monospaced))
+                        .fontWeight(.semibold)
+                }
+                ForEach(Array(projectNote.linkedTasks.enumerated()), id: \.offset) { _, task in
+                    Text("\(task.text) ^\(task.blockID)")
+                        .font(.system(.callout, design: .monospaced))
+                        .textSelection(.enabled)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(projectNote.previewAccessibilitySummary)
+        }
+
         // `previewBlockLines` is the parent line, the authored children, the clipboard
         // children, and the schedule log in the exact order Bob writes them, already
         // carrying the target note's indentation.
@@ -2291,7 +2316,9 @@ struct PreviewPane: View {
             .map { ", \($0.accessibilitySummary)" } ?? ""
         let closeSummary = CapturePomodoroClosePresentation(capture: success)
             .map { ", \($0.accessibilitySummary)" } ?? ""
-        return "\(position)\(success.kind), \(destination)\(override)\(startSummary)\(adjustSummary)\(shiftSummary)\(closeSummary), \(success.previewBlockLines.joined(separator: ", "))"
+        let projectNoteSummary = CaptureProjectNotePresentation(capture: success)
+            .map { ", \($0.previewAccessibilitySummary)" } ?? ""
+        return "\(position)\(success.kind), \(destination)\(override)\(startSummary)\(adjustSummary)\(shiftSummary)\(closeSummary)\(projectNoteSummary), \(success.previewBlockLines.joined(separator: ", "))"
     }
 
     private func togglePreviewAccessibilityLabel(

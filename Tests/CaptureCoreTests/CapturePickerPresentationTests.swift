@@ -389,4 +389,43 @@ final class CapturePickerPresentationTests: XCTestCase {
         XCTAssertEqual(CapturePickerTaskStatus.canceled.displayName, "Canceled")
         XCTAssertEqual(CapturePickerTaskStatus.other("Open").displayName, "Open")
     }
+
+    func testProjectTaskScopeTokenHasNoRouteAndCaptionFollowsMarker() {
+        let linked = BlockIDPickerContext(
+            field: nil,
+            route: "cash_goog_exit",
+            marker: ":",
+            intent: .new,
+            rules: nil,
+            scope: .projectTask
+        )
+        XCTAssertEqual(linked.scopeToken, " :")
+        XCTAssertEqual(CapturePickerSource.blockID(linked).scopeCaption, "Linked task")
+
+        let named = BlockIDPickerContext(
+            field: nil,
+            route: "cash_goog_exit",
+            marker: "^",
+            intent: .new,
+            rules: nil,
+            scope: .projectTask
+        )
+        XCTAssertEqual(named.scopeToken, " ^")
+        XCTAssertEqual(CapturePickerSource.blockID(named).scopeCaption, "Task ID")
+    }
+
+    func testNoteScopeTokenKeepsRouteAndCaption() {
+        let context = BlockIDPickerContext(
+            field: nil,
+            route: "sase",
+            marker: ":",
+            intent: .link,
+            rules: nil
+        )
+        XCTAssertEqual(context.scopeToken, "@sase:")
+        XCTAssertEqual(context.scope, .note)
+        XCTAssertEqual(CapturePickerSource.blockID(context).scopeCaption, "Tasks")
+        XCTAssertEqual(CapturePickerSource.blockID(context).blockIDScope, .note)
+        XCTAssertEqual(CapturePickerSource.activeTask.blockIDScope, .note)
+    }
 }

@@ -487,7 +487,9 @@ final class NotificationService: NSObject, ObservableObject {
             .map { "\n\($0.notificationDetail)" } ?? ""
         let shifted = CapturePomodoroShiftPresentation(capture: capture)
             .map { "\n\($0.notificationDetail)" } ?? ""
-        return "\(semanticText(capture))\(scheduled)\(started)\(adjusted)\(shifted)"
+        let projectNote = CaptureProjectNotePresentation(capture: capture)
+            .map { "\n\($0.notificationDetail)" } ?? ""
+        return "\(semanticText(capture))\(scheduled)\(started)\(adjusted)\(shifted)\(projectNote)"
     }
 
     nonisolated private static func startedSuffix(for capture: CaptureCommandSuccess) -> String {
@@ -620,6 +622,9 @@ final class NotificationService: NSObject, ObservableObject {
         }
         if let link = CapturePomodoroLinkPresentation(capture: capture) {
             return link.dayFileChanged
+        }
+        if let note = capture.projectNote, !note.taskLinks.isEmpty {
+            return true
         }
         return false
     }

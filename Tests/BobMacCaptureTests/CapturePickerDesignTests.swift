@@ -274,6 +274,36 @@ final class CapturePickerDesignTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testProjectTaskScopeMountsWithoutRoute() {
+        let model = CapturePanelModel()
+        model.installBlockIDPickerForPreviews(
+            field: Self.projectTaskField,
+            candidates: [],
+            context: "project_task_block_id",
+            replacement: CaptureRange(start: 45, end: 45),
+            filter: "draft",
+            draft: "Finish it @cash^goog-exit+\n- Draft the memo :"
+        )
+
+        guard case .blockID(let context) = model.picker?.source else {
+            XCTFail("expected a block-ID picker source")
+            return
+        }
+        XCTAssertEqual(context.scope, .projectTask)
+        XCTAssertEqual(context.scopeToken, " :")
+        XCTAssertEqual(model.picker?.source.scopeCaption, "Linked task")
+        let row = model.pickerPresentation?.row(id: "new:draft")
+        XCTAssertNil(row?.route)
+        XCTAssertEqual(row?.blockID, "draft")
+        XCTAssertEqual(row?.detail.insertionPrefix, "")
+        XCTAssertTrue(
+            row?.detail.summary.contains(
+                "Next task in ▣ cash_goog_exit.md, linked into today's Pomodoro"
+            ) ?? false
+        )
+    }
+
     /// Link intent without a field (older Bob): browse-only context.
     private static var linkContext: BlockIDPickerContext {
         BlockIDPickerContext(field: nil, route: "sase", marker: ":", intent: .link, rules: nil)
@@ -594,6 +624,30 @@ final class CapturePickerDesignTests: XCTestCase {
             allowedCharacter: "[A-Za-z0-9-]",
             allowedDescription: "A-Z, a-z, 0-9 or '-'",
             suggestions: ["retreat", "offsite-plan"]
+        )
+    }
+
+    /// Project-task field for a trailing ` :` on a project-note bullet.
+    private static var projectTaskField: CaptureBlockIDField {
+        CaptureBlockIDField(
+            route: "cash_goog_exit",
+            relativeTarget: "cash_goog_exit.md",
+            noteExists: false,
+            marker: ":",
+            markerRange: CaptureRange(start: 44, end: 45),
+            intent: .new,
+            body: "Draft the memo",
+            allowedCharacter: "[A-Za-z0-9-]",
+            allowedDescription: "A-Z, a-z, 0-9 or '-'",
+            suggestions: ["draft-memo"],
+            used: [
+                CaptureUsedBlockID(
+                    id: "prj",
+                    line: 1,
+                    isTask: true,
+                    text: "Finish it"
+                ),
+            ]
         )
     }
 

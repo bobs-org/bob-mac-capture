@@ -934,7 +934,12 @@ final class CapturePanelModel: ObservableObject {
             route = field?.route ?? ""
         }
         let index = CapturePickerIndex.blockID(
-            BlockIDPickerIndex(field: field, candidates: candidates, route: route)
+            BlockIDPickerIndex(
+                field: field,
+                candidates: candidates,
+                route: route,
+                scope: source.blockIDScope
+            )
         )
         installPickerSessionForPreviews(
             source: source,
@@ -1011,7 +1016,9 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         guard completion.context == "active_task" else {
-            if completion.context == "pomodoro_block_id" || completion.context == "task_block_id" {
+            if completion.context == "pomodoro_block_id" || completion.context == "task_block_id"
+                || completion.context == "project_task_block_id"
+            {
                 await handleBlockIDCompletion(
                     completion,
                     draft: draft,
@@ -1037,17 +1044,24 @@ final class CapturePanelModel: ObservableObject {
 
     /// A block-ID response is usable when it is `pomodoro_block_id` (older
     /// Bob binaries omit the `block_id` object there and still get a Link
-    /// picker without New ID rows) or `task_block_id` with a `block_id`
-    /// object. A `task_block_id` response without one is treated as no
-    /// completion: older Bob never sends `task_block_id` at all, so there is
-    /// no picker and no inline list.
+    /// picker without New ID rows) or `task_block_id` / `project_task_block_id`
+    /// with a `block_id` object. A response in either newer context without one
+    /// is treated as no completion: older Bob never sends those contexts at
+    /// all, so there is no picker and no inline list.
     private static func isUsableBlockIDCompletion(_ completion: CaptureCompletionResponse) -> Bool {
-        completion.context == "pomodoro_block_id" || completion.blockID != nil
+        if completion.context == "pomodoro_block_id" {
+            return true
+        }
+        return (completion.context == "task_block_id"
+            || completion.context == "project_task_block_id")
+            && completion.blockID != nil
     }
 
     /// Builds the picker source for a usable block-ID response: the decoded
     /// field (nil for older Bob), the route, the marker, the intent (older
-    /// Bob means Link), and Bob's ID rules.
+    /// Bob means Link), Bob's ID rules, and the project-task scope for
+    /// `project_task_block_id` (a trailing ` :id` / ` ^id` token inside a
+    /// project-note item, which names an ID in the new project note).
     private static func blockIDSource(for completion: CaptureCompletionResponse) -> CapturePickerSource {
         let field = completion.blockID
         let marker: String
@@ -1066,13 +1080,25 @@ final class CapturePanelModel: ObservableObject {
         let rules = field.flatMap {
             BlockIDRules(allowedCharacter: $0.allowedCharacter, description: $0.allowedDescription)
         }
+        let scope: CaptureBlockIDScope =
+            completion.context == "project_task_block_id" ? .projectTask : .note
         return .blockID(
-            BlockIDPickerContext(field: field, route: route, marker: marker, intent: intent, rules: rules)
+            BlockIDPickerContext(
+                field: field,
+                route: route,
+                marker: marker,
+                intent: intent,
+                rules: rules,
+                scope: scope
+            )
         )
     }
 
-    /// Routes `pomodoro_block_id`/`task_block_id` responses into the generic
-    /// picker with intent-aware opening rules. Link intent mirrors `^`: an
+    /// Routes `pomodoro_block_id`/`task_block_id`/`project_task_block_id`
+    /// responses into the generic picker with intent-aware opening rules.
+    /// `project_task_block_id` always carries intent `new`, so it follows the
+    /// New ID rules below with the project-task scope. Link intent mirrors
+    /// `^`: an
     /// exact part opens nothing, an `.edit` opens the picker (refetching the
     /// full snapshot at the range start when the caret is past it), and a
     /// caret-only move or suppression shows the chip. New ID intent opens
@@ -1217,7 +1243,12 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         let index = CapturePickerIndex.blockID(
-            BlockIDPickerIndex(field: completion.blockID, candidates: completion.candidates, route: context.route)
+            BlockIDPickerIndex(
+                field: completion.blockID,
+                candidates: completion.candidates,
+                route: context.route,
+                scope: context.scope
+            )
         )
         presentPicker(
             source: source,
@@ -1727,7 +1758,11 @@ final class CapturePanelModel: ObservableObject {
         // Active-task insertions are bare locators; prefix the `^` so the
         // announcement matches the pre-epic "Inserted ^route:block-id".
         if case .blockID(let context) = source {
-            announceStatus("Inserted @\(context.route)\(context.marker)\(insertion)")
+            if context.scope == .projectTask {
+                announceStatus("Inserted \(context.marker)\(insertion)")
+            } else {
+                announceStatus("Inserted @\(context.route)\(context.marker)\(insertion)")
+            }
         } else {
             announceStatus("Inserted \(row.detail.insertionPrefix)\(insertion)")
         }
@@ -1903,7 +1938,12 @@ final class CapturePanelModel: ObservableObject {
             presentPicker(
                 source: chip.source,
                 index: .blockID(
-                    BlockIDPickerIndex(field: context.field, candidates: chip.candidates, route: context.route)
+                    BlockIDPickerIndex(
+                        field: context.field,
+                        candidates: chip.candidates,
+                        route: context.route,
+                        scope: context.scope
+                    )
                 ),
                 candidates: chip.candidates,
                 warnings: chip.warnings,
@@ -3126,7 +3166,9 @@ final class CapturePanelModel: ObservableObject {
         // intercepts `^` and `routeReplacementRange` never overwrites it; Bob's
         // `needs` covers the lone-`^` case, so there is no Swift-side `^` sniffing.
         // `task_block_id` (the right-hand side of `@route^`) requests block-ID
-        // completion the same way `pomodoro_block_id` already does.
+        // completion the same way `pomodoro_block_id` already does, and the
+        // `project_task_*` spans (a trailing ` :id` / ` ^id` token on a
+        // project-note bullet) request `project_task_block_id` the same way.
         let completionSpanKinds = Set([
             "route",
             "section",
@@ -3134,6 +3176,8 @@ final class CapturePanelModel: ObservableObject {
             "task_block_id",
             "pomodoro_route",
             "pomodoro_block_id",
+            "project_task_link_marker",
+            "project_task_block_id",
             "pomodoro_name",
             "sub_bullet_route",
             "sub_bullet_block_id",
@@ -3406,6 +3450,9 @@ final class CapturePanelModel: ObservableObject {
         }
         if let link = CapturePomodoroLinkPresentation(capture: capture) {
             return link.dayFileChanged
+        }
+        if let note = capture.projectNote, !note.taskLinks.isEmpty {
+            return true
         }
         return false
     }

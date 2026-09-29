@@ -1304,6 +1304,90 @@ public struct PomodoroLinkEndpoint: Codable, Equatable, Sendable {
     }
 }
 
+/// One named project task Bob linked into the Pomodoro: the block ID, the
+/// `[[<stem>#^<id>]]` link, the task text, and the rendered `[*]`/`[?]` line.
+/// `bob capture --format json` reports these in source order inside
+/// `project_note.task_links`; older Bob binaries omit the whole object.
+public struct CaptureProjectTaskLink: Codable, Equatable, Sendable {
+    public let blockID: String
+    public let blockLink: String
+    public let text: String
+    public let taskLine: String
+
+    public init(blockID: String, blockLink: String, text: String, taskLine: String) {
+        self.blockID = blockID
+        self.blockLink = blockLink
+        self.text = text
+        self.taskLine = taskLine
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID) ?? ""
+        blockLink = try container.decodeIfPresent(String.self, forKey: .blockLink) ?? ""
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        taskLine = try container.decodeIfPresent(String.self, forKey: .taskLine) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case blockID = "block_id"
+        case blockLink = "block_link"
+        case text
+        case taskLine = "task_line"
+    }
+}
+
+/// The additive `project_note` object on a `project_note` capture result:
+/// the new note's identity plus the Task Links written into the Pomodoro.
+/// `task_links` is always present on newer Bob and may be empty; older Bob
+/// binaries omit the whole object and decode as nil.
+public struct CaptureProjectNoteSummary: Codable, Equatable, Sendable {
+    public let basename: String
+    public let parentRoute: String
+    public let parentLink: String
+    public let tasks: Int
+    public let sections: [String]
+    public let taskLinks: [CaptureProjectTaskLink]
+
+    public init(
+        basename: String,
+        parentRoute: String = "",
+        parentLink: String = "",
+        tasks: Int = 0,
+        sections: [String] = [],
+        taskLinks: [CaptureProjectTaskLink] = []
+    ) {
+        self.basename = basename
+        self.parentRoute = parentRoute
+        self.parentLink = parentLink
+        self.tasks = tasks
+        self.sections = sections
+        self.taskLinks = taskLinks
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        basename = try container.decodeIfPresent(String.self, forKey: .basename) ?? ""
+        parentRoute = try container.decodeIfPresent(String.self, forKey: .parentRoute) ?? ""
+        parentLink = try container.decodeIfPresent(String.self, forKey: .parentLink) ?? ""
+        tasks = try container.decodeIfPresent(Int.self, forKey: .tasks) ?? 0
+        sections = try container.decodeIfPresent([String].self, forKey: .sections) ?? []
+        taskLinks = try container.decodeIfPresent(
+            [CaptureProjectTaskLink].self,
+            forKey: .taskLinks
+        ) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case basename
+        case parentRoute = "parent_route"
+        case parentLink = "parent_link"
+        case tasks
+        case sections
+        case taskLinks = "task_links"
+    }
+}
+
 public struct CaptureCommandSuccess: Codable, Equatable {
     public let ok: Bool
     public let dryRun: Bool
@@ -1372,6 +1456,10 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     // Additive session-close result for `=x` and task-link closes. Older Bob
     // binaries omit it entirely; decode as nil.
     public let pomodoroClose: PomodoroCloseSummary?
+    // Additive `project_note` object (including `task_links`) on a
+    // `project_note` capture. Older Bob binaries omit it entirely; decode
+    // as nil.
+    public let projectNote: CaptureProjectNoteSummary?
     public let captures: [CaptureCommandSuccess]
     public let globalDestination: CaptureGlobalDestination?
     public let warnings: [String]
@@ -1424,6 +1512,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         pomodoroAdjust: PomodoroAdjustSummary? = nil,
         pomodoroShift: PomodoroShiftSummary? = nil,
         pomodoroClose: PomodoroCloseSummary? = nil,
+        projectNote: CaptureProjectNoteSummary? = nil,
         captures: [CaptureCommandSuccess] = [],
         globalDestination: CaptureGlobalDestination? = nil,
         warnings: [String] = []
@@ -1475,6 +1564,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.pomodoroAdjust = pomodoroAdjust
         self.pomodoroShift = pomodoroShift
         self.pomodoroClose = pomodoroClose
+        self.projectNote = projectNote
         self.captures = captures
         self.globalDestination = globalDestination
         self.warnings = warnings
@@ -1547,6 +1637,10 @@ public struct CaptureCommandSuccess: Codable, Equatable {
             PomodoroCloseSummary.self,
             forKey: .pomodoroClose
         )
+        projectNote = try container.decodeIfPresent(
+            CaptureProjectNoteSummary.self,
+            forKey: .projectNote
+        )
         captures = try container.decodeIfPresent([CaptureCommandSuccess].self, forKey: .captures) ?? []
         globalDestination = try container.decodeIfPresent(
             CaptureGlobalDestination.self,
@@ -1603,6 +1697,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case pomodoroAdjust = "pomodoro_adjust"
         case pomodoroShift = "pomodoro_shift"
         case pomodoroClose = "pomodoro_close"
+        case projectNote = "project_note"
         case captures
         case globalDestination = "global_destination"
         case warnings

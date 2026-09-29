@@ -19,6 +19,13 @@ import XCTest
 ///   bob capture-complete -b VAULT -c 22 -f json -- 'Fix flaky test @notes:'
 ///   bob capture-complete -b VAULT -c 8 -f json -- '@notes^x+'
 ///   bob capture-complete -b VAULT -c 9 -f json -- '@missing:'
+///
+/// `block-id-project-task.json` was generated the same way against a vault
+/// holding `cash.md` (`type: [[area]]`) with a `Finish it @cash^goog-exit+`
+/// project note whose first bullet ends with a lone `:`:
+///
+///   bob capture-complete -b VAULT -c 45 -f json -- 'Finish it @cash^goog-exit+
+///   - Draft the memo :'
 final class BlockIDDecodingTests: XCTestCase {
     private func fixtureResponse(_ name: String) throws -> CaptureCompletionResponse {
         let fixtures = URL(fileURLWithPath: #filePath)
@@ -156,6 +163,34 @@ final class BlockIDDecodingTests: XCTestCase {
         XCTAssertEqual(field.used, [])
     }
 
+    func testProjectTaskResponseDecodesNewIntentScopeAndPrjUsed() throws {
+        let response = try fixtureResponse("block-id-project-task.json")
+
+        XCTAssertEqual(
+            CaptureCompletionContext(rawContext: response.context),
+            .projectTaskBlockID
+        )
+        XCTAssertEqual(response.replacement, CaptureRange(start: 45, end: 45))
+        XCTAssertEqual(response.candidates, [])
+
+        let field = try XCTUnwrap(response.blockID)
+        XCTAssertEqual(field.route, "cash_goog_exit")
+        XCTAssertEqual(field.relativeTarget, "cash_goog_exit.md")
+        XCTAssertFalse(field.noteExists)
+        XCTAssertEqual(field.marker, ":")
+        XCTAssertEqual(field.markerRange, CaptureRange(start: 44, end: 45))
+        XCTAssertEqual(field.intent, .new)
+        XCTAssertEqual(field.body, "Draft the memo")
+        XCTAssertEqual(field.allowedCharacter, "[A-Za-z0-9-]")
+        XCTAssertEqual(field.allowedDescription, "A-Z, a-z, 0-9 or '-'")
+        XCTAssertEqual(field.suggestions, ["draft-memo"])
+        XCTAssertEqual(field.used.map { $0.id }, ["prj"])
+        let prj = try XCTUnwrap(field.used.first)
+        XCTAssertEqual(prj.line, 1)
+        XCTAssertTrue(prj.isTask)
+        XCTAssertEqual(prj.text, "Finish it")
+    }
+
     func testMissingNoteResponseIsNotAnError() throws {
         let response = try fixtureResponse("block-id-missing-note.json")
 
@@ -216,6 +251,10 @@ final class BlockIDDecodingTests: XCTestCase {
         XCTAssertEqual(
             CaptureCompletionContext(rawContext: "pomodoro_block_id"),
             .pomodoroBlockID
+        )
+        XCTAssertEqual(
+            CaptureCompletionContext(rawContext: "project_task_block_id"),
+            .projectTaskBlockID
         )
         XCTAssertNil(CaptureCompletionContext(rawContext: "block_id"))
         XCTAssertNil(CaptureCompletionContext(rawContext: nil))

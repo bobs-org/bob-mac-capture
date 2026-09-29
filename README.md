@@ -66,7 +66,12 @@ mutation.
   plus whole-item `=`/`=<X>` session starts (`pomodoro_start` parse/capture
   JSON and the `pomodoro_start` span, where `<X>` mirrors the `se<X>` snippet
   and the capture summary carries the session's queued Task Links),
-  plus Pomodoro close `=x` and its additive `pomodoro_close` capture summary.
+  plus Pomodoro close `=x` and its additive `pomodoro_close` capture summary,
+  plus the project-note `@route^block-id+#pomodoro` marker (the retired
+  `@route:block-id+` spelling is a parse diagnostic), the trailing ` :id` /
+  ` ^id` project-task tokens (`project_task_block_id` completion context with
+  intent `new`, `project_task_link_marker` / `project_task_block_id` parse
+  spans, and the additive `project_note.task_links` capture object).
   Older builds can still capture ordinary drafts, but
   global declarations, bare-`@@` absorption, the Add block ID flow, the Name Pomodoro
   flow, the task-section popup, and the task-toggle footer/preview report the local Bob
@@ -243,11 +248,13 @@ or expired certificate can require reauthorizing those system permissions.
   the picker and Escape hides the chip.
 - Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
   valid opens the Block ID Picker (`pomodoro_block_id` / `task_block_id` contexts),
+  and typing a trailing ` :` / ` ^` on a project-note bullet opens the Project task
+  picker (`project_task_block_id` context),
   the same large, fuzzy, keyboard-first picker language as `^`, and never the inline
   list. Bob decides the intent and the app presents it: a marker-only `@route:` item
   gets a Link picker that browses the note's linkable tasks grouped by the note's own
   headings; every new-ID position (`@route^`, `@route:` on an item with text, either
-  marker followed by the project-note `+`) gets a New ID composer with Bob's
+  marker followed by the project-note `+`, or a project-task ` :` / ` ^` token) gets a New ID composer with Bob's
   suggestions from the task text, live availability against every ID already in the
   note, a one-key "next free" alternative when an ID is taken, and similar existing
   IDs for naming consistency. Bob supplies one snapshot (intent, candidates, every
@@ -320,7 +327,9 @@ or expired certificate can require reauthorizing those system permissions.
   and hover fills strengthen under Increase Contrast.
 - The Block ID Picker reuses that card with per-mode anatomy. The scope token
   names the marker (`@sase:`, `@sase^`) with a Tasks, New ID, or Project note
-  caption, plus `· line N` on multi-line drafts. Placeholders read
+  caption, plus `· line N` on multi-line drafts; a Project task session shows
+  the bare ` :` / ` ^` sigil with a Linked task / Task ID caption and no
+  `@route`. Placeholders read
   "Filter sase.md tasks, or type a new ID" (Link) and "Type a new ID for
   sase.md" (New ID). The trailing element is the count for Link ("96 tasks",
   "5 of 96") and a live availability badge capsule for New ID (green
@@ -336,11 +345,16 @@ or expired certificate can require reauthorizing those system permissions.
   green available ID, an orange taken status plus a "Next free" alternative, a
   red invalid status, an unchecked project-note row, accent `sparkles`
   suggestions with availability badges, and up to five dim 28pt "In use" info
-  rows with fuzzy highlights (never selectable). The detail strip names the
+  rows with fuzzy highlights (never selectable). Row locators use the session's
+  own marker, so a `^` session reads `route^id` and a Project task row reads
+  the bare `:id` / `^id`. The detail strip names the
   outcome per row kind — linked task, new task in `▣ sase.md` (or New Next
-  task linked into today's Pomodoro, or the new project note), plus `↩ inserts
-  @sase:id` — and after the first insert teaches `#name`, `=`, `=x` (`^`
-  and `:` IDs) or `+` for a project note, tracked separately per source.
+  task linked into today's Pomodoro, or the new project note, or for a Project
+  task the Next task linked into today's Pomodoro / Task in `▣ cash_goog_exit.md`),
+  plus `↩ inserts @sase:id` (`↩ inserts :draft-memo` for a Project task) — and
+  after the first insert teaches `#name` or `=` (`:` IDs) or `+` for a project
+  note (`+#name` picks its Pomodoro; `^` IDs), tracked separately per source.
+  Project notes and Project tasks teach no follow-up.
   Empty states cover no linkable tasks, a missing note, no matches, and the
   empty composer. While any picker is open, the marker token being completed
   carries an accent wash in the dimmed editor (`marker_range` for block IDs,
@@ -433,7 +447,10 @@ or expired certificate can require reauthorizing those system permissions.
   completed count when nonzero), and
   the next-session line; link and new-task closes use the same title and body,
   batch lines append ` (closed NAME)` under a `Close` kind, and Open Note
-  targets the day file, which a close always writes.
+  targets the day file, which a close always writes. A project note that links
+  tasks previews a link section ("Links 2 tasks into ADMIN (new)", one row per
+  task with its text and `^id`), notifies "Linked 2 tasks into ADMIN", and
+  includes the daily note in Open Note(s) whenever `task_links` is non-empty.
 - Preview shows every block Bob will write, in Bob's own order: each item's parent
   `task_line`, authored children, then `clip.lines` and `schedule_log.lines` when the
   response carries them. Task-toggle items instead show the route/block destination, the
@@ -611,14 +628,19 @@ A marker (`@route`,
 `@route+block-id` with body text for an
 existing-task sub-bullet, `@route+block-id#section` to nest under one of that task's
 ALL-CAPS section bullets, `@route^block-id` for an ordinary task with an authored block
-ID, `s:<N>`, `p:<N>`, `%`, …) at the end of any valid line configures that item even
+ID, `@route^block-id+#pomodoro` for a project note (with ` :id` / ` ^id` tokens
+on its task bullets naming and optionally linking project tasks),
+`s:<N>`, `p:<N>`, `%`, …) at the end of any valid line configures that item even
 when it appears on a child line. The app never parses that punctuation itself:
 highlighting and completion follow bob-cli's semantic spans. Both families complete
 their route side; only the `+` family's right-hand side offers existing tasks, `#` after
 a resolved `@route+block-id` offers Pomodoro names while the item has no body text and
-task sections once it does, and the `^` family's authored ID opens the New ID picker. The retired
-`@route::block-id` spelling is a parse diagnostic from `bob capture-parse`, not a
-supported interactive form.
+task sections once it does, and the `^` family's authored ID opens the New ID picker.
+A project note's ` :id` bullet becomes a Next task linked into the Pomodoro and its
+` ^id` bullet a named task; the preview names each linked task and the notification
+reports "Linked N tasks into …". The retired
+`@route::block-id` and `@route:block-id+` spellings are parse diagnostics from
+`bob capture-parse`, not supported interactive forms.
 
 ```text
 Prepare the launch review

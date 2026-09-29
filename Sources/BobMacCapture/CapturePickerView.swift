@@ -654,6 +654,16 @@ private struct CapturePickerRowView: View {
         )
     }
 
+    /// The separator between the route and the block ID comes from the picker's
+    /// own marker (`:` or `^`), never a hard-coded `:` — a `^` session reads
+    /// `route^id`, and a project-task session reads the bare `:id` / `^id`.
+    private var locatorMarker: String {
+        if case .blockID(let context) = model.picker?.source {
+            return context.marker
+        }
+        return ":"
+    }
+
     private var locatorText: some View {
         HStack(spacing: 0) {
             if let route = row.route {
@@ -664,8 +674,8 @@ private struct CapturePickerRowView: View {
                 ))
                 .foregroundStyle(CaptureEditorPalette.color(for: .route))
             }
-            if row.route != nil, row.blockID != nil {
-                Text(":")
+            if row.blockID != nil {
+                Text(locatorMarker)
                     .foregroundStyle(.secondary)
             }
             if let blockID = row.blockID {
@@ -784,21 +794,22 @@ private struct CapturePickerDetailStrip: View {
         }
     }
 
-    /// Follow-up keystrokes taught after the first insert, per source. The
-    /// Block ID composer teaches the project-note `+` (or `#name`/`=`/`+`
-    /// after a `:` ID); project notes need no follow-up.
+    /// Follow-up keystrokes taught after the first insert, per source. A `:`
+    /// ID takes `#name` or `=`; a `^` ID takes `+` for a project note (with
+    /// `+#name` picking its Pomodoro). Project notes and project-task IDs
+    /// need no follow-up.
     private func teachingLine(for source: CapturePickerSource) -> String? {
         switch source {
         case .activeTask:
             return "Then type #name, = to start, or =x to close"
         case .blockID(let context):
-            if context.intent == .projectNote {
+            if context.intent == .projectNote || context.scope == .projectTask {
                 return nil
             }
             if context.marker == "^" {
-                return "Then type + to make it a project note"
+                return "Then type + for a project note (+#name picks its Pomodoro)"
             }
-            return "Then type #name, = to start, or + for a project note"
+            return "Then type #name or = to start"
         }
     }
 
@@ -808,13 +819,21 @@ private struct CapturePickerDetailStrip: View {
             + locatorInsertionText(for: row)
     }
 
+    /// The `↩ inserts …` locator mirrors the row locator: the route (absent
+    /// for project-task rows), then the session's own marker, then the ID.
     private func locatorInsertionText(for row: CapturePickerRow) -> Text {
+        let marker: String
+        if case .blockID(let context) = source {
+            marker = context.marker
+        } else {
+            marker = ":"
+        }
         var text = Text("")
         if let route = row.route {
             text = text + Text(route).foregroundColor(CaptureEditorPalette.color(for: .route))
         }
-        if row.route != nil, row.blockID != nil {
-            text = text + Text(":").foregroundColor(.secondary)
+        if row.blockID != nil {
+            text = text + Text(marker).foregroundColor(.secondary)
         }
         if let blockID = row.blockID {
             text = text + Text(blockID).foregroundColor(CaptureEditorPalette.color(for: .blockID))

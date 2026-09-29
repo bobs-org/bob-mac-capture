@@ -1127,6 +1127,19 @@ JSON
 ],
 "diagnostics":[]}
 JSON
+    elif [[ "${draft}" == $'Finish it @cash^goog-exit+\n- Draft the memo :' ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"body":"Finish it","mode":"incomplete","route":"cash","block_id":"goog-exit","needs":["block_id"],
+"spans":[
+  {"start":10,"end":15,"kind":"task_block_id_route"},
+  {"start":16,"end":25,"kind":"task_block_id"},
+  {"start":25,"end":26,"kind":"project_note_marker"},
+  {"start":44,"end":45,"kind":"interactive_placeholder"}
+],
+"diagnostics":[]}
+JSON
     elif [[ "${draft}" == "Follow up @file:new-id#" ]]; then
       cat <<'JSON'
 {
@@ -2667,6 +2680,32 @@ JSON
     "allowed_description": "A-Z, a-z, 0-9 or '-'",
     "suggestions": [],
     "used": []
+  }
+}
+JSON
+    elif [[ "${draft}" == $'Finish it @cash^goog-exit+\n- Draft the memo :' ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 45, "end": 45 },
+  "context": "project_task_block_id",
+  "candidates": [],
+  "block_id": {
+    "route": "cash_goog_exit",
+    "relative_target": "cash_goog_exit.md",
+    "note_exists": false,
+    "marker": ":",
+    "marker_range": { "start": 44, "end": 45 },
+    "intent": "new",
+    "body": "Draft the memo",
+    "allowed_character": "[A-Za-z0-9-]",
+    "allowed_description": "A-Z, a-z, 0-9 or '-'",
+    "suggestions": ["draft-memo"],
+    "used": [
+      { "id": "prj", "line": 1, "task": true, "status_symbol": null, "status_name": null, "text": "Finish it" }
+    ]
   }
 }
 JSON

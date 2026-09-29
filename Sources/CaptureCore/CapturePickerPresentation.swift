@@ -1,5 +1,16 @@
 import Foundation
 
+/// Which note a Block ID picker session edits: an ordinary `@route`/`@route^`
+/// marker position (`.note`), or a trailing ` :id` / ` ^id` project-task token
+/// inside a project-note item (`.projectTask`, from Bob's
+/// `project_task_block_id` context). A project-task session names IDs inside
+/// the new project note rather than addressing a routed note, so it shows no
+/// `@route` anywhere.
+public enum CaptureBlockIDScope: Equatable, Sendable {
+    case note
+    case projectTask
+}
+
 /// Which Block ID position a picker session edits: the decoded `block_id`
 /// field (nil for older Bob binaries that send `pomodoro_block_id` without
 /// it), the route, the marker (`:` or `^`), the intent, and Bob's ID rules
@@ -11,19 +22,22 @@ public struct BlockIDPickerContext: Equatable, Sendable {
     public let marker: String
     public let intent: CaptureBlockIDIntent
     public let rules: BlockIDRules?
+    public let scope: CaptureBlockIDScope
 
     public init(
         field: CaptureBlockIDField?,
         route: String,
         marker: String,
         intent: CaptureBlockIDIntent,
-        rules: BlockIDRules?
+        rules: BlockIDRules?,
+        scope: CaptureBlockIDScope = .note
     ) {
         self.field = field
         self.route = route
         self.marker = marker
         self.intent = intent
         self.rules = rules
+        self.scope = scope
     }
 
     /// Link intent, or no field (older Bob): browse the note's tasks.
@@ -41,9 +55,13 @@ public struct BlockIDPickerContext: Equatable, Sendable {
         return "\(route).md"
     }
 
-    /// Marker token naming the position (`@sase:` / `@sase^`).
+    /// Marker token naming the position (`@sase:` / `@sase^`, or the bare
+    /// ` :` / ` ^` project-task sigil with no `@route`).
     public var scopeToken: String {
-        "@\(route)\(marker)"
+        if scope == .projectTask {
+            return " \(marker)"
+        }
+        return "@\(route)\(marker)"
     }
 }
 
@@ -53,6 +71,15 @@ public struct BlockIDPickerContext: Equatable, Sendable {
 public enum CapturePickerSource: Equatable, Sendable {
     case activeTask
     case blockID(BlockIDPickerContext)
+
+    /// The block-ID scope, so the fuzzy index shapes rows (no `@route`)
+    /// for a project-task session. `.note` for the `^` source.
+    public var blockIDScope: CaptureBlockIDScope {
+        if case .blockID(let context) = self {
+            return context.scope
+        }
+        return .note
+    }
 
     /// Draft byte the picker opened on (`^` for active tasks, `:` or `^`
     /// for block IDs). Backspace on an empty filter removes this byte
@@ -112,6 +139,9 @@ public enum CapturePickerSource: Equatable, Sendable {
         case .blockID(let context):
             if context.intent == .projectNote {
                 return "Project note"
+            }
+            if context.scope == .projectTask {
+                return context.marker == ":" ? "Linked task" : "Task ID"
             }
             return context.isNewIDMode ? "New ID" : "Tasks"
         }

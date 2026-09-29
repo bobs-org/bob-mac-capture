@@ -2446,4 +2446,39 @@ final class CaptureModelTests: XCTestCase {
         }
         return success
     }
+
+    func testProjectNoteDecodesTaskLinksTolerantly() throws {
+        let withLinks = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash_goog_exit.md",
+            "relative_target":"cash_goog_exit.md","target":"/tmp/vault/cash_goog_exit.md",
+            "text":"Finish it","task_line":"- [ ] #task #prj Finish it #hide ^prj",
+            "kind":"project_note","created":"2026-09-20","placement":"created","block_id":"prj",
+            "day_file":"/tmp/vault/day.md","pomodoro_name":"ADMIN","creates_pomodoro":true,
+            "project_note":{"basename":"cash_goog_exit.md","parent_route":"cash","parent_link":"[[cash]]",
+            "tasks":1,"sections":[],"task_links":[
+            {"block_id":"draft-memo","block_link":"[[cash_goog_exit#^draft-memo]]",
+            "text":"Draft the memo","task_line":"- [*] #task Draft the memo ^draft-memo"}]}}
+            """
+        )
+        XCTAssertEqual(
+            withLinks.projectNote?.taskLinks,
+            [CaptureProjectTaskLink(
+                blockID: "draft-memo",
+                blockLink: "[[cash_goog_exit#^draft-memo]]",
+                text: "Draft the memo",
+                taskLine: "- [*] #task Draft the memo ^draft-memo"
+            )]
+        )
+
+        let withoutNote = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash_goog_exit.md",
+            "relative_target":"cash_goog_exit.md","target":"/tmp/vault/cash_goog_exit.md",
+            "text":"Finish it","task_line":"- [ ] #task #prj Finish it #hide ^prj",
+            "kind":"project_note","created":"2026-09-20","placement":"created","block_id":"prj"}
+            """
+        )
+        XCTAssertNil(withoutNote.projectNote)
+    }
 }
