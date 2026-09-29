@@ -1396,22 +1396,7 @@ private struct CompletionRow: View {
                                 .lineLimit(1)
                         }
                         ForEach(Array(content.badges.enumerated()), id: \.offset) { _, badge in
-                            Text(badge)
-                                .font(.caption2)
-                                .lineLimit(1)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(
-                                    isOutlinedBadge(badge) ? Color.clear
-                                        : isOverCapBadge(badge) ? Color.red.opacity(0.15)
-                                        : tint.opacity(0.15),
-                                    in: Capsule()
-                                )
-                                .overlay(
-                                    Capsule()
-                                        .strokeBorder(isOutlinedBadge(badge) ? tint.opacity(0.55) : Color.clear, lineWidth: 0.7)
-                                )
-                                .foregroundStyle(isOverCapBadge(badge) ? Color.red : tint)
+                            badgeView(badge)
                         }
                     }
                 }
@@ -1427,6 +1412,33 @@ private struct CompletionRow: View {
         .accessibilityLabel(content.accessibilityLabel)
         .accessibilityHint(content.accessibilityHint)
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private func badgeView(_ badge: String) -> some View {
+        let fill: Color = badgeFill(for: badge)
+        let stroke: Color = isOutlinedBadge(badge) ? tint.opacity(0.55) : Color.clear
+        let foreground: Color = isOverCapBadge(badge) ? Color.red : tint
+        return Text(badge)
+            .font(.caption2)
+            .lineLimit(1)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(fill, in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(stroke, lineWidth: 0.7)
+            )
+            .foregroundStyle(foreground)
+    }
+
+    private func badgeFill(for badge: String) -> Color {
+        if isOutlinedBadge(badge) {
+            return Color.clear
+        }
+        if isOverCapBadge(badge) {
+            return Color.red.opacity(0.15)
+        }
+        return tint.opacity(0.15)
     }
 
     private func isOutlinedBadge(_ badge: String) -> Bool {
