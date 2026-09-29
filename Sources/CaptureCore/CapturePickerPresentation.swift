@@ -443,6 +443,9 @@ public struct CapturePickerPresentation: Equatable, Sendable {
     /// empty). The panel fixes its height from this once at open; filtering
     /// never resizes it.
     public let visibleRowBudget: Int
+    /// Block-ID badge/detail-strip status for the current filter. Nil for
+    /// the `^` source and older Bob responses without a `block_id` object.
+    public let blockIDStatus: CapturePickerBlockIDStatus?
 
     public init(
         mode: CapturePickerMode,
@@ -453,7 +456,8 @@ public struct CapturePickerPresentation: Equatable, Sendable {
         matchCount: Int,
         countText: String,
         emptyState: CapturePickerEmptyState?,
-        visibleRowBudget: Int
+        visibleRowBudget: Int,
+        blockIDStatus: CapturePickerBlockIDStatus? = nil
     ) {
         self.mode = mode
         self.sections = sections
@@ -464,6 +468,7 @@ public struct CapturePickerPresentation: Equatable, Sendable {
         self.countText = countText
         self.emptyState = emptyState
         self.visibleRowBudget = visibleRowBudget
+        self.blockIDStatus = blockIDStatus
     }
 
     public func row(id: String) -> CapturePickerRow? {

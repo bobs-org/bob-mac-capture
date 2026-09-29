@@ -83,6 +83,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case route
     case section
     case pomodoroBlockID
+    case taskBlockID
     case pomodoroName
     case task
     case taskSection
@@ -96,6 +97,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "route": self = .route
         case "section": self = .section
         case "pomodoro_block_id": self = .pomodoroBlockID
+        case "task_block_id": self = .taskBlockID
         case "pomodoro_name": self = .pomodoroName
         case "task": self = .task
         case "task_section": self = .taskSection
@@ -201,11 +203,17 @@ public func completionRowContent(
         badges.append(childCount == 0 ? "Empty" : "\(childCount) items")
         accessibilityHint = "Nests the capture under this task section."
 
-    case .pomodoroBlockID, .task:
+    case .pomodoroBlockID, .taskBlockID, .task:
         let needsBlockID = context == .task && candidate.requiresBlockID
         category = needsBlockID ? .priority : .blockID
         symbolName = needsBlockID ? "link.badge.plus" : "link"
-        contextLabel = context == .pomodoroBlockID ? "Pomodoro Task" : "Parent Task"
+        // `task_block_id` candidates are always empty per the contract, so
+        // this branch is defensive; label it honestly rather than as a task.
+        if context == .taskBlockID {
+            contextLabel = "Block ID"
+        } else {
+            contextLabel = context == .pomodoroBlockID ? "Pomodoro Task" : "Parent Task"
+        }
         primaryText = candidate.text ?? candidate.replacement
         secondaryText = candidate.section
         if let symbol = candidate.statusSymbol, let name = candidate.statusName {

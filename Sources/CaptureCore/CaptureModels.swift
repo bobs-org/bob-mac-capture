@@ -2006,6 +2006,10 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     public let context: String?
     public let candidates: [CaptureCompletionCandidate]
     public let warnings: [String]
+    /// Additive top-level `block_id` object, present exactly when the context
+    /// is `pomodoro_block_id` or `task_block_id`. Older Bob binaries omit it;
+    /// the Block ID picker treats that as Link intent without New ID rows.
+    public let blockID: CaptureBlockIDField?
 
     public init(
         ok: Bool,
@@ -2014,7 +2018,8 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         replacement: CaptureRange,
         context: String?,
         candidates: [CaptureCompletionCandidate],
-        warnings: [String] = []
+        warnings: [String] = [],
+        blockID: CaptureBlockIDField? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -2023,6 +2028,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         self.context = context
         self.candidates = candidates
         self.warnings = warnings
+        self.blockID = blockID
     }
 
     public init(from decoder: Decoder) throws {
@@ -2034,6 +2040,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         context = try container.decodeIfPresent(String.self, forKey: .context)
         candidates = try container.decodeIfPresent([CaptureCompletionCandidate].self, forKey: .candidates) ?? []
         warnings = try container.decodeIfPresent([String].self, forKey: .warnings) ?? []
+        blockID = try container.decodeIfPresent(CaptureBlockIDField.self, forKey: .blockID)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2044,6 +2051,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         case context
         case candidates
         case warnings
+        case blockID = "block_id"
     }
 
 }
@@ -2282,5 +2290,152 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case matchCount = "match_count"
         case createsPomodoro = "creates_pomodoro"
         case pomodoro
+    }
+}
+
+/// What the person can mean on the right-hand side of `@route:`/`@route^`:
+/// `link` references an existing task, `new` mints an unused ID, and
+/// `project_note` names a new project note. Unknown values decode to `link`
+/// so a newer Bob never breaks the picker.
+public enum CaptureBlockIDIntent: String, Equatable, Sendable {
+    case link
+    case new
+    case projectNote = "project_note"
+
+    public init(wireValue: String?) {
+        self = (wireValue.flatMap(CaptureBlockIDIntent.init(rawValue:)) ?? .link)
+    }
+}
+
+extension CaptureBlockIDIntent: Codable {
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decodeIfPresent(String.self)
+        self.init(wireValue: raw)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
+/// One ID already in the routed note, found by the exact scanner Bob's
+/// duplicate check uses. Task lines carry their status and description;
+/// other lines carry the trimmed line as text with null status fields.
+public struct CaptureUsedBlockID: Codable, Equatable, Sendable {
+    public let id: String
+    public let line: Int
+    public let isTask: Bool
+    public let statusSymbol: String?
+    public let statusName: String?
+    public let text: String
+
+    public init(
+        id: String,
+        line: Int,
+        isTask: Bool,
+        statusSymbol: String? = nil,
+        statusName: String? = nil,
+        text: String
+    ) {
+        self.id = id
+        self.line = line
+        self.isTask = isTask
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
+        self.text = text
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
+        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+        isTask = try container.decodeIfPresent(Bool.self, forKey: .isTask) ?? false
+        statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol)
+        statusName = try container.decodeIfPresent(String.self, forKey: .statusName)
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case line
+        case isTask = "task"
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
+        case text
+    }
+}
+
+/// The additive top-level `block_id` object Bob sends exactly for
+/// `pomodoro_block_id` and `task_block_id` contexts. Every field decodes
+/// tolerantly: missing arrays are empty, strings are "", booleans are
+/// false, the marker range is nil, and the intent falls back to `link`.
+public struct CaptureBlockIDField: Codable, Equatable, Sendable {
+    public let route: String
+    public let relativeTarget: String
+    public let noteExists: Bool
+    public let marker: String
+    public let markerRange: CaptureRange?
+    public let intent: CaptureBlockIDIntent
+    public let body: String
+    public let allowedCharacter: String
+    public let allowedDescription: String
+    public let suggestions: [String]
+    public let used: [CaptureUsedBlockID]
+
+    public init(
+        route: String,
+        relativeTarget: String,
+        noteExists: Bool = true,
+        marker: String,
+        markerRange: CaptureRange? = nil,
+        intent: CaptureBlockIDIntent,
+        body: String = "",
+        allowedCharacter: String,
+        allowedDescription: String,
+        suggestions: [String] = [],
+        used: [CaptureUsedBlockID] = []
+    ) {
+        self.route = route
+        self.relativeTarget = relativeTarget
+        self.noteExists = noteExists
+        self.marker = marker
+        self.markerRange = markerRange
+        self.intent = intent
+        self.body = body
+        self.allowedCharacter = allowedCharacter
+        self.allowedDescription = allowedDescription
+        self.suggestions = suggestions
+        self.used = used
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        route = try container.decodeIfPresent(String.self, forKey: .route) ?? ""
+        relativeTarget = try container.decodeIfPresent(String.self, forKey: .relativeTarget) ?? ""
+        noteExists = try container.decodeIfPresent(Bool.self, forKey: .noteExists) ?? false
+        marker = try container.decodeIfPresent(String.self, forKey: .marker) ?? ""
+        markerRange = try container.decodeIfPresent(CaptureRange.self, forKey: .markerRange)
+        intent = try container.decodeIfPresent(CaptureBlockIDIntent.self, forKey: .intent) ?? .link
+        body = try container.decodeIfPresent(String.self, forKey: .body) ?? ""
+        allowedCharacter = try container.decodeIfPresent(String.self, forKey: .allowedCharacter) ?? ""
+        allowedDescription = try container.decodeIfPresent(String.self, forKey: .allowedDescription) ?? ""
+        suggestions = try container.decodeIfPresent([String].self, forKey: .suggestions) ?? []
+        used = try container.decodeIfPresent([CaptureUsedBlockID].self, forKey: .used) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case route
+        case relativeTarget = "relative_target"
+        case noteExists = "note_exists"
+        case marker
+        case markerRange = "marker_range"
+        case intent
+        case body
+        case allowedCharacter = "allowed_character"
+        case allowedDescription = "allowed_description"
+        case suggestions
+        case used
     }
 }
