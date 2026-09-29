@@ -1518,9 +1518,22 @@ JSON
   "ok": true,
   "schema_version": 1,
   "cursor": ${cursor},
-  "replacement": { "start": ${cursor}, "end": ${cursor} },
-  "context": null,
-  "candidates": []
+  "replacement": { "start": 9, "end": 15 },
+  "context": "task_block_id",
+  "candidates": [],
+  "block_id": {
+    "route": "ma",
+    "relative_target": "ma.md",
+    "note_exists": true,
+    "marker": "^",
+    "marker_range": { "start": 5, "end": 15 },
+    "intent": "new",
+    "body": "idea",
+    "allowed_character": "[A-Za-z0-9-]",
+    "allowed_description": "A-Z, a-z, 0-9 or '-'",
+    "suggestions": ["idea"],
+    "used": []
+  }
 }
 JSON
       fi
@@ -2625,6 +2638,30 @@ JSON
       "creates_pomodoro": false
     }
   ]
+}
+JSON
+    elif [[ "${draft}" == "idea @mac_inbox^new-id" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 16, "end": 22 },
+  "context": "task_block_id",
+  "candidates": [],
+  "block_id": {
+    "route": "mac_inbox",
+    "relative_target": "mac_inbox.md",
+    "note_exists": false,
+    "marker": "^",
+    "marker_range": { "start": 5, "end": 22 },
+    "intent": "new",
+    "body": "idea",
+    "allowed_character": "[A-Za-z0-9-]",
+    "allowed_description": "A-Z, a-z, 0-9 or '-'",
+    "suggestions": [],
+    "used": []
+  }
 }
 JSON
     else

@@ -298,7 +298,7 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
     }
 
-    func testCaptureCompleteTaskBlockIDMarkerCompletesRouteButNotAuthoredID() async throws {
+    func testCaptureCompleteTaskBlockIDMarkerCompletesRouteAndAuthoredID() async throws {
         let client = BobProcessClient(
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
@@ -310,12 +310,13 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(route.candidates.first?.route, "mac_inbox")
 
         let authoredID = try await client.captureComplete("idea @ma^new-id", cursor: 12)
-        XCTAssertNil(authoredID.context)
+        XCTAssertEqual(authoredID.context, "task_block_id")
         XCTAssertTrue(authoredID.candidates.isEmpty)
-        XCTAssertEqual(authoredID.replacement, CaptureRange(start: 12, end: 12))
+        XCTAssertEqual(authoredID.replacement, CaptureRange(start: 9, end: 15))
+        XCTAssertEqual(authoredID.blockID?.intent, .new)
     }
 
-    func testCaptureCompleteOffersTasksOnPlusSideAndNoneOnAuthoredCaretId() async throws {
+    func testCaptureCompleteOffersTasksOnPlusSideAndBlockIDOnAuthoredCaretId() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let client = BobProcessClient(
@@ -336,8 +337,10 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(plusSide.candidates[1].replacement, "")
 
         let authoredId = try await client.captureComplete("Do work @Dev^new-id", cursor: 19)
-        XCTAssertNil(authoredId.context)
+        XCTAssertEqual(authoredId.context, "task_block_id")
         XCTAssertEqual(authoredId.candidates.count, 0)
+        XCTAssertEqual(authoredId.replacement, CaptureRange(start: 13, end: 19))
+        XCTAssertEqual(authoredId.blockID?.intent, .new)
 
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 15 --format json -- note @Cash+goog"))

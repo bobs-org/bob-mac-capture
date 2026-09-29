@@ -175,13 +175,13 @@ final class BlockIDPickerIndexTests: XCTestCase {
 
         let alpha = index.presentation(filter: "alpha")
         XCTAssertEqual(alpha.mode, .filtered)
-        XCTAssertEqual(alpha.orderedRowIDs, ["a1", "a2"])
+        XCTAssertEqual(alpha.orderedRowIDs, ["a1", "a2", "blockid-new:alpha"])
         XCTAssertEqual(alpha.countText, "2 of 4")
         XCTAssertEqual(alpha.visibleRowBudget, 7)
         XCTAssertFalse(alpha.row(id: "a1")?.textMatchRanges.isEmpty ?? true)
 
         let blocked = index.presentation(filter: "blocked")
-        XCTAssertEqual(blocked.orderedRowIDs, ["b1"])
+        XCTAssertEqual(blocked.orderedRowIDs, ["b1", "blockid-new:blocked"])
     }
 
     func testLinkExactBlockIDMatchIsPinnedFirst() {
@@ -307,22 +307,22 @@ final class BlockIDPickerIndexTests: XCTestCase {
         XCTAssertEqual(presentation.visibleRowBudget, 9)
 
         let tool = try XCTUnwrap(presentation.row(id: "tool"))
-        XCTAssertEqual(tool.chipText, "BUGS")
-        XCTAssertEqual(tool.detail.summary, "Queued in BUGS (#1)")
+        XCTAssertEqual(tool.chipText, "Now · BUGS 09:05–09:30")
+        XCTAssertEqual(tool.detail.summary, "Now · BUGS 09:05–09:30")
         XCTAssertEqual(tool.detail.statusText, "Ready")
         XCTAssertEqual(try XCTUnwrap(presentation.row(id: "nested-follow")).depth, 1)
     }
 
     func testFixtureLinkFilteredAddsNewIDRowForUnmatchedValidToken() throws {
-        let response = try fixtureResponse("block-id-link-filtered.json")
+        let response = try fixtureResponse("block-id-link-full.json")
         let index = BlockIDPickerIndex(
             field: response.blockID,
             candidates: response.candidates,
             route: "notes"
         )
 
-        let presentation = index.presentation(filter: "rea")
-        XCTAssertEqual(presentation.orderedRowIDs, ["blockid-new:rea"])
+        let presentation = index.presentation(filter: "zzz")
+        XCTAssertEqual(presentation.orderedRowIDs, ["blockid-new:zzz"])
         XCTAssertEqual(presentation.countText, "0 of 6")
         XCTAssertNil(presentation.emptyState)
     }
@@ -445,9 +445,8 @@ final class BlockIDPickerIndexTests: XCTestCase {
         XCTAssertEqual(alternative.badgeText, "Next free")
         XCTAssertEqual(alternative.insertion, "tool-2")
 
-        let info = try XCTUnwrap(presentation.row(id: "info:nested-follow"))
-        XCTAssertFalse(info.isSelectable)
-        XCTAssertFalse(presentation.orderedRowIDs.contains("info:nested-follow"))
+        XCTAssertNil(presentation.row(id: "info:nested-follow"))
+        XCTAssertNil(presentation.sections.first { $0.id == "used-ids" })
     }
 
     func testNewIDInvalidSeedShowsDescriptionStatus() throws {
@@ -536,6 +535,6 @@ final class BlockIDPickerIndexTests: XCTestCase {
             candidates: [],
             route: "notes"
         )
-        XCTAssertEqual(colon.availability(of: "a_b"), .available)
+        XCTAssertEqual(colon.availability(of: "a_b"), .invalid("A-Z, a-z, 0-9 or '-'"))
     }
 }

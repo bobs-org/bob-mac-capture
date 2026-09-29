@@ -1045,7 +1045,7 @@ final class CapturePanelModelTests: XCTestCase {
             debounceNanoseconds: 5_000_000
         )
         model.plainDraft = "Follow up @file^"
-        model.editorTextDidChange(cursorUTF8Offset: 17)
+        model.editorTextDidChange(cursorUTF8Offset: 16)
         await waitUntil { model.pickerVisible }
 
         XCTAssertNil(model.completionResponse)
@@ -1069,7 +1069,7 @@ final class CapturePanelModelTests: XCTestCase {
             debounceNanoseconds: 5_000_000
         )
         model.plainDraft = "Follow up @file^"
-        model.editorTextDidChange(cursorUTF8Offset: 17)
+        model.editorTextDidChange(cursorUTF8Offset: 16)
         await waitUntil { model.pickerVisible }
 
         model.updatePickerFilter("new-id")
@@ -1093,7 +1093,7 @@ final class CapturePanelModelTests: XCTestCase {
             debounceNanoseconds: 5_000_000
         )
         model.plainDraft = "Follow up @file^"
-        model.editorTextDidChange(cursorUTF8Offset: 17)
+        model.editorTextDidChange(cursorUTF8Offset: 16)
         await waitUntil { model.pickerVisible }
 
         model.updatePickerFilter("taken")
@@ -1115,7 +1115,7 @@ final class CapturePanelModelTests: XCTestCase {
             debounceNanoseconds: 5_000_000
         )
         model.plainDraft = "Follow up @file^"
-        model.editorTextDidChange(cursorUTF8Offset: 17)
+        model.editorTextDidChange(cursorUTF8Offset: 16)
         await waitUntil { model.pickerVisible }
 
         model.updatePickerFilter("new-id")
@@ -1142,7 +1142,7 @@ final class CapturePanelModelTests: XCTestCase {
             debounceNanoseconds: 0
         )
         model.plainDraft = "Follow up @file:"
-        model.editorTextDidChange(cursorUTF8Offset: 17)
+        model.editorTextDidChange(cursorUTF8Offset: 16)
         await waitUntil { model.pickerVisible }
         guard case .blockID(let context) = model.picker?.source else {
             XCTFail("expected a block-ID picker source")
@@ -1296,7 +1296,7 @@ final class CapturePanelModelTests: XCTestCase {
             debounceNanoseconds: 5_000_000
         )
         model.plainDraft = "Follow up @file^"
-        model.editorTextDidChange(cursorUTF8Offset: 17)
+        model.editorTextDidChange(cursorUTF8Offset: 16)
         await waitUntil { model.pickerVisible }
 
         model.removePickerTrigger()
@@ -2855,7 +2855,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, "@@file+new-id\nFirst note")
     }
 
-    func testTaskBlockIDAuthoredIDSideDoesNotCompleteButLivePreviewShowsBlockID() async throws {
+    func testTaskBlockIDAuthoredIDSideOpensNewIDComposerWithLivePreview() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
@@ -2869,6 +2869,18 @@ final class CapturePanelModelTests: XCTestCase {
         model.plainDraft = "idea @mac_inbox^new-id"
 
         model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+        await waitUntil { model.pickerVisible }
+
+        // An authored `^` ID at the caret end opens the New ID composer,
+        // exactly like typing forward: Bob answers `task_block_id`.
+        guard case .blockID(let context) = model.picker?.source else {
+            return XCTFail("Expected block-ID picker source")
+        }
+        XCTAssertTrue(context.isNewIDMode)
+        XCTAssertEqual(model.picker?.filterText, "new-id")
+        XCTAssertEqual(model.pickerPresentation?.orderedRowIDs, ["new:new-id"])
+        XCTAssertEqual(model.picker?.selectedRowID, "new:new-id")
+
         await waitUntil {
             guard case .ready(let preview) = model.previewState else {
                 return false
@@ -2885,7 +2897,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertNil(preview.dayFile)
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- idea @mac_inbox^new-id"))
-        XCTAssertFalse(record.contains("capture-complete"))
+        XCTAssertTrue(record.contains("capture-complete"))
     }
 
     func testRangeSelectionSuppressesCompletionButKeepsPreviewAnalysis() async throws {
