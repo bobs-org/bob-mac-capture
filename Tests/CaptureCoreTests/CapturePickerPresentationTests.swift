@@ -2,7 +2,7 @@ import XCTest
 
 @testable import CaptureCore
 
-final class ActiveTaskPickerPresentationTests: XCTestCase {
+final class CapturePickerPresentationTests: XCTestCase {
     // MARK: - Fixture
 
     private func fixtureCandidates() -> [CaptureCompletionCandidate] {
@@ -123,19 +123,19 @@ final class ActiveTaskPickerPresentationTests: XCTestCase {
         XCTAssertNil(unnamed?.timeRangeText)
         let other = presentation.sections.first { $0.kind == .other }
         XCTAssertEqual(other?.rows.map { $0.id }, ["sase:cafe-note"])
-        XCTAssertEqual(other?.rows.first?.status, .other("Open"))
+        XCTAssertEqual(other?.rows.first?.glyph, .task(.blocked))
     }
 
     func testRowIdentityInsertionAndBobIndex() {
         let presentation = fixtureIndex().presentation(filter: "")
         let row = presentation.row(id: "sase:recovery-panel")
         XCTAssertEqual(row?.bobIndex, 3)
-        XCTAssertEqual(row?.insertionText, "^sase:recovery-panel")
+        XCTAssertEqual(row?.insertion, "^sase:recovery-panel")
         XCTAssertEqual(row?.route, "sase")
         XCTAssertEqual(row?.blockID, "recovery-panel")
         XCTAssertEqual(row?.displayText, "Read and act on core_schema_skew_outage_recovery_ux!")
-        XCTAssertEqual(row?.status, .inProgress)
-        XCTAssertEqual(presentation.row(id: "sase:prefix-cache")?.status, .next)
+        XCTAssertEqual(row?.glyph, .task(.inProgress))
+        XCTAssertEqual(presentation.row(id: "sase:prefix-cache")?.glyph, .task(.next))
     }
 
     func testAccessibilityLabel() {
@@ -149,30 +149,30 @@ final class ActiveTaskPickerPresentationTests: XCTestCase {
     func testPomodoroSummaries() {
         let presentation = fixtureIndex().presentation(filter: "")
         XCTAssertEqual(
-            presentation.row(id: "sase:deep-fix")?.pomodoroSummary,
+            presentation.row(id: "sase:deep-fix")?.detail.summary,
             "Queued in SASE (#1)"
         )
         XCTAssertEqual(
-            presentation.row(id: "sase:tui-cli")?.pomodoroSummary,
+            presentation.row(id: "sase:tui-cli")?.detail.summary,
             "Queued in SASE (#2)"
         )
         XCTAssertEqual(
-            presentation.row(id: "sase:planned-thing")?.pomodoroSummary,
+            presentation.row(id: "sase:planned-thing")?.detail.summary,
             "Queued in an unnamed Pomodoro"
         )
         XCTAssertEqual(
-            presentation.row(id: "sase:fix-claude-monitors")?.pomodoroSummary,
+            presentation.row(id: "sase:fix-claude-monitors")?.detail.summary,
             "Not in a Pomodoro"
         )
         XCTAssertEqual(
-            presentation.row(id: "sase:sudo-fix")?.pomodoroSummary,
+            presentation.row(id: "sase:sudo-fix")?.detail.summary,
             "Now \u{00B7} BUGS 09:00\u{2013}09:30"
         )
     }
 
     func testGroupedRowsOmitPomodoroChip() {
         let presentation = fixtureIndex().presentation(filter: "")
-        XCTAssertTrue(presentation.sections.flatMap { $0.rows }.allSatisfy { $0.pomodoroChipText == nil })
+        XCTAssertTrue(presentation.sections.flatMap { $0.rows }.allSatisfy { $0.chipText == nil })
     }
 
     func testDuplicateReplacementDedupe() {
@@ -186,9 +186,9 @@ final class ActiveTaskPickerPresentationTests: XCTestCase {
     }
 
     func testGroupedVisibleRowBudgetClamps() {
-        XCTAssertEqual(fixtureIndex().presentation(filter: "").groupedVisibleRowBudget, 11)
+        XCTAssertEqual(fixtureIndex().presentation(filter: "").visibleRowBudget, 11)
         let single = ActiveTaskPickerIndex(candidates: [fixtureCandidates()[11]])
-        XCTAssertEqual(single.presentation(filter: "").groupedVisibleRowBudget, 4)
+        XCTAssertEqual(single.presentation(filter: "").visibleRowBudget, 4)
         XCTAssertEqual(single.presentation(filter: "").countText, "1 task")
     }
 
@@ -282,10 +282,10 @@ final class ActiveTaskPickerPresentationTests: XCTestCase {
     func testFilteredPomodoroChips() {
         let presentation = fixtureIndex().presentation(filter: "plan")
         XCTAssertEqual(presentation.orderedRowIDs, ["sase:planned-thing"])
-        XCTAssertEqual(presentation.row(id: "sase:planned-thing")?.pomodoroChipText, "Planned")
+        XCTAssertEqual(presentation.row(id: "sase:planned-thing")?.chipText, "Planned")
         let sudo = fixtureIndex().presentation(filter: "sudo")
         XCTAssertEqual(
-            sudo.row(id: "sase:sudo-fix")?.pomodoroChipText,
+            sudo.row(id: "sase:sudo-fix")?.chipText,
             "Now \u{00B7} BUGS 09:00\u{2013}09:30"
         )
     }
@@ -310,7 +310,7 @@ final class ActiveTaskPickerPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.countText, "0 tasks")
         XCTAssertEqual(presentation.emptyState, .noActiveTasks)
         XCTAssertEqual(presentation.emptyState?.title, "No active tasks")
-        XCTAssertEqual(presentation.groupedVisibleRowBudget, 4)
+        XCTAssertEqual(presentation.visibleRowBudget, 4)
     }
 
     func testTimeRangeFormatting() {
@@ -324,39 +324,69 @@ final class ActiveTaskPickerPresentationTests: XCTestCase {
 
     func testNavigationNextPreviousWrap() {
         let ids = fixtureIndex().presentation(filter: "").orderedRowIDs
-        XCTAssertEqual(ActiveTaskPickerNavigation.next(after: ids.first!, in: ids), ids[1])
-        XCTAssertEqual(ActiveTaskPickerNavigation.next(after: ids.last!, in: ids), ids.first)
-        XCTAssertEqual(ActiveTaskPickerNavigation.previous(before: ids.first!, in: ids), ids.last)
-        XCTAssertEqual(ActiveTaskPickerNavigation.previous(before: ids[1], in: ids), ids.first)
-        XCTAssertNil(ActiveTaskPickerNavigation.next(after: "missing", in: ids))
-        XCTAssertNil(ActiveTaskPickerNavigation.next(after: ids.first!, in: []))
+        XCTAssertEqual(CapturePickerNavigation.next(after: ids.first!, in: ids), ids[1])
+        XCTAssertEqual(CapturePickerNavigation.next(after: ids.last!, in: ids), ids.first)
+        XCTAssertEqual(CapturePickerNavigation.previous(before: ids.first!, in: ids), ids.last)
+        XCTAssertEqual(CapturePickerNavigation.previous(before: ids[1], in: ids), ids.first)
+        XCTAssertNil(CapturePickerNavigation.next(after: "missing", in: ids))
+        XCTAssertNil(CapturePickerNavigation.next(after: ids.first!, in: []))
     }
 
     func testNavigationPageClamps() {
         let ids = fixtureIndex().presentation(filter: "").orderedRowIDs
-        XCTAssertEqual(ActiveTaskPickerNavigation.page(from: ids.first!, by: 3, in: ids), ids[3])
-        XCTAssertEqual(ActiveTaskPickerNavigation.page(from: ids.first!, by: 100, in: ids), ids.last)
-        XCTAssertEqual(ActiveTaskPickerNavigation.page(from: ids.last!, by: -100, in: ids), ids.first)
-        XCTAssertNil(ActiveTaskPickerNavigation.page(from: "missing", by: 1, in: ids))
+        XCTAssertEqual(CapturePickerNavigation.page(from: ids.first!, by: 3, in: ids), ids[3])
+        XCTAssertEqual(CapturePickerNavigation.page(from: ids.first!, by: 100, in: ids), ids.last)
+        XCTAssertEqual(CapturePickerNavigation.page(from: ids.last!, by: -100, in: ids), ids.first)
+        XCTAssertNil(CapturePickerNavigation.page(from: "missing", by: 1, in: ids))
     }
 
     func testNavigationFirstLastAndResolvedSelection() {
         let ids = fixtureIndex().presentation(filter: "").orderedRowIDs
-        XCTAssertEqual(ActiveTaskPickerNavigation.first(in: ids), ids.first)
-        XCTAssertEqual(ActiveTaskPickerNavigation.last(in: ids), ids.last)
-        XCTAssertNil(ActiveTaskPickerNavigation.first(in: []))
+        XCTAssertEqual(CapturePickerNavigation.first(in: ids), ids.first)
+        XCTAssertEqual(CapturePickerNavigation.last(in: ids), ids.last)
+        XCTAssertNil(CapturePickerNavigation.first(in: []))
         XCTAssertEqual(
-            ActiveTaskPickerNavigation.resolvedSelection(preferred: ids[5], in: ids),
+            CapturePickerNavigation.resolvedSelection(preferred: ids[5], in: ids),
             ids[5]
         )
         XCTAssertEqual(
-            ActiveTaskPickerNavigation.resolvedSelection(preferred: "missing", in: ids),
+            CapturePickerNavigation.resolvedSelection(preferred: "missing", in: ids),
             ids.first
         )
         XCTAssertEqual(
-            ActiveTaskPickerNavigation.resolvedSelection(preferred: nil, in: ids),
+            CapturePickerNavigation.resolvedSelection(preferred: nil, in: ids),
             ids.first
         )
-        XCTAssertNil(ActiveTaskPickerNavigation.resolvedSelection(preferred: nil, in: []))
+        XCTAssertNil(CapturePickerNavigation.resolvedSelection(preferred: nil, in: []))
+    }
+
+    // MARK: - Task status mapping
+
+    func testTaskStatusMapsBobSymbols() {
+        XCTAssertEqual(CapturePickerTaskStatus(symbol: "/", name: "In Progress"), .inProgress)
+        XCTAssertEqual(CapturePickerTaskStatus(symbol: "*", name: "Next"), .next)
+        XCTAssertEqual(CapturePickerTaskStatus(symbol: " ", name: "Todo"), .todo)
+        XCTAssertEqual(CapturePickerTaskStatus(symbol: "?", name: "Blocked"), .blocked)
+        XCTAssertEqual(CapturePickerTaskStatus(symbol: "x", name: "Done"), .done)
+        XCTAssertEqual(CapturePickerTaskStatus(symbol: "X", name: "Done"), .done)
+        XCTAssertEqual(CapturePickerTaskStatus(symbol: "-", name: "Canceled"), .canceled)
+    }
+
+    func testTaskStatusFallsBackToNameSymbolOrOther() {
+        XCTAssertEqual(CapturePickerTaskStatus(symbol: "~", name: "Open"), .other("Open"))
+        XCTAssertEqual(CapturePickerTaskStatus(symbol: "~", name: ""), .other("~"))
+        XCTAssertEqual(CapturePickerTaskStatus(symbol: "~", name: nil), .other("~"))
+        XCTAssertEqual(CapturePickerTaskStatus(symbol: "", name: nil), .other("Other"))
+        XCTAssertEqual(CapturePickerTaskStatus(symbol: nil, name: nil), .other("Other"))
+    }
+
+    func testTaskStatusDisplayNames() {
+        XCTAssertEqual(CapturePickerTaskStatus.inProgress.displayName, "In Progress")
+        XCTAssertEqual(CapturePickerTaskStatus.next.displayName, "Next")
+        XCTAssertEqual(CapturePickerTaskStatus.todo.displayName, "Todo")
+        XCTAssertEqual(CapturePickerTaskStatus.blocked.displayName, "Blocked")
+        XCTAssertEqual(CapturePickerTaskStatus.done.displayName, "Done")
+        XCTAssertEqual(CapturePickerTaskStatus.canceled.displayName, "Canceled")
+        XCTAssertEqual(CapturePickerTaskStatus.other("Open").displayName, "Open")
     }
 }

@@ -1,240 +1,8 @@
 import Foundation
 
-/// Which bucket of the picker a section belongs to. Pomodoro sections follow
-/// Bob's order; the unqueued and other buckets come after them, and the
-/// filtered view uses a single header-less `.matches` section.
-public enum ActiveTaskPickerSectionKind: Equatable, Sendable {
-    case pomodoro
-    case unqueuedInProgress
-    case unqueuedNext
-    case other
-    case matches
-}
-
-/// One picker section: a queued Pomodoro entry, an unqueued status bucket, or
-/// the flat filtered match list.
-public struct ActiveTaskPickerSection: Equatable, Sendable {
-    public let id: String
-    public let kind: ActiveTaskPickerSectionKind
-    public let title: String
-    /// `0900-0930` rendered as `09:00–09:30`; anything else shown raw.
-    public let timeRangeText: String?
-    /// 1-based position among the Pomodoro sections; 0 for other sections.
-    public let ordinal: Int
-    public let isCurrent: Bool
-    public let rows: [ActiveTaskPickerRow]
-
-    public init(
-        id: String,
-        kind: ActiveTaskPickerSectionKind,
-        title: String,
-        timeRangeText: String? = nil,
-        ordinal: Int = 0,
-        isCurrent: Bool = false,
-        rows: [ActiveTaskPickerRow] = []
-    ) {
-        self.id = id
-        self.kind = kind
-        self.title = title
-        self.timeRangeText = timeRangeText
-        self.ordinal = ordinal
-        self.isCurrent = isCurrent
-        self.rows = rows
-    }
-}
-
-/// Task status derived from the candidate's status symbol: `/` is In
-/// Progress, `*` is Next, and anything else keeps its status name (or symbol)
-/// for display.
-public enum ActiveTaskRowStatus: Equatable, Sendable {
-    case inProgress
-    case next
-    case other(String)
-}
-
-/// One pickable row. `id` is Bob's `replacement`, so accepting a row inserts
-/// exactly what Bob offered. Match ranges are `Character` offsets into
-/// `displayText`, `route`, and `blockID`.
-public struct ActiveTaskPickerRow: Equatable, Sendable {
-    public let id: String
-    public let bobIndex: Int
-    public let status: ActiveTaskRowStatus
-    public let displayText: String
-    public let textMatchRanges: [Range<Int>]
-    public let route: String?
-    public let blockID: String?
-    public let routeMatchRanges: [Range<Int>]
-    public let blockIDMatchRanges: [Range<Int>]
-    /// Small Pomodoro chip for filtered rows; nil in grouped mode (the header
-    /// already says it) and for unqueued tasks.
-    public let pomodoroChipText: String?
-    /// Detail-strip Pomodoro wording ("Queued in SASE (#1)", "Not in a
-    /// Pomodoro", ...).
-    public let pomodoroSummary: String
-    public let section: String?
-    /// `"^" + replacement`: the exact text an accept inserts.
-    public let insertionText: String
-    public let accessibilityLabel: String
-
-    public init(
-        id: String,
-        bobIndex: Int,
-        status: ActiveTaskRowStatus,
-        displayText: String,
-        textMatchRanges: [Range<Int>] = [],
-        route: String? = nil,
-        blockID: String? = nil,
-        routeMatchRanges: [Range<Int>] = [],
-        blockIDMatchRanges: [Range<Int>] = [],
-        pomodoroChipText: String? = nil,
-        pomodoroSummary: String,
-        section: String? = nil,
-        insertionText: String,
-        accessibilityLabel: String
-    ) {
-        self.id = id
-        self.bobIndex = bobIndex
-        self.status = status
-        self.displayText = displayText
-        self.textMatchRanges = textMatchRanges
-        self.route = route
-        self.blockID = blockID
-        self.routeMatchRanges = routeMatchRanges
-        self.blockIDMatchRanges = blockIDMatchRanges
-        self.pomodoroChipText = pomodoroChipText
-        self.pomodoroSummary = pomodoroSummary
-        self.section = section
-        self.insertionText = insertionText
-        self.accessibilityLabel = accessibilityLabel
-    }
-}
-
-/// Grouped (empty filter) or filtered (non-empty filter) presentation.
-public enum ActiveTaskPickerMode: Equatable, Sendable {
-    case grouped
-    case filtered
-}
-
-/// What the list shows when there is nothing to pick.
-public enum ActiveTaskPickerEmptyState: Equatable, Sendable {
-    case noActiveTasks
-    case noMatches(query: String)
-
-    public var title: String {
-        switch self {
-        case .noActiveTasks:
-            return "No active tasks"
-        case .noMatches:
-            return "No matches"
-        }
-    }
-
-    public var message: String {
-        switch self {
-        case .noActiveTasks:
-            return "No In Progress or Next tasks \u{2014} a task needs `[/]` or `[*]` and a `^block-id` to appear here."
-        case .noMatches(let query):
-            return "No active tasks match \u{201C}\(query)\u{201D} \u{2014} Esc clears the filter."
-        }
-    }
-}
-
-/// The picker's view of one fetched snapshot for one filter string.
-public struct ActiveTaskPickerPresentation: Equatable, Sendable {
-    public let mode: ActiveTaskPickerMode
-    public let sections: [ActiveTaskPickerSection]
-    /// Row IDs in display order (section order grouped, ranked flat filtered).
-    public let orderedRowIDs: [String]
-    public let rowsByID: [String: ActiveTaskPickerRow]
-    /// Deduped snapshot size.
-    public let totalCount: Int
-    public let matchCount: Int
-    /// `"72 tasks"`, `"1 task"`, or `"5 of 72"`.
-    public let countText: String
-    public let emptyState: ActiveTaskPickerEmptyState?
-    /// Rows plus headers of the grouped view, clamped to 4...11 (4 when
-    /// empty). The panel fixes its height from this once at open; filtering
-    /// never resizes it.
-    public let groupedVisibleRowBudget: Int
-
-    public init(
-        mode: ActiveTaskPickerMode,
-        sections: [ActiveTaskPickerSection],
-        orderedRowIDs: [String],
-        rowsByID: [String: ActiveTaskPickerRow],
-        totalCount: Int,
-        matchCount: Int,
-        countText: String,
-        emptyState: ActiveTaskPickerEmptyState?,
-        groupedVisibleRowBudget: Int
-    ) {
-        self.mode = mode
-        self.sections = sections
-        self.orderedRowIDs = orderedRowIDs
-        self.rowsByID = rowsByID
-        self.totalCount = totalCount
-        self.matchCount = matchCount
-        self.countText = countText
-        self.emptyState = emptyState
-        self.groupedVisibleRowBudget = groupedVisibleRowBudget
-    }
-
-    public func row(id: String) -> ActiveTaskPickerRow? {
-        rowsByID[id]
-    }
-}
-
-/// Pure navigation helpers over `orderedRowIDs`.
-public enum ActiveTaskPickerNavigation: Sendable {
-    /// The next row, wrapping around. Nil for an empty list or unknown ID.
-    public static func next(after id: String, in orderedRowIDs: [String]) -> String? {
-        guard let index = orderedRowIDs.firstIndex(of: id) else {
-            return nil
-        }
-        return orderedRowIDs[(index + 1) % orderedRowIDs.count]
-    }
-
-    /// The previous row, wrapping around. Nil for an empty list or unknown ID.
-    public static func previous(before id: String, in orderedRowIDs: [String]) -> String? {
-        guard let index = orderedRowIDs.firstIndex(of: id) else {
-            return nil
-        }
-        return orderedRowIDs[(index + orderedRowIDs.count - 1) % orderedRowIDs.count]
-    }
-
-    /// Moves `offset` rows from `id`, clamped to the ends. Nil for an empty
-    /// list or unknown ID.
-    public static func page(from id: String, by offset: Int, in orderedRowIDs: [String]) -> String? {
-        guard let index = orderedRowIDs.firstIndex(of: id) else {
-            return nil
-        }
-        let clamped = min(max(index + offset, 0), orderedRowIDs.count - 1)
-        return orderedRowIDs[clamped]
-    }
-
-    public static func first(in orderedRowIDs: [String]) -> String? {
-        orderedRowIDs.first
-    }
-
-    public static func last(in orderedRowIDs: [String]) -> String? {
-        orderedRowIDs.last
-    }
-
-    /// Keeps the preferred row when still visible, else the first row, else
-    /// nil.
-    public static func resolvedSelection(
-        preferred: String?,
-        in orderedRowIDs: [String]
-    ) -> String? {
-        if let preferred, orderedRowIDs.contains(preferred) {
-            return preferred
-        }
-        return orderedRowIDs.first
-    }
-}
-
 /// One fetched `active_task` snapshot in Bob order, with display text and
 /// weighted search fields precomputed so every keystroke filters locally.
+/// Presents `CapturePickerPresentation` values for the source-agnostic card.
 public struct ActiveTaskPickerIndex: Sendable {
     private let entries: [ActiveTaskPickerIndexEntry]
     /// Pomodoro line to its 1-based section ordinal (first-appearance order).
@@ -267,7 +35,7 @@ public struct ActiveTaskPickerIndex: Sendable {
 
     /// Presents the snapshot for `filter`: grouped sections for an empty
     /// query, one ranked flat section otherwise.
-    public func presentation(filter: String) -> ActiveTaskPickerPresentation {
+    public func presentation(filter: String) -> CapturePickerPresentation {
         let groupedSections = groupedRows()
         let groupedRowCount = groupedSections.reduce(0) { $0 + $1.rows.count }
         let budget: Int
@@ -282,7 +50,7 @@ public struct ActiveTaskPickerIndex: Sendable {
             let ids = groupedSections.flatMap { $0.rows.map { $0.id } }
             let byID = Dictionary(uniqueKeysWithValues: groupedSections.flatMap { $0.rows }.map { ($0.id, $0) })
             let countText = entries.count == 1 ? "1 task" : "\(entries.count) tasks"
-            return ActiveTaskPickerPresentation(
+            return CapturePickerPresentation(
                 mode: .grouped,
                 sections: groupedSections,
                 orderedRowIDs: ids,
@@ -291,7 +59,7 @@ public struct ActiveTaskPickerIndex: Sendable {
                 matchCount: entries.count,
                 countText: countText,
                 emptyState: entries.isEmpty ? .noActiveTasks : nil,
-                groupedVisibleRowBudget: budget
+                visibleRowBudget: budget
             )
         }
 
@@ -299,7 +67,7 @@ public struct ActiveTaskPickerIndex: Sendable {
         let rows = ranked.map { scored in
             self.filteredRow(for: scored.entry, highlights: scored.highlights)
         }
-        let section = ActiveTaskPickerSection(
+        let section = CapturePickerSection(
             id: "matches",
             kind: .matches,
             title: "",
@@ -307,7 +75,7 @@ public struct ActiveTaskPickerIndex: Sendable {
         )
         let ids = rows.map { $0.id }
         let byID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
-        return ActiveTaskPickerPresentation(
+        return CapturePickerPresentation(
             mode: .filtered,
             sections: [section],
             orderedRowIDs: ids,
@@ -316,18 +84,18 @@ public struct ActiveTaskPickerIndex: Sendable {
             matchCount: rows.count,
             countText: "\(rows.count) of \(entries.count)",
             emptyState: rows.isEmpty ? .noMatches(query: filter) : nil,
-            groupedVisibleRowBudget: budget
+            visibleRowBudget: budget
         )
     }
 
     // MARK: - Grouped view
 
-    private func groupedRows() -> [ActiveTaskPickerSection] {
+    private func groupedRows() -> [CapturePickerSection] {
         var pomodoroOrder: [Int] = []
-        var pomodoroRows: [Int: [ActiveTaskPickerRow]] = [:]
-        var inProgress: [ActiveTaskPickerRow] = []
-        var next: [ActiveTaskPickerRow] = []
-        var other: [ActiveTaskPickerRow] = []
+        var pomodoroRows: [Int: [CapturePickerRow]] = [:]
+        var inProgress: [CapturePickerRow] = []
+        var next: [CapturePickerRow] = []
+        var other: [CapturePickerRow] = []
         for entry in entries {
             let row = baseRow(for: entry)
             if entry.pomodoroLine != nil {
@@ -343,17 +111,17 @@ public struct ActiveTaskPickerIndex: Sendable {
                     inProgress.append(row)
                 case .next:
                     next.append(row)
-                case .other:
+                case .todo, .blocked, .done, .canceled, .other:
                     other.append(row)
                 }
             }
         }
-        var sections: [ActiveTaskPickerSection] = []
+        var sections: [CapturePickerSection] = []
         for line in pomodoroOrder {
             let ordinal = pomodoroOrdinals[line] ?? 0
             let pomodoro = entries.first { $0.pomodoroLine == line }?.pomodoro
             let name = pomodoro?.name.flatMap { $0.isEmpty ? nil : $0 }
-            sections.append(ActiveTaskPickerSection(
+            sections.append(CapturePickerSection(
                 id: "pomodoro-\(line)",
                 kind: .pomodoro,
                 title: name ?? "Unnamed Pomodoro",
@@ -364,7 +132,7 @@ public struct ActiveTaskPickerIndex: Sendable {
             ))
         }
         if !inProgress.isEmpty {
-            sections.append(ActiveTaskPickerSection(
+            sections.append(CapturePickerSection(
                 id: "unqueued-in-progress",
                 kind: .unqueuedInProgress,
                 title: "In Progress",
@@ -372,7 +140,7 @@ public struct ActiveTaskPickerIndex: Sendable {
             ))
         }
         if !next.isEmpty {
-            sections.append(ActiveTaskPickerSection(
+            sections.append(CapturePickerSection(
                 id: "unqueued-next",
                 kind: .unqueuedNext,
                 title: "Next",
@@ -380,7 +148,7 @@ public struct ActiveTaskPickerIndex: Sendable {
             ))
         }
         if !other.isEmpty {
-            sections.append(ActiveTaskPickerSection(
+            sections.append(CapturePickerSection(
                 id: "other",
                 kind: .other,
                 title: "Other",
@@ -426,18 +194,23 @@ public struct ActiveTaskPickerIndex: Sendable {
 
     // MARK: - Rows
 
-    private func baseRow(for entry: ActiveTaskPickerIndexEntry) -> ActiveTaskPickerRow {
-        ActiveTaskPickerRow(
+    private func baseRow(for entry: ActiveTaskPickerIndexEntry) -> CapturePickerRow {
+        CapturePickerRow(
             id: entry.candidate.replacement,
             bobIndex: entry.bobIndex,
-            status: entry.status,
+            glyph: .task(entry.status),
             displayText: entry.display.text,
+            textSegments: entry.display.segments,
             route: entry.candidate.route,
             blockID: entry.candidate.blockID,
-            pomodoroChipText: nil,
-            pomodoroSummary: pomodoroSummary(for: entry),
-            section: entry.candidate.section,
-            insertionText: "^\(entry.candidate.replacement)",
+            insertion: "^\(entry.candidate.replacement)",
+            detail: CapturePickerRowDetail(
+                statusText: entry.status.displayName,
+                route: entry.candidate.route,
+                section: entry.candidate.section,
+                summary: pomodoroSummary(for: entry),
+                insertionPrefix: "^"
+            ),
             accessibilityLabel: accessibilityLabel(for: entry)
         )
     }
@@ -445,21 +218,27 @@ public struct ActiveTaskPickerIndex: Sendable {
     private func filteredRow(
         for entry: ActiveTaskPickerIndexEntry,
         highlights: ActiveTaskMatchHighlights
-    ) -> ActiveTaskPickerRow {
-        ActiveTaskPickerRow(
+    ) -> CapturePickerRow {
+        CapturePickerRow(
             id: entry.candidate.replacement,
             bobIndex: entry.bobIndex,
-            status: entry.status,
+            glyph: .task(entry.status),
             displayText: entry.display.text,
+            textSegments: entry.display.segments,
             textMatchRanges: highlights.textRanges,
             route: entry.candidate.route,
             blockID: entry.candidate.blockID,
             routeMatchRanges: highlights.routeRanges,
             blockIDMatchRanges: highlights.blockRanges,
-            pomodoroChipText: chipText(for: entry),
-            pomodoroSummary: pomodoroSummary(for: entry),
-            section: entry.candidate.section,
-            insertionText: "^\(entry.candidate.replacement)",
+            chipText: chipText(for: entry),
+            insertion: "^\(entry.candidate.replacement)",
+            detail: CapturePickerRowDetail(
+                statusText: entry.status.displayName,
+                route: entry.candidate.route,
+                section: entry.candidate.section,
+                summary: pomodoroSummary(for: entry),
+                insertionPrefix: "^"
+            ),
             accessibilityLabel: accessibilityLabel(for: entry)
         )
     }
@@ -470,7 +249,7 @@ public struct ActiveTaskPickerIndex: Sendable {
         }
         let name = pomodoro.name.flatMap { $0.isEmpty ? nil : $0 }
         if pomodoro.isCurrent {
-            let label = "Now \u{00B7} \(name ?? "Unnamed Pomodoro")"
+            let label = "Now · \(name ?? "Unnamed Pomodoro")"
             if let raw = pomodoro.timeRange, !raw.isEmpty {
                 return "\(label) \(Self.formattedTimeRange(raw))"
             }
@@ -485,7 +264,7 @@ public struct ActiveTaskPickerIndex: Sendable {
         }
         let name = pomodoro.name.flatMap { $0.isEmpty ? nil : $0 }
         if pomodoro.isCurrent {
-            let label = "Now \u{00B7} \(name ?? "Unnamed Pomodoro")"
+            let label = "Now · \(name ?? "Unnamed Pomodoro")"
             if let raw = pomodoro.timeRange, !raw.isEmpty {
                 return "\(label) \(Self.formattedTimeRange(raw))"
             }
@@ -499,15 +278,8 @@ public struct ActiveTaskPickerIndex: Sendable {
     }
 
     private func accessibilityLabel(for entry: ActiveTaskPickerIndexEntry) -> String {
-        let statusText: String
-        switch entry.status {
-        case .inProgress:
-            statusText = entry.candidate.statusName.flatMap { $0.isEmpty ? nil : $0 } ?? "In Progress"
-        case .next:
-            statusText = entry.candidate.statusName.flatMap { $0.isEmpty ? nil : $0 } ?? "Next"
-        case .other(let name):
-            statusText = name
-        }
+        let name = entry.candidate.statusName.flatMap { $0.isEmpty ? nil : $0 }
+        let statusText = name ?? entry.status.displayName
         var parts = [statusText, entry.display.text]
         if let route = entry.candidate.route, let blockID = entry.candidate.blockID {
             parts.append("Note \(route), block \(blockID)")
@@ -558,7 +330,7 @@ public struct ActiveTaskPickerIndex: Sendable {
         func two(_ value: Int) -> String {
             value < 10 ? "0\(value)" : "\(value)"
         }
-        return "\(two(start.0)):\(two(start.1))\u{2013}\(two(end.0)):\(two(end.1))"
+        return "\(two(start.0)):\(two(start.1))–\(two(end.0)):\(two(end.1))"
     }
 }
 
@@ -570,8 +342,8 @@ public struct ActiveTaskPickerIndex: Sendable {
 private struct ActiveTaskPickerIndexEntry: Sendable {
     let candidate: CaptureCompletionCandidate
     let bobIndex: Int
-    let display: ActiveTaskDisplayText
-    let status: ActiveTaskRowStatus
+    let display: TaskDisplayText
+    let status: CapturePickerTaskStatus
     let pomodoro: ActiveTaskPomodoro?
     let pomodoroLine: Int?
     let textField: FuzzyField
@@ -585,18 +357,12 @@ private struct ActiveTaskPickerIndexEntry: Sendable {
     init(candidate: CaptureCompletionCandidate, bobIndex: Int) {
         self.candidate = candidate
         self.bobIndex = bobIndex
-        let display = ActiveTaskDisplayText(parsing: candidate.text ?? candidate.replacement)
+        let display = TaskDisplayText(parsing: candidate.text ?? candidate.replacement)
         self.display = display
-        if candidate.statusSymbol == "/" {
-            self.status = .inProgress
-        } else if candidate.statusSymbol == "*" {
-            self.status = .next
-        } else {
-            let name = candidate.statusName.flatMap { $0.isEmpty ? nil : $0 }
-                ?? candidate.statusSymbol.flatMap { $0.isEmpty ? nil : $0 }
-                ?? "Other"
-            self.status = .other(name)
-        }
+        self.status = CapturePickerTaskStatus(
+            symbol: candidate.statusSymbol,
+            name: candidate.statusName
+        )
         self.pomodoro = candidate.pomodoro
         self.pomodoroLine = candidate.pomodoro?.line
         self.textField = FuzzyField(display.text)

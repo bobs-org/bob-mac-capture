@@ -2,8 +2,8 @@ import Foundation
 
 /// One styled span of active-task display text: plain prose, a `code` span
 /// (backticks hidden), or a `link` (wikilink brackets hidden, alias resolved).
-/// `range` is a `Character`-offset range into `ActiveTaskDisplayText.text`.
-public struct ActiveTaskDisplaySegment: Equatable, Sendable {
+/// `range` is a `Character`-offset range into `TaskDisplayText.text`.
+public struct TaskDisplaySegment: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         case plain
         case code
@@ -23,28 +23,28 @@ public struct ActiveTaskDisplaySegment: Equatable, Sendable {
 /// segments with their delimiters dropped, and everything else stays literal
 /// plain text. All fuzzy matching runs on `text`, so highlight offsets map
 /// directly onto `segments`.
-public struct ActiveTaskDisplayText: Equatable, Sendable {
+public struct TaskDisplayText: Equatable, Sendable {
     public let text: String
-    public let segments: [ActiveTaskDisplaySegment]
+    public let segments: [TaskDisplaySegment]
 
     public init(parsing source: String) {
         var text = ""
-        var segments: [ActiveTaskDisplaySegment] = []
+        var segments: [TaskDisplaySegment] = []
         // Appends display characters, merging into the trailing segment when
         // the kind matches so segments tile `text` exactly.
-        func append(_ display: String, kind: ActiveTaskDisplaySegment.Kind) {
+        func append(_ display: String, kind: TaskDisplaySegment.Kind) {
             guard !display.isEmpty else {
                 return
             }
             let start = text.count
             text += display
             if let last = segments.last, last.kind == kind, last.range.upperBound == start {
-                segments[segments.count - 1] = ActiveTaskDisplaySegment(
+                segments[segments.count - 1] = TaskDisplaySegment(
                     kind: kind,
                     range: last.range.lowerBound..<text.count
                 )
             } else {
-                segments.append(ActiveTaskDisplaySegment(kind: kind, range: start..<text.count))
+                segments.append(TaskDisplaySegment(kind: kind, range: start..<text.count))
             }
         }
 

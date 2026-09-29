@@ -1,51 +1,51 @@
 import CaptureCore
 import SwiftUI
 
-/// Layout constants for the Active Task Picker card. They live on
+/// Layout constants for the capture picker card. They live on
 /// `CapturePanelLayout` so the card, the height policy, and the panel metrics
 /// share one source of truth.
 extension CapturePanelLayout {
     /// Height of the filter bar (scope token, filter field, count).
-    static let activeTaskFilterBarHeight: CGFloat = 46
+    static let pickerFilterBarHeight: CGFloat = 46
     /// Fixed height of one picker row.
-    static let activeTaskRowHeight: CGFloat = 34
+    static let pickerRowHeight: CGFloat = 34
     /// Fixed height of one section header.
-    static let activeTaskSectionHeaderHeight: CGFloat = 26
+    static let pickerSectionHeaderHeight: CGFloat = 26
     /// Fixed height of the detail strip.
-    static let activeTaskDetailStripHeight: CGFloat = 80
+    static let pickerDetailStripHeight: CGFloat = 80
     /// Padding inside the scrollable list.
-    static let activeTaskListPadding: CGFloat = 6
+    static let pickerListPadding: CGFloat = 6
     /// Visible-row budget bounds. The presentation clamps the grouped
     /// rows-plus-headers count into this range once at open; filtering never
     /// resizes the panel.
-    static let activeTaskMaxRows = 11
-    static let activeTaskMinRows = 3
+    static let pickerMaxRows = 11
+    static let pickerMinRows = 3
     /// Corner radius of the picker card.
-    static let activeTaskCornerRadius: CGFloat = 12
+    static let pickerCornerRadius: CGFloat = 12
 }
 
-/// Fixed-height sizing policy for the Active Task Picker card. The budget is
+/// Fixed-height sizing policy for the capture picker card. The budget is
 /// fixed at open from the grouped presentation, so filtering never resizes
 /// the panel. On short screens the card shrinks to its minimum (filter bar,
 /// up to three rows, detail strip) and the list scrolls.
-struct ActiveTaskPickerHeightPolicy: Equatable {
+struct CapturePickerHeightPolicy: Equatable {
     var visibleRowBudget: Int
     var displayScale: CGFloat = 1
 
     /// The budget clamped to the card's row bounds.
     var clampedBudget: Int {
-        min(max(visibleRowBudget, 1), CapturePanelLayout.activeTaskMaxRows)
+        min(max(visibleRowBudget, 1), CapturePanelLayout.pickerMaxRows)
     }
 
     /// Rows kept visible in the minimum (short-screen) height.
     var minimumRowCount: Int {
-        min(CapturePanelLayout.activeTaskMinRows, clampedBudget)
+        min(CapturePanelLayout.pickerMinRows, clampedBudget)
     }
 
     private func listViewportHeight(forRowCount rows: Int) -> CGFloat {
         roundedToPixel(
-            CapturePanelLayout.activeTaskListPadding * 2
-                + CapturePanelLayout.activeTaskRowHeight * CGFloat(rows)
+            CapturePanelLayout.pickerListPadding * 2
+                + CapturePanelLayout.pickerRowHeight * CGFloat(rows)
         )
     }
 
@@ -55,21 +55,21 @@ struct ActiveTaskPickerHeightPolicy: Equatable {
 
     var idealHeight: CGFloat {
         roundedToPixel(
-            CapturePanelLayout.activeTaskFilterBarHeight
+            CapturePanelLayout.pickerFilterBarHeight
                 + 1
                 + listViewportHeight
                 + 1
-                + CapturePanelLayout.activeTaskDetailStripHeight
+                + CapturePanelLayout.pickerDetailStripHeight
         )
     }
 
     var minimumVisibleHeight: CGFloat {
         roundedToPixel(
-            CapturePanelLayout.activeTaskFilterBarHeight
+            CapturePanelLayout.pickerFilterBarHeight
                 + 1
                 + listViewportHeight(forRowCount: minimumRowCount)
                 + 1
-                + CapturePanelLayout.activeTaskDetailStripHeight
+                + CapturePanelLayout.pickerDetailStripHeight
         )
     }
 
@@ -89,18 +89,18 @@ struct ActiveTaskPickerHeightPolicy: Equatable {
 /// Builds the picker's rich text: per-segment styling (monospaced plus a faint
 /// fill for code, accent tint for links) with semibold plus accent overlaid on
 /// the fuzzy-match ranges.
-enum ActiveTaskRichText {
+enum CapturePickerRichText {
     static func displayText(
         _ text: String,
-        segments: [ActiveTaskDisplaySegment],
+        segments: [TaskDisplaySegment],
         matches: [Range<Int>]
     ) -> AttributedString {
         let chars = Array(text)
         let matchedOffsets = Set(matches.flatMap { $0 })
         var result = AttributedString()
-        let tiling: [ActiveTaskDisplaySegment]
+        let tiling: [TaskDisplaySegment]
         if segments.isEmpty, !chars.isEmpty {
-            tiling = [ActiveTaskDisplaySegment(kind: .plain, range: 0..<chars.count)]
+            tiling = [TaskDisplaySegment(kind: .plain, range: 0..<chars.count)]
         } else {
             tiling = segments
         }
@@ -139,30 +139,35 @@ enum ActiveTaskRichText {
     }
 }
 
-/// The final Active Task Picker card: filter bar, pinned Pomodoro headers,
-/// rich rows, detail strip, and warning states in one large elevated card
-/// that spans the full auxiliary width.
+/// The final capture picker card: filter bar, pinned section headers, rich
+/// rows, detail strip, and warning states in one large elevated card that
+/// spans the full auxiliary width. Renders any `CapturePickerPresentation`;
+/// the open source supplies its strings through `CapturePickerSource`.
 @available(macOS 26.0, *)
-struct ActiveTaskPickerCard: View {
+struct CapturePickerCard: View {
     @ObservedObject var model: CapturePanelModel
     @Environment(\.displayScale) private var displayScale
 
     private var budget: Int {
-        model.activeTaskPicker?.visibleRowBudget ?? 4
+        model.picker?.visibleRowBudget ?? 4
     }
 
-    private var policy: ActiveTaskPickerHeightPolicy {
-        ActiveTaskPickerHeightPolicy(visibleRowBudget: budget, displayScale: displayScale)
+    private var policy: CapturePickerHeightPolicy {
+        CapturePickerHeightPolicy(visibleRowBudget: budget, displayScale: displayScale)
     }
 
-    private var presentation: ActiveTaskPickerPresentation? {
-        model.activeTaskPickerPresentation
+    private var presentation: CapturePickerPresentation? {
+        model.pickerPresentation
+    }
+
+    private var source: CapturePickerSource {
+        model.picker?.source ?? .activeTask
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            ActiveTaskFilterBar(model: model)
-                .frame(height: CapturePanelLayout.activeTaskFilterBarHeight)
+            CapturePickerFilterBar(model: model)
+                .frame(height: CapturePanelLayout.pickerFilterBarHeight)
 
             Divider()
 
@@ -173,30 +178,30 @@ struct ActiveTaskPickerCard: View {
                             ForEach(presentation.sections, id: \.id) { section in
                                 Section {
                                     ForEach(section.rows, id: \.id) { row in
-                                        ActiveTaskRow(
+                                        CapturePickerRowView(
                                             model: model,
                                             row: row,
-                                            showsPomodoroChip: presentation.mode == .filtered
+                                            showsChip: presentation.mode == .filtered
                                         )
                                         .id(row.id)
                                     }
                                 } header: {
                                     if section.kind != .matches {
-                                        ActiveTaskSectionHeader(section: section)
+                                        CapturePickerSectionHeader(section: section)
                                     }
                                 }
                             }
                         }
                         if let emptyState = presentation?.emptyState {
-                            ActiveTaskEmptyState(emptyState: emptyState)
+                            CapturePickerEmptyStateView(emptyState: emptyState)
                                 .padding(.vertical, 24)
                         }
                         listFooter
                     }
-                    .padding(CapturePanelLayout.activeTaskListPadding)
+                    .padding(CapturePanelLayout.pickerListPadding)
                 }
                 .frame(height: policy.listViewportHeight)
-                .onChange(of: model.activeTaskPicker?.selectedRowID) { _, selectedID in
+                .onChange(of: model.picker?.selectedRowID) { _, selectedID in
                     if let selectedID {
                         proxy.scrollTo(selectedID, anchor: nil)
                     }
@@ -205,22 +210,22 @@ struct ActiveTaskPickerCard: View {
 
             Divider()
 
-            ActiveTaskDetailStrip(model: model)
-                .frame(height: CapturePanelLayout.activeTaskDetailStripHeight, alignment: .top)
+            CapturePickerDetailStrip(model: model)
+                .frame(height: CapturePanelLayout.pickerDetailStripHeight, alignment: .top)
         }
         .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: CapturePanelLayout.activeTaskCornerRadius))
+        .clipShape(RoundedRectangle(cornerRadius: CapturePanelLayout.pickerCornerRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: CapturePanelLayout.activeTaskCornerRadius)
+            RoundedRectangle(cornerRadius: CapturePanelLayout.pickerCornerRadius)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         )
         .shadow(radius: 18, y: 8)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Active task picker")
-        .accessibilityHint("Arrow keys move, Return inserts the task, Escape cancels.")
+        .accessibilityLabel(source.cardAccessibilityLabel)
+        .accessibilityHint(source.cardAccessibilityHint)
         .onAppear {
             if let presentation {
-                postAnnouncement("Active tasks, \(presentation.countText)")
+                postAnnouncement("\(source.appearedAnnouncementPrefix), \(presentation.countText)")
             }
         }
         .onChange(of: presentation?.matchCount) { _, matchCount in
@@ -229,7 +234,7 @@ struct ActiveTaskPickerCard: View {
             }
             postAnnouncement(matchCount == 1 ? "1 match" : "\(matchCount) matches")
         }
-        .onChange(of: model.activeTaskPicker?.selectedRowID) { oldID, newID in
+        .onChange(of: model.picker?.selectedRowID) { oldID, newID in
             guard oldID != nil,
                   let newID,
                   let row = presentation?.row(id: newID)
@@ -242,8 +247,8 @@ struct ActiveTaskPickerCard: View {
 
     @ViewBuilder
     private var listFooter: some View {
-        let warnings = model.activeTaskPicker?.warnings ?? []
-        if let picker = model.activeTaskPicker, picker.snapshotIsPartial {
+        let warnings = model.picker?.warnings ?? []
+        if let picker = model.picker, picker.snapshotIsPartial {
             Text("Showing Bob's matches only")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -267,51 +272,58 @@ struct ActiveTaskPickerCard: View {
 }
 
 /// Filter bar (46pt): scope token capsule, the AppKit-owned filter field, the
-/// trailing count, and a spinner only while a snapshot fetch is pending.
+/// trailing count, and a spinner only while a snapshot fetch is pending. The
+/// placeholder and labels come from the open source.
 @available(macOS 26.0, *)
-private struct ActiveTaskFilterBar: View {
+private struct CapturePickerFilterBar: View {
     @ObservedObject var model: CapturePanelModel
+
+    private var source: CapturePickerSource {
+        model.picker?.source ?? .activeTask
+    }
 
     var body: some View {
         HStack(spacing: 8) {
             HStack(spacing: 4) {
-                Text("^")
+                Text(source.scopeSymbolText)
                     .font(.system(.body, design: .monospaced).weight(.semibold))
                     .foregroundStyle(CaptureEditorPalette.color(for: .route))
-                Text("Active Tasks")
+                Text(source.scopeCaption)
                     .font(.caption.weight(.semibold))
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(.background.opacity(0.45), in: Capsule())
 
-            ActiveTaskFilterField(
-                text: model.activeTaskPicker?.filterText ?? "",
+            CapturePickerFilterField(
+                text: model.picker?.filterText ?? "",
+                placeholder: source.filterPlaceholder,
+                accessibilityLabel: source.filterAccessibilityLabel,
                 focusRequest: model.focusRequest,
-                onTextChange: { model.updateActiveTaskFilter($0) }
+                onTextChange: { model.updatePickerFilter($0) }
             )
             .frame(maxWidth: .infinity)
 
-            if model.activeTaskPicker != nil, model.activeTaskPickerPresentation == nil {
+            if model.picker != nil, model.pickerPresentation == nil {
                 ProgressView()
                     .controlSize(.small)
             }
-            Text(model.activeTaskPickerPresentation?.countText ?? "")
+            Text(model.pickerPresentation?.countText ?? "")
                 .font(.callout.monospacedDigit())
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 10)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Filter active tasks")
+        .accessibilityLabel(source.filterAccessibilityLabel)
     }
 }
 
-/// One pinned section header (26pt): ordinal, Pomodoro name, formatted time
-/// range, pink NOW pill, and task count. Unqueued buckets carry a
+/// One pinned section header (26pt): ordinal, title, formatted time range,
+/// pink NOW pill, and task count. Unqueued buckets carry a
 /// "Not in a Pomodoro" subtitle inline.
 @available(macOS 26.0, *)
-private struct ActiveTaskSectionHeader: View {
-    let section: ActiveTaskPickerSection
+private struct CapturePickerSectionHeader: View {
+    let section: CapturePickerSection
 
     var body: some View {
         HStack(spacing: 6) {
@@ -346,12 +358,12 @@ private struct ActiveTaskSectionHeader: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
-            Text("\(section.rows.count) task\(section.rows.count == 1 ? "" : "s")")
+            Text(section.countText ?? "\(section.rows.count) task\(section.rows.count == 1 ? "" : "s")")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
         }
-        .frame(height: CapturePanelLayout.activeTaskSectionHeaderHeight)
+        .frame(height: CapturePanelLayout.pickerSectionHeaderHeight)
         .padding(.horizontal, 8)
         .background(.regularMaterial)
         .accessibilityAddTraits(.isHeader)
@@ -359,66 +371,91 @@ private struct ActiveTaskSectionHeader: View {
 }
 
 /// One picker row (34pt, single line): status glyph, rich display text with
-/// match highlights, an optional Pomodoro chip in filtered mode, and the
-/// `route:block-id` locator. A tap selects and inserts.
+/// match highlights, an optional chip in filtered mode, and the locator. A
+/// tap selects and inserts. Informational rows render without the button.
 @available(macOS 26.0, *)
-private struct ActiveTaskRow: View {
+private struct CapturePickerRowView: View {
     @ObservedObject var model: CapturePanelModel
-    let row: ActiveTaskPickerRow
-    var showsPomodoroChip: Bool = false
+    let row: CapturePickerRow
+    var showsChip: Bool = false
     @Environment(\.colorSchemeContrast) private var contrast
     @State private var isHovered = false
 
     private var isSelected: Bool {
-        model.activeTaskPicker?.selectedRowID == row.id
+        model.picker?.selectedRowID == row.id
     }
 
     var body: some View {
-        Button {
-            model.selectActiveTask(id: row.id)
-            ActiveTaskPickerUsageDidInsert()
-            model.acceptActiveTask(id: row.id, submitAfterInsert: false)
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: statusStyle.symbol)
-                    .foregroundStyle(statusStyle.color)
-                    .frame(width: 16)
-                Text(displayRichText)
-                    .font(.body)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .layoutPriority(1)
-                if showsPomodoroChip, let chip = row.pomodoroChipText {
-                    Text(chip)
-                        .font(.caption2)
-                        .foregroundStyle(.pink)
-                        .lineLimit(1)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.pink.opacity(0.12), in: Capsule())
+        Group {
+            if row.isSelectable {
+                Button {
+                    model.selectPickerRow(id: row.id)
+                    CapturePickerUsageDidInsert(source: model.picker?.source ?? .activeTask)
+                    model.acceptPickerRow(id: row.id, submitAfterInsert: false)
+                } label: {
+                    rowContent
                 }
-                Spacer(minLength: 8)
-                locatorText
-                    .frame(maxWidth: 260, alignment: .trailing)
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                .accessibilityAction {
+                    model.acceptPickerRow(id: row.id, submitAfterInsert: false)
+                }
+            } else {
+                rowContent
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: CapturePanelLayout.activeTaskRowHeight)
-            .padding(.horizontal, 8)
-            .background(rowBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
         }
-        .buttonStyle(.plain)
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.accessibilityLabel)
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-        .accessibilityAction {
-            model.acceptActiveTask(id: row.id, submitAfterInsert: false)
+    }
+
+    private var rowContent: some View {
+        HStack(spacing: 8) {
+            Image(systemName: statusStyle.symbol)
+                .foregroundStyle(statusStyle.color)
+                .frame(width: 16)
+            Text(displayRichText)
+                .font(.body)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(1)
+            if showsChip, let chip = row.chipText {
+                Text(chip)
+                    .font(.caption2)
+                    .foregroundStyle(.pink)
+                    .lineLimit(1)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.pink.opacity(0.12), in: Capsule())
+            }
+            if let badge = row.badgeText {
+                Text(badge)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.background.opacity(0.6), in: Capsule())
+            }
+            Spacer(minLength: 8)
+            locatorText
+                .frame(maxWidth: 260, alignment: .trailing)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: CapturePanelLayout.pickerRowHeight)
+        .padding(.horizontal, 8)
+        .padding(.leading, CGFloat(min(row.depth, 2)) * 14)
+        .background(rowBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     private var statusStyle: (symbol: String, color: Color) {
-        CaptureEditorPalette.activeTaskStatus(row.status)
+        switch row.glyph {
+        case .task(let status):
+            return CaptureEditorPalette.taskStatus(status)
+        case .anchor, .newID, .alternativeID, .suggestion:
+            return ("circle.dashed", .secondary)
+        }
     }
 
     private var rowBackground: Color {
@@ -432,12 +469,9 @@ private struct ActiveTaskRow: View {
     }
 
     private var displayRichText: AttributedString {
-        let candidateText = model.activeTaskPicker?.candidates.first(where: { $0.replacement == row.id })?.text
-            ?? row.displayText
-        let segments = ActiveTaskDisplayText(parsing: candidateText).segments
-        return ActiveTaskRichText.displayText(
+        CapturePickerRichText.displayText(
             row.displayText,
-            segments: segments,
+            segments: row.textSegments,
             matches: row.textMatchRanges
         )
     }
@@ -445,7 +479,7 @@ private struct ActiveTaskRow: View {
     private var locatorText: some View {
         HStack(spacing: 0) {
             if let route = row.route {
-                Text(ActiveTaskRichText.displayText(
+                Text(CapturePickerRichText.displayText(
                     route,
                     segments: [],
                     matches: row.routeMatchRanges
@@ -457,7 +491,7 @@ private struct ActiveTaskRow: View {
                     .foregroundStyle(.secondary)
             }
             if let blockID = row.blockID {
-                Text(ActiveTaskRichText.displayText(
+                Text(CapturePickerRichText.displayText(
                     blockID,
                     segments: [],
                     matches: row.blockIDMatchRanges
@@ -471,17 +505,17 @@ private struct ActiveTaskRow: View {
     }
 }
 
-/// Detail strip (80pt) for the selected task: full text wrapped to two lines,
+/// Detail strip (80pt) for the selected row: full text wrapped to two lines,
 /// a metadata line, and the insert hint. With no selection it shows the
 /// empty-state guidance.
 @available(macOS 26.0, *)
-private struct ActiveTaskDetailStrip: View {
+private struct CapturePickerDetailStrip: View {
     @ObservedObject var model: CapturePanelModel
     @AppStorage("org.bobs.bob-mac-capture.active-task-picker-used") private var pickerWasUsed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            if let row = model.selectedActiveTaskRow {
+            if let row = model.selectedPickerRow {
                 Text(detailRichText(for: row))
                     .font(.callout)
                     .lineLimit(2)
@@ -504,7 +538,7 @@ private struct ActiveTaskDetailStrip: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-            } else if let emptyState = model.activeTaskPickerPresentation?.emptyState {
+            } else if let emptyState = model.pickerPresentation?.emptyState {
                 Text(emptyState.title)
                     .font(.callout.weight(.semibold))
                 Text(emptyState.message)
@@ -517,38 +551,24 @@ private struct ActiveTaskDetailStrip: View {
         .padding(.vertical, 4)
     }
 
-    private func detailRichText(for row: ActiveTaskPickerRow) -> AttributedString {
-        let candidateText = model.activeTaskPicker?.candidates.first(where: { $0.replacement == row.id })?.text
-            ?? row.displayText
-        let segments = ActiveTaskDisplayText(parsing: candidateText).segments
-        return ActiveTaskRichText.displayText(
+    private func detailRichText(for row: CapturePickerRow) -> AttributedString {
+        CapturePickerRichText.displayText(
             row.displayText,
-            segments: segments,
+            segments: row.textSegments,
             matches: row.textMatchRanges
         )
     }
 
-    private func metadataText(for row: ActiveTaskPickerRow) -> Text {
-        var metadata = Text(statusName(for: row.status))
-        let (label, icon) = noteLabel(for: row.route)
+    private func metadataText(for row: CapturePickerRow) -> Text {
+        var metadata = Text(row.detail.statusText)
+        let (label, icon) = noteLabel(for: row.detail.route)
         if !label.isEmpty {
             metadata = metadata + Text(" · ") + Text(Image(systemName: icon)) + Text(" \(label)")
         }
-        if let section = row.section, !section.isEmpty {
+        if let section = row.detail.section, !section.isEmpty {
             metadata = metadata + Text(" › \(section)")
         }
-        return metadata + Text(" · \(row.pomodoroSummary)")
-    }
-
-    private func statusName(for status: ActiveTaskRowStatus) -> String {
-        switch status {
-        case .inProgress:
-            return "In Progress"
-        case .next:
-            return "Next"
-        case .other(let name):
-            return name
-        }
+        return metadata + Text(" · \(row.detail.summary)")
     }
 
     /// Note kind icon plus label from the capture-targets cache, falling back
@@ -576,13 +596,13 @@ private struct ActiveTaskDetailStrip: View {
         }
     }
 
-    private func insertionText(for row: ActiveTaskPickerRow) -> Text {
+    private func insertionText(for row: CapturePickerRow) -> Text {
         Text("↩ inserts ") .foregroundColor(.secondary)
-            + Text("^").foregroundColor(.primary)
+            + Text(row.detail.insertionPrefix).foregroundColor(.primary)
             + locatorInsertionText(for: row)
     }
 
-    private func locatorInsertionText(for row: ActiveTaskPickerRow) -> Text {
+    private func locatorInsertionText(for row: CapturePickerRow) -> Text {
         var text = Text("")
         if let route = row.route {
             text = text + Text(route).foregroundColor(CaptureEditorPalette.color(for: .route))
@@ -602,8 +622,8 @@ private struct ActiveTaskDetailStrip: View {
 
 /// Empty states: no active tasks, or no matches for the current filter.
 @available(macOS 26.0, *)
-private struct ActiveTaskEmptyState: View {
-    let emptyState: ActiveTaskPickerEmptyState
+private struct CapturePickerEmptyStateView: View {
+    let emptyState: CapturePickerEmptyState
 
     var body: some View {
         VStack(spacing: 4) {
@@ -621,19 +641,24 @@ private struct ActiveTaskEmptyState: View {
 }
 
 /// Compact capsule button shown instead of the picker: after a two-stage
-/// Escape cancel, after a caret-only move into a `^` token, or while
-/// auto-open is suppressed for the token.
+/// Escape cancel, after a caret-only move into a picker's token, or while
+/// auto-open is suppressed for the token. Label and icon come from the
+/// chip's source.
 @available(macOS 26.0, *)
-struct ActiveTaskChip: View {
+struct CapturePickerChip: View {
     @ObservedObject var model: CapturePanelModel
+
+    private var source: CapturePickerSource {
+        model.pickerChip?.source ?? .activeTask
+    }
 
     var body: some View {
         Button {
-            model.openActiveTaskPickerFromChip()
+            model.openPickerFromChip()
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: "list.bullet.rectangle.portrait")
-                Text("Browse active tasks")
+                Image(systemName: source.chipIcon)
+                Text(source.chipLabel)
                 Text("⇥")
                     .font(.caption.monospaced())
                     .padding(.horizontal, 5)
@@ -650,29 +675,28 @@ struct ActiveTaskChip: View {
             )
         }
         .buttonStyle(.plain)
-        .help("Reopen the Active Task Picker for the ^ item (Tab).")
-        .accessibilityLabel("Browse active tasks")
-        .accessibilityHint("Opens the Active Task Picker for the current item.")
+        .help(source.chipHelp)
+        .accessibilityLabel(source.chipAccessibilityLabel)
+        .accessibilityHint(source.chipAccessibilityHint)
     }
 }
 
 /// Footer key hints shown while the picker is open, at the same footer height
-/// path so panel metrics keep working.
+/// path so panel metrics keep working. Items come from the open source.
 @available(macOS 26.0, *)
-struct ActiveTaskKeyHints: View {
+struct CapturePickerKeyHints: View {
+    var source: CapturePickerSource = .activeTask
+
     /// Keycap plus action pairs, in display order. Kept static so tests can
     /// assert the documented keyboard contract without rendering.
-    static let items: [(keys: String, action: String)] = [
-        ("↑↓", "Move"),
-        ("↩", "Insert"),
-        ("⌘↩", "Insert & Capture"),
-        ("esc", "Clear / Cancel"),
-    ]
+    static func items(for source: CapturePickerSource) -> [(keys: String, action: String)] {
+        source.keyHintItems()
+    }
 
     var body: some View {
         HStack(spacing: 12) {
-            ForEach(0..<Self.items.count, id: \.self) { index in
-                let item = Self.items[index]
+            ForEach(0..<Self.items(for: source).count, id: \.self) { index in
+                let item = Self.items(for: source)[index]
                 HStack(spacing: 4) {
                     Text(item.keys)
                         .font(.caption.monospaced())
@@ -692,13 +716,13 @@ struct ActiveTaskKeyHints: View {
             Spacer(minLength: 12)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Escape to clear or cancel.")
+        .accessibilityLabel(source.keyHintsAccessibilityLabel)
     }
 }
 
-/// Records a view-driven insert so the detail strip can teach the `#name`,
-/// `=`, and `=x` suffixes after the first use.
+/// Records a view-driven insert so the detail strip can teach follow-up
+/// keystrokes after the first use.
 @available(macOS 26.0, *)
-private func ActiveTaskPickerUsageDidInsert() {
-    UserDefaults.standard.set(true, forKey: "org.bobs.bob-mac-capture.active-task-picker-used")
+private func CapturePickerUsageDidInsert(source: CapturePickerSource) {
+    UserDefaults.standard.set(true, forKey: source.pickerUsedDefaultsKey)
 }

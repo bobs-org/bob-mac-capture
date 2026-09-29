@@ -327,7 +327,7 @@ struct CapturePanelView: View {
                 measuredAuxiliaryContentHeight = 0
                 reportContentMetrics()
             }
-            .onChange(of: model.activeTaskPickerVisible) { _, _ in
+            .onChange(of: model.pickerVisible) { _, _ in
                 measuredAuxiliaryContentHeight = 0
                 reportContentMetrics()
             }
@@ -375,13 +375,13 @@ struct CapturePanelView: View {
                     focus: $focusedControl,
                     heightPolicy: editorHeightPolicy
                 )
-                .opacity(model.activeTaskPickerVisible ? 0.5 : 1)
-                .allowsHitTesting(!model.activeTaskPickerVisible)
-                if model.activeTaskPickerVisible {
+                .opacity(model.pickerVisible ? 0.5 : 1)
+                .allowsHitTesting(!model.pickerVisible)
+                if model.pickerVisible {
                     Color.clear
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            model.cancelActiveTaskPicker()
+                            model.cancelPicker()
                         }
                         .accessibilityLabel("Cancel task picker")
                         .accessibilityHint("Cancels picking and returns to the editor.")
@@ -399,8 +399,8 @@ struct CapturePanelView: View {
                 auxiliaryRegion
             }
 
-            if model.activeTaskPickerVisible {
-                ActiveTaskKeyHints()
+            if model.pickerVisible {
+                CapturePickerKeyHints(source: model.picker?.source ?? .activeTask)
                     .fixedSize(horizontal: false, vertical: true)
                     .layoutPriority(2)
                     .onGeometryChange(for: CGFloat.self) { geometry in
@@ -431,8 +431,8 @@ struct CapturePanelView: View {
     private var hasAuxiliaryContent: Bool {
         model.isStashPickerPresented
             || model.inlinePromptVisible
-            || model.activeTaskPickerVisible
-            || model.activeTaskChipVisible
+            || model.pickerVisible
+            || model.pickerChipVisible
             || model.completionVisible
             || model.destinationSummary != nil
             || model.errorMessage != nil
@@ -441,8 +441,8 @@ struct CapturePanelView: View {
 
     @ViewBuilder
     private var auxiliaryRegion: some View {
-        if model.activeTaskPickerVisible {
-            ActiveTaskPickerCard(model: model)
+        if model.pickerVisible {
+            CapturePickerCard(model: model)
                 .layoutPriority(0)
                 .onGeometryChange(for: CGFloat.self) { geometry in
                     geometry.size.height
@@ -492,9 +492,9 @@ struct CapturePanelView: View {
 
     private var auxiliaryContent: some View {
         VStack(alignment: .leading, spacing: CapturePanelLayout.sectionSpacing) {
-            if model.activeTaskChipVisible {
-                ActiveTaskChip(model: model)
-                    .id(AuxiliarySection.activeTaskChip)
+            if model.pickerChipVisible {
+                CapturePickerChip(model: model)
+                    .id(AuxiliarySection.pickerChip)
             }
             if model.taskIDPromptVisible {
                 TaskIDPromptCard(model: model)
@@ -604,7 +604,7 @@ struct CapturePanelView: View {
     private func applyFocusRequest(_ request: CapturePanelFocusRequest) {
         // Only `.editor` is resolved by SwiftUI. Prompt and filter targets are
         // owned by AppKit (`BlockIDField` / `PomodoroNameField` /
-        // `ActiveTaskFilterField`), so SwiftUI's stored focus value is cleared
+        // `CapturePickerFilterField`), so SwiftUI's stored focus value is cleared
         // while the AppKit field claims first responder directly.
         focusedControl = request.target == .editor ? .editor : nil
     }
@@ -625,9 +625,9 @@ struct CapturePanelView: View {
             )
         }
 
-        if model.activeTaskPickerVisible {
-            let explicit = ActiveTaskPickerHeightPolicy(
-                visibleRowBudget: model.activeTaskPicker?.visibleRowBudget ?? 4,
+        if model.pickerVisible {
+            let explicit = CapturePickerHeightPolicy(
+                visibleRowBudget: model.picker?.visibleRowBudget ?? 4,
                 displayScale: displayScale
             ).auxiliaryHeight
             return CapturePanelAuxiliaryHeight(
@@ -644,7 +644,7 @@ struct CapturePanelView: View {
         case taskIDPrompt
         case pomodoroNamePrompt
         case completion
-        case activeTaskChip
+        case pickerChip
         case destination
         case error
         case preview
@@ -675,7 +675,7 @@ private struct CapturePanelFooter: View {
                 Label("Stash \(model.stashCount)", systemImage: "tray")
             }
             .help("Restore a draft canceled with Control-C (Control-S).")
-            .disabled(model.isSubmitting || model.inlinePromptVisible || model.activeTaskPickerVisible)
+            .disabled(model.isSubmitting || model.inlinePromptVisible || model.pickerVisible)
             Button("Discard") {
                 model.discardDraftAndClose()
             }
@@ -685,7 +685,7 @@ private struct CapturePanelFooter: View {
                     || model.isSubmitting
                     || model.taskIDPrompt?.isSaving == true
                     || model.pomodoroNamePrompt?.isSaving == true
-                    || model.activeTaskPickerVisible
+                    || model.pickerVisible
             )
             Button("Preview") {
                 model.preview()
@@ -693,7 +693,7 @@ private struct CapturePanelFooter: View {
             .help("Resolves the current clipboard/history and shows the exact destination without writing anything.")
             .disabled(
                 !model.hasDraft || model.isSubmitting || model.isPreviewing || model.inlinePromptVisible
-                    || model.activeTaskPickerVisible
+                    || model.pickerVisible
             )
             Button(model.primaryActionTitle) {
                 model.submit(openAfterCapture: false)
@@ -701,7 +701,7 @@ private struct CapturePanelFooter: View {
             .keyboardShortcut(.defaultAction)
             .disabled(
                 !model.hasDraft || model.isSubmitting || model.inlinePromptVisible
-                    || model.activeTaskPickerVisible
+                    || model.pickerVisible
             )
         }
         .accessibilityElement(children: .contain)

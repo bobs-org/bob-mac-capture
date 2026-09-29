@@ -3,10 +3,10 @@ import SwiftUI
 
 /// Lets `CapturePanelController` find this field in the window's view tree without a
 /// reference back into SwiftUI.
-let activeTaskFilterFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.active-task-filter"
+let pickerFilterFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.picker-filter"
 
 @available(macOS 26.0, *)
-final class ActiveTaskFilterNSTextField: NSTextField {
+final class CapturePickerFilterNSTextField: NSTextField {
     private var wantsFirstResponder = false
 
     /// Claims first responder now if the field is already in a window, and otherwise
@@ -22,9 +22,9 @@ final class ActiveTaskFilterNSTextField: NSTextField {
         }
         wantsFirstResponder = false
         if window.makeFirstResponder(self) {
-            CaptureSignpost.event("active-task-filter-focus-claimed")
+            CaptureSignpost.event("picker-filter-focus-claimed")
         } else {
-            CaptureSignpost.event("active-task-filter-focus-claim-failed")
+            CaptureSignpost.event("picker-filter-focus-claim-failed")
         }
     }
 
@@ -50,13 +50,15 @@ final class ActiveTaskFilterNSTextField: NSTextField {
 }
 
 @available(macOS 26.0, *)
-struct ActiveTaskFilterField: NSViewRepresentable {
+struct CapturePickerFilterField: NSViewRepresentable {
     var text: String
+    var placeholder: String
+    var accessibilityLabel: String
     let focusRequest: CapturePanelFocusRequest
     let onTextChange: (String) -> Void
 
-    func makeNSView(context: Context) -> ActiveTaskFilterNSTextField {
-        let field = ActiveTaskFilterNSTextField()
+    func makeNSView(context: Context) -> CapturePickerFilterNSTextField {
+        let field = CapturePickerFilterNSTextField()
         field.isBordered = false
         field.drawsBackground = false
         field.focusRingType = .none
@@ -64,23 +66,27 @@ struct ActiveTaskFilterField: NSViewRepresentable {
         field.isSelectable = true
         field.usesSingleLineMode = true
         field.lineBreakMode = .byClipping
-        field.placeholderString = "Filter by task, note, ^id, or Pomodoro"
+        field.placeholderString = placeholder
         field.font = NSFont.systemFont(ofSize: 15)
         field.delegate = context.coordinator
-        field.setAccessibilityIdentifier(activeTaskFilterFieldAccessibilityIdentifier)
-        field.setAccessibilityLabel("Filter active tasks")
+        field.setAccessibilityIdentifier(pickerFilterFieldAccessibilityIdentifier)
+        field.setAccessibilityLabel(accessibilityLabel)
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
         field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return field
     }
 
-    func updateNSView(_ field: ActiveTaskFilterNSTextField, context: Context) {
+    func updateNSView(_ field: CapturePickerFilterNSTextField, context: Context) {
         context.coordinator.parent = self
         if field.stringValue != text {
             field.stringValue = text
         }
+        if field.placeholderString != placeholder {
+            field.placeholderString = placeholder
+        }
+        field.setAccessibilityLabel(accessibilityLabel)
 
-        guard focusRequest.target == .activeTaskFilter,
+        guard focusRequest.target == .pickerFilter,
               context.coordinator.appliedFocusSequence != focusRequest.sequence
         else {
             return
@@ -100,10 +106,10 @@ struct ActiveTaskFilterField: NSViewRepresentable {
     }
 
     final class Coordinator: NSObject, NSTextFieldDelegate {
-        var parent: ActiveTaskFilterField
+        var parent: CapturePickerFilterField
         var appliedFocusSequence: UInt64?
 
-        init(parent: ActiveTaskFilterField) {
+        init(parent: CapturePickerFilterField) {
             self.parent = parent
         }
 
@@ -115,6 +121,16 @@ struct ActiveTaskFilterField: NSViewRepresentable {
         }
 
         func controlTextDidBeginEditing(_ notification: Notification) {
+            // The picker filter only ever holds ID characters, so automatic
+            // dash, quote, and text replacement plus spelling correction are
+            // disabled: `--` must never become an em dash.
+            if let editor = (notification.object as? NSTextField)?.currentEditor() as? NSTextView {
+                editor.isAutomaticDashSubstitutionEnabled = false
+                editor.isAutomaticQuoteSubstitutionEnabled = false
+                editor.isAutomaticTextReplacementEnabled = false
+                editor.isContinuousSpellCheckingEnabled = false
+                editor.isAutomaticSpellingCorrectionEnabled = false
+            }
             // The filter is seeded from the draft at open; land the caret at
             // the end so typing appends to the seed.
             guard let editor = (notification.object as? NSTextField)?.currentEditor() else {

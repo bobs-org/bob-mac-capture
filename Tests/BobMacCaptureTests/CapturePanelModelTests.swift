@@ -558,18 +558,18 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "^"
         model.editorTextDidChange(cursorUTF8Offset: 1)
-        await waitUntil { model.activeTaskPickerVisible }
+        await waitUntil { model.pickerVisible }
 
         // `active_task` never populates the inline list.
         XCTAssertNil(model.completionResponse)
         XCTAssertFalse(model.completionVisible)
-        XCTAssertEqual(model.focusRequest.target, .activeTaskFilter)
+        XCTAssertEqual(model.focusRequest.target, .pickerFilter)
         XCTAssertTrue(model.editorInputLocked)
-        XCTAssertEqual(model.activeTaskPicker?.filterText, "")
-        XCTAssertEqual(model.activeTaskPicker?.candidates.count, 3)
+        XCTAssertEqual(model.picker?.filterText, "")
+        XCTAssertEqual(model.picker?.candidates.count, 3)
         XCTAssertEqual(
-            model.activeTaskPicker?.selectedRowID,
-            model.activeTaskPickerPresentation?.orderedRowIDs.first
+            model.picker?.selectedRowID,
+            model.pickerPresentation?.orderedRowIDs.first
         )
         // An incomplete `^` is a state, not an error: no doomed dry run, no
         // red error, just the calm status line.
@@ -598,14 +598,14 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "^dee"
         model.editorTextDidChange(cursorUTF8Offset: 4)
-        await waitUntil { model.activeTaskPickerVisible }
+        await waitUntil { model.pickerVisible }
 
         // The caret response is partial (one candidate), so the picker
         // refetches the full snapshot at the token start in the same task.
-        XCTAssertEqual(model.activeTaskPicker?.filterText, "dee")
-        XCTAssertEqual(model.activeTaskPicker?.candidates.count, 3)
-        XCTAssertEqual(model.activeTaskPicker?.snapshotIsPartial, false)
-        XCTAssertEqual(model.activeTaskPickerPresentation?.mode, .filtered)
+        XCTAssertEqual(model.picker?.filterText, "dee")
+        XCTAssertEqual(model.picker?.candidates.count, 3)
+        XCTAssertEqual(model.picker?.snapshotIsPartial, false)
+        XCTAssertEqual(model.pickerPresentation?.mode, .filtered)
         let record = try String(contentsOf: recordURL)
         XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 2)
         XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 1 "))
@@ -621,11 +621,11 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "^zzz"
         model.editorTextDidChange(cursorUTF8Offset: 4)
-        await waitUntil { model.activeTaskPickerVisible }
+        await waitUntil { model.pickerVisible }
 
-        XCTAssertEqual(model.activeTaskPicker?.filterText, "zzz")
-        XCTAssertEqual(model.activeTaskPicker?.candidates.count, 3)
-        XCTAssertEqual(model.activeTaskPicker?.snapshotIsPartial, false)
+        XCTAssertEqual(model.picker?.filterText, "zzz")
+        XCTAssertEqual(model.picker?.candidates.count, 3)
+        XCTAssertEqual(model.picker?.snapshotIsPartial, false)
     }
 
     func testCaretOnlyMoveShowsChipNotPicker() async throws {
@@ -638,11 +638,11 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "^"
         model.editorSelectionDidChange(cursorUTF8Offset: 1)
-        await waitUntil { model.activeTaskChipVisible }
+        await waitUntil { model.pickerChipVisible }
 
-        XCTAssertFalse(model.activeTaskPickerVisible)
+        XCTAssertFalse(model.pickerVisible)
         XCTAssertNil(model.completionResponse)
-        XCTAssertEqual(model.activeTaskChip?.candidates.count, 3)
+        XCTAssertEqual(model.pickerChip?.candidates.count, 3)
     }
 
     func testExactPartShowsNeitherPickerNorChip() async throws {
@@ -663,12 +663,12 @@ final class CapturePanelModelTests: XCTestCase {
             return false
         }
 
-        XCTAssertFalse(model.activeTaskPickerVisible)
-        XCTAssertFalse(model.activeTaskChipVisible)
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertFalse(model.pickerChipVisible)
         XCTAssertNil(model.completionResponse)
     }
 
-    func testCaretActiveTaskAcceptInsertsRouteBlockIDWithoutReopening() async throws {
+    func testCaretPickerAcceptInsertsRouteBlockIDWithoutReopening() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(
             processClient: BobProcessClient(
@@ -683,14 +683,14 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "^dee"
         model.editorTextDidChange(cursorUTF8Offset: 4)
-        await waitUntil { model.activeTaskPickerVisible }
-        XCTAssertEqual(model.activeTaskPicker?.candidates.count, 3)
+        await waitUntil { model.pickerVisible }
+        XCTAssertEqual(model.picker?.candidates.count, 3)
 
-        model.selectActiveTask(id: "sase:deep-fix")
-        model.acceptSelectedActiveTask(submitAfterInsert: false)
+        model.selectPickerRow(id: "sase:deep-fix")
+        model.acceptSelectedPickerRow(submitAfterInsert: false)
         XCTAssertEqual(model.plainDraft, "^sase:deep-fix")
         XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 14)
-        XCTAssertFalse(model.activeTaskPickerVisible)
+        XCTAssertFalse(model.pickerVisible)
         XCTAssertFalse(model.editorInputLocked)
         XCTAssertEqual(model.focusRequest.target, .editor)
         XCTAssertEqual(model.statusText, "Inserted ^sase:deep-fix")
@@ -705,8 +705,8 @@ final class CapturePanelModelTests: XCTestCase {
             return preview.kind == "pomodoro_link"
         }
 
-        XCTAssertFalse(model.activeTaskPickerVisible)
-        XCTAssertFalse(model.activeTaskChipVisible)
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertFalse(model.pickerChipVisible)
         XCTAssertNil(model.completionResponse)
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(
@@ -724,13 +724,13 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "^"
         model.editorTextDidChange(cursorUTF8Offset: 1)
-        await waitUntil { model.activeTaskPickerVisible }
+        await waitUntil { model.pickerVisible }
 
-        model.acceptSelectedActiveTask(submitAfterInsert: true)
+        model.acceptSelectedPickerRow(submitAfterInsert: true)
         await waitUntil { !model.isSubmitting }
 
         XCTAssertEqual(model.plainDraft, "")
-        XCTAssertFalse(model.activeTaskPickerVisible)
+        XCTAssertFalse(model.pickerVisible)
         XCTAssertEqual(model.lastSuccess?.kind, "pomodoro_link")
     }
 
@@ -744,32 +744,32 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "^"
         model.editorTextDidChange(cursorUTF8Offset: 1)
-        await waitUntil { model.activeTaskPickerVisible }
+        await waitUntil { model.pickerVisible }
 
         // A seeded filter clears first; the picker stays open.
-        model.updateActiveTaskFilter("dee")
-        XCTAssertEqual(model.activeTaskPickerPresentation?.mode, .filtered)
-        model.escapeActiveTaskPicker()
-        XCTAssertTrue(model.activeTaskPickerVisible)
-        XCTAssertEqual(model.activeTaskPicker?.filterText, "")
-        XCTAssertEqual(model.activeTaskPickerPresentation?.mode, .grouped)
+        model.updatePickerFilter("dee")
+        XCTAssertEqual(model.pickerPresentation?.mode, .filtered)
+        model.escapePicker()
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertEqual(model.picker?.filterText, "")
+        XCTAssertEqual(model.pickerPresentation?.mode, .grouped)
 
         // An empty filter cancels: suppression plus the chip.
-        model.escapeActiveTaskPicker()
-        XCTAssertFalse(model.activeTaskPickerVisible)
+        model.escapePicker()
+        XCTAssertFalse(model.pickerVisible)
         XCTAssertEqual(model.focusRequest.target, .editor)
-        await waitUntil { model.activeTaskChipVisible }
+        await waitUntil { model.pickerChipVisible }
 
         // Further edits of the same token show the chip, not the picker.
         model.editorTextDidChange(cursorUTF8Offset: 1)
-        await waitUntil { model.activeTaskChipVisible }
-        XCTAssertFalse(model.activeTaskPickerVisible)
+        await waitUntil { model.pickerChipVisible }
+        XCTAssertFalse(model.pickerVisible)
 
         // The chip reopens the picker from its snapshot without a fetch.
-        model.openActiveTaskPickerFromChip()
-        XCTAssertTrue(model.activeTaskPickerVisible)
-        XCTAssertFalse(model.activeTaskChipVisible)
-        XCTAssertEqual(model.activeTaskPicker?.candidates.count, 3)
+        model.openPickerFromChip()
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertFalse(model.pickerChipVisible)
+        XCTAssertEqual(model.picker?.candidates.count, 3)
     }
 
     func testBackspaceOnEmptyFilterRemovesTrigger() async throws {
@@ -782,12 +782,12 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "^"
         model.editorTextDidChange(cursorUTF8Offset: 1)
-        await waitUntil { model.activeTaskPickerVisible }
+        await waitUntil { model.pickerVisible }
 
-        model.removeActiveTaskTrigger()
+        model.removePickerTrigger()
         XCTAssertEqual(model.plainDraft, "")
         XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 0)
-        XCTAssertFalse(model.activeTaskPickerVisible)
+        XCTAssertFalse(model.pickerVisible)
     }
 
     func testBackspaceWithStaleDraftCancels() async throws {
@@ -800,12 +800,12 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "^"
         model.editorTextDidChange(cursorUTF8Offset: 1)
-        await waitUntil { model.activeTaskPickerVisible }
+        await waitUntil { model.pickerVisible }
 
         model.plainDraft = "^changed"
-        model.removeActiveTaskTrigger()
-        XCTAssertFalse(model.activeTaskPickerVisible)
-        XCTAssertNotNil(model.activeTaskChip)
+        model.removePickerTrigger()
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertNotNil(model.pickerChip)
     }
 
     func testStaleDraftAcceptRefusesEdit() async throws {
@@ -818,12 +818,12 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "^"
         model.editorTextDidChange(cursorUTF8Offset: 1)
-        await waitUntil { model.activeTaskPickerVisible }
+        await waitUntil { model.pickerVisible }
 
         model.plainDraft = "^changed"
-        model.acceptSelectedActiveTask(submitAfterInsert: false)
+        model.acceptSelectedPickerRow(submitAfterInsert: false)
         XCTAssertEqual(model.plainDraft, "^changed")
-        XCTAssertFalse(model.activeTaskPickerVisible)
+        XCTAssertFalse(model.pickerVisible)
         XCTAssertEqual(model.statusText, "Draft changed — reopen the task picker")
     }
 
@@ -837,16 +837,16 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "^"
         model.editorTextDidChange(cursorUTF8Offset: 1)
-        await waitUntil { model.activeTaskPickerVisible }
+        await waitUntil { model.pickerVisible }
 
         model.prepareForDismissal()
-        XCTAssertFalse(model.activeTaskPickerVisible)
-        XCTAssertFalse(model.activeTaskChipVisible)
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertFalse(model.pickerChipVisible)
         XCTAssertFalse(model.editorInputLocked)
         XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 1)
 
         model.prepareForPresentation()
-        await waitUntil { model.activeTaskPickerVisible }
+        await waitUntil { model.pickerVisible }
     }
 
     func testLeavingTokenClearsSuppressionAndChip() async throws {
@@ -859,19 +859,19 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "^"
         model.editorTextDidChange(cursorUTF8Offset: 1)
-        await waitUntil { model.activeTaskPickerVisible }
+        await waitUntil { model.pickerVisible }
 
-        model.escapeActiveTaskPicker()
-        await waitUntil { model.activeTaskChipVisible }
+        model.escapePicker()
+        await waitUntil { model.pickerChipVisible }
 
         model.plainDraft = "hello"
         model.editorTextDidChange(cursorUTF8Offset: 5)
-        await waitUntil { model.activeTaskChip == nil }
+        await waitUntil { model.pickerChip == nil }
 
         // Suppression went with the token: typing `^` fresh opens the picker.
         model.plainDraft = "^"
         model.editorTextDidChange(cursorUTF8Offset: 1)
-        await waitUntil { model.activeTaskPickerVisible }
+        await waitUntil { model.pickerVisible }
     }
 
     func testAcceptingPomodoroNameAfterCaretLinkPreservesStartSuffix() {

@@ -32,17 +32,17 @@ enum CaptureKeyCommand: Equatable {
     case cancelTaskIDPrompt
     case submitPomodoroNamePrompt
     case cancelPomodoroNamePrompt
-    case acceptActiveTask
-    case acceptActiveTaskAndSubmit
-    case nextActiveTask
-    case previousActiveTask
-    case pageActiveTasksDown
-    case pageActiveTasksUp
-    case firstActiveTask
-    case lastActiveTask
-    case escapeActiveTaskPicker
-    case removeActiveTaskTrigger
-    case openActiveTaskPicker
+    case acceptPickerRow
+    case acceptPickerRowAndSubmit
+    case nextPickerRow
+    case previousPickerRow
+    case pagePickerRowsDown
+    case pagePickerRowsUp
+    case firstPickerRow
+    case lastPickerRow
+    case escapePicker
+    case removePickerTrigger
+    case openPickerFromChip
 }
 
 struct CaptureKeyRoutingContext: Equatable {
@@ -51,9 +51,9 @@ struct CaptureKeyRoutingContext: Equatable {
     var stashEntryCount = 0
     var taskIDPromptVisible = false
     var pomodoroNamePromptVisible = false
-    var activeTaskPickerVisible = false
-    var activeTaskFilterIsEmpty = true
-    var activeTaskChipVisible = false
+    var pickerVisible = false
+    var pickerFilterIsEmpty = true
+    var pickerChipVisible = false
 }
 
 struct CaptureKeyCommandRouter {
@@ -102,8 +102,8 @@ struct CaptureKeyCommandRouter {
             return pomodoroNamePromptCommand(for: event, modifiers: modifiers)
         }
 
-        if context.activeTaskPickerVisible {
-            return activeTaskPickerCommand(for: event, modifiers: modifiers, context: context)
+        if context.pickerVisible {
+            return pickerCommand(for: event, modifiers: modifiers, context: context)
         }
 
         if event.keyCode == KeyCode.s, modifiers == .control {
@@ -161,21 +161,21 @@ struct CaptureKeyCommandRouter {
                 if context.completionVisible {
                     return .acceptCompletion
                 }
-                return context.activeTaskChipVisible ? .openActiveTaskPicker : .tabEditorAssist
+                return context.pickerChipVisible ? .openPickerFromChip : .tabEditorAssist
             }
             return modifiers == .shift ? .decreaseBulletIndentation : nil
         case KeyCode.arrowDown:
             if context.completionVisible {
                 return .nextCompletion
             }
-            return context.activeTaskChipVisible && modifiers.isEmpty ? .openActiveTaskPicker : nil
+            return context.pickerChipVisible && modifiers.isEmpty ? .openPickerFromChip : nil
         case KeyCode.arrowUp:
             return context.completionVisible ? .previousCompletion : nil
         case KeyCode.n:
             if context.completionVisible, modifiers.contains(.control) {
                 return .nextCompletion
             }
-            return context.activeTaskChipVisible && modifiers == .control ? .openActiveTaskPicker : nil
+            return context.pickerChipVisible && modifiers == .control ? .openPickerFromChip : nil
         case KeyCode.p:
             return context.completionVisible && modifiers.contains(.control) ? .previousCompletion : nil
         default:
@@ -211,11 +211,11 @@ struct CaptureKeyCommandRouter {
         )
     }
 
-    /// Keyboard while the Active Task Picker is open. Every key the picker
+    /// Keyboard while the capture picker is open. Every key the picker
     /// table leaves to native field editing (printables, Cmd-A/C/V/X/Z,
     /// Ctrl-A/E, Left/Right) returns nil here — notably Ctrl-A/E, which must
     /// not fall through to the editor line-edge commands.
-    private func activeTaskPickerCommand(
+    private func pickerCommand(
         for event: NSEvent,
         modifiers: NSEvent.ModifierFlags,
         context: CaptureKeyRoutingContext
@@ -223,54 +223,54 @@ struct CaptureKeyCommandRouter {
         switch event.keyCode {
         case KeyCode.return, KeyCode.keypadEnter:
             if modifiers.contains(.command) {
-                return .acceptActiveTaskAndSubmit
+                return .acceptPickerRowAndSubmit
             }
             if modifiers.contains(.shift) || modifiers.contains(.option) {
                 return .consumeKey
             }
-            return modifiers.isEmpty ? .acceptActiveTask : nil
+            return modifiers.isEmpty ? .acceptPickerRow : nil
         case KeyCode.tab:
             if modifiers.isEmpty {
-                return .acceptActiveTask
+                return .acceptPickerRow
             }
             return modifiers == .shift ? .consumeKey : nil
         case KeyCode.arrowDown:
             if modifiers.isEmpty {
-                return .nextActiveTask
+                return .nextPickerRow
             }
-            return modifiers == .command ? .lastActiveTask : nil
+            return modifiers == .command ? .lastPickerRow : nil
         case KeyCode.arrowUp:
             if modifiers.isEmpty {
-                return .previousActiveTask
+                return .previousPickerRow
             }
-            return modifiers == .command ? .firstActiveTask : nil
+            return modifiers == .command ? .firstPickerRow : nil
         case KeyCode.pageDown:
-            return modifiers.isEmpty ? .pageActiveTasksDown : nil
+            return modifiers.isEmpty ? .pagePickerRowsDown : nil
         case KeyCode.pageUp:
-            return modifiers.isEmpty ? .pageActiveTasksUp : nil
+            return modifiers.isEmpty ? .pagePickerRowsUp : nil
         case KeyCode.home:
-            return modifiers.isEmpty || modifiers == .command ? .firstActiveTask : nil
+            return modifiers.isEmpty || modifiers == .command ? .firstPickerRow : nil
         case KeyCode.end:
-            return modifiers.isEmpty || modifiers == .command ? .lastActiveTask : nil
+            return modifiers.isEmpty || modifiers == .command ? .lastPickerRow : nil
         case KeyCode.escape:
-            return .escapeActiveTaskPicker
+            return .escapePicker
         case KeyCode.leftBracket:
-            return modifiers == .control ? .escapeActiveTaskPicker : nil
+            return modifiers == .control ? .escapePicker : nil
         case KeyCode.delete:
             // Only an unmodified Backspace on an empty filter removes the
             // trigger; any other Backspace edits the filter natively.
             guard modifiers.intersection([.command, .option, .control, .shift]).isEmpty else {
                 return nil
             }
-            return context.activeTaskFilterIsEmpty ? .removeActiveTaskTrigger : nil
+            return context.pickerFilterIsEmpty ? .removePickerTrigger : nil
         case KeyCode.n:
-            return modifiers == .control ? .nextActiveTask : nil
+            return modifiers == .control ? .nextPickerRow : nil
         case KeyCode.p:
-            return modifiers == .control ? .previousActiveTask : nil
+            return modifiers == .control ? .previousPickerRow : nil
         case KeyCode.j:
-            return modifiers == .control ? .nextActiveTask : nil
+            return modifiers == .control ? .nextPickerRow : nil
         case KeyCode.k:
-            return modifiers == .control ? .previousActiveTask : nil
+            return modifiers == .control ? .previousPickerRow : nil
         case KeyCode.s:
             return modifiers == .control ? .consumeKey : nil
         case KeyCode.c:

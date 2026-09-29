@@ -5,11 +5,11 @@ import XCTest
 
 @testable import BobMacCapture
 
-/// Design-phase tests for the Active Task Picker card: fixed-height sizing,
+/// Design-phase tests for the capture picker card: fixed-height sizing,
 /// panel metrics wiring, footer hints, and the gated rendered-image review.
-final class ActiveTaskPickerDesignTests: XCTestCase {
+final class CapturePickerDesignTests: XCTestCase {
     func testPickerHeightPolicyMath() {
-        let policy = ActiveTaskPickerHeightPolicy(visibleRowBudget: 11, displayScale: 1)
+        let policy = CapturePickerHeightPolicy(visibleRowBudget: 11, displayScale: 1)
 
         // listViewport = 2·padding + row·budget = 12 + 374
         XCTAssertEqual(policy.listViewportHeight, 386)
@@ -22,17 +22,17 @@ final class ActiveTaskPickerDesignTests: XCTestCase {
     }
 
     func testPickerHeightPolicyClampsBudget() {
-        let oversized = ActiveTaskPickerHeightPolicy(visibleRowBudget: 99, displayScale: 1)
-        let maxed = ActiveTaskPickerHeightPolicy(
-            visibleRowBudget: CapturePanelLayout.activeTaskMaxRows,
+        let oversized = CapturePickerHeightPolicy(visibleRowBudget: 99, displayScale: 1)
+        let maxed = CapturePickerHeightPolicy(
+            visibleRowBudget: CapturePanelLayout.pickerMaxRows,
             displayScale: 1
         )
-        XCTAssertEqual(oversized.clampedBudget, CapturePanelLayout.activeTaskMaxRows)
+        XCTAssertEqual(oversized.clampedBudget, CapturePanelLayout.pickerMaxRows)
         XCTAssertEqual(oversized.idealHeight, maxed.idealHeight)
         XCTAssertEqual(oversized.minimumVisibleHeight, maxed.minimumVisibleHeight)
 
-        let empty = ActiveTaskPickerHeightPolicy(visibleRowBudget: 0, displayScale: 1)
-        let single = ActiveTaskPickerHeightPolicy(visibleRowBudget: 1, displayScale: 1)
+        let empty = CapturePickerHeightPolicy(visibleRowBudget: 0, displayScale: 1)
+        let single = CapturePickerHeightPolicy(visibleRowBudget: 1, displayScale: 1)
         XCTAssertEqual(empty.clampedBudget, 1)
         XCTAssertEqual(empty.idealHeight, single.idealHeight)
         // A one-row budget keeps its single row in the minimum too.
@@ -41,22 +41,22 @@ final class ActiveTaskPickerDesignTests: XCTestCase {
     }
 
     func testPickerHeightPolicyPixelRounds() {
-        let integral = ActiveTaskPickerHeightPolicy(visibleRowBudget: 7, displayScale: 2)
+        let integral = CapturePickerHeightPolicy(visibleRowBudget: 7, displayScale: 2)
         // 2·6 + 34·7 = 250; 46 + 1 + 250 + 1 + 80 = 378
         XCTAssertEqual(integral.listViewportHeight, 250)
         XCTAssertEqual(integral.idealHeight, 378)
 
-        let degenerateScale = ActiveTaskPickerHeightPolicy(visibleRowBudget: 7, displayScale: 0)
+        let degenerateScale = CapturePickerHeightPolicy(visibleRowBudget: 7, displayScale: 0)
         XCTAssertEqual(degenerateScale.idealHeight, integral.idealHeight)
     }
 
     func testPickerHeightPolicyLayoutConstants() {
-        XCTAssertEqual(CapturePanelLayout.activeTaskFilterBarHeight, 46)
-        XCTAssertEqual(CapturePanelLayout.activeTaskRowHeight, 34)
-        XCTAssertEqual(CapturePanelLayout.activeTaskSectionHeaderHeight, 26)
-        XCTAssertEqual(CapturePanelLayout.activeTaskDetailStripHeight, 80)
-        XCTAssertEqual(CapturePanelLayout.activeTaskMaxRows, 11)
-        XCTAssertEqual(CapturePanelLayout.activeTaskMinRows, 3)
+        XCTAssertEqual(CapturePanelLayout.pickerFilterBarHeight, 46)
+        XCTAssertEqual(CapturePanelLayout.pickerRowHeight, 34)
+        XCTAssertEqual(CapturePanelLayout.pickerSectionHeaderHeight, 26)
+        XCTAssertEqual(CapturePanelLayout.pickerDetailStripHeight, 80)
+        XCTAssertEqual(CapturePanelLayout.pickerMaxRows, 11)
+        XCTAssertEqual(CapturePanelLayout.pickerMinRows, 3)
     }
 
     @MainActor
@@ -72,7 +72,7 @@ final class ActiveTaskPickerDesignTests: XCTestCase {
         let compactMetrics = contentPolicy.metrics(editorHeight: 42, auxiliaryHeight: nil, footerHeight: 40)
         // The budget is fixed at open from the grouped snapshot, so two
         // different filters over the same snapshot share one height.
-        let pickerAuxiliary = ActiveTaskPickerHeightPolicy(visibleRowBudget: 11, displayScale: displayScale)
+        let pickerAuxiliary = CapturePickerHeightPolicy(visibleRowBudget: 11, displayScale: displayScale)
             .auxiliaryHeight
         let pickerMetrics = contentPolicy.metrics(
             editorHeight: 42,
@@ -131,7 +131,7 @@ final class ActiveTaskPickerDesignTests: XCTestCase {
     func testPickerMinimumHoldsOnShortScreen() {
         let displayScale: CGFloat = 1
         let contentPolicy = CapturePanelContentHeightPolicy(displayScale: displayScale)
-        let pickerAuxiliary = ActiveTaskPickerHeightPolicy(visibleRowBudget: 11, displayScale: displayScale)
+        let pickerAuxiliary = CapturePickerHeightPolicy(visibleRowBudget: 11, displayScale: displayScale)
             .auxiliaryHeight
         let metrics = contentPolicy.metrics(
             editorHeight: 42,
@@ -170,7 +170,7 @@ final class ActiveTaskPickerDesignTests: XCTestCase {
             auxiliary: nil,
             contentPolicy: contentPolicy
         )
-        let picker = ActiveTaskPickerHeightPolicy(visibleRowBudget: 11).auxiliaryHeight
+        let picker = CapturePickerHeightPolicy(visibleRowBudget: 11).auxiliaryHeight
         let withPicker = CaptureEditorHeightBudget(
             availableScreenHeight: tallScreen,
             footerHeight: footerHeight,
@@ -185,11 +185,11 @@ final class ActiveTaskPickerDesignTests: XCTestCase {
 
     func testKeyHintsDocumentPickerKeyboardContract() {
         XCTAssertEqual(
-            ActiveTaskKeyHints.items.map { $0.keys },
+            CapturePickerKeyHints.items(for: .activeTask).map { $0.keys },
             ["↑↓", "↩", "⌘↩", "esc"]
         )
         XCTAssertEqual(
-            ActiveTaskKeyHints.items.map { $0.action },
+            CapturePickerKeyHints.items(for: .activeTask).map { $0.action },
             ["Move", "Insert", "Insert & Capture", "Clear / Cancel"]
         )
     }
@@ -218,11 +218,11 @@ final class ActiveTaskPickerDesignTests: XCTestCase {
         for state in states {
             for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
                 let model = CapturePanelModel()
-                model.installActiveTaskPickerForPreviews(
+                model.installPickerForPreviews(
                     candidates: state.candidates,
                     filter: state.filter
                 )
-                let card = ActiveTaskPickerCard(model: model)
+                let card = CapturePickerCard(model: model)
                     .frame(width: 760)
                     .environment(
                         \.colorScheme,
@@ -235,7 +235,7 @@ final class ActiveTaskPickerDesignTests: XCTestCase {
                     continue
                 }
                 let url = directory.appendingPathComponent(
-                    "active-task-picker-\(state.name)-\(appearance == .darkAqua ? "dark" : "light").png"
+                    "capture-picker-\(state.name)-\(appearance == .darkAqua ? "dark" : "light").png"
                 )
                 try Self.pngData(for: image).write(to: url)
             }
@@ -248,7 +248,7 @@ final class ActiveTaskPickerDesignTests: XCTestCase {
               let png = rep.representation(using: .png, properties: [:])
         else {
             throw NSError(
-                domain: "ActiveTaskPickerDesignTests",
+                domain: "CapturePickerDesignTests",
                 code: 1,
                 userInfo: [NSLocalizedDescriptionKey: "Could not encode picker render as PNG."]
             )

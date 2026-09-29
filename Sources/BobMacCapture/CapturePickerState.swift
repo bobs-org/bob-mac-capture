@@ -1,10 +1,12 @@
 import CaptureCore
 import Foundation
 
-/// Snapshot of one open Active Task Picker session. The draft must still equal
+/// Snapshot of one open capture picker session. The draft must still equal
 /// `draftSnapshot` for any accept to edit; otherwise the accept is refused as
 /// stale so a late pick can never splice into a changed draft.
-struct ActiveTaskPickerState: Equatable {
+struct CapturePickerState: Equatable {
+    /// Which source this session belongs to (only `.activeTask` for now).
+    var source: CapturePickerSource
     /// The exact draft the snapshot was fetched for.
     var draftSnapshot: String
     /// Bob's replacement range the accept splices into.
@@ -29,10 +31,12 @@ struct ActiveTaskPickerState: Equatable {
     var snapshotIsPartial: Bool
 }
 
-/// The compact "Browse active tasks" affordance shown instead of the picker:
-/// after a two-stage Escape cancel, after a caret-only move into a `^` token,
-/// or while auto-open is suppressed for the token.
-struct ActiveTaskChipState: Equatable {
+/// The compact reopen affordance shown instead of the picker: after a
+/// two-stage Escape cancel, after a caret-only move into a picker's token, or
+/// while auto-open is suppressed for the token.
+struct CapturePickerChipState: Equatable {
+    /// Which source this chip reopens (only `.activeTask` for now).
+    var source: CapturePickerSource
     /// The draft the chip's snapshot belongs to.
     var draftSnapshot: String
     var replacementRange: CaptureRange
@@ -48,4 +52,17 @@ struct ActiveTaskChipState: Equatable {
 enum CompletionTrigger {
     case edit
     case selection
+}
+
+/// The picker's local fuzzy index, wrapping the per-source index. Only the
+/// active-task source exists yet; the Block ID source adds its case here.
+enum CapturePickerIndex {
+    case activeTask(ActiveTaskPickerIndex)
+
+    func presentation(filter: String) -> CapturePickerPresentation {
+        switch self {
+        case .activeTask(let index):
+            return index.presentation(filter: filter)
+        }
+    }
 }

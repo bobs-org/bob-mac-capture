@@ -37,9 +37,9 @@ enum CapturePanelFocusTarget: Hashable {
     case taskIDPromptBlockID
     /// Model-level focus intent owned by `PomodoroNameField` / AppKit, not `@FocusState`.
     case pomodoroNamePromptName
-    /// Model-level focus intent owned by `ActiveTaskFilterField` / AppKit, not
-    /// `@FocusState`.
-    case activeTaskFilter
+    /// Model-level focus intent owned by `CapturePickerFilterField` / AppKit,
+    /// not `@FocusState`.
+    case pickerFilter
 }
 
 struct CapturePanelFocusRequest: Equatable {
@@ -79,10 +79,10 @@ final class CapturePanelModel: ObservableObject {
     @Published var selectedStashIndex = 0
     @Published var taskIDPrompt: CaptureTaskIDPromptState?
     @Published var pomodoroNamePrompt: CapturePomodoroNamePromptState?
-    @Published var activeTaskPicker: ActiveTaskPickerState?
+    @Published var picker: CapturePickerState?
     /// Recomputed only when the picker snapshot or the filter text changes.
-    @Published var activeTaskPickerPresentation: ActiveTaskPickerPresentation?
-    @Published var activeTaskChip: ActiveTaskChipState?
+    @Published var pickerPresentation: CapturePickerPresentation?
+    @Published var pickerChip: CapturePickerChipState?
     @Published private(set) var focusRequest = CapturePanelFocusRequest(sequence: 0, target: .editor)
     @Published private(set) var editorInputLocked = false
     /// Visible-frame height of the screen hosting the panel. `nil` until the controller
@@ -124,12 +124,12 @@ final class CapturePanelModel: ObservableObject {
     private var activeTaskIDRequestID: UUID?
     private var activePomodoroNameRequestID: UUID?
     /// Local fuzzy index for the picker's snapshot. Kept private; the view only
-    /// sees the derived `activeTaskPickerPresentation`.
-    private var activeTaskPickerIndex: ActiveTaskPickerIndex?
+    /// sees the derived `pickerPresentation`.
+    private var pickerIndex: CapturePickerIndex?
     /// Replacement-range start of the `^` token auto-open is suppressed for
     /// (set by the two-stage Escape cancel). Cleared when an `.edit` analysis
     /// leaves the token.
-    private var activeTaskAutoOpenSuppressedStart: Int?
+    private var pickerAutoOpenSuppressedStart: Int?
 
     init(
         processClient: BobProcessClient? = nil,
@@ -173,27 +173,27 @@ final class CapturePanelModel: ObservableObject {
         taskIDPrompt != nil || pomodoroNamePrompt != nil
     }
 
-    var activeTaskPickerVisible: Bool {
-        activeTaskPicker != nil
+    var pickerVisible: Bool {
+        picker != nil
     }
 
     /// False while any modal, prompt, or completion list is visible.
-    var activeTaskChipVisible: Bool {
-        activeTaskChip != nil
+    var pickerChipVisible: Bool {
+        pickerChip != nil
             && !isStashPickerPresented
             && !inlinePromptVisible
             && !completionVisible
     }
 
-    var activeTaskFilterIsEmpty: Bool {
-        activeTaskPicker?.filterText.isEmpty ?? true
+    var pickerFilterIsEmpty: Bool {
+        picker?.filterText.isEmpty ?? true
     }
 
-    var selectedActiveTaskRow: ActiveTaskPickerRow? {
-        guard let selectedRowID = activeTaskPicker?.selectedRowID else {
+    var selectedPickerRow: CapturePickerRow? {
+        guard let selectedRowID = picker?.selectedRowID else {
             return nil
         }
-        return activeTaskPickerPresentation?.row(id: selectedRowID)
+        return pickerPresentation?.row(id: selectedRowID)
     }
 
     var taskIDPromptVisible: Bool {
@@ -350,7 +350,7 @@ final class CapturePanelModel: ObservableObject {
             previewGlobalDestination = nil
             completionResponse = nil
             completionDraftSnapshot = nil
-            clearActiveTaskState()
+            clearPickerState()
             invalidateAnalysis()
             invalidateRewrite()
         } else if hasDraft {
@@ -646,7 +646,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func toggleStashPicker() {
-        if activeTaskPicker != nil {
+        if picker != nil {
             return
         }
         if isStashPickerPresented {
@@ -657,7 +657,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func presentStashPicker() {
-        if activeTaskPicker != nil {
+        if picker != nil {
             return
         }
         if taskIDPrompt != nil {
@@ -771,7 +771,7 @@ final class CapturePanelModel: ObservableObject {
 
     func prepareForDismissal() {
         dismissStashPicker()
-        closeActiveTaskPickerForDismissal()
+        closePickerForDismissal()
         clearInlinePrompts()
     }
 
@@ -786,7 +786,7 @@ final class CapturePanelModel: ObservableObject {
         parseDiagnostics = []
         completionResponse = nil
         completionDraftSnapshot = nil
-        clearActiveTaskState()
+        clearPickerState()
         clearInlinePrompts()
         previewState = .idle
         statusText = ""
@@ -821,7 +821,7 @@ final class CapturePanelModel: ObservableObject {
 
     /// The editor stays locked while the picker or either prompt is open.
     private func clearEditorInputLockIfFree() {
-        if taskIDPrompt == nil, pomodoroNamePrompt == nil, activeTaskPicker == nil {
+        if taskIDPrompt == nil, pomodoroNamePrompt == nil, picker == nil {
             clearEditorInputLock()
         }
     }
@@ -850,31 +850,32 @@ final class CapturePanelModel: ObservableObject {
         selectedCompletionIndex = 0
     }
 
-    // MARK: - Active task picker
+    // MARK: - Capture picker
 
     /// Test and render support: installs a picker session directly from a
     /// snapshot, bypassing the subprocess round trip. Production code opens
     /// the picker through `scheduleAnalysis`; this exists so design tests and
     /// the `BOB_MAC_CAPTURE_RENDER_DIR` image review can mount
-    /// `ActiveTaskPickerCard` on fixture data.
-    func installActiveTaskPickerForPreviews(
+    /// `CapturePickerCard` on fixture data.
+    func installPickerForPreviews(
         candidates: [CaptureCompletionCandidate],
         warnings: [String] = [],
         filter: String = ""
     ) {
-        let index = ActiveTaskPickerIndex(candidates: candidates)
+        let index = CapturePickerIndex.activeTask(ActiveTaskPickerIndex(candidates: candidates))
         let presentation = index.presentation(filter: filter)
-        activeTaskPickerIndex = index
-        activeTaskPickerPresentation = presentation
-        activeTaskPicker = ActiveTaskPickerState(
+        pickerIndex = index
+        pickerPresentation = presentation
+        picker = CapturePickerState(
+            source: .activeTask,
             draftSnapshot: "^",
             replacementRange: CaptureRange(start: 0, end: 1),
             restoreCursor: 1,
             candidates: candidates,
             warnings: warnings,
             filterText: filter,
-            selectedRowID: ActiveTaskPickerNavigation.first(in: presentation.orderedRowIDs),
-            visibleRowBudget: presentation.groupedVisibleRowBudget,
+            selectedRowID: CapturePickerNavigation.first(in: presentation.orderedRowIDs),
+            visibleRowBudget: presentation.visibleRowBudget,
             snapshotIsPartial: false
         )
     }
@@ -896,7 +897,7 @@ final class CapturePanelModel: ObservableObject {
         // While the picker is open, analysis results never modify picker or
         // chip state and never populate the inline list. A selection callback
         // fired when the editor loses focus must not reset the picker.
-        if activeTaskPicker != nil {
+        if picker != nil {
             dismissCompletion()
             return
         }
@@ -919,11 +920,11 @@ final class CapturePanelModel: ObservableObject {
         draft: String,
         trigger: CompletionTrigger
     ) {
-        if activeTaskPicker != nil {
+        if picker != nil {
             dismissCompletion()
             return
         }
-        clearActiveTaskInterruption(trigger: trigger)
+        clearPickerInterruption(trigger: trigger)
         completionResponse = completion.candidates.isEmpty ? nil : completion
         completionDraftSnapshot = completion.candidates.isEmpty ? nil : draft
         selectedCompletionIndex = 0
@@ -933,22 +934,22 @@ final class CapturePanelModel: ObservableObject {
     /// An analysis that ends with no completion at all (nothing requested, or
     /// nothing offered) still retires the `^` affordances per trigger.
     private func handleMissingCompletion(trigger: CompletionTrigger) {
-        if activeTaskPicker != nil {
+        if picker != nil {
             dismissCompletion()
             return
         }
-        clearActiveTaskInterruption(trigger: trigger)
+        clearPickerInterruption(trigger: trigger)
         dismissCompletion()
     }
 
     /// An `.edit` analysis without an `active_task` result leaves the token:
     /// it clears the suppression and the chip. A `.selection` analysis only
     /// ever clears the chip.
-    private func clearActiveTaskInterruption(trigger: CompletionTrigger) {
+    private func clearPickerInterruption(trigger: CompletionTrigger) {
         if trigger == .edit {
-            activeTaskAutoOpenSuppressedStart = nil
+            pickerAutoOpenSuppressedStart = nil
         }
-        activeTaskChip = nil
+        pickerChip = nil
     }
 
     private func handleActiveTaskCompletion(
@@ -972,11 +973,12 @@ final class CapturePanelModel: ObservableObject {
         let part = String(draft[partRange])
         if completion.candidates.contains(where: { $0.replacement == part }) {
             // The token is already an exact candidate: no picker, no chip.
-            clearActiveTaskInterruption(trigger: trigger)
+            clearPickerInterruption(trigger: trigger)
             return
         }
-        guard trigger == .edit, activeTaskAutoOpenSuppressedStart != r.start else {
-            activeTaskChip = ActiveTaskChipState(
+        guard trigger == .edit, pickerAutoOpenSuppressedStart != r.start else {
+            pickerChip = CapturePickerChipState(
+                source: .activeTask,
                 draftSnapshot: draft,
                 replacementRange: r,
                 cursor: cursor,
@@ -985,7 +987,7 @@ final class CapturePanelModel: ObservableObject {
             )
             return
         }
-        let query = Self.activeTaskQuery(in: draft, range: r, cursor: cursor)
+        let query = Self.pickerQuery(in: draft, range: r, cursor: cursor)
         if cursor != r.start {
             // Fetch the unfiltered snapshot at the token start in this same
             // analysis task; Bob answers the full list there.
@@ -995,7 +997,8 @@ final class CapturePanelModel: ObservableObject {
                snapshot.context == "active_task",
                snapshot.replacement == r
             {
-                presentActiveTaskPicker(
+                presentPicker(
+                    source: .activeTask,
                     candidates: snapshot.candidates,
                     warnings: snapshot.warnings,
                     draft: draft,
@@ -1010,7 +1013,8 @@ final class CapturePanelModel: ObservableObject {
             guard isCurrentAnalysis(generation), plainDraft == draft else {
                 return
             }
-            presentActiveTaskPicker(
+            presentPicker(
+                source: .activeTask,
                 candidates: completion.candidates,
                 warnings: completion.warnings,
                 draft: draft,
@@ -1021,7 +1025,8 @@ final class CapturePanelModel: ObservableObject {
             )
             return
         }
-        presentActiveTaskPicker(
+        presentPicker(
+            source: .activeTask,
             candidates: completion.candidates,
             warnings: completion.warnings,
             draft: draft,
@@ -1034,14 +1039,15 @@ final class CapturePanelModel: ObservableObject {
 
     /// The filter seed: the draft text typed after `^` so far, by UTF-8 byte
     /// range. Text typed before the picker appears seeds the filter.
-    private static func activeTaskQuery(in draft: String, range: CaptureRange, cursor: Int) -> String {
+    private static func pickerQuery(in draft: String, range: CaptureRange, cursor: Int) -> String {
         guard let queryRange = stringRange(in: draft, start: range.start, end: min(cursor, range.end)) else {
             return ""
         }
         return String(draft[queryRange])
     }
 
-    private func presentActiveTaskPicker(
+    private func presentPicker(
+        source: CapturePickerSource,
         candidates: [CaptureCompletionCandidate],
         warnings: [String],
         draft: String,
@@ -1050,189 +1056,192 @@ final class CapturePanelModel: ObservableObject {
         query: String,
         snapshotIsPartial: Bool
     ) {
-        let index = ActiveTaskPickerIndex(candidates: candidates)
+        let index = CapturePickerIndex.activeTask(ActiveTaskPickerIndex(candidates: candidates))
         let presentation = index.presentation(filter: query)
-        activeTaskPickerIndex = index
-        activeTaskPickerPresentation = presentation
-        activeTaskPicker = ActiveTaskPickerState(
+        pickerIndex = index
+        pickerPresentation = presentation
+        picker = CapturePickerState(
+            source: source,
             draftSnapshot: draft,
             replacementRange: range,
             restoreCursor: restoreCursor,
             candidates: candidates,
             warnings: warnings,
             filterText: query,
-            selectedRowID: ActiveTaskPickerNavigation.first(in: presentation.orderedRowIDs),
-            visibleRowBudget: presentation.groupedVisibleRowBudget,
+            selectedRowID: CapturePickerNavigation.first(in: presentation.orderedRowIDs),
+            visibleRowBudget: presentation.visibleRowBudget,
             snapshotIsPartial: snapshotIsPartial
         )
         dismissCompletion()
-        activeTaskChip = nil
+        pickerChip = nil
         editorInputLocked = true
-        requestFocus(.activeTaskFilter)
+        requestFocus(.pickerFilter)
     }
 
-    func updateActiveTaskFilter(_ text: String) {
-        guard var picker = activeTaskPicker,
-              let index = activeTaskPickerIndex
+    func updatePickerFilter(_ text: String) {
+        guard var updated = picker,
+              let index = pickerIndex
         else {
             return
         }
-        picker.filterText = text
+        updated.filterText = text
         let presentation = index.presentation(filter: text)
-        picker.selectedRowID = ActiveTaskPickerNavigation.first(in: presentation.orderedRowIDs)
-        activeTaskPicker = picker
-        activeTaskPickerPresentation = presentation
+        updated.selectedRowID = CapturePickerNavigation.first(in: presentation.orderedRowIDs)
+        picker = updated
+        pickerPresentation = presentation
     }
 
-    func selectActiveTask(id: String) {
-        guard activeTaskPicker != nil,
-              let presentation = activeTaskPickerPresentation,
+    func selectPickerRow(id: String) {
+        guard picker != nil,
+              let presentation = pickerPresentation,
               presentation.orderedRowIDs.contains(id)
         else {
             return
         }
-        activeTaskPicker?.selectedRowID = id
+        picker?.selectedRowID = id
     }
 
-    func selectNextActiveTask() {
-        moveActiveTaskSelection { ActiveTaskPickerNavigation.next(after: $0, in: $1) }
+    func selectNextPickerRow() {
+        movePickerSelection { CapturePickerNavigation.next(after: $0, in: $1) }
     }
 
-    func selectPreviousActiveTask() {
-        moveActiveTaskSelection { ActiveTaskPickerNavigation.previous(before: $0, in: $1) }
+    func selectPreviousPickerRow() {
+        movePickerSelection { CapturePickerNavigation.previous(before: $0, in: $1) }
     }
 
-    func pageActiveTasksDown() {
-        guard let picker = activeTaskPicker else {
+    func pagePickerRowsDown() {
+        guard let picker = picker else {
             return
         }
         let step = max(picker.visibleRowBudget - 1, 1)
-        moveActiveTaskSelection { ActiveTaskPickerNavigation.page(from: $0, by: step, in: $1) }
+        movePickerSelection { CapturePickerNavigation.page(from: $0, by: step, in: $1) }
     }
 
-    func pageActiveTasksUp() {
-        guard let picker = activeTaskPicker else {
+    func pagePickerRowsUp() {
+        guard let picker = picker else {
             return
         }
         let step = max(picker.visibleRowBudget - 1, 1)
-        moveActiveTaskSelection { ActiveTaskPickerNavigation.page(from: $0, by: -step, in: $1) }
+        movePickerSelection { CapturePickerNavigation.page(from: $0, by: -step, in: $1) }
     }
 
-    func selectFirstActiveTask() {
-        guard activeTaskPicker != nil,
-              let presentation = activeTaskPickerPresentation
+    func selectFirstPickerRow() {
+        guard picker != nil,
+              let presentation = pickerPresentation
         else {
             return
         }
-        activeTaskPicker?.selectedRowID = ActiveTaskPickerNavigation.first(in: presentation.orderedRowIDs)
+        picker?.selectedRowID = CapturePickerNavigation.first(in: presentation.orderedRowIDs)
     }
 
-    func selectLastActiveTask() {
-        guard activeTaskPicker != nil,
-              let presentation = activeTaskPickerPresentation
+    func selectLastPickerRow() {
+        guard picker != nil,
+              let presentation = pickerPresentation
         else {
             return
         }
-        activeTaskPicker?.selectedRowID = ActiveTaskPickerNavigation.last(in: presentation.orderedRowIDs)
+        picker?.selectedRowID = CapturePickerNavigation.last(in: presentation.orderedRowIDs)
     }
 
-    private func moveActiveTaskSelection(
+    private func movePickerSelection(
         _ move: (String, [String]) -> String?
     ) {
-        guard let picker = activeTaskPicker,
-              let selectedRowID = picker.selectedRowID,
-              let presentation = activeTaskPickerPresentation,
+        guard let selectedRowID = picker?.selectedRowID,
+              let presentation = pickerPresentation,
               let next = move(selectedRowID, presentation.orderedRowIDs)
         else {
             return
         }
-        activeTaskPicker?.selectedRowID = next
+        picker?.selectedRowID = next
     }
 
-    func acceptSelectedActiveTask(submitAfterInsert: Bool) {
-        guard let selectedRowID = activeTaskPicker?.selectedRowID else {
+    func acceptSelectedPickerRow(submitAfterInsert: Bool) {
+        guard let selectedRowID = picker?.selectedRowID else {
             // An empty-list accept is a no-op.
             return
         }
-        acceptActiveTask(id: selectedRowID, submitAfterInsert: submitAfterInsert)
+        acceptPickerRow(id: selectedRowID, submitAfterInsert: submitAfterInsert)
     }
 
-    func acceptActiveTask(id: String, submitAfterInsert: Bool) {
-        guard let picker = activeTaskPicker,
-              let candidate = picker.candidates.first(where: { $0.replacement == id }),
+    func acceptPickerRow(id: String, submitAfterInsert: Bool) {
+        guard let picker = picker,
+              let row = pickerPresentation?.row(id: id),
+              let insertion = row.insertion,
               plainDraft == picker.draftSnapshot,
               let range = stringRange(in: plainDraft, byteRange: picker.replacementRange)
         else {
             // The draft moved under the picker: never edit a stale draft.
-            closeActiveTaskPickerAfterStaleDraft()
+            closePickerAfterStaleDraft()
             return
         }
 
         var text = plainDraft
-        text.replaceSubrange(range, with: candidate.replacement)
-        let caret = picker.replacementRange.start + candidate.replacement.utf8.count
+        text.replaceSubrange(range, with: insertion)
+        let caret = picker.replacementRange.start + insertion.utf8.count
         guard stringRange(in: text, start: caret, end: caret) != nil else {
-            closeActiveTaskPickerAfterStaleDraft()
+            closePickerAfterStaleDraft()
             return
         }
 
-        closeActiveTaskPickerForAccept()
+        closePickerForAccept()
         suppressedCompletionAcceptanceDraft = text
         setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
         scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: false, trigger: .edit)
-        announceStatus("Inserted ^\(candidate.replacement)")
+        announceStatus("Inserted \(insertion)")
         if submitAfterInsert {
             submit(openAfterCapture: false)
         }
     }
 
     /// First Escape clears a non-empty filter; otherwise the picker cancels.
-    func escapeActiveTaskPicker() {
-        guard let picker = activeTaskPicker else {
+    func escapePicker() {
+        guard let picker = picker else {
             return
         }
         if !picker.filterText.isEmpty {
-            updateActiveTaskFilter("")
+            updatePickerFilter("")
         } else {
-            cancelActiveTaskPicker()
+            cancelPicker()
         }
     }
 
     /// Cancel leaves the draft unchanged, restores the caret, suppresses
     /// auto-open for this token, and shows the reopen chip.
-    func cancelActiveTaskPicker() {
-        guard let picker = activeTaskPicker else {
+    func cancelPicker() {
+        guard let openPicker = picker else {
             return
         }
-        let range = picker.replacementRange
-        activeTaskPicker = nil
-        activeTaskPickerPresentation = nil
-        activeTaskPickerIndex = nil
+        let range = openPicker.replacementRange
+        picker = nil
+        pickerPresentation = nil
+        pickerIndex = nil
         clearEditorInputLockIfFree()
-        if plainDraft == picker.draftSnapshot,
-           stringRange(in: plainDraft, start: picker.restoreCursor, end: picker.restoreCursor) != nil
+        if plainDraft == openPicker.draftSnapshot,
+           stringRange(in: plainDraft, start: openPicker.restoreCursor, end: openPicker.restoreCursor) != nil
         {
             setPlainDraft(
                 plainDraft,
-                cursorUTF8Offset: picker.restoreCursor,
+                cursorUTF8Offset: openPicker.restoreCursor,
                 suppressSelectionCallbacks: true
             )
         }
         requestFocus(.editor)
-        activeTaskAutoOpenSuppressedStart = range.start
-        activeTaskChip = ActiveTaskChipState(
-            draftSnapshot: picker.draftSnapshot,
+        pickerAutoOpenSuppressedStart = range.start
+        pickerChip = CapturePickerChipState(
+            source: openPicker.source,
+            draftSnapshot: openPicker.draftSnapshot,
             replacementRange: range,
-            cursor: picker.restoreCursor,
-            candidates: picker.candidates,
-            warnings: picker.warnings
+            cursor: openPicker.restoreCursor,
+            candidates: openPicker.candidates,
+            warnings: openPicker.warnings
         )
     }
 
-    /// Backspace on an empty filter removes the `^` trigger together with any
-    /// fragment it opened on. Otherwise behaves like cancel.
-    func removeActiveTaskTrigger() {
-        guard let picker = activeTaskPicker, picker.filterText.isEmpty else {
+    /// Backspace on an empty filter removes the source's trigger byte together
+    /// with any fragment it opened on (`^` for active tasks). Otherwise
+    /// behaves like cancel.
+    func removePickerTrigger() {
+        guard let picker = picker, picker.filterText.isEmpty else {
             return
         }
         let r = picker.replacementRange
@@ -1240,24 +1249,24 @@ final class CapturePanelModel: ObservableObject {
         if plainDraft == picker.draftSnapshot,
            r.start >= 1,
            r.start - 1 < caretBytes.count,
-           caretBytes[r.start - 1] == 94, // `^`
+           caretBytes[r.start - 1] == picker.source.triggerByte,
            let deleteRange = stringRange(in: plainDraft, start: r.start - 1, end: r.end)
         {
             var text = plainDraft
             text.removeSubrange(deleteRange)
             let caret = r.start - 1
-            closeActiveTaskPickerForAccept()
-            activeTaskAutoOpenSuppressedStart = nil
+            closePickerForAccept()
+            pickerAutoOpenSuppressedStart = nil
             suppressedCompletionAcceptanceDraft = text
             setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
             scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
             return
         }
-        cancelActiveTaskPicker()
+        cancelPicker()
     }
 
-    func openActiveTaskPickerFromChip() {
-        guard let chip = activeTaskChip else {
+    func openPickerFromChip() {
+        guard let chip = pickerChip else {
             return
         }
         guard chip.draftSnapshot == plainDraft else {
@@ -1269,10 +1278,10 @@ final class CapturePanelModel: ObservableObject {
             )
             return
         }
-        activeTaskAutoOpenSuppressedStart = nil
+        pickerAutoOpenSuppressedStart = nil
         let draft = plainDraft
         let r = chip.replacementRange
-        let query = Self.activeTaskQuery(in: draft, range: r, cursor: chip.cursor)
+        let query = Self.pickerQuery(in: draft, range: r, cursor: chip.cursor)
         if chip.cursor != r.start, let processClient {
             // The chip came from a caret snapshot; refetch the full list at
             // the token start. A keystroke in the meantime abandons the open.
@@ -1282,14 +1291,15 @@ final class CapturePanelModel: ObservableObject {
                 }
                 await MainActor.run {
                     guard let self,
-                          self.activeTaskChip?.draftSnapshot == draft,
+                          self.pickerChip?.draftSnapshot == draft,
                           self.plainDraft == draft,
                           snapshot.context == "active_task",
                           snapshot.replacement == r
                     else {
                         return
                     }
-                    self.presentActiveTaskPicker(
+                    self.presentPicker(
+                        source: chip.source,
                         candidates: snapshot.candidates,
                         warnings: snapshot.warnings,
                         draft: draft,
@@ -1302,7 +1312,8 @@ final class CapturePanelModel: ObservableObject {
             }
             return
         }
-        presentActiveTaskPicker(
+        presentPicker(
+            source: chip.source,
             candidates: chip.candidates,
             warnings: chip.warnings,
             draft: draft,
@@ -1313,41 +1324,44 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
-    func dismissActiveTaskChip() {
-        activeTaskChip = nil
+    func dismissPickerChip() {
+        pickerChip = nil
     }
 
-    /// An incomplete `^` is a state, not an error: skip the doomed live dry
-    /// run and show a calm status line instead of red errors.
-    private static func parseNeedsActiveTask(_ parse: CaptureParseResponse) -> Bool {
+    /// An incomplete picker token is a state, not an error: skip the doomed
+    /// live dry run and show a calm status line instead of red errors.
+    private static func pickerNeed(in parse: CaptureParseResponse) -> CapturePickerNeed? {
         if parse.needs.contains("active_task") {
-            return true
+            return .activeTask
         }
-        return parse.items.contains { $0.needs.contains("active_task") }
+        if parse.items.contains(where: { $0.needs.contains("active_task") }) {
+            return .activeTask
+        }
+        return nil
     }
 
-    private func applyQuietIncompleteActiveTask() {
+    private func applyQuietIncompletePicker(_ need: CapturePickerNeed) {
         previewState = .idle
         previewResult = nil
         previewResults = []
         previewGlobalDestination = nil
         errorMessage = nil
-        statusText = "Pick an active task — press Tab to browse"
+        statusText = need.statusText
     }
 
-    private func closeActiveTaskPickerForAccept() {
-        activeTaskPicker = nil
-        activeTaskPickerPresentation = nil
-        activeTaskPickerIndex = nil
-        activeTaskChip = nil
+    private func closePickerForAccept() {
+        picker = nil
+        pickerPresentation = nil
+        pickerIndex = nil
+        pickerChip = nil
         clearEditorInputLockIfFree()
         requestFocus(.editor)
     }
 
-    private func closeActiveTaskPickerAfterStaleDraft() {
-        activeTaskPicker = nil
-        activeTaskPickerPresentation = nil
-        activeTaskPickerIndex = nil
+    private func closePickerAfterStaleDraft() {
+        picker = nil
+        pickerPresentation = nil
+        pickerIndex = nil
         clearEditorInputLockIfFree()
         requestFocus(.editor)
         announceStatus("Draft changed — reopen the task picker")
@@ -1355,35 +1369,35 @@ final class CapturePanelModel: ObservableObject {
 
     /// Hide path: close the picker without suppression, restore the caret,
     /// and clear the chip. Re-show reopens via the retained-draft analysis.
-    private func closeActiveTaskPickerForDismissal() {
-        guard let picker = activeTaskPicker else {
-            activeTaskChip = nil
-            activeTaskAutoOpenSuppressedStart = nil
+    private func closePickerForDismissal() {
+        guard let openPicker = picker else {
+            pickerChip = nil
+            pickerAutoOpenSuppressedStart = nil
             return
         }
-        activeTaskPicker = nil
-        activeTaskPickerPresentation = nil
-        activeTaskPickerIndex = nil
-        activeTaskChip = nil
-        activeTaskAutoOpenSuppressedStart = nil
+        picker = nil
+        pickerPresentation = nil
+        pickerIndex = nil
+        pickerChip = nil
+        pickerAutoOpenSuppressedStart = nil
         clearEditorInputLockIfFree()
-        if plainDraft == picker.draftSnapshot,
-           stringRange(in: plainDraft, start: picker.restoreCursor, end: picker.restoreCursor) != nil
+        if plainDraft == openPicker.draftSnapshot,
+           stringRange(in: plainDraft, start: openPicker.restoreCursor, end: openPicker.restoreCursor) != nil
         {
             setPlainDraft(
                 plainDraft,
-                cursorUTF8Offset: picker.restoreCursor,
+                cursorUTF8Offset: openPicker.restoreCursor,
                 suppressSelectionCallbacks: true
             )
         }
     }
 
-    private func clearActiveTaskState() {
-        activeTaskPicker = nil
-        activeTaskPickerPresentation = nil
-        activeTaskPickerIndex = nil
-        activeTaskChip = nil
-        activeTaskAutoOpenSuppressedStart = nil
+    private func clearPickerState() {
+        picker = nil
+        pickerPresentation = nil
+        pickerIndex = nil
+        pickerChip = nil
+        pickerAutoOpenSuppressedStart = nil
     }
 
     func selectNextCompletion() {
@@ -1881,7 +1895,7 @@ final class CapturePanelModel: ObservableObject {
             parseDiagnostics = []
             completionResponse = nil
             completionDraftSnapshot = nil
-            clearActiveTaskState()
+            clearPickerState()
             previewState = .idle
             if let presentation = Self.soleTogglePresentation(for: captures) {
                 statusText = presentation.voiceOverAnnouncement
@@ -2089,11 +2103,11 @@ final class CapturePanelModel: ObservableObject {
                         return
                     }
                     self?.applyParse(parse, draft: draft)
-                    if Self.parseNeedsActiveTask(parse) {
+                    if let need = Self.pickerNeed(in: parse) {
                         // An incomplete `^` is a state, not an error: skip the
                         // doomed live dry run and stay calm instead of flashing
                         // red "incomplete Pomodoro link" errors while picking.
-                        self?.applyQuietIncompleteActiveTask()
+                        self?.applyQuietIncompletePicker(need)
                     }
                 }
 
@@ -2101,7 +2115,7 @@ final class CapturePanelModel: ObservableObject {
                     return
                 }
 
-                if !Self.parseNeedsActiveTask(parse) {
+                if Self.pickerNeed(in: parse) == nil {
                     await self?.startLivePreview(
                         draft: draft,
                         generation: generation,

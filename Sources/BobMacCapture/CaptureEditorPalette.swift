@@ -10,14 +10,22 @@ import SwiftUI
 /// semantic hues already used elsewhere in the app) so they carry correct contrast in light,
 /// dark, and increased-contrast appearances without bespoke handling here.
 enum CaptureEditorPalette {
-    /// Status glyph and color for an Active Task Picker row, so the card and any
+    /// Status glyph and color for a capture picker row, so the card and any
     /// future surface share one mapping.
-    static func activeTaskStatus(_ status: ActiveTaskRowStatus) -> (symbol: String, color: Color) {
+    static func taskStatus(_ status: CapturePickerTaskStatus) -> (symbol: String, color: Color) {
         switch status {
         case .inProgress:
             return ("circle.lefthalf.filled", .orange)
         case .next:
             return ("circle.inset.filled", .blue)
+        case .todo:
+            return ("circle", .secondary)
+        case .blocked:
+            return ("pause.circle", .secondary)
+        case .done:
+            return ("checkmark.circle", .green)
+        case .canceled:
+            return ("xmark.circle", .secondary)
         case .other:
             return ("circle.dashed", .secondary)
         }

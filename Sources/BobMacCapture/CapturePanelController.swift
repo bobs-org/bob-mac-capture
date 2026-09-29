@@ -1080,44 +1080,44 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .escape:
             if model.completionVisible {
                 model.dismissCompletion()
-            } else if model.activeTaskChipVisible {
-                model.dismissActiveTaskChip()
+            } else if model.pickerChipVisible {
+                model.dismissPickerChip()
             } else {
                 model.closeRetainingDraft()
             }
             return true
-        case .acceptActiveTask:
-            model.acceptSelectedActiveTask(submitAfterInsert: false)
+        case .acceptPickerRow:
+            model.acceptSelectedPickerRow(submitAfterInsert: false)
             return true
-        case .acceptActiveTaskAndSubmit:
-            model.acceptSelectedActiveTask(submitAfterInsert: true)
+        case .acceptPickerRowAndSubmit:
+            model.acceptSelectedPickerRow(submitAfterInsert: true)
             return true
-        case .nextActiveTask:
-            model.selectNextActiveTask()
+        case .nextPickerRow:
+            model.selectNextPickerRow()
             return true
-        case .previousActiveTask:
-            model.selectPreviousActiveTask()
+        case .previousPickerRow:
+            model.selectPreviousPickerRow()
             return true
-        case .pageActiveTasksDown:
-            model.pageActiveTasksDown()
+        case .pagePickerRowsDown:
+            model.pagePickerRowsDown()
             return true
-        case .pageActiveTasksUp:
-            model.pageActiveTasksUp()
+        case .pagePickerRowsUp:
+            model.pagePickerRowsUp()
             return true
-        case .firstActiveTask:
-            model.selectFirstActiveTask()
+        case .firstPickerRow:
+            model.selectFirstPickerRow()
             return true
-        case .lastActiveTask:
-            model.selectLastActiveTask()
+        case .lastPickerRow:
+            model.selectLastPickerRow()
             return true
-        case .escapeActiveTaskPicker:
-            model.escapeActiveTaskPicker()
+        case .escapePicker:
+            model.escapePicker()
             return true
-        case .removeActiveTaskTrigger:
-            model.removeActiveTaskTrigger()
+        case .removePickerTrigger:
+            model.removePickerTrigger()
             return true
-        case .openActiveTaskPicker:
-            model.openActiveTaskPickerFromChip()
+        case .openPickerFromChip:
+            model.openPickerFromChip()
             return true
         case .discardAndClose:
             model.discardDraftAndClose()
@@ -1190,7 +1190,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 return event
             }
             self.repairPromptFieldFocusIfOrphaned()
-            self.repairActiveTaskFilterFocusIfNeeded()
+            self.repairPickerFilterFocusIfNeeded()
             guard let command = self.keyRouter.command(
                 for: event,
                 context: CaptureKeyRoutingContext(
@@ -1199,9 +1199,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     stashEntryCount: self.model.stashCount,
                     taskIDPromptVisible: self.model.taskIDPromptVisible,
                     pomodoroNamePromptVisible: self.model.pomodoroNamePromptVisible,
-                    activeTaskPickerVisible: self.model.activeTaskPickerVisible,
-                    activeTaskFilterIsEmpty: self.model.activeTaskFilterIsEmpty,
-                    activeTaskChipVisible: self.model.activeTaskChipVisible
+                    pickerVisible: self.model.pickerVisible,
+                    pickerFilterIsEmpty: self.model.pickerFilterIsEmpty,
+                    pickerChipVisible: self.model.pickerChipVisible
                 )
             ) else {
                 return event
@@ -1258,26 +1258,26 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         )
     }
 
-    static func findActiveTaskFilterField(in view: NSView?) -> ActiveTaskFilterNSTextField? {
+    static func findPickerFilterField(in view: NSView?) -> CapturePickerFilterNSTextField? {
         findTextField(
             in: view,
-            identifier: activeTaskFilterFieldAccessibilityIdentifier
+            identifier: pickerFilterFieldAccessibilityIdentifier
         )
     }
 
     /// While the picker is visible the filter field owns keystrokes. A key
     /// that raced the open lands in the disabled editor's view otherwise, so
     /// claim the filter field before routing, like `findBlockIDField`.
-    private func repairActiveTaskFilterFocusIfNeeded() {
-        guard model.activeTaskPickerVisible,
+    private func repairPickerFilterFocusIfNeeded() {
+        guard model.pickerVisible,
               let panel,
-              let field = Self.findActiveTaskFilterField(in: panel.contentView),
+              let field = Self.findPickerFilterField(in: panel.contentView),
               !field.holdsFirstResponder
         else {
             return
         }
         field.requestFirstResponder()
-        CaptureSignpost.event("active-task-filter-focus-repaired")
+        CaptureSignpost.event("picker-filter-focus-repaired")
     }
 
     private static func findTextField<Field: NSTextField>(
