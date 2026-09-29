@@ -874,6 +874,505 @@ final class CapturePanelModelTests: XCTestCase {
         await waitUntil { model.pickerVisible }
     }
 
+    func testBlockIDLinkTypingOpensPickerWithQuietPreview() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "@file:"
+        model.editorTextDidChange(cursorUTF8Offset: 6)
+        await waitUntil { model.pickerVisible }
+
+        // The Link picker opens, never the inline list.
+        XCTAssertNil(model.completionResponse)
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertEqual(model.focusRequest.target, .pickerFilter)
+        XCTAssertTrue(model.editorInputLocked)
+        XCTAssertEqual(model.picker?.filterText, "")
+        XCTAssertEqual(model.picker?.candidates.count, 3)
+        guard case .blockID = model.picker?.source else {
+            XCTFail("expected a block-ID picker source")
+            return
+        }
+        // An incomplete `@file:` is a state, not an error: the doomed dry
+        // run is skipped and a calm status line shows instead.
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.statusText, "Pick a task or type a new ID — press Tab to browse")
+        XCTAssertEqual(model.previewState, .idle)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-parse --format json -- @file:"))
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 6 --format json -- @file:"))
+        XCTAssertFalse(record.contains("--dry-run"))
+    }
+
+    func testBlockIDLinkCaretRefetchesFullSnapshotAndSeedsFilter() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "@file:rea"
+        model.editorTextDidChange(cursorUTF8Offset: 9)
+        await waitUntil { model.pickerVisible }
+
+        XCTAssertEqual(model.picker?.filterText, "rea")
+        XCTAssertEqual(model.picker?.candidates.count, 3)
+        XCTAssertEqual(model.picker?.snapshotIsPartial, false)
+        XCTAssertEqual(model.pickerPresentation?.mode, .filtered)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 6 --format json -- @file:rea"))
+    }
+
+    func testBlockIDLinkExactOpensNothing() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 0
+        )
+        model.plainDraft = "@file:ready"
+        model.editorTextDidChange(cursorUTF8Offset: 11)
+        await waitUntil {
+            if case .ready(let preview) = model.previewState {
+                return preview.kind == "pomodoro_link"
+            }
+            return false
+        }
+
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertFalse(model.pickerChipVisible)
+        XCTAssertNil(model.completionResponse)
+    }
+
+    func testBlockIDLinkCaretOnlyMoveShowsChipNotPicker() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "@file:"
+        model.editorSelectionDidChange(cursorUTF8Offset: 6)
+        await waitUntil { model.pickerChipVisible }
+
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertEqual(model.pickerChip?.candidates.count, 3)
+        guard case .blockID = model.pickerChip?.source else {
+            XCTFail("expected a block-ID chip source")
+            return
+        }
+    }
+
+    func testBlockIDLinkAcceptInsertsAndLinks() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "@file:"
+        model.editorTextDidChange(cursorUTF8Offset: 6)
+        await waitUntil { model.pickerVisible }
+
+        model.updatePickerFilter("rea")
+        XCTAssertEqual(model.picker?.filterText, "rea")
+        XCTAssertTrue(model.pickerPresentation?.orderedRowIDs.contains("ready") == true)
+        model.selectPickerRow(id: "ready")
+        model.acceptSelectedPickerRow(submitAfterInsert: false)
+
+        XCTAssertEqual(model.plainDraft, "@file:ready")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 11)
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertFalse(model.editorInputLocked)
+        XCTAssertEqual(model.focusRequest.target, .editor)
+        XCTAssertEqual(model.statusText, "Inserted @file:ready")
+
+        await waitUntil {
+            if case .ready(let preview) = model.previewState {
+                return preview.kind == "pomodoro_link"
+            }
+            return false
+        }
+        XCTAssertEqual(model.previewResult?.kind, "pomodoro_link")
+        XCTAssertEqual(model.previewResult?.blockID, "ready")
+    }
+
+    func testBlockIDLinkCommandAcceptSubmits() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "@file:"
+        model.editorTextDidChange(cursorUTF8Offset: 6)
+        await waitUntil { model.pickerVisible }
+
+        model.acceptPickerRow(id: "ready", submitAfterInsert: true)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertEqual(model.lastSuccess?.kind, "pomodoro_link")
+        XCTAssertFalse(model.pickerVisible)
+    }
+
+    func testBlockIDNewIDOpensComposerWithSuggestions() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "Follow up @file^"
+        model.editorTextDidChange(cursorUTF8Offset: 17)
+        await waitUntil { model.pickerVisible }
+
+        XCTAssertNil(model.completionResponse)
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertEqual(model.picker?.filterText, "")
+        guard case .blockID(let context) = model.picker?.source else {
+            XCTFail("expected a block-ID picker source")
+            return
+        }
+        XCTAssertTrue(context.isNewIDMode)
+        XCTAssertEqual(model.pickerPresentation?.orderedRowIDs.first, "suggestion:follow-up")
+        XCTAssertEqual(model.picker?.selectedRowID, "suggestion:follow-up")
+    }
+
+    func testBlockIDNewIDAcceptInsertsID() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "Follow up @file^"
+        model.editorTextDidChange(cursorUTF8Offset: 17)
+        await waitUntil { model.pickerVisible }
+
+        model.updatePickerFilter("new-id")
+        XCTAssertEqual(model.picker?.selectedRowID, "new:new-id")
+        model.acceptSelectedPickerRow(submitAfterInsert: false)
+
+        XCTAssertEqual(model.plainDraft, "Follow up @file^new-id")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 22)
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertFalse(model.editorInputLocked)
+        XCTAssertEqual(model.focusRequest.target, .editor)
+        XCTAssertEqual(model.statusText, "Inserted @file^new-id")
+    }
+
+    func testBlockIDNewIDTakenSelectsAlternative() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "Follow up @file^"
+        model.editorTextDidChange(cursorUTF8Offset: 17)
+        await waitUntil { model.pickerVisible }
+
+        model.updatePickerFilter("taken")
+        XCTAssertEqual(model.picker?.selectedRowID, "alternative:taken-2")
+        model.acceptSelectedPickerRow(submitAfterInsert: false)
+
+        XCTAssertEqual(model.plainDraft, "Follow up @file^taken-2")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 24)
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertEqual(model.statusText, "Inserted @file^taken-2")
+    }
+
+    func testBlockIDNewIDSpaceTypeThroughKeepsTyping() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "Follow up @file^"
+        model.editorTextDidChange(cursorUTF8Offset: 17)
+        await waitUntil { model.pickerVisible }
+
+        model.updatePickerFilter("new-id")
+        model.updatePickerFilter("new-id ")
+
+        XCTAssertEqual(model.plainDraft, "Follow up @file^new-id ")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 23)
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertFalse(model.editorInputLocked)
+        XCTAssertEqual(model.focusRequest.target, .editor)
+    }
+
+    func testBlockIDNewIDHashTypeThroughRequestsPomodoroName() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            ),
+            debounceNanoseconds: 0
+        )
+        model.plainDraft = "Follow up @file:"
+        model.editorTextDidChange(cursorUTF8Offset: 17)
+        await waitUntil { model.pickerVisible }
+        guard case .blockID(let context) = model.picker?.source else {
+            XCTFail("expected a block-ID picker source")
+            return
+        }
+        XCTAssertTrue(context.isNewIDMode)
+
+        model.updatePickerFilter("new-id#")
+        XCTAssertEqual(model.plainDraft, "Follow up @file:new-id#")
+        await waitUntil { model.completionResponse?.context == "pomodoro_name" }
+
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertTrue(model.completionVisible)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 23 --format json -- Follow up @file:new-id#"))
+    }
+
+    func testBlockIDNewIDMidPartEditShowsChip() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "Follow up @file^new-id"
+        model.editorTextDidChange(cursorUTF8Offset: 18)
+        await waitUntil { model.pickerChipVisible }
+
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertNil(model.completionResponse)
+        guard case .blockID = model.pickerChip?.source else {
+            XCTFail("expected a block-ID chip source")
+            return
+        }
+    }
+
+    func testBlockIDChildLineMarkerOpensAtGlobalRange() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        let draft = "Parent\n- child @file^"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: 21)
+        await waitUntil { model.pickerVisible }
+
+        XCTAssertEqual(model.picker?.replacementRange, CaptureRange(start: 21, end: 21))
+        XCTAssertNil(model.completionResponse)
+        guard case .blockID = model.picker?.source else {
+            XCTFail("expected a block-ID picker source")
+            return
+        }
+    }
+
+    func testBlockIDBatchSecondItemOpensAtGlobalRange() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        let draft = "First @cash\n\nSecond @file^"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: 26)
+        await waitUntil { model.pickerVisible }
+
+        XCTAssertEqual(model.picker?.replacementRange, CaptureRange(start: 26, end: 26))
+        XCTAssertNil(model.completionResponse)
+        guard case .blockID = model.picker?.source else {
+            XCTFail("expected a block-ID picker source")
+            return
+        }
+    }
+
+    func testBlockIDEscapeSuppressesAndChipReopens() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "@file:"
+        model.editorTextDidChange(cursorUTF8Offset: 6)
+        await waitUntil { model.pickerVisible }
+
+        model.escapePicker()
+        await waitUntil { model.pickerChipVisible }
+        XCTAssertFalse(model.pickerVisible)
+
+        // Further edits of the same token show the chip, not the picker.
+        model.editorTextDidChange(cursorUTF8Offset: 6)
+        await waitUntil { model.pickerChipVisible }
+        XCTAssertFalse(model.pickerVisible)
+
+        // The chip reopens the picker from its snapshot without a fetch.
+        model.openPickerFromChip()
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertFalse(model.pickerChipVisible)
+        XCTAssertEqual(model.picker?.candidates.count, 3)
+    }
+
+    func testBlockIDLinkBackspaceRemovesTriggerAndResumesRoutes() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            ),
+            debounceNanoseconds: 0
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(
+                    route: "file",
+                    name: "file",
+                    label: "file.md",
+                    kind: "area",
+                    relativePath: "file.md"
+                ),
+            ]
+        )
+
+        model.plainDraft = "@file:"
+        model.editorTextDidChange(cursorUTF8Offset: 6)
+        await waitUntil { model.pickerVisible }
+
+        model.removePickerTrigger()
+        XCTAssertEqual(model.plainDraft, "@file")
+        XCTAssertFalse(model.pickerVisible)
+        await waitUntil { model.completionResponse?.context == "route" }
+        XCTAssertEqual(model.completionResponse?.candidates.first?.route, "file")
+    }
+
+    func testBlockIDNewIDBackspaceRemovesTrigger() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "Follow up @file^"
+        model.editorTextDidChange(cursorUTF8Offset: 17)
+        await waitUntil { model.pickerVisible }
+
+        model.removePickerTrigger()
+        XCTAssertEqual(model.plainDraft, "Follow up @file")
+        XCTAssertFalse(model.pickerVisible)
+    }
+
+    func testBlockIDAcceptAfterDraftChangeRefusesStaleDraft() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "@file:"
+        model.editorTextDidChange(cursorUTF8Offset: 6)
+        await waitUntil { model.pickerVisible }
+
+        model.plainDraft = "@file:rea"
+        model.acceptSelectedPickerRow(submitAfterInsert: false)
+
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertEqual(model.statusText, "Draft changed — reopen the task picker")
+        XCTAssertEqual(model.plainDraft, "@file:rea")
+    }
+
+    func testBlockIDOlderBobWithoutFieldOpensLinkWithoutNewIDRow() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "@old:"
+        model.editorTextDidChange(cursorUTF8Offset: 5)
+        await waitUntil { model.pickerVisible }
+
+        XCTAssertNil(model.completionResponse)
+        guard case .blockID(let context) = model.picker?.source else {
+            XCTFail("expected a block-ID picker source")
+            return
+        }
+        XCTAssertNil(context.field)
+        XCTAssertFalse(context.isNewIDMode)
+        XCTAssertEqual(model.picker?.source.filterPlaceholder, "Filter old.md tasks")
+
+        model.updatePickerFilter("legacy")
+        XCTAssertFalse(
+            model.pickerPresentation?.orderedRowIDs.contains(where: { $0.hasPrefix("blockid-new:") }) == true
+        )
+        XCTAssertTrue(model.pickerPresentation?.orderedRowIDs.contains("legacy-one") == true)
+    }
+
+    func testBlockIDHideClosesPickerAndReshowReopens() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "@file:"
+        model.editorTextDidChange(cursorUTF8Offset: 6)
+        await waitUntil { model.pickerVisible }
+
+        model.prepareForDismissal()
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertFalse(model.pickerChipVisible)
+        XCTAssertFalse(model.editorInputLocked)
+
+        model.prepareForPresentation()
+        await waitUntil { model.pickerVisible }
+    }
+
     func testAcceptingPomodoroNameAfterCaretLinkPreservesStartSuffix() {
         let model = CapturePanelModel()
         model.plainDraft = "^sase:deep-fix#bu=3"
@@ -2980,7 +3479,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
     }
 
-    func testPlusRightSideOffersTasksAndCaretAuthoredIdShowsNoPicker() async throws {
+    func testPlusRightSideOffersTasksAndCaretAuthoredIdOpensNewIDPicker() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
@@ -3012,12 +3511,20 @@ final class CapturePanelModelTests: XCTestCase {
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 15 --format json -- note @Cash+goog"))
 
+        // The authored `^` ID now opens the New ID picker instead of the
+        // inline list: no inline completion, but a picker seeded with the
+        // typed part.
         model.plainDraft = "Do work @Dev^new-id"
         model.editorTextDidChange(cursorUTF8Offset: "Do work @Dev^new-id".utf8.count)
-        await waitUntil {
-            model.plainDraft == "Do work @Dev^new-id" && model.completionResponse == nil
-        }
+        await waitUntil { model.pickerVisible }
         XCTAssertFalse(model.completionVisible)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertEqual(model.picker?.filterText, "new-id")
+        guard case .blockID(let context) = model.picker?.source else {
+            XCTFail("expected a block-ID picker source")
+            return
+        }
+        XCTAssertTrue(context.isNewIDMode)
     }
 
     func testHashAfterResolvedSubBulletOpensTaskSectionCompletion() async throws {

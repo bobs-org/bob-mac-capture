@@ -991,6 +991,173 @@ JSON
   ]
 }
 JSON
+    elif [[ "${draft}" == "@file:" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "@file:",
+  "body": "",
+  "mode": "incomplete",
+  "route": "file",
+  "block_id": "",
+  "needs": ["pomodoro_id"],
+  "spans": [
+    { "start": 0, "end": 5, "kind": "pomodoro_route" },
+    { "start": 6, "end": 6, "kind": "pomodoro_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "@old:" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "@old:",
+  "body": "",
+  "mode": "incomplete",
+  "route": "old",
+  "block_id": "",
+  "needs": ["pomodoro_id"],
+  "spans": [
+    { "start": 0, "end": 4, "kind": "pomodoro_route" },
+    { "start": 5, "end": 5, "kind": "pomodoro_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "@file:rea" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "@file:rea",
+  "body": "",
+  "mode": "incomplete",
+  "route": "file",
+  "block_id": "rea",
+  "needs": ["pomodoro_id"],
+  "spans": [
+    { "start": 0, "end": 5, "kind": "pomodoro_route" },
+    { "start": 6, "end": 9, "kind": "pomodoro_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "@file:ready" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "@file:ready",
+  "body": "",
+  "mode": "pomodoro_link",
+  "route": "file",
+  "block_id": "ready",
+  "needs": [],
+  "spans": [
+    { "start": 0, "end": 5, "kind": "pomodoro_route" },
+    { "start": 6, "end": 11, "kind": "pomodoro_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "Follow up @file^" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Follow up @file^",
+  "body": "Follow up",
+  "mode": "incomplete",
+  "route": "file",
+  "block_id": "",
+  "needs": ["block_id"],
+  "spans": [
+    { "start": 10, "end": 15, "kind": "task_block_id_route" },
+    { "start": 16, "end": 16, "kind": "task_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "Follow up @file:" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Follow up @file:",
+  "body": "Follow up",
+  "mode": "incomplete",
+  "route": "file",
+  "block_id": "",
+  "needs": ["pomodoro_id"],
+  "spans": [
+    { "start": 10, "end": 15, "kind": "pomodoro_route" },
+    { "start": 16, "end": 16, "kind": "pomodoro_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == $'Parent\n- child @file^' ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"body":"child","mode":"incomplete","route":"file","block_id":"","needs":["block_id"],
+"spans":[
+  {"start":15,"end":20,"kind":"task_block_id_route"},
+  {"start":21,"end":21,"kind":"task_block_id"}
+],
+"diagnostics":[]}
+JSON
+    elif [[ "${draft}" == $'First @cash\n\nSecond @file^' ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"body":"Second","mode":"incomplete","route":"file","block_id":"","needs":["block_id"],
+"spans":[
+  {"start":20,"end":25,"kind":"task_block_id_route"},
+  {"start":26,"end":26,"kind":"task_block_id"}
+],
+"diagnostics":[]}
+JSON
+    elif [[ "${draft}" == "Follow up @file:new-id#" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Follow up @file:new-id#",
+  "body": "Follow up",
+  "mode": "task",
+  "route": "file",
+  "block_id": "new-id",
+  "needs": [],
+  "spans": [
+    { "start": 10, "end": 15, "kind": "pomodoro_route" },
+    { "start": 16, "end": 22, "kind": "pomodoro_block_id" },
+    { "start": 23, "end": 23, "kind": "pomodoro_name" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "Follow up @file^new-id " ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Follow up @file^new-id ",
+  "body": "Follow up",
+  "mode": "task",
+  "route": "file",
+  "block_id": "new-id",
+  "needs": [],
+  "spans": [
+    { "start": 10, "end": 15, "kind": "task_block_id_route" },
+    { "start": 16, "end": 22, "kind": "task_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
     else
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
@@ -1502,14 +1669,28 @@ JSON
   "ok": true,
   "schema_version": 1,
   "cursor": ${cursor},
-  "replacement": { "start": ${cursor}, "end": ${cursor} },
-  "context": null,
-  "candidates": []
+  "replacement": { "start": 13, "end": 19 },
+  "context": "task_block_id",
+  "candidates": [],
+  "block_id": {
+    "route": "dev",
+    "relative_target": "dev.md",
+    "note_exists": true,
+    "marker": "^",
+    "marker_range": { "start": 8, "end": 19 },
+    "intent": "new",
+    "body": "Do work",
+    "allowed_character": "[A-Za-z0-9-]",
+    "allowed_description": "A-Z, a-z, 0-9 or '-'",
+    "suggestions": ["do-work"],
+    "used": []
+  }
 }
 JSON
       fi
     elif [[ "${draft}" == "Follow up @file^new-id" ]]; then
-      cat <<'JSON'
+      if [[ "${cursor}" -le 15 ]]; then
+        cat <<'JSON'
 {
   "ok": true,
   "schema_version": 1,
@@ -1521,6 +1702,35 @@ JSON
   ]
 }
 JSON
+      else
+        cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 16, "end": 22 },
+  "context": "task_block_id",
+  "candidates": [],
+  "block_id": {
+    "route": "file",
+    "relative_target": "file.md",
+    "note_exists": true,
+    "marker": "^",
+    "marker_range": { "start": 10, "end": 22 },
+    "intent": "new",
+    "body": "Follow up",
+    "allowed_character": "[A-Za-z0-9-]",
+    "allowed_description": "A-Z, a-z, 0-9 or '-'",
+    "suggestions": ["follow-up"],
+    "used": [
+      { "id": "taken", "line": 20, "task": true, "status_symbol": " ", "status_name": "Todo", "text": "Take out the trash" },
+      { "id": "ready", "line": 12, "task": true, "status_symbol": " ", "status_name": "Todo", "text": "Ready the release notes" },
+      { "id": "anchor", "line": 3, "task": false, "status_symbol": null, "status_name": null, "text": "Some paragraph" }
+    ]
+  }
+}
+JSON
+      fi
     elif [[ "${draft}" == "Add context @file+parent-id" ]]; then
       cat <<'JSON'
 {
@@ -1991,6 +2201,428 @@ JSON
       "name": "B",
       "requires_name": false,
       "creates_pomodoro": true
+    }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "@file:" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 6, "end": 6 },
+  "context": "pomodoro_block_id",
+  "candidates": [
+    {
+      "replacement": "ready",
+      "ref": "12:aa111111",
+      "block_id": "ready",
+      "route": "file",
+      "requires_block_id": false,
+      "status_symbol": " ",
+      "status_name": "Todo",
+      "status_type": "TODO",
+      "text": "Ready the release notes",
+      "section": "Tasks",
+      "depth": 0,
+      "child_count": 0,
+      "line": 12,
+      "pomodoro": null
+    },
+    {
+      "replacement": "flaky-test",
+      "ref": "36:bb222222",
+      "block_id": "flaky-test",
+      "route": "file",
+      "requires_block_id": false,
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Fix flaky gkeep test",
+      "section": "Next & In Progress",
+      "depth": 0,
+      "child_count": 2,
+      "line": 36,
+      "pomodoro": { "line": 5, "name": "BUGS", "time_range": "0905-0930", "is_current": true }
+    },
+    {
+      "replacement": "quick-note",
+      "ref": "44:cc333333",
+      "block_id": "quick-note",
+      "route": "file",
+      "requires_block_id": false,
+      "status_symbol": "?",
+      "status_name": "Blocked",
+      "status_type": "BLOCKED",
+      "text": "Jot quick note",
+      "section": "Blocked",
+      "depth": 0,
+      "child_count": 0,
+      "line": 44,
+      "pomodoro": null
+    }
+  ],
+  "block_id": {
+    "route": "file",
+    "relative_target": "file.md",
+    "note_exists": true,
+    "marker": ":",
+    "marker_range": { "start": 0, "end": 6 },
+    "intent": "link",
+    "body": "",
+    "allowed_character": "[A-Za-z0-9_-]",
+    "allowed_description": "A-Z, a-z, 0-9, '_' or '-'",
+    "suggestions": [],
+    "used": [
+      { "id": "ready", "line": 12, "task": true, "status_symbol": " ", "status_name": "Todo", "text": "Ready the release notes" },
+      { "id": "flaky-test", "line": 36, "task": true, "status_symbol": "*", "status_name": "Next", "text": "Fix flaky gkeep test" },
+      { "id": "quick-note", "line": 44, "task": true, "status_symbol": "?", "status_name": "Blocked", "text": "Jot quick note" },
+      { "id": "anchor", "line": 3, "task": false, "status_symbol": null, "status_name": null, "text": "Some paragraph" }
+    ]
+  }
+}
+JSON
+    elif [[ "${draft}" == "@old:" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 5, "end": 5 },
+  "context": "pomodoro_block_id",
+  "candidates": [
+    {
+      "replacement": "legacy-one",
+      "ref": "2:dd444444",
+      "block_id": "legacy-one",
+      "route": "old",
+      "requires_block_id": false,
+      "status_symbol": " ",
+      "status_name": "Todo",
+      "status_type": "TODO",
+      "text": "Legacy task one",
+      "section": "Tasks",
+      "depth": 0,
+      "child_count": 0,
+      "line": 2,
+      "pomodoro": null
+    },
+    {
+      "replacement": "legacy-two",
+      "ref": "9:ee555555",
+      "block_id": "legacy-two",
+      "route": "old",
+      "requires_block_id": false,
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Legacy task two",
+      "section": "Tasks",
+      "depth": 0,
+      "child_count": 0,
+      "line": 9,
+      "pomodoro": null
+    }
+  ]
+}
+JSON
+    elif [[ "${draft}" == "@file:rea" ]]; then
+      if [[ "${cursor}" == "6" ]]; then
+        cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 6,
+  "replacement": { "start": 6, "end": 9 },
+  "context": "pomodoro_block_id",
+  "candidates": [
+    {
+      "replacement": "ready",
+      "ref": "12:aa111111",
+      "block_id": "ready",
+      "route": "file",
+      "requires_block_id": false,
+      "status_symbol": " ",
+      "status_name": "Todo",
+      "status_type": "TODO",
+      "text": "Ready the release notes",
+      "section": "Tasks",
+      "depth": 0,
+      "child_count": 0,
+      "line": 12,
+      "pomodoro": null
+    },
+    {
+      "replacement": "flaky-test",
+      "ref": "36:bb222222",
+      "block_id": "flaky-test",
+      "route": "file",
+      "requires_block_id": false,
+      "status_symbol": "*",
+      "status_name": "Next",
+      "status_type": "ON_HOLD",
+      "text": "Fix flaky gkeep test",
+      "section": "Next & In Progress",
+      "depth": 0,
+      "child_count": 2,
+      "line": 36,
+      "pomodoro": { "line": 5, "name": "BUGS", "time_range": "0905-0930", "is_current": true }
+    },
+    {
+      "replacement": "quick-note",
+      "ref": "44:cc333333",
+      "block_id": "quick-note",
+      "route": "file",
+      "requires_block_id": false,
+      "status_symbol": "?",
+      "status_name": "Blocked",
+      "status_type": "BLOCKED",
+      "text": "Jot quick note",
+      "section": "Blocked",
+      "depth": 0,
+      "child_count": 0,
+      "line": 44,
+      "pomodoro": null
+    }
+  ],
+  "block_id": {
+    "route": "file",
+    "relative_target": "file.md",
+    "note_exists": true,
+    "marker": ":",
+    "marker_range": { "start": 0, "end": 9 },
+    "intent": "link",
+    "body": "",
+    "allowed_character": "[A-Za-z0-9_-]",
+    "allowed_description": "A-Z, a-z, 0-9, '_' or '-'",
+    "suggestions": [],
+    "used": [
+      { "id": "ready", "line": 12, "task": true, "status_symbol": " ", "status_name": "Todo", "text": "Ready the release notes" },
+      { "id": "flaky-test", "line": 36, "task": true, "status_symbol": "*", "status_name": "Next", "text": "Fix flaky gkeep test" },
+      { "id": "quick-note", "line": 44, "task": true, "status_symbol": "?", "status_name": "Blocked", "text": "Jot quick note" },
+      { "id": "anchor", "line": 3, "task": false, "status_symbol": null, "status_name": null, "text": "Some paragraph" }
+    ]
+  }
+}
+JSON
+      else
+        cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 6, "end": 9 },
+  "context": "pomodoro_block_id",
+  "candidates": [
+    {
+      "replacement": "ready",
+      "ref": "12:aa111111",
+      "block_id": "ready",
+      "route": "file",
+      "requires_block_id": false,
+      "status_symbol": " ",
+      "status_name": "Todo",
+      "status_type": "TODO",
+      "text": "Ready the release notes",
+      "section": "Tasks",
+      "depth": 0,
+      "child_count": 0,
+      "line": 12,
+      "pomodoro": null
+    }
+  ],
+  "block_id": {
+    "route": "file",
+    "relative_target": "file.md",
+    "note_exists": true,
+    "marker": ":",
+    "marker_range": { "start": 0, "end": 9 },
+    "intent": "link",
+    "body": "",
+    "allowed_character": "[A-Za-z0-9_-]",
+    "allowed_description": "A-Z, a-z, 0-9, '_' or '-'",
+    "suggestions": [],
+    "used": [
+      { "id": "ready", "line": 12, "task": true, "status_symbol": " ", "status_name": "Todo", "text": "Ready the release notes" },
+      { "id": "flaky-test", "line": 36, "task": true, "status_symbol": "*", "status_name": "Next", "text": "Fix flaky gkeep test" },
+      { "id": "quick-note", "line": 44, "task": true, "status_symbol": "?", "status_name": "Blocked", "text": "Jot quick note" },
+      { "id": "anchor", "line": 3, "task": false, "status_symbol": null, "status_name": null, "text": "Some paragraph" }
+    ]
+  }
+}
+JSON
+      fi
+    elif [[ "${draft}" == "@file:ready" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 6, "end": 11 },
+  "context": "pomodoro_block_id",
+  "candidates": [
+    {
+      "replacement": "ready",
+      "ref": "12:aa111111",
+      "block_id": "ready",
+      "route": "file",
+      "requires_block_id": false,
+      "status_symbol": " ",
+      "status_name": "Todo",
+      "status_type": "TODO",
+      "text": "Ready the release notes",
+      "section": "Tasks",
+      "depth": 0,
+      "child_count": 0,
+      "line": 12,
+      "pomodoro": null
+    }
+  ],
+  "block_id": {
+    "route": "file",
+    "relative_target": "file.md",
+    "note_exists": true,
+    "marker": ":",
+    "marker_range": { "start": 0, "end": 11 },
+    "intent": "link",
+    "body": "",
+    "allowed_character": "[A-Za-z0-9_-]",
+    "allowed_description": "A-Z, a-z, 0-9, '_' or '-'",
+    "suggestions": [],
+    "used": [
+      { "id": "ready", "line": 12, "task": true, "status_symbol": " ", "status_name": "Todo", "text": "Ready the release notes" },
+      { "id": "anchor", "line": 3, "task": false, "status_symbol": null, "status_name": null, "text": "Some paragraph" }
+    ]
+  }
+}
+JSON
+    elif [[ "${draft}" == "Follow up @file^" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 16, "end": 16 },
+  "context": "task_block_id",
+  "candidates": [],
+  "block_id": {
+    "route": "file",
+    "relative_target": "file.md",
+    "note_exists": true,
+    "marker": "^",
+    "marker_range": { "start": 10, "end": 16 },
+    "intent": "new",
+    "body": "Follow up",
+    "allowed_character": "[A-Za-z0-9-]",
+    "allowed_description": "A-Z, a-z, 0-9 or '-'",
+    "suggestions": ["follow-up"],
+    "used": [
+      { "id": "taken", "line": 20, "task": true, "status_symbol": " ", "status_name": "Todo", "text": "Take out the trash" },
+      { "id": "ready", "line": 12, "task": true, "status_symbol": " ", "status_name": "Todo", "text": "Ready the release notes" },
+      { "id": "anchor", "line": 3, "task": false, "status_symbol": null, "status_name": null, "text": "Some paragraph" }
+    ]
+  }
+}
+JSON
+    elif [[ "${draft}" == "Follow up @file:" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 16, "end": 16 },
+  "context": "pomodoro_block_id",
+  "candidates": [],
+  "block_id": {
+    "route": "file",
+    "relative_target": "file.md",
+    "note_exists": true,
+    "marker": ":",
+    "marker_range": { "start": 10, "end": 16 },
+    "intent": "new",
+    "body": "Follow up",
+    "allowed_character": "[A-Za-z0-9_-]",
+    "allowed_description": "A-Z, a-z, 0-9, '_' or '-'",
+    "suggestions": ["follow-up"],
+    "used": [
+      { "id": "taken", "line": 20, "task": true, "status_symbol": " ", "status_name": "Todo", "text": "Take out the trash" },
+      { "id": "ready", "line": 12, "task": true, "status_symbol": " ", "status_name": "Todo", "text": "Ready the release notes" },
+      { "id": "anchor", "line": 3, "task": false, "status_symbol": null, "status_name": null, "text": "Some paragraph" }
+    ]
+  }
+}
+JSON
+    elif [[ "${draft}" == $'Parent\n- child @file^' ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 21, "end": 21 },
+  "context": "task_block_id",
+  "candidates": [],
+  "block_id": {
+    "route": "file",
+    "relative_target": "file.md",
+    "note_exists": true,
+    "marker": "^",
+    "marker_range": { "start": 15, "end": 21 },
+    "intent": "new",
+    "body": "child",
+    "allowed_character": "[A-Za-z0-9-]",
+    "allowed_description": "A-Z, a-z, 0-9 or '-'",
+    "suggestions": ["child"],
+    "used": []
+  }
+}
+JSON
+    elif [[ "${draft}" == $'First @cash\n\nSecond @file^' ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 26, "end": 26 },
+  "context": "task_block_id",
+  "candidates": [],
+  "block_id": {
+    "route": "file",
+    "relative_target": "file.md",
+    "note_exists": true,
+    "marker": "^",
+    "marker_range": { "start": 20, "end": 26 },
+    "intent": "new",
+    "body": "Second",
+    "allowed_character": "[A-Za-z0-9-]",
+    "allowed_description": "A-Z, a-z, 0-9 or '-'",
+    "suggestions": ["second"],
+    "used": []
+  }
+}
+JSON
+    elif [[ "${draft}" == "Follow up @file:new-id#" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 23, "end": 23 },
+  "context": "pomodoro_name",
+  "candidates": [
+    {
+      "replacement": "bugs",
+      "ref": "5:49ff9cb6",
+      "name": "BUGS",
+      "requires_name": false,
+      "line": 5,
+      "state": "open",
+      "status_symbol": " ",
+      "time_range": null,
+      "placeholder": true,
+      "is_current": false,
+      "child_count": 1,
+      "creates_pomodoro": false
     }
   ]
 }
@@ -2477,6 +3109,25 @@ JSON
   "created": "2026-08-14",
   "scheduled": null,
   "placement": "inserted"
+}
+JSON
+    elif [[ "${draft}" == "@file:ready" ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "dry_run": ${dry_run},
+  "routed": true,
+  "route": "file",
+  "route_label": "file.md",
+  "relative_target": "file.md",
+  "target": "/tmp/bob/file.md",
+  "text": "",
+  "task_line": "- [ ] Ready the release notes ^ready",
+  "kind": "pomodoro_link",
+  "block_id": "ready",
+  "created": "2026-08-14",
+  "scheduled": null,
+  "placement": "linked"
 }
 JSON
     elif [[ "${draft}" == "@file+goog-exit" ]]; then

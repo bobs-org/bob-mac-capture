@@ -717,6 +717,28 @@ final class BobMacCaptureTests: XCTestCase {
         )
     }
 
+    func testKeyRouterRoutesBlockIDChipAndPickerKeys() {
+        // The router keys on picker/chip visibility, never on the source, so
+        // a block-ID chip reopens with the same keys as the `^` chip, and
+        // printable keys (including the New ID type-through Space) and Cmd-V
+        // still pass through to the filter field natively.
+        let router = CaptureKeyCommandRouter()
+        let chip = CaptureKeyRoutingContext(pickerChipVisible: true)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48), context: chip), .openPickerFromChip)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 125), context: chip), .openPickerFromChip)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 45, modifiers: .control), context: chip),
+            .openPickerFromChip
+        )
+
+        let picker = CaptureKeyRoutingContext(pickerVisible: true)
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 49, characters: " "), context: picker))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 0, characters: "a"), context: picker))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 9, modifiers: .command, characters: "v"), context: picker))
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), context: picker), .acceptPickerRow)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 53), context: picker), .escapePicker)
+    }
+
     func testKeyRouterPrefersModalsOverCapturePicker() {
         let router = CaptureKeyCommandRouter()
         let stash = CaptureKeyRoutingContext(

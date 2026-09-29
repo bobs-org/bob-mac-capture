@@ -5,7 +5,7 @@ import Foundation
 /// `draftSnapshot` for any accept to edit; otherwise the accept is refused as
 /// stale so a late pick can never splice into a changed draft.
 struct CapturePickerState: Equatable {
-    /// Which source this session belongs to (only `.activeTask` for now).
+    /// Which source this session belongs to.
     var source: CapturePickerSource
     /// The exact draft the snapshot was fetched for.
     var draftSnapshot: String
@@ -35,7 +35,7 @@ struct CapturePickerState: Equatable {
 /// two-stage Escape cancel, after a caret-only move into a picker's token, or
 /// while auto-open is suppressed for the token.
 struct CapturePickerChipState: Equatable {
-    /// Which source this chip reopens (only `.activeTask` for now).
+    /// Which source this chip reopens.
     var source: CapturePickerSource
     /// The draft the chip's snapshot belongs to.
     var draftSnapshot: String
@@ -54,14 +54,16 @@ enum CompletionTrigger {
     case selection
 }
 
-/// The picker's local fuzzy index, wrapping the per-source index. Only the
-/// active-task source exists yet; the Block ID source adds its case here.
+/// The picker's local fuzzy index, wrapping the per-source index.
 enum CapturePickerIndex {
     case activeTask(ActiveTaskPickerIndex)
+    case blockID(BlockIDPickerIndex)
 
     func presentation(filter: String) -> CapturePickerPresentation {
         switch self {
         case .activeTask(let index):
+            return index.presentation(filter: filter)
+        case .blockID(let index):
             return index.presentation(filter: filter)
         }
     }

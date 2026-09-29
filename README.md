@@ -44,7 +44,10 @@ mutation.
   declarations anywhere in the draft, `capture-rewrite`, `capture-complete --all-tasks`,
   `capture-task-id`, `capture-pomodoro-name`, `task_section` completion for
   `@route+block-id#`, `pomodoro_name` completion for `@route:block-id#` and bare
-  task-toggle `@route+block-id#`, the additive `creates_pomodoro`
+  task-toggle `@route+block-id#`, the `task_block_id` completion context for the
+  `@route^block-id` ordinary task-with-ID marker, the additive top-level `block_id`
+  object on both block-ID contexts (intent, marker range, body, allowed-character
+  rule, used IDs, suggestions), the additive `creates_pomodoro`
   create-future-Pomodoro action, `task_toggle` capture JSON, the
   `task_toggle_*` parse spans, and the current task-toggle spellings:
   plain `@route+block-id` for Ensure Next relocation to the implicit
@@ -184,8 +187,9 @@ or expired certificate can require reauthorizing those system permissions.
   completion-active before the draft has enough syntax to be submitted as a routed
   capture, so an empty editor can complete the marker-only task-toggle form
   `@route+block-id` entirely from the keyboard. Cached route completion strips the
-  complete `@@` sigil just like Bob's server response. The authored ID side has no
-  existing-task picker and an empty completion result is shown as no list.
+  complete `@@` sigil just like Bob's server response. The authored ID side never
+  uses the inline list: the right-hand side of `@route:` and `@route^` opens the
+  Block ID Picker instead (see below).
   While route completion is visible, typing `+` directly after the route text accepts
   the selected route and keeps the `+`: an exact typed route (case-insensitive) is kept
   as typed, otherwise the selected candidate's route is spliced in, and the task picker
@@ -227,6 +231,58 @@ or expired certificate can require reauthorizing those system permissions.
   filter removes the `^` trigger and its fragment. Ctrl-S is consumed; Ctrl-C still
   stashes the draft and closes. While the chip is visible, Tab, Down, and Ctrl-N reopen
   the picker and Escape hides the chip.
+- Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
+  valid opens the Block ID Picker (`pomodoro_block_id` / `task_block_id` contexts),
+  the same large, fuzzy, keyboard-first picker language as `^`, and never the inline
+  list. Bob decides the intent and the app presents it: a marker-only `@route:` item
+  gets a Link picker that browses the note's linkable tasks grouped by the note's own
+  headings; every new-ID position (`@route^`, `@route:` on an item with text, either
+  marker followed by the project-note `+`) gets a New ID composer with Bob's
+  suggestions from the task text, live availability against every ID already in the
+  note, a one-key "next free" alternative when an ID is taken, and similar existing
+  IDs for naming consistency. Bob supplies one snapshot (intent, candidates, every
+  used ID with what uses it, suggestions, the marker token range, and the ID grammar
+  as a one-character regex plus a human description); the app only filters locally,
+  checks exact case-sensitive membership in Bob's used-ID list, applies Bob's
+  character rule, and derives the `-2…-99` next-free variant validated by that rule.
+  Live preview after insert remains the final authority. Opening rules mirror `^`:
+  Link opens on edit unless the part already equals a candidate replacement (then
+  nothing opens) or Escape suppressed auto-open (then the chip shows); New ID opens
+  only when the part is empty or the caret is at the part's end, and any other edit
+  shows the chip instead. A `task_block_id` response without a `block_id` object is
+  treated as no completion. Link refetches the full snapshot at the range start when
+  the caret is past it, exactly like `^`; New ID needs no refetch. Accept inserts the
+  row's ID into Bob's range with the stale-draft guard, announces
+  `Inserted @route:id`, and runs an `.edit` analysis without completion;
+  Command-accept also captures, and a missing selection announces why instead of
+  inserting. In the New ID composer the field only ever holds ID characters: typing a
+  character outside Bob's allowed set (space, `#`, `=`, `+`, `.`, …) at the end of the
+  field commits the typed ID and keeps typing that character in the editor, so `#`
+  after a commit opens `pomodoro_name` completion naturally. The Link picker keeps
+  `^`'s semantics: spaces separate fuzzy tokens. Backspace on an empty field deletes
+  the `:`/`^` separator and the part so route completion resumes. The chip reads
+  `Browse <note> tasks ⇥` (Link) or `Suggest an ID for <note> ⇥` (New ID); Tab, Down,
+  and Ctrl-N open it and Escape hides it. When `capture-parse` reports `pomodoro_id`
+  or `block_id` in `needs`, the app skips the doomed dry run with precedence
+  `active_task`, then `pomodoro_id` ("Pick a task or type a new ID — press Tab to
+  browse"), then `block_id` ("Type a new block ID — press Tab for suggestions").
+  Older Bob binaries that send `pomodoro_block_id` without a `block_id` object get a
+  Link picker without the New ID row and without type-through; older Bob never sends
+  `task_block_id`, so `@route^` shows no picker there.
+- Block ID Picker keys. Link matches the `^` table above; New ID adds Space.
+
+  | Key                                        | Link                | New ID                          |
+  | ------------------------------------------ | ------------------- | ------------------------------- |
+  | Printables, Cmd-A/C/V/X/Z, Ctrl-A/E, ←/→  | Native filter edit  | Native edit; trailing illegal character commits the ID and keeps typing it in the editor (type-through) |
+  | Return / keypad Enter, Tab                 | Insert selected row | Insert selected row             |
+  | Command-Return                             | Insert, then capture| Insert, then capture            |
+  | Shift/Option-Return, Shift-Tab             | Consumed            | Consumed                        |
+  | Down / Ctrl-N / Ctrl-J, Up / Ctrl-P / Ctrl-K | Move (wrap)       | Move (wrap), skipping status and info rows |
+  | Page Up/Down, Home/End, Cmd-Up/Down        | Page / first / last | Page / first / last             |
+  | Escape / Ctrl-[                            | Clear filter, else cancel (suppress, show chip) | Same |
+  | Backspace on an empty field                | Delete `:` and part; route completion resumes | Delete `:`/`^` and part |
+  | Ctrl-S                                     | Consumed            | Consumed                        |
+  | Ctrl-C                                     | Stash and close     | Stash and close                 |
 - The picker renders as one large elevated card spanning the full panel width: a
   46pt filter bar (a `^` scope token, the filter field, and a monospaced task
   count), a scrollable list with pinned Pomodoro headers, an 80pt detail strip,

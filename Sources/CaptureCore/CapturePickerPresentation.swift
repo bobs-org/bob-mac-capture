@@ -1,18 +1,68 @@
 import Foundation
 
-/// Which picker source a session belongs to. Only `.activeTask` exists yet;
-/// the Block ID picker adds its source here without touching the state
-/// machine, routing, focus repair, filter field, sizing, or card.
+/// Which Block ID position a picker session edits: the decoded `block_id`
+/// field (nil for older Bob binaries that send `pomodoro_block_id` without
+/// it), the route, the marker (`:` or `^`), the intent, and Bob's ID rules
+/// (nil when Bob's grammar is missing or unreadable, which disables
+/// type-through and New ID rows).
+public struct BlockIDPickerContext: Equatable, Sendable {
+    public let field: CaptureBlockIDField?
+    public let route: String
+    public let marker: String
+    public let intent: CaptureBlockIDIntent
+    public let rules: BlockIDRules?
+
+    public init(
+        field: CaptureBlockIDField?,
+        route: String,
+        marker: String,
+        intent: CaptureBlockIDIntent,
+        rules: BlockIDRules?
+    ) {
+        self.field = field
+        self.route = route
+        self.marker = marker
+        self.intent = intent
+        self.rules = rules
+    }
+
+    /// Link intent, or no field (older Bob): browse the note's tasks.
+    /// Anything else is the New ID composer.
+    public var isNewIDMode: Bool {
+        intent == .new || intent == .projectNote
+    }
+
+    /// Note file the picker browses (`sase.md`), from Bob's
+    /// `relative_target` when present.
+    public var noteTarget: String {
+        if let relativeTarget = field?.relativeTarget, !relativeTarget.isEmpty {
+            return relativeTarget
+        }
+        return "\(route).md"
+    }
+
+    /// Marker token naming the position (`@sase:` / `@sase^`).
+    public var scopeToken: String {
+        "@\(route)\(marker)"
+    }
+}
+
+/// Which picker source a session belongs to. `^` and the Block ID picker
+/// are two sources feeding one state machine, routing, focus repair, filter
+/// field, sizing, and card.
 public enum CapturePickerSource: Equatable, Sendable {
     case activeTask
+    case blockID(BlockIDPickerContext)
 
-    /// Draft byte the picker opened on (`^` for active tasks). Backspace on
-    /// an empty filter removes this byte together with any fragment it
-    /// opened on.
+    /// Draft byte the picker opened on (`^` for active tasks, `:` or `^`
+    /// for block IDs). Backspace on an empty filter removes this byte
+    /// together with any fragment it opened on.
     public var triggerByte: UInt8 {
         switch self {
         case .activeTask:
             return 94 // `^`
+        case .blockID(let context):
+            return context.marker == "^" ? 94 : 58 // `^` or `:`
         }
     }
 
@@ -21,6 +71,12 @@ public enum CapturePickerSource: Equatable, Sendable {
         switch self {
         case .activeTask:
             return "Filter by task, note, ^id, or Pomodoro"
+        case .blockID(let context):
+            if context.isNewIDMode {
+                return "Type a new ID for \(context.noteTarget)"
+            }
+            let suffix = context.field == nil ? "" : ", or type a new ID"
+            return "Filter \(context.noteTarget) tasks\(suffix)"
         }
     }
 
@@ -29,22 +85,35 @@ public enum CapturePickerSource: Equatable, Sendable {
         switch self {
         case .activeTask:
             return "Filter active tasks"
+        case .blockID(let context):
+            if context.isNewIDMode {
+                return "Type a new block ID for \(context.noteTarget)"
+            }
+            return "Filter \(context.noteTarget) tasks"
         }
     }
 
-    /// Scope-token symbol text (`^`) shown in the filter bar capsule.
+    /// Scope-token symbol text (`^`, `@sase:`) shown in the filter bar capsule.
     public var scopeSymbolText: String {
         switch self {
         case .activeTask:
             return "^"
+        case .blockID(let context):
+            return context.scopeToken
         }
     }
 
-    /// Scope-token caption (`Active Tasks`) shown in the filter bar capsule.
+    /// Scope-token caption (`Active Tasks`, `Tasks`, `New ID`) shown in the
+    /// filter bar capsule.
     public var scopeCaption: String {
         switch self {
         case .activeTask:
             return "Active Tasks"
+        case .blockID(let context):
+            if context.intent == .projectNote {
+                return "Project note"
+            }
+            return context.isNewIDMode ? "New ID" : "Tasks"
         }
     }
 
@@ -53,6 +122,11 @@ public enum CapturePickerSource: Equatable, Sendable {
         switch self {
         case .activeTask:
             return "Browse active tasks"
+        case .blockID(let context):
+            if context.isNewIDMode {
+                return "Suggest an ID for \(context.noteTarget)"
+            }
+            return "Browse \(context.noteTarget) tasks"
         }
     }
 
@@ -61,6 +135,8 @@ public enum CapturePickerSource: Equatable, Sendable {
         switch self {
         case .activeTask:
             return "list.bullet.rectangle.portrait"
+        case .blockID(let context):
+            return context.isNewIDMode ? "sparkles" : "list.bullet.rectangle.portrait"
         }
     }
 
@@ -69,6 +145,8 @@ public enum CapturePickerSource: Equatable, Sendable {
         switch self {
         case .activeTask:
             return "Reopen the Active Task Picker for the ^ item (Tab)."
+        case .blockID(let context):
+            return "Reopen the Block ID picker for \(context.scopeToken) (Tab)."
         }
     }
 
@@ -77,6 +155,8 @@ public enum CapturePickerSource: Equatable, Sendable {
         switch self {
         case .activeTask:
             return "Browse active tasks"
+        case .blockID:
+            return chipLabel
         }
     }
 
@@ -85,6 +165,8 @@ public enum CapturePickerSource: Equatable, Sendable {
         switch self {
         case .activeTask:
             return "Opens the Active Task Picker for the current item."
+        case .blockID(let context):
+            return "Opens the Block ID picker for \(context.scopeToken)."
         }
     }
 
@@ -93,6 +175,11 @@ public enum CapturePickerSource: Equatable, Sendable {
         switch self {
         case .activeTask:
             return "Active task picker"
+        case .blockID(let context):
+            if context.isNewIDMode {
+                return "New block ID for \(context.noteTarget)"
+            }
+            return "Task picker for \(context.noteTarget)"
         }
     }
 
@@ -100,6 +187,11 @@ public enum CapturePickerSource: Equatable, Sendable {
     public var cardAccessibilityHint: String {
         switch self {
         case .activeTask:
+            return "Arrow keys move, Return inserts the task, Escape cancels."
+        case .blockID(let context):
+            if context.isNewIDMode {
+                return "Arrow keys move, Return inserts the ID, Escape cancels."
+            }
             return "Arrow keys move, Return inserts the task, Escape cancels."
         }
     }
@@ -109,6 +201,11 @@ public enum CapturePickerSource: Equatable, Sendable {
         switch self {
         case .activeTask:
             return "Active tasks"
+        case .blockID(let context):
+            if context.isNewIDMode {
+                return "New ID for \(context.noteTarget)"
+            }
+            return "\(context.noteTarget) tasks"
         }
     }
 
@@ -116,6 +213,22 @@ public enum CapturePickerSource: Equatable, Sendable {
     public func keyHintItems() -> [(keys: String, action: String)] {
         switch self {
         case .activeTask:
+            return [
+                ("↑↓", "Move"),
+                ("↩", "Insert"),
+                ("⌘↩", "Insert & Capture"),
+                ("esc", "Clear / Cancel"),
+            ]
+        case .blockID(let context):
+            if context.isNewIDMode {
+                return [
+                    ("↑↓", "Move"),
+                    ("↩", "Insert"),
+                    ("⌘↩", "Insert & Capture"),
+                    ("␣", "Insert & keep typing"),
+                    ("esc", "Clear / Cancel"),
+                ]
+            }
             return [
                 ("↑↓", "Move"),
                 ("↩", "Insert"),
@@ -130,6 +243,11 @@ public enum CapturePickerSource: Equatable, Sendable {
         switch self {
         case .activeTask:
             return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Escape to clear or cancel."
+        case .blockID(let context):
+            if context.isNewIDMode {
+                return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Space to insert and keep typing, Escape to clear or cancel."
+            }
+            return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Escape to clear or cancel."
         }
     }
 
@@ -139,19 +257,28 @@ public enum CapturePickerSource: Equatable, Sendable {
         switch self {
         case .activeTask:
             return "org.bobs.bob-mac-capture.active-task-picker-used"
+        case .blockID:
+            return "org.bobs.bob-mac-capture.block-id-picker-used"
         }
     }
 }
 
 /// Which incomplete picker need a parse reports. Each need carries the calm
-/// status line shown instead of the doomed live dry run.
+/// status line shown instead of the doomed live dry run. Precedence is
+/// `activeTask`, then `pomodoroID`, then `blockID`.
 public enum CapturePickerNeed: Equatable, Sendable {
     case activeTask
+    case pomodoroID
+    case blockID
 
     public var statusText: String {
         switch self {
         case .activeTask:
             return "Pick an active task — press Tab to browse"
+        case .pomodoroID:
+            return "Pick a task or type a new ID — press Tab to browse"
+        case .blockID:
+            return "Type a new block ID — press Tab for suggestions"
         }
     }
 }

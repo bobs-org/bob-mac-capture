@@ -880,9 +880,9 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
-    /// Routes one completion result: `active_task` responses feed the picker
-    /// or the reopen chip and never populate the inline list; every other
-    /// context keeps the inline list and clears the chip.
+    /// Routes one completion result: `active_task` and block-ID responses
+    /// feed the picker or the reopen chip and never populate the inline
+    /// list; every other context keeps the inline list and clears the chip.
     private func handleCompletionResponse(
         _ completion: CaptureCompletionResponse,
         draft: String,
@@ -902,6 +902,17 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         guard completion.context == "active_task" else {
+            if completion.context == "pomodoro_block_id" || completion.context == "task_block_id" {
+                await handleBlockIDCompletion(
+                    completion,
+                    draft: draft,
+                    cursor: cursor,
+                    generation: generation,
+                    processClient: processClient,
+                    trigger: trigger
+                )
+                return
+            }
             applyNonActiveTaskCompletion(completion, draft: draft, trigger: trigger)
             return
         }
@@ -912,6 +923,203 @@ final class CapturePanelModel: ObservableObject {
             generation: generation,
             processClient: processClient,
             trigger: trigger
+        )
+    }
+
+    /// A block-ID response is usable when it is `pomodoro_block_id` (older
+    /// Bob binaries omit the `block_id` object there and still get a Link
+    /// picker without New ID rows) or `task_block_id` with a `block_id`
+    /// object. A `task_block_id` response without one is treated as no
+    /// completion: older Bob never sends `task_block_id` at all, so there is
+    /// no picker and no inline list.
+    private static func isUsableBlockIDCompletion(_ completion: CaptureCompletionResponse) -> Bool {
+        completion.context == "pomodoro_block_id" || completion.blockID != nil
+    }
+
+    /// Builds the picker source for a usable block-ID response: the decoded
+    /// field (nil for older Bob), the route, the marker, the intent (older
+    /// Bob means Link), and Bob's ID rules.
+    private static func blockIDSource(for completion: CaptureCompletionResponse) -> CapturePickerSource {
+        let field = completion.blockID
+        let marker: String
+        if let fieldMarker = field?.marker, !fieldMarker.isEmpty {
+            marker = fieldMarker
+        } else {
+            marker = completion.context == "task_block_id" ? "^" : ":"
+        }
+        let route: String
+        if let fieldRoute = field?.route, !fieldRoute.isEmpty {
+            route = fieldRoute
+        } else {
+            route = completion.candidates.first?.route ?? ""
+        }
+        let intent = field?.intent ?? .link
+        let rules = field.flatMap {
+            BlockIDRules(allowedCharacter: $0.allowedCharacter, description: $0.allowedDescription)
+        }
+        return .blockID(
+            BlockIDPickerContext(field: field, route: route, marker: marker, intent: intent, rules: rules)
+        )
+    }
+
+    /// Routes `pomodoro_block_id`/`task_block_id` responses into the generic
+    /// picker with intent-aware opening rules. Link intent mirrors `^`: an
+    /// exact part opens nothing, an `.edit` opens the picker (refetching the
+    /// full snapshot at the range start when the caret is past it), and a
+    /// caret-only move or suppression shows the chip. New ID intent opens
+    /// only when the part is empty or the caret is at the part's end (typing
+    /// forward); any other edit shows the chip.
+    private func handleBlockIDCompletion(
+        _ completion: CaptureCompletionResponse,
+        draft: String,
+        cursor: Int,
+        generation: UInt64,
+        processClient: BobProcessClient,
+        trigger: CompletionTrigger
+    ) async {
+        // Block-ID responses never populate the inline list, even when empty.
+        dismissCompletion()
+        guard Self.isUsableBlockIDCompletion(completion) else {
+            clearPickerInterruption(trigger: trigger)
+            return
+        }
+        let r = completion.replacement
+        guard stringRange(in: draft, byteRange: r) != nil,
+              stringRange(in: draft, start: r.start, end: min(cursor, r.end)) != nil
+        else {
+            return
+        }
+        let source = Self.blockIDSource(for: completion)
+        guard case .blockID(let context) = source else {
+            return
+        }
+        if !context.isNewIDMode {
+            let partRange = stringRange(in: draft, byteRange: r)!
+            let part = String(draft[partRange])
+            if completion.candidates.contains(where: { $0.replacement == part }) {
+                // The token is already an exact candidate: no picker, no chip.
+                clearPickerInterruption(trigger: trigger)
+                return
+            }
+            guard trigger == .edit, pickerAutoOpenSuppressedStart != r.start else {
+                pickerChip = CapturePickerChipState(
+                    source: source,
+                    draftSnapshot: draft,
+                    replacementRange: r,
+                    cursor: cursor,
+                    candidates: completion.candidates,
+                    warnings: completion.warnings
+                )
+                return
+            }
+            let query = Self.pickerQuery(in: draft, range: r, cursor: cursor)
+            if cursor != r.start {
+                // Fetch the unfiltered snapshot at the token start in this
+                // same analysis task; Bob answers the full list there.
+                if let snapshot = try? await processClient.captureComplete(draft, cursor: r.start),
+                   isCurrentAnalysis(generation),
+                   plainDraft == draft,
+                   Self.isUsableBlockIDCompletion(snapshot),
+                   snapshot.replacement == r
+                {
+                    presentBlockIDPicker(
+                        snapshot,
+                        draft: draft,
+                        range: r,
+                        restoreCursor: cursor,
+                        query: query,
+                        snapshotIsPartial: false
+                    )
+                    return
+                }
+                // Fall back to the caret response and say so in the view.
+                guard isCurrentAnalysis(generation), plainDraft == draft else {
+                    return
+                }
+                presentBlockIDPicker(
+                    completion,
+                    draft: draft,
+                    range: r,
+                    restoreCursor: cursor,
+                    query: query,
+                    snapshotIsPartial: true
+                )
+                return
+            }
+            presentBlockIDPicker(
+                completion,
+                draft: draft,
+                range: r,
+                restoreCursor: cursor,
+                query: query,
+                snapshotIsPartial: false
+            )
+            return
+        }
+        guard trigger == .edit, pickerAutoOpenSuppressedStart != r.start else {
+            pickerChip = CapturePickerChipState(
+                source: source,
+                draftSnapshot: draft,
+                replacementRange: r,
+                cursor: cursor,
+                candidates: completion.candidates,
+                warnings: completion.warnings
+            )
+            return
+        }
+        let partRange = stringRange(in: draft, byteRange: r)!
+        let part = String(draft[partRange])
+        guard part.isEmpty || cursor == r.end else {
+            // A mid-part edit, or a caret that is not typing forward, shows
+            // the chip instead of opening.
+            pickerChip = CapturePickerChipState(
+                source: source,
+                draftSnapshot: draft,
+                replacementRange: r,
+                cursor: cursor,
+                candidates: completion.candidates,
+                warnings: completion.warnings
+            )
+            return
+        }
+        presentBlockIDPicker(
+            completion,
+            draft: draft,
+            range: r,
+            restoreCursor: cursor,
+            query: part,
+            snapshotIsPartial: false
+        )
+    }
+
+    /// Presents a usable block-ID snapshot through the generic picker. The
+    /// seed is the caller's query: range-start-to-caret for Link, the whole
+    /// part for New ID.
+    private func presentBlockIDPicker(
+        _ completion: CaptureCompletionResponse,
+        draft: String,
+        range: CaptureRange,
+        restoreCursor: Int,
+        query: String,
+        snapshotIsPartial: Bool
+    ) {
+        let source = Self.blockIDSource(for: completion)
+        guard case .blockID(let context) = source else {
+            return
+        }
+        let index = CapturePickerIndex.blockID(
+            BlockIDPickerIndex(field: completion.blockID, candidates: completion.candidates, route: context.route)
+        )
+        presentPicker(
+            source: source,
+            index: index,
+            candidates: completion.candidates,
+            warnings: completion.warnings,
+            draft: draft,
+            range: range,
+            restoreCursor: restoreCursor,
+            query: query,
+            snapshotIsPartial: snapshotIsPartial
         )
     }
 
@@ -999,6 +1207,7 @@ final class CapturePanelModel: ObservableObject {
             {
                 presentPicker(
                     source: .activeTask,
+                    index: .activeTask(ActiveTaskPickerIndex(candidates: snapshot.candidates)),
                     candidates: snapshot.candidates,
                     warnings: snapshot.warnings,
                     draft: draft,
@@ -1015,6 +1224,7 @@ final class CapturePanelModel: ObservableObject {
             }
             presentPicker(
                 source: .activeTask,
+                index: .activeTask(ActiveTaskPickerIndex(candidates: completion.candidates)),
                 candidates: completion.candidates,
                 warnings: completion.warnings,
                 draft: draft,
@@ -1027,6 +1237,7 @@ final class CapturePanelModel: ObservableObject {
         }
         presentPicker(
             source: .activeTask,
+            index: .activeTask(ActiveTaskPickerIndex(candidates: completion.candidates)),
             candidates: completion.candidates,
             warnings: completion.warnings,
             draft: draft,
@@ -1048,6 +1259,7 @@ final class CapturePanelModel: ObservableObject {
 
     private func presentPicker(
         source: CapturePickerSource,
+        index: CapturePickerIndex,
         candidates: [CaptureCompletionCandidate],
         warnings: [String],
         draft: String,
@@ -1056,7 +1268,6 @@ final class CapturePanelModel: ObservableObject {
         query: String,
         snapshotIsPartial: Bool
     ) {
-        let index = CapturePickerIndex.activeTask(ActiveTaskPickerIndex(candidates: candidates))
         let presentation = index.presentation(filter: query)
         pickerIndex = index
         pickerPresentation = presentation
@@ -1084,11 +1295,54 @@ final class CapturePanelModel: ObservableObject {
         else {
             return
         }
+        // Type-through (New ID source only, rules present): the field only
+        // ever holds ID characters. When the appended text contains a
+        // character outside Bob's allowed set, commit the ID and insert the
+        // rest into the editor after it, so `@sase^flaky-test Fix it` types
+        // exactly the draft it would without the picker.
+        if case .blockID(let context) = updated.source,
+           context.isNewIDMode,
+           let rules = context.rules,
+           let split = rules.typeThroughSplit(old: updated.filterText, new: text),
+           !split.id.isEmpty
+        {
+            commitBlockIDTypeThrough(id: split.id, remainder: split.remainder)
+            return
+        }
         updated.filterText = text
         let presentation = index.presentation(filter: text)
         updated.selectedRowID = CapturePickerNavigation.first(in: presentation.orderedRowIDs)
         picker = updated
         pickerPresentation = presentation
+    }
+
+    /// Commits a type-through split: the ID splices into Bob's range and the
+    /// remainder (from the first disallowed character on) lands in the editor
+    /// right after it. The commit is literal even when the ID is taken or
+    /// invalid, because Bob's preview reports that exactly as without the
+    /// picker. Runs an `.edit` analysis with completion at the new caret so
+    /// `#` opens Pomodoro-name completion; the caret sits past the committed
+    /// token, so the ID picker cannot reopen for it.
+    private func commitBlockIDTypeThrough(id: String, remainder: String) {
+        guard let openPicker = picker,
+              plainDraft == openPicker.draftSnapshot,
+              let idRange = stringRange(in: plainDraft, byteRange: openPicker.replacementRange)
+        else {
+            // The draft moved under the picker: never edit a stale draft.
+            closePickerAfterStaleDraft()
+            return
+        }
+        var text = plainDraft
+        text.replaceSubrange(idRange, with: id + remainder)
+        let caret = openPicker.replacementRange.start + (id + remainder).utf8.count
+        guard stringRange(in: text, start: caret, end: caret) != nil else {
+            closePickerAfterStaleDraft()
+            return
+        }
+        closePickerForAccept()
+        suppressedCompletionAcceptanceDraft = text
+        setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+        scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
     }
 
     func selectPickerRow(id: String) {
@@ -1165,13 +1419,23 @@ final class CapturePanelModel: ObservableObject {
 
     func acceptPickerRow(id: String, submitAfterInsert: Bool) {
         guard let picker = picker,
-              let row = pickerPresentation?.row(id: id),
-              let insertion = row.insertion,
               plainDraft == picker.draftSnapshot,
               let range = stringRange(in: plainDraft, byteRange: picker.replacementRange)
         else {
             // The draft moved under the picker: never edit a stale draft.
             closePickerAfterStaleDraft()
+            return
+        }
+        guard let row = pickerPresentation?.row(id: id),
+              let insertion = row.insertion
+        else {
+            // No selectable row: a no-op that announces why, leaving the
+            // picker open. `^` keeps its silent no-op.
+            if case .blockID = picker.source {
+                announceStatus(
+                    Self.blockIDNoAcceptReason(filter: picker.filterText, presentation: pickerPresentation)
+                )
+            }
             return
         }
 
@@ -1183,11 +1447,17 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
+        let source = picker.source
         closePickerForAccept()
         suppressedCompletionAcceptanceDraft = text
         setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
         scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: false, trigger: .edit)
-        announceStatus("Inserted \(insertion)")
+        // Block-ID insertions are bare IDs; name the marker they landed on.
+        if case .blockID(let context) = source {
+            announceStatus("Inserted @\(context.route)\(context.marker)\(insertion)")
+        } else {
+            announceStatus("Inserted \(insertion)")
+        }
         if submitAfterInsert {
             submit(openAfterCapture: false)
         }
@@ -1281,7 +1551,17 @@ final class CapturePanelModel: ObservableObject {
         pickerAutoOpenSuppressedStart = nil
         let draft = plainDraft
         let r = chip.replacementRange
-        let query = Self.pickerQuery(in: draft, range: r, cursor: chip.cursor)
+        // Link seeds from the range start to the caret; New ID seeds the
+        // whole part.
+        let query: String
+        if case .blockID(let context) = chip.source,
+           context.isNewIDMode,
+           let partRange = stringRange(in: draft, byteRange: r)
+        {
+            query = String(draft[partRange])
+        } else {
+            query = Self.pickerQuery(in: draft, range: r, cursor: chip.cursor)
+        }
         if chip.cursor != r.start, let processClient {
             // The chip came from a caret snapshot; refetch the full list at
             // the token start. A keystroke in the meantime abandons the open.
@@ -1293,49 +1573,121 @@ final class CapturePanelModel: ObservableObject {
                     guard let self,
                           self.pickerChip?.draftSnapshot == draft,
                           self.plainDraft == draft,
-                          snapshot.context == "active_task",
                           snapshot.replacement == r
                     else {
                         return
                     }
-                    self.presentPicker(
-                        source: chip.source,
-                        candidates: snapshot.candidates,
-                        warnings: snapshot.warnings,
-                        draft: draft,
-                        range: r,
-                        restoreCursor: chip.cursor,
-                        query: query,
-                        snapshotIsPartial: false
-                    )
+                    switch chip.source {
+                    case .activeTask:
+                        guard snapshot.context == "active_task" else {
+                            return
+                        }
+                        self.presentPicker(
+                            source: chip.source,
+                            index: .activeTask(ActiveTaskPickerIndex(candidates: snapshot.candidates)),
+                            candidates: snapshot.candidates,
+                            warnings: snapshot.warnings,
+                            draft: draft,
+                            range: r,
+                            restoreCursor: chip.cursor,
+                            query: query,
+                            snapshotIsPartial: false
+                        )
+                    case .blockID:
+                        guard Self.isUsableBlockIDCompletion(snapshot) else {
+                            return
+                        }
+                        self.presentBlockIDPicker(
+                            snapshot,
+                            draft: draft,
+                            range: r,
+                            restoreCursor: chip.cursor,
+                            query: query,
+                            snapshotIsPartial: false
+                        )
+                    }
                 }
             }
             return
         }
-        presentPicker(
-            source: chip.source,
-            candidates: chip.candidates,
-            warnings: chip.warnings,
-            draft: draft,
-            range: r,
-            restoreCursor: chip.cursor,
-            query: query,
-            snapshotIsPartial: false
-        )
+        switch chip.source {
+        case .activeTask:
+            presentPicker(
+                source: chip.source,
+                index: .activeTask(ActiveTaskPickerIndex(candidates: chip.candidates)),
+                candidates: chip.candidates,
+                warnings: chip.warnings,
+                draft: draft,
+                range: r,
+                restoreCursor: chip.cursor,
+                query: query,
+                snapshotIsPartial: false
+            )
+        case .blockID(let context):
+            // The chip's source already carries the opening snapshot's
+            // field, route, marker, intent, and rules.
+            presentPicker(
+                source: chip.source,
+                index: .blockID(
+                    BlockIDPickerIndex(field: context.field, candidates: chip.candidates, route: context.route)
+                ),
+                candidates: chip.candidates,
+                warnings: chip.warnings,
+                draft: draft,
+                range: r,
+                restoreCursor: chip.cursor,
+                query: query,
+                snapshotIsPartial: false
+            )
+        }
     }
 
     func dismissPickerChip() {
         pickerChip = nil
     }
 
+    /// Why Return with no selectable Block ID row is a no-op: an empty
+    /// field names the missing ID, a taken or invalid ID names its state,
+    /// and anything else means no rows matched.
+    private static func blockIDNoAcceptReason(
+        filter: String,
+        presentation: CapturePickerPresentation?
+    ) -> String {
+        if filter.isEmpty {
+            return "Type a new ID"
+        }
+        switch presentation?.blockIDStatus?.availability {
+        case .taken(let line, _):
+            if let line {
+                return "\(filter) is already used on line \(line)"
+            }
+            return "\(filter) is already used"
+        case .invalid(let description):
+            return description
+        case .available, .unchecked, nil:
+            break
+        }
+        return "No matches"
+    }
+
     /// An incomplete picker token is a state, not an error: skip the doomed
     /// live dry run and show a calm status line instead of red errors.
+    /// Precedence is `active_task`, then `pomodoro_id`, then `block_id`,
+    /// checked top-level or in any item. Suffix-only states such as
+    /// `@sase:x#` (`pomodoro_name`) keep today's behavior.
     private static func pickerNeed(in parse: CaptureParseResponse) -> CapturePickerNeed? {
-        if parse.needs.contains("active_task") {
+        let itemNeeds = parse.items.flatMap { $0.needs }
+        func needs(_ need: String) -> Bool {
+            parse.needs.contains(need) || itemNeeds.contains(need)
+        }
+        if needs("active_task") {
             return .activeTask
         }
-        if parse.items.contains(where: { $0.needs.contains("active_task") }) {
-            return .activeTask
+        if needs("pomodoro_id") {
+            return .pomodoroID
+        }
+        if needs("block_id") {
+            return .blockID
         }
         return nil
     }
@@ -2383,7 +2735,7 @@ final class CapturePanelModel: ObservableObject {
 
         let completionNeeds = Set([
             "route", "section", "pomodoro_id", "pomodoro_name", "task", "task_section",
-            "active_task",
+            "active_task", "block_id",
         ])
         if !completionNeeds.isDisjoint(with: Set(parse.needs)) {
             return true
@@ -2399,10 +2751,13 @@ final class CapturePanelModel: ObservableObject {
         // They stay out of `routeSpanKinds` below so cached route completion never
         // intercepts `^` and `routeReplacementRange` never overwrites it; Bob's
         // `needs` covers the lone-`^` case, so there is no Swift-side `^` sniffing.
+        // `task_block_id` (the right-hand side of `@route^`) requests block-ID
+        // completion the same way `pomodoro_block_id` already does.
         let completionSpanKinds = Set([
             "route",
             "section",
             "task_block_id_route",
+            "task_block_id",
             "pomodoro_route",
             "pomodoro_block_id",
             "pomodoro_name",
