@@ -701,7 +701,7 @@ private struct CapturePanelFooter: View {
             .keyboardShortcut(.defaultAction)
             .disabled(
                 !model.hasDraft || model.isSubmitting || model.inlinePromptVisible
-                    || model.pickerVisible
+                    || model.pickerVisible || model.isClosePending
             )
         }
         .accessibilityElement(children: .contain)
@@ -1583,6 +1583,10 @@ struct PreviewPane: View {
         // The locator truncates first at narrow widths, so the task text and
         // transition always stay legible.
         let sessionTint = CaptureEditorPalette.color(for: .pomodoroStart)
+        // A pending list previews the trimmed draft: the card stays live but
+        // dimmed, and Close is disabled until a task number is typed.
+        let isPending = model.closePendingText != nil
+        let showsBadges = close.taskRows.contains { $0.index != nil }
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if total > 1 {
@@ -1648,6 +1652,9 @@ struct PreviewPane: View {
                         _, row in
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                if showsBadges {
+                                    closeNumberBadge(for: row)
+                                }
                                 closeTaskGlyph(for: row)
                                 Text(row.taskText)
                                     .strikethrough(row.isStruck)
@@ -1690,6 +1697,7 @@ struct PreviewPane: View {
                                     .textSelection(.enabled)
                             }
                         }
+                        .opacity(row.isDimmed ? 0.5 : 1)
                     }
                     if close.overflowTaskCount > 0 {
                         Text("+\(close.overflowTaskCount) more")
@@ -1698,6 +1706,52 @@ struct PreviewPane: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            // The teaching hint (before a selection is typed), the outcome
+            // summary (after), or the pending notice (while a list dangles):
+            // one caption row under the task rows.
+            if let pending = model.closePendingText {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "number.circle")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(pending)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            } else if let summary = close.selectionSummary {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "list.number")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            } else if let hint = close.teachingHint {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "number.circle")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    // Example tokens share the editor span colors of the
+                    // badges they select; prose stays secondary.
+                    Text(
+                        AttributedString(
+                            hint.tokens.map { token in
+                                var part = AttributedString(token.text)
+                                part.foregroundColor = token.category == .neutral
+                                    ? .secondary
+                                    : CaptureEditorPalette.color(for: token.category)
+                                return part
+                            }.reduce(AttributedString()) { $0 + $1 }
+                        )
+                    )
+                    .font(.caption)
+                    .textSelection(.enabled)
+                }
             }
 
             if let notesText = close.notesText {
@@ -1729,8 +1783,60 @@ struct PreviewPane: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .opacity(isPending ? 0.6 : 1)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(close.accessibilitySummary)
+        .accessibilityLabel(
+            isPending ? "\(close.accessibilitySummary), \(model.closePendingText ?? "")"
+                : close.accessibilitySummary
+        )
+    }
+
+    /// The fixed-width leading number badge for a close row: a filled
+    /// `N.circle` when the row is listed, an open one otherwise, tinted by
+    /// outcome (in progress orange, complete green, deferred secondary) and
+    /// dimmed when unlisted. Numbers above 50 fall back to monospaced digits
+    /// in a capsule; unnumbered rows get an equal-width clear spacer so text
+    /// stays aligned.
+    @ViewBuilder
+    private func closeNumberBadge(
+        for row: CapturePomodoroClosePresentation.TaskRow
+    ) -> some View {
+        let badgeWidth: CGFloat = 26
+        if row.usesNumericBadgeFallback, let index = row.index {
+            Text("\(index)")
+                .font(.system(.caption, design: .monospaced))
+                .fontWeight(.semibold)
+                .foregroundStyle(closeOutcomeColor(for: row))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(.quaternary, in: Capsule())
+                .frame(width: badgeWidth + 14, alignment: .center)
+                .opacity(row.isDimmed ? 0.5 : 1)
+                .accessibilityHidden(true)
+        } else if let symbolName = row.badgeSymbolName {
+            Image(systemName: symbolName)
+                .foregroundStyle(closeOutcomeColor(for: row))
+                .frame(width: badgeWidth, alignment: .center)
+                .opacity(row.isDimmed ? 0.5 : 1)
+                .accessibilityHidden(true)
+        } else {
+            Color.clear
+                .frame(width: badgeWidth, height: 1)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func closeOutcomeColor(
+        for row: CapturePomodoroClosePresentation.TaskRow
+    ) -> Color {
+        switch row.outcome {
+        case .inProgress:
+            return .orange
+        case .complete:
+            return .green
+        case .deferred, nil:
+            return .secondary
+        }
     }
 
     @ViewBuilder
@@ -1752,7 +1858,7 @@ struct PreviewPane: View {
                 .accessibilityHidden(true)
         case .embedded:
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(row.outcome == .complete ? .green : .secondary)
                 .accessibilityHidden(true)
         case .unresolved:
             Image(systemName: "exclamationmark.triangle")

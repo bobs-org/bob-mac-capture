@@ -78,6 +78,12 @@ case "${command}" in
     draft="${*: -1}"
     if [[ "${draft}" == "=x" ]]; then
       cat "${fixtures_dir}/pomodoro-close-parse-session.json"
+    elif [[ "${draft}" == "=x1,3!2" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-select.json"
+    elif [[ "${draft}" == "=x1," ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-incomplete.json"
+    elif [[ "${draft}" == "=x1,1" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-invalid.json"
     elif [[ "${draft}" == "=" ]]; then
       cat "${fixtures_dir}/pomodoro-start-parse.json"
     elif [[ "${draft}" == "=3" ]]; then
@@ -2795,6 +2801,14 @@ JSON
     draft="${*: -1}"
     if [[ "${draft}" == "=x" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-worked.json"
+    elif [[ "${draft}" == "=x2" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-worked.json"
+    elif [[ "${draft}" == "=x1!2" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-complete.json"
+    elif [[ "${draft}" == "=x0" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-none.json"
+    elif [[ "${draft}" == "=x1" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-one.json"
     elif [[ "${draft}" == "^bob:ready=x" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-link.json"
     elif [[ "${draft}" == "^sase:recovery-panel=x" ]]; then
@@ -2816,6 +2830,9 @@ JSON
     elif [[ "${draft}" == "^bob:ready#capture=x" ]]; then
       cat "${fixtures_dir}/pomodoro-close-bad-name.json"
       exit 2
+    elif [[ "${draft}" == "=x3" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-select-out-of-range.json"
+      exit 1
     elif [[ "${draft}" == "${close_batch_draft}" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/g" "${fixtures_dir}/pomodoro-close-batch-adjust.json"
     elif [[ "${draft}" == "Write outline @sase:outline=3" ]]; then

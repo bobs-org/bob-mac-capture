@@ -40,6 +40,47 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         case neutral
     }
 
+    /// The outcome Bob's `=x[<N>][!<M>]` selection gives a numbered row, joined
+    /// from `tasks[].index` to `task_links`. Unknown wire strings degrade to
+    /// nil, which renders exactly like today's unnumbered card.
+    public enum TaskOutcome: Equatable, Sendable {
+        case inProgress
+        case deferred
+        case complete
+    }
+
+    /// Why a numbered row got its outcome: `listed` (its number was typed),
+    /// `unlisted` (`<N>` was typed without it), or `ledger` (its own marker).
+    public enum TaskSource: Equatable, Sendable {
+        case ledger
+        case listed
+        case unlisted
+    }
+
+    /// One segment of the teaching hint: example tokens carry the editor span
+    /// category whose color they share, and prose carries `.neutral`.
+    public struct HintToken: Equatable, Sendable {
+        public let text: String
+        public let category: CaptureSemanticCategory
+
+        public init(text: String, category: CaptureSemanticCategory) {
+            self.text = text
+            self.category = category
+        }
+    }
+
+    /// The teaching hint shown under the task rows before a selection is
+    /// typed: structured `tokens` for tinted rendering plus the joined `text`.
+    public struct TeachingHint: Equatable, Sendable {
+        public let tokens: [HintToken]
+        public let text: String
+
+        public init(tokens: [HintToken]) {
+            self.tokens = tokens
+            self.text = tokens.map(\.text).joined()
+        }
+    }
+
     public struct TaskRow: Equatable, Sendable {
         public let role: String
         public let glyph: TaskGlyph
@@ -60,6 +101,27 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         public let tag: String?
         /// Struck rows render their text with strikethrough in the card.
         public let isStruck: Bool
+        /// The 1-based number Bob assigned this row, or nil for unnumbered
+        /// rows (struck, mentioned, subtask, Work-Log-only, older Bob).
+        public let index: Int?
+        /// The selection outcome from `task_links`, or nil when the row is
+        /// unnumbered or Bob reported no lineup.
+        public let outcome: TaskOutcome?
+        /// Why the row got its outcome, or nil when `outcome` is nil.
+        public let source: TaskSource?
+        /// `"\(n).circle.fill"` when the row is listed, `"\(n).circle"`
+        /// otherwise; nil for unnumbered rows and for `n > 50`, which render
+        /// a monospaced-digit capsule instead (`usesNumericBadgeFallback`).
+        public let badgeSymbolName: String?
+        /// True for `n > 50`, which fall back to a monospaced-digit `Text` in
+        /// a `Capsule` because no such SF Symbol exists.
+        public let usesNumericBadgeFallback: Bool
+        /// Unlisted rows render at reduced opacity so the chosen rows stand
+        /// out. False whenever no selection was typed.
+        public let isDimmed: Bool
+        /// `"Task 1, <text>, stays in progress, chosen"` for numbered rows;
+        /// the transition text for unnumbered rows.
+        public let accessibilityLabel: String
     }
 
     /// At most this many task rows render in the card before a "+N more" line.
@@ -89,6 +151,17 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     public let taskRows: [TaskRow]
     public let visibleTaskRows: [TaskRow]
     public let overflowTaskCount: Int
+    /// The teaching hint, present when no selection was typed and at least
+    /// one row is numbered. Nil once a selection is typed or with no lineup.
+    public let teachingHint: TeachingHint?
+    /// The outcome summary, present once a selection is typed (for example
+    /// `"In progress 1, 3 · Complete 2 · Deferred 4"`). Nil before that.
+    public let selectionSummary: String?
+    /// True when the draft carried an `=x[<N>][!<M>]` selection
+    /// (`in_progress` non-nil or `complete` non-empty).
+    public let hasSelection: Bool
+    /// How many numbered rows complete (`task_links` outcome `complete`).
+    public let completedCount: Int
     /// `"1 note stays"` / `"N notes stay"`, or nil when nothing stays.
     public let notesText: String?
     /// `"Next: CAPTURE · new · carries 2 links"`, or
@@ -163,14 +236,49 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         let taggedBlockID: String? = (variant == .linkedTask || variant == .newTask)
             ? capture.blockID : nil
         let taggedTag = variant == .linkedTask ? "linked" : "new"
+        let linksByIndex = Dictionary(
+            summary.taskLinks.map { ($0.index, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        hasSelection = summary.inProgress != nil || !summary.complete.isEmpty
+        completedCount = summary.taskLinks.filter { $0.outcome == "complete" }.count
         taskRows = summary.tasks.map { task in
             Self.taskRow(
                 for: task,
+                link: task.index.flatMap { linksByIndex[$0] },
                 tag: (taggedBlockID != nil && task.blockID == taggedBlockID) ? taggedTag : nil
             )
         }
-        visibleTaskRows = Array(taskRows.prefix(Self.maxVisibleTaskRows))
-        overflowTaskCount = max(0, taskRows.count - Self.maxVisibleTaskRows)
+        // Numbered rows always render: the `+N more` overflow cap only hides
+        // unnumbered rows beyond `max(0, 6 − numbered)`, so a number is never
+        // hidden.
+        let numberedCount = taskRows.filter { $0.index != nil }.count
+        let unnumberedAllowance = max(0, Self.maxVisibleTaskRows - numberedCount)
+        var visible: [TaskRow] = []
+        visible.reserveCapacity(min(taskRows.count, Self.maxVisibleTaskRows))
+        var unnumberedShown = 0
+        for row in taskRows {
+            if row.index != nil {
+                visible.append(row)
+            } else if unnumberedShown < unnumberedAllowance {
+                visible.append(row)
+                unnumberedShown += 1
+            }
+        }
+        visibleTaskRows = visible
+        overflowTaskCount = taskRows.count - visible.count
+        let numberedLinkCount = summary.taskLinks.count
+        if !hasSelection, numberedLinkCount > 0 {
+            teachingHint = TeachingHint(tokens: Self.hintTokens(numberedRows: numberedLinkCount))
+            selectionSummary = nil
+        } else {
+            teachingHint = nil
+            selectionSummary = hasSelection
+                ? Self.summaryText(
+                    links: summary.taskLinks,
+                    inProgressEmpty: summary.inProgress?.isEmpty == true
+                ) : nil
+        }
 
         if summary.notes.isEmpty {
             notesText = nil
@@ -213,14 +321,16 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         let startedCount = summary.tasks.filter(\.statusChanged).count
         let workLogCount = summary.tasks.reduce(0) { $0 + $1.workLog.count }
         let verb = isDryRun ? "Would close" : "Closed"
+        let completedFragment = completedCount > 0 ? " · \(completedCount) completed" : ""
+        let workLogNoun = workLogCount == 1 ? "entry" : "entries"
         statusText =
-            "\(verb) \(pomodoroName) · \(startedCount) started · \(workLogCount) Work Log \(workLogCount == 1 ? "entry" : "entries")"
+            "\(verb) \(pomodoroName) · \(startedCount) started\(completedFragment) · \(workLogCount) Work Log \(workLogNoun)"
         primaryActionTitle = "Close"
         notificationTitle = "Closed \(pomodoroName)"
 
         var bodyLines = [
             "\(pomodoroName) \(sessionText) · \(timingText)",
-            "\(taskRows.count) task\(taskRows.count == 1 ? "" : "s") · \(workLogCount) Work Log \(workLogCount == 1 ? "entry" : "entries")",
+            "\(taskRows.count) task\(taskRows.count == 1 ? "" : "s")\(completedFragment) · \(workLogCount) Work Log \(workLogNoun)",
         ]
         if let nextText {
             bodyLines.append(nextText)
@@ -232,8 +342,14 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         if let viaText {
             summaryParts.append(viaText)
         }
-        summaryParts.append(contentsOf: taskRows.map(\.transitionText))
+        summaryParts.append(contentsOf: taskRows.map(\.accessibilityLabel))
         summaryParts.append(contentsOf: taskRows.flatMap(\.workLogPreviews))
+        if let teachingHint {
+            summaryParts.append(teachingHint.text)
+        }
+        if let selectionSummary {
+            summaryParts.append(selectionSummary)
+        }
         if let notesText {
             summaryParts.append(notesText)
         }
@@ -248,35 +364,68 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         warnings = capture.warnings
     }
 
-    private static func taskRow(for task: PomodoroCloseTask, tag: String?) -> TaskRow {
+    private static func taskRow(
+        for task: PomodoroCloseTask,
+        link: PomodoroCloseTaskLink?,
+        tag: String?
+    ) -> TaskRow {
+        let outcome: TaskOutcome? = link.flatMap { link in
+            switch link.outcome {
+            case "in_progress": .inProgress
+            case "deferred": .deferred
+            case "complete": .complete
+            default: nil
+            }
+        }
+        let source: TaskSource? = link.flatMap { link in
+            switch link.source {
+            case "ledger": .ledger
+            case "listed": .listed
+            case "unlisted": .unlisted
+            default: nil
+            }
+        }
         let glyph: TaskGlyph
         let transition: String
         let previousMarker = CaptureTogglePresentation.marker(for: task.previousStatusSymbol)
         let currentMarker = CaptureTogglePresentation.marker(for: task.statusSymbol)
-        switch task.role {
-        case "worked", "mentioned":
+        // A complete row keeps the embedded glyph but tints it green in the
+        // card, and strikes its text because the ledger line will be struck.
+        // Its transition is the marker change when the status changed, else
+        // the unchanged `[x] closed`.
+        if outcome == .complete {
+            glyph = .embedded
             if task.statusChanged {
-                glyph = .transition
                 transition = "\(previousMarker) → \(currentMarker)"
             } else {
-                glyph = .transition
-                transition = currentMarker
+                transition = "[x] closed"
             }
-        case "deferred":
-            glyph = .deferred
-            transition = "\(previousMarker) deferred"
-        case "struck":
-            glyph = .struck
-            transition = "[x]"
-        case "embedded", "subtask":
-            glyph = .embedded
-            transition = "[x] closed"
-        case "unresolved":
-            glyph = .unresolved
-            transition = "[x]"
-        default:
-            glyph = .neutral
-            transition = "[x]"
+        } else {
+            switch task.role {
+            case "worked", "mentioned":
+                if task.statusChanged {
+                    glyph = .transition
+                    transition = "\(previousMarker) → \(currentMarker)"
+                } else {
+                    glyph = .transition
+                    transition = currentMarker
+                }
+            case "deferred":
+                glyph = .deferred
+                transition = "\(previousMarker) deferred"
+            case "struck":
+                glyph = .struck
+                transition = "[x]"
+            case "embedded", "subtask":
+                glyph = .embedded
+                transition = "[x] closed"
+            case "unresolved":
+                glyph = .unresolved
+                transition = "[x]"
+            default:
+                glyph = .neutral
+                transition = "[x]"
+            }
         }
         let locator: String
         if let relativeTarget = task.relativeTarget, !task.blockID.isEmpty {
@@ -284,11 +433,40 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         } else {
             locator = task.blockLink
         }
+        let taskText = task.text ?? task.blockLink
+        let badgeSymbolName: String?
+        let usesNumericBadgeFallback: Bool
+        if let index = task.index, link != nil {
+            if index > 50 {
+                badgeSymbolName = nil
+                usesNumericBadgeFallback = true
+            } else {
+                badgeSymbolName = "\(index).circle\(source == .listed ? ".fill" : "")"
+                usesNumericBadgeFallback = false
+            }
+        } else {
+            badgeSymbolName = nil
+            usesNumericBadgeFallback = false
+        }
+        let isDimmed = source == .unlisted
+        let accessibilityLabel: String
+        if let index = task.index, let outcome {
+            let fate: String
+            switch outcome {
+            case .inProgress: fate = "stays in progress"
+            case .deferred: fate = "deferred"
+            case .complete: fate = "completes"
+            }
+            let chosen = source == .listed ? ", chosen" : ""
+            accessibilityLabel = "Task \(index), \(taskText), \(fate)\(chosen)"
+        } else {
+            accessibilityLabel = transition
+        }
         return TaskRow(
             role: task.role,
             glyph: glyph,
             blockLink: task.blockLink,
-            taskText: task.text ?? task.blockLink,
+            taskText: taskText,
             transitionText: transition,
             locatorText: locator,
             workLogCount: task.workLog.count,
@@ -296,8 +474,75 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             warning: task.warning,
             carried: task.carried,
             tag: tag,
-            isStruck: task.role == "struck"
+            isStruck: task.role == "struck" || outcome == .complete,
+            index: link == nil ? nil : task.index,
+            outcome: outcome,
+            source: source,
+            badgeSymbolName: badgeSymbolName,
+            usesNumericBadgeFallback: usesNumericBadgeFallback,
+            isDimmed: isDimmed,
+            accessibilityLabel: accessibilityLabel
         )
+    }
+
+    /// The teaching hint tokens for a lineup of `numberedRows` rows. Example
+    /// tokens carry the editor span category whose color they share (`=x` is
+    /// Pomodoro-session pink, `<N>` digits are orange, `!<M>` digits are
+    /// green); prose carries `.neutral`.
+    static func hintTokens(numberedRows: Int) -> [HintToken] {
+        let close: [HintToken] = [HintToken(text: "=x", category: .pomodoroStart)]
+        if numberedRows >= 2 {
+            return close + [HintToken(text: "1,2", category: .pomodoroCloseInProgress)]
+                + [HintToken(text: " keeps only these in progress · ", category: .neutral)]
+                + close + [HintToken(text: "!2", category: .pomodoroCloseComplete)]
+                + [HintToken(text: " completes 2 · ", category: .neutral)]
+                + close + [HintToken(text: "0", category: .pomodoroCloseInProgress)]
+                + [HintToken(text: " defers all", category: .neutral)]
+        }
+        return close + [HintToken(text: "!1", category: .pomodoroCloseComplete)]
+            + [HintToken(text: " completes it · ", category: .neutral)]
+            + close + [HintToken(text: "0", category: .pomodoroCloseInProgress)]
+            + [HintToken(text: " defers it", category: .neutral)]
+    }
+
+    /// The selection summary from `task_links` in ascending order, for example
+    /// `"In progress 1, 3 · Complete 2 · Deferred 4"`. Empty groups are
+    /// omitted, except that `=x0` (an explicitly empty `<N>` list,
+    /// `inProgressEmpty`) shows `"In progress none"`. Nil when every group is
+    /// empty.
+    static func summaryText(links: [PomodoroCloseTaskLink], inProgressEmpty: Bool) -> String? {
+        func group(_ outcome: String) -> [Int] {
+            links.filter { $0.outcome == outcome }.map(\.index).sorted()
+        }
+        func joined(_ numbers: [Int]) -> String {
+            numbers.map(String.init).joined(separator: ", ")
+        }
+        var parts: [String] = []
+        let inProgress = group("in_progress")
+        let complete = group("complete")
+        let deferred = group("deferred")
+        if inProgress.isEmpty, complete.isEmpty, deferred.isEmpty {
+            return nil
+        }
+        if inProgress.isEmpty, inProgressEmpty {
+            // `=x0`: no task stays in progress.
+            parts.append("In progress none")
+        } else if !inProgress.isEmpty {
+            parts.append("In progress \(joined(inProgress))")
+        }
+        if !complete.isEmpty {
+            parts.append("Complete \(joined(complete))")
+        }
+        if !deferred.isEmpty {
+            parts.append("Deferred \(joined(deferred))")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// The pending summary row for a draft whose list dangles: `"Type a task
+    /// number after ,"` (or `"after !"`).
+    public static func pendingText(separator: String) -> String {
+        "Type a task number after \(separator)"
     }
 
     /// Work Log entries arrive dated (`*2026-09-28* — Designed …`); the card

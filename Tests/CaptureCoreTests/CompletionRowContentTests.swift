@@ -511,6 +511,14 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_adjust"), .pomodoroStart)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_shift"), .pomodoroStart)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_close"), .pomodoroStart)
+        XCTAssertEqual(
+            captureSemanticCategory(forSpanKind: "pomodoro_close_in_progress"),
+            .pomodoroCloseInProgress
+        )
+        XCTAssertEqual(
+            captureSemanticCategory(forSpanKind: "pomodoro_close_complete"),
+            .pomodoroCloseComplete
+        )
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "unrecognized_future_kind"), .neutral)
     }
 

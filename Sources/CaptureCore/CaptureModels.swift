@@ -269,23 +269,36 @@ public struct CaptureParseItem: Codable, Equatable {
     }
 }
 
-/// The typed `=x` token from `bob capture-parse`: `raw` preserves exactly what
-/// was typed (`"=x"` or `"=X"`). Present on whole-item closes and on link and
-/// body-bearing items carrying the close suffix.
+/// The typed `=x[<N>][!<M>]` token from `bob capture-parse`: `raw` preserves
+/// exactly what was typed (`"=x"`, `"=X1!2"`). `inProgress` is the sorted
+/// `in_progress` list, or nil when `<N>` was omitted (plain `=x` leaves
+/// unlisted links at their ledger outcome); `complete` is the sorted `!<M>`
+/// list, empty when no `!` list was typed. Present on whole-item closes and
+/// on link and body-bearing items carrying the close suffix. Older Bob
+/// binaries omit both lists; they decode as none so the card is exactly
+/// today's.
 public struct PomodoroCloseSpec: Codable, Equatable, Sendable {
     public let raw: String
+    public let inProgress: [Int]?
+    public let complete: [Int]
 
-    public init(raw: String) {
+    public init(raw: String, inProgress: [Int]? = nil, complete: [Int] = []) {
         self.raw = raw
+        self.inProgress = inProgress
+        self.complete = complete
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         raw = try container.decodeIfPresent(String.self, forKey: .raw) ?? ""
+        inProgress = try container.decodeIfPresent([Int].self, forKey: .inProgress)
+        complete = try container.decodeIfPresent([Int].self, forKey: .complete) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
         case raw
+        case inProgress = "in_progress"
+        case complete
     }
 }
 
@@ -750,16 +763,77 @@ public struct PomodoroCloseTiming: Codable, Equatable, Sendable {
     }
 }
 
+/// One numbered Task Link in Bob's `pomodoro_close.task_links` lineup: the
+/// 1-based `index` shown as the row badge, the pre-image `ledgerLine`, the
+/// link's pre-selection `marker` (`plain`, `deferred`, `embedded`), the
+/// `outcome` the selection gives it (`in_progress`, `deferred`, `complete`),
+/// and the `source` saying why (`ledger`, `listed`, `unlisted`). Every field
+/// decodes tolerantly so older-bob objects without `task_links` still decode;
+/// unknown marker/outcome/source strings are preserved verbatim and degrade
+/// to neutral presentation.
+public struct PomodoroCloseTaskLink: Codable, Equatable, Sendable {
+    public let index: Int
+    public let ledgerLine: Int
+    public let blockLink: String
+    public let blockID: String
+    public let marker: String
+    public let outcome: String
+    public let source: String
+
+    public init(
+        index: Int,
+        ledgerLine: Int = 0,
+        blockLink: String = "",
+        blockID: String = "",
+        marker: String = "plain",
+        outcome: String = "deferred",
+        source: String = "ledger"
+    ) {
+        self.index = index
+        self.ledgerLine = ledgerLine
+        self.blockLink = blockLink
+        self.blockID = blockID
+        self.marker = marker
+        self.outcome = outcome
+        self.source = source
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        index = try container.decodeIfPresent(Int.self, forKey: .index) ?? 0
+        ledgerLine = try container.decodeIfPresent(Int.self, forKey: .ledgerLine) ?? 0
+        blockLink = try container.decodeIfPresent(String.self, forKey: .blockLink) ?? ""
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID) ?? ""
+        marker = try container.decodeIfPresent(String.self, forKey: .marker) ?? "plain"
+        outcome = try container.decodeIfPresent(String.self, forKey: .outcome) ?? "deferred"
+        source = try container.decodeIfPresent(String.self, forKey: .source) ?? "ledger"
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case index
+        case ledgerLine = "ledger_line"
+        case blockLink = "block_link"
+        case blockID = "block_id"
+        case marker
+        case outcome
+        case source
+    }
+}
+
 /// A task or block-link effect Bob resolved while closing a Pomodoro. Every
 /// field decodes tolerantly: booleans default to false, arrays to empty, and
 /// `ledgerLine` stays decodable when absent, so older-bob and partial objects
 /// still yield a (neutral, unresolved) row instead of failing the whole
-/// capture. Unknown `role` strings are preserved here and degrade to a neutral
-/// row in `CapturePomodoroClosePresentation`.
+/// capture. `index` is the number of the numbered line that produced the row,
+/// or nil for unnumbered rows (struck, mentioned, subtask, Work-Log-only);
+/// older Bob omits it and it decodes as nil. Unknown `role` strings are
+/// preserved here and degrade to a neutral row in
+/// `CapturePomodoroClosePresentation`.
 public struct PomodoroCloseTask: Codable, Equatable, Sendable {
     public let role: String
     public let blockLink: String
     public let ledgerLine: Int
+    public let index: Int?
     public let resolved: Bool
     public let relativeTarget: String?
     public let blockID: String
@@ -778,6 +852,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
         role: String,
         blockLink: String,
         ledgerLine: Int = 0,
+        index: Int? = nil,
         resolved: Bool = false,
         relativeTarget: String? = nil,
         blockID: String = "",
@@ -795,6 +870,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
         self.role = role
         self.blockLink = blockLink
         self.ledgerLine = ledgerLine
+        self.index = index
         self.resolved = resolved
         self.relativeTarget = relativeTarget
         self.blockID = blockID
@@ -815,6 +891,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
         role = try container.decodeIfPresent(String.self, forKey: .role) ?? "unknown"
         blockLink = try container.decodeIfPresent(String.self, forKey: .blockLink) ?? ""
         ledgerLine = try container.decodeIfPresent(Int.self, forKey: .ledgerLine) ?? 0
+        index = try container.decodeIfPresent(Int.self, forKey: .index)
         resolved = try container.decodeIfPresent(Bool.self, forKey: .resolved) ?? false
         relativeTarget = try container.decodeIfPresent(String.self, forKey: .relativeTarget)
         blockID = try container.decodeIfPresent(String.self, forKey: .blockID) ?? ""
@@ -843,6 +920,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
         case role
         case blockLink = "block_link"
         case ledgerLine = "ledger_line"
+        case index
         case resolved
         case relativeTarget = "relative_target"
         case blockID = "block_id"
@@ -913,8 +991,13 @@ public struct PomodoroCloseNext: Codable, Equatable, Sendable {
 /// to capture schema v1 and absent on older Bob binaries. Every field decodes
 /// tolerantly (booleans default to false, arrays to empty, lines to zero) so a
 /// partial object still previews instead of failing the whole capture.
+/// `inProgress`/`complete` echo the `=x[<N>][!<M>]` selection (nil/empty when
+/// none was typed); `taskLinks` is the numbered lineup, possibly empty.
+/// Older Bob omits all three and the card is exactly today's.
 public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
     public let raw: String
+    public let inProgress: [Int]?
+    public let complete: [Int]
     public let pomodoroLine: Int
     public let pomodoroName: String?
     public let dayRelative: String?
@@ -925,12 +1008,15 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
     public let remainingMinutes: Int
     public let decrementedMinutes: Int
     public let tasks: [PomodoroCloseTask]
+    public let taskLinks: [PomodoroCloseTaskLink]
     public let carried: [PomodoroCloseCarriedItem]
     public let notes: [String]
     public let nextPomodoro: PomodoroCloseNext?
 
     public init(
         raw: String,
+        inProgress: [Int]? = nil,
+        complete: [Int] = [],
         pomodoroLine: Int = 0,
         pomodoroName: String? = nil,
         dayRelative: String? = nil,
@@ -951,11 +1037,14 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         remainingMinutes: Int = 0,
         decrementedMinutes: Int = 0,
         tasks: [PomodoroCloseTask] = [],
+        taskLinks: [PomodoroCloseTaskLink] = [],
         carried: [PomodoroCloseCarriedItem] = [],
         notes: [String] = [],
         nextPomodoro: PomodoroCloseNext? = nil
     ) {
         self.raw = raw
+        self.inProgress = inProgress
+        self.complete = complete
         self.pomodoroLine = pomodoroLine
         self.pomodoroName = pomodoroName
         self.dayRelative = dayRelative
@@ -966,6 +1055,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         self.remainingMinutes = remainingMinutes
         self.decrementedMinutes = decrementedMinutes
         self.tasks = tasks
+        self.taskLinks = taskLinks
         self.carried = carried
         self.notes = notes
         self.nextPomodoro = nextPomodoro
@@ -974,6 +1064,8 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         raw = try container.decodeIfPresent(String.self, forKey: .raw) ?? ""
+        inProgress = try container.decodeIfPresent([Int].self, forKey: .inProgress)
+        complete = try container.decodeIfPresent([Int].self, forKey: .complete) ?? []
         pomodoroLine = try container.decodeIfPresent(Int.self, forKey: .pomodoroLine) ?? 0
         pomodoroName = try container.decodeIfPresent(String.self, forKey: .pomodoroName)
         dayRelative = try container.decodeIfPresent(String.self, forKey: .dayRelative)
@@ -996,6 +1088,10 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
             forKey: .decrementedMinutes
         ) ?? 0
         tasks = try container.decodeIfPresent([PomodoroCloseTask].self, forKey: .tasks) ?? []
+        taskLinks = try container.decodeIfPresent(
+            [PomodoroCloseTaskLink].self,
+            forKey: .taskLinks
+        ) ?? []
         carried = try container.decodeIfPresent(
             [PomodoroCloseCarriedItem].self,
             forKey: .carried
@@ -1009,6 +1105,8 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case raw
+        case inProgress = "in_progress"
+        case complete
         case pomodoroLine = "pomodoro_line"
         case pomodoroName = "pomodoro_name"
         case dayRelative = "day_relative"
@@ -1019,6 +1117,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         case remainingMinutes = "remaining_minutes"
         case decrementedMinutes = "decremented_minutes"
         case tasks
+        case taskLinks = "task_links"
         case carried
         case notes
         case nextPomodoro = "next_pomodoro"

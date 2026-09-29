@@ -64,6 +64,11 @@ final class CapturePanelModel: ObservableObject {
     )
     @Published var isSubmitting = false
     @Published var isPreviewing = false
+    /// The pending-list notice (`"Type a task number after ,"`) while a close
+    /// draft dangles on `,`/`!`. Non-nil exactly while the visible close card
+    /// previews the trimmed draft: the card renders dimmed and Close is
+    /// disabled. Nil for every other draft, including a valid close.
+    @Published var closePendingText: String?
     @Published var errorMessage: String?
     @Published var lastSuccess: CaptureCommandSuccess?
     @Published var previewResult: CaptureCommandSuccess?
@@ -528,8 +533,21 @@ final class CapturePanelModel: ObservableObject {
         return true
     }
 
+    /// True while a close draft dangles on `,`/`!`: the visible card previews
+    /// the trimmed draft, so Return must not submit it.
+    var isClosePending: Bool {
+        closePendingText != nil
+    }
+
     func submit(openAfterCapture: Bool) {
         guard !inlinePromptVisible, !isSubmitting, !isPreviewing, hasDraft else {
+            return
+        }
+        // A pending card previews the trimmed draft, never the real one: a
+        // stale pending card can never be submitted. The footer disables
+        // Close too; this guard covers Return arriving between drafts.
+        if let pending = closePendingText {
+            statusText = "\(pending) — Close is disabled"
             return
         }
         guard let processClient else {
@@ -1953,8 +1971,70 @@ final class CapturePanelModel: ObservableObject {
         previewResult = nil
         previewResults = []
         previewGlobalDestination = nil
+        closePendingText = nil
         errorMessage = nil
         statusText = need.statusText
+    }
+
+    /// The pending close-list trim for a draft that dangles on `,`/`!`: for
+    /// every item whose `needs` contains `pomodoro_close_task`, the one
+    /// `interactive_placeholder` span Bob reported inside that item's range
+    /// (the dangling separator) is removed, so the live preview runs on the
+    /// trimmed draft — exactly what has been typed so far. Returns the trimmed
+    /// draft plus the dangling separator (`,` or `!`) for the pending notice.
+    /// Single-item drafts carry no `items[]`; then the top-level `needs` and
+    /// spans apply. Nil when nothing dangles, when the picker needs win
+    /// (checked by the caller), or when the placeholder shape is unexpected —
+    /// then the draft previews exactly as today. No Swift-side ledger logic:
+    /// the placeholder range comes straight from Bob.
+    static func closePendingTrim(
+        in parse: CaptureParseResponse,
+        draft: String
+    ) -> (trimmed: String, separator: String)? {
+        let scopes: [(range: CaptureRange?, needsCloseTask: Bool)] =
+            if parse.items.isEmpty {
+                [(nil, parse.needs.contains("pomodoro_close_task"))]
+            } else {
+                parse.items.map { ($0.range, $0.needs.contains("pomodoro_close_task")) }
+            }
+        guard scopes.contains(where: { $0.needsCloseTask }) else {
+            return nil
+        }
+        var removals: [Range<String.Index>] = []
+        for scope in scopes where scope.needsCloseTask {
+            let placeholders = parse.spans.filter { span in
+                guard span.kind == "interactive_placeholder" else {
+                    return false
+                }
+                guard let scopeRange = scope.range else {
+                    return true
+                }
+                return scopeRange.start <= span.start && span.end <= scopeRange.end
+            }
+            guard placeholders.count == 1,
+                  let span = placeholders.first,
+                  let range = stringRange(in: draft, start: span.start, end: span.end)
+            else {
+                return nil
+            }
+            removals.append(range)
+        }
+        guard !removals.isEmpty else {
+            return nil
+        }
+        let ordered = removals.sorted { $0.lowerBound < $1.lowerBound }
+        guard let first = ordered.first else {
+            return nil
+        }
+        let separator = String(draft[first])
+        guard separator == "," || separator == "!" else {
+            return nil
+        }
+        var trimmed = draft
+        for range in ordered.reversed() {
+            trimmed.removeSubrange(range)
+        }
+        return (trimmed, separator)
     }
 
     private func closePickerForAccept() {
@@ -2704,6 +2784,7 @@ final class CapturePanelModel: ObservableObject {
         previewResult = nil
         previewResults = []
         previewGlobalDestination = nil
+        closePendingText = nil
 
         analysisTask = Task { [weak self, processClient] in
             do {
@@ -2715,12 +2796,19 @@ final class CapturePanelModel: ObservableObject {
                 }
                 try Task.checkCancellation()
 
+                let pickerNeeded = Self.pickerNeed(in: parse)
+                // A dangling `,`/`!` is an editing state, not a mistake: the
+                // picker needs keep precedence, otherwise the live preview
+                // runs on the trimmed draft instead of the doomed real one.
+                let closePending = pickerNeeded == nil
+                    ? Self.closePendingTrim(in: parse, draft: draft) : nil
+
                 await MainActor.run {
                     guard self?.isCurrentAnalysis(generation) == true else {
                         return
                     }
                     self?.applyParse(parse, draft: draft)
-                    if let need = Self.pickerNeed(in: parse) {
+                    if let need = pickerNeeded {
                         // An incomplete `^` is a state, not an error: skip the
                         // doomed live dry run and stay calm instead of flashing
                         // red "incomplete Pomodoro link" errors while picking.
@@ -2732,9 +2820,11 @@ final class CapturePanelModel: ObservableObject {
                     return
                 }
 
-                if Self.pickerNeed(in: parse) == nil {
+                if pickerNeeded == nil {
                     await self?.startLivePreview(
                         draft: draft,
+                        previewDraft: closePending?.trimmed ?? draft,
+                        pendingSeparator: closePending?.separator,
                         generation: generation,
                         processClient: processClient
                     )
@@ -2866,6 +2956,8 @@ final class CapturePanelModel: ObservableObject {
 
     private func startLivePreview(
         draft: String,
+        previewDraft: String,
+        pendingSeparator: String?,
         generation: UInt64,
         processClient: BobProcessClient
     ) {
@@ -2874,7 +2966,7 @@ final class CapturePanelModel: ObservableObject {
                 let seed = await self?.activePriorityRollSeed() ?? UUID().uuidString
                 let preview = try await CaptureSignpost.measure("preview") {
                     try await processClient.captureLivePreview(
-                        draft,
+                        previewDraft,
                         priorityRollSeed: seed
                     )
                 }
@@ -2899,6 +2991,19 @@ final class CapturePanelModel: ObservableObject {
                         } else if let start = Self.soleSessionStartPresentation(for: captures) {
                             self?.statusText = start.statusText
                         }
+                        if let separator = pendingSeparator {
+                            // The card previews the trimmed draft: mark it
+                            // pending, dim it in the view, and disable Close
+                            // so Return cannot submit the real draft.
+                            let pending = CapturePomodoroClosePresentation.pendingText(
+                                separator: separator
+                            )
+                            self?.closePendingText = pending
+                            self?.statusText = "\(pending) — Close is disabled"
+                        } else {
+                            // A valid draft restores the normal card.
+                            self?.closePendingText = nil
+                        }
                     case .failure(let failure):
                         self?.previewState = .failed(failure.error)
                         // Like `failPreview`: a failed live dry run must never
@@ -2906,6 +3011,7 @@ final class CapturePanelModel: ObservableObject {
                         self?.previewResult = nil
                         self?.previewResults = []
                         self?.previewGlobalDestination = nil
+                        self?.closePendingText = nil
                         self?.errorMessage = failure.error
                         self?.statusText = "Preview failed"
                     }

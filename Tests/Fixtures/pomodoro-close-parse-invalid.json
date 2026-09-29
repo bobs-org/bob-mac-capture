@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"=x1,1","body":"=x1,1","mode":"pomodoro_close","route":null,"section":null,"block_id":null,"needs":[],"spans":[{"start":0,"end":2,"kind":"pomodoro_close"}],"diagnostics":[{"severity":"error","code":"invalid_pomodoro_close","message":"task 1 is listed twice in `=x1,1`","range":[4,5]}]}

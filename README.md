@@ -93,10 +93,18 @@ mutation.
   `pomodoro_close` has no close preview or Close footer; upgrade Bob before using
   `=x`. A close summary whose task, carried, notes, or next fields are absent
   still previews: booleans read as false, arrays as empty, and missing lines as
-  zero, and unknown task roles degrade to a neutral row. Whole-item `=x`
+  zero, and unknown task roles degrade to a neutral row. A close summary whose
+  `in_progress`, `complete`, `task_links`, or `index` fields are absent still
+  previews as today's unnumbered card: the spec decodes as no selection, rows
+  decode as unnumbered, and no hint, summary, or badge renders. Whole-item `=x`
   reports `pomodoro_close` mode with a `pomodoro_close` span and a
   `{"raw": "=x"}` parse spec; link items keep `pomodoro_link`/`pomodoro_task`
-  mode with a `pomodoro_close` span kind over the suffix. Older Bob builds may implement the
+  mode with a `pomodoro_close` span kind over the suffix. A selection-bearing
+  close adds `pomodoro_close_in_progress` and `pomodoro_close_complete` spans,
+  an `in_progress`/`complete` parse spec, and `task_links` plus per-row
+  `index` in the capture summary; a dangling `,`/`!` reports mode
+  `incomplete` with a `pomodoro_close_task` need and an
+  `interactive_placeholder` span instead of an error. Older Bob builds may implement the
   previous task-toggle spellings. The app labels
   actions and notifications from Bob's returned behavior metadata, so a response
   that omits `toggle_behavior` still shows the two-way Set Next/Open footer,
@@ -173,6 +181,8 @@ or expired certificate can require reauthorizing those system permissions.
   partial grammar view. Every span kind — capture markers and the five Obsidian wikilink
   kinds (`wikilink_delimiter`, `wikilink_target`, `wikilink_heading`, `wikilink_block_id`,
   `wikilink_alias`) — resolves through the single palette in `CaptureEditorPalette`.
+  The close-list spans `pomodoro_close_in_progress` and `pomodoro_close_complete`
+  render orange and green, sharing the badge colors of the rows they select.
   Global destination spans (`global_route`, `global_sub_bullet_route`, and
   `global_sub_bullet_block_id`) reuse the existing destination and block-ID colors, so
   the editor and the completion list never disagree about what color represents what
@@ -419,7 +429,8 @@ or expired certificate can require reauthorizing those system permissions.
   `Moved to NAME`, or `Already in NAME`, batch lines use the link transition text
   under a `Link` kind, and Open Note/Open Notes includes the daily note whenever
   the link inserted, moved, or started a session. A Pomodoro close notifies as
-  `Closed NAME` with a session-and-timing line, a tasks-and-Work-Log line, and
+  `Closed NAME` with a session-and-timing line, a tasks-and-Work-Log line (with a
+  completed count when nonzero), and
   the next-session line; link and new-task closes use the same title and body,
   batch lines append ` (closed NAME)` under a `Close` kind, and Open Note
   targets the day file, which a close always writes.
@@ -443,10 +454,24 @@ or expired certificate can require reauthorizing those system permissions.
   with strikethrough on struck rows, trailing locators, and dated Work Log
   previews, then a notes row (`1 note stays`), a next-session footer row, and an
   empty state (`No Task Links — the session simply closes`) when there are no
-  task rows. The footer's primary action becomes **Close**, the live-preview,
-  preview, and submit status read `Would close …` / `Closed …` with started and
-  Work Log counts, and a failed dry run clears the card so no stale preview sits
-  beside the error. A whole-item `=`/`=<X>` start instead shows its own card
+  task rows. Numbered rows start with a fixed-width badge — a filled
+  `N.circle.fill` when the row is listed, an open `N.circle` otherwise (monospaced
+  digits in a capsule past 50), tinted orange for in progress, green for
+  complete, and secondary for deferred, with unlisted rows dimmed so chosen rows
+  stand out; unnumbered rows keep a clear spacer so text stays aligned, and with
+  no numbered rows the card looks exactly like today's. Completed rows keep the
+  embedded glyph tinted green with struck text and a `[*] → [x]` transition when
+  the status changed. One caption row under the task rows teaches the syntax
+  before a selection is typed (`=x1,2 keeps only these in progress · …`, tinted
+  like the editor spans) and shows the outcome summary after (`In progress 1, 3
+  · Complete 2 · Deferred 4`, or `In progress none` for `=x0`); numbered rows
+  never hide under `+N more`. The footer's primary action becomes **Close**,
+  the live-preview, preview, and submit status read `Would close …` / `Closed …`
+  with started, completed (only when nonzero), and Work Log counts, and a failed
+  dry run clears the card so no stale preview sits beside the error. While a
+  list dangles on `,`/`!`, the card previews the trimmed draft dimmed with a
+  `Type a task number after ,` row, **Close** is disabled, and Return cannot
+  submit; a valid draft restores the normal card. A whole-item `=`/`=<X>` start instead shows its own card
   whenever `kind` is `pomodoro_start`: a `play.circle.fill` header with the
   `Start NAME` title and the monospaced session range, the day-file destination,
   up to six queued-task rows with status glyphs (`circle` Ready,
@@ -662,11 +687,17 @@ and the notification summarizes the same returned start. Type `=x`, a blank
 line, then `=` to close the running session and start the next one in a single
 draft. A whole-item `=x` closes
 the running Pomodoro; `@route:block-id=x` links an existing task first, and
-`<text> @route:block-id=x` creates a task inside that session before closing it. The
+`<text> @route:block-id=x` creates a task inside that session before closing it.
+Appending task numbers chooses each Task Link's outcome: `=x2` keeps only 2 in
+progress, `=x!2` completes 2, `=x1!2` does both, and `=x0` defers all (single-quote
+the argument in zsh, since `=` and `!` expand). The same suffix works on link
+forms. The
 dedicated close preview shows Bob's session timing, task transitions, Work Log entries,
 and next session. The footer says **Close**, and the notification summarizes the same
 returned close. Missing or ambiguous running sessions surface Bob's error in the
-preview. A marker-only `@route+block-id` ensures that existing task is Next and
+preview. A list left dangling on `,`/`!` is an editing state, not an error: the
+card stays live on what is typed so far with **Close** disabled until a task
+number follows. A marker-only `@route+block-id` ensures that existing task is Next and
 relocates its Task Link, `@route+block-id#pomodoro` does the
 same onto a named Pomodoro (creating the named future Pomodoro if needed),
 `@route+block-id!` is the explicit two-way add/clear toggle, and `@route+block-id` with

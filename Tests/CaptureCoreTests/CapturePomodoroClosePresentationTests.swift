@@ -387,6 +387,10 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
             "pomodoro-close-new-task.json",
             "pomodoro-close-moved.json",
             "pomodoro-close-batch-adjust.json",
+            "pomodoro-close-select-worked.json",
+            "pomodoro-close-select-complete.json",
+            "pomodoro-close-select-none.json",
+            "pomodoro-close-select-one.json",
         ] {
             let success = try decodeFixture(name)
             XCTAssertNotNil(
@@ -443,6 +447,339 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertNil(summary.nextPomodoro)
         let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
         XCTAssertEqual(presentation.title, "Close session")
+    }
+
+    func testSelectWorkedCloseBadgesDimmingSummaryAndHint() throws {
+        let success = try decodeFixture("pomodoro-close-select-worked.json")
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+
+        XCTAssertTrue(presentation.hasSelection)
+        XCTAssertNil(presentation.teachingHint)
+        XCTAssertEqual(presentation.selectionSummary, "In progress 2 · Deferred 1")
+        XCTAssertEqual(presentation.completedCount, 0)
+
+        let first = presentation.taskRows[0]
+        XCTAssertEqual(first.index, 1)
+        XCTAssertEqual(first.outcome, .deferred)
+        XCTAssertEqual(first.source, .unlisted)
+        XCTAssertEqual(first.badgeSymbolName, "1.circle")
+        XCTAssertFalse(first.usesNumericBadgeFallback)
+        XCTAssertTrue(first.isDimmed)
+
+        let second = presentation.taskRows[1]
+        XCTAssertEqual(second.index, 2)
+        XCTAssertEqual(second.outcome, .inProgress)
+        XCTAssertEqual(second.source, .listed)
+        XCTAssertEqual(second.badgeSymbolName, "2.circle.fill")
+        XCTAssertFalse(second.isDimmed)
+
+        let struck = presentation.taskRows[2]
+        XCTAssertNil(struck.index)
+        XCTAssertNil(struck.outcome)
+        XCTAssertNil(struck.badgeSymbolName)
+        XCTAssertFalse(struck.isDimmed)
+
+        // No completions: the status keeps today's shape.
+        XCTAssertEqual(
+            presentation.statusText,
+            "Closed CAPTURE · 1 started · 3 Work Log entries"
+        )
+        XCTAssertEqual(
+            presentation.taskRows[0].accessibilityLabel,
+            "Task 1, Add support for `=x` syntax!, deferred"
+        )
+        XCTAssertEqual(
+            presentation.taskRows[1].accessibilityLabel,
+            "Task 2, Add capture support for web URLs!, stays in progress, chosen"
+        )
+        XCTAssertTrue(presentation.accessibilitySummary.contains("In progress 2 · Deferred 1"))
+    }
+
+    func testSelectCompleteCloseStrikesRowAndCountsCompleted() throws {
+        let success = try decodeFixture("pomodoro-close-select-complete.json")
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+
+        XCTAssertTrue(presentation.hasSelection)
+        XCTAssertEqual(presentation.selectionSummary, "In progress 1 · Complete 2")
+        XCTAssertEqual(presentation.completedCount, 1)
+
+        let complete = presentation.taskRows[1]
+        XCTAssertEqual(complete.outcome, .complete)
+        XCTAssertEqual(complete.source, .listed)
+        XCTAssertEqual(complete.glyph, .embedded)
+        XCTAssertEqual(complete.transitionText, "[*] → [x]")
+        XCTAssertTrue(complete.isStruck)
+        XCTAssertFalse(complete.isDimmed)
+        XCTAssertEqual(
+            complete.accessibilityLabel,
+            "Task 2, Add capture support for web URLs!, completes, chosen"
+        )
+
+        XCTAssertEqual(
+            presentation.statusText,
+            "Closed CAPTURE · 2 started · 1 completed · 3 Work Log entries"
+        )
+        XCTAssertTrue(
+            presentation.notificationBody.contains("3 tasks · 1 completed · 3 Work Log entries")
+        )
+    }
+
+    func testSelectNoneCloseShowsInProgressNone() throws {
+        let success = try decodeFixture("pomodoro-close-select-none.json")
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+
+        XCTAssertTrue(presentation.hasSelection)
+        XCTAssertEqual(presentation.selectionSummary, "In progress none · Deferred 1, 2")
+        XCTAssertTrue(presentation.taskRows[0].isDimmed)
+        XCTAssertTrue(presentation.taskRows[1].isDimmed)
+    }
+
+    func testPlainCloseWithLineupShowsTeachingHint() throws {
+        let success = try decodeFixture("pomodoro-close-worked.json")
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+
+        XCTAssertFalse(presentation.hasSelection)
+        XCTAssertNil(presentation.selectionSummary)
+        let hint = try XCTUnwrap(presentation.teachingHint)
+        XCTAssertEqual(
+            hint.text,
+            "=x1,2 keeps only these in progress · =x!2 completes 2 · =x0 defers all"
+        )
+        XCTAssertEqual(hint.tokens.first?.category, .pomodoroStart)
+        XCTAssertTrue(
+            hint.tokens.contains { $0.text == "1,2" && $0.category == .pomodoroCloseInProgress }
+        )
+        XCTAssertTrue(
+            hint.tokens.contains { $0.text == "!2" && $0.category == .pomodoroCloseComplete }
+        )
+        // Plain `=x`: every row keeps its ledger outcome, nothing dims.
+        XCTAssertTrue(presentation.taskRows.allSatisfy { !$0.isDimmed })
+        XCTAssertEqual(presentation.taskRows[0].badgeSymbolName, "1.circle")
+        XCTAssertTrue(presentation.accessibilitySummary.contains(hint.text))
+    }
+
+    func testSingleRowHintUsesSingularWording() throws {
+        let tokens = CapturePomodoroClosePresentation.hintTokens(numberedRows: 1)
+        XCTAssertEqual(
+            tokens.map(\.text).joined(),
+            "=x!1 completes it · =x0 defers it"
+        )
+    }
+
+    func testNumberedRowsNeverOverflow() throws {
+        let numbered = (1...2).map { index in
+            PomodoroCloseTask(
+                role: "worked",
+                blockLink: "[[bob#^task-\(index)]]",
+                ledgerLine: 5 + index,
+                index: index,
+                resolved: true,
+                relativeTarget: "bob.md",
+                blockID: "task-\(index)",
+                text: "Task \(index)",
+                previousStatusSymbol: "*",
+                statusSymbol: "/",
+                statusChanged: true
+            )
+        }
+        let unnumbered = (0..<8).map { index in
+            PomodoroCloseTask(
+                role: "struck",
+                blockLink: "[[sase#^old-\(index)]]",
+                ledgerLine: 20 + index,
+                resolved: true,
+                relativeTarget: "sase.md",
+                blockID: "old-\(index)",
+                text: "Old \(index)",
+                statusSymbol: "x"
+            )
+        }
+        let links = (1...2).map { index in
+            PomodoroCloseTaskLink(
+                index: index,
+                ledgerLine: 5 + index,
+                blockLink: "[[bob#^task-\(index)]]",
+                blockID: "task-\(index)",
+                marker: "plain",
+                outcome: "in_progress",
+                source: "listed"
+            )
+        }
+        let summary = PomodoroCloseSummary(
+            raw: "=x1,2",
+            inProgress: [1, 2],
+            pomodoroLine: 5,
+            pomodoroName: "CAPTURE",
+            tasks: numbered + unnumbered,
+            taskLinks: links
+        )
+        let presentation = try XCTUnwrap(
+            CapturePomodoroClosePresentation(capture: closeCapture(summary: summary))
+        )
+
+        // The cap (6) hides only unnumbered rows: both numbered rows render.
+        XCTAssertEqual(presentation.taskRows.count, 10)
+        XCTAssertEqual(presentation.visibleTaskRows.count, 6)
+        XCTAssertEqual(presentation.overflowTaskCount, 4)
+        XCTAssertTrue(presentation.visibleTaskRows.allSatisfy { $0.index != nil || $0.role == "struck" })
+        XCTAssertEqual(
+            presentation.visibleTaskRows.compactMap(\.index).sorted(),
+            [1, 2]
+        )
+    }
+
+    func testBadgeFallsBackAboveFifty() throws {
+        let summary = PomodoroCloseSummary(
+            raw: "=x51",
+            inProgress: [51],
+            pomodoroLine: 5,
+            pomodoroName: "CAPTURE",
+            tasks: [
+                PomodoroCloseTask(
+                    role: "worked",
+                    blockLink: "[[bob#^big]]",
+                    ledgerLine: 6,
+                    index: 51,
+                    resolved: true,
+                    relativeTarget: "bob.md",
+                    blockID: "big",
+                    text: "Big task",
+                    previousStatusSymbol: "*",
+                    statusSymbol: "/",
+                    statusChanged: true
+                )
+            ],
+            taskLinks: [
+                PomodoroCloseTaskLink(
+                    index: 51,
+                    ledgerLine: 6,
+                    blockLink: "[[bob#^big]]",
+                    blockID: "big",
+                    marker: "plain",
+                    outcome: "in_progress",
+                    source: "listed"
+                )
+            ]
+        )
+        let presentation = try XCTUnwrap(
+            CapturePomodoroClosePresentation(capture: closeCapture(summary: summary))
+        )
+        let row = try XCTUnwrap(presentation.taskRows.first)
+        XCTAssertNil(row.badgeSymbolName)
+        XCTAssertTrue(row.usesNumericBadgeFallback)
+    }
+
+    func testOlderBobWithoutSelectionFieldsKeepsTodayCard() throws {
+        let success = try decodeSuccess(
+            #"""
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": false,
+              "route": null,
+              "route_label": "",
+              "relative_target": "2026/20260928.md",
+              "target": "/tmp/bob/2026/20260928.md",
+              "text": "=x",
+              "task_line": "- [x] entry",
+              "kind": "pomodoro_close",
+              "created": "2026-09-28",
+              "scheduled": null,
+              "placement": "closed",
+              "pomodoro_close": {
+                "raw": "=x",
+                "pomodoro_line": 5,
+                "pomodoro_name": "CAPTURE",
+                "tasks": [
+                  {
+                    "role": "worked",
+                    "block_link": "[[bob#^capture-stop]]",
+                    "ledger_line": 6,
+                    "resolved": true,
+                    "relative_target": "bob.md",
+                    "block_id": "capture-stop",
+                    "text": "Add support for `=x` syntax!",
+                    "previous_status_symbol": "*",
+                    "status_symbol": "/",
+                    "status_changed": true,
+                    "carried": true,
+                    "work_log": [],
+                    "work_log_created": false
+                  }
+                ],
+                "carried": [],
+                "notes": []
+              }
+            }
+            """#
+        )
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+        XCTAssertFalse(presentation.hasSelection)
+        XCTAssertNil(presentation.teachingHint)
+        XCTAssertNil(presentation.selectionSummary)
+        XCTAssertEqual(presentation.completedCount, 0)
+        let row = try XCTUnwrap(presentation.taskRows.first)
+        XCTAssertNil(row.index)
+        XCTAssertNil(row.outcome)
+        XCTAssertNil(row.badgeSymbolName)
+        XCTAssertFalse(row.isDimmed)
+        XCTAssertEqual(row.transitionText, "[*] → [/]")
+        XCTAssertEqual(
+            presentation.statusText,
+            "Closed CAPTURE · 1 started · 0 Work Log entries"
+        )
+    }
+
+    func testParseSelectSpecDecodesLists() throws {
+        let response = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-select.json").utf8)
+        )
+        XCTAssertEqual(response.mode, "pomodoro_close")
+        XCTAssertEqual(response.pomodoroClose?.raw, "=x1,3!2")
+        XCTAssertEqual(response.pomodoroClose?.inProgress, [1, 3])
+        XCTAssertEqual(response.pomodoroClose?.complete, [2])
+        XCTAssertEqual(
+            response.spans.map(\.kind),
+            ["pomodoro_close", "pomodoro_close_in_progress", "pomodoro_close_complete"]
+        )
+    }
+
+    func testParseIncompleteNeedsCloseTaskWithPlaceholder() throws {
+        let response = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-incomplete.json").utf8)
+        )
+        XCTAssertEqual(response.mode, "incomplete")
+        XCTAssertEqual(response.needs, ["pomodoro_close_task"])
+        XCTAssertEqual(response.pomodoroClose?.inProgress, [1])
+        XCTAssertEqual(response.pomodoroClose?.complete, [])
+        XCTAssertEqual(
+            response.spans.map(\.kind),
+            ["pomodoro_close", "pomodoro_close_in_progress", "interactive_placeholder"]
+        )
+    }
+
+    func testParseInvalidCloseReportsDiagnostic() throws {
+        let response = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-invalid.json").utf8)
+        )
+        XCTAssertNil(response.pomodoroClose)
+        let diagnostic = try XCTUnwrap(response.diagnostics.first)
+        XCTAssertEqual(diagnostic.code, "invalid_pomodoro_close")
+        XCTAssertTrue(diagnostic.message.contains("listed twice"))
+    }
+
+    func testPendingTextNamesSeparator() throws {
+        XCTAssertEqual(
+            CapturePomodoroClosePresentation.pendingText(separator: ","),
+            "Type a task number after ,"
+        )
+        XCTAssertEqual(
+            CapturePomodoroClosePresentation.pendingText(separator: "!"),
+            "Type a task number after !"
+        )
     }
 
     func testOlderBobCaptureWithoutCloseSummaryRemainsCompatible() throws {

@@ -18,6 +18,8 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case interactivePlaceholder
     case explicitToggle
     case pomodoroStart
+    case pomodoroCloseInProgress
+    case pomodoroCloseComplete
     case neutral
 }
 
@@ -71,6 +73,14 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         // session, so they share the Pomodoro-session highlight with the start
         // and adjust spans.
         return .pomodoroStart
+    case "pomodoro_close_in_progress":
+        // The `<N>` digits select the rows that stay in progress, so they
+        // share the badge color of an in-progress outcome.
+        return .pomodoroCloseInProgress
+    case "pomodoro_close_complete":
+        // The `!<M>` digits select the rows that complete, so they share the
+        // badge color of a complete outcome.
+        return .pomodoroCloseComplete
     default:
         return .neutral
     }
