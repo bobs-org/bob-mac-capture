@@ -308,6 +308,42 @@ or expired certificate can require reauthorizing those system permissions.
   announces the open ("Active tasks, N tasks"), match-count changes, and each
   keyboard move; rows expose the full task label as a button, and selection
   and hover fills strengthen under Increase Contrast.
+- The Block ID Picker reuses that card with per-mode anatomy. The scope token
+  names the marker (`@sase:`, `@sase^`) with a Tasks, New ID, or Project note
+  caption, plus `· line N` on multi-line drafts. Placeholders read
+  "Filter sase.md tasks, or type a new ID" (Link) and "Type a new ID for
+  sase.md" (New ID). The trailing element is the count for Link ("96 tasks",
+  "5 of 96") and a live availability badge capsule for New ID (green
+  "Available", orange "Used · line 36", red with Bob's rule wording, secondary
+  "113 IDs in use" while empty, "Checked on capture" for project notes), held
+  to a fixed width range so the field never jumps while typing. Link groups
+  rows under the note's own headings (`#` glyph in the section color, title,
+  count; "Top of note" above the first heading); filtering replaces them with
+  one ranked flat list that pins an exact block-ID match first and appends a
+  trailing New ID row (or a Used status row) for a valid one-token filter.
+  Link rows show the status glyph, rich text, a pink Pomodoro chip in filtered
+  mode, depth indent, and a trailing `^block-id` locator. New ID rows show a
+  green available ID, an orange taken status plus a "Next free" alternative, a
+  red invalid status, an unchecked project-note row, accent `sparkles`
+  suggestions with availability badges, and up to five dim 28pt "In use" info
+  rows with fuzzy highlights (never selectable). The detail strip names the
+  outcome per row kind — linked task, new task in `▣ sase.md` (or New Next
+  task linked into today's Pomodoro, or the new project note), plus `↩ inserts
+  @sase:id` — and after the first insert teaches `#name`, `=`, `=x` (`^`
+  and `:` IDs) or `+` for a project note, tracked separately per source.
+  Empty states cover no linkable tasks, a missing note, no matches, and the
+  empty composer. While any picker is open, the marker token being completed
+  carries an accent wash in the dimmed editor (`marker_range` for block IDs,
+  the `^` token included for `^`). Key hints match `^`; New ID adds
+  `␣ Insert & keep typing`, and all hints fit the 620pt minimum width. Link
+  budgets 4…11 grouped rows plus headers, New ID budgets a fixed 6; the panel
+  grows once on open and never resizes while typing or filtering. VoiceOver
+  labels read "Task picker for sase.md" / "New block ID for sase.md", opens
+  announce "sase.md tasks, 96 tasks" / "New ID for sase.md, 3 suggestions",
+  availability is announced only on category change, keyboard moves announce,
+  and status/info rows are static text without the button trait. Fills
+  strengthen under Increase Contrast and color is never the only signal:
+  badges and rows carry text.
   Typing `#` immediately after a resolved `@route+block-id` follows the draft's mode:
   while that item has no body text it opens `pomodoro_name` completion for the task
   toggle, and once the item has body text it opens `task_section` completion for that

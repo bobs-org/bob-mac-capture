@@ -128,6 +128,70 @@ final class CapturePickerDesignTests: XCTestCase {
         XCTAssertLessThan(panel.frame.height, pickerFrame.height)
     }
 
+    /// The New ID composer fixes its budget at 6: the panel grows once on
+    /// open, holds its frame while the availability badge and rows change,
+    /// and shrinks on close — the same contract as the budget-11 test above.
+    @MainActor
+    func testNewIDPickerMetricsGrowKeepHeightAndShrinkAfterCancel() {
+        let model = CapturePanelModel()
+        let controller = CapturePanelController(model: model)
+        let panel = controller.makePanelIfNeeded()
+        let visibleFrame = panel.screen?.visibleFrame
+            ?? NSScreen.main?.visibleFrame
+            ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let displayScale = panel.screen?.backingScaleFactor ?? 1
+        let contentPolicy = CapturePanelContentHeightPolicy(displayScale: displayScale)
+        let compactMetrics = contentPolicy.metrics(editorHeight: 42, auxiliaryHeight: nil, footerHeight: 40)
+        let newIDAuxiliary = CapturePickerHeightPolicy(visibleRowBudget: 6, displayScale: displayScale)
+            .auxiliaryHeight
+        let newIDMetrics = contentPolicy.metrics(
+            editorHeight: 42,
+            auxiliary: newIDAuxiliary,
+            footerHeight: 40
+        )
+        let sizer = CapturePanelWindowSizer(displayScale: displayScale)
+        let expectedContentHeight = sizer.contentHeight(
+            for: newIDMetrics,
+            availableScreenHeight: visibleFrame.height
+        )
+        let chromeHeight = panel.frame.height - panel.contentRect(forFrameRect: panel.frame).height
+        let topY = min(
+            visibleFrame.maxY - 20,
+            visibleFrame.minY + expectedContentHeight + chromeHeight + 80
+        )
+        panel.setFrame(
+            NSRect(
+                x: visibleFrame.minX + 80,
+                y: topY - panel.frame.height,
+                width: panel.frame.width,
+                height: panel.frame.height
+            ),
+            display: false
+        )
+
+        controller.receiveContentMetrics(compactMetrics)
+        let compactFrame = panel.frame
+
+        controller.receiveContentMetrics(newIDMetrics)
+        let pickerFrame = panel.frame
+
+        XCTAssertGreaterThan(pickerFrame.height, compactFrame.height)
+        XCTAssertEqual(
+            panel.contentRect(forFrameRect: pickerFrame).height,
+            expectedContentHeight,
+            accuracy: 0.5
+        )
+        XCTAssertEqual(pickerFrame.maxY, compactFrame.maxY, accuracy: 0.5)
+
+        // Typing swaps the badge and rows inside the fixed viewport, so
+        // re-reporting the same metrics is a no-op on the frame.
+        controller.receiveContentMetrics(newIDMetrics)
+        XCTAssertEqual(panel.frame, pickerFrame)
+
+        controller.receiveContentMetrics(compactMetrics)
+        XCTAssertLessThan(panel.frame.height, pickerFrame.height)
+    }
+
     func testPickerMinimumHoldsOnShortScreen() {
         let displayScale: CGFloat = 1
         let contentPolicy = CapturePanelContentHeightPolicy(displayScale: displayScale)
@@ -192,6 +256,32 @@ final class CapturePickerDesignTests: XCTestCase {
             CapturePickerKeyHints.items(for: .activeTask).map { $0.action },
             ["Move", "Insert", "Insert & Capture", "Clear / Cancel"]
         )
+        XCTAssertEqual(
+            CapturePickerKeyHints.items(for: .blockID(Self.linkContext)).map { $0.keys },
+            ["↑↓", "↩", "⌘↩", "esc"]
+        )
+        XCTAssertEqual(
+            CapturePickerKeyHints.items(for: .blockID(Self.linkContext)).map { $0.action },
+            ["Move", "Insert", "Insert & Capture", "Clear / Cancel"]
+        )
+        XCTAssertEqual(
+            CapturePickerKeyHints.items(for: .blockID(Self.newIDContext)).map { $0.keys },
+            ["↑↓", "↩", "⌘↩", "␣", "esc"]
+        )
+        XCTAssertEqual(
+            CapturePickerKeyHints.items(for: .blockID(Self.newIDContext)).map { $0.action },
+            ["Move", "Insert", "Insert & Capture", "Insert & keep typing", "Clear / Cancel"]
+        )
+    }
+
+    /// Link intent without a field (older Bob): browse-only context.
+    private static var linkContext: BlockIDPickerContext {
+        BlockIDPickerContext(field: nil, route: "sase", marker: ":", intent: .link, rules: nil)
+    }
+
+    /// New ID composer context.
+    private static var newIDContext: BlockIDPickerContext {
+        BlockIDPickerContext(field: nil, route: "sase", marker: "^", intent: .new, rules: nil)
     }
 
     /// Rendered-image review for the picker card. Skipped unless
@@ -238,6 +328,109 @@ final class CapturePickerDesignTests: XCTestCase {
                     "capture-picker-\(state.name)-\(appearance == .darkAqua ? "dark" : "light").png"
                 )
                 try Self.pngData(for: image).write(to: url)
+            }
+        }
+
+        // Block ID review: Link grouped and filtered (with a New ID row), New
+        // ID empty/available/taken/project-note, and the missing-note empty
+        // state — at full and minimum panel widths, in both appearances.
+        // Inspect the PNGs with an image reader and iterate on spacing,
+        // contrast, truncation, and alignment until both modes look polished
+        // and consistent with `^`.
+        let blockIDStates: [BlockIDRenderState] = [
+            BlockIDRenderState(
+                name: "blockid-link-grouped",
+                field: Self.linkField,
+                candidates: Self.linkCandidates,
+                context: "pomodoro_block_id",
+                replacement: CaptureRange(start: 6, end: 6),
+                filter: "",
+                draft: "@sase:"
+            ),
+            BlockIDRenderState(
+                name: "blockid-link-filtered-new-id",
+                field: Self.linkField,
+                candidates: Self.linkCandidates,
+                context: "pomodoro_block_id",
+                replacement: CaptureRange(start: 6, end: 11),
+                filter: "flaky",
+                draft: "@sase:flaky"
+            ),
+            BlockIDRenderState(
+                name: "blockid-new-empty",
+                field: Self.newIDField,
+                candidates: [],
+                context: "task_block_id",
+                replacement: CaptureRange(start: 27, end: 27),
+                filter: "",
+                draft: "Fix flaky gkeep test @sase^"
+            ),
+            BlockIDRenderState(
+                name: "blockid-new-available",
+                field: Self.newIDField,
+                candidates: [],
+                context: "task_block_id",
+                replacement: CaptureRange(start: 27, end: 42),
+                filter: "fix-flaky-gkeep",
+                draft: "Fix flaky gkeep test @sase^fix-flaky-gkeep"
+            ),
+            BlockIDRenderState(
+                name: "blockid-new-taken",
+                field: Self.newIDField,
+                candidates: [],
+                context: "task_block_id",
+                replacement: CaptureRange(start: 27, end: 31),
+                filter: "tool",
+                draft: "Fix flaky gkeep test @sase^tool"
+            ),
+            BlockIDRenderState(
+                name: "blockid-project-note",
+                field: Self.projectNoteField,
+                candidates: [],
+                context: "task_block_id",
+                replacement: CaptureRange(start: 11, end: 18),
+                filter: "retreat",
+                draft: "Plan @sase^retreat+"
+            ),
+            BlockIDRenderState(
+                name: "blockid-note-missing",
+                field: Self.missingNoteField,
+                candidates: [],
+                context: "pomodoro_block_id",
+                replacement: CaptureRange(start: 5, end: 5),
+                filter: "",
+                draft: "@old:"
+            ),
+        ]
+        for state in blockIDStates {
+            for width in [760, 620] as [CGFloat] {
+                for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
+                    let model = CapturePanelModel()
+                    model.installBlockIDPickerForPreviews(
+                        field: state.field,
+                        candidates: state.candidates,
+                        context: state.context,
+                        replacement: state.replacement,
+                        filter: state.filter,
+                        draft: state.draft
+                    )
+                    let card = CapturePickerCard(model: model)
+                        .frame(width: width)
+                        .environment(
+                            \.colorScheme,
+                            appearance == .darkAqua ? .dark : .light
+                        )
+                    let renderer = ImageRenderer(content: card)
+                    renderer.scale = 2
+                    guard let image = renderer.nsImage else {
+                        XCTFail("Could not render \(state.name) (\(appearance.rawValue))")
+                        continue
+                    }
+                    let url = directory.appendingPathComponent(
+                        "capture-picker-\(state.name)-\(Int(width))-\(appearance == .darkAqua ? "dark" : "light").png"
+                    )
+                    try Self.pngData(for: image).write(to: url)
+                }
             }
         }
     }
@@ -344,6 +537,146 @@ final class CapturePickerDesignTests: XCTestCase {
                 statusName: "Next",
                 text: "Queue the solo next step",
                 section: "Next & In Progress"
+            ),
+        ]
+    }
+
+    /// One block-ID render state for the image review.
+    private struct BlockIDRenderState {
+        let name: String
+        let field: CaptureBlockIDField?
+        let candidates: [CaptureCompletionCandidate]
+        let context: String
+        let replacement: CaptureRange
+        let filter: String
+        let draft: String
+    }
+
+    /// Link field modeled on the real `sase.md` contract shape.
+    private static var linkField: CaptureBlockIDField {
+        CaptureBlockIDField(
+            route: "sase",
+            relativeTarget: "sase.md",
+            marker: ":",
+            markerRange: CaptureRange(start: 0, end: 6),
+            intent: .link,
+            allowedCharacter: "[A-Za-z0-9_-]",
+            allowedDescription: "A-Z, a-z, 0-9, '_' or '-'",
+            used: Self.sharedUsedIDs
+        )
+    }
+
+    /// New ID field for `Fix flaky gkeep test @sase^`.
+    private static var newIDField: CaptureBlockIDField {
+        CaptureBlockIDField(
+            route: "sase",
+            relativeTarget: "sase.md",
+            marker: "^",
+            markerRange: CaptureRange(start: 21, end: 27),
+            intent: .new,
+            body: "Fix flaky gkeep test",
+            allowedCharacter: "[A-Za-z0-9-]",
+            allowedDescription: "A-Z, a-z, 0-9 or '-'",
+            suggestions: ["fix-flaky-gkeep", "flaky-gkeep-test"],
+            used: Self.sharedUsedIDs
+        )
+    }
+
+    /// Project-note field for `Plan @sase^retreat+`.
+    private static var projectNoteField: CaptureBlockIDField {
+        CaptureBlockIDField(
+            route: "sase",
+            relativeTarget: "sase.md",
+            marker: "^",
+            markerRange: CaptureRange(start: 5, end: 19),
+            intent: .projectNote,
+            body: "Plan",
+            allowedCharacter: "[A-Za-z0-9-]",
+            allowedDescription: "A-Z, a-z, 0-9 or '-'",
+            suggestions: ["retreat", "offsite-plan"]
+        )
+    }
+
+    /// Missing-note Link field for `@old:`.
+    private static var missingNoteField: CaptureBlockIDField {
+        CaptureBlockIDField(
+            route: "old",
+            relativeTarget: "old.md",
+            noteExists: false,
+            marker: ":",
+            markerRange: CaptureRange(start: 0, end: 5),
+            intent: .link,
+            allowedCharacter: "[A-Za-z0-9_-]",
+            allowedDescription: "A-Z, a-z, 0-9, '_' or '-'"
+        )
+    }
+
+    private static var sharedUsedIDs: [CaptureUsedBlockID] {
+        [
+            CaptureUsedBlockID(
+                id: "tool",
+                line: 36,
+                isTask: true,
+                statusSymbol: " ",
+                statusName: "Todo",
+                text: "Add `sase tool` command to wrap common tool calls!"
+            ),
+            CaptureUsedBlockID(
+                id: "tool-registry",
+                line: 41,
+                isTask: true,
+                statusSymbol: " ",
+                statusName: "Todo",
+                text: "Tool registry cleanup"
+            ),
+            CaptureUsedBlockID(
+                id: "intro",
+                line: 3,
+                isTask: false,
+                text: "Some paragraph"
+            ),
+        ]
+    }
+
+    /// Link candidates across two note headings with a nested depth-1 task,
+    /// Pomodoro chips, and a sub-item count for the detail strip.
+    private static var linkCandidates: [CaptureCompletionCandidate] {
+        [
+            CaptureCompletionCandidate(
+                replacement: "tui-cli",
+                route: "sase",
+                blockID: "tui-cli",
+                statusSymbol: "/",
+                statusName: "In Progress",
+                text: "Bug bash and improve sase TUI `command-mode` panel",
+                section: "Next & In Progress",
+                pomodoro: ActiveTaskPomodoro(line: 53, name: "SASE")
+            ),
+            CaptureCompletionCandidate(
+                replacement: "recovery-panel",
+                route: "sase",
+                blockID: "recovery-panel",
+                statusSymbol: "/",
+                statusName: "In Progress",
+                text: "Read and act on core_schema_skew_outage_recovery_ux!",
+                section: "Next & In Progress",
+                depth: 1,
+                pomodoro: ActiveTaskPomodoro(
+                    line: 71,
+                    name: "FAST TESTS",
+                    timeRange: "0900-0930",
+                    isCurrent: true
+                )
+            ),
+            CaptureCompletionCandidate(
+                replacement: "tool",
+                route: "sase",
+                blockID: "tool",
+                statusSymbol: " ",
+                statusName: "Todo",
+                text: "Add `sase tool` command to wrap common tool calls!",
+                section: "Tasks",
+                childCount: 12
             ),
         ]
     }

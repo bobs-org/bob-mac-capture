@@ -29,6 +29,15 @@ struct CapturePickerState: Equatable {
     /// True when the snapshot came from the caret response instead of the
     /// full `r.start` snapshot (the refetch disagreed or failed).
     var snapshotIsPartial: Bool
+    /// Physical line (1-based) of the block-ID marker token, shown in the
+    /// scope capsule as `· line N`. Set only for the block-ID source on
+    /// multi-line drafts; nil for `^`, whose visuals are frozen.
+    var scopeLineNumber: Int? = nil
+    /// Availability category last announced for the New ID filter
+    /// (`available`, `unchecked`, `taken`, `invalid`). Availability is
+    /// announced only when this changes, so typing within one category stays
+    /// quiet. A fresh session starts unannounced.
+    var lastAvailabilityKey: String? = nil
 }
 
 /// The compact reopen affordance shown instead of the picker: after a

@@ -130,6 +130,13 @@ final class CapturePanelModel: ObservableObject {
     /// (set by the two-stage Escape cancel). Cleared when an `.edit` analysis
     /// leaves the token.
     private var pickerAutoOpenSuppressedStart: Int?
+    /// Draft-global UTF-8 byte range of the marker token the open picker
+    /// edits (`marker_range` for block-ID sources, `[r.start - 1, r.end)` for
+    /// `^`). While set, the dimmed editor washes that token in accent so the
+    /// multi-item draft shows which marker is being completed. Cleared with
+    /// its wash on every close path; the wash never touches `plainDraft`,
+    /// the selection, undo, or `editorTextDidChange`.
+    var pickerMarkerHighlight: CaptureRange?
 
     init(
         processClient: BobProcessClient? = nil,
@@ -863,21 +870,105 @@ final class CapturePanelModel: ObservableObject {
         filter: String = ""
     ) {
         let index = CapturePickerIndex.activeTask(ActiveTaskPickerIndex(candidates: candidates))
+        installPickerSessionForPreviews(
+            source: .activeTask,
+            index: index,
+            candidates: candidates,
+            warnings: warnings,
+            draftSnapshot: "^",
+            replacementRange: CaptureRange(start: 0, end: 1),
+            restoreCursor: 1,
+            filter: filter,
+            snapshotIsPartial: false
+        )
+    }
+
+    /// Block-ID preview hook: mounts the same Link or New ID session
+    /// production presents for a decoded `block_id` field, so design tests
+    /// and the image review render the card production mounts. `draft` seeds
+    /// the editor text (and the marker wash while it still spans the marker
+    /// range); pass an explicit `scopeLineNumber` for multi-line drafts.
+    func installBlockIDPickerForPreviews(
+        field: CaptureBlockIDField?,
+        candidates: [CaptureCompletionCandidate],
+        context contextName: String,
+        replacement: CaptureRange,
+        warnings: [String] = [],
+        filter: String = "",
+        draft: String? = nil,
+        restoreCursor: Int? = nil,
+        scopeLineNumber: Int? = nil
+    ) {
+        let response = CaptureCompletionResponse(
+            ok: true,
+            cursor: replacement.end,
+            replacement: replacement,
+            context: contextName,
+            candidates: candidates,
+            warnings: warnings,
+            blockID: field
+        )
+        let source = Self.blockIDSource(for: response)
+        let route: String
+        if case .blockID(let context) = source {
+            route = context.route
+        } else {
+            route = field?.route ?? ""
+        }
+        let index = CapturePickerIndex.blockID(
+            BlockIDPickerIndex(field: field, candidates: candidates, route: route)
+        )
+        installPickerSessionForPreviews(
+            source: source,
+            index: index,
+            candidates: candidates,
+            warnings: warnings,
+            draftSnapshot: draft ?? "",
+            replacementRange: replacement,
+            restoreCursor: restoreCursor ?? replacement.end,
+            filter: filter,
+            snapshotIsPartial: false,
+            scopeLineNumber: scopeLineNumber
+        )
+    }
+
+    private func installPickerSessionForPreviews(
+        source: CapturePickerSource,
+        index: CapturePickerIndex,
+        candidates: [CaptureCompletionCandidate],
+        warnings: [String],
+        draftSnapshot: String,
+        replacementRange: CaptureRange,
+        restoreCursor: Int,
+        filter: String,
+        snapshotIsPartial: Bool,
+        scopeLineNumber: Int? = nil
+    ) {
+        if !draftSnapshot.isEmpty {
+            plainDraft = draftSnapshot
+        }
         let presentation = index.presentation(filter: filter)
         pickerIndex = index
         pickerPresentation = presentation
         picker = CapturePickerState(
-            source: .activeTask,
-            draftSnapshot: "^",
-            replacementRange: CaptureRange(start: 0, end: 1),
-            restoreCursor: 1,
+            source: source,
+            draftSnapshot: draftSnapshot,
+            replacementRange: replacementRange,
+            restoreCursor: restoreCursor,
             candidates: candidates,
             warnings: warnings,
             filterText: filter,
             selectedRowID: CapturePickerNavigation.first(in: presentation.orderedRowIDs),
             visibleRowBudget: presentation.visibleRowBudget,
-            snapshotIsPartial: false
+            snapshotIsPartial: snapshotIsPartial,
+            scopeLineNumber: scopeLineNumber
         )
+        pickerMarkerHighlight = Self.pickerMarkerHighlightRange(
+            source: source,
+            replacementRange: replacementRange,
+            markerRange: Self.blockIDMarkerRange(for: source)
+        )
+        applyPickerMarkerHighlight()
     }
 
     /// Routes one completion result: `active_task` and block-ID responses
@@ -1271,6 +1362,15 @@ final class CapturePanelModel: ObservableObject {
         let presentation = index.presentation(filter: query)
         pickerIndex = index
         pickerPresentation = presentation
+        let markerRange = Self.pickerMarkerHighlightRange(
+            source: source,
+            replacementRange: range,
+            markerRange: Self.blockIDMarkerRange(for: source)
+        )
+        var scopeLine: Int? = nil
+        if case .blockID = source, let marker = markerRange {
+            scopeLine = Self.scopeLineNumber(draft: draft, markerStart: marker.start)
+        }
         picker = CapturePickerState(
             source: source,
             draftSnapshot: draft,
@@ -1281,12 +1381,110 @@ final class CapturePanelModel: ObservableObject {
             filterText: query,
             selectedRowID: CapturePickerNavigation.first(in: presentation.orderedRowIDs),
             visibleRowBudget: presentation.visibleRowBudget,
-            snapshotIsPartial: snapshotIsPartial
+            snapshotIsPartial: snapshotIsPartial,
+            scopeLineNumber: scopeLine
         )
+        pickerMarkerHighlight = markerRange
+        applyPickerMarkerHighlight()
         dismissCompletion()
         pickerChip = nil
         editorInputLocked = true
         requestFocus(.pickerFilter)
+    }
+
+    /// Draft-global byte range of the marker token the picker edits: Bob's
+    /// `marker_range` for block-ID sources (the replacement range when an
+    /// older Bob sends none), `[r.start - 1, r.end)` for `^` so the trigger
+    /// is included.
+    static func pickerMarkerHighlightRange(
+        source: CapturePickerSource,
+        replacementRange: CaptureRange,
+        markerRange: CaptureRange?
+    ) -> CaptureRange? {
+        switch source {
+        case .activeTask:
+            guard replacementRange.start >= 1,
+                  replacementRange.start <= replacementRange.end
+            else {
+                return nil
+            }
+            return CaptureRange(start: replacementRange.start - 1, end: replacementRange.end)
+        case .blockID:
+            return markerRange ?? replacementRange
+        }
+    }
+
+    /// Physical line (1-based) of a draft-global byte offset. Nil on
+    /// single-line drafts, where the scope token needs no disambiguation.
+    static func scopeLineNumber(draft: String, markerStart: Int) -> Int? {
+        guard draft.contains("\n"),
+              markerStart >= 0,
+              markerStart <= draft.utf8.count
+        else {
+            return nil
+        }
+        let newlines = draft.utf8.prefix(markerStart).filter { $0 == 10 }.count
+        return newlines + 1
+    }
+
+    private static func blockIDMarkerRange(for source: CapturePickerSource) -> CaptureRange? {
+        guard case .blockID(let context) = source else {
+            return nil
+        }
+        return context.field?.markerRange
+    }
+
+    /// Washes the picker's marker token in accent inside the dimmed editor.
+    /// Attribute-only: `plainDraft`, the selection, and undo are untouched,
+    /// and the characters-change callback that drives `editorTextDidChange`
+    /// never fires for attribute edits (plus the programmatic-draft guard).
+    private func applyPickerMarkerHighlight() {
+        guard let highlight = pickerMarkerHighlight,
+              let openPicker = picker,
+              plainDraft == openPicker.draftSnapshot,
+              let stringRange = stringRange(in: plainDraft, byteRange: highlight)
+        else {
+            return
+        }
+        let fillsStrengthened = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        isApplyingProgrammaticDraft = true
+        attributedDraft.transform(updating: &editorSelection) { text in
+            guard let lower = AttributedString.Index(stringRange.lowerBound, within: text),
+                  let upper = AttributedString.Index(stringRange.upperBound, within: text)
+            else {
+                return
+            }
+            text[lower..<upper].backgroundColor = Color.accentColor.opacity(
+                fillsStrengthened ? 0.35 : 0.22
+            )
+        }
+        isApplyingProgrammaticDraft = false
+    }
+
+    /// Removes the marker wash for `draftSnapshot` without touching text,
+    /// selection, or undo. A snapshot mismatch means the draft already moved
+    /// through `setPlainDraft`, which replaces the attributed value wholesale
+    /// and took the wash with it.
+    private func clearPickerMarkerHighlight(draftSnapshot: String) {
+        guard let highlight = pickerMarkerHighlight else {
+            return
+        }
+        pickerMarkerHighlight = nil
+        guard plainDraft == draftSnapshot,
+              let stringRange = stringRange(in: plainDraft, byteRange: highlight)
+        else {
+            return
+        }
+        isApplyingProgrammaticDraft = true
+        attributedDraft.transform(updating: &editorSelection) { text in
+            guard let lower = AttributedString.Index(stringRange.lowerBound, within: text),
+                  let upper = AttributedString.Index(stringRange.upperBound, within: text)
+            else {
+                return
+            }
+            text[lower..<upper].backgroundColor = nil
+        }
+        isApplyingProgrammaticDraft = false
     }
 
     func updatePickerFilter(_ text: String) {
@@ -1312,8 +1510,63 @@ final class CapturePanelModel: ObservableObject {
         updated.filterText = text
         let presentation = index.presentation(filter: text)
         updated.selectedRowID = CapturePickerNavigation.first(in: presentation.orderedRowIDs)
+        announceBlockIDAvailabilityIfChanged(state: &updated, presentation: presentation)
         picker = updated
         pickerPresentation = presentation
+    }
+
+    /// Announces New ID availability only when its category changes, so typing
+    /// within one category stays quiet. A taken ID names the conflict and the
+    /// next-free alternative Bob's rule derives.
+    private func announceBlockIDAvailabilityIfChanged(
+        state: inout CapturePickerState,
+        presentation: CapturePickerPresentation
+    ) {
+        guard case .blockID(let context) = state.source,
+              context.isNewIDMode,
+              let status = presentation.blockIDStatus,
+              !status.isProjectNote,
+              !state.filterText.isEmpty,
+              case .blockID(let blockIndex)? = pickerIndex
+        else {
+            return
+        }
+        let availability = blockIndex.availability(of: state.filterText)
+        let key: String
+        switch availability {
+        case .available:
+            key = "available"
+        case .unchecked:
+            key = "unchecked"
+        case .taken:
+            key = "taken"
+        case .invalid:
+            key = "invalid"
+        }
+        guard key != state.lastAvailabilityKey else {
+            return
+        }
+        state.lastAvailabilityKey = key
+        switch availability {
+        case .available:
+            announceStatus("\(state.filterText) is available")
+        case .unchecked:
+            break
+        case .taken(let line, _):
+            var message = "\(state.filterText) is already used"
+            if let line {
+                message += " on line \(line)"
+            }
+            if let rules = context.rules, let field = context.field {
+                let used = Set(field.used.map { $0.id })
+                if let variant = rules.nextFreeVariant(of: state.filterText, used: used) {
+                    message += "; \(variant) is available"
+                }
+            }
+            announceStatus(message)
+        case .invalid(let description):
+            announceStatus(description)
+        }
     }
 
     /// Commits a type-through split: the ID splices into Bob's range and the
@@ -1482,6 +1735,7 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         let range = openPicker.replacementRange
+        clearPickerMarkerHighlight(draftSnapshot: openPicker.draftSnapshot)
         picker = nil
         pickerPresentation = nil
         pickerIndex = nil
@@ -1702,6 +1956,9 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func closePickerForAccept() {
+        if let openPicker = picker {
+            clearPickerMarkerHighlight(draftSnapshot: openPicker.draftSnapshot)
+        }
         picker = nil
         pickerPresentation = nil
         pickerIndex = nil
@@ -1711,6 +1968,9 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func closePickerAfterStaleDraft() {
+        if let openPicker = picker {
+            clearPickerMarkerHighlight(draftSnapshot: openPicker.draftSnapshot)
+        }
         picker = nil
         pickerPresentation = nil
         pickerIndex = nil
@@ -1723,10 +1983,12 @@ final class CapturePanelModel: ObservableObject {
     /// and clear the chip. Re-show reopens via the retained-draft analysis.
     private func closePickerForDismissal() {
         guard let openPicker = picker else {
+            pickerMarkerHighlight = nil
             pickerChip = nil
             pickerAutoOpenSuppressedStart = nil
             return
         }
+        clearPickerMarkerHighlight(draftSnapshot: openPicker.draftSnapshot)
         picker = nil
         pickerPresentation = nil
         pickerIndex = nil
@@ -1745,6 +2007,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func clearPickerState() {
+        clearPickerMarkerHighlight(draftSnapshot: plainDraft)
         picker = nil
         pickerPresentation = nil
         pickerIndex = nil
@@ -2722,6 +2985,9 @@ final class CapturePanelModel: ObservableObject {
         if ignoredMalformedSpan {
             statusText = "Ignored malformed parse spans"
         }
+        // A parse that lands while the picker is open repaints spans; restore
+        // the marker wash it may have covered.
+        applyPickerMarkerHighlight()
     }
 
     private func shouldRequestCompletion(

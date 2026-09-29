@@ -9,6 +9,9 @@ extension CapturePanelLayout {
     static let pickerFilterBarHeight: CGFloat = 46
     /// Fixed height of one picker row.
     static let pickerRowHeight: CGFloat = 34
+    /// Fixed height of one dim "In use" info row inside the New ID composer.
+    /// Info rows live inside the fixed viewport, so the budget is unchanged.
+    static let pickerInfoRowHeight: CGFloat = 28
     /// Fixed height of one section header.
     static let pickerSectionHeaderHeight: CGFloat = 26
     /// Fixed height of the detail strip.
@@ -181,7 +184,8 @@ struct CapturePickerCard: View {
                                         CapturePickerRowView(
                                             model: model,
                                             row: row,
-                                            showsChip: presentation.mode == .filtered
+                                            showsChip: presentation.mode == .filtered,
+                                            isInfoRow: section.kind == .usedIDs
                                         )
                                         .id(row.id)
                                     }
@@ -225,7 +229,7 @@ struct CapturePickerCard: View {
         .accessibilityHint(source.cardAccessibilityHint)
         .onAppear {
             if let presentation {
-                postAnnouncement("\(source.appearedAnnouncementPrefix), \(presentation.countText)")
+                postAnnouncement(appearedAnnouncement(source: source, presentation: presentation))
             }
         }
         .onChange(of: presentation?.matchCount) { _, matchCount in
@@ -269,6 +273,22 @@ struct CapturePickerCard: View {
     private func postAnnouncement(_ message: String) {
         AccessibilityNotification.Announcement(message).post()
     }
+
+    /// Open announcement: the task count for `^` and Link, the suggestion
+    /// count for the New ID composer.
+    private func appearedAnnouncement(
+        source: CapturePickerSource,
+        presentation: CapturePickerPresentation
+    ) -> String {
+        if case .blockID(let context) = source, context.isNewIDMode {
+            let suggestions = presentation.sections
+                .filter { $0.kind == .suggestions }
+                .reduce(0) { $0 + $1.rows.count }
+            let countText = suggestions == 1 ? "1 suggestion" : "\(suggestions) suggestions"
+            return "\(source.appearedAnnouncementPrefix), \(countText)"
+        }
+        return "\(source.appearedAnnouncementPrefix), \(presentation.countText)"
+    }
 }
 
 /// Filter bar (46pt): scope token capsule, the AppKit-owned filter field, the
@@ -290,6 +310,11 @@ private struct CapturePickerFilterBar: View {
                     .foregroundStyle(CaptureEditorPalette.color(for: .route))
                 Text(source.scopeCaption)
                     .font(.caption.weight(.semibold))
+                if case .blockID = source, let line = model.picker?.scopeLineNumber {
+                    Text("· line \(line)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
@@ -308,24 +333,159 @@ private struct CapturePickerFilterBar: View {
                 ProgressView()
                     .controlSize(.small)
             }
-            Text(model.pickerPresentation?.countText ?? "")
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(.secondary)
+            filterBarTrailing
         }
         .padding(.horizontal, 10)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(source.filterAccessibilityLabel)
     }
+
+    /// Trailing element: the task count for `^` and Link, the live
+    /// availability badge capsule for the New ID composer.
+    @ViewBuilder
+    private var filterBarTrailing: some View {
+        if case .blockID(let context) = source,
+           context.isNewIDMode,
+           let status = model.pickerPresentation?.blockIDStatus
+        {
+            blockIDAvailabilityBadge(status: status)
+        } else {
+            Text(model.pickerPresentation?.countText ?? "")
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Availability badge capsule for the New ID composer. The fixed width
+    /// range keeps the filter field from jumping while typing.
+    private func blockIDAvailabilityBadge(status: CapturePickerBlockIDStatus) -> some View {
+        let content = badgeContent(status: status)
+        return HStack(spacing: 4) {
+            if let icon = content.icon {
+                Image(systemName: icon)
+            }
+            Text(content.text)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(content.color)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(content.color.opacity(0.12), in: Capsule())
+        .frame(minWidth: 110, maxWidth: 190)
+        .accessibilityLabel(content.accessibilityLabel)
+    }
+
+    private func badgeContent(status: CapturePickerBlockIDStatus) -> (
+        text: String, icon: String?, color: Color, accessibilityLabel: String
+    ) {
+        let filter = model.picker?.filterText ?? ""
+        if status.isProjectNote {
+            return ("Checked on capture", "questionmark.circle", .secondary, "ID checked on capture")
+        }
+        if filter.isEmpty {
+            let text = status.usedCount == 1
+                ? "1 ID in use"
+                : "\(status.usedCount) IDs in use"
+            return (text, nil, .secondary, text)
+        }
+        switch status.availability {
+        case .available:
+            return ("Available", "checkmark.circle.fill", .green, "\(filter) is available")
+        case .unchecked:
+            return ("Checked on capture", "questionmark.circle", .secondary, "ID checked on capture")
+        case .taken(let line, _):
+            if let line {
+                return ("Used · line \(line)", "exclamationmark.triangle.fill", .orange, "\(filter) is already used on line \(line)")
+            }
+            return ("Used", "exclamationmark.triangle.fill", .orange, "\(filter) is already used")
+        case .invalid(let description):
+            return (description, "xmark.octagon.fill", .red, "\(filter) is invalid: \(description)")
+        }
+    }
 }
 
-/// One pinned section header (26pt): ordinal, title, formatted time range,
-/// pink NOW pill, and task count. Unqueued buckets carry a
-/// "Not in a Pomodoro" subtitle inline.
+/// One pinned section header (26pt). `^` buckets keep their Pomodoro
+/// rendering (ordinal, title, time range, pink NOW pill, count, and the
+/// "Not in a Pomodoro" subtitle). Block-ID sections render per kind: note
+/// headings carry a `#` glyph in the section color, suggestions a `sparkles`
+/// glyph in accent, and "In use" headers their similar count.
 @available(macOS 26.0, *)
 private struct CapturePickerSectionHeader: View {
     let section: CapturePickerSection
 
     var body: some View {
+        switch section.kind {
+        case .noteHeading:
+            noteHeadingHeader
+        case .suggestions:
+            suggestionHeader
+        case .usedIDs:
+            usedIDsHeader
+        case .pomodoro, .unqueuedInProgress, .unqueuedNext, .other, .matches:
+            standardHeader
+        }
+    }
+
+    private var noteHeadingHeader: some View {
+        HStack(spacing: 6) {
+            Text("#")
+                .font(.callout.weight(.bold))
+                .foregroundStyle(CaptureEditorPalette.color(for: .section))
+            Text(section.title)
+                .font(.callout.weight(.semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 8)
+            Text(section.countText ?? "\(section.rows.count) task\(section.rows.count == 1 ? "" : "s")")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+        .frame(height: CapturePanelLayout.pickerSectionHeaderHeight)
+        .padding(.horizontal, 8)
+        .background(.regularMaterial)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    private var suggestionHeader: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "sparkles")
+                .foregroundStyle(.accentColor)
+            Text(section.title)
+                .font(.callout.weight(.semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 8)
+        }
+        .frame(height: CapturePanelLayout.pickerSectionHeaderHeight)
+        .padding(.horizontal, 8)
+        .background(.regularMaterial)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    private var usedIDsHeader: some View {
+        HStack(spacing: 6) {
+            Text(section.title)
+                .font(.callout.weight(.semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 8)
+            if let countText = section.countText {
+                Text(countText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+        .frame(height: CapturePanelLayout.pickerSectionHeaderHeight)
+        .padding(.horizontal, 8)
+        .background(.regularMaterial)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    private var standardHeader: some View {
         HStack(spacing: 6) {
             if section.ordinal > 0 {
                 Text("\(section.ordinal)")
@@ -378,6 +538,8 @@ private struct CapturePickerRowView: View {
     @ObservedObject var model: CapturePanelModel
     let row: CapturePickerRow
     var showsChip: Bool = false
+    /// True for dim 28pt "In use" info rows, which are never selectable.
+    var isInfoRow: Bool = false
     @Environment(\.colorSchemeContrast) private var contrast
     @State private var isHovered = false
 
@@ -405,6 +567,7 @@ private struct CapturePickerRowView: View {
             }
         }
         .onHover { isHovered = $0 }
+        .opacity(isInfoRow ? 0.8 : 1.0)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.accessibilityLabel)
     }
@@ -442,7 +605,7 @@ private struct CapturePickerRowView: View {
                 .frame(maxWidth: 260, alignment: .trailing)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: CapturePanelLayout.pickerRowHeight)
+        .frame(height: isInfoRow ? CapturePanelLayout.pickerInfoRowHeight : CapturePanelLayout.pickerRowHeight)
         .padding(.horizontal, 8)
         .padding(.leading, CGFloat(min(row.depth, 2)) * 14)
         .background(rowBackground)
@@ -453,8 +616,23 @@ private struct CapturePickerRowView: View {
         switch row.glyph {
         case .task(let status):
             return CaptureEditorPalette.taskStatus(status)
-        case .anchor, .newID, .alternativeID, .suggestion:
-            return ("circle.dashed", .secondary)
+        case .anchor:
+            return ("paragraphsign", .secondary)
+        case .newID(let availability):
+            switch availability {
+            case .available:
+                return ("plus.circle.fill", .green)
+            case .unchecked:
+                return ("plus.circle", .accentColor)
+            case .taken:
+                return ("exclamationmark.triangle.fill", .orange)
+            case .invalid:
+                return ("xmark.octagon.fill", .red)
+            }
+        case .alternativeID:
+            return ("plus.circle", .accentColor)
+        case .suggestion:
+            return ("sparkles", .accentColor)
         }
     }
 
@@ -511,7 +689,17 @@ private struct CapturePickerRowView: View {
 @available(macOS 26.0, *)
 private struct CapturePickerDetailStrip: View {
     @ObservedObject var model: CapturePanelModel
-    @AppStorage("org.bobs.bob-mac-capture.active-task-picker-used") private var pickerWasUsed = false
+
+    private var source: CapturePickerSource {
+        model.picker?.source ?? .activeTask
+    }
+
+    /// Whether an insert already happened for this source. Read from the
+    /// source's own defaults key (written by `CapturePickerUsageDidInsert`),
+    /// so the `^` and Block ID teaching lines track first use independently.
+    private var pickerWasUsed: Bool {
+        UserDefaults.standard.bool(forKey: source.pickerUsedDefaultsKey)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -532,8 +720,8 @@ private struct CapturePickerDetailStrip: View {
                         .font(.caption)
                         .lineLimit(1)
                 }
-                if pickerWasUsed {
-                    Text("Then type #name, = to start, or =x to close")
+                if pickerWasUsed, let teaching = teachingLine(for: source) {
+                    Text(teaching)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -593,6 +781,24 @@ private struct CapturePickerDetailStrip: View {
             return "folder"
         default:
             return "doc"
+        }
+    }
+
+    /// Follow-up keystrokes taught after the first insert, per source. The
+    /// Block ID composer teaches the project-note `+` (or `#name`/`=`/`+`
+    /// after a `:` ID); project notes need no follow-up.
+    private func teachingLine(for source: CapturePickerSource) -> String? {
+        switch source {
+        case .activeTask:
+            return "Then type #name, = to start, or =x to close"
+        case .blockID(let context):
+            if context.intent == .projectNote {
+                return nil
+            }
+            if context.marker == "^" {
+                return "Then type + to make it a project note"
+            }
+            return "Then type #name, = to start, or + for a project note"
         }
     }
 
