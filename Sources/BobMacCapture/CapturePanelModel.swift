@@ -70,6 +70,11 @@ final class CapturePanelModel: ObservableObject {
     /// disabled. Nil for every other draft, including a valid close.
     @Published var closePendingText: String?
     @Published var errorMessage: String?
+    /// Machine-readable failure code for the current error callout, when Bob
+    /// reported one. Today only the strict plan-budget refusal carries a
+    /// code (`plan_theme_cap_exceeded`); nil for every other error and when
+    /// there is no error. Cleared together with `errorMessage`.
+    @Published var errorCode: String?
     @Published var lastSuccess: CaptureCommandSuccess?
     @Published var previewResult: CaptureCommandSuccess?
     @Published var lastSuccessResults: [CaptureCommandSuccess] = []
@@ -552,6 +557,7 @@ final class CapturePanelModel: ObservableObject {
         }
         guard let processClient else {
             errorMessage = "Bob is not resolved. Check Settings and Recheck Bob."
+            errorCode = nil
             return
         }
 
@@ -560,6 +566,7 @@ final class CapturePanelModel: ObservableObject {
         activeRequestID = requestID
         isSubmitting = true
         errorMessage = nil
+        errorCode = nil
         statusText = openAfterCapture ? "Capturing and opening\u{2026}" : "Capturing\u{2026}"
         let seed = activePriorityRollSeed()
 
@@ -590,6 +597,7 @@ final class CapturePanelModel: ObservableObject {
         }
         guard let processClient else {
             errorMessage = "Bob is not resolved. Check Settings and Recheck Bob."
+            errorCode = nil
             return
         }
 
@@ -598,6 +606,7 @@ final class CapturePanelModel: ObservableObject {
         activeRequestID = requestID
         isPreviewing = true
         errorMessage = nil
+        errorCode = nil
         statusText = "Resolving clipboard preview\u{2026}"
 
         Task {
@@ -816,6 +825,7 @@ final class CapturePanelModel: ObservableObject {
         previewState = .idle
         statusText = ""
         errorMessage = nil
+        errorCode = nil
         previewResult = nil
         previewResults = []
         previewGlobalDestination = nil
@@ -2013,6 +2023,7 @@ final class CapturePanelModel: ObservableObject {
         previewGlobalDestination = nil
         closePendingText = nil
         errorMessage = nil
+        errorCode = nil
         statusText = need.statusText
     }
 
@@ -2626,6 +2637,7 @@ final class CapturePanelModel: ObservableObject {
             previewResults = []
             previewGlobalDestination = nil
             errorMessage = nil
+            errorCode = nil
             setPlainDraft("")
             suppressedCompletionAcceptanceDraft = nil
             priorityRollSeed = nil
@@ -2660,6 +2672,7 @@ final class CapturePanelModel: ObservableObject {
             panelDismisser()
         case .failure(let failure):
             errorMessage = failure.error
+            errorCode = failure.code
             statusText = "Capture failed"
             notificationService?.notifyCaptureFailure(message: failure.error)
         }
@@ -2674,6 +2687,7 @@ final class CapturePanelModel: ObservableObject {
 
         let message = String(describing: error)
         errorMessage = message
+        errorCode = nil
         statusText = "Capture failed"
         notificationService?.notifyCaptureFailure(message: message)
     }
@@ -2692,6 +2706,7 @@ final class CapturePanelModel: ObservableObject {
             previewResults = captures
             previewGlobalDestination = success.globalDestination
             errorMessage = nil
+            errorCode = nil
             if let presentation = Self.soleClosePresentation(for: captures) {
                 statusText = presentation.statusText
             } else if let presentation = Self.soleSessionStartPresentation(for: captures) {
@@ -2712,6 +2727,7 @@ final class CapturePanelModel: ObservableObject {
             previewResults = []
             previewGlobalDestination = nil
             errorMessage = failure.error
+            errorCode = failure.code
             statusText = "Preview failed"
         }
     }
@@ -2775,6 +2791,7 @@ final class CapturePanelModel: ObservableObject {
         previewResults = []
         previewGlobalDestination = nil
         errorMessage = String(describing: error)
+        errorCode = nil
         statusText = "Preview failed"
     }
 
@@ -3022,6 +3039,7 @@ final class CapturePanelModel: ObservableObject {
                         self?.previewResults = captures
                         self?.previewGlobalDestination = success.globalDestination
                         self?.errorMessage = nil
+                        self?.errorCode = nil
                         if let presentation = Self.soleTogglePresentation(for: captures) {
                             self?.statusText = presentation.statusText
                         } else if let link = Self.soleLinkPresentation(for: captures) {
@@ -3053,6 +3071,7 @@ final class CapturePanelModel: ObservableObject {
                         self?.previewGlobalDestination = nil
                         self?.closePendingText = nil
                         self?.errorMessage = failure.error
+                        self?.errorCode = failure.code
                         self?.statusText = "Preview failed"
                     }
                 }

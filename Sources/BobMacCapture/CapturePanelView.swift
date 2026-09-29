@@ -534,6 +534,19 @@ struct CapturePanelView: View {
                         .accessibilityLabel("Capture error: \(errorMessage)")
                         .accessibilityFocused($errorIsFocused)
                         .onAppear { errorIsFocused = true }
+                    // A strict plan-budget refusal carries
+                    // `code == "plan_theme_cap_exceeded"`: the message names
+                    // the themes, and this hint names the gestures that keep
+                    // the plan closed.
+                    if model.errorCode == "plan_theme_cap_exceeded" {
+                        Text("Queue it with ^, keep it this week with #now, or defer with p:<N>.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .accessibilityLabel(
+                                "Plan hint: Queue it with ^, keep it this week with #now, or defer with p:<N>."
+                            )
+                    }
                     HStack {
                         Button("Retry") {
                             model.submit(openAfterCapture: false)
@@ -1388,12 +1401,17 @@ private struct CompletionRow: View {
                                 .lineLimit(1)
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 1)
-                                .background(isOutlinedBadge(badge) ? Color.clear : tint.opacity(0.15), in: Capsule())
+                                .background(
+                                    isOutlinedBadge(badge) ? Color.clear
+                                        : isOverCapBadge(badge) ? Color.red.opacity(0.15)
+                                        : tint.opacity(0.15),
+                                    in: Capsule()
+                                )
                                 .overlay(
                                     Capsule()
                                         .strokeBorder(isOutlinedBadge(badge) ? tint.opacity(0.55) : Color.clear, lineWidth: 0.7)
                                 )
-                                .foregroundStyle(tint)
+                                .foregroundStyle(isOverCapBadge(badge) ? Color.red : tint)
                         }
                     }
                 }
@@ -1413,6 +1431,21 @@ private struct CompletionRow: View {
 
     private func isOutlinedBadge(_ badge: String) -> Bool {
         badge == "Add ID" || badge == "Name it"
+    }
+
+    /// A `pomodoro_name` create row that would push the plan past its theme
+    /// cap carries an `after/cap` badge (e.g. `4/3`); it renders red. No
+    /// other completion badge uses the bare `N/M` shape (`H2`, `2 items`,
+    /// `^id` all differ), so the shape alone identifies it.
+    private func isOverCapBadge(_ badge: String) -> Bool {
+        let parts = badge.split(separator: "/")
+        guard parts.count == 2,
+              let after = Int(parts[0]),
+              let cap = Int(parts[1])
+        else {
+            return false
+        }
+        return after > cap
     }
 
     private var selectionFill: Color {
@@ -1510,6 +1543,17 @@ struct PreviewPane: View {
                 .accessibilityLabel("All items to \(globalDestination.scopeSummary)")
         }
 
+        // The plan-budget meter is batch-level: `plan_budget` lives on the
+        // outer success, not per item. Render it once above the items from
+        // Bob's resolved object — no Swift-side ledger math.
+        if let budget = CapturePlanBudgetPresentation(capture: success) {
+            planBudgetMeterRow(budget)
+        } else if captures.count == 1, let first = captures.first,
+                  let budget = CapturePlanBudgetPresentation(capture: first)
+        {
+            planBudgetMeterRow(budget)
+        }
+
         ForEach(Array(captures.enumerated()), id: \.offset) { index, capture in
             if index > 0 {
                 Divider()
@@ -1529,6 +1573,80 @@ struct PreviewPane: View {
         }
     }
 
+    /// The two plan-budget meter capsules (`Themes 3/3`, `Links 8/10`),
+    /// green within the cap and red over it, plus the `+N NAME` delta chip
+    /// whenever the batch grew the themes meter and the orange warning
+    /// captions. Straight from Bob's resolved `plan_budget` object.
+    @ViewBuilder
+    private func planBudgetMeterRow(_ budget: CapturePlanBudgetPresentation) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Text(budget.themesCapsuleText)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(
+                        (budget.themesOverCap ? Color.red : Color.green).opacity(0.15),
+                        in: Capsule()
+                    )
+                    .foregroundStyle(budget.themesOverCap ? Color.red : Color.green)
+                Text(budget.linksCapsuleText)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(
+                        (budget.linksOverCap ? Color.red : Color.green).opacity(0.15),
+                        in: Capsule()
+                    )
+                    .foregroundStyle(budget.linksOverCap ? Color.red : Color.green)
+                if let delta = budget.deltaChipText {
+                    Text(delta)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(.quaternary, in: Capsule())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            ForEach(Array(budget.warningTexts.enumerated()), id: \.offset) { _, warning in
+                Text(warning)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .textSelection(.enabled)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Plan budget: \(budget.accessibilitySummary)")
+    }
+
+    /// The destination row above the preview items (`→ GOALS · next up`,
+    /// `→ running GOALS 0945–1015`, `→ new Pomodoro BOB`), straight from
+    /// Bob's resolved `pomodoro_link_destination` and its plan-budget
+    /// `role`. Nil when Bob reported no destination.
+    @ViewBuilder
+    private func planDestinationRow(for capture: CaptureCommandSuccess) -> some View {
+        if let text = CapturePlanBudgetPresentation.destinationRowText(
+            for: capture.pomodoroLinkDestination
+        ) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "timer")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(text)
+                    .font(.system(.callout, design: .monospaced))
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .textSelection(.enabled)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Destination: \(text)")
+        }
+    }
+
     @ViewBuilder
     private func previewItem(
         _ success: CaptureCommandSuccess,
@@ -1539,6 +1657,10 @@ struct PreviewPane: View {
         let isLocalOverride = globalDestination.map {
             !captureUsesGlobalDestination(success, $0)
         } ?? false
+        // The destination row sits above the per-kind preview item, so every
+        // link landing names where its Task Link went without disturbing the
+        // existing card below.
+        planDestinationRow(for: success)
         if let close = CapturePomodoroClosePresentation(capture: success) {
             closePreviewItem(close, success: success, index: index, total: total)
         } else if CapturePomodoroStartPresentation.isSessionStart(success),

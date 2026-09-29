@@ -3901,6 +3901,19 @@ JSON
 {"ok":false,"error":"capture item 1 starting on line 1: `^route:block-id` must be the whole capture item; to create a new Pomodoro-linked task use `<text> @route:block-id`"}
 JSON
       exit 1
+    elif [[ "${draft}" == "@dev:newid#NEWT Ship the thing." ]]; then
+      # Plan-budget over-cap capture: a new theme past the cap with a
+      # `created` destination role. Fixture generated from a real `bob`
+      # (`bob capture --dry-run -f json`); only the dry-run flag varies.
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/plan-budget-over.json"
+    elif [[ "${draft}" == "Ship named @dev:named1#GOALS" ]]; then
+      # Plan-budget destination-role capture: a `named` role against an
+      # existing entry, with a quiet (no-warning) budget.
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/plan-budget-destination-role.json"
+    elif [[ "${draft}" == "@dev:newid2#NEWT2 Ship strict." ]]; then
+      # Strict-mode refusal: exit 1 with `code plan_theme_cap_exceeded`.
+      cat "${fixtures_dir}/plan-budget-strict-refusal.json"
+      exit 1
     else
       cat <<JSON
 {

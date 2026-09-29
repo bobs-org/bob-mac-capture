@@ -113,7 +113,18 @@ mutation.
   previous task-toggle spellings. The app labels
   actions and notifications from Bob's returned behavior metadata, so a response
   that omits `toggle_behavior` still shows the two-way Set Next/Open footer,
-  never Ensure Next.
+  never Ensure Next. Captures that change today's `## Pomodoros` section also
+  report a top-level `plan_budget` object with before/after theme and link
+  meters, an `added_themes` list, and cap warnings that fire only while the
+  batch grows a meter past its cap; the same destination carries a `role` of
+  `current`, `next_up`, `named`, or `created`. With `plan.strict: true` a batch
+  that creates a new named Pomodoro past the theme cap is refused atomically
+  (exit 1, JSON `code: plan_theme_cap_exceeded`), and `pomodoro_name` create
+  rows preview the resulting theme count with `plan_themes_after` and
+  `plan_themes_cap`. An older Bob that omits `plan_budget`, `role`,
+  `plan_themes_after`/`plan_themes_cap`, or `code` still previews and captures;
+  the Mac app decodes each as absent and simply omits the destination row, the
+  meter capsules, the cap badge, and the strict hint.
 
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.
@@ -397,7 +408,9 @@ or expired certificate can require reauthorizing those system permissions.
   canonicalizes the `@route:id#name` marker, closes completion without opening **Name
   Pomodoro**, restores the editor caret, and reruns live preview; the daily note is not
   mutated until the later `bob capture` transaction creates the placeholder and task
-  link together. Unnamed and untypeable-name rows (`requires_name: true`, empty
+  link together. A create row that would push the plan past its theme cap
+  (`plan_themes_after > plan_themes_cap`) carries a red `after/cap` badge
+  (e.g. `4/3`). Unnamed and untypeable-name rows (`requires_name: true`, empty
   `replacement`) still replace the completion list with an inline **Name Pomodoro**
   prompt. The two prompts can never both be open. Opening the prompt pre-fills the name
   field from the in-progress completion query (`#deep-work` becomes `DEEP WORK`), moves
@@ -460,7 +473,13 @@ or expired certificate can require reauthorizing those system permissions.
   destination, and the ledger outcome Bob planned (`Linked under BUGS`,
   `Moved Task Link BUGS → FOCUS (created FOCUS)`, or
   `Task Link already in BUGS; no ledger change.`), plus the atomic-start session row
-  when the link starts one. A Pomodoro close instead shows its own card whenever
+  when the link starts one. Every item with a `pomodoro_link_destination` also
+  shows a destination row above it (`→ GOALS · next up`, `→ running GOALS 0945–1015`,
+  `→ new Pomodoro BOB`, with a `timer` symbol) from the destination `role`, and a
+  batch that changed today's Pomodoros section shows one plan-budget meter row above
+  the items (`Themes 3/3`, `Links 8/10` capsules — green within the cap, red over —
+  a `+1 BOB` delta chip whenever the themes meter grew, and orange warning captions).
+  Both rows join the VoiceOver summary. A Pomodoro close instead shows its own card whenever
   `pomodoro_close` is present: a `stop.circle.fill` header with the `Close NAME`
   title and the monospaced session range (the shortened half tinted with the
   Pomodoro-session colour), the day-file destination plus a timing chip that is
@@ -485,7 +504,10 @@ or expired certificate can require reauthorizing those system permissions.
   never hide under `+N more`. The footer's primary action becomes **Close**,
   the live-preview, preview, and submit status read `Would close …` / `Closed …`
   with started, completed (only when nonzero), and Work Log counts, and a failed
-  dry run clears the card so no stale preview sits beside the error. While a
+  dry run clears the card so no stale preview sits beside the error. The error
+  callout shows Bob's message unchanged; a strict plan-budget refusal
+  (`code == plan_theme_cap_exceeded`) adds the hint line `Queue it with ^, keep
+  it this week with #now, or defer with p:<N>.` While a
   list dangles on `,`/`!`, the card previews the trimmed draft dimmed with a
   `Type a task number after ,` row, **Close** is disabled, and Return cannot
   submit; a valid draft restores the normal card. A whole-item `=`/`=<X>` start instead shows its own card

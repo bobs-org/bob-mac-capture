@@ -257,6 +257,15 @@ public func completionRowContent(
             }
             secondaryText = "New future Pomodoro"
             badges = ["Create"]
+            // A create row that would push the plan past its theme cap
+            // carries a red `after/cap` badge (e.g. `4/3`). Older Bob
+            // omits both fields and the row stays exactly today's.
+            if let after = candidate.planThemesAfter,
+               let cap = candidate.planThemesCap,
+               after > cap
+            {
+                badges.append("\(after)/\(cap)")
+            }
             accessibilityHint = "Creates this named future Pomodoro when the draft is captured."
         } else {
             let needsName = candidate.requiresName

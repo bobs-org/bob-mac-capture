@@ -1283,11 +1283,18 @@ public struct PomodoroLinkEndpoint: Codable, Equatable, Sendable {
     public let line: Int
     public let name: String?
     public let timeRange: String?
+    // Additive plan-budget destination role: `current` (the running timed
+    // entry), `next_up` (implicitly chosen and not running), `named` (an
+    // existing entry matched by `#NAME`), or `created` (a new entry).
+    // Older Bob omits it and it decodes as nil; unknown values are
+    // preserved verbatim and degrade to neutral presentation.
+    public let role: String?
 
-    public init(line: Int, name: String? = nil, timeRange: String? = nil) {
+    public init(line: Int, name: String? = nil, timeRange: String? = nil, role: String? = nil) {
         self.line = line
         self.name = name
         self.timeRange = timeRange
+        self.role = role
     }
 
     public init(from decoder: Decoder) throws {
@@ -1295,12 +1302,121 @@ public struct PomodoroLinkEndpoint: Codable, Equatable, Sendable {
         line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
         name = try container.decodeIfPresent(String.self, forKey: .name)
         timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange)
+        role = try container.decodeIfPresent(String.self, forKey: .role)
     }
 
     private enum CodingKeys: String, CodingKey {
         case line
         case name
         case timeRange = "time_range"
+        case role
+    }
+}
+
+/// One cap warning inside `plan_budget`: only the theme and link caps ever
+/// fire here, and only while growing past the cap. Every field decodes
+/// tolerantly so a partial object still yields a row instead of failing
+/// the whole capture.
+public struct CapturePlanBudgetWarning: Codable, Equatable, Sendable {
+    public let code: String
+    public let message: String
+
+    public init(code: String, message: String) {
+        self.code = code
+        self.message = message
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        code = try container.decodeIfPresent(String.self, forKey: .code) ?? ""
+        message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case code
+        case message
+    }
+}
+
+/// A before/after meter inside `plan_budget`. `before` is the pre-batch
+/// count; it is optional because older Bob binaries omit it.
+public struct CapturePlanBudgetMeter: Codable, Equatable, Sendable {
+    public let count: Int
+    public let cap: Int
+    public let over: Bool
+    public let before: Int?
+
+    public init(count: Int, cap: Int, over: Bool, before: Int? = nil) {
+        self.count = count
+        self.cap = cap
+        self.over = over
+        self.before = before
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        count = try container.decodeIfPresent(Int.self, forKey: .count) ?? 0
+        cap = try container.decodeIfPresent(Int.self, forKey: .cap) ?? 0
+        over = try container.decodeIfPresent(Bool.self, forKey: .over) ?? false
+        before = try container.decodeIfPresent(Int.self, forKey: .before)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case count
+        case cap
+        case over
+        case before
+    }
+}
+
+/// Top-level `plan_budget` on a `bob capture --format json` success:
+/// present only when the batch changed today's Pomodoros section. It is
+/// not per item. Older Bob omits it entirely and it decodes as nil.
+public struct CapturePlanBudget: Codable, Equatable, Sendable {
+    public let status: String
+    public let themes: CapturePlanBudgetMeter
+    public let links: CapturePlanBudgetMeter
+    public let addedThemes: [String]
+    public let warnings: [CapturePlanBudgetWarning]
+
+    public init(
+        status: String,
+        themes: CapturePlanBudgetMeter,
+        links: CapturePlanBudgetMeter,
+        addedThemes: [String] = [],
+        warnings: [CapturePlanBudgetWarning] = []
+    ) {
+        self.status = status
+        self.themes = themes
+        self.links = links
+        self.addedThemes = addedThemes
+        self.warnings = warnings
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
+        themes = try container.decodeIfPresent(
+            CapturePlanBudgetMeter.self,
+            forKey: .themes
+        ) ?? CapturePlanBudgetMeter(count: 0, cap: 0, over: false)
+        links = try container.decodeIfPresent(
+            CapturePlanBudgetMeter.self,
+            forKey: .links
+        ) ?? CapturePlanBudgetMeter(count: 0, cap: 0, over: false)
+        addedThemes = try container.decodeIfPresent([String].self, forKey: .addedThemes) ?? []
+        warnings = try container.decodeIfPresent(
+            [CapturePlanBudgetWarning].self,
+            forKey: .warnings
+        ) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case status
+        case themes
+        case links
+        case addedThemes = "added_themes"
+        case warnings
     }
 }
 
@@ -1460,6 +1576,10 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     // `project_note` capture. Older Bob binaries omit it entirely; decode
     // as nil.
     public let projectNote: CaptureProjectNoteSummary?
+    // Additive top-level `plan_budget`: present only when the batch changed
+    // today's Pomodoros section. It is not per item. Older Bob omits it
+    // entirely; decode as nil.
+    public let planBudget: CapturePlanBudget?
     public let captures: [CaptureCommandSuccess]
     public let globalDestination: CaptureGlobalDestination?
     public let warnings: [String]
@@ -1513,6 +1633,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         pomodoroShift: PomodoroShiftSummary? = nil,
         pomodoroClose: PomodoroCloseSummary? = nil,
         projectNote: CaptureProjectNoteSummary? = nil,
+        planBudget: CapturePlanBudget? = nil,
         captures: [CaptureCommandSuccess] = [],
         globalDestination: CaptureGlobalDestination? = nil,
         warnings: [String] = []
@@ -1565,6 +1686,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.pomodoroShift = pomodoroShift
         self.pomodoroClose = pomodoroClose
         self.projectNote = projectNote
+        self.planBudget = planBudget
         self.captures = captures
         self.globalDestination = globalDestination
         self.warnings = warnings
@@ -1641,6 +1763,10 @@ public struct CaptureCommandSuccess: Codable, Equatable {
             CaptureProjectNoteSummary.self,
             forKey: .projectNote
         )
+        planBudget = try container.decodeIfPresent(
+            CapturePlanBudget.self,
+            forKey: .planBudget
+        )
         captures = try container.decodeIfPresent([CaptureCommandSuccess].self, forKey: .captures) ?? []
         globalDestination = try container.decodeIfPresent(
             CaptureGlobalDestination.self,
@@ -1698,6 +1824,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case pomodoroShift = "pomodoro_shift"
         case pomodoroClose = "pomodoro_close"
         case projectNote = "project_note"
+        case planBudget = "plan_budget"
         case captures
         case globalDestination = "global_destination"
         case warnings
@@ -1770,10 +1897,28 @@ private func normalizedCaptureKind(_ value: String) -> String {
 public struct CaptureCommandFailure: Codable, Equatable {
     public let ok: Bool
     public let error: String
+    // Additive machine-readable failure code, emitted only for the strict
+    // plan-budget refusal (`plan_theme_cap_exceeded`). Older Bob omits it
+    // and it decodes as nil.
+    public let code: String?
 
-    public init(ok: Bool = false, error: String) {
+    public init(ok: Bool = false, error: String, code: String? = nil) {
         self.ok = ok
         self.error = error
+        self.code = code
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decodeIfPresent(Bool.self, forKey: .ok) ?? false
+        error = try container.decodeIfPresent(String.self, forKey: .error) ?? ""
+        code = try container.decodeIfPresent(String.self, forKey: .code)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case error
+        case code
     }
 }
 
@@ -2321,6 +2466,12 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let isCurrent: Bool
     public let matchCount: Int?
     public let createsPomodoro: Bool
+    // Additive plan-budget preview on `pomodoro_name` create rows: the
+    // resulting theme count and cap when the row is accepted. Only on
+    // `creates_pomodoro` rows; omitted when the daily note or the plan
+    // config is unavailable, so older Bob decodes as nil.
+    public let planThemesAfter: Int?
+    public let planThemesCap: Int?
     public let pomodoro: ActiveTaskPomodoro?
 
     public var id: String {
@@ -2376,6 +2527,8 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         isCurrent: Bool = false,
         matchCount: Int? = nil,
         createsPomodoro: Bool = false,
+        planThemesAfter: Int? = nil,
+        planThemesCap: Int? = nil,
         pomodoro: ActiveTaskPomodoro? = nil
     ) {
         self.replacement = replacement
@@ -2410,6 +2563,8 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.isCurrent = isCurrent
         self.matchCount = matchCount
         self.createsPomodoro = createsPomodoro
+        self.planThemesAfter = planThemesAfter
+        self.planThemesCap = planThemesCap
         self.pomodoro = pomodoro
     }
 
@@ -2447,6 +2602,8 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         isCurrent = try container.decodeIfPresent(Bool.self, forKey: .isCurrent) ?? false
         matchCount = try container.decodeIfPresent(Int.self, forKey: .matchCount)
         createsPomodoro = try container.decodeIfPresent(Bool.self, forKey: .createsPomodoro) ?? false
+        planThemesAfter = try container.decodeIfPresent(Int.self, forKey: .planThemesAfter)
+        planThemesCap = try container.decodeIfPresent(Int.self, forKey: .planThemesCap)
         pomodoro = try container.decodeIfPresent(ActiveTaskPomodoro.self, forKey: .pomodoro)
     }
 
@@ -2483,6 +2640,8 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case isCurrent = "is_current"
         case matchCount = "match_count"
         case createsPomodoro = "creates_pomodoro"
+        case planThemesAfter = "plan_themes_after"
+        case planThemesCap = "plan_themes_cap"
         case pomodoro
     }
 }
