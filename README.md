@@ -114,13 +114,6 @@ just test
 just bundle
 ```
 
-Rendered picker review images come from the `Render picker review images`
-workflow (`.github/workflows/render.yml`, `workflow_dispatch` on
-`macos-26`): it checks out the requested `ref`, runs the requested test
-`filter` with `BOB_MAC_CAPTURE_RENDER_DIR` set, and uploads the PNGs.
-Locally, the same render tests run with the variable pointed at a
-writable directory; without it they skip.
-
 `just bundle` creates `.build/bundle/Bob Mac Capture.app` and signs it with the ad-hoc
 identity `-`. Release installs should prefer an Apple Development identity:
 
@@ -598,7 +591,7 @@ when it appears on a child line. The app never parses that punctuation itself:
 highlighting and completion follow bob-cli's semantic spans. Both families complete
 their route side; only the `+` family's right-hand side offers existing tasks, `#` after
 a resolved `@route+block-id` offers Pomodoro names while the item has no body text and
-task sections once it does, and the `^` family's authored ID has no picker. The retired
+task sections once it does, and the `^` family's authored ID opens the New ID picker. The retired
 `@route::block-id` spelling is a parse diagnostic from `bob capture-parse`, not a
 supported interactive form.
 
