@@ -245,6 +245,144 @@ final class CapturePlanBudgetPresentationTests: XCTestCase {
         XCTAssertEqual(content.badges, ["Create"])
     }
 
+    func testPomodoroStartNameNewRowShowsCapBadgeOverCap() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "rev",
+            childCount: 0,
+            name: "REV",
+            state: "open",
+            placeholder: true,
+            createsPomodoro: true,
+            planThemesAfter: 4,
+            planThemesCap: 3
+        )
+
+        let content = completionRowContent(
+            for: candidate,
+            context: "pomodoro_start_name",
+            query: "rev"
+        )
+        XCTAssertEqual(content.badges, ["New", "4/3"])
+        XCTAssertTrue(content.accessibilityLabel.contains("4/3"))
+    }
+
+    func testPomodoroStartNameAgainRowShowsCapBadgeOverCap() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "plan",
+            childCount: 1,
+            name: "PLAN",
+            line: 5,
+            state: "completed",
+            timeRange: "0830-0855",
+            createsPomodoro: true,
+            planThemesAfter: 4,
+            planThemesCap: 3
+        )
+
+        let content = completionRowContent(
+            for: candidate,
+            context: "pomodoro_start_name",
+            query: "pl"
+        )
+        XCTAssertEqual(content.badges, ["Again", "4/3"])
+        XCTAssertTrue(content.accessibilityLabel.contains("4/3"))
+    }
+
+    func testPomodoroStartNameRowsWithinCapHaveNoCapBadge() {
+        let newWithinCap = CaptureCompletionCandidate(
+            replacement: "rev",
+            name: "REV",
+            state: "open",
+            placeholder: true,
+            createsPomodoro: true,
+            planThemesAfter: 3,
+            planThemesCap: 3
+        )
+        XCTAssertEqual(
+            completionRowContent(
+                for: newWithinCap,
+                context: "pomodoro_start_name",
+                query: "rev"
+            ).badges,
+            ["New"]
+        )
+
+        let againWithinCap = CaptureCompletionCandidate(
+            replacement: "plan",
+            name: "PLAN",
+            line: 5,
+            state: "completed",
+            timeRange: "0830-0855",
+            createsPomodoro: true,
+            planThemesAfter: 3,
+            planThemesCap: 3
+        )
+        XCTAssertEqual(
+            completionRowContent(
+                for: againWithinCap,
+                context: "pomodoro_start_name",
+                query: "pl"
+            ).badges,
+            ["Again"]
+        )
+
+        let newWithoutFields = CaptureCompletionCandidate(
+            replacement: "rev",
+            name: "REV",
+            state: "open",
+            placeholder: true,
+            createsPomodoro: true
+        )
+        XCTAssertEqual(
+            completionRowContent(
+                for: newWithoutFields,
+                context: "pomodoro_start_name",
+                query: "rev"
+            ).badges,
+            ["New"]
+        )
+
+        let againWithoutFields = CaptureCompletionCandidate(
+            replacement: "plan",
+            name: "PLAN",
+            line: 5,
+            state: "completed",
+            timeRange: "0830-0855",
+            createsPomodoro: true
+        )
+        XCTAssertEqual(
+            completionRowContent(
+                for: againWithoutFields,
+                context: "pomodoro_start_name",
+                query: "pl"
+            ).badges,
+            ["Again"]
+        )
+    }
+
+    func testPomodoroStartNameAgainFixtureDecodesPlanThemes() throws {
+        let text = try fixtureText("pomodoro-start-named-complete-again.json")
+        let data = Data(text.utf8)
+        let response = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: data
+        )
+        let candidate = try XCTUnwrap(
+            response.candidates.first(where: { $0.replacement == "plan" })
+        )
+        XCTAssertEqual(candidate.planThemesAfter, 4)
+        XCTAssertEqual(candidate.planThemesCap, 3)
+
+        let content = completionRowContent(
+            for: candidate,
+            context: "pomodoro_start_name",
+            query: "pl"
+        )
+        XCTAssertTrue(content.badges.contains("Again"))
+        XCTAssertTrue(content.badges.contains("4/3"))
+        XCTAssertTrue(content.accessibilityLabel.contains("4/3"))
+    }
+
     // MARK: - Helpers
 
     private func decodeCaptureSuccess(_ json: String) throws -> CaptureCommandSuccess {

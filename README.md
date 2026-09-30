@@ -438,7 +438,10 @@ or expired certificate can require reauthorizing those system permissions.
   announces `NAME will be created and started when captured`; accepting an
   again row announces `Starts a new NAME session when captured`; both only
   splice the slug and the daily note is not mutated until the later `bob
-  capture` transaction. Typing `=#` opens the list immediately and shows the
+  capture` transaction. The **New session** and **Again** rows carry the same
+  red `after/cap` cap badge as the `pomodoro_name` create row when the new
+  theme would push the plan past its cap. Typing `=#` opens the list
+  immediately and shows the
   calm `Pick a Pomodoro to start, or type a new name` status instead of a
   doomed dry run; a caret on the `=<X>` suffix itself requests nothing. The
   list narrows as you type while the live preview already shows the resolved

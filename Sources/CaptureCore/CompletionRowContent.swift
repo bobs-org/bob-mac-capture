@@ -262,11 +262,11 @@ public func completionRowContent(
             // A create row that would push the plan past its theme cap
             // carries a red `after/cap` badge (e.g. `4/3`). Older Bob
             // omits both fields and the row stays exactly today's.
-            if let after = candidate.planThemesAfter,
-               let cap = candidate.planThemesCap,
-               after > cap
-            {
-                badges.append("\(after)/\(cap)")
+            if let capBadge = planCapBadge(
+                after: candidate.planThemesAfter,
+                cap: candidate.planThemesCap
+            ) {
+                badges.append(capBadge)
             }
             accessibilityHint = "Creates this named future Pomodoro when the draft is captured."
         } else {
@@ -331,6 +331,12 @@ public func completionRowContent(
                 secondaryText = "Completed"
             }
             badges = ["Again"]
+            if let capBadge = planCapBadge(
+                after: candidate.planThemesAfter,
+                cap: candidate.planThemesCap
+            ) {
+                badges.append(capBadge)
+            }
             let name = candidate.name.flatMap { $0.isEmpty ? nil : $0 } ?? candidate.replacement
             accessibilityHint = "Starts a new \(name) session now."
         } else if candidate.createsPomodoro {
@@ -339,6 +345,12 @@ public func completionRowContent(
             primaryText = startNameDisplayName(for: candidate)
             secondaryText = "New session"
             badges = ["New"]
+            if let capBadge = planCapBadge(
+                after: candidate.planThemesAfter,
+                cap: candidate.planThemesCap
+            ) {
+                badges.append(capBadge)
+            }
             accessibilityHint = "Creates this Pomodoro and starts it now."
         } else if let timeRange = candidate.timeRange, !timeRange.isEmpty {
             category = .neutral
@@ -447,6 +459,17 @@ public func completionRowContent(
         accessibilityLabel: accessibilityLabel,
         accessibilityHint: accessibilityHint
     )
+}
+
+/// The red `after/cap` badge for a create row that would push the plan
+/// past its theme cap (e.g. `4/3`). Shared by the `pomodoro_name` create
+/// row and the `pomodoro_start_name` new and again rows. `nil` when the
+/// fields are missing or the plan stays within cap.
+private func planCapBadge(after: Int?, cap: Int?) -> String? {
+    guard let after, let cap, after > cap else {
+        return nil
+    }
+    return "\(after)/\(cap)"
 }
 
 /// The queued-link badge for a `pomodoro_start_name` start or name-it row.
