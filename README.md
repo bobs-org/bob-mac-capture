@@ -133,8 +133,9 @@ mutation.
   rows preview the resulting theme count with `plan_themes_after` and
   `plan_themes_cap`. An older Bob that omits `plan_budget`, `role`,
   `plan_themes_after`/`plan_themes_cap`, or `code` still previews and captures;
-  the Mac app decodes each as absent and simply omits the destination row, the
-  meter capsules, the cap badge, and the strict hint. A trailing `#now` tag
+  the Mac app decodes each as absent and renders the destination row as
+  `→ NAME`, omitting only the meter capsules, the cap badge, and the strict
+  hint. A trailing `#now` tag
   moves onto new task text with a mint `now_tag` span and a `star.circle`
   `#now` completion row ("This week's bet" with a `NOW` badge); the `^`
   active-task picker lists Ready `#now` tasks with their Ready status and
