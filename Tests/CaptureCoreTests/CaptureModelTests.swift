@@ -2481,4 +2481,208 @@ final class CaptureModelTests: XCTestCase {
         )
         XCTAssertNil(withoutNote.projectNote)
     }
+
+    // MARK: - Pomodoro blocks
+
+    private func decodeBlockFixture(_ name: String) throws -> CaptureCommandSuccess {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let text = try String(
+            contentsOf: fixtures.appendingPathComponent(name),
+            encoding: .utf8
+        )
+        return try decodeCaptureSuccess(text)
+    }
+
+    func testPomodoroBlocksDecodeAdjustFixture() throws {
+        let success = try decodeBlockFixture("pomodoro-adjust-blocks.json")
+
+        XCTAssertEqual(success.pomodoroBlocks.count, 1)
+        let block = try XCTUnwrap(success.pomodoroBlocks.first)
+        XCTAssertEqual(block.relativeTarget, "2026/20260930.md")
+        XCTAssertEqual(block.line, 5)
+        XCTAssertEqual(block.name, "CLEANUP")
+        XCTAssertEqual(block.timeRange, "0620-0735")
+        XCTAssertEqual(block.status, .running)
+        XCTAssertFalse(block.created)
+        XCTAssertEqual(block.roles, ["adjusted"])
+        XCTAssertEqual(block.lines.count, 4)
+
+        let headline = try XCTUnwrap(block.lines.first)
+        XCTAssertEqual(headline.text, "- [ ] (**0620-0735** [t:: 75m]) — CLEANUP")
+        XCTAssertEqual(headline.depth, 0)
+        XCTAssertEqual(headline.change, .changed)
+        XCTAssertEqual(headline.before, "- [ ] (**0620-0710** [t:: 50m]) — CLEANUP")
+
+        for child in block.lines.dropFirst() {
+            XCTAssertEqual(child.depth, 1)
+            XCTAssertEqual(child.change, .unchanged)
+            XCTAssertNil(child.before)
+        }
+        XCTAssertEqual(
+            block.lines.map(\.text),
+            [
+                "- [ ] (**0620-0735** [t:: 75m]) — CLEANUP",
+                "\t- [[sase#^re-launch-failed]]",
+                "\t- [[sase#^clean-prompt-history]]",
+                "\t- [[bob#^decision-web]]",
+            ]
+        )
+    }
+
+    func testPomodoroBlocksDecodeShiftFixture() throws {
+        let success = try decodeBlockFixture("pomodoro-shift-blocks.json")
+
+        let block = try XCTUnwrap(success.pomodoroBlocks.first)
+        XCTAssertEqual(success.pomodoroBlocks.count, 1)
+        XCTAssertEqual(block.roles, ["shifted"])
+        XCTAssertEqual(block.timeRange, "0625-0715")
+        XCTAssertEqual(block.status, .running)
+        XCTAssertEqual(block.lines.first?.change, .changed)
+        XCTAssertEqual(
+            block.lines.first?.before,
+            "- [ ] (**0620-0710** [t:: 50m]) — CLEANUP"
+        )
+    }
+
+    func testPomodoroBlocksDecodeStartFixture() throws {
+        let success = try decodeBlockFixture("pomodoro-start-blocks.json")
+
+        let block = try XCTUnwrap(success.pomodoroBlocks.first)
+        XCTAssertEqual(success.pomodoroBlocks.count, 1)
+        XCTAssertEqual(block.relativeTarget, "day.md")
+        XCTAssertEqual(block.line, 3)
+        XCTAssertEqual(block.name, "GTD")
+        XCTAssertEqual(block.timeRange, "0945-1010")
+        XCTAssertEqual(block.status, .running)
+        XCTAssertFalse(block.created)
+        XCTAssertEqual(block.roles, ["started"])
+        XCTAssertEqual(
+            block.lines.map(\.change),
+            [.changed, .unchanged, .unchanged]
+        )
+        XCTAssertEqual(block.lines.first?.before, "- [ ] () — GTD")
+    }
+
+    func testPomodoroBlocksDecodeCreatedNamedStartFixture() throws {
+        let success = try decodeBlockFixture("pomodoro-start-named-blocks-created.json")
+
+        let block = try XCTUnwrap(success.pomodoroBlocks.first)
+        XCTAssertEqual(success.pomodoroBlocks.count, 1)
+        XCTAssertEqual(block.name, "FOCUS")
+        XCTAssertEqual(block.timeRange, "0720-0745")
+        XCTAssertEqual(block.status, .running)
+        XCTAssertTrue(block.created)
+        XCTAssertEqual(block.roles, ["started"])
+        XCTAssertEqual(block.lines.count, 1)
+        XCTAssertEqual(block.lines.first?.change, .added)
+        XCTAssertNil(block.lines.first?.before)
+    }
+
+    func testPomodoroBlocksDecodeCloseFixture() throws {
+        let success = try decodeBlockFixture("pomodoro-close-blocks.json")
+
+        XCTAssertEqual(success.pomodoroBlocks.count, 2)
+        let closed = success.pomodoroBlocks[0]
+        XCTAssertEqual(closed.line, 5)
+        XCTAssertEqual(closed.name, "CAPTURE")
+        XCTAssertEqual(closed.timeRange, "0920-0940")
+        XCTAssertEqual(closed.status, .completed)
+        XCTAssertFalse(closed.created)
+        XCTAssertEqual(closed.roles, ["closed"])
+        XCTAssertEqual(
+            closed.lines.map(\.change),
+            [.changed, .changed, .unchanged, .unchanged, .unchanged,
+             .removed, .unchanged, .unchanged, .unchanged]
+        )
+        XCTAssertEqual(closed.lines[5].text, "\t- [[bob#^web-capture]]#")
+        XCTAssertEqual(closed.lines[5].depth, 1)
+
+        let next = success.pomodoroBlocks[1]
+        XCTAssertEqual(next.line, 13)
+        XCTAssertEqual(next.name, "CAPTURE")
+        XCTAssertNil(next.timeRange)
+        XCTAssertEqual(next.status, .queued)
+        XCTAssertTrue(next.created)
+        XCTAssertEqual(next.roles, ["next"])
+        XCTAssertTrue(next.lines.allSatisfy { $0.change == .added })
+    }
+
+    func testPomodoroBlocksDecodeChainFixture() throws {
+        let success = try decodeBlockFixture("pomodoro-chain-blocks.json")
+
+        XCTAssertEqual(success.pomodoroBlocks.count, 2)
+        let first = success.pomodoroBlocks[0]
+        XCTAssertEqual(first.name, "CLEANUP")
+        XCTAssertEqual(first.status, .completed)
+        XCTAssertEqual(first.roles, ["adjusted", "closed"])
+        XCTAssertEqual(
+            first.lines.first?.before,
+            "- [ ] (**0620-0710** [t:: 50m]) — CLEANUP"
+        )
+        let second = success.pomodoroBlocks[1]
+        XCTAssertEqual(second.status, .queued)
+        XCTAssertTrue(second.created)
+        XCTAssertEqual(second.roles, ["next"])
+    }
+
+    func testPomodoroBlocksAbsentKeyDecodesAsEmpty() throws {
+        let success = try decodeBlockFixture("pomodoro-close-worked.json")
+
+        XCTAssertEqual(success.pomodoroBlocks, [])
+    }
+
+    func testPomodoroBlocksMalformedValueDecodesAsEmpty() throws {
+        let objectInsteadOfArray = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":false,"route":null,"route_label":"",
+            "relative_target":"day.md","target":"/tmp/vault/day.md",
+            "text":"+5","task_line":"- [ ] () — GTD",
+            "kind":"pomodoro_adjust","created":"2026-09-30","placement":"toggled",
+            "pomodoro_blocks":{"line":5}}
+            """
+        )
+        XCTAssertEqual(objectInsteadOfArray.pomodoroBlocks, [])
+
+        let mistypedElement = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":false,"route":null,"route_label":"",
+            "relative_target":"day.md","target":"/tmp/vault/day.md",
+            "text":"+5","task_line":"- [ ] () — GTD",
+            "kind":"pomodoro_adjust","created":"2026-09-30","placement":"toggled",
+            "pomodoro_blocks":[{"relative_target":"day.md","line":"five"}]}
+            """
+        )
+        XCTAssertEqual(mistypedElement.pomodoroBlocks, [])
+    }
+
+    func testPomodoroBlocksUnknownStatusAndChangeDegrade() throws {
+        XCTAssertEqual(CapturePomodoroBlockStatus(wireValue: "running"), .running)
+        XCTAssertEqual(CapturePomodoroBlockStatus(wireValue: "queued"), .queued)
+        XCTAssertEqual(CapturePomodoroBlockStatus(wireValue: "completed"), .completed)
+        XCTAssertEqual(CapturePomodoroBlockStatus(wireValue: "napping"), .other)
+        XCTAssertEqual(CapturePomodoroBlockStatus(wireValue: nil), .other)
+
+        XCTAssertEqual(CapturePomodoroBlockChange(wireValue: "changed"), .changed)
+        XCTAssertEqual(CapturePomodoroBlockChange(wireValue: "added"), .added)
+        XCTAssertEqual(CapturePomodoroBlockChange(wireValue: "removed"), .removed)
+        XCTAssertEqual(CapturePomodoroBlockChange(wireValue: "morphed"), .unchanged)
+        XCTAssertEqual(CapturePomodoroBlockChange(wireValue: nil), .unchanged)
+
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":false,"route":null,"route_label":"",
+            "relative_target":"day.md","target":"/tmp/vault/day.md",
+            "text":"+5","task_line":"- [ ] () — GTD",
+            "kind":"pomodoro_adjust","created":"2026-09-30","placement":"toggled",
+            "pomodoro_blocks":[{"relative_target":"day.md","line":2,"status":"napping",
+            "lines":[{"text":"- [ ] () — GTD","depth":0,"change":"morphed"}]}]}
+            """
+        )
+        let block = try XCTUnwrap(success.pomodoroBlocks.first)
+        XCTAssertEqual(block.status, .other)
+        XCTAssertEqual(block.lines.first?.change, .unchanged)
+    }
 }

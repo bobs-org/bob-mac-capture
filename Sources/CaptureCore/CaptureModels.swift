@@ -732,6 +732,172 @@ public struct PomodoroShiftSummary: Codable, Equatable, Sendable {
     }
 }
 
+/// One Pomodoro block in its final after-state from Bob's additive
+/// batch-level `pomodoro_blocks` key: a Pomodoro the capture touches,
+/// creates, or reports, with every line of its block and a per-line diff
+/// against the pre-capture ledger. `line` is the 1-based headline line in
+/// the final staged day file; `created` marks an entry that did not exist
+/// before the batch; `roles` is informational first-touch order the app
+/// never depends on. Every field decodes tolerantly so a partial object
+/// still yields a block instead of failing the whole capture.
+public struct CapturePomodoroBlock: Codable, Equatable, Sendable {
+    public let relativeTarget: String
+    public let line: Int
+    public let name: String?
+    public let timeRange: String?
+    public let status: CapturePomodoroBlockStatus
+    public let created: Bool
+    public let roles: [String]
+    public let lines: [CapturePomodoroBlockLine]
+
+    public init(
+        relativeTarget: String,
+        line: Int,
+        name: String? = nil,
+        timeRange: String? = nil,
+        status: CapturePomodoroBlockStatus = .other,
+        created: Bool = false,
+        roles: [String] = [],
+        lines: [CapturePomodoroBlockLine] = []
+    ) {
+        self.relativeTarget = relativeTarget
+        self.line = line
+        self.name = name
+        self.timeRange = timeRange
+        self.status = status
+        self.created = created
+        self.roles = roles
+        self.lines = lines
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        relativeTarget = try container.decodeIfPresent(String.self, forKey: .relativeTarget) ?? ""
+        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange)
+        status =
+            try container.decodeIfPresent(
+                CapturePomodoroBlockStatus.self,
+                forKey: .status
+            ) ?? .other
+        created = try container.decodeIfPresent(Bool.self, forKey: .created) ?? false
+        roles = try container.decodeIfPresent([String].self, forKey: .roles) ?? []
+        lines =
+            try container.decodeIfPresent(
+                [CapturePomodoroBlockLine].self,
+                forKey: .lines
+            ) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case relativeTarget = "relative_target"
+        case line
+        case name
+        case timeRange = "time_range"
+        case status
+        case created
+        case roles
+        case lines
+    }
+}
+
+/// Whether Bob's Pomodoro entry is open with a time range (`running`), open
+/// without one (`queued`), or done (`completed`). Unknown values decode to
+/// `.other` so a newer Bob never breaks the panel.
+public enum CapturePomodoroBlockStatus: String, Equatable, Sendable {
+    case running
+    case queued
+    case completed
+    case other
+
+    public init(wireValue: String?) {
+        self = (wireValue.flatMap(CapturePomodoroBlockStatus.init(rawValue:)) ?? .other)
+    }
+}
+
+extension CapturePomodoroBlockStatus: Codable {
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try? container.decode(String.self)
+        self.init(wireValue: raw)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
+/// One verbatim line of a Pomodoro block: `text` never carries a
+/// terminator, and `before` holds the old text only on `changed` rows.
+/// Unknown `change` values decode to `.unchanged` so a newer Bob never
+/// breaks the panel.
+public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
+    public let text: String
+    public let depth: Int
+    public let change: CapturePomodoroBlockChange
+    public let before: String?
+
+    public init(
+        text: String,
+        depth: Int = 0,
+        change: CapturePomodoroBlockChange = .unchanged,
+        before: String? = nil
+    ) {
+        self.text = text
+        self.depth = depth
+        self.change = change
+        self.before = before
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        depth = try container.decodeIfPresent(Int.self, forKey: .depth) ?? 0
+        change =
+            try container.decodeIfPresent(
+                CapturePomodoroBlockChange.self,
+                forKey: .change
+            ) ?? .unchanged
+        before = try container.decodeIfPresent(String.self, forKey: .before)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case text
+        case depth
+        case change
+        case before
+    }
+}
+
+/// How a block line differs from the pre-capture ledger: `changed` rows
+/// carry the old text in `before`, and removed lines are interleaved where
+/// they used to be. Unknown values decode to `.unchanged`.
+public enum CapturePomodoroBlockChange: String, Equatable, Sendable {
+    case unchanged
+    case added
+    case removed
+    case changed
+
+    public init(wireValue: String?) {
+        self = (wireValue.flatMap(CapturePomodoroBlockChange.init(rawValue:)) ?? .unchanged)
+    }
+}
+
+extension CapturePomodoroBlockChange: Codable {
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try? container.decode(String.self)
+        self.init(wireValue: raw)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
 /// One timing value from Bob's additive `pomodoro_close` result. Every field
 /// decodes tolerantly so a partial or older-bob object still yields a row.
 public struct PomodoroCloseTiming: Codable, Equatable, Sendable {
@@ -1595,6 +1761,11 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     // today's Pomodoros section. It is not per item. Older Bob omits it
     // entirely; decode as nil.
     public let planBudget: CapturePlanBudget?
+    // Additive batch-level `pomodoro_blocks`: every Pomodoro the capture
+    // touches, creates, or reports, in its final after-state. Older Bob
+    // omits it entirely, and a malformed value decodes as empty so it can
+    // never fail the capture decode.
+    public let pomodoroBlocks: [CapturePomodoroBlock]
     public let captures: [CaptureCommandSuccess]
     public let globalDestination: CaptureGlobalDestination?
     public let warnings: [String]
@@ -1651,7 +1822,8 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         planBudget: CapturePlanBudget? = nil,
         captures: [CaptureCommandSuccess] = [],
         globalDestination: CaptureGlobalDestination? = nil,
-        warnings: [String] = []
+        warnings: [String] = [],
+        pomodoroBlocks: [CapturePomodoroBlock] = []
     ) {
         self.ok = ok
         self.dryRun = dryRun
@@ -1702,6 +1874,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.pomodoroClose = pomodoroClose
         self.projectNote = projectNote
         self.planBudget = planBudget
+        self.pomodoroBlocks = pomodoroBlocks
         self.captures = captures
         self.globalDestination = globalDestination
         self.warnings = warnings
@@ -1782,6 +1955,11 @@ public struct CaptureCommandSuccess: Codable, Equatable {
             CapturePlanBudget.self,
             forKey: .planBudget
         )
+        pomodoroBlocks =
+            (try? container.decodeIfPresent(
+                [CapturePomodoroBlock].self,
+                forKey: .pomodoroBlocks
+            )) ?? []
         captures = try container.decodeIfPresent([CaptureCommandSuccess].self, forKey: .captures) ?? []
         globalDestination = try container.decodeIfPresent(
             CaptureGlobalDestination.self,
@@ -1840,6 +2018,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case pomodoroClose = "pomodoro_close"
         case projectNote = "project_note"
         case planBudget = "plan_budget"
+        case pomodoroBlocks = "pomodoro_blocks"
         case captures
         case globalDestination = "global_destination"
         case warnings
