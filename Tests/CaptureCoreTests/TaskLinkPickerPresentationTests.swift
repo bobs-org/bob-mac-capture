@@ -279,7 +279,7 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
         XCTAssertEqual(pending.count, 4)
         XCTAssertEqual(
             pending.map(\.route),
-            ["mac_inbox", "health", "bob", "sase"]
+            ["sase", "mac_inbox", "health", "bob"]
         )
         let rows = try presentation.orderedRowIDs.map { try XCTUnwrap(presentation.rowsByID[$0]) }
         for row in rows where row.pendingBlockID != nil {
