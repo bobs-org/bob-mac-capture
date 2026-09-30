@@ -417,15 +417,15 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         let success = try decodeFixture("pomodoro-start-drop.json")
         let summary = try XCTUnwrap(success.pomodoroStart)
         XCTAssertEqual(summary.drop, [2])
-        XCTAssertEqual(summary.dropped.map(\.index), [2])
+        XCTAssertEqual(summary.dropped.map(\.index), [2] as [Int?])
         let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
 
-        XCTAssertEqual(presentation.taskRows.map(\.index), [1, 2, 3])
+        XCTAssertEqual(presentation.taskRows.map(\.index), [1, 2, 3] as [Int?])
         XCTAssertEqual(presentation.taskRows.map(\.isDropped), [false, true, false])
         XCTAssertEqual(presentation.taskRows.map(\.glyph), [.next, .dropped, .next])
         XCTAssertEqual(
             presentation.taskRows.map(\.badgeSymbolName),
-            ["1.circle", "2.circle.fill", "3.circle"]
+            ["1.circle", "2.circle.fill", "3.circle"] as [String?]
         )
         XCTAssertEqual(presentation.taskRows.map(\.isDimmed), [false, true, false])
         XCTAssertEqual(presentation.taskRows.map(\.isStruck), [false, true, false])
@@ -482,7 +482,7 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         )
 
         XCTAssertTrue(presentation.taskRows.allSatisfy(\.isDropped))
-        XCTAssertEqual(presentation.taskRows.map(\.index), [1, 2, 3])
+        XCTAssertEqual(presentation.taskRows.map(\.index), [1, 2, 3] as [Int?])
         XCTAssertEqual(presentation.dropSummary, "Dropped 1, 2, 3 · nothing left queued")
         XCTAssertEqual(presentation.emptyText, "Nothing queued")
         XCTAssertEqual(

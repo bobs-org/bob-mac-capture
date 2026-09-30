@@ -2066,19 +2066,19 @@ final class CapturePanelModel: ObservableObject {
         in parse: CaptureParseResponse,
         draft: String
     ) -> (trimmed: String, separator: String, action: String)? {
-        let scopes: [(range: CaptureRange?, needsTask: Bool, isStart: Bool)] =
-            if parse.items.isEmpty {
-                let isStart = parse.needs.contains("pomodoro_start_task")
-                let needsTask = parse.needs.contains("pomodoro_close_task") || isStart
-                [(nil, needsTask, isStart)]
-            } else {
-                parse.items.map { item in
-                    let isStart = item.needs.contains("pomodoro_start_task")
-                    let needsTask =
-                        item.needs.contains("pomodoro_close_task") || isStart
-                    return (item.range, needsTask, isStart)
-                }
+        let scopes: [(range: CaptureRange?, needsTask: Bool, isStart: Bool)]
+        if parse.items.isEmpty {
+            let isStart = parse.needs.contains("pomodoro_start_task")
+            let needsTask = parse.needs.contains("pomodoro_close_task") || isStart
+            scopes = [(nil, needsTask, isStart)]
+        } else {
+            scopes = parse.items.map { item in
+                let isStart = item.needs.contains("pomodoro_start_task")
+                let needsTask =
+                    item.needs.contains("pomodoro_close_task") || isStart
+                return (item.range, needsTask, isStart)
             }
+        }
         let pending = scopes.filter { $0.needsTask }
         guard !pending.isEmpty else {
             return nil
