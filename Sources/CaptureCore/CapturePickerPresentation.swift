@@ -437,7 +437,7 @@ public enum CapturePickerAvailability: Equatable, Sendable {
 /// Which bucket of the picker a section belongs to. The `^` source uses the
 /// Pomodoro, unqueued, other, and matches buckets; the Block ID source adds
 /// note headings, suggestions, and used IDs; the `:` source reuses the
-/// Pomodoro and unqueued buckets and adds `now` and per-note sections. The
+/// Pomodoro and unqueued buckets and adds per-note sections. The
 /// filtered view uses a single header-less `.matches` section.
 public enum CapturePickerSectionKind: Equatable, Sendable {
     case pomodoro
@@ -448,7 +448,6 @@ public enum CapturePickerSectionKind: Equatable, Sendable {
     case noteHeading
     case suggestions
     case usedIDs
-    case now
     case note
 }
 
@@ -563,8 +562,8 @@ public struct CapturePickerRow: Equatable, Sendable {
     /// Small Pomodoro chip for filtered rows; nil in grouped mode (the header
     /// already says it) and for unqueued tasks.
     public let chipText: String?
-    /// Trailing badge capsule. On the `^` source this is the `NOW` tag
-    /// for `#now` candidates, else nil.
+    /// Trailing badge capsule. Currently always nil; kept so row layout
+    /// stays stable if a future source needs one.
     public let badgeText: String?
     /// Nesting depth; the row indents 14pt per depth (max 2). Always 0 for
     /// `^`, and nonzero only in grouped `:` note sections.
@@ -655,7 +654,7 @@ public struct CapturePickerEmptyState: Equatable, Sendable {
     public static var noActiveTasks: Self {
         Self(
             title: "No active tasks",
-            message: "No In Progress, Next, or Ready #now tasks — a task needs `[/]`, `[*]`, or `#now` with a `^block-id` to appear here."
+            message: "No In Progress or Next tasks — a task needs `[/]` or `[*]` with a `^block-id` to appear here."
         )
     }
 

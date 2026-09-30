@@ -66,10 +66,6 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         /// unnumbered rows (older Bob), which render exactly like today's
         /// card: no badge, still capped under `+N more`.
         public let index: Int?
-        /// True when the task line carries `#now`: the row gets the close
-        /// card's mint `NOW` capsule, and a dropped `#now` row adds the
-        /// `"stays in NOW"` caption.
-        public let now: Bool
         /// True for rows removed by the typed `~<K>` list. They render
         /// struck and dimmed with the `minus.circle` gray glyph, in place in
         /// lineup order.
@@ -85,7 +81,7 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         public let isDimmed: Bool
         /// Dropped rows render their text with strikethrough in the card.
         public let isStruck: Bool
-        /// `"stays in NOW"` and/or `"with N nested line(s)"` on dropped
+        /// `"stays <status>"` and/or `"with N nested line(s)"` on dropped
         /// rows, else nil.
         public let caption: String?
         /// `"Task 1, <text>, queued"` for numbered kept rows;
@@ -386,16 +382,15 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         }
         let caption: String?
         if dropped {
-            var parts: [String] = []
-            if task.now {
-                parts.append("stays in NOW")
-            }
+            var parts = [
+                "stays \(CaptureTogglePresentation.staysStatusName(symbol: task.statusSymbol, name: task.statusName))"
+            ]
             if task.nestedLines > 0 {
                 parts.append(
                     "with \(task.nestedLines) nested line\(task.nestedLines == 1 ? "" : "s")"
                 )
             }
-            caption = parts.isEmpty ? nil : parts.joined(separator: " · ")
+            caption = parts.joined(separator: " · ")
         } else {
             caption = nil
         }
@@ -414,7 +409,6 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
             locatorText: locator,
             warning: task.warning,
             index: task.index,
-            now: task.now,
             isDropped: dropped,
             badgeSymbolName: badgeSymbolName,
             usesNumericBadgeFallback: usesNumericBadgeFallback,

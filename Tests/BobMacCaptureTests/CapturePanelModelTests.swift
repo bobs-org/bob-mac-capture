@@ -2403,21 +2403,6 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 2 --format json -- =#"))
     }
 
-    func testNowTagPartialRequestsNowTagCompletion() async throws {
-        let model = CapturePanelModel(debounceNanoseconds: 0)
-        model.processClient = BobProcessClient(
-            executablePath: try fakeBobPath(),
-            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
-        )
-        model.plainDraft = "Fix it #n"
-        model.editorTextDidChange(cursorUTF8Offset: 9)
-        await waitUntil { model.completionResponse?.context == "now_tag" }
-
-        XCTAssertTrue(model.completionVisible)
-        XCTAssertEqual(model.completionResponse?.candidates.count, 1)
-        XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "#now")
-    }
-
     func testNamedStartCountedIncompleteRequestsStartNameCompletion() async throws {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(

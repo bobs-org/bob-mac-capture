@@ -810,7 +810,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertNil(CapturePomodoroClosePresentation(capture: success))
     }
 
-    func testRealBobDropNowCloseMapsDroppedOutcomeAndNowBadges() throws {
+    func testRealBobDropNowCloseMapsDroppedOutcomeAndStaysStatusCaption() throws {
         let success = try decodeFixture("pomodoro-close-drop-now.json")
         let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
 
@@ -826,7 +826,6 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertEqual(success.planBudget?.links.before, 4)
 
         let kept = try XCTUnwrap(presentation.taskRows.first(where: { $0.index == 3 }))
-        XCTAssertTrue(kept.now)
         XCTAssertNil(kept.caption)
         XCTAssertFalse(kept.isStruck)
         // Unlisted rows dim so the chosen rows stand out, dropped or not.
@@ -837,8 +836,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertEqual(dropped.glyph, .dropped)
         XCTAssertTrue(dropped.isStruck)
         XCTAssertTrue(dropped.isDimmed)
-        XCTAssertTrue(dropped.now)
-        XCTAssertEqual(dropped.caption, "stays in NOW")
+        XCTAssertEqual(dropped.caption, "stays Ready")
         XCTAssertEqual(
             dropped.accessibilityLabel,
             "Task 4, Drop me #now, drops from today, chosen"
@@ -860,34 +858,26 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         )
     }
 
-    func testNowTagParseDecodesNowTagSpan() throws {
+    func testTrailingNowTagIsAnOrdinaryTagError() throws {
+        // Real `bob capture-parse` output: a trailing `#now` after the
+        // route is the ordinary trailing-tag error, with no spans and no
+        // completion needs.
         let response = try JSONDecoder().decode(
             CaptureParseResponse.self,
-            from: Data(fixtureText("now-tag-parse.json").utf8)
+            from: Data("""
+            {"ok":true,"schema_version":1,"input":"Fix it @sase^fix-it #now","body":"Fix it @sase^fix-it #now","mode":"task","route":null,"section":null,"block_id":null,"needs":[],"spans":[],"diagnostics":[{"severity":"error","code":"legacy_bullet_marker","message":"bullet section markers must be appended to an @route token; use @foo#bar instead of #bar @foo","range":[20,24]}]}
+            """.utf8)
         )
         XCTAssertEqual(response.mode, "task")
-        XCTAssertEqual(response.route, "sase")
-        XCTAssertEqual(response.blockID, "fix-it")
-        XCTAssertEqual(
-            response.spans.map(\.kind),
-            ["task_block_id_route", "task_block_id", "now_tag"]
-        )
+        XCTAssertNil(response.route)
+        XCTAssertTrue(response.needs.isEmpty)
+        XCTAssertTrue(response.spans.isEmpty)
+        XCTAssertEqual(response.diagnostics.map(\.code), ["legacy_bullet_marker"])
     }
 
-    func testNowTagPartialParseRequestsNowTagCompletion() throws {
-        let response = try JSONDecoder().decode(
-            CaptureParseResponse.self,
-            from: Data(fixtureText("now-tag-parse-incomplete.json").utf8)
-        )
-        XCTAssertEqual(response.mode, "incomplete")
-        XCTAssertEqual(response.needs, ["now_tag"])
-        XCTAssertEqual(response.spans.map(\.kind), ["now_tag"])
-    }
-
-    func testOlderBobWithoutDropAndNowKeepsTodayCard() throws {
+    func testOlderBobWithoutDropKeepsTodayCard() throws {
         let success = try decodeFixture("pomodoro-close-worked.json")
         let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
-        XCTAssertTrue(presentation.taskRows.allSatisfy { !$0.now })
         XCTAssertTrue(presentation.taskRows.allSatisfy { $0.caption == nil })
         XCTAssertTrue(presentation.taskRows.allSatisfy { $0.outcome != .dropped })
     }

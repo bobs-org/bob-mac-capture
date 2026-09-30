@@ -122,11 +122,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         /// out. False whenever no selection was typed. Dropped rows always
         /// dim: they leave today entirely.
         public let isDimmed: Bool
-        /// True when the linked task's line carries `#now`. Rows with `now`
-        /// show a `NOW` badge; a dropped `#now` row adds the caption
-        /// "stays in NOW".
-        public let now: Bool
-        /// `"stays in NOW"` on dropped `#now` rows, else nil.
+        /// `"stays <status>"` on dropped rows, else nil.
         public let caption: String?
         /// `"Task 1, <text>, stays in progress, chosen"` for numbered rows;
         /// the transition text for unnumbered rows. Dropped rows read
@@ -405,8 +401,8 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         // Its transition is the marker change when the status changed, else
         // the unchanged `[x] closed`.
         // A dropped row leaves today entirely: struck text, dimmed, its own
-        // glyph. Its transition names the drop; a dropped `#now` row keeps
-        // its tag elsewhere, hence the "stays in NOW" caption.
+        // glyph. Its transition names the drop; a dropped row keeps its
+        // lane elsewhere, hence the "stays <status>" caption.
         if outcome == .complete {
             glyph = .embedded
             if task.statusChanged {
@@ -468,7 +464,8 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         let isDropped = outcome == .dropped || task.role == "dropped"
         let isDimmed = source == .unlisted || isDropped
         let isStruck = task.role == "struck" || outcome == .complete || isDropped
-        let caption: String? = (isDropped && task.now) ? "stays in NOW" : nil
+        let caption: String? = isDropped
+            ? "stays \(CaptureTogglePresentation.staysStatusName(symbol: task.statusSymbol, name: task.statusName))" : nil
         let accessibilityLabel: String
         if let index = task.index, let outcome {
             let fate: String
@@ -502,7 +499,6 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             badgeSymbolName: badgeSymbolName,
             usesNumericBadgeFallback: usesNumericBadgeFallback,
             isDimmed: isDimmed,
-            now: task.now,
             caption: caption,
             accessibilityLabel: accessibilityLabel
         )

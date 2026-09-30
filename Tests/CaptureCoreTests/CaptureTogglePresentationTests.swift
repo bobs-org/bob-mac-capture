@@ -358,6 +358,40 @@ final class CaptureTogglePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.notificationTitle, "Set Open")
     }
 
+    func testRealBobLinkToggleSetsNext() throws {
+        let success = try decodeFixture("task-toggle-link.json")
+        let presentation = try XCTUnwrap(CaptureTogglePresentation(capture: success))
+
+        XCTAssertEqual(presentation.direction, .link)
+        XCTAssertEqual(presentation.primaryActionTitle, "Set Next")
+        XCTAssertEqual(
+            presentation.transitionText,
+            "[ ] \u{2192} [*]  #task Finish Google Exit Packet!"
+        )
+        XCTAssertEqual(presentation.addedLinkText, "[[cash#^goog-exit]]")
+        XCTAssertNil(presentation.removedLinksText)
+        XCTAssertTrue(presentation.dayFileChanged)
+        XCTAssertTrue(presentation.statusText.hasPrefix("Would Set Next \u{2192}"))
+        XCTAssertTrue(presentation.statusText.contains("Ready \u{2192} Next"))
+    }
+
+    func testRealBobUnlinkToggleStaysNext() throws {
+        let success = try decodeFixture("task-toggle-unlink.json")
+        let presentation = try XCTUnwrap(CaptureTogglePresentation(capture: success))
+
+        XCTAssertEqual(presentation.direction, .unlink)
+        XCTAssertEqual(presentation.primaryActionTitle, "Set Open")
+        XCTAssertEqual(
+            presentation.transitionText,
+            "[*] unchanged  #task Finish Google Exit Packet!"
+        )
+        XCTAssertNil(presentation.addedLinkText)
+        XCTAssertEqual(presentation.removedLinksText, "removed 1 Pomodoro task link")
+        XCTAssertTrue(presentation.dayFileChanged)
+        XCTAssertTrue(presentation.statusText.contains("stays Next"))
+        XCTAssertTrue(presentation.voiceOverAnnouncement.contains("removed 1 Pomodoro task link"))
+    }
+
     func testOpenDirectionWithUnusedPomodoroSelectorAndNoNameFallsBackToGenericChip() throws {
         let success = try decodeCaptureSuccess(
             Self.openDirectionJSON(pomodoroSelectorUnused: true)
@@ -576,5 +610,25 @@ final class CaptureTogglePresentationTests: XCTestCase {
             throw CaptureFixtureError.expectedSuccess
         }
         return success
+    }
+
+    private func decodeFixture(_ name: String) throws -> CaptureCommandSuccess {
+        let response = try JSONDecoder().decode(
+            CaptureCommandResponse.self,
+            from: Data(fixtureText(name).utf8)
+        )
+        guard case .success(let success) = response else {
+            XCTFail("expected successful Bob response for \(name)")
+            throw CaptureFixtureError.expectedSuccess
+        }
+        return success
+    }
+
+    private func fixtureText(_ name: String) throws -> String {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        return try String(contentsOf: fixtures.appendingPathComponent(name), encoding: .utf8)
     }
 }

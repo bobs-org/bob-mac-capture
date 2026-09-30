@@ -539,12 +539,12 @@ struct CapturePanelView: View {
                     // the themes, and this hint names the gestures that keep
                     // the plan closed.
                     if model.errorCode == "plan_theme_cap_exceeded" {
-                        Text("Queue it with ^, keep it this week with #now, or defer with p:<N>.")
+                        Text("Queue it with ^ or defer with p:<N>.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                             .accessibilityLabel(
-                                "Plan hint: Queue it with ^, keep it this week with #now, or defer with p:<N>."
+                                "Plan hint: Queue it with ^ or defer with p:<N>."
                             )
                     }
                     HStack {
@@ -1882,16 +1882,6 @@ struct PreviewPane: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
-                                if row.now {
-                                    Text("NOW")
-                                        .font(.caption2)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.mint)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(.mint.opacity(0.12), in: Capsule())
-                                        .accessibilityLabel("This week's bet")
-                                }
                                 Spacer(minLength: 4)
                                 Text(row.locatorText)
                                     .font(.caption)
@@ -2231,16 +2221,6 @@ struct PreviewPane: View {
                                     .layoutPriority(1)
                                     .lineLimit(1)
                                     .textSelection(.enabled)
-                                if row.now {
-                                    Text("NOW")
-                                        .font(.caption2)
-                                        .fontWeight(.semibold)
-                                        .foregroundStyle(.mint)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(.mint.opacity(0.12), in: Capsule())
-                                        .accessibilityLabel("This week's bet")
-                                }
                                 Spacer(minLength: 4)
                                 Text(row.locatorText)
                                     .font(.caption)

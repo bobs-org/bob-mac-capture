@@ -4,42 +4,33 @@ import XCTest
 
 final class ActiveTaskPickerPresentationTests: XCTestCase {
     /// Real `bob capture-complete --cursor 1 -- '^'` shape for a Ready
-    /// `#now` task (status symbol and type as Bob reports them).
-    private func nowCandidate(now: Bool = true) -> CaptureCompletionCandidate {
+    /// task (status symbol and type as Bob reports them). Bob no longer
+    /// sends a `now` flag, so `#now` in the text is inert body text.
+    private func readyCandidate() -> CaptureCompletionCandidate {
         CaptureCompletionCandidate(
-            replacement: "notes:now-probe",
+            replacement: "notes:ready-probe",
             route: "notes",
-            blockID: "now-probe",
+            blockID: "ready-probe",
             statusSymbol: " ",
             statusName: "Todo",
             statusType: "TODO",
-            text: "Try the now tag #now",
-            now: now
+            text: "Try the ready task"
         )
     }
 
-    func testNowCandidateShowsNowBadgeAndBetAccessibilityLabel() throws {
-        let presentation = ActiveTaskPickerIndex(candidates: [nowCandidate()])
+    func testReadyCandidateShowsNoBadgeAndNoBetAccessibilityLabel() throws {
+        let presentation = ActiveTaskPickerIndex(candidates: [readyCandidate()])
             .presentation(filter: "")
         XCTAssertEqual(presentation.mode, .grouped)
         XCTAssertEqual(presentation.countText, "1 task")
         XCTAssertEqual(presentation.sections.map(\.id), ["other"])
 
-        let row = try XCTUnwrap(presentation.rowsByID["notes:now-probe"])
-        XCTAssertEqual(row.badgeText, "NOW")
+        let row = try XCTUnwrap(presentation.rowsByID["notes:ready-probe"])
+        XCTAssertNil(row.badgeText)
         XCTAssertEqual(row.detail.statusText, "Todo")
         XCTAssertEqual(
             row.accessibilityLabel,
-            "Todo. Try the now tag #now. This week's bet. Note notes, block now-probe. Not in a Pomodoro."
+            "Todo. Try the ready task. Note notes, block ready-probe. Not in a Pomodoro."
         )
-    }
-
-    func testCandidateWithoutNowOmitsBadgeAndBetLabel() throws {
-        let presentation = ActiveTaskPickerIndex(candidates: [nowCandidate(now: false)])
-            .presentation(filter: "")
-
-        let row = try XCTUnwrap(presentation.rowsByID["notes:now-probe"])
-        XCTAssertNil(row.badgeText)
-        XCTAssertFalse(row.accessibilityLabel.contains("This week's bet"))
     }
 }

@@ -423,7 +423,7 @@ private struct CapturePickerSectionHeader: View {
             suggestionHeader
         case .usedIDs:
             usedIDsHeader
-        case .pomodoro, .unqueuedInProgress, .unqueuedNext, .other, .matches, .now, .note:
+        case .pomodoro, .unqueuedInProgress, .unqueuedNext, .other, .matches, .note:
             standardHeader
         }
     }
@@ -520,7 +520,7 @@ private struct CapturePickerSectionHeader: View {
                 Text("· \(subtitle)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else if section.kind != .pomodoro, section.kind != .now, section.kind != .note {
+            } else if section.kind != .pomodoro, section.kind != .note {
                 Text("Not in a Pomodoro")
                     .font(.caption)
                     .foregroundStyle(.secondary)

@@ -434,9 +434,6 @@ public struct PomodoroStartTask: Codable, Equatable, Sendable {
     /// The 1-based lineup number Bob assigned this row, or nil for unnumbered
     /// rows (older Bob). Dropped rows carry their own lineup number too.
     public let index: Int?
-    /// True when the task line carries `#now`. Omitted (decodes as false)
-    /// otherwise.
-    public let now: Bool
     /// Non-blank descendant lines removed with a dropped link. Omitted
     /// (decodes as zero) on kept rows and when there were none.
     public let nestedLines: Int
@@ -453,7 +450,6 @@ public struct PomodoroStartTask: Codable, Equatable, Sendable {
         statusName: String? = nil,
         warning: String? = nil,
         index: Int? = nil,
-        now: Bool = false,
         nestedLines: Int = 0
     ) {
         self.blockLink = blockLink
@@ -467,7 +463,6 @@ public struct PomodoroStartTask: Codable, Equatable, Sendable {
         self.statusName = statusName
         self.warning = warning
         self.index = index
-        self.now = now
         self.nestedLines = nestedLines
     }
 
@@ -484,7 +479,6 @@ public struct PomodoroStartTask: Codable, Equatable, Sendable {
         statusName = try container.decodeIfPresent(String.self, forKey: .statusName)
         warning = try container.decodeIfPresent(String.self, forKey: .warning)
         index = try container.decodeIfPresent(Int.self, forKey: .index)
-        now = try container.decodeIfPresent(Bool.self, forKey: .now) ?? false
         nestedLines = try container.decodeIfPresent(Int.self, forKey: .nestedLines) ?? 0
     }
 
@@ -500,7 +494,6 @@ public struct PomodoroStartTask: Codable, Equatable, Sendable {
         case statusName = "status_name"
         case warning
         case index
-        case now
         case nestedLines = "nested_lines"
     }
 }
@@ -1059,7 +1052,6 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
     public let workLog: [String]
     public let workLogCreated: Bool
     public let warning: String?
-    public let now: Bool
 
     public init(
         role: String,
@@ -1078,8 +1070,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
         carried: Bool = false,
         workLog: [String] = [],
         workLogCreated: Bool = false,
-        warning: String? = nil,
-        now: Bool = false
+        warning: String? = nil
     ) {
         self.role = role
         self.blockLink = blockLink
@@ -1098,7 +1089,6 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
         self.workLog = workLog
         self.workLogCreated = workLogCreated
         self.warning = warning
-        self.now = now
     }
 
     public init(from decoder: Decoder) throws {
@@ -1129,7 +1119,6 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
             forKey: .workLogCreated
         ) ?? false
         warning = try container.decodeIfPresent(String.self, forKey: .warning)
-        now = try container.decodeIfPresent(Bool.self, forKey: .now) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1150,7 +1139,6 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
         case workLog = "work_log"
         case workLogCreated = "work_log_created"
         case warning
-        case now
     }
 }
 
@@ -2712,10 +2700,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let planThemesAfter: Int?
     public let planThemesCap: Int?
     public let pomodoro: ActiveTaskPomodoro?
-    public let now: Bool
     // Additive `task_link` fields from Bob's linkable-task scanner: the
     // note kind (`inbox`/`area`/`project`), ID suggestions for ID-less
-    // tasks, the group (`queued`/`in_progress`/`next`/`now`/`note`), the
+    // tasks, the group (`queued`/`in_progress`/`next`/`note`), the
     // raw `YYYY-MM-DD` schedule, and whether linking pulls it forward.
     // Older Bob never sends them, so missing decodes to nil/empty/false.
     public let noteKind: String?
@@ -2781,7 +2768,6 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         planThemesAfter: Int? = nil,
         planThemesCap: Int? = nil,
         pomodoro: ActiveTaskPomodoro? = nil,
-        now: Bool = false,
         noteKind: String? = nil,
         blockIDSuggestions: [String] = [],
         group: String? = nil,
@@ -2824,7 +2810,6 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.planThemesAfter = planThemesAfter
         self.planThemesCap = planThemesCap
         self.pomodoro = pomodoro
-        self.now = now
         self.noteKind = noteKind
         self.blockIDSuggestions = blockIDSuggestions
         self.group = group
@@ -2870,7 +2855,6 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         planThemesAfter = try container.decodeIfPresent(Int.self, forKey: .planThemesAfter)
         planThemesCap = try container.decodeIfPresent(Int.self, forKey: .planThemesCap)
         pomodoro = try container.decodeIfPresent(ActiveTaskPomodoro.self, forKey: .pomodoro)
-        now = try container.decodeIfPresent(Bool.self, forKey: .now) ?? false
         noteKind = try container.decodeIfPresent(String.self, forKey: .noteKind)
         blockIDSuggestions = try container.decodeIfPresent([String].self, forKey: .blockIDSuggestions) ?? []
         group = try container.decodeIfPresent(String.self, forKey: .group)
@@ -2915,7 +2899,6 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case planThemesAfter = "plan_themes_after"
         case planThemesCap = "plan_themes_cap"
         case pomodoro
-        case now
         case noteKind = "note_kind"
         case blockIDSuggestions = "block_id_suggestions"
         case group

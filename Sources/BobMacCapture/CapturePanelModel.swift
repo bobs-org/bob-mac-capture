@@ -3703,7 +3703,7 @@ final class CapturePanelModel: ObservableObject {
 
         let completionNeeds = Set([
             "route", "section", "pomodoro_id", "pomodoro_name", "task", "task_section",
-            "active_task", "task_link", "block_id", "now_tag",
+            "active_task", "task_link", "block_id",
         ])
         if !completionNeeds.isDisjoint(with: Set(parse.needs)) {
             return true
@@ -3752,7 +3752,6 @@ final class CapturePanelModel: ObservableObject {
             "wikilink_alias",
             "pomodoro_close_drop",
             "pomodoro_start_drop",
-            "now_tag",
         ])
 
         return parse.spans.contains { span in

@@ -22,7 +22,6 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case pomodoroCloseComplete
     case pomodoroCloseDrop
     case pomodoroStartDrop
-    case nowTag
     case neutral
 }
 
@@ -95,11 +94,6 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         // that drop as the session starts: the same muted gray as the close
         // drop list.
         return .pomodoroStartDrop
-    case "now_tag":
-        // Every exact `#now` token in the body carries this span. Mint is
-        // unused elsewhere: purple already means section/Pomodoro names and
-        // teal means clipboard.
-        return .nowTag
     default:
         return .neutral
     }
@@ -120,7 +114,6 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case taskSection
     case activeTask
     case taskLink
-    case nowTag
     case wikilinkNote
     case wikilinkHeading
     case wikilinkBlock
@@ -138,7 +131,6 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "task_section": self = .taskSection
         case "active_task": self = .activeTask
         case "task_link": self = .taskLink
-        case "now_tag": self = .nowTag
         case "wikilink_note": self = .wikilinkNote
         case "wikilink_heading": self = .wikilinkHeading
         case "wikilink_block": self = .wikilinkBlock
@@ -398,8 +390,7 @@ public func completionRowContent(
     case .activeTask:
         // In Progress tasks are already being worked; Next tasks are queued but
         // untouched. The glyph and the palette tint both say which, so the row
-        // needs no extra status badge to stay calm and legible. Ready `#now`
-        // tasks arrive with their Ready status and a `now` flag.
+        // needs no extra status badge to stay calm and legible.
         if candidate.statusSymbol == "/" {
             category = .schedule
             symbolName = "play.circle"
@@ -419,9 +410,6 @@ public func completionRowContent(
             secondaryText = candidate.section
         }
         badges = [activeTaskPomodoroBadge(for: candidate.pomodoro)]
-        if candidate.now {
-            badges.append("NOW")
-        }
         accessibilityHint = "Inserts this task's route and block ID."
 
     case .taskLink:
@@ -440,19 +428,7 @@ public func completionRowContent(
         } else {
             secondaryText = candidate.section
         }
-        if candidate.now {
-            badges.append("NOW")
-        }
         accessibilityHint = "Inserts this task's route and block ID."
-
-    case .nowTag:
-        category = .nowTag
-        symbolName = "star.circle"
-        contextLabel = "Tag"
-        primaryText = candidate.replacement
-        secondaryText = candidate.text ?? "This week's bet"
-        badges = ["NOW"]
-        accessibilityHint = "Inserts this week's bet tag."
 
     case .wikilinkNote:
         category = .wikilinkTarget

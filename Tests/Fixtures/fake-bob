@@ -96,12 +96,6 @@ case "${command}" in
       cat "${fixtures_dir}/pomodoro-close-parse-invalid.json"
     elif [[ "${draft}" == "=x1~2" ]]; then
       cat "${fixtures_dir}/pomodoro-close-parse-drop.json"
-    elif [[ "${draft}" == "Fix it #n" ]]; then
-      # Partial `#now`: `now_tag` need with a `now_tag` span (real `bob capture-parse` output).
-      cat "${fixtures_dir}/now-tag-parse-incomplete.json"
-    elif [[ "${draft}" == "Fix it @sase^fix-it #now" ]]; then
-      # Complete `#now` tag: mint `now_tag` span (real `bob capture-parse` output).
-      cat "${fixtures_dir}/now-tag-parse.json"
     elif [[ "${draft}" == "=" ]]; then
       cat "${fixtures_dir}/pomodoro-start-parse.json"
     elif [[ "${draft}" == "=3" ]]; then
@@ -2812,8 +2806,6 @@ JSON
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-created.json"
     elif [[ "${draft}" == "=#plan" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-again.json"
-    elif [[ "${draft}" == "Fix it #n" ]]; then
-      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/now-tag-complete.json"
     elif [[ "${draft}" == $'Finish it @cash^goog-exit+\n- Draft the memo :' ]]; then
       cat <<JSON
 {

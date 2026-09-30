@@ -16,6 +16,8 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
     public enum Direction: String, Equatable, Sendable {
         case next
         case open
+        case link
+        case unlink
     }
 
     public let direction: Direction
@@ -24,7 +26,7 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
     /// `"cash.md \u{00b7} ^goog-exit"` — route note label plus the toggled block ID.
     public let routeDestinationLabel: String
     /// `"2026/20260910.md \u{00b7} under CODING"`, or without the `under` suffix when
-    /// there is no named Pomodoro (or the direction is `open`, where naming is inert).
+    /// there is no named Pomodoro (or the direction is `open`/`unlink`, where naming is inert).
     /// `nil` only when Bob omitted `day_file`, which a toggle result never does.
     public let dayFileDestinationLabel: String?
     /// Whether the daily note's content actually changed, so a Command-Return open
@@ -47,11 +49,11 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
     public let blockID: String?
     public let blockLink: String?
     public let pomodoroName: String?
-    /// The block link text to show on a `+` line, direction `next` only. Unprefixed:
+    /// The block link text to show on a `+` line, link direction only. Unprefixed:
     /// the view chooses the `+`/color.
     public let addedLinkText: String?
-    /// `"removed N Pomodoro task links"` (direction `open`, always present, even for
-    /// zero) or `"removed N later Pomodoro task links"` (direction `next`, present only
+    /// `"removed N Pomodoro task links"` (unlink direction, always present, even for
+    /// zero) or `"removed N later Pomodoro task links"` (link direction, present only
     /// when N > 0) — mirrors `print_removed_pomodoro_links` exactly. Unprefixed: the
     /// view chooses the `\u{2212}`/color.
     public let removedLinksText: String?
@@ -102,7 +104,7 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         let ensureNext = capture.toggleBehavior == "ensure_next"
         let statusChanged = capture.statusChanged
             ?? (capture.previousStatusSymbol != capture.statusSymbol)
-        if ensureNext, !statusChanged {
+        if !statusChanged {
             transitionText = "\(statusMarker) unchanged  \(taskPreviewText)"
         } else {
             transitionText =
@@ -124,12 +126,12 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
             removedLinksText = nil
         } else {
             switch direction {
-            case .next:
+            case .next, .link:
                 addedLinkText = capture.blockLink
                 removedLinksText = removedLinks > 0
                     ? Self.removedLinksSummary(count: removedLinks, qualifier: "later ")
                     : nil
-            case .open:
+            case .open, .unlink:
                 addedLinkText = nil
                 removedLinksText = Self.removedLinksSummary(count: removedLinks, qualifier: "")
             }
@@ -180,7 +182,7 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
             )
             let namedUnder = ensureNext
                 ? destinationLabel
-                : (direction == .next ? capture.pomodoroName : nil)
+                : ((direction == .next || direction == .link) ? capture.pomodoroName : nil)
             let under = namedUnder.map { " \u{00b7} under \($0)" } ?? ""
             dayFileDestinationLabel = "\(relativeDayFile)\(under)"
         } else {
@@ -192,12 +194,12 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
             primaryActionTitle = "Ensure Next"
         } else {
             switch direction {
-            case .next:
+            case .next, .link:
                 dayFileChanged = !pomodoroAlreadyLinked || removedLinks > 0
-            case .open:
+            case .open, .unlink:
                 dayFileChanged = removedLinks > 0
             }
-            primaryActionTitle = direction == .next ? "Set Next" : "Set Open"
+            primaryActionTitle = (direction == .next || direction == .link) ? "Set Next" : "Set Open"
         }
 
         let fromStatusName = capture.previousStatusName ?? "Unknown"
@@ -205,6 +207,8 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         let statusPhrase: String
         if ensureNext, !statusChanged {
             statusPhrase = "\(toStatusName) unchanged"
+        } else if direction == .unlink, !statusChanged {
+            statusPhrase = "stays \(toStatusName)"
         } else {
             statusPhrase = "\(fromStatusName) \u{2192} \(toStatusName)"
         }
@@ -214,10 +218,10 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
             statusVerb = capture.dryRun ? "Would Ensure Next" : "Ensure Next"
         } else {
             switch (capture.dryRun, direction) {
-            case (true, .next): statusVerb = "Would Set Next"
-            case (true, .open): statusVerb = "Would Set Open"
-            case (false, .next): statusVerb = "Set Next"
-            case (false, .open): statusVerb = "Set Open"
+            case (true, .next), (true, .link): statusVerb = "Would Set Next"
+            case (true, .open), (true, .unlink): statusVerb = "Would Set Open"
+            case (false, .next), (false, .link): statusVerb = "Set Next"
+            case (false, .open), (false, .unlink): statusVerb = "Set Open"
             }
         }
         statusText =
@@ -226,11 +230,11 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         var announcementParts = ["\(statusVerb): \(routeLabel), \(statusPhrase)"]
         if let relocationText {
             announcementParts.append(relocationText)
-        } else if direction == .next, removedLinks == 0, !pomodoroAlreadyLinked {
+        } else if (direction == .next || direction == .link), removedLinks == 0, !pomodoroAlreadyLinked {
             announcementParts.append("linked to today's Pomodoro")
         }
         if !ensureNext, removedLinks > 0 {
-            let qualifier = direction == .next ? "later " : ""
+            let qualifier = (direction == .next || direction == .link) ? "later " : ""
             announcementParts.append(Self.removedLinksSummary(count: removedLinks, qualifier: qualifier))
         }
         announcementParts.append(contentsOf: chips)
@@ -286,6 +290,25 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         }
         previewParts.append(contentsOf: chips)
         previewAccessibilitySummary = previewParts.joined(separator: ", ")
+    }
+
+    /// The status name for a `"stays <status>"` caption. Bob reports the
+    /// name as `"Unknown"` when the vault carries no status settings, so
+    /// that (and a missing name) falls back to the symbol — the lane the
+    /// row actually keeps — mirroring `print_human_link_toggle_summary`'s
+    /// fallback in `src/native/capture/output.rs`.
+    // Shared with `CapturePomodoroClosePresentation` and
+    // `CapturePomodoroStartPresentation`, which caption dropped rows.
+    static func staysStatusName(symbol: String?, name: String?) -> String {
+        if let name, !name.isEmpty, name != "Unknown" {
+            return name
+        }
+        switch symbol {
+        case "/": return "In Progress"
+        case "*": return "Next"
+        case "?": return "Blocked"
+        default: return "Ready"
+        }
     }
 
     // Shared with `CapturePomodoroLinkPresentation`, which reports the same

@@ -106,7 +106,6 @@ public struct TaskLinkPickerIndex: Sendable {
         var pomodoroRows: [Int: [CapturePickerRow]] = [:]
         var inProgress: [CapturePickerRow] = []
         var next: [CapturePickerRow] = []
-        var now: [CapturePickerRow] = []
         var noteOrder: [String] = []
         var noteRows: [String: [CapturePickerRow]] = [:]
         var noteKinds: [String: String?] = [:]
@@ -123,8 +122,6 @@ public struct TaskLinkPickerIndex: Sendable {
                 inProgress.append(groupedRow(for: entry))
             case .next:
                 next.append(groupedRow(for: entry))
-            case .now:
-                now.append(groupedRow(for: entry))
             case .queued, .note:
                 // A queued row without a Pomodoro line cannot happen per the
                 // contract; bucket it with its note rather than dropping it.
@@ -166,14 +163,6 @@ public struct TaskLinkPickerIndex: Sendable {
                 kind: .unqueuedNext,
                 title: "Next",
                 rows: next
-            ))
-        }
-        if !now.isEmpty {
-            sections.append(CapturePickerSection(
-                id: "now",
-                kind: .now,
-                title: "This Week's Bets",
-                rows: now
             ))
         }
         for route in noteOrder {
@@ -293,7 +282,7 @@ public struct TaskLinkPickerIndex: Sendable {
             routeMatchRanges: routeMatchRanges,
             blockIDMatchRanges: blockIDMatchRanges,
             chipText: chipText,
-            badgeText: candidate.now ? "NOW" : nil,
+            badgeText: nil,
             depth: depth,
             insertion: insertion,
             pendingBlockID: pending,
@@ -399,9 +388,6 @@ public struct TaskLinkPickerIndex: Sendable {
         let name = entry.candidate.statusName.flatMap { $0.isEmpty ? nil : $0 }
         let statusText = name ?? entry.status.displayName
         var parts = [statusText, entry.display.text]
-        if entry.candidate.now {
-            parts.append("This week's bet")
-        }
         if let route = entry.candidate.route, let blockID = entry.effectiveBlockID {
             if entry.candidate.requiresBlockID {
                 parts.append("Note \(route), suggested block \(blockID)")
@@ -419,12 +405,12 @@ public struct TaskLinkPickerIndex: Sendable {
 // MARK: - Index entries
 
 /// Bob's `group` wire value, in precedence order. A missing or unknown group
-/// falls back to `note` so the row still appears under its note.
+/// (including the retired `now` group) falls back to `note` so the row
+/// still appears under its note.
 private enum TaskLinkGroup: Sendable {
     case queued
     case inProgress
     case next
-    case now
     case note
 
     init(wireValue: String?) {
@@ -435,8 +421,6 @@ private enum TaskLinkGroup: Sendable {
             self = .inProgress
         case "next":
             self = .next
-        case "now":
-            self = .now
         default:
             self = .note
         }

@@ -1,1 +1,1 @@
-{"code":"plan_theme_cap_exceeded","error":"refusing capture: today's plan would grow to 4/3 themes (adds NEWT2); current themes: GOALS, DECKS, BOB; queue it with ^, keep it this week with #now, or defer with p:<N>","ok":false}
+{"code":"plan_theme_cap_exceeded","error":"refusing capture: today's plan would grow to 4/3 themes (adds NEWT2); current themes: GOALS, DECKS, BOB; queue it with ^ or defer with p:<N>","ok":false}

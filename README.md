@@ -120,18 +120,22 @@ mutation.
   an `interactive_placeholder` span instead of an error. A dropped (`~<K>`)
   close removes those links from today without carrying or starting them; the
   card strikes and dims dropped rows, summarizes `Dropped 4, 5`, and reads
-  "drops from today" for VoiceOver. Rows whose task carries `#now` show a
-  `NOW` badge, and a dropped `#now` row adds a "stays in NOW" caption. A whole-item
-  `=`/`=<X>` start reports the same numbered lineup: per-row `index` and `now` in the
+  "drops from today" for VoiceOver. A dropped row adds a "stays <status>"
+  caption naming the lane the task keeps. A whole-item
+  `=`/`=<X>` start reports the same numbered lineup: per-row `index` in the
   capture summary, a `drop` list on the parse spec and capture summary, and removed rows
-  in `dropped` with their `index`, `now`, pre-image `ledger_line`, and `nested_lines`
+  in `dropped` with their `index`, pre-image `ledger_line`, and `nested_lines`
   count; a trailing `~<K>` adds a `pomodoro_start_drop` span in the same muted gray as
   `pomodoro_close_drop`, and a dangling `~`/`,` reports mode `incomplete` with a
   `pomodoro_start_task` need and an `interactive_placeholder` span instead of an error.
-  A start summary whose `drop`, `dropped`, `index`, `now`, or `nested_lines` fields are
+  A start summary whose `drop`, `dropped`, `index`, or `nested_lines` fields are
   absent still previews as today's unnumbered card: the spec decodes as no drop, rows
-  decode as unnumbered without badges, and no drop hint or summary renders. Older
-  Bob builds may implement the previous task-toggle spellings. The app labels
+  decode as unnumbered without badges, and no drop hint or summary renders.
+  `toggle_direction` is `link` or `unlink` with `status_changed` on every
+  result: linking shows the added link with `set Next`, `stays Next`, or
+  `stays In Progress`, and unlinking shows the removed-link count with
+  `stays <status>`. Older Bob builds that send `next`/`open` still decode to
+  the same Set Next/Open footers. The app labels
   actions and notifications from Bob's returned behavior metadata, so a response
   that omits `toggle_behavior` still shows the two-way Set Next/Open footer,
   never Ensure Next. Captures that change today's `## Pomodoros` section also
@@ -146,14 +150,13 @@ mutation.
   `plan_themes_after`/`plan_themes_cap`, or `code` still previews and captures;
   the Mac app decodes each as absent and renders the destination row as
   `→ NAME`, omitting only the meter capsules, the cap badge, and the strict
-  hint. A trailing `#now` tag
-  moves onto new task text with a mint `now_tag` span and a `star.circle`
-  `#now` completion row ("This week's bet" with a `NOW` badge); the `^`
-  active-task picker lists Ready `#now` tasks with their Ready status and
-  shows a `NOW` badge on every `#now` candidate. An older Bob that omits
-  `now_tag`, the `now_tag` completion context, or the `now` flag still
-  previews and captures; the Mac app decodes each as absent and simply omits
-  the mint highlight, the tag row, and the badges.
+  hint. A trailing `#now` tag is the ordinary trailing-tag error like any
+  other `#tag`, and `#now` typed before the route is plain body text. The `^`
+  active-task picker lists In Progress and Next tasks only. An older Bob that
+  still sends the `now` flag, the `now_tag` span or completion context, or
+  the `now` picker group still previews and captures; the Mac app decodes an
+  unknown span as neutral, an unknown context as a generic row, and an
+  unknown group as `note`.
 
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.
@@ -228,7 +231,7 @@ or expired certificate can require reauthorizing those system permissions.
   `wikilink_alias`) — resolves through the single palette in `CaptureEditorPalette`.
   The close-list spans `pomodoro_close_in_progress` and `pomodoro_close_complete`
   render orange and green, sharing the badge colors of the rows they select;
-  `pomodoro_close_drop` renders muted gray and `now_tag` renders mint.
+  `pomodoro_close_drop` renders muted gray.
   Global destination spans (`global_route`, `global_sub_bullet_route`, and
   `global_sub_bullet_block_id`) reuse the existing destination and block-ID colors, so
   the editor and the completion list never disagree about what color represents what
@@ -259,7 +262,7 @@ or expired certificate can require reauthorizing those system permissions.
   untouched and announces Bob's notice.
   Typing `^` as the whole capture item opens the Active Task Picker (`active_task`
   context), a modal mode of the capture panel — not a second window. Bob supplies one
-  full snapshot (every In Progress and Next task plus every Ready `#now` task with
+  full snapshot (every In Progress and Next task with
   a block ID, in Bob's ledger order); the app filters that snapshot locally with
   a fuzzy matcher in `CaptureCore`
   so each keystroke is instant and flicker-free, and filter text never touches the
@@ -297,7 +300,7 @@ run and shows "Pick any open task — press Tab to browse".
 
 Bob lists every open (not done or canceled) task in area, project, and inbox
 notes. With an empty filter tasks group in Bob's order: one section per queued
-Pomodoro, then In Progress, Next, This Week's Bets, then one section per note
+Pomodoro, then In Progress, Next, then one section per note
 (`route.md` with its Inbox/Area/Project subtitle). The app filters locally with
 spaces as AND terms; a non-empty filter replaces the groups with one ranked flat
 list. Rows show a schedule capsule (`calendar` glyph) when Bob sends one and a
@@ -597,8 +600,8 @@ suggestions.
   with started, completed (only when nonzero), and Work Log counts, and a failed
   dry run clears the card so no stale preview sits beside the error. The error
   callout shows Bob's message unchanged; a strict plan-budget refusal
-  (`code == plan_theme_cap_exceeded`) adds the hint line `Queue it with ^, keep
-  it this week with #now, or defer with p:<N>.` While a
+  (`code == plan_theme_cap_exceeded`) adds the hint line `Queue it with ^ or
+  defer with p:<N>.` While a
   list dangles on `,`/`!`/`~`, the card previews the trimmed draft dimmed with a
   `Type a task number after ,` row, **Close** is disabled, and Return cannot
   submit; a valid draft restores the normal card. While a start list dangles on
@@ -614,9 +617,9 @@ suggestions.
   status glyphs (`circle` Ready, `circle.inset.filled` Next,
   `circle.lefthalf.filled` In Progress, `questionmark.circle` other,
   `minus.circle` dropped, `exclamationmark.triangle` unresolved with the warning
-  as help text), task text with a truncating `note ^id` locator; every `#now` row
-  gets the mint `NOW` capsule, and dropped rows render struck and dimmed with a
-  caption joining `stays in NOW` and `with N nested line(s)`. Numbered rows never
+  as help text), task text with a truncating `note ^id` locator; dropped rows
+  render struck and dimmed with a
+  caption joining `stays <status>` and `with N nested line(s)`. Numbered rows never
   hide under `+N more`; rows without numbers (older Bob) render exactly like
   today's card. A created session shows a
   small pink **New** capsule next to the title on a dry run (**Created** once
@@ -879,7 +882,9 @@ number follows; a start list left dangling on `~`/`,` previews the trimmed start
 the same way with **Start** disabled instead. A marker-only `@route+block-id` ensures that existing task is Next and
 relocates its Task Link, `@route+block-id#pomodoro` does the
 same onto a named Pomodoro (creating the named future Pomodoro if needed),
-`@route+block-id!` is the explicit two-way add/clear toggle, and `@route+block-id` with
+`@route+block-id!` is the explicit link-presence toggle: it links an unlinked
+task (Ready and Blocked rise to Next, Next and In Progress keep their lane)
+and unlinks a linked task without touching the lane, and `@route+block-id` with
 body text nests beneath the task. `@route+block-id#section` nests under that task's
 matching section bullet once body text is present; the same `#` position opens the
 Pomodoro-name popup while the item is still marker-only, including the

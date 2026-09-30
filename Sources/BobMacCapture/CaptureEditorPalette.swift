@@ -89,8 +89,6 @@ enum CaptureEditorPalette {
             return .gray
         case .pomodoroStartDrop:
             return .gray
-        case .nowTag:
-            return .mint
         case .neutral:
             return .primary
         }

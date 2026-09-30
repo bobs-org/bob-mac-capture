@@ -3,8 +3,9 @@ import XCTest
 @testable import CaptureCore
 
 /// Tests for the `:` task-link picker index, using a JSON sample shaped like
-/// the plan's worked example: one queued, one In Progress, one `#now`, and
-/// five note rows (four ID-less).
+/// the plan's worked example: one queued, one In Progress, and six note
+/// rows (four ID-less). The former `now`-grouped bet now arrives with
+/// `group: "note"`, like current Bob sends.
 final class TaskLinkPickerPresentationTests: XCTestCase {
     /// The eight worked-example candidates in Bob's canonical order.
     private func workedExampleJSON() -> String {
@@ -26,8 +27,7 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
             "depth": 0,
             "line": 7,
             "group": "queued",
-            "pomodoro": {"line": 5, "name": "BUGS", "time_range": null, "is_current": false},
-            "now": false
+            "pomodoro": {"line": 5, "name": "BUGS", "time_range": null, "is_current": false}
           },
           {
             "replacement": "@sase:outline",
@@ -44,8 +44,7 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
             "section": "Writing",
             "depth": 0,
             "line": 11,
-            "group": "in_progress",
-            "now": false
+            "group": "in_progress"
           },
           {
             "replacement": "@sase:blog",
@@ -62,8 +61,7 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
             "section": "Writing",
             "depth": 0,
             "line": 12,
-            "group": "now",
-            "now": true
+            "group": "note"
           },
           {
             "replacement": "",
@@ -80,8 +78,7 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
             "section": null,
             "depth": 0,
             "line": 1,
-            "group": "note",
-            "now": false
+            "group": "note"
           },
           {
             "replacement": "",
@@ -100,8 +97,7 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
             "line": 3,
             "group": "note",
             "scheduled": "2026-10-03",
-            "pulls_forward": true,
-            "now": false
+            "pulls_forward": true
           },
           {
             "replacement": "@bob:polish",
@@ -118,8 +114,7 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
             "section": null,
             "depth": 0,
             "line": 2,
-            "group": "note",
-            "now": false
+            "group": "note"
           },
           {
             "replacement": "",
@@ -136,8 +131,7 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
             "section": null,
             "depth": 1,
             "line": 3,
-            "group": "note",
-            "now": false
+            "group": "note"
           },
           {
             "replacement": "",
@@ -154,8 +148,7 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
             "section": "Bugs",
             "depth": 0,
             "line": 9,
-            "group": "note",
-            "now": false
+            "group": "note"
           }
         ]
         """
@@ -232,19 +225,19 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.countText, "8 tasks")
         XCTAssertEqual(
             presentation.sections.map(\.id),
-            ["pomodoro-5", "unqueued-in-progress", "now", "note-mac_inbox", "note-health", "note-bob", "note-sase"]
+            ["pomodoro-5", "unqueued-in-progress", "note-sase", "note-mac_inbox", "note-health", "note-bob"]
         )
         XCTAssertEqual(
             presentation.sections.map(\.kind),
-            [.pomodoro, .unqueuedInProgress, .now, .note, .note, .note, .note]
+            [.pomodoro, .unqueuedInProgress, .note, .note, .note, .note]
         )
         XCTAssertEqual(
             presentation.sections.map(\.title),
-            ["BUGS", "In Progress", "This Week's Bets", "mac_inbox.md", "health.md", "bob.md", "sase.md"]
+            ["BUGS", "In Progress", "sase.md", "mac_inbox.md", "health.md", "bob.md"]
         )
         XCTAssertEqual(
             presentation.sections.map(\.subtitle),
-            [nil, nil, nil, "Inbox", "Area", "Project", "Project"]
+            [nil, nil, "Project", "Inbox", "Area", "Project"]
         )
         let queued = try XCTUnwrap(presentation.sections.first)
         XCTAssertEqual(queued.ordinal, 1)
@@ -259,18 +252,18 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
                 "sase|7:aaaa1111",
                 "sase|11:bbbb2222",
                 "sase|12:cccc3333",
+                "sase|9:hhhh8888",
                 "mac_inbox|1:dddd4444",
                 "health|3:eeee5555",
                 "bob|2:ffff6666",
                 "bob|3:gggg7777",
-                "sase|9:hhhh8888",
             ]
         )
     }
 
     func testGroupedVisibleRowBudgetClamps() throws {
         let presentation = try workedExamplePresentation()
-        // 8 rows + 7 headers, clamped to 11.
+        // 8 rows + 6 headers, clamped to 11.
         XCTAssertEqual(presentation.visibleRowBudget, 11)
 
         let empty = TaskLinkPickerIndex(candidates: []).presentation(filter: "")
@@ -322,10 +315,11 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
         }
     }
 
-    func testNowBadgeAndPomodoroSummary() throws {
+    func testNoNowBadgesAndPomodoroSummary() throws {
         let presentation = try workedExamplePresentation()
-        let bet = try XCTUnwrap(presentation.rowsByID["sase|12:cccc3333"])
-        XCTAssertEqual(bet.badgeText, "NOW")
+        for id in presentation.orderedRowIDs {
+            XCTAssertNil(try XCTUnwrap(presentation.rowsByID[id]).badgeText)
+        }
         let queued = try XCTUnwrap(presentation.rowsByID["sase|7:aaaa1111"])
         XCTAssertNil(queued.badgeText)
         XCTAssertEqual(queued.detail.summary, "Queued in BUGS (#1)")
@@ -348,7 +342,7 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
         let presentation = TaskLinkPickerIndex(candidates: candidates).presentation(filter: "")
         XCTAssertEqual(
             presentation.sections.map(\.id),
-            ["pomodoro-5", "unqueued-in-progress", "now", "note-sase", "note-bob", "note-health", "note-mac_inbox"]
+            ["pomodoro-5", "unqueued-in-progress", "note-sase", "note-bob", "note-health", "note-mac_inbox"]
         )
     }
 
