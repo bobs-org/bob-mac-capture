@@ -641,6 +641,251 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
     }
 
+    private func taskLinkModel(recordURL: URL? = nil) throws -> (CapturePanelModel, URL) {
+        let url = recordURL ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": url.path,
+                ]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        return (model, url)
+    }
+
+    func testTaskLinkBatchSecondItemOpensAtGlobalRange() async throws {
+        let (model, recordURL) = try taskLinkModel()
+        let draft = "Buy milk\n\n:"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: 11)
+        await waitUntil { model.pickerVisible }
+
+        XCTAssertEqual(model.picker?.source, .taskLink)
+        XCTAssertEqual(model.picker?.replacementRange, CaptureRange(start: 10, end: 11))
+        XCTAssertEqual(model.picker?.candidates.count, 8)
+        XCTAssertNil(model.completionResponse)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 11 --format json -- "))
+    }
+
+    func testTaskLinkBatchSelectionShowsChipNotPicker() async throws {
+        let (model, _) = try taskLinkModel()
+        model.plainDraft = "Buy milk\n\n:"
+        model.editorSelectionDidChange(cursorUTF8Offset: 11)
+        await waitUntil { model.pickerChipVisible }
+
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertEqual(model.pickerChip?.source, .taskLink)
+        XCTAssertEqual(model.pickerChip?.candidates.count, 8)
+    }
+
+    func testTaskLinkFilterTypingRunsNoSubprocess() async throws {
+        let (model, recordURL) = try taskLinkModel()
+        model.plainDraft = ":"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        let before = try String(contentsOf: recordURL)
+        XCTAssertEqual(before.components(separatedBy: "argv=capture-complete").count - 1, 1)
+
+        model.updatePickerFilter("dee")
+        model.updatePickerFilter("deep")
+        try? await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertEqual(model.picker?.filterText, "deep")
+        XCTAssertEqual(model.pickerPresentation?.mode, .filtered)
+        let after = try String(contentsOf: recordURL)
+        XCTAssertEqual(after.components(separatedBy: "argv=capture-complete").count - 1, 1)
+    }
+
+    func testBareColonRunsExactlyOneCaptureComplete() async throws {
+        let (model, recordURL) = try taskLinkModel()
+        model.plainDraft = ":"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        XCTAssertEqual(model.picker?.source, .taskLink)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
+    }
+
+    func testTaskLinkDeeSeedsFilterAfterRefetchAtZero() async throws {
+        let (model, recordURL) = try taskLinkModel()
+        model.plainDraft = ":dee"
+        model.editorTextDidChange(cursorUTF8Offset: 4)
+        await waitUntil { model.pickerVisible }
+
+        // The caret response is partial (one candidate), so the picker
+        // refetches the full snapshot at the token start in the same task.
+        XCTAssertEqual(model.picker?.source, .taskLink)
+        XCTAssertEqual(model.picker?.filterText, "dee")
+        XCTAssertEqual(model.picker?.candidates.count, 8)
+        XCTAssertEqual(model.picker?.snapshotIsPartial, false)
+        XCTAssertEqual(model.pickerPresentation?.mode, .filtered)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 2)
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 0 "))
+    }
+
+    func testTaskLinkAcceptInsertsLinkWithCaretAtEnd() async throws {
+        let (model, _) = try taskLinkModel()
+        model.plainDraft = ":"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        model.acceptSelectedPickerRow(submitAfterInsert: false)
+
+        XCTAssertEqual(model.plainDraft, "@sase:deep-fix")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 14)
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertEqual(model.statusText, "Inserted @sase:deep-fix")
+    }
+
+    func testTaskLinkShiftAcceptAppendsEquals() async throws {
+        let (model, _) = try taskLinkModel()
+        model.plainDraft = ":"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        model.acceptSelectedPickerRowAndStart()
+
+        XCTAssertEqual(model.plainDraft, "@sase:deep-fix=")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 15)
+        XCTAssertEqual(model.statusText, "Inserted @sase:deep-fix= — starts its session when captured")
+    }
+
+    func testTaskLinkCommandAcceptInsertsAndSubmits() async throws {
+        let (model, recordURL) = try taskLinkModel()
+        model.plainDraft = ":"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        model.acceptSelectedPickerRow(submitAfterInsert: true)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertEqual(model.lastSuccess?.kind, "pomodoro_link")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --format json -- @sase:deep-fix"))
+    }
+
+    func testTaskLinkBackspaceOnEmptyFilterLeavesEmptyItem() async throws {
+        let (model, _) = try taskLinkModel()
+        model.plainDraft = ":"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        model.removePickerTrigger()
+
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 0)
+        XCTAssertFalse(model.pickerVisible)
+    }
+
+    func testTaskLinkTwoStageEscapeClearsFilterThenChips() async throws {
+        let (model, _) = try taskLinkModel()
+        model.plainDraft = ":"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        // A seeded filter clears first; the picker stays open.
+        model.updatePickerFilter("dee")
+        XCTAssertEqual(model.pickerPresentation?.mode, .filtered)
+        model.escapePicker()
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertEqual(model.picker?.filterText, "")
+        XCTAssertEqual(model.pickerPresentation?.mode, .grouped)
+
+        // An empty filter cancels: suppression plus the chip.
+        model.escapePicker()
+        XCTAssertFalse(model.pickerVisible)
+        await waitUntil { model.pickerChipVisible }
+    }
+
+    func testTaskLinkIdlessPromptPrefilledFromLivePicker() async throws {
+        let (model, _) = try taskLinkModel()
+        model.plainDraft = ":"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        model.acceptPickerRow(id: "sase|7:446bd057", submitAfterInsert: false)
+
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertTrue(model.taskIDPromptVisible)
+        XCTAssertTrue(model.taskIDPromptIsTaskLink)
+        XCTAssertEqual(model.taskIDPrompt?.authoredID, "fix-flaky-gkeep")
+    }
+
+    func testTaskLinkIdlessSuccessSplicesLink() async throws {
+        let (model, recordURL) = try taskLinkModel()
+        model.plainDraft = ":"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        model.acceptPickerRow(id: "sase|7:446bd057", submitAfterInsert: false)
+        model.submitTaskIDPrompt()
+        await waitUntil { model.taskIDPrompt == nil && model.plainDraft == "@sase:fix-flaky-gkeep" }
+
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 21)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture-task-id --route sase --task-ref 7:446bd057 --block-id fix-flaky-gkeep --format json"
+            )
+        )
+    }
+
+    func testTaskLinkIdlessShiftAcceptAppendsEquals() async throws {
+        let (model, _) = try taskLinkModel()
+        model.plainDraft = ":"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        model.acceptPickerRowAndStart(id: "sase|7:446bd057")
+        model.submitTaskIDPrompt()
+        await waitUntil { model.taskIDPrompt == nil && model.plainDraft == "@sase:fix-flaky-gkeep=" }
+
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 22)
+    }
+
+    func testTaskLinkIdlessCommandAcceptSubmits() async throws {
+        let (model, recordURL) = try taskLinkModel()
+        model.plainDraft = ":"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        model.acceptPickerRow(id: "sase|7:446bd057", submitAfterInsert: true)
+        model.submitTaskIDPrompt()
+        await waitUntil { model.taskIDPrompt == nil && model.plainDraft == "" && !model.isSubmitting }
+
+        XCTAssertEqual(model.lastSuccess?.kind, "pomodoro_link")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --format json -- @sase:fix-flaky-gkeep"))
+    }
+
+    func testTaskLinkIdlessDuplicateKeepsPromptWithError() async throws {
+        let (model, _) = try taskLinkModel()
+        model.plainDraft = ":"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        model.acceptPickerRow(id: "sase|7:446bd057", submitAfterInsert: false)
+        model.updateTaskIDPromptBlockID("deep-fix")
+        model.submitTaskIDPrompt()
+        await waitUntil { model.taskIDPrompt?.errorMessage != nil }
+
+        XCTAssertTrue(model.taskIDPromptVisible)
+        XCTAssertEqual(model.taskIDPrompt?.authoredID, "deep-fix")
+        XCTAssertEqual(model.taskIDPrompt?.errorMessage, "block ID ^deep-fix already exists in sase.md")
+        XCTAssertEqual(model.plainDraft, ":")
+    }
+
     func testCaretFragmentFetchesFullSnapshotAndSeedsFilter() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(

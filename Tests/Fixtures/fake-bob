@@ -72,6 +72,7 @@ json_string() {
 
 multiline_draft=$'Prepare launch\n- confirm owner\n  - text owner\n- attach checklist\n  - verify links'
 batch_draft=$'First item @Cash\n\nSecond item @notes#Ideas'
+task_link_batch_draft=$'Buy milk\n\n:'
 global_task_draft=$'@@foo\nFirst task\n\nSecond task'
 global_mixed_draft=$'@@foo\nFirst task\n\nSecond task @bar'
 global_parent_draft=$'@@file+hand\nFirst note\n\nSecond note'
@@ -1012,6 +1013,10 @@ JSON
 JSON
     elif [[ "${draft}" == ":" ]]; then
       cat "${fixtures_dir}/task-link-parse-colon.json"
+    elif [[ "${draft}" == "${task_link_batch_draft}" ]]; then
+      # Batch draft with `:` on the second item (real `bob capture-parse`
+      # output).
+      cat "${fixtures_dir}/task-link-parse-buymilk.json"
     elif [[ "${draft}" == ":dee" ]]; then
       cat <<'JSON'
 {
@@ -2295,6 +2300,10 @@ JSON
       else
         cat "${fixtures_dir}/task-link-complete-full.json"
       fi
+    elif [[ "${draft}" == "${task_link_batch_draft}" ]]; then
+      # Batch draft with `:` on the second item (real `bob capture-complete`
+      # output; only the cursor varies).
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/task-link-complete-buymilk.json"
     elif [[ "${draft}" == ":dee" ]]; then
       if [[ "${cursor}" == "0" ]]; then
         cat "${fixtures_dir}/task-link-complete-full.json"
@@ -2868,10 +2877,22 @@ JSON
           ;;
       esac
     done
+    if [[ "${route}" == "sase" && "${task_ref}" == "7:446bd057" && "${block_id}" == "fix-flaky-gkeep" ]]; then
+      # Worked-example ID-less assignment (real `bob capture-task-id`
+      # output on a fresh vault copy).
+      cat "${fixtures_dir}/task-link-task-id-success.json"
+      exit 0
+    fi
     if [[ "${block_id}" == "duplicate-id" ]]; then
       cat <<'JSON'
 {"ok":false,"error":"block ID ^duplicate-id already exists in file.md"}
 JSON
+      exit 1
+    fi
+    if [[ "${block_id}" == "deep-fix" ]]; then
+      # Worked-example duplicate-ID failure (real `bob capture-task-id`
+      # output; exit status included).
+      cat "${fixtures_dir}/task-link-task-id-duplicate.json"
       exit 1
     fi
     updated_ref="8:${block_id}-updated"
@@ -4073,6 +4094,14 @@ JSON
       # Strict-mode refusal: exit 1 with `code plan_theme_cap_exceeded`.
       cat "${fixtures_dir}/plan-budget-strict-refusal.json"
       exit 1
+    elif [[ "${draft}" == "@sase:deep-fix" ]]; then
+      # Task-link accept of the worked-example `Fix deep bug` row (real
+      # `bob capture` output; only the dry-run flag varies).
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-link-capture-deep-fix.json"
+    elif [[ "${draft}" == "@sase:fix-flaky-gkeep" ]]; then
+      # Task-link accept after the worked-example ID-less assignment (real
+      # `bob capture` output; only the dry-run flag varies).
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-link-capture-fix-flaky-gkeep.json"
     elif [[ "${draft}" == "=#deep-work" ]]; then
       # Named starts on the worked-example ledger (real
       # `bob capture --dry-run` output; only the dry-run flag varies).
