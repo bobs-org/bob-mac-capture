@@ -714,18 +714,22 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
     }
 
-    func testTaskLinkDeeSeedsFilterAfterRefetchAtZero() async throws {
+    func testTaskLinkDeePresentsPartialAfterRefetchAtZero() async throws {
         let (model, recordURL) = try taskLinkModel()
         model.plainDraft = ":dee"
         model.editorTextDidChange(cursorUTF8Offset: 4)
         await waitUntil { model.pickerVisible }
 
-        // The caret response is partial (one candidate), so the picker
-        // refetches the full snapshot at the token start in the same task.
+        // The caret response covers the whole `:dee` token ({0,4}), so the
+        // refetch at the token start ({0,1}) cannot match it: the picker
+        // still refetches once at cursor 0, then presents the caret's single
+        // candidate as a partial snapshot with the filter seeded to `dee`.
+        // (The common path types `dee` into the filter field after `:` opens,
+        // which never refetches at all.)
         XCTAssertEqual(model.picker?.source, .taskLink)
         XCTAssertEqual(model.picker?.filterText, "dee")
-        XCTAssertEqual(model.picker?.candidates.count, 8)
-        XCTAssertEqual(model.picker?.snapshotIsPartial, false)
+        XCTAssertEqual(model.picker?.candidates.count, 1)
+        XCTAssertEqual(model.picker?.snapshotIsPartial, true)
         XCTAssertEqual(model.pickerPresentation?.mode, .filtered)
         let record = try String(contentsOf: recordURL)
         XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 2)
