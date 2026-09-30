@@ -203,6 +203,7 @@ public struct ActiveTaskPickerIndex: Sendable {
             textSegments: entry.display.segments,
             route: entry.candidate.route,
             blockID: entry.candidate.blockID,
+            badgeText: entry.candidate.now ? "NOW" : nil,
             insertion: entry.candidate.replacement,
             detail: CapturePickerRowDetail(
                 statusText: entry.status.displayName,
@@ -231,6 +232,7 @@ public struct ActiveTaskPickerIndex: Sendable {
             routeMatchRanges: highlights.routeRanges,
             blockIDMatchRanges: highlights.blockRanges,
             chipText: chipText(for: entry),
+            badgeText: entry.candidate.now ? "NOW" : nil,
             insertion: entry.candidate.replacement,
             detail: CapturePickerRowDetail(
                 statusText: entry.status.displayName,
@@ -281,6 +283,9 @@ public struct ActiveTaskPickerIndex: Sendable {
         let name = entry.candidate.statusName.flatMap { $0.isEmpty ? nil : $0 }
         let statusText = name ?? entry.status.displayName
         var parts = [statusText, entry.display.text]
+        if entry.candidate.now {
+            parts.append("This week's bet")
+        }
         if let route = entry.candidate.route, let blockID = entry.candidate.blockID {
             parts.append("Note \(route), block \(blockID)")
         } else if let route = entry.candidate.route {

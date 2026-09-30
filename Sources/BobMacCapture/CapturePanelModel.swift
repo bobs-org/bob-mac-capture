@@ -2093,7 +2093,7 @@ final class CapturePanelModel: ObservableObject {
             return nil
         }
         let separator = String(draft[first])
-        guard separator == "," || separator == "!" else {
+        guard separator == "," || separator == "!" || separator == "~" else {
             return nil
         }
         var trimmed = draft
@@ -3211,7 +3211,7 @@ final class CapturePanelModel: ObservableObject {
 
         let completionNeeds = Set([
             "route", "section", "pomodoro_id", "pomodoro_name", "task", "task_section",
-            "active_task", "block_id",
+            "active_task", "block_id", "now_tag",
         ])
         if !completionNeeds.isDisjoint(with: Set(parse.needs)) {
             return true
@@ -3258,6 +3258,8 @@ final class CapturePanelModel: ObservableObject {
             "wikilink_heading",
             "wikilink_block_id",
             "wikilink_alias",
+            "pomodoro_close_drop",
+            "now_tag",
         ])
 
         return parse.spans.contains { span in

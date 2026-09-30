@@ -65,6 +65,10 @@ enum CaptureEditorPalette {
             return .orange
         case .pomodoroCloseComplete:
             return .green
+        case .pomodoroCloseDrop:
+            return .gray
+        case .nowTag:
+            return .mint
         case .neutral:
             return .primary
         }

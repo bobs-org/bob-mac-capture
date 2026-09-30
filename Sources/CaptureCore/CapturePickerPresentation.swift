@@ -500,7 +500,8 @@ public struct CapturePickerRow: Equatable, Sendable {
     /// Small Pomodoro chip for filtered rows; nil in grouped mode (the header
     /// already says it) and for unqueued tasks.
     public let chipText: String?
-    /// Trailing badge capsule. Unused by the `^` source.
+    /// Trailing badge capsule. On the `^` source this is the `NOW` tag
+    /// for `#now` candidates, else nil.
     public let badgeText: String?
     /// Nesting depth; the row indents 14pt per depth (max 2). Always 0 for
     /// `^`.
@@ -574,7 +575,7 @@ public struct CapturePickerEmptyState: Equatable, Sendable {
     public static var noActiveTasks: Self {
         Self(
             title: "No active tasks",
-            message: "No In Progress or Next tasks — a task needs `[/]` or `[*]` and a `^block-id` to appear here."
+            message: "No In Progress, Next, or Ready #now tasks — a task needs `[/]`, `[*]`, or `#now` with a `^block-id` to appear here."
         )
     }
 

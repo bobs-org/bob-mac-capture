@@ -543,7 +543,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         let hint = try XCTUnwrap(presentation.teachingHint)
         XCTAssertEqual(
             hint.text,
-            "=x1,2 keeps only these in progress · =x!2 completes 2 · =x0 defers all"
+            "=x1,2 keeps only these in progress · =x!2 completes 2 · =x~3 drops 3 · =x0 defers all"
         )
         XCTAssertEqual(hint.tokens.first?.category, .pomodoroStart)
         XCTAssertTrue(
@@ -551,6 +551,9 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         )
         XCTAssertTrue(
             hint.tokens.contains { $0.text == "!2" && $0.category == .pomodoroCloseComplete }
+        )
+        XCTAssertTrue(
+            hint.tokens.contains { $0.text == "~3" && $0.category == .pomodoroCloseDrop }
         )
         // Plain `=x`: every row keeps its ledger outcome, nothing dims.
         XCTAssertTrue(presentation.taskRows.allSatisfy { !$0.isDimmed })
@@ -562,7 +565,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         let tokens = CapturePomodoroClosePresentation.hintTokens(numberedRows: 1)
         XCTAssertEqual(
             tokens.map(\.text).joined(),
-            "=x!1 completes it · =x0 defers it"
+            "=x!1 completes it · =x~1 drops it · =x0 defers it"
         )
     }
 
@@ -805,6 +808,88 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
         XCTAssertNil(success.pomodoroClose)
         XCTAssertNil(CapturePomodoroClosePresentation(capture: success))
+    }
+
+    func testRealBobDropNowCloseMapsDroppedOutcomeAndNowBadges() throws {
+        let success = try decodeFixture("pomodoro-close-drop-now.json")
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+
+        XCTAssertTrue(presentation.hasSelection)
+        XCTAssertEqual(presentation.selectionSummary, "In progress 1 · Deferred 2, 3 · Dropped 4")
+
+        // The batch-level budget decodes alongside the close: the close
+        // removed one link (4 before, 3 after) without adding a theme.
+        XCTAssertEqual(success.planBudget?.status, "ok")
+        XCTAssertEqual(success.planBudget?.themes.count, 1)
+        XCTAssertEqual(success.planBudget?.themes.before, 1)
+        XCTAssertEqual(success.planBudget?.links.count, 3)
+        XCTAssertEqual(success.planBudget?.links.before, 4)
+
+        let kept = try XCTUnwrap(presentation.taskRows.first(where: { $0.index == 3 }))
+        XCTAssertTrue(kept.now)
+        XCTAssertNil(kept.caption)
+        XCTAssertFalse(kept.isStruck)
+        // Unlisted rows dim so the chosen rows stand out, dropped or not.
+        XCTAssertTrue(kept.isDimmed)
+
+        let dropped = try XCTUnwrap(presentation.taskRows.first(where: { $0.index == 4 }))
+        XCTAssertEqual(dropped.outcome, .dropped)
+        XCTAssertEqual(dropped.glyph, .dropped)
+        XCTAssertTrue(dropped.isStruck)
+        XCTAssertTrue(dropped.isDimmed)
+        XCTAssertTrue(dropped.now)
+        XCTAssertEqual(dropped.caption, "stays in NOW")
+        XCTAssertEqual(
+            dropped.accessibilityLabel,
+            "Task 4, Drop me #now, drops from today, chosen"
+        )
+        XCTAssertTrue(presentation.accessibilitySummary.contains("drops from today"))
+    }
+
+    func testParseDropSpecDecodesDropListAndSpan() throws {
+        let response = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-drop.json").utf8)
+        )
+        XCTAssertEqual(response.pomodoroClose?.raw, "=x1~2")
+        XCTAssertEqual(response.pomodoroClose?.inProgress, [1])
+        XCTAssertEqual(response.pomodoroClose?.drop, [2])
+        XCTAssertEqual(
+            response.spans.map(\.kind),
+            ["pomodoro_close", "pomodoro_close_in_progress", "pomodoro_close_drop"]
+        )
+    }
+
+    func testNowTagParseDecodesNowTagSpan() throws {
+        let response = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("now-tag-parse.json").utf8)
+        )
+        XCTAssertEqual(response.mode, "task")
+        XCTAssertEqual(response.route, "sase")
+        XCTAssertEqual(response.blockID, "fix-it")
+        XCTAssertEqual(
+            response.spans.map(\.kind),
+            ["task_block_id_route", "task_block_id", "now_tag"]
+        )
+    }
+
+    func testNowTagPartialParseRequestsNowTagCompletion() throws {
+        let response = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("now-tag-parse-incomplete.json").utf8)
+        )
+        XCTAssertEqual(response.mode, "incomplete")
+        XCTAssertEqual(response.needs, ["now_tag"])
+        XCTAssertEqual(response.spans.map(\.kind), ["now_tag"])
+    }
+
+    func testOlderBobWithoutDropAndNowKeepsTodayCard() throws {
+        let success = try decodeFixture("pomodoro-close-worked.json")
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+        XCTAssertTrue(presentation.taskRows.allSatisfy { !$0.now })
+        XCTAssertTrue(presentation.taskRows.allSatisfy { $0.caption == nil })
+        XCTAssertTrue(presentation.taskRows.allSatisfy { $0.outcome != .dropped })
     }
 
     // MARK: - Helpers

@@ -35,18 +35,20 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         case transition
         case deferred
         case struck
+        case dropped
         case embedded
         case unresolved
         case neutral
     }
 
-    /// The outcome Bob's `=x[<N>][!<M>]` selection gives a numbered row, joined
-    /// from `tasks[].index` to `task_links`. Unknown wire strings degrade to
-    /// nil, which renders exactly like today's unnumbered card.
+    /// The outcome Bob's `=x[<N>][!<M>][~<K>]` selection gives a numbered row,
+    /// joined from `tasks[].index` to `task_links`. Unknown wire strings
+    /// degrade to nil, which renders exactly like today's unnumbered card.
     public enum TaskOutcome: Equatable, Sendable {
         case inProgress
         case deferred
         case complete
+        case dropped
     }
 
     /// Why a numbered row got its outcome: `listed` (its number was typed),
@@ -117,10 +119,18 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         /// a `Capsule` because no such SF Symbol exists.
         public let usesNumericBadgeFallback: Bool
         /// Unlisted rows render at reduced opacity so the chosen rows stand
-        /// out. False whenever no selection was typed.
+        /// out. False whenever no selection was typed. Dropped rows always
+        /// dim: they leave today entirely.
         public let isDimmed: Bool
+        /// True when the linked task's line carries `#now`. Rows with `now`
+        /// show a `NOW` badge; a dropped `#now` row adds the caption
+        /// "stays in NOW".
+        public let now: Bool
+        /// `"stays in NOW"` on dropped `#now` rows, else nil.
+        public let caption: String?
         /// `"Task 1, <text>, stays in progress, chosen"` for numbered rows;
-        /// the transition text for unnumbered rows.
+        /// the transition text for unnumbered rows. Dropped rows read
+        /// "drops from today".
         public let accessibilityLabel: String
     }
 
@@ -240,7 +250,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             summary.taskLinks.map { ($0.index, $0) },
             uniquingKeysWith: { first, _ in first }
         )
-        hasSelection = summary.inProgress != nil || !summary.complete.isEmpty
+        hasSelection = summary.inProgress != nil || !summary.complete.isEmpty || !summary.drop.isEmpty
         completedCount = summary.taskLinks.filter { $0.outcome == "complete" }.count
         taskRows = summary.tasks.map { task in
             Self.taskRow(
@@ -374,6 +384,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             case "in_progress": .inProgress
             case "deferred": .deferred
             case "complete": .complete
+            case "dropped": .dropped
             default: nil
             }
         }
@@ -393,6 +404,9 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         // card, and strikes its text because the ledger line will be struck.
         // Its transition is the marker change when the status changed, else
         // the unchanged `[x] closed`.
+        // A dropped row leaves today entirely: struck text, dimmed, its own
+        // glyph. Its transition names the drop; a dropped `#now` row keeps
+        // its tag elsewhere, hence the "stays in NOW" caption.
         if outcome == .complete {
             glyph = .embedded
             if task.statusChanged {
@@ -400,6 +414,9 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             } else {
                 transition = "[x] closed"
             }
+        } else if outcome == .dropped || task.role == "dropped" {
+            glyph = .dropped
+            transition = "[~] dropped"
         } else {
             switch task.role {
             case "worked", "mentioned":
@@ -448,7 +465,10 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             badgeSymbolName = nil
             usesNumericBadgeFallback = false
         }
-        let isDimmed = source == .unlisted
+        let isDropped = outcome == .dropped || task.role == "dropped"
+        let isDimmed = source == .unlisted || isDropped
+        let isStruck = task.role == "struck" || outcome == .complete || isDropped
+        let caption: String? = (isDropped && task.now) ? "stays in NOW" : nil
         let accessibilityLabel: String
         if let index = task.index, let outcome {
             let fate: String
@@ -456,6 +476,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             case .inProgress: fate = "stays in progress"
             case .deferred: fate = "deferred"
             case .complete: fate = "completes"
+            case .dropped: fate = "drops from today"
             }
             let chosen = source == .listed ? ", chosen" : ""
             accessibilityLabel = "Task \(index), \(taskText), \(fate)\(chosen)"
@@ -474,13 +495,15 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             warning: task.warning,
             carried: task.carried,
             tag: tag,
-            isStruck: task.role == "struck" || outcome == .complete,
+            isStruck: isStruck,
             index: link == nil ? nil : task.index,
             outcome: outcome,
             source: source,
             badgeSymbolName: badgeSymbolName,
             usesNumericBadgeFallback: usesNumericBadgeFallback,
             isDimmed: isDimmed,
+            now: task.now,
+            caption: caption,
             accessibilityLabel: accessibilityLabel
         )
     }
@@ -488,7 +511,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     /// The teaching hint tokens for a lineup of `numberedRows` rows. Example
     /// tokens carry the editor span category whose color they share (`=x` is
     /// Pomodoro-session pink, `<N>` digits are orange, `!<M>` digits are
-    /// green); prose carries `.neutral`.
+    /// green, `~<K>` digits are muted gray); prose carries `.neutral`.
     static func hintTokens(numberedRows: Int) -> [HintToken] {
         let close: [HintToken] = [HintToken(text: "=x", category: .pomodoroStart)]
         if numberedRows >= 2 {
@@ -496,18 +519,22 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
                 + [HintToken(text: " keeps only these in progress · ", category: .neutral)]
                 + close + [HintToken(text: "!2", category: .pomodoroCloseComplete)]
                 + [HintToken(text: " completes 2 · ", category: .neutral)]
+                + close + [HintToken(text: "~3", category: .pomodoroCloseDrop)]
+                + [HintToken(text: " drops 3 · ", category: .neutral)]
                 + close + [HintToken(text: "0", category: .pomodoroCloseInProgress)]
                 + [HintToken(text: " defers all", category: .neutral)]
         }
         return close + [HintToken(text: "!1", category: .pomodoroCloseComplete)]
             + [HintToken(text: " completes it · ", category: .neutral)]
+            + close + [HintToken(text: "~1", category: .pomodoroCloseDrop)]
+            + [HintToken(text: " drops it · ", category: .neutral)]
             + close + [HintToken(text: "0", category: .pomodoroCloseInProgress)]
             + [HintToken(text: " defers it", category: .neutral)]
     }
 
     /// The selection summary from `task_links` in ascending order, for example
-    /// `"In progress 1, 3 · Complete 2 · Deferred 4"`. Empty groups are
-    /// omitted, except that `=x0` (an explicitly empty `<N>` list,
+    /// `"In progress 1, 3 · Complete 2 · Deferred 4 · Dropped 5"`. Empty
+    /// groups are omitted, except that `=x0` (an explicitly empty `<N>` list,
     /// `inProgressEmpty`) shows `"In progress none"`. Nil when every group is
     /// empty.
     static func summaryText(links: [PomodoroCloseTaskLink], inProgressEmpty: Bool) -> String? {
@@ -521,7 +548,8 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         let inProgress = group("in_progress")
         let complete = group("complete")
         let deferred = group("deferred")
-        if inProgress.isEmpty, complete.isEmpty, deferred.isEmpty {
+        let dropped = group("dropped")
+        if inProgress.isEmpty, complete.isEmpty, deferred.isEmpty, dropped.isEmpty {
             return nil
         }
         if inProgress.isEmpty, inProgressEmpty {
@@ -536,11 +564,14 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         if !deferred.isEmpty {
             parts.append("Deferred \(joined(deferred))")
         }
+        if !dropped.isEmpty {
+            parts.append("Dropped \(joined(dropped))")
+        }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     /// The pending summary row for a draft whose list dangles: `"Type a task
-    /// number after ,"` (or `"after !"`).
+    /// number after ,"` (or `"after !"` / `"after ~"`).
     public static func pendingText(separator: String) -> String {
         "Type a task number after \(separator)"
     }

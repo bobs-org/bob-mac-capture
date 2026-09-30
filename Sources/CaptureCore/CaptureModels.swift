@@ -269,23 +269,26 @@ public struct CaptureParseItem: Codable, Equatable {
     }
 }
 
-/// The typed `=x[<N>][!<M>]` token from `bob capture-parse`: `raw` preserves
-/// exactly what was typed (`"=x"`, `"=X1!2"`). `inProgress` is the sorted
-/// `in_progress` list, or nil when `<N>` was omitted (plain `=x` leaves
-/// unlisted links at their ledger outcome); `complete` is the sorted `!<M>`
-/// list, empty when no `!` list was typed. Present on whole-item closes and
-/// on link and body-bearing items carrying the close suffix. Older Bob
-/// binaries omit both lists; they decode as none so the card is exactly
-/// today's.
+/// The typed `=x[<N>][!<M>][~<K>]` token from `bob capture-parse`: `raw`
+/// preserves exactly what was typed (`"=x"`, `"=X1!2"`, `"=x1~2`).
+/// `inProgress` is the sorted `in_progress` list, or nil when `<N>` was
+/// omitted (plain `=x` leaves unlisted links at their ledger outcome);
+/// `complete` is the sorted `!<M>` list, empty when no `!` list was typed;
+/// `drop` is the sorted `~<K>` list, empty when no `~` list was typed.
+/// Present on whole-item closes and on link and body-bearing items carrying
+/// the close suffix. Older Bob binaries omit all three lists; they decode as
+/// none/empty so the card is exactly today's.
 public struct PomodoroCloseSpec: Codable, Equatable, Sendable {
     public let raw: String
     public let inProgress: [Int]?
     public let complete: [Int]
+    public let drop: [Int]
 
-    public init(raw: String, inProgress: [Int]? = nil, complete: [Int] = []) {
+    public init(raw: String, inProgress: [Int]? = nil, complete: [Int] = [], drop: [Int] = []) {
         self.raw = raw
         self.inProgress = inProgress
         self.complete = complete
+        self.drop = drop
     }
 
     public init(from decoder: Decoder) throws {
@@ -293,12 +296,14 @@ public struct PomodoroCloseSpec: Codable, Equatable, Sendable {
         raw = try container.decodeIfPresent(String.self, forKey: .raw) ?? ""
         inProgress = try container.decodeIfPresent([Int].self, forKey: .inProgress)
         complete = try container.decodeIfPresent([Int].self, forKey: .complete) ?? []
+        drop = try container.decodeIfPresent([Int].self, forKey: .drop) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
         case raw
         case inProgress = "in_progress"
         case complete
+        case drop
     }
 }
 
@@ -847,6 +852,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
     public let workLog: [String]
     public let workLogCreated: Bool
     public let warning: String?
+    public let now: Bool
 
     public init(
         role: String,
@@ -865,7 +871,8 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
         carried: Bool = false,
         workLog: [String] = [],
         workLogCreated: Bool = false,
-        warning: String? = nil
+        warning: String? = nil,
+        now: Bool = false
     ) {
         self.role = role
         self.blockLink = blockLink
@@ -884,6 +891,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
         self.workLog = workLog
         self.workLogCreated = workLogCreated
         self.warning = warning
+        self.now = now
     }
 
     public init(from decoder: Decoder) throws {
@@ -914,6 +922,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
             forKey: .workLogCreated
         ) ?? false
         warning = try container.decodeIfPresent(String.self, forKey: .warning)
+        now = try container.decodeIfPresent(Bool.self, forKey: .now) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -934,6 +943,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
         case workLog = "work_log"
         case workLogCreated = "work_log_created"
         case warning
+        case now
     }
 }
 
@@ -991,13 +1001,14 @@ public struct PomodoroCloseNext: Codable, Equatable, Sendable {
 /// to capture schema v1 and absent on older Bob binaries. Every field decodes
 /// tolerantly (booleans default to false, arrays to empty, lines to zero) so a
 /// partial object still previews instead of failing the whole capture.
-/// `inProgress`/`complete` echo the `=x[<N>][!<M>]` selection (nil/empty when
-/// none was typed); `taskLinks` is the numbered lineup, possibly empty.
-/// Older Bob omits all three and the card is exactly today's.
+/// `inProgress`/`complete`/`drop` echo the `=x[<N>][!<M>][~<K>]` selection
+/// (nil/empty when none was typed); `taskLinks` is the numbered lineup,
+/// possibly empty. Older Bob omits all four and the card is exactly today's.
 public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
     public let raw: String
     public let inProgress: [Int]?
     public let complete: [Int]
+    public let drop: [Int]
     public let pomodoroLine: Int
     public let pomodoroName: String?
     public let dayRelative: String?
@@ -1017,6 +1028,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         raw: String,
         inProgress: [Int]? = nil,
         complete: [Int] = [],
+        drop: [Int] = [],
         pomodoroLine: Int = 0,
         pomodoroName: String? = nil,
         dayRelative: String? = nil,
@@ -1045,6 +1057,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         self.raw = raw
         self.inProgress = inProgress
         self.complete = complete
+        self.drop = drop
         self.pomodoroLine = pomodoroLine
         self.pomodoroName = pomodoroName
         self.dayRelative = dayRelative
@@ -1066,6 +1079,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         raw = try container.decodeIfPresent(String.self, forKey: .raw) ?? ""
         inProgress = try container.decodeIfPresent([Int].self, forKey: .inProgress)
         complete = try container.decodeIfPresent([Int].self, forKey: .complete) ?? []
+        drop = try container.decodeIfPresent([Int].self, forKey: .drop) ?? []
         pomodoroLine = try container.decodeIfPresent(Int.self, forKey: .pomodoroLine) ?? 0
         pomodoroName = try container.decodeIfPresent(String.self, forKey: .pomodoroName)
         dayRelative = try container.decodeIfPresent(String.self, forKey: .dayRelative)
@@ -1107,6 +1121,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         case raw
         case inProgress = "in_progress"
         case complete
+        case drop
         case pomodoroLine = "pomodoro_line"
         case pomodoroName = "pomodoro_name"
         case dayRelative = "day_relative"
@@ -2477,6 +2492,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let planThemesAfter: Int?
     public let planThemesCap: Int?
     public let pomodoro: ActiveTaskPomodoro?
+    public let now: Bool
 
     public var id: String {
         [
@@ -2534,7 +2550,8 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         nextUp: Bool = false,
         planThemesAfter: Int? = nil,
         planThemesCap: Int? = nil,
-        pomodoro: ActiveTaskPomodoro? = nil
+        pomodoro: ActiveTaskPomodoro? = nil,
+        now: Bool = false
     ) {
         self.replacement = replacement
         self.route = route
@@ -2572,6 +2589,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.planThemesAfter = planThemesAfter
         self.planThemesCap = planThemesCap
         self.pomodoro = pomodoro
+        self.now = now
     }
 
     public init(from decoder: Decoder) throws {
@@ -2612,6 +2630,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         planThemesAfter = try container.decodeIfPresent(Int.self, forKey: .planThemesAfter)
         planThemesCap = try container.decodeIfPresent(Int.self, forKey: .planThemesCap)
         pomodoro = try container.decodeIfPresent(ActiveTaskPomodoro.self, forKey: .pomodoro)
+        now = try container.decodeIfPresent(Bool.self, forKey: .now) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2651,6 +2670,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case planThemesAfter = "plan_themes_after"
         case planThemesCap = "plan_themes_cap"
         case pomodoro
+        case now
     }
 }
 

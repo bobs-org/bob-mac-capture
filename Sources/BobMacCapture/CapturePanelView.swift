@@ -1800,6 +1800,16 @@ struct PreviewPane: View {
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
+                                if row.now {
+                                    Text("NOW")
+                                        .font(.caption2)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.mint)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(.mint.opacity(0.12), in: Capsule())
+                                        .accessibilityLabel("This week's bet")
+                                }
                                 Spacer(minLength: 4)
                                 Text(row.locatorText)
                                     .font(.caption)
@@ -1828,6 +1838,12 @@ struct PreviewPane: View {
                                 Text(warning)
                                     .font(.caption)
                                     .foregroundStyle(.orange)
+                                    .textSelection(.enabled)
+                            }
+                            if let caption = row.caption {
+                                Text(caption)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                                     .textSelection(.enabled)
                             }
                         }
@@ -1966,6 +1982,8 @@ struct PreviewPane: View {
             return .orange
         case .complete:
             return .green
+        case .dropped:
+            return .gray
         case .deferred, nil:
             return .secondary
         }
@@ -1987,6 +2005,10 @@ struct PreviewPane: View {
         case .struck:
             Image(systemName: "checkmark.circle")
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        case .dropped:
+            Image(systemName: "minus.circle")
+                .foregroundStyle(.gray)
                 .accessibilityHidden(true)
         case .embedded:
             Image(systemName: "checkmark.circle.fill")

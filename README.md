@@ -105,18 +105,22 @@ mutation.
   `=x`. A close summary whose task, carried, notes, or next fields are absent
   still previews: booleans read as false, arrays as empty, and missing lines as
   zero, and unknown task roles degrade to a neutral row. A close summary whose
-  `in_progress`, `complete`, `task_links`, or `index` fields are absent still
-  previews as today's unnumbered card: the spec decodes as no selection, rows
-  decode as unnumbered, and no hint, summary, or badge renders. Whole-item `=x`
-  reports `pomodoro_close` mode with a `pomodoro_close` span and a
+  `in_progress`, `complete`, `drop`, `task_links`, or `index` fields are absent
+  still previews as today's unnumbered card: the spec decodes as no selection,
+  rows decode as unnumbered, and no hint, summary, or badge renders. Whole-item
+  `=x` reports `pomodoro_close` mode with a `pomodoro_close` span and a
   `{"raw": "=x"}` parse spec; link items keep `pomodoro_link`/`pomodoro_task`
   mode with a `pomodoro_close` span kind over the suffix. A selection-bearing
-  close adds `pomodoro_close_in_progress` and `pomodoro_close_complete` spans,
-  an `in_progress`/`complete` parse spec, and `task_links` plus per-row
-  `index` in the capture summary; a dangling `,`/`!` reports mode
-  `incomplete` with a `pomodoro_close_task` need and an
-  `interactive_placeholder` span instead of an error. Older Bob builds may implement the
-  previous task-toggle spellings. The app labels
+  close adds `pomodoro_close_in_progress`, `pomodoro_close_complete`, and
+  `pomodoro_close_drop` spans, an `in_progress`/`complete`/`drop` parse spec,
+  and `task_links` plus per-row `index` in the capture summary; a dangling
+  `,`/`!`/`~` reports mode `incomplete` with a `pomodoro_close_task` need and
+  an `interactive_placeholder` span instead of an error. A dropped (`~<K>`)
+  close removes those links from today without carrying or starting them; the
+  card strikes and dims dropped rows, summarizes `Dropped 4, 5`, and reads
+  "drops from today" for VoiceOver. Rows whose task carries `#now` show a
+  `NOW` badge, and a dropped `#now` row adds a "stays in NOW" caption. Older
+  Bob builds may implement the previous task-toggle spellings. The app labels
   actions and notifications from Bob's returned behavior metadata, so a response
   that omits `toggle_behavior` still shows the two-way Set Next/Open footer,
   never Ensure Next. Captures that change today's `## Pomodoros` section also
@@ -130,7 +134,14 @@ mutation.
   `plan_themes_cap`. An older Bob that omits `plan_budget`, `role`,
   `plan_themes_after`/`plan_themes_cap`, or `code` still previews and captures;
   the Mac app decodes each as absent and simply omits the destination row, the
-  meter capsules, the cap badge, and the strict hint.
+  meter capsules, the cap badge, and the strict hint. A trailing `#now` tag
+  moves onto new task text with a mint `now_tag` span and a `star.circle`
+  `#now` completion row ("This week's bet" with a `NOW` badge); the `^`
+  active-task picker lists Ready `#now` tasks with their Ready status and
+  shows a `NOW` badge on every `#now` candidate. An older Bob that omits
+  `now_tag`, the `now_tag` completion context, or the `now` flag still
+  previews and captures; the Mac app decodes each as absent and simply omits
+  the mint highlight, the tag row, and the badges.
 
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.
@@ -204,7 +215,8 @@ or expired certificate can require reauthorizing those system permissions.
   kinds (`wikilink_delimiter`, `wikilink_target`, `wikilink_heading`, `wikilink_block_id`,
   `wikilink_alias`) — resolves through the single palette in `CaptureEditorPalette`.
   The close-list spans `pomodoro_close_in_progress` and `pomodoro_close_complete`
-  render orange and green, sharing the badge colors of the rows they select.
+  render orange and green, sharing the badge colors of the rows they select;
+  `pomodoro_close_drop` renders muted gray and `now_tag` renders mint.
   Global destination spans (`global_route`, `global_sub_bullet_route`, and
   `global_sub_bullet_block_id`) reuse the existing destination and block-ID colors, so
   the editor and the completion list never disagree about what color represents what
@@ -235,8 +247,9 @@ or expired certificate can require reauthorizing those system permissions.
   untouched and announces Bob's notice.
   Typing `^` as the whole capture item opens the Active Task Picker (`active_task`
   context), a modal mode of the capture panel — not a second window. Bob supplies one
-  full snapshot (every In Progress and Next task with a block ID, in Bob's ledger
-  order); the app filters that snapshot locally with a fuzzy matcher in `CaptureCore`
+  full snapshot (every In Progress and Next task plus every Ready `#now` task with
+  a block ID, in Bob's ledger order); the app filters that snapshot locally with
+  a fuzzy matcher in `CaptureCore`
   so each keystroke is instant and flicker-free, and filter text never touches the
   draft. Local filtering is a deliberate presentation-only responsibility, the same
   precedent as the locally ranked `capture-targets` route cache. The picker opens when

@@ -1610,6 +1610,28 @@ final class CapturePanelModelTests: XCTestCase {
             CapturePanelModel.closePendingTrim(in: bang, draft: "=x!")?.separator,
             "!"
         )
+
+        let tilde = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: "=x1~",
+            body: "=x1~",
+            mode: "incomplete",
+            needs: ["pomodoro_close_task"],
+            spans: [
+                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
+                CaptureSpan(start: 2, end: 3, kind: "pomodoro_close_in_progress"),
+                CaptureSpan(start: 3, end: 4, kind: "interactive_placeholder"),
+            ]
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: tilde, draft: "=x1~")?.trimmed,
+            "=x1"
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: tilde, draft: "=x1~")?.separator,
+            "~"
+        )
     }
 
     func testClosePendingTrimIgnoresValidDrafts() {
@@ -1871,6 +1893,21 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "bugs")
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 2 --format json -- =#"))
+    }
+
+    func testNowTagPartialRequestsNowTagCompletion() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "Fix it #n"
+        model.editorTextDidChange(cursorUTF8Offset: 9)
+        await waitUntil { model.completionResponse?.context == "now_tag" }
+
+        XCTAssertTrue(model.completionVisible)
+        XCTAssertEqual(model.completionResponse?.candidates.count, 1)
+        XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "#now")
     }
 
     func testNamedStartCountedIncompleteRequestsStartNameCompletion() async throws {

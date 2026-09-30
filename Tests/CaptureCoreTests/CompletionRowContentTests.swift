@@ -712,6 +712,11 @@ final class CompletionRowContentTests: XCTestCase {
             captureSemanticCategory(forSpanKind: "pomodoro_close_complete"),
             .pomodoroCloseComplete
         )
+        XCTAssertEqual(
+            captureSemanticCategory(forSpanKind: "pomodoro_close_drop"),
+            .pomodoroCloseDrop
+        )
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "now_tag"), .nowTag)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "unrecognized_future_kind"), .neutral)
     }
 
@@ -732,11 +737,59 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(CaptureCompletionContext(rawContext: "task"), .task)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "task_section"), .taskSection)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "active_task"), .activeTask)
+        XCTAssertEqual(CaptureCompletionContext(rawContext: "now_tag"), .nowTag)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "wikilink_note"), .wikilinkNote)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "wikilink_heading"), .wikilinkHeading)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "wikilink_block"), .wikilinkBlock)
         XCTAssertNil(CaptureCompletionContext(rawContext: "future_context"))
         XCTAssertNil(CaptureCompletionContext(rawContext: nil))
+    }
+
+    func testNowTagRowShowsStarMintAndNowBadge() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "#now",
+            label: "#now",
+            kind: "tag",
+            text: "This week's bet"
+        )
+        let content = completionRowContent(for: candidate, context: "now_tag", query: "")
+
+        XCTAssertEqual(content.category, .nowTag)
+        XCTAssertEqual(content.symbolName, "star.circle")
+        XCTAssertEqual(content.primaryText, "#now")
+        XCTAssertEqual(content.secondaryText, "This week's bet")
+        XCTAssertEqual(content.badges, ["NOW"])
+    }
+
+    func testActiveTaskNowBadgeAppendsNow() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "sase:ready-now",
+            route: "sase",
+            blockID: "ready-now",
+            statusSymbol: " ",
+            statusName: "Todo",
+            statusType: "TODO",
+            text: "Ready now task",
+            now: true
+        )
+        let content = completionRowContent(for: candidate, context: "active_task", query: "")
+
+        XCTAssertEqual(content.badges, ["Not queued", "NOW"])
+    }
+
+    func testActiveTaskWithoutNowOmitsNowBadge() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "sase:plain",
+            route: "sase",
+            blockID: "plain",
+            statusSymbol: "*",
+            statusName: "Next",
+            statusType: "ON_HOLD",
+            text: "Plain task"
+        )
+        let content = completionRowContent(for: candidate, context: "active_task", query: "")
+
+        XCTAssertFalse(content.badges.contains("NOW"))
     }
 
     func testMiddleTruncatedPathReturnsInputUnchangedWhenWithinBudget() {
