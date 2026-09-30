@@ -238,11 +238,19 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
             dropSummary = summaryText
         } else if taskRows.isEmpty {
             dropSummary = nil
-            teachingHint = isNamed ? nil : TeachingHint(tokens: Self.nameHintTokens)
+            teachingHint = isNamed
+                ? nil
+                : TeachingHint(
+                    tokens: [HintToken(text: "Type ", category: .neutral)]
+                        + Self.nameExampleTokens
+                )
         } else {
             dropSummary = nil
             teachingHint = TeachingHint(
-                tokens: Self.dropHintTokens(rowCount: taskRows.count) + (isNamed ? [] : Self.nameHintTokens)
+                tokens: Self.dropHintTokens(rowCount: taskRows.count)
+                    + (isNamed
+                        ? []
+                        : [HintToken(text: " · ", category: .neutral)] + Self.nameExampleTokens)
             )
         }
 
@@ -324,11 +332,12 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         ]
     }
 
-    /// The ` · #name to start a specific Pomodoro` suffix for bare starts:
-    /// the `#name` example shares the editor `pomodoro_name` span color.
-    static var nameHintTokens: [HintToken] {
+    /// The `#name to start a specific Pomodoro` example shared by the bare
+    /// hints: the `#name` example shares the editor `pomodoro_name` span
+    /// color, prose stays neutral. Callers prepend `"Type "` (empty lineup)
+    /// or `" · "` (after the drop hint).
+    static var nameExampleTokens: [HintToken] {
         [
-            HintToken(text: "Type ", category: .neutral),
             HintToken(text: "#name", category: .section),
             HintToken(text: " to start a specific Pomodoro", category: .neutral),
         ]
