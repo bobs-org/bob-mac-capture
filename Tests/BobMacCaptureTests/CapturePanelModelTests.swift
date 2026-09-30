@@ -2448,6 +2448,68 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture --format json -- \(draft)"))
     }
 
+    func testLivePreviewWithAdjustmentYieldsOneBlockAndDeduplicatedSummary() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "+5"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        // The batch block arrives with the live preview: one FOCUS block
+        // with the cumulative adjust diff.
+        XCTAssertEqual(model.previewResult?.pomodoroBlocks.count, 1)
+        XCTAssertEqual(model.previewResult?.pomodoroBlocks.first?.name, "FOCUS")
+        XCTAssertEqual(model.previewResult?.pomodoroBlocks.first?.roles, ["adjusted"])
+        // The display label already is the path for this unrouted capture,
+        // so the summary names it once.
+        let summary = try XCTUnwrap(model.destinationSummary)
+        XCTAssertTrue(summary.contains("Preview → day.md:"))
+        XCTAssertFalse(summary.contains("(day.md)"))
+    }
+
+    func testFailedDryRunClearsBlocksAlongWithTheCard() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "+0"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .failed = model.previewState { return true }
+            return false
+        }
+
+        // A failed live dry run must never leave a stale card — or stale
+        // blocks — beside the red error.
+        XCTAssertNil(model.previewResult)
+        XCTAssertEqual(model.previewResults, [])
+        XCTAssertNil(model.destinationSummary)
+    }
+
+    func testOlderBobFixtureRendersNoBlocks() throws {
+        // A Bob that omits `pomodoro_blocks` decodes to empty blocks and
+        // still previews: the pane renders exactly as before.
+        let success = try closeSuccessFixture("pomodoro-close-worked.json")
+        XCTAssertEqual(success.pomodoroBlocks, [])
+
+        let model = CapturePanelModel()
+        model.previewResult = success
+        model.previewResults = [success]
+        XCTAssertEqual(model.previewResult?.pomodoroBlocks, [])
+        XCTAssertNotNil(model.destinationSummary)
+    }
+
     func testLivePreviewWithInvalidAdjustmentSurfacesActionableError() async throws {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(

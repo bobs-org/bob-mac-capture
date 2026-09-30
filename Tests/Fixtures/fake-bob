@@ -3031,9 +3031,36 @@ JSON
     "pomodoro_name": "FOCUS",
     "time_range": "(**0900-0955** [t:: 55m])",
     "clamped": false
-  }
+  },
+  "pomodoro_blocks": [
+    {
+      "relative_target": "day.md",
+      "line": 3,
+      "name": "FOCUS",
+      "time_range": "0900-0955",
+      "status": "running",
+      "created": false,
+      "roles": ["adjusted"],
+      "lines": [
+        {
+          "text": "- [ ] (**0900-0955** [t:: 55m]) — FOCUS",
+          "depth": 0,
+          "change": "changed",
+          "before": "- [ ] (**0900-0930** [t:: 30m]) — FOCUS"
+        }
+      ]
+    }
+  ]
 }
 JSON
+    elif [[ "${draft}" == "Write outline @sase:outline" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-task-blocks.json"
+    elif [[ "${draft}" == "^sase:x#gtd" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-link-move-blocks.json"
+    elif [[ "${draft}" == "quick note #" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-note-blocks.json"
+    elif [[ "${draft}" == "@cash+fresh!" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-toggle-blocks.json"
     elif [[ "${draft}" == "-2" ]]; then
       cat <<JSON
 {

@@ -143,6 +143,26 @@ final class CapturePreviewFullHeightTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
+    func testPreviewPaneWithBlocksIsTallerThanWithout() throws {
+        let close = try closeSuccessFixture("pomodoro-close-blocks.json")
+        XCTAssertFalse(close.pomodoroBlocks.isEmpty)
+        let emptied = try successStrippingBlocks(close)
+        XCTAssertEqual(emptied.pomodoroBlocks, [])
+
+        // The block view adds real height at full and minimum panel widths.
+        for width in [724.0, 620.0] {
+            let withBlocks = hostedPreviewHeight(for: readyModel(for: close), width: width)
+            let withoutBlocks = hostedPreviewHeight(for: readyModel(for: emptied), width: width)
+            XCTAssertGreaterThan(
+                withBlocks,
+                withoutBlocks,
+                "blocks should grow the pane at width \(width)"
+            )
+        }
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
     func testPreviewPaneHoldsHeightWhileReloading() throws {
         let close = try closeSuccessFixture("pomodoro-close-worked.json")
         let model = CapturePanelModel()
@@ -173,6 +193,25 @@ final class CapturePreviewFullHeightTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         hostingView.layoutSubtreeIfNeeded()
         return hostingView.fittingSize.height
+    }
+
+    @MainActor
+    private func readyModel(for success: CaptureCommandSuccess) -> CapturePanelModel {
+        let model = CapturePanelModel()
+        model.previewResult = success
+        model.previewResults = [success]
+        model.previewState = .ready(success)
+        return model
+    }
+
+    private func successStrippingBlocks(_ success: CaptureCommandSuccess) throws -> CaptureCommandSuccess {
+        let data = try JSONEncoder().encode(success)
+        guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NSError(domain: "CapturePreviewFullHeightTests", code: 2)
+        }
+        object.removeValue(forKey: "pomodoro_blocks")
+        let stripped = try JSONSerialization.data(withJSONObject: object)
+        return try JSONDecoder().decode(CaptureCommandSuccess.self, from: stripped)
     }
 
     private func closeSuccessFixture(_ name: String) throws -> CaptureCommandSuccess {

@@ -1574,8 +1574,24 @@ struct PreviewPane: View {
                 capture,
                 index: index,
                 total: captures.count,
-                globalDestination: success.globalDestination
+                globalDestination: success.globalDestination,
+                blocks: success.pomodoroBlocks
             )
+        }
+
+        // Batch-level Pomodoro blocks render once, after the item stack:
+        // each block shows the Pomodoro's final state with Bob's cumulative
+        // diff. They dim together with the close card while a close-list
+        // selection dangles. An older Bob omits `pomodoro_blocks` and the
+        // pane renders exactly as before.
+        if !success.pomodoroBlocks.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(success.pomodoroBlocks.enumerated()), id: \.offset) { _, block in
+                    PomodoroBlockView(block: block, dryRun: success.dryRun)
+                }
+            }
+            .padding(.top, 4)
+            .opacity(model.closePendingText != nil ? 0.6 : 1)
         }
 
         if model.livePreviewUsesLiteralClipboard {
@@ -1664,7 +1680,8 @@ struct PreviewPane: View {
         _ success: CaptureCommandSuccess,
         index: Int,
         total: Int,
-        globalDestination: CaptureGlobalDestination?
+        globalDestination: CaptureGlobalDestination?,
+        blocks: [CapturePomodoroBlock]
     ) -> some View {
         let isLocalOverride = globalDestination.map {
             !captureUsesGlobalDestination(success, $0)
@@ -1700,7 +1717,8 @@ struct PreviewPane: View {
                 success,
                 index: index,
                 total: total,
-                isLocalOverride: isLocalOverride
+                isLocalOverride: isLocalOverride,
+                blocks: blocks
             )
         }
     }
@@ -2201,8 +2219,7 @@ struct PreviewPane: View {
         }
     }
 
-    @ViewBuilder
-    private func standardPreviewItem(
+    private func standardHeader(
         _ success: CaptureCommandSuccess,
         index: Int,
         total: Int,
@@ -2230,6 +2247,44 @@ struct PreviewPane: View {
             }
         }
         .lineLimit(1)
+    }
+
+    @ViewBuilder
+    private func standardPreviewItem(
+        _ success: CaptureCommandSuccess,
+        index: Int,
+        total: Int,
+        isLocalOverride: Bool,
+        blocks: [CapturePomodoroBlock]
+    ) -> some View {
+        // When the batch blocks already show every verbatim preview line,
+        // the item omits its `previewBlockLines` stack so the headline never
+        // prints twice. VoiceOver still announces the item summary once,
+        // from the header row.
+        let covered = CapturePomodoroBlockPresentation.covers(success, blocks: blocks)
+        if covered {
+            standardHeader(
+                success,
+                index: index,
+                total: total,
+                isLocalOverride: isLocalOverride
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(previewAccessibilityLabel(
+                for: success,
+                index: index,
+                total: total,
+                isLocalOverride: isLocalOverride,
+                includeBlockLines: false
+            ))
+        } else {
+            standardHeader(
+                success,
+                index: index,
+                total: total,
+                isLocalOverride: isLocalOverride
+            )
+        }
 
         // The atomic-start session comes straight from Bob's resolved `pomodoro_start`
         // object (dry-run JSON for preview, committed JSON after capture). No Swift-side
@@ -2321,23 +2376,26 @@ struct PreviewPane: View {
 
         // `previewBlockLines` is the parent line, the authored children, the clipboard
         // children, and the schedule log in the exact order Bob writes them, already
-        // carrying the target note's indentation.
-        let blockLines = success.previewBlockLines
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(Array(blockLines.enumerated()), id: \.offset) { _, line in
-                Text(line)
-                    .font(.system(.callout, design: .monospaced))
-                    .textSelection(.enabled)
+        // carrying the target note's indentation. Lines the batch blocks
+        // already cover are omitted: the block view below shows them.
+        if !covered {
+            let blockLines = success.previewBlockLines
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(blockLines.enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                        .font(.system(.callout, design: .monospaced))
+                        .textSelection(.enabled)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(previewAccessibilityLabel(
+                for: success,
+                index: index,
+                total: total,
+                isLocalOverride: isLocalOverride
+            ))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(previewAccessibilityLabel(
-            for: success,
-            index: index,
-            total: total,
-            isLocalOverride: isLocalOverride
-        ))
 
         Text(success.relativeTarget)
             .foregroundStyle(.secondary)
@@ -2503,7 +2561,8 @@ struct PreviewPane: View {
         for success: CaptureCommandSuccess,
         index: Int,
         total: Int,
-        isLocalOverride: Bool
+        isLocalOverride: Bool,
+        includeBlockLines: Bool = true
     ) -> String {
         let position = total > 1 ? "Item \(index + 1) of \(total), " : ""
         let destination = success.routeLabel.isEmpty ? success.relativeTarget : success.routeLabel
@@ -2518,7 +2577,11 @@ struct PreviewPane: View {
             .map { ", \($0.accessibilitySummary)" } ?? ""
         let projectNoteSummary = CaptureProjectNotePresentation(capture: success)
             .map { ", \($0.previewAccessibilitySummary)" } ?? ""
-        return "\(position)\(success.kind), \(destination)\(override)\(startSummary)\(adjustSummary)\(shiftSummary)\(closeSummary)\(projectNoteSummary), \(success.previewBlockLines.joined(separator: ", "))"
+        let summary = "\(position)\(success.kind), \(destination)\(override)\(startSummary)\(adjustSummary)\(shiftSummary)\(closeSummary)\(projectNoteSummary)"
+        guard includeBlockLines else {
+            return summary
+        }
+        return "\(summary), \(success.previewBlockLines.joined(separator: ", "))"
     }
 
     private func togglePreviewAccessibilityLabel(

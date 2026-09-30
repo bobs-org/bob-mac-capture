@@ -31,6 +31,24 @@ enum CaptureEditorPalette {
         }
     }
 
+    /// Checkbox-symbol tint for a Pomodoro block headline, next to
+    /// `taskStatus`: done reads green, in-progress orange, next blue, an
+    /// empty box tertiary, and anything else secondary.
+    static func checkboxSymbolColor(_ symbol: Character) -> Color {
+        switch symbol {
+        case "x":
+            return .green
+        case "/":
+            return .orange
+        case "*":
+            return .blue
+        case " ":
+            return .tertiary
+        default:
+            return .secondary
+        }
+    }
+
     static func color(for category: CaptureSemanticCategory) -> Color {
         switch category {
         case .route:

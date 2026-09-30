@@ -581,6 +581,20 @@ or expired certificate can require reauthorizing those system permissions.
   while a live preview reloads. Continuous live
   preview passes `--no-clip`, so it has no `clip` to show; the explicit **Preview**
   button and **Capture** resolve the clipboard and therefore mirror the full block.
+  Whenever Bob reports batch-level `pomodoro_blocks`, every Pomodoro the capture
+  touches, creates, or reports renders once below the item stack as a full block view:
+  a status caption (`Running · line 27` with a `play.circle.fill` glyph, `Completed`
+  with `checkmark.circle.fill`, `Queued` with `circle.dashed`) plus a pink **New**
+  capsule on a dry run (**Created** once committed), then a card with a status rail,
+  a diff gutter (`+` green for added lines, `•` accent for changed lines with the old
+  text on hover, `−` red for removed lines), indent guides per depth, and the verbatim
+  lines Bob will write — tinted like the editor (pink time range, wikilink colors,
+  checkbox colors) with no truncation. Standard items whose verbatim lines the blocks
+  already cover omit the duplicated stack, and the blocks dim to 0.6 together with the
+  close card while a close-list selection dangles. An older Bob that omits
+  `pomodoro_blocks` previews exactly as before. `PomodoroBlockDesignTests` renders the
+  adjust, close, link-move, created-named-start, and chain fixtures to PNG
+  (light/dark, 760/620 pt, scale 2) when `BOB_MAC_CAPTURE_RENDER_DIR` is set.
 - The preview path assigns a fixed `BOB_PRIORITY_ROLL_SEED` for the draft lifecycle so
   randomized `p:<N>` scheduled dates can be reused by submission. Bob derives
   item-specific rolls from that seed for batch drafts, and the seed resets only after a

@@ -3439,7 +3439,13 @@ final class CapturePanelModel: ObservableObject {
 
         guard captures.count != 1 else {
             let capture = captures[0]
-            return "\(prefix) \u{2192} \(displayLabel(for: capture)) (\(capture.relativeTarget)): \(capture.taskLine)"
+            let label = displayLabel(for: capture)
+            // The display label already is the path for unrouted captures,
+            // so the parenthetical would repeat it verbatim.
+            if label == capture.relativeTarget {
+                return "\(prefix) \u{2192} \(label): \(capture.taskLine)"
+            }
+            return "\(prefix) \u{2192} \(label) (\(capture.relativeTarget)): \(capture.taskLine)"
         }
 
         let destinationCount = Set(captures.map(\.target)).count
