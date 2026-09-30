@@ -11,6 +11,27 @@ enum CapturePreviewState: Equatable {
     case failed(String)
 }
 
+/// What follows a successful Add block ID assignment.
+enum CaptureTaskLinkFollowUp: Equatable, Sendable {
+    case none
+    case start
+    case submit
+}
+
+/// Why the Add block ID prompt is open.
+enum CaptureTaskIDPromptPurpose: Equatable {
+    /// Today's `@route+` flow, byte-for-byte unchanged.
+    case parentTask
+    /// Link mode for an ID-less `:` row: name the task, then splice its link.
+    case taskLink(
+        route: String,
+        taskRef: String,
+        suggestions: [String],
+        followUp: CaptureTaskLinkFollowUp,
+        returnPicker: CapturePickerState
+    )
+}
+
 struct CaptureTaskIDPromptState: Equatable {
     let candidate: CaptureCompletionCandidate
     let draftSnapshot: String
@@ -19,6 +40,23 @@ struct CaptureTaskIDPromptState: Equatable {
     var authoredID: String
     var isSaving: Bool
     var errorMessage: String?
+    var purpose: CaptureTaskIDPromptPurpose = .parentTask
+
+    /// Suggestions when `purpose` is link mode, else empty.
+    var linkSuggestions: [String] {
+        if case .taskLink(_, _, let suggestions, _, _) = purpose {
+            return suggestions
+        }
+        return []
+    }
+
+    /// Follow-up when `purpose` is link mode, else nil.
+    var linkFollowUp: CaptureTaskLinkFollowUp? {
+        if case .taskLink(_, _, _, let followUp, _) = purpose {
+            return followUp
+        }
+        return nil
+    }
 }
 
 struct CapturePomodoroNamePromptState: Equatable {
@@ -220,6 +258,22 @@ final class CapturePanelModel: ObservableObject {
 
     var taskIDPromptVisible: Bool {
         taskIDPrompt != nil
+    }
+
+    /// True when the Add block ID prompt is open in link mode.
+    var taskIDPromptIsTaskLink: Bool {
+        guard let prompt = taskIDPrompt else {
+            return false
+        }
+        if case .taskLink = prompt.purpose {
+            return true
+        }
+        return false
+    }
+
+    /// True when the open picker belongs to the `:` source.
+    var pickerSourceIsTaskLink: Bool {
+        picker?.source == .taskLink
     }
 
     var taskIDPromptCanSubmit: Bool {
@@ -916,6 +970,30 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
+    /// Task-link preview hook: mounts the `:` session production presents for
+    /// a decoded `task_link` response, so design tests and the image review
+    /// render the card production mounts.
+    func installTaskLinkPickerForPreviews(
+        candidates: [CaptureCompletionCandidate],
+        warnings: [String] = [],
+        filter: String = "",
+        draft: String = ":",
+        replacement: CaptureRange = CaptureRange(start: 0, end: 1)
+    ) {
+        let index = CapturePickerIndex.taskLink(TaskLinkPickerIndex(candidates: candidates))
+        installPickerSessionForPreviews(
+            source: .taskLink,
+            index: index,
+            candidates: candidates,
+            warnings: warnings,
+            draftSnapshot: draft,
+            replacementRange: replacement,
+            restoreCursor: replacement.end,
+            filter: filter,
+            snapshotIsPartial: false
+        )
+    }
+
     /// Block-ID preview hook: mounts the same Link or New ID session
     /// production presents for a decoded `block_id` field, so design tests
     /// and the image review render the card production mounts. `draft` seeds
@@ -1009,9 +1087,9 @@ final class CapturePanelModel: ObservableObject {
         applyPickerMarkerHighlight()
     }
 
-    /// Routes one completion result: `active_task` and block-ID responses
-    /// feed the picker or the reopen chip and never populate the inline
-    /// list; every other context keeps the inline list and clears the chip.
+    /// Routes one completion result: `active_task`, `task_link`, and block-ID
+    /// responses feed the picker or the reopen chip and never populate the
+    /// inline list; every other context keeps the inline list and clears the chip.
     private func handleCompletionResponse(
         _ completion: CaptureCompletionResponse,
         draft: String,
@@ -1028,6 +1106,17 @@ final class CapturePanelModel: ObservableObject {
         // fired when the editor loses focus must not reset the picker.
         if picker != nil {
             dismissCompletion()
+            return
+        }
+        if completion.context == "task_link" {
+            await handleTaskLinkCompletion(
+                completion,
+                draft: draft,
+                cursor: cursor,
+                generation: generation,
+                processClient: processClient,
+                trigger: trigger
+            )
             return
         }
         guard completion.context == "active_task" else {
@@ -1403,10 +1492,104 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
+    /// Routes a `task_link` completion response into the picker card, mirroring
+    /// `handleActiveTaskCompletion`: dismiss the inline list, auto-open only on
+    /// `.edit` when not suppressed, show the chip on `.selection`, and refetch
+    /// the full list at `r.start` when the caret is past it.
+    private func handleTaskLinkCompletion(
+        _ completion: CaptureCompletionResponse,
+        draft: String,
+        cursor: Int,
+        generation: UInt64,
+        processClient: BobProcessClient,
+        trigger: CompletionTrigger
+    ) async {
+        // A `task_link` response never sets `completionResponse`, even when
+        // `candidates` is empty.
+        dismissCompletion()
+        let r = completion.replacement
+        guard stringRange(in: draft, byteRange: r) != nil,
+              stringRange(in: draft, start: r.start, end: min(cursor, r.end)) != nil
+        else {
+            return
+        }
+        guard trigger == .edit, pickerAutoOpenSuppressedStart != r.start else {
+            pickerChip = CapturePickerChipState(
+                source: .taskLink,
+                draftSnapshot: draft,
+                replacementRange: r,
+                cursor: cursor,
+                candidates: completion.candidates,
+                warnings: completion.warnings
+            )
+            return
+        }
+        let query = Self.taskLinkPickerQuery(in: draft, range: r, cursor: cursor)
+        if cursor != r.start {
+            if let snapshot = try? await processClient.captureComplete(draft, cursor: r.start),
+               isCurrentAnalysis(generation),
+               plainDraft == draft,
+               snapshot.context == "task_link",
+               snapshot.replacement == r
+            {
+                presentPicker(
+                    source: .taskLink,
+                    index: .taskLink(TaskLinkPickerIndex(candidates: snapshot.candidates)),
+                    candidates: snapshot.candidates,
+                    warnings: snapshot.warnings,
+                    draft: draft,
+                    range: r,
+                    restoreCursor: cursor,
+                    query: query,
+                    snapshotIsPartial: false
+                )
+                return
+            }
+            guard isCurrentAnalysis(generation), plainDraft == draft else {
+                return
+            }
+            presentPicker(
+                source: .taskLink,
+                index: .taskLink(TaskLinkPickerIndex(candidates: completion.candidates)),
+                candidates: completion.candidates,
+                warnings: completion.warnings,
+                draft: draft,
+                range: r,
+                restoreCursor: cursor,
+                query: query,
+                snapshotIsPartial: true
+            )
+            return
+        }
+        presentPicker(
+            source: .taskLink,
+            index: .taskLink(TaskLinkPickerIndex(candidates: completion.candidates)),
+            candidates: completion.candidates,
+            warnings: completion.warnings,
+            draft: draft,
+            range: r,
+            restoreCursor: cursor,
+            query: query,
+            snapshotIsPartial: false
+        )
+    }
+
     /// The filter seed: the draft text typed after `^` so far, by UTF-8 byte
     /// range. Text typed before the picker appears seeds the filter.
     private static func pickerQuery(in draft: String, range: CaptureRange, cursor: Int) -> String {
         guard let queryRange = stringRange(in: draft, start: range.start, end: min(cursor, range.end)) else {
+            return ""
+        }
+        return String(draft[queryRange])
+    }
+
+    /// The `:` filter seed: draft bytes `(r.start + 1)..<caret`, so the sigil
+    /// itself never filters. The index also strips a leading `:` defensively.
+    private static func taskLinkPickerQuery(in draft: String, range: CaptureRange, cursor: Int) -> String {
+        let start = range.start + 1
+        guard start <= range.end,
+              let queryRange = stringRange(in: draft, start: start, end: min(cursor, range.end))
+        else {
             return ""
         }
         return String(draft[queryRange])
@@ -1473,6 +1656,9 @@ final class CapturePanelModel: ObservableObject {
                 return nil
             }
             return CaptureRange(start: replacementRange.start - 1, end: replacementRange.end)
+        case .taskLink:
+            // Bob's `task_link` replacement already includes the `:` sigil.
+            return replacementRange
         case .blockID:
             return markerRange ?? replacementRange
         }
@@ -1734,6 +1920,13 @@ final class CapturePanelModel: ObservableObject {
         acceptPickerRow(id: selectedRowID, submitAfterInsert: submitAfterInsert)
     }
 
+    func acceptSelectedPickerRowAndStart() {
+        guard let selectedRowID = picker?.selectedRowID else {
+            return
+        }
+        acceptPickerRowAndStart(id: selectedRowID)
+    }
+
     func acceptPickerRow(id: String, submitAfterInsert: Bool) {
         guard let picker = picker,
               plainDraft == picker.draftSnapshot,
@@ -1743,11 +1936,25 @@ final class CapturePanelModel: ObservableObject {
             closePickerAfterStaleDraft()
             return
         }
-        guard let row = pickerPresentation?.row(id: id),
-              let insertion = row.insertion
-        else {
+        guard let row = pickerPresentation?.row(id: id) else {
             // No selectable row: a no-op that announces why, leaving the
             // picker open. `^` keeps its silent no-op.
+            if case .blockID = picker.source {
+                announceStatus(
+                    Self.blockIDNoAcceptReason(filter: picker.filterText, presentation: pickerPresentation)
+                )
+            }
+            return
+        }
+        if picker.source == .taskLink, row.insertion == nil, let pending = row.pendingBlockID {
+            presentTaskLinkIDPrompt(
+                pending: pending,
+                pickerSnapshot: picker,
+                followUp: submitAfterInsert ? .submit : .none
+            )
+            return
+        }
+        guard let insertion = row.insertion else {
             if case .blockID = picker.source {
                 announceStatus(
                     Self.blockIDNoAcceptReason(filter: picker.filterText, presentation: pickerPresentation)
@@ -1772,18 +1979,59 @@ final class CapturePanelModel: ObservableObject {
         // Block-ID insertions are bare IDs; name the marker they landed on.
         // Active-task insertions are bare locators; prefix the `^` so the
         // announcement matches the pre-epic "Inserted ^route:block-id".
+        // Task-link insertions already include `@`.
         if case .blockID(let context) = source {
             if context.scope == .projectTask {
                 announceStatus("Inserted \(context.marker)\(insertion)")
             } else {
                 announceStatus("Inserted @\(context.route)\(context.marker)\(insertion)")
             }
+        } else if source == .taskLink {
+            announceStatus("Inserted \(insertion)")
         } else {
             announceStatus("Inserted \(row.detail.insertionPrefix)\(insertion)")
         }
         if submitAfterInsert {
             submit(openAfterCapture: false)
         }
+    }
+
+    /// Shift-Return on a `:` row: splice the link plus `=`, so the live preview
+    /// shows the start before Return captures. Only the task-link source maps
+    /// here; other sources keep Shift-Return consumed.
+    func acceptPickerRowAndStart(id: String) {
+        guard let picker = picker,
+              picker.source == .taskLink,
+              plainDraft == picker.draftSnapshot,
+              let range = stringRange(in: plainDraft, byteRange: picker.replacementRange),
+              let row = pickerPresentation?.row(id: id)
+        else {
+            return
+        }
+        if row.insertion == nil, let pending = row.pendingBlockID {
+            presentTaskLinkIDPrompt(
+                pending: pending,
+                pickerSnapshot: picker,
+                followUp: .start
+            )
+            return
+        }
+        guard let insertion = row.insertion else {
+            return
+        }
+        let started = insertion + "="
+        var text = plainDraft
+        text.replaceSubrange(range, with: started)
+        let caret = picker.replacementRange.start + started.utf8.count
+        guard stringRange(in: text, start: caret, end: caret) != nil else {
+            closePickerAfterStaleDraft()
+            return
+        }
+        closePickerForAccept()
+        suppressedCompletionAcceptanceDraft = text
+        setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+        scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: false, trigger: .edit)
+        announceStatus("Inserted \(started) — starts its session when captured")
     }
 
     /// First Escape clears a non-empty filter; otherwise the picker cancels.
@@ -1832,14 +2080,48 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// Backspace on an empty filter removes the source's trigger byte together
-    /// with any fragment it opened on (`^` for active tasks). Otherwise
-    /// behaves like cancel.
+    /// with any fragment it opened on (`^` for active tasks, `:` for task
+    /// links, whose replacement already includes the sigil). Otherwise behaves
+    /// like cancel.
     func removePickerTrigger() {
         guard let picker = picker, picker.filterText.isEmpty else {
             return
         }
         let r = picker.replacementRange
         let caretBytes = Array(plainDraft.utf8)
+        if picker.source == .taskLink {
+            if plainDraft == picker.draftSnapshot,
+               r.start < caretBytes.count,
+               caretBytes[r.start] == 58,
+               let deleteRange = stringRange(in: plainDraft, start: r.start, end: r.end)
+            {
+                var text = plainDraft
+                text.removeSubrange(deleteRange)
+                let caret = r.start
+                closePickerForAccept()
+                pickerAutoOpenSuppressedStart = nil
+                suppressedCompletionAcceptanceDraft = text
+                setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+                scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
+                return
+            }
+            // Empty the item when the `:` token is already gone.
+            if plainDraft == picker.draftSnapshot,
+               let deleteRange = stringRange(in: plainDraft, start: r.start, end: r.end)
+            {
+                var text = plainDraft
+                text.removeSubrange(deleteRange)
+                let caret = r.start
+                closePickerForAccept()
+                pickerAutoOpenSuppressedStart = nil
+                suppressedCompletionAcceptanceDraft = text
+                setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+                scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
+                return
+            }
+            cancelPicker()
+            return
+        }
         if plainDraft == picker.draftSnapshot,
            r.start >= 1,
            r.start - 1 < caretBytes.count,
@@ -1876,13 +2158,15 @@ final class CapturePanelModel: ObservableObject {
         let draft = plainDraft
         let r = chip.replacementRange
         // Link seeds from the range start to the caret; New ID seeds the
-        // whole part.
+        // whole part. `:` seeds after the sigil.
         let query: String
         if case .blockID(let context) = chip.source,
            context.isNewIDMode,
            let partRange = stringRange(in: draft, byteRange: r)
         {
             query = String(draft[partRange])
+        } else if chip.source == .taskLink {
+            query = Self.taskLinkPickerQuery(in: draft, range: r, cursor: chip.cursor)
         } else {
             query = Self.pickerQuery(in: draft, range: r, cursor: chip.cursor)
         }
@@ -1929,6 +2213,21 @@ final class CapturePanelModel: ObservableObject {
                             query: query,
                             snapshotIsPartial: false
                         )
+                    case .taskLink:
+                        guard snapshot.context == "task_link" else {
+                            return
+                        }
+                        self.presentPicker(
+                            source: chip.source,
+                            index: .taskLink(TaskLinkPickerIndex(candidates: snapshot.candidates)),
+                            candidates: snapshot.candidates,
+                            warnings: snapshot.warnings,
+                            draft: draft,
+                            range: r,
+                            restoreCursor: chip.cursor,
+                            query: query,
+                            snapshotIsPartial: false
+                        )
                     }
                 }
             }
@@ -1939,6 +2238,18 @@ final class CapturePanelModel: ObservableObject {
             presentPicker(
                 source: chip.source,
                 index: .activeTask(ActiveTaskPickerIndex(candidates: chip.candidates)),
+                candidates: chip.candidates,
+                warnings: chip.warnings,
+                draft: draft,
+                range: r,
+                restoreCursor: chip.cursor,
+                query: query,
+                snapshotIsPartial: false
+            )
+        case .taskLink:
+            presentPicker(
+                source: chip.source,
+                index: .taskLink(TaskLinkPickerIndex(candidates: chip.candidates)),
                 candidates: chip.candidates,
                 warnings: chip.warnings,
                 draft: draft,
@@ -2001,10 +2312,10 @@ final class CapturePanelModel: ObservableObject {
 
     /// An incomplete picker token is a state, not an error: skip the doomed
     /// live dry run and show a calm status line instead of red errors.
-    /// Precedence is `active_task`, then `pomodoro_id`, then `block_id`,
-    /// then the `=<X>#` named-start incomplete, checked top-level or in any
-    /// item. Suffix-only states such as `@sase:x#` (`pomodoro_name` without a
-    /// `pomodoro_start` object) keep today's behavior.
+    /// Precedence is `active_task`, then `task_link`, then `pomodoro_id`,
+    /// then `block_id`, then the `=<X>#` named-start incomplete, checked
+    /// top-level or in any item. Suffix-only states such as `@sase:x#`
+    /// (`pomodoro_name` without a `pomodoro_start` object) keep today's behavior.
     private static func pickerNeed(in parse: CaptureParseResponse) -> CapturePickerNeed? {
         let itemNeeds = parse.items.flatMap { $0.needs }
         func needs(_ need: String) -> Bool {
@@ -2012,6 +2323,9 @@ final class CapturePanelModel: ObservableObject {
         }
         if needs("active_task") {
             return .activeTask
+        }
+        if needs("task_link") {
+            return .taskLink
         }
         if needs("pomodoro_id") {
             return .pomodoroID
@@ -2311,6 +2625,29 @@ final class CapturePanelModel: ObservableObject {
         guard let prompt = taskIDPrompt else {
             return
         }
+        if case .taskLink(_, _, _, _, let returnPicker) = prompt.purpose {
+            // Escape returns to the picker with the same filter and selection,
+            // without a refetch.
+            clearTaskIDPrompt()
+            selectedCompletionIndex = prompt.selectedCompletionIndex
+            let index = CapturePickerIndex.taskLink(TaskLinkPickerIndex(candidates: returnPicker.candidates))
+            let presentation = index.presentation(filter: returnPicker.filterText)
+            pickerIndex = index
+            pickerPresentation = presentation
+            picker = returnPicker
+            pickerMarkerHighlight = Self.pickerMarkerHighlightRange(
+                source: returnPicker.source,
+                replacementRange: returnPicker.replacementRange,
+                markerRange: Self.blockIDMarkerRange(for: returnPicker.source)
+            )
+            applyPickerMarkerHighlight()
+            dismissCompletion()
+            pickerChip = nil
+            editorInputLocked = true
+            statusText = "Pick any open task — press Tab to browse"
+            requestFocus(.pickerFilter)
+            return
+        }
         clearTaskIDPrompt()
         selectedCompletionIndex = prompt.selectedCompletionIndex
         if clearCompletion {
@@ -2434,9 +2771,17 @@ final class CapturePanelModel: ObservableObject {
             requestFocus(.taskIDPromptBlockID)
             return
         }
-        guard let route = prompt.candidate.route,
-              let taskRef = prompt.candidate.taskRef
-        else {
+        let route: String
+        let taskRef: String
+        if case .taskLink(let linkRoute, let linkRef, _, _, _) = prompt.purpose {
+            route = linkRoute
+            taskRef = linkRef
+        } else if let candidateRoute = prompt.candidate.route,
+                  let candidateRef = prompt.candidate.taskRef
+        {
+            route = candidateRoute
+            taskRef = candidateRef
+        } else {
             prompt.errorMessage = "Task candidate is missing route metadata. Refresh the task list and choose again."
             taskIDPrompt = prompt
             requestFocus(.taskIDPromptBlockID)
@@ -2516,6 +2861,77 @@ final class CapturePanelModel: ObservableObject {
         statusText = "Add block ID"
         requestFocus(.taskIDPromptBlockID)
         editorInputLocked = true
+    }
+
+    /// Link-mode Add block ID prompt for an ID-less `:` row: prefill with the
+    /// first suggestion (fully selected in the view), keep the picker snapshot
+    /// for Escape, and remember whether to append `=` or submit after naming.
+    private func presentTaskLinkIDPrompt(
+        pending: CapturePickerPendingBlockID,
+        pickerSnapshot: CapturePickerState,
+        followUp: CaptureTaskLinkFollowUp
+    ) {
+        clearPomodoroNamePrompt()
+        invalidateAnalysis()
+        activeTaskIDRequestID = nil
+        let candidate = pickerSnapshot.candidates.first {
+            ($0.route ?? "") == pending.route && ($0.taskRef ?? "") == pending.taskRef
+        } ?? CaptureCompletionCandidate(
+            replacement: "",
+            route: pending.route,
+            taskRef: pending.taskRef,
+            requiresBlockID: true,
+            blockIDSuggestions: pending.suggestions
+        )
+        let prefill = pending.suggestions.first ?? ""
+        // Stash the open picker; Escape restores it without a refetch.
+        let returnPicker = pickerSnapshot
+        clearPickerMarkerHighlight(draftSnapshot: pickerSnapshot.draftSnapshot)
+        picker = nil
+        pickerPresentation = nil
+        pickerIndex = nil
+        taskIDPrompt = CaptureTaskIDPromptState(
+            candidate: candidate,
+            draftSnapshot: pickerSnapshot.draftSnapshot,
+            replacementRange: pickerSnapshot.replacementRange,
+            selectedCompletionIndex: selectedCompletionIndex,
+            authoredID: prefill,
+            isSaving: false,
+            errorMessage: nil,
+            purpose: .taskLink(
+                route: pending.route,
+                taskRef: pending.taskRef,
+                suggestions: pending.suggestions,
+                followUp: followUp,
+                returnPicker: returnPicker
+            )
+        )
+        statusText = "Add block ID"
+        requestFocus(.taskIDPromptBlockID)
+        editorInputLocked = true
+    }
+
+    /// Cycle the link-mode suggestion chips with Tab / Shift-Tab. Only the
+    /// link purpose uses this; the parent-task flow keeps Tab consumed.
+    func cycleTaskLinkSuggestion(forward: Bool) {
+        guard var prompt = taskIDPrompt,
+              !prompt.isSaving,
+              case .taskLink(_, _, let suggestions, _, _) = prompt.purpose,
+              !suggestions.isEmpty
+        else {
+            return
+        }
+        let current = suggestions.firstIndex(of: prompt.authoredID) ?? (forward ? -1 : 0)
+        let next: Int
+        if forward {
+            next = (current + 1) % suggestions.count
+        } else {
+            next = (current - 1 + suggestions.count) % suggestions.count
+        }
+        prompt.authoredID = suggestions[next]
+        prompt.errorMessage = nil
+        taskIDPrompt = prompt
+        requestFocus(.taskIDPromptBlockID)
     }
 
     private func presentPomodoroNamePrompt(
@@ -2621,6 +3037,44 @@ final class CapturePanelModel: ObservableObject {
 
         switch response {
         case .success(let success):
+            if case .taskLink(let linkRoute, _, _, let followUp, _) = prompt.purpose {
+                let link = "@\(linkRoute):\(success.blockID)" + (followUp == .start ? "=" : "")
+                guard let range = stringRange(in: prompt.draftSnapshot, byteRange: prompt.replacementRange) else {
+                    prompt.isSaving = false
+                    prompt.errorMessage = "Completion range is stale. Return to the task list and choose again."
+                    taskIDPrompt = prompt
+                    statusText = "Add block ID failed"
+                    requestFocus(.taskIDPromptBlockID)
+                    return
+                }
+                var text = prompt.draftSnapshot
+                text.replaceSubrange(range, with: link)
+                let cursor = prompt.replacementRange.start + link.utf8.count
+                guard stringRange(in: text, start: cursor, end: cursor) != nil else {
+                    prompt.isSaving = false
+                    prompt.errorMessage = "Completion cursor is stale. Return to the task list and choose again."
+                    taskIDPrompt = prompt
+                    statusText = "Add block ID failed"
+                    requestFocus(.taskIDPromptBlockID)
+                    return
+                }
+                clearTaskIDPrompt()
+                dismissCompletion()
+                suppressedCompletionAcceptanceDraft = text
+                setPlainDraft(
+                    text,
+                    cursorUTF8Offset: cursor,
+                    suppressSelectionCallbacks: true
+                )
+                scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false, trigger: .edit)
+                statusText = "Added ^\(success.blockID) to \(success.relativeTarget)"
+                announceStatus("Added ^\(success.blockID) to \(linkRoute).md and inserted \(link)")
+                requestFocus(.editor)
+                if followUp == .submit {
+                    submit(openAfterCapture: false)
+                }
+                return
+            }
             guard let range = stringRange(in: prompt.draftSnapshot, byteRange: prompt.replacementRange) else {
                 prompt.isSaving = false
                 prompt.errorMessage = "Completion range is stale. Return to the task list and choose again."
@@ -3237,7 +3691,7 @@ final class CapturePanelModel: ObservableObject {
 
         let completionNeeds = Set([
             "route", "section", "pomodoro_id", "pomodoro_name", "task", "task_section",
-            "active_task", "block_id", "now_tag",
+            "active_task", "task_link", "block_id", "now_tag",
         ])
         if !completionNeeds.isDisjoint(with: Set(parse.needs)) {
             return true

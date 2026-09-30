@@ -42,7 +42,9 @@ mutation.
   - `/usr/local/bin/bob`
 - A `bob` build that supports `@@route` / `@@route+block-id` global destination
   declarations anywhere in the draft, `capture-rewrite`, `capture-complete --all-tasks`,
-  `capture-task-id`, `capture-pomodoro-name`, `task_section` completion for
+  `capture-task-id`, `capture-pomodoro-name`, the `task_link` completion context for
+  `:` picker queries (with `note_kind`, `block_id_suggestions`, `group`, `scheduled`,
+  and `pulls_forward` candidate fields), `task_section` completion for
   `@route+block-id#`, `pomodoro_name` completion for `@route:block-id#` and bare
   task-toggle `@route+block-id#`, the `task_block_id` completion context for the
   `@route^block-id` ordinary task-with-ID marker, the additive top-level `block_id`
@@ -286,6 +288,32 @@ or expired certificate can require reauthorizing those system permissions.
   filter removes the `^` trigger and its fragment. Ctrl-S is consumed; Ctrl-C still
   stashes the draft and closes. While the chip is visible, Tab, Down, and Ctrl-N reopen
   the picker and Escape hides the chip.
+- Typing `:` as the whole capture item opens the Task Link Picker (`task_link`
+  context), the same card as `^` with scope `:` and caption Open Tasks. Bob lists
+  every open (not done or canceled) task in area, project, and inbox notes; the app
+  filters locally with spaces as AND terms. With an empty filter tasks group in Bob's
+  order: one section per queued Pomodoro, then In Progress, Next, This Week's Bets,
+  then one section per note (`route.md` with its Inbox/Area/Project subtitle). Rows
+  show a schedule capsule (`calendar` glyph) when Bob sends one and a Pomodoro chip in
+  the filtered view; the detail strip shows the insert action and, when linking pulls
+  a future schedule forward, `Scheduled Oct 3 — linking pulls it forward`. Return (or
+  Tab) replaces the `:` query with `@route:block-id`; Shift-Return inserts
+  `@route:block-id=` so the live preview shows the start before Return captures;
+  Command-Return inserts then captures. Escape clears the filter, then cancels to the
+  reopen chip; Backspace on an empty filter removes the `:` token. Tasks without an
+  ID show `route:` plus a dim `plus.circle` suggestion; accepting one opens the Add
+  block ID prompt in link mode, prefilled with the first suggestion (fully selected),
+  with clickable suggestion chips and Tab / Shift-Tab cycling, a live
+  `Inserts @route:<typed>[=]` line, and buttons Add ID & Link / Add ID & Start / Add
+  ID & Capture. Return names the task via `bob capture-task-id` then splices the link
+  (appending `=` for Start, submitting for Capture); failure keeps the prompt open with
+  Bob's error; Escape returns to the picker with the filter intact. Bulk drafts work:
+  each blank-line-separated item is judged alone. When `capture-parse` reports
+  `task_link` in `needs`, the app skips the doomed dry run and shows
+  "Pick any open task — press Tab to browse".
+- Task Link Picker keys: Return/Tab Link, Shift-Return Link & Start, Command-Return
+  Link & Capture, Escape Clear/Cancel, Backspace on empty filter removes `:`. In the
+  link-mode Add block ID prompt, Tab / Shift-Tab cycle suggestions.
 - Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
   valid opens the Block ID Picker (`pomodoro_block_id` / `task_block_id` contexts),
   and typing a trailing ` :` / ` ^` on a project-note bullet opens the Project task

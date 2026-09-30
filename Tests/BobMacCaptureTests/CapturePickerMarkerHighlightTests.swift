@@ -62,6 +62,18 @@ final class CapturePickerMarkerHighlightTests: XCTestCase {
         )
     }
 
+    func testMarkerHighlightRangeForTaskLinkKeepsSigilRange() {
+        // Bob's `task_link` replacement already includes the `:` sigil.
+        XCTAssertEqual(
+            CapturePanelModel.pickerMarkerHighlightRange(
+                source: .taskLink,
+                replacementRange: CaptureRange(start: 0, end: 4),
+                markerRange: nil
+            ),
+            CaptureRange(start: 0, end: 4)
+        )
+    }
+
     func testScopeLineNumberNeedsMultilineDraft() {
         XCTAssertNil(CapturePanelModel.scopeLineNumber(draft: "@sase:", markerStart: 0))
         XCTAssertEqual(CapturePanelModel.scopeLineNumber(draft: "one\ntwo", markerStart: 4), 2)

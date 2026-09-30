@@ -66,11 +66,14 @@ enum CompletionTrigger {
 /// The picker's local fuzzy index, wrapping the per-source index.
 enum CapturePickerIndex {
     case activeTask(ActiveTaskPickerIndex)
+    case taskLink(TaskLinkPickerIndex)
     case blockID(BlockIDPickerIndex)
 
     func presentation(filter: String) -> CapturePickerPresentation {
         switch self {
         case .activeTask(let index):
+            return index.presentation(filter: filter)
+        case .taskLink(let index):
             return index.presentation(filter: filter)
         case .blockID(let index):
             return index.presentation(filter: filter)

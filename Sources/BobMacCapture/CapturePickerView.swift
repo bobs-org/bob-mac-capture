@@ -423,7 +423,7 @@ private struct CapturePickerSectionHeader: View {
             suggestionHeader
         case .usedIDs:
             usedIDsHeader
-        case .pomodoro, .unqueuedInProgress, .unqueuedNext, .other, .matches:
+        case .pomodoro, .unqueuedInProgress, .unqueuedNext, .other, .matches, .now, .note:
             standardHeader
         }
     }
@@ -493,6 +493,10 @@ private struct CapturePickerSectionHeader: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
+            if section.kind == .note, let icon = noteKindHeaderIcon {
+                Image(systemName: icon)
+                    .foregroundStyle(.secondary)
+            }
             Text(section.title)
                 .font(.callout.weight(.semibold))
                 .lineLimit(1)
@@ -512,7 +516,11 @@ private struct CapturePickerSectionHeader: View {
                     .background(.pink, in: Capsule())
                     .accessibilityLabel("Current Pomodoro")
             }
-            if section.kind != .pomodoro {
+            if section.kind == .note, let subtitle = section.subtitle, !subtitle.isEmpty {
+                Text("· \(subtitle)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if section.kind != .pomodoro, section.kind != .now, section.kind != .note {
                 Text("Not in a Pomodoro")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -527,6 +535,23 @@ private struct CapturePickerSectionHeader: View {
         .padding(.horizontal, 8)
         .background(.regularMaterial)
         .accessibilityAddTraits(.isHeader)
+    }
+
+    /// SF Symbol for a per-note `:` section, from its Inbox/Area/Project subtitle.
+    private var noteKindHeaderIcon: String? {
+        guard section.kind == .note else {
+            return nil
+        }
+        switch section.subtitle {
+        case "Inbox":
+            return "tray"
+        case "Area":
+            return "square.stack"
+        case "Project":
+            return "folder"
+        default:
+            return "doc"
+        }
     }
 }
 
@@ -600,6 +625,18 @@ private struct CapturePickerRowView: View {
                     .padding(.vertical, 2)
                     .background(.background.opacity(0.6), in: Capsule())
             }
+            if let scheduled = row.scheduledText {
+                HStack(spacing: 2) {
+                    Image(systemName: "calendar")
+                    Text(scheduled)
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(.secondary.opacity(0.12), in: Capsule())
+            }
             Spacer(minLength: 8)
             locatorText
                 .frame(maxWidth: 260, alignment: .trailing)
@@ -665,7 +702,31 @@ private struct CapturePickerRowView: View {
     }
 
     private var locatorText: some View {
-        HStack(spacing: 0) {
+        // ID-less `:` rows show `route:` in accent, a plus glyph, and the dim
+        // italic suggestion, middle-truncated at 260 pt.
+        if let pending = row.pendingBlockID {
+            return AnyView(HStack(spacing: 2) {
+                if !pending.route.isEmpty {
+                    Text(pending.route)
+                        .foregroundStyle(CaptureEditorPalette.color(for: .route))
+                    Text(":")
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "plus.circle")
+                    .foregroundStyle(.secondary)
+                Text(CapturePickerRichText.displayText(
+                    pending.suggestions.first ?? "",
+                    segments: [],
+                    matches: []
+                ))
+                .foregroundStyle(.secondary)
+                .italic()
+            }
+            .font(.caption.monospaced())
+            .lineLimit(1)
+            .truncationMode(.middle))
+        }
+        return AnyView(HStack(spacing: 0) {
             if let route = row.route {
                 Text(CapturePickerRichText.displayText(
                     route,
@@ -689,7 +750,7 @@ private struct CapturePickerRowView: View {
         }
         .font(.caption.monospaced())
         .lineLimit(1)
-        .truncationMode(.middle)
+        .truncationMode(.middle))
     }
 }
 
@@ -728,6 +789,12 @@ private struct CapturePickerDetailStrip: View {
                     Spacer(minLength: 8)
                     insertionText(for: row)
                         .font(.caption)
+                        .lineLimit(1)
+                }
+                if source == .taskLink, let pull = pullForwardLine(for: row) {
+                    Text(pull)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
                 if pickerWasUsed, let teaching = teachingLine(for: source) {
@@ -802,6 +869,9 @@ private struct CapturePickerDetailStrip: View {
         switch source {
         case .activeTask:
             return "Then type #name, = to start, or =x to close"
+        case .taskLink:
+            // The panel phase owns the task-link teaching line.
+            return nil
         case .blockID(let context):
             if context.intent == .projectNote || context.scope == .projectTask {
                 return nil
@@ -814,9 +884,30 @@ private struct CapturePickerDetailStrip: View {
     }
 
     private func insertionText(for row: CapturePickerRow) -> Text {
-        Text("↩ inserts ") .foregroundColor(.secondary)
+        if source == .taskLink {
+            if let insertion = row.insertion {
+                return Text("↩ inserts \(insertion) · ⇧↩ adds = to start it")
+                    .foregroundColor(.secondary)
+            }
+            if let pending = row.pendingBlockID {
+                if let first = pending.suggestions.first {
+                    return Text("↩ adds ^\(first) to \(pending.route).md, then inserts @\(pending.route):\(first)")
+                        .foregroundColor(.secondary)
+                }
+                return Text("↩ names this task, then inserts its link")
+                    .foregroundColor(.secondary)
+            }
+        }
+        return Text("↩ inserts ") .foregroundColor(.secondary)
             + Text(row.detail.insertionPrefix).foregroundColor(.primary)
             + locatorInsertionText(for: row)
+    }
+
+    private func pullForwardLine(for row: CapturePickerRow) -> String? {
+        guard row.pullsForward, let scheduled = row.scheduledText else {
+            return nil
+        }
+        return "Scheduled \(scheduled) — linking pulls it forward"
     }
 
     /// The `↩ inserts …` locator mirrors the row locator: the route (absent

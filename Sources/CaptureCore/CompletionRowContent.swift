@@ -119,6 +119,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case task
     case taskSection
     case activeTask
+    case taskLink
     case nowTag
     case wikilinkNote
     case wikilinkHeading
@@ -136,6 +137,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "task": self = .task
         case "task_section": self = .taskSection
         case "active_task": self = .activeTask
+        case "task_link": self = .taskLink
         case "now_tag": self = .nowTag
         case "wikilink_note": self = .wikilinkNote
         case "wikilink_heading": self = .wikilinkHeading
@@ -417,6 +419,27 @@ public func completionRowContent(
             secondaryText = candidate.section
         }
         badges = [activeTaskPomodoroBadge(for: candidate.pomodoro)]
+        if candidate.now {
+            badges.append("NOW")
+        }
+        accessibilityHint = "Inserts this task's route and block ID."
+
+    case .taskLink:
+        // The `:` picker owns the card; this is only the stray inline
+        // rendering, which reads as a task rather than neutral text.
+        category = .blockID
+        symbolName = "link"
+        contextLabel = "Task"
+        primaryText = candidate.text ?? candidate.replacement
+        if let route = candidate.route, let blockID = candidate.blockID {
+            var secondary = "\(route):\(blockID)"
+            if let section = candidate.section, !section.isEmpty {
+                secondary += " · \(section)"
+            }
+            secondaryText = secondary
+        } else {
+            secondaryText = candidate.section
+        }
         if candidate.now {
             badges.append("NOW")
         }

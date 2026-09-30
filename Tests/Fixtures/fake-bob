@@ -1001,6 +1001,26 @@ JSON
   "diagnostics": []
 }
 JSON
+    elif [[ "${draft}" == ":" ]]; then
+      cat "${fixtures_dir}/task-link-parse-colon.json"
+    elif [[ "${draft}" == ":dee" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": ":dee",
+  "body": "",
+  "mode": "incomplete",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": ["task_link"],
+  "spans": [
+    { "start": 0, "end": 4, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": []
+}
+JSON
     elif [[ "${draft}" == "^sase:deep-fix" ]]; then
       cat <<'JSON'
 {
@@ -2254,6 +2274,10 @@ JSON
   ]
 }
 JSON
+    elif [[ "${draft}" == ":" ]]; then
+      cat "${fixtures_dir}/task-link-complete-full.json"
+    elif [[ "${draft}" == ":dee" ]]; then
+      cat "${fixtures_dir}/task-link-complete-dee.json"
     elif [[ "${draft}" == "^sase:deep-fix#b" ]]; then
       cat <<JSON
 {

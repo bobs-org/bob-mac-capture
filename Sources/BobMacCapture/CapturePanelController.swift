@@ -1089,8 +1089,17 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .acceptPickerRow:
             model.acceptSelectedPickerRow(submitAfterInsert: false)
             return true
+        case .acceptPickerRowAndStart:
+            model.acceptSelectedPickerRowAndStart()
+            return true
         case .acceptPickerRowAndSubmit:
             model.acceptSelectedPickerRow(submitAfterInsert: true)
+            return true
+        case .cycleTaskLinkSuggestionForward:
+            model.cycleTaskLinkSuggestion(forward: true)
+            return true
+        case .cycleTaskLinkSuggestionBackward:
+            model.cycleTaskLinkSuggestion(forward: false)
             return true
         case .nextPickerRow:
             model.selectNextPickerRow()
@@ -1198,8 +1207,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     stashPickerVisible: self.model.isStashPickerPresented,
                     stashEntryCount: self.model.stashCount,
                     taskIDPromptVisible: self.model.taskIDPromptVisible,
+                    taskIDPromptIsTaskLink: self.model.taskIDPromptIsTaskLink,
                     pomodoroNamePromptVisible: self.model.pomodoroNamePromptVisible,
                     pickerVisible: self.model.pickerVisible,
+                    pickerSourceIsTaskLink: self.model.pickerSourceIsTaskLink,
                     pickerFilterIsEmpty: self.model.pickerFilterIsEmpty,
                     pickerChipVisible: self.model.pickerChipVisible
                 )

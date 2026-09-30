@@ -33,6 +33,7 @@ enum CaptureKeyCommand: Equatable {
     case submitPomodoroNamePrompt
     case cancelPomodoroNamePrompt
     case acceptPickerRow
+    case acceptPickerRowAndStart
     case acceptPickerRowAndSubmit
     case nextPickerRow
     case previousPickerRow
@@ -43,6 +44,8 @@ enum CaptureKeyCommand: Equatable {
     case escapePicker
     case removePickerTrigger
     case openPickerFromChip
+    case cycleTaskLinkSuggestionForward
+    case cycleTaskLinkSuggestionBackward
 }
 
 struct CaptureKeyRoutingContext: Equatable {
@@ -50,8 +53,10 @@ struct CaptureKeyRoutingContext: Equatable {
     var stashPickerVisible = false
     var stashEntryCount = 0
     var taskIDPromptVisible = false
+    var taskIDPromptIsTaskLink = false
     var pomodoroNamePromptVisible = false
     var pickerVisible = false
+    var pickerSourceIsTaskLink = false
     var pickerFilterIsEmpty = true
     var pickerChipVisible = false
 }
@@ -95,7 +100,7 @@ struct CaptureKeyCommandRouter {
         }
 
         if context.taskIDPromptVisible {
-            return taskIDPromptCommand(for: event, modifiers: modifiers)
+            return taskIDPromptCommand(for: event, modifiers: modifiers, context: context)
         }
 
         if context.pomodoroNamePromptVisible {
@@ -189,9 +194,20 @@ struct CaptureKeyCommandRouter {
 
     private func taskIDPromptCommand(
         for event: NSEvent,
-        modifiers: NSEvent.ModifierFlags
+        modifiers: NSEvent.ModifierFlags,
+        context: CaptureKeyRoutingContext
     ) -> CaptureKeyCommand? {
-        isolatedPromptCommand(
+        // Link-mode Add block ID prompt: Tab / Shift-Tab cycle suggestions.
+        // The parent-task flow keeps Tab consumed.
+        if context.taskIDPromptIsTaskLink, event.keyCode == KeyCode.tab {
+            if modifiers.isEmpty {
+                return .cycleTaskLinkSuggestionForward
+            }
+            if modifiers == .shift {
+                return .cycleTaskLinkSuggestionBackward
+            }
+        }
+        return isolatedPromptCommand(
             for: event,
             modifiers: modifiers,
             submit: .submitTaskIDPrompt,
@@ -225,7 +241,10 @@ struct CaptureKeyCommandRouter {
             if modifiers.contains(.command) {
                 return .acceptPickerRowAndSubmit
             }
-            if modifiers.contains(.shift) || modifiers.contains(.option) {
+            if modifiers.contains(.shift) {
+                return context.pickerSourceIsTaskLink ? .acceptPickerRowAndStart : .consumeKey
+            }
+            if modifiers.contains(.option) {
                 return .consumeKey
             }
             return modifiers.isEmpty ? .acceptPickerRow : nil

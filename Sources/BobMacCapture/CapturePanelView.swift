@@ -914,6 +914,29 @@ private struct TaskIDPromptCard: View {
                     blockIDFieldIsFocused = false
                 }
 
+                if isTaskLink, !prompt.linkSuggestions.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(prompt.linkSuggestions, id: \.self) { suggestion in
+                            Button {
+                                model.updateTaskIDPromptBlockID(suggestion)
+                            } label: {
+                                Text("✦ \(suggestion)")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.link)
+                            .disabled(prompt.isSaving)
+                        }
+                    }
+                }
+
+                if isTaskLink {
+                    Text(linkInsertsLine(for: prompt))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
                 Text("Letters, numbers, and hyphens")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -932,7 +955,7 @@ private struct TaskIDPromptCard: View {
                         model.cancelTaskIDPrompt()
                     }
                     .disabled(prompt.isSaving)
-                    Button("Add & Select") {
+                    Button(linkSubmitTitle(for: prompt)) {
                         model.submitTaskIDPrompt()
                     }
                     .keyboardShortcut(.defaultAction)
@@ -946,6 +969,39 @@ private struct TaskIDPromptCard: View {
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Add block ID")
         }
+    }
+
+    private var isTaskLink: Bool {
+        guard let prompt else {
+            return false
+        }
+        if case .taskLink = prompt.purpose {
+            return true
+        }
+        return false
+    }
+
+    private func linkSubmitTitle(for prompt: CaptureTaskIDPromptState) -> String {
+        guard case .taskLink(_, _, _, let followUp, _) = prompt.purpose else {
+            return "Add & Select"
+        }
+        switch followUp {
+        case .none:
+            return "Add ID & Link"
+        case .start:
+            return "Add ID & Start"
+        case .submit:
+            return "Add ID & Capture"
+        }
+    }
+
+    private func linkInsertsLine(for prompt: CaptureTaskIDPromptState) -> String {
+        guard case .taskLink(let route, _, _, let followUp, _) = prompt.purpose else {
+            return ""
+        }
+        let typed = prompt.authoredID.isEmpty ? "…" : prompt.authoredID
+        let suffix = followUp == .start ? "=" : ""
+        return "Inserts @\(route):\(typed)\(suffix)"
     }
 
     private func taskSummary(_ prompt: CaptureTaskIDPromptState) -> some View {

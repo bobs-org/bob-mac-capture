@@ -2713,6 +2713,16 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let planThemesCap: Int?
     public let pomodoro: ActiveTaskPomodoro?
     public let now: Bool
+    // Additive `task_link` fields from Bob's linkable-task scanner: the
+    // note kind (`inbox`/`area`/`project`), ID suggestions for ID-less
+    // tasks, the group (`queued`/`in_progress`/`next`/`now`/`note`), the
+    // raw `YYYY-MM-DD` schedule, and whether linking pulls it forward.
+    // Older Bob never sends them, so missing decodes to nil/empty/false.
+    public let noteKind: String?
+    public let blockIDSuggestions: [String]
+    public let group: String?
+    public let scheduled: String?
+    public let pullsForward: Bool
 
     public var id: String {
         [
@@ -2771,7 +2781,12 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         planThemesAfter: Int? = nil,
         planThemesCap: Int? = nil,
         pomodoro: ActiveTaskPomodoro? = nil,
-        now: Bool = false
+        now: Bool = false,
+        noteKind: String? = nil,
+        blockIDSuggestions: [String] = [],
+        group: String? = nil,
+        scheduled: String? = nil,
+        pullsForward: Bool = false
     ) {
         self.replacement = replacement
         self.route = route
@@ -2810,6 +2825,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.planThemesCap = planThemesCap
         self.pomodoro = pomodoro
         self.now = now
+        self.noteKind = noteKind
+        self.blockIDSuggestions = blockIDSuggestions
+        self.group = group
+        self.scheduled = scheduled
+        self.pullsForward = pullsForward
     }
 
     public init(from decoder: Decoder) throws {
@@ -2851,6 +2871,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         planThemesCap = try container.decodeIfPresent(Int.self, forKey: .planThemesCap)
         pomodoro = try container.decodeIfPresent(ActiveTaskPomodoro.self, forKey: .pomodoro)
         now = try container.decodeIfPresent(Bool.self, forKey: .now) ?? false
+        noteKind = try container.decodeIfPresent(String.self, forKey: .noteKind)
+        blockIDSuggestions = try container.decodeIfPresent([String].self, forKey: .blockIDSuggestions) ?? []
+        group = try container.decodeIfPresent(String.self, forKey: .group)
+        scheduled = try container.decodeIfPresent(String.self, forKey: .scheduled)
+        pullsForward = try container.decodeIfPresent(Bool.self, forKey: .pullsForward) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2891,6 +2916,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case planThemesCap = "plan_themes_cap"
         case pomodoro
         case now
+        case noteKind = "note_kind"
+        case blockIDSuggestions = "block_id_suggestions"
+        case group
+        case scheduled
+        case pullsForward = "pulls_forward"
     }
 }
 
