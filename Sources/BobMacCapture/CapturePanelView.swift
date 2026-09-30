@@ -2067,9 +2067,14 @@ struct PreviewPane: View {
         // as the presentation words it: no Swift-side clock or ledger math. It
         // is the visual sibling of the close card — a play glyph answering its
         // stop glyph — with the session, the day-file destination, and the
-        // queued Task Links Bob reported. The locator truncates first at narrow
-        // widths, so the task text always stays legible.
+        // numbered queued Task Links Bob reported, dropped rows struck and
+        // dimmed in place. The locator truncates first at narrow widths, so
+        // the task text always stays legible.
         let sessionTint = CaptureEditorPalette.color(for: .pomodoroStart)
+        // A pending list previews the trimmed draft: the card stays live but
+        // dimmed, and Start is disabled until a task number is typed.
+        let isPending = model.closePendingText != nil
+        let showsBadges = start.taskRows.contains { $0.index != nil }
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if total > 1 {
@@ -2108,16 +2113,37 @@ struct PreviewPane: View {
                     .textSelection(.enabled)
             }
 
-            // A bare `=`/`=<X>` start teaches `#name` under the destination,
-            // in the close card's teaching-hint style: the example token
-            // shares the editor `pomodoro_name` span color, prose stays
-            // secondary. Named starts show no hint.
-            if let hint = start.teachingHint {
+            // The teaching hint (before a drop is typed), the drop summary
+            // (after), or the pending notice (while a list dangles): one
+            // caption row under the destination. Example tokens share the
+            // editor span colors of the badges they select; prose stays
+            // secondary.
+            if let pending = model.closePendingText {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Image(systemName: "number.circle")
                         .foregroundStyle(.secondary)
                         .accessibilityHidden(true)
-                    Text(startTeachingHintText(hint))
+                    Text(pending)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            } else if let summary = start.dropSummary {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "list.number")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(summary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            } else if let hint = start.teachingHint {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "number.circle")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(startHintText(hint))
                         .font(.caption)
                         .textSelection(.enabled)
                 }
@@ -2132,11 +2158,25 @@ struct PreviewPane: View {
                         _, row in
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                if showsBadges {
+                                    startNumberBadge(for: row)
+                                }
                                 startTaskGlyph(for: row)
                                 Text(row.taskText)
+                                    .strikethrough(row.isStruck)
                                     .layoutPriority(1)
                                     .lineLimit(1)
                                     .textSelection(.enabled)
+                                if row.now {
+                                    Text("NOW")
+                                        .font(.caption2)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.mint)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(.mint.opacity(0.12), in: Capsule())
+                                        .accessibilityLabel("This week's bet")
+                                }
                                 Spacer(minLength: 4)
                                 Text(row.locatorText)
                                     .font(.caption)
@@ -2152,7 +2192,14 @@ struct PreviewPane: View {
                                     .textSelection(.enabled)
                                     .accessibilityLabel("Warning: \(warning)")
                             }
+                            if let caption = row.caption {
+                                Text(caption)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                            }
                         }
+                        .opacity(row.isDimmed ? 0.5 : 1)
                     }
                     if start.overflowTaskCount > 0 {
                         Text("+\(start.overflowTaskCount) more")
@@ -2170,25 +2217,61 @@ struct PreviewPane: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .opacity(isPending ? 0.6 : 1)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(start.accessibilitySummary)
+        .accessibilityLabel(
+            isPending ? "\(start.accessibilitySummary), \(model.closePendingText ?? "")"
+                : start.accessibilitySummary
+        )
     }
 
-    /// Tints the `#name` example in the start-card teaching hint like the
-    /// editor's `pomodoro_name` span; prose stays secondary, matching the
-    /// close card's hint rendering.
-    private func startTeachingHintText(_ hint: String) -> AttributedString {
-        let marker = "#name"
-        guard let range = hint.range(of: marker) else {
-            return AttributedString(hint)
+    /// Renders the start-card teaching-hint tokens: example tokens share the
+    /// editor span colors of the badges they select (`~N` the drop gray,
+    /// `#name` the name color); prose stays secondary, matching the close
+    /// card's hint rendering.
+    private func startHintText(
+        _ hint: CapturePomodoroStartPresentation.TeachingHint
+    ) -> AttributedString {
+        hint.tokens.map { token in
+            var part = AttributedString(token.text)
+            part.foregroundColor = token.category == .neutral
+                ? .secondary
+                : CaptureEditorPalette.color(for: token.category)
+            return part
+        }.reduce(AttributedString()) { $0 + $1 }
+    }
+
+    /// The fixed-width leading number badge for a start row: an open
+    /// `N.circle` for kept rows, a filled one for dropped (listed) rows.
+    /// Numbers above 50 fall back to monospaced digits in a capsule;
+    /// unnumbered rows get an equal-width clear spacer so text stays aligned.
+    @ViewBuilder
+    private func startNumberBadge(
+        for row: CapturePomodoroStartPresentation.TaskRow
+    ) -> some View {
+        let badgeWidth: CGFloat = 26
+        if row.usesNumericBadgeFallback, let index = row.index {
+            Text("\(index)")
+                .font(.system(.caption, design: .monospaced))
+                .fontWeight(.semibold)
+                .foregroundStyle(row.isDropped ? .gray : .secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(.quaternary, in: Capsule())
+                .frame(width: badgeWidth + 14, alignment: .center)
+                .opacity(row.isDimmed ? 0.5 : 1)
+                .accessibilityHidden(true)
+        } else if let symbolName = row.badgeSymbolName {
+            Image(systemName: symbolName)
+                .foregroundStyle(row.isDropped ? .gray : .secondary)
+                .frame(width: badgeWidth, alignment: .center)
+                .opacity(row.isDimmed ? 0.5 : 1)
+                .accessibilityHidden(true)
+        } else {
+            Color.clear
+                .frame(width: badgeWidth, height: 1)
+                .accessibilityHidden(true)
         }
-        var leading = AttributedString(String(hint[..<range.lowerBound]))
-        leading.foregroundColor = .secondary
-        var token = AttributedString(String(hint[range]))
-        token.foregroundColor = CaptureEditorPalette.color(for: .section)
-        var trailing = AttributedString(String(hint[range.upperBound...]))
-        trailing.foregroundColor = .secondary
-        return leading + token + trailing
     }
 
     @ViewBuilder
@@ -2211,6 +2294,10 @@ struct PreviewPane: View {
         case .other:
             Image(systemName: "questionmark.circle")
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        case .dropped:
+            Image(systemName: "minus.circle")
+                .foregroundStyle(.gray)
                 .accessibilityHidden(true)
         case .unresolved:
             Image(systemName: "exclamationmark.triangle")

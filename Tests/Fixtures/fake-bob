@@ -98,6 +98,25 @@ case "${command}" in
       cat "${fixtures_dir}/pomodoro-start-parse-counted.json"
     elif [[ "${draft}" == "=3 more" ]]; then
       cat "${fixtures_dir}/pomodoro-start-parse-near-miss.json"
+    elif [[ "${draft}" == "=~2" ]]; then
+      # Whole-item start with a `~<K>` drop list (real `bob capture-parse`
+      # output): `pomodoro_start` mode with a `drop` spec and a
+      # `pomodoro_start_drop` span.
+      cat "${fixtures_dir}/pomodoro-start-drop-parse.json"
+    elif [[ "${draft}" == "=3#bugs~1" ]]; then
+      cat "${fixtures_dir}/pomodoro-start-drop-parse-named.json"
+    elif [[ "${draft}" == "=~" ]]; then
+      # Dangling `~`: `incomplete` needing `pomodoro_start_task` with an
+      # `interactive_placeholder` span (real `bob capture-parse` output).
+      cat "${fixtures_dir}/pomodoro-start-drop-parse-incomplete.json"
+    elif [[ "${draft}" == "=~2," ]]; then
+      cat "${fixtures_dir}/pomodoro-start-drop-parse-incomplete-comma.json"
+    elif [[ "${draft}" == "=~0" ]]; then
+      cat "${fixtures_dir}/pomodoro-start-drop-parse-invalid.json"
+    elif [[ "${draft}" == "=x =~2" ]]; then
+      # Session chain: per-token close/start items with the drop part on the
+      # start item (real `bob capture-parse` output).
+      cat "${fixtures_dir}/pomodoro-start-drop-parse-chain.json"
     elif [[ "${draft}" == "=#" ]]; then
       # Named-start incomplete: calm picker state with a `pomodoro_start`
       # spec (real `bob capture-parse` output).
@@ -2914,6 +2933,14 @@ JSON
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-new-task.json"
     elif [[ "${draft}" == "=" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-next.json"
+    elif [[ "${draft}" == "=~2" ]]; then
+      # Whole-item start with a `~<K>` drop list (real `bob capture --dry-run`
+      # output on the worked-example ledger; only the dry-run flag varies).
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-drop.json"
+    elif [[ "${draft}" == "=~1,2,3" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-drop-empty.json"
+    elif [[ "${draft}" == "=#capture~2" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-drop-named.json"
     elif [[ "${draft}" == "=-2" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-timed.json"
     elif [[ "${draft}" == "=3" ]]; then

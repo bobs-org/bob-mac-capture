@@ -1717,6 +1717,207 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertNil(CapturePanelModel.closePendingTrim(in: parse, draft: "=x1,"))
     }
 
+    func testStartPendingTrimRemovesDanglingTildeAndComma() {
+        let tilde = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: "=~",
+            body: "=~",
+            mode: "incomplete",
+            needs: ["pomodoro_start_task"],
+            spans: [
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_start"),
+                CaptureSpan(start: 1, end: 2, kind: "interactive_placeholder"),
+            ]
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: tilde, draft: "=~")?.trimmed,
+            "="
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: tilde, draft: "=~")?.separator,
+            "~"
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: tilde, draft: "=~")?.action,
+            "Start"
+        )
+
+        let comma = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: "=~2,",
+            body: "=~2,",
+            mode: "incomplete",
+            needs: ["pomodoro_start_task"],
+            spans: [
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_start"),
+                CaptureSpan(start: 1, end: 3, kind: "pomodoro_start_drop"),
+                CaptureSpan(start: 3, end: 4, kind: "interactive_placeholder"),
+            ]
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: comma, draft: "=~2,")?.trimmed,
+            "=~2"
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: comma, draft: "=~2,")?.separator,
+            ","
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: comma, draft: "=~2,")?.action,
+            "Start"
+        )
+    }
+
+    func testStartPendingTrimTrimsChainPerItem() {
+        // `=x =~`: item 0 is a valid close, item 1 dangles on `~`. Only the
+        // start item trims, and the pending action names Start.
+        let draft = "=x =~"
+        let parse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: draft,
+            body: "",
+            mode: "incomplete",
+            spans: [
+                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
+                CaptureSpan(start: 3, end: 4, kind: "pomodoro_start"),
+                CaptureSpan(start: 4, end: 5, kind: "interactive_placeholder"),
+            ],
+            items: [
+                CaptureParseItem(
+                    index: 0,
+                    range: CaptureRange(start: 0, end: 2),
+                    lineStart: 1,
+                    lineEnd: 1,
+                    body: "=x",
+                    mode: "pomodoro_close"
+                ),
+                CaptureParseItem(
+                    index: 1,
+                    range: CaptureRange(start: 3, end: 5),
+                    lineStart: 1,
+                    lineEnd: 1,
+                    body: "=~",
+                    mode: "incomplete",
+                    needs: ["pomodoro_start_task"]
+                ),
+            ]
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: parse, draft: draft)?.trimmed,
+            "=x ="
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: parse, draft: draft)?.action,
+            "Start"
+        )
+    }
+
+    func testMixedPendingTrimKeepsCloseAction() {
+        // Both a close list and a start list dangle: the pending verb stays
+        // Close, preserving today's behavior whenever a close is involved.
+        let draft = "=x1, =~"
+        let parse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: draft,
+            body: "",
+            mode: "incomplete",
+            spans: [
+                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
+                CaptureSpan(start: 2, end: 3, kind: "pomodoro_close_in_progress"),
+                CaptureSpan(start: 3, end: 4, kind: "interactive_placeholder"),
+                CaptureSpan(start: 5, end: 6, kind: "pomodoro_start"),
+                CaptureSpan(start: 6, end: 7, kind: "interactive_placeholder"),
+            ],
+            items: [
+                CaptureParseItem(
+                    index: 0,
+                    range: CaptureRange(start: 0, end: 4),
+                    lineStart: 1,
+                    lineEnd: 1,
+                    body: "=x1,",
+                    mode: "incomplete",
+                    needs: ["pomodoro_close_task"]
+                ),
+                CaptureParseItem(
+                    index: 1,
+                    range: CaptureRange(start: 5, end: 7),
+                    lineStart: 1,
+                    lineEnd: 1,
+                    body: "=~",
+                    mode: "incomplete",
+                    needs: ["pomodoro_start_task"]
+                ),
+            ]
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: parse, draft: draft)?.trimmed,
+            "=x1 ="
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: parse, draft: draft)?.action,
+            "Close"
+        )
+    }
+
+    func testStartPendingListPreviewsTrimmedDraftWithStartDisabled() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "=~"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.closePendingText != nil }
+
+        // The card previews the trimmed draft: the `=` lineup shows with its
+        // teaching hint, the pending notice names the dangling separator,
+        // and Start is off.
+        XCTAssertEqual(model.closePendingText, "Type a task number after ~")
+        XCTAssertEqual(model.closePendingAction, "Start")
+        XCTAssertTrue(model.isClosePending)
+        XCTAssertEqual(model.sessionStartPresentation?.title, "Start CAPTURE")
+        XCTAssertEqual(
+            model.sessionStartPresentation?.teachingHint?.text,
+            "Type ~2 to drop task 2 · #name to start a specific Pomodoro"
+        )
+        XCTAssertEqual(model.statusText, "Type a task number after ~ — Start is disabled")
+        XCTAssertEqual(model.primaryActionTitle, "Start")
+
+        // The real draft is never submitted: submit explains why and stops.
+        model.submit(openAfterCapture: false)
+        XCTAssertFalse(model.isSubmitting)
+        XCTAssertEqual(model.statusText, "Type a task number after ~ — Start is disabled")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- =\n"))
+        XCTAssertFalse(record.contains("argv=capture --format json -- =~"))
+
+        // Once the draft becomes valid again, the normal card returns.
+        model.plainDraft = "=~2"
+        model.editorTextDidChange(cursorUTF8Offset: 3)
+        await waitUntil {
+            if case .ready = model.previewState { return model.closePendingText == nil }
+            return false
+        }
+        XCTAssertNil(model.closePendingText)
+        XCTAssertEqual(model.closePendingAction, "Close")
+        XCTAssertFalse(model.isClosePending)
+        XCTAssertEqual(model.sessionStartPresentation?.dropSummary, "Dropped 2")
+        XCTAssertEqual(
+            model.statusText,
+            "Would start CAPTURE 0945-1010 (25m) at line 5 · drops 2"
+        )
+    }
+
     func testClosePendingListPreviewsTrimmedDraftWithCloseDisabled() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
@@ -2051,7 +2252,10 @@ final class CapturePanelModelTests: XCTestCase {
 
         XCTAssertEqual(model.sessionStartPresentation?.title, "Start DEEP WORK")
         XCTAssertNil(model.sessionStartPresentation?.createdBadgeText)
-        XCTAssertNil(model.sessionStartPresentation?.teachingHint)
+        XCTAssertEqual(
+            model.sessionStartPresentation?.teachingHint?.text,
+            "Type ~2 to drop task 2"
+        )
         XCTAssertEqual(model.primaryActionTitle, "Start")
         XCTAssertEqual(
             model.statusText,

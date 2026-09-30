@@ -65,10 +65,15 @@ final class CapturePanelModel: ObservableObject {
     @Published var isSubmitting = false
     @Published var isPreviewing = false
     /// The pending-list notice (`"Type a task number after ,"`) while a close
-    /// draft dangles on `,`/`!`. Non-nil exactly while the visible close card
-    /// previews the trimmed draft: the card renders dimmed and Close is
-    /// disabled. Nil for every other draft, including a valid close.
+    /// draft dangles on `,`/`!`/`~` or a start draft dangles on `~`/`,`.
+    /// Non-nil exactly while the visible card previews the trimmed draft: the
+    /// card renders dimmed and the footer action named by `closePendingAction`
+    /// is disabled. Nil for every other draft, including a valid list.
     @Published var closePendingText: String?
+    /// The footer action the pending card disables: `"Start"` when every
+    /// pending scope is a start list, else `"Close"`. Meaningful only while
+    /// `closePendingText` is non-nil; reset to `"Close"` with it.
+    @Published var closePendingAction = "Close"
     @Published var errorMessage: String?
     /// Machine-readable failure code for the current error callout, when Bob
     /// reported one. Today only the strict plan-budget refusal carries a
@@ -538,8 +543,8 @@ final class CapturePanelModel: ObservableObject {
         return true
     }
 
-    /// True while a close draft dangles on `,`/`!`: the visible card previews
-    /// the trimmed draft, so Return must not submit it.
+    /// True while a close/start draft dangles on a list separator: the visible
+    /// card previews the trimmed draft, so Return must not submit it.
     var isClosePending: Bool {
         closePendingText != nil
     }
@@ -549,10 +554,10 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         // A pending card previews the trimmed draft, never the real one: a
-        // stale pending card can never be submitted. The footer disables
-        // Close too; this guard covers Return arriving between drafts.
+        // stale pending card can never be submitted. The footer disables the
+        // pending action too; this guard covers Return arriving between drafts.
         if let pending = closePendingText {
-            statusText = "\(pending) — Close is disabled"
+            statusText = "\(pending) — \(closePendingAction) is disabled"
             return
         }
         guard let processClient else {
@@ -2037,37 +2042,49 @@ final class CapturePanelModel: ObservableObject {
         previewResults = []
         previewGlobalDestination = nil
         closePendingText = nil
+        closePendingAction = "Close"
         errorMessage = nil
         errorCode = nil
         statusText = need.statusText
     }
 
-    /// The pending close-list trim for a draft that dangles on `,`/`!`: for
-    /// every item whose `needs` contains `pomodoro_close_task`, the one
+    /// The pending close/start-list trim for a draft that dangles on a list
+    /// separator: for every item whose `needs` contains `pomodoro_close_task`
+    /// (`,`/`!`/`~`) or `pomodoro_start_task` (`~`/`,`), the one
     /// `interactive_placeholder` span Bob reported inside that item's range
     /// (the dangling separator) is removed, so the live preview runs on the
     /// trimmed draft — exactly what has been typed so far. Returns the trimmed
-    /// draft plus the dangling separator (`,` or `!`) for the pending notice.
-    /// Single-item drafts carry no `items[]`; then the top-level `needs` and
-    /// spans apply. Nil when nothing dangles, when the picker needs win
-    /// (checked by the caller), or when the placeholder shape is unexpected —
-    /// then the draft previews exactly as today. No Swift-side ledger logic:
-    /// the placeholder range comes straight from Bob.
+    /// draft, the dangling separator for the pending notice, and the footer
+    /// action the pending card disables (`"Start"` when every pending scope
+    /// is a start list, else `"Close"`). Single-item drafts carry no
+    /// `items[]`; then the top-level `needs` and spans apply. Nil when nothing
+    /// dangles, when the picker needs win (checked by the caller), or when the
+    /// placeholder shape is unexpected — then the draft previews exactly as
+    /// today. No Swift-side ledger logic: the placeholder range comes straight
+    /// from Bob. Chains trim per item, as closes do.
     static func closePendingTrim(
         in parse: CaptureParseResponse,
         draft: String
-    ) -> (trimmed: String, separator: String)? {
-        let scopes: [(range: CaptureRange?, needsCloseTask: Bool)] =
+    ) -> (trimmed: String, separator: String, action: String)? {
+        let scopes: [(range: CaptureRange?, needsTask: Bool, isStart: Bool)] =
             if parse.items.isEmpty {
-                [(nil, parse.needs.contains("pomodoro_close_task"))]
+                let isStart = parse.needs.contains("pomodoro_start_task")
+                let needsTask = parse.needs.contains("pomodoro_close_task") || isStart
+                [(nil, needsTask, isStart)]
             } else {
-                parse.items.map { ($0.range, $0.needs.contains("pomodoro_close_task")) }
+                parse.items.map { item in
+                    let isStart = item.needs.contains("pomodoro_start_task")
+                    let needsTask =
+                        item.needs.contains("pomodoro_close_task") || isStart
+                    return (item.range, needsTask, isStart)
+                }
             }
-        guard scopes.contains(where: { $0.needsCloseTask }) else {
+        let pending = scopes.filter { $0.needsTask }
+        guard !pending.isEmpty else {
             return nil
         }
         var removals: [Range<String.Index>] = []
-        for scope in scopes where scope.needsCloseTask {
+        for scope in pending {
             let placeholders = parse.spans.filter { span in
                 guard span.kind == "interactive_placeholder" else {
                     return false
@@ -2100,7 +2117,8 @@ final class CapturePanelModel: ObservableObject {
         for range in ordered.reversed() {
             trimmed.removeSubrange(range)
         }
-        return (trimmed, separator)
+        let action = pending.allSatisfy { $0.isStart } ? "Start" : "Close"
+        return (trimmed, separator, action)
     }
 
     private func closePickerForAccept() {
@@ -2885,6 +2903,7 @@ final class CapturePanelModel: ObservableObject {
         previewResults = []
         previewGlobalDestination = nil
         closePendingText = nil
+        closePendingAction = "Close"
 
         analysisTask = Task { [weak self, processClient] in
             do {
@@ -2925,6 +2944,7 @@ final class CapturePanelModel: ObservableObject {
                         draft: draft,
                         previewDraft: closePending?.trimmed ?? draft,
                         pendingSeparator: closePending?.separator,
+                        pendingAction: closePending?.action,
                         generation: generation,
                         processClient: processClient
                     )
@@ -3058,6 +3078,7 @@ final class CapturePanelModel: ObservableObject {
         draft: String,
         previewDraft: String,
         pendingSeparator: String?,
+        pendingAction: String?,
         generation: UInt64,
         processClient: BobProcessClient
     ) {
@@ -3094,16 +3115,20 @@ final class CapturePanelModel: ObservableObject {
                         }
                         if let separator = pendingSeparator {
                             // The card previews the trimmed draft: mark it
-                            // pending, dim it in the view, and disable Close
-                            // so Return cannot submit the real draft.
+                            // pending, dim it in the view, and disable the
+                            // pending action so Return cannot submit the real
+                            // draft.
                             let pending = CapturePomodoroClosePresentation.pendingText(
                                 separator: separator
                             )
+                            let action = pendingAction ?? "Close"
                             self?.closePendingText = pending
-                            self?.statusText = "\(pending) — Close is disabled"
+                            self?.closePendingAction = action
+                            self?.statusText = "\(pending) — \(action) is disabled"
                         } else {
                             // A valid draft restores the normal card.
                             self?.closePendingText = nil
+                            self?.closePendingAction = "Close"
                         }
                     case .failure(let failure):
                         self?.previewState = .failed(failure.error)
@@ -3113,6 +3138,7 @@ final class CapturePanelModel: ObservableObject {
                         self?.previewResults = []
                         self?.previewGlobalDestination = nil
                         self?.closePendingText = nil
+                        self?.closePendingAction = "Close"
                         self?.errorMessage = failure.error
                         self?.errorCode = failure.code
                         self?.statusText = "Preview failed"
@@ -3259,6 +3285,7 @@ final class CapturePanelModel: ObservableObject {
             "wikilink_block_id",
             "wikilink_alias",
             "pomodoro_close_drop",
+            "pomodoro_start_drop",
             "now_tag",
         ])
 

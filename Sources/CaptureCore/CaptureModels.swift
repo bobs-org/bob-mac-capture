@@ -388,11 +388,15 @@ public struct PomodoroStartSpec: Codable, Equatable, Sendable {
     public let raw: String
     public let durationUnits: Int
     public let offsetUnits: Int
+    /// The typed `~<K>` drop list, ascending. Omitted (decodes as empty) when
+    /// no drop list was typed or the Bob build predates start drops.
+    public let drop: [Int]
 
-    public init(raw: String, durationUnits: Int = 0, offsetUnits: Int = 0) {
+    public init(raw: String, durationUnits: Int = 0, offsetUnits: Int = 0, drop: [Int] = []) {
         self.raw = raw
         self.durationUnits = durationUnits
         self.offsetUnits = offsetUnits
+        self.drop = drop
     }
 
     public init(from decoder: Decoder) throws {
@@ -400,12 +404,14 @@ public struct PomodoroStartSpec: Codable, Equatable, Sendable {
         raw = try container.decodeIfPresent(String.self, forKey: .raw) ?? ""
         durationUnits = try container.decodeIfPresent(Int.self, forKey: .durationUnits) ?? 0
         offsetUnits = try container.decodeIfPresent(Int.self, forKey: .offsetUnits) ?? 0
+        drop = try container.decodeIfPresent([Int].self, forKey: .drop) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
         case raw
         case durationUnits = "duration_units"
         case offsetUnits = "offset_units"
+        case drop
     }
 }
 
@@ -425,6 +431,15 @@ public struct PomodoroStartTask: Codable, Equatable, Sendable {
     public let statusSymbol: String?
     public let statusName: String?
     public let warning: String?
+    /// The 1-based lineup number Bob assigned this row, or nil for unnumbered
+    /// rows (older Bob). Dropped rows carry their own lineup number too.
+    public let index: Int?
+    /// True when the task line carries `#now`. Omitted (decodes as false)
+    /// otherwise.
+    public let now: Bool
+    /// Non-blank descendant lines removed with a dropped link. Omitted
+    /// (decodes as zero) on kept rows and when there were none.
+    public let nestedLines: Int
 
     public init(
         blockLink: String,
@@ -436,7 +451,10 @@ public struct PomodoroStartTask: Codable, Equatable, Sendable {
         text: String? = nil,
         statusSymbol: String? = nil,
         statusName: String? = nil,
-        warning: String? = nil
+        warning: String? = nil,
+        index: Int? = nil,
+        now: Bool = false,
+        nestedLines: Int = 0
     ) {
         self.blockLink = blockLink
         self.embedded = embedded
@@ -448,6 +466,9 @@ public struct PomodoroStartTask: Codable, Equatable, Sendable {
         self.statusSymbol = statusSymbol
         self.statusName = statusName
         self.warning = warning
+        self.index = index
+        self.now = now
+        self.nestedLines = nestedLines
     }
 
     public init(from decoder: Decoder) throws {
@@ -462,6 +483,9 @@ public struct PomodoroStartTask: Codable, Equatable, Sendable {
         statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol)
         statusName = try container.decodeIfPresent(String.self, forKey: .statusName)
         warning = try container.decodeIfPresent(String.self, forKey: .warning)
+        index = try container.decodeIfPresent(Int.self, forKey: .index)
+        now = try container.decodeIfPresent(Bool.self, forKey: .now) ?? false
+        nestedLines = try container.decodeIfPresent(Int.self, forKey: .nestedLines) ?? 0
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -475,6 +499,9 @@ public struct PomodoroStartTask: Codable, Equatable, Sendable {
         case statusSymbol = "status_symbol"
         case statusName = "status_name"
         case warning
+        case index
+        case now
+        case nestedLines = "nested_lines"
     }
 }
 
@@ -495,6 +522,12 @@ public struct PomodoroStartSummary: Codable, Equatable, Sendable {
     public let createdPomodoro: Bool
     public let timeRange: String
     public let tasks: [PomodoroStartTask]?
+    /// The typed `~<K>` drop list, ascending. Omitted (decodes as empty) when
+    /// no drop list was typed or the Bob build predates start drops.
+    public let drop: [Int]
+    /// Rows removed by `~<K>`, in lineup order. Omitted (decodes as empty)
+    /// when nothing was dropped.
+    public let dropped: [PomodoroStartTask]
 
     public init(
         start: String,
@@ -505,7 +538,9 @@ public struct PomodoroStartSummary: Codable, Equatable, Sendable {
         pomodoroLine: Int,
         createdPomodoro: Bool,
         timeRange: String,
-        tasks: [PomodoroStartTask]? = nil
+        tasks: [PomodoroStartTask]? = nil,
+        drop: [Int] = [],
+        dropped: [PomodoroStartTask] = []
     ) {
         self.start = start
         self.end = end
@@ -516,6 +551,8 @@ public struct PomodoroStartSummary: Codable, Equatable, Sendable {
         self.createdPomodoro = createdPomodoro
         self.timeRange = timeRange
         self.tasks = tasks
+        self.drop = drop
+        self.dropped = dropped
     }
 
     public init(from decoder: Decoder) throws {
@@ -529,6 +566,8 @@ public struct PomodoroStartSummary: Codable, Equatable, Sendable {
         createdPomodoro = try container.decodeIfPresent(Bool.self, forKey: .createdPomodoro) ?? false
         timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange) ?? ""
         tasks = try container.decodeIfPresent([PomodoroStartTask].self, forKey: .tasks)
+        drop = try container.decodeIfPresent([Int].self, forKey: .drop) ?? []
+        dropped = try container.decodeIfPresent([PomodoroStartTask].self, forKey: .dropped) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -541,6 +580,8 @@ public struct PomodoroStartSummary: Codable, Equatable, Sendable {
         case createdPomodoro = "created_pomodoro"
         case timeRange = "time_range"
         case tasks
+        case drop
+        case dropped
     }
 }
 

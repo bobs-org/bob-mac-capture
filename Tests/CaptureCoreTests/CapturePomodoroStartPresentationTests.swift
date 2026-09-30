@@ -243,6 +243,9 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
             "pomodoro-start-named-existing.json",
             "pomodoro-start-named-created.json",
             "pomodoro-start-named-again.json",
+            "pomodoro-start-drop.json",
+            "pomodoro-start-drop-empty.json",
+            "pomodoro-start-drop-named.json",
         ] {
             let success = try decodeFixture(name)
             XCTAssertNotNil(
@@ -271,6 +274,8 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
             "pomodoro-start-parse.json",
             "pomodoro-start-parse-counted.json",
             "pomodoro-start-parse-near-miss.json",
+            "pomodoro-start-drop-parse.json",
+            "pomodoro-start-drop-parse-named.json",
         ] {
             let response = try JSONDecoder().decode(
                 CaptureParseResponse.self,
@@ -359,26 +364,39 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         XCTAssertNil(committed.teachingHint)
     }
 
-    func testExistingNamedStartShowsNoBadgeAndNoHint() throws {
+    func testExistingNamedStartTeachesDropOnly() throws {
         let presentation = try XCTUnwrap(
             CapturePomodoroStartPresentation(capture: decodeFixture("pomodoro-start-named-existing.json"))
         )
 
         XCTAssertFalse(presentation.createdPomodoro)
         XCTAssertNil(presentation.createdBadgeText)
-        XCTAssertNil(presentation.teachingHint)
+        let hint = try XCTUnwrap(presentation.teachingHint)
+        XCTAssertEqual(hint.text, "Type ~2 to drop task 2")
+        XCTAssertTrue(
+            hint.tokens.contains { $0.text == "~2" && $0.category == .pomodoroStartDrop }
+        )
         XCTAssertEqual(presentation.notificationBody, "0905-0930 (25m) · 2 queued tasks")
         XCTAssertFalse(presentation.accessibilitySummary.contains("new session"))
     }
 
-    func testBareStartTeachesHashNameAndJoinsAccessibilitySummary() throws {
+    func testBareStartTeachesDropAndHashNameAndJoinsAccessibilitySummary() throws {
         let presentation = try XCTUnwrap(
             CapturePomodoroStartPresentation(capture: decodeFixture("pomodoro-start-next.json"))
         )
 
-        XCTAssertEqual(presentation.teachingHint, "Type #name to start a specific Pomodoro")
+        let hint = try XCTUnwrap(presentation.teachingHint)
+        XCTAssertEqual(hint.text, "Type ~2 to drop task 2 · #name to start a specific Pomodoro")
         XCTAssertTrue(
-            presentation.accessibilitySummary.contains("Type #name to start a specific Pomodoro")
+            hint.tokens.contains { $0.text == "~2" && $0.category == .pomodoroStartDrop }
+        )
+        XCTAssertTrue(
+            hint.tokens.contains { $0.text == "#name" && $0.category == .section }
+        )
+        XCTAssertTrue(
+            presentation.accessibilitySummary.contains(
+                "Type ~2 to drop task 2 · #name to start a specific Pomodoro"
+            )
         )
     }
 
@@ -393,6 +411,256 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         }
         XCTAssertTrue(failure.error.contains("is still running"), failure.error)
         XCTAssertTrue(failure.error.contains("=x =#deep-work"), failure.error)
+    }
+
+    func testDropFixtureMergesKeptAndDroppedInLineupOrder() throws {
+        let success = try decodeFixture("pomodoro-start-drop.json")
+        let summary = try XCTUnwrap(success.pomodoroStart)
+        XCTAssertEqual(summary.drop, [2])
+        XCTAssertEqual(summary.dropped.map(\.index), [2])
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+
+        XCTAssertEqual(presentation.taskRows.map(\.index), [1, 2, 3])
+        XCTAssertEqual(presentation.taskRows.map(\.isDropped), [false, true, false])
+        XCTAssertEqual(presentation.taskRows.map(\.glyph), [.next, .dropped, .next])
+        XCTAssertEqual(
+            presentation.taskRows.map(\.badgeSymbolName),
+            ["1.circle", "2.circle.fill", "3.circle"]
+        )
+        XCTAssertEqual(presentation.taskRows.map(\.isDimmed), [false, true, false])
+        XCTAssertEqual(presentation.taskRows.map(\.isStruck), [false, true, false])
+        XCTAssertEqual(presentation.taskRows.map(\.now), [false, true, false])
+        XCTAssertNil(presentation.taskRows[0].caption)
+        XCTAssertEqual(presentation.taskRows[1].caption, "stays in NOW · with 1 nested line")
+        XCTAssertNil(presentation.taskRows[2].caption)
+        XCTAssertNil(presentation.teachingHint)
+        XCTAssertEqual(presentation.dropSummary, "Dropped 2")
+        XCTAssertEqual(
+            presentation.statusText,
+            "Would start CAPTURE 0945-1010 (25m) at line 5 · drops 2"
+        )
+        XCTAssertEqual(
+            presentation.notificationBody,
+            "0945-1010 (25m) · 2 queued tasks · dropped 2"
+        )
+        XCTAssertTrue(
+            presentation.accessibilitySummary.contains("Task 1, Stop capture from the panel, queued")
+        )
+        XCTAssertTrue(
+            presentation.accessibilitySummary.contains(
+                "Task 2, Capture support for web URLs #now, drops from today"
+            )
+        )
+        XCTAssertTrue(
+            presentation.accessibilitySummary.contains("Task 3, Restart axe, queued")
+        )
+        XCTAssertTrue(presentation.accessibilitySummary.contains("Dropped 2"))
+    }
+
+    func testCommittedDropReadsDroppedVerb() throws {
+        let summary = try XCTUnwrap(decodeFixture("pomodoro-start-drop.json").pomodoroStart)
+        let committed = CapturePomodoroStartPresentation(
+            summary: summary,
+            dryRun: false,
+            relativeTarget: "2026/20260930.md",
+            captureText: "=~2"
+        )
+        XCTAssertEqual(
+            committed.statusText,
+            "Started CAPTURE 0945-1010 (25m) at line 5 · dropped 2"
+        )
+        XCTAssertEqual(
+            committed.notificationBody,
+            "0945-1010 (25m) · 2 queued tasks · dropped 2"
+        )
+        XCTAssertEqual(committed.dropSummary, "Dropped 2")
+    }
+
+    func testDropAllFixtureSummarizesNothingLeftQueued() throws {
+        let presentation = try XCTUnwrap(
+            CapturePomodoroStartPresentation(capture: decodeFixture("pomodoro-start-drop-empty.json"))
+        )
+
+        XCTAssertTrue(presentation.taskRows.allSatisfy(\.isDropped))
+        XCTAssertEqual(presentation.taskRows.map(\.index), [1, 2, 3])
+        XCTAssertEqual(presentation.dropSummary, "Dropped 1, 2, 3 · nothing left queued")
+        XCTAssertEqual(presentation.emptyText, "Nothing queued")
+        XCTAssertEqual(
+            presentation.notificationBody,
+            "0945-1010 (25m) · Nothing queued · dropped 1, 2, 3"
+        )
+        XCTAssertTrue(presentation.statusText.contains("· drops 1, 2, 3"))
+        XCTAssertTrue(presentation.accessibilitySummary.contains("nothing queued"))
+    }
+
+    func testNamedDropFixtureShowsSummaryWithoutHint() throws {
+        let presentation = try XCTUnwrap(
+            CapturePomodoroStartPresentation(capture: decodeFixture("pomodoro-start-drop-named.json"))
+        )
+
+        XCTAssertNil(presentation.teachingHint)
+        XCTAssertEqual(presentation.dropSummary, "Dropped 2")
+        XCTAssertEqual(
+            presentation.notificationBody,
+            "0945-1010 (25m) · 2 queued tasks · dropped 2"
+        )
+    }
+
+    func testSingleRowHintDropsIt() throws {
+        let presentation = try XCTUnwrap(
+            CapturePomodoroStartPresentation(
+                capture: decodeCaptureSuccess(
+                    sessionStartJSON(dryRun: true, name: "CAPTURE", tasks: "[\(readyTaskJSON)]")
+                )
+            )
+        )
+
+        XCTAssertEqual(
+            presentation.teachingHint?.text,
+            "Type ~1 to drop it · #name to start a specific Pomodoro"
+        )
+    }
+
+    func testBareEmptyStartKeepsNameHint() throws {
+        let presentation = try XCTUnwrap(
+            CapturePomodoroStartPresentation(capture: decodeFixture("pomodoro-start-empty.json"))
+        )
+
+        XCTAssertEqual(
+            presentation.teachingHint?.text,
+            "Type #name to start a specific Pomodoro"
+        )
+        XCTAssertNil(presentation.dropSummary)
+    }
+
+    func testUnnumberedRowsRenderWithoutBadges() throws {
+        let presentation = try XCTUnwrap(
+            CapturePomodoroStartPresentation(
+                capture: decodeCaptureSuccess(
+                    sessionStartJSON(dryRun: true, name: "CAPTURE", tasks: "[\(queuedTasksJSON)]")
+                )
+            )
+        )
+
+        XCTAssertTrue(presentation.taskRows.allSatisfy { $0.index == nil })
+        XCTAssertTrue(presentation.taskRows.allSatisfy { $0.badgeSymbolName == nil })
+        XCTAssertTrue(presentation.taskRows.allSatisfy { !$0.usesNumericBadgeFallback })
+        XCTAssertTrue(presentation.taskRows.allSatisfy { !$0.isDimmed })
+        XCTAssertTrue(presentation.taskRows.allSatisfy { !$0.isStruck })
+        XCTAssertTrue(presentation.taskRows.allSatisfy { $0.caption == nil })
+        XCTAssertEqual(presentation.visibleTaskRows.count, 4)
+        XCTAssertEqual(presentation.overflowTaskCount, 0)
+    }
+
+    func testNumberedRowsNeverHideUnderMore() throws {
+        func numberedTask(_ index: Int) -> String {
+            """
+            {"block_link":"[[bob#^task-\(index)]]","embedded":false,"ledger_line":\(4 + index),
+             "index":\(index),"resolved":true,"relative_target":"bob.md","block_id":"task-\(index)",
+             "text":"Task \(index)","status_symbol":" ","status_name":"Ready","warning":null}
+            """
+        }
+        let numbered = (1...8).map(numberedTask).joined(separator: ",")
+        let allNumbered = try XCTUnwrap(
+            CapturePomodoroStartPresentation(
+                capture: decodeCaptureSuccess(
+                    sessionStartJSON(dryRun: true, name: "CAPTURE", tasks: "[\(numbered)]")
+                )
+            )
+        )
+        XCTAssertEqual(allNumbered.visibleTaskRows.count, 8)
+        XCTAssertEqual(allNumbered.overflowTaskCount, 0)
+
+        let sixNumbered = (1...6).map(numberedTask).joined(separator: ",")
+        let twoUnnumbered = (9...10).map { index in
+            """
+            {"block_link":"[[bob#^task-\(index)]]","embedded":false,"ledger_line":\(4 + index),
+             "resolved":true,"relative_target":"bob.md","block_id":"task-\(index)",
+             "text":"Task \(index)","status_symbol":" ","status_name":"Ready","warning":null}
+            """
+        }.joined(separator: ",")
+        let mixed = try XCTUnwrap(
+            CapturePomodoroStartPresentation(
+                capture: decodeCaptureSuccess(
+                    sessionStartJSON(
+                        dryRun: true,
+                        name: "CAPTURE",
+                        tasks: "[\(sixNumbered),\(twoUnnumbered)]"
+                    )
+                )
+            )
+        )
+        // Six numbered rows always show; the two unnumbered rows hide once
+        // they exceed the `6 − numbered` allowance (here zero).
+        XCTAssertEqual(mixed.visibleTaskRows.count, 6)
+        XCTAssertEqual(mixed.overflowTaskCount, 2)
+    }
+
+    func testBadgeFallsBackToCapsuleAboveFifty() throws {
+        let row = """
+        {"block_link":"[[bob#^big]]","embedded":false,"ledger_line":60,
+         "index":51,"resolved":true,"relative_target":"bob.md","block_id":"big",
+         "text":"Big","status_symbol":" ","status_name":"Ready","warning":null}
+        """
+        let presentation = try XCTUnwrap(
+            CapturePomodoroStartPresentation(
+                capture: decodeCaptureSuccess(
+                    sessionStartJSON(dryRun: true, name: "CAPTURE", tasks: "[\(row)]")
+                )
+            )
+        )
+        XCTAssertNil(presentation.taskRows.first?.badgeSymbolName)
+        XCTAssertTrue(presentation.taskRows.first?.usesNumericBadgeFallback == true)
+    }
+
+    func testDropParseFixturesDecodeModesSpansAndNeeds() throws {
+        let valid = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-start-drop-parse.json").utf8)
+        )
+        XCTAssertEqual(valid.mode, "pomodoro_start")
+        XCTAssertEqual(valid.spans.map(\.kind), ["pomodoro_start", "pomodoro_start_drop"])
+        XCTAssertEqual(valid.pomodoroStart?.drop, [2])
+        XCTAssertTrue(valid.diagnostics.isEmpty)
+
+        let named = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-start-drop-parse-named.json").utf8)
+        )
+        XCTAssertEqual(named.mode, "pomodoro_start")
+        XCTAssertEqual(named.section, "bugs")
+        XCTAssertEqual(named.pomodoroStart?.drop, [1])
+        XCTAssertTrue(named.spans.map(\.kind).contains("pomodoro_start_drop"))
+
+        for name in [
+            "pomodoro-start-drop-parse-incomplete.json",
+            "pomodoro-start-drop-parse-incomplete-comma.json",
+        ] {
+            let response = try JSONDecoder().decode(
+                CaptureParseResponse.self,
+                from: Data(fixtureText(name).utf8)
+            )
+            XCTAssertEqual(response.mode, "incomplete", name)
+            XCTAssertEqual(response.needs, ["pomodoro_start_task"], name)
+            XCTAssertTrue(
+                response.spans.map(\.kind).contains("interactive_placeholder"),
+                name
+            )
+        }
+
+        let invalid = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-start-drop-parse-invalid.json").utf8)
+        )
+        XCTAssertEqual(invalid.mode, "pomodoro_start")
+        XCTAssertEqual(invalid.diagnostics.first?.code, "invalid_pomodoro_start")
+
+        let chain = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-start-drop-parse-chain.json").utf8)
+        )
+        XCTAssertEqual(chain.items.map(\.mode), ["pomodoro_close", "pomodoro_start"])
+        XCTAssertEqual(chain.items.last?.pomodoroStart?.drop, [2])
     }
 
     private func sessionStartJSON(dryRun: Bool, name: String?, tasks: String) -> String {

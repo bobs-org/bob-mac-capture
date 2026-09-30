@@ -18,13 +18,39 @@ import Foundation
 /// (`kind == "pomodoro_start"` — see `isSessionStart`).
 public struct CapturePomodoroStartPresentation: Equatable, Sendable {
     /// The leading glyph for a queued-task row. Resolved rows map the task's
-    /// current status symbol; unresolved rows always warn.
+    /// current status symbol; unresolved rows always warn. Dropped rows leave
+    /// today entirely and render the close card's `minus.circle` glyph.
     public enum TaskGlyph: Equatable, Sendable {
         case ready
         case next
         case inProgress
         case other
         case unresolved
+        case dropped
+    }
+
+    /// One segment of the teaching hint: example tokens carry the editor span
+    /// category whose color they share, and prose carries `.neutral`.
+    public struct HintToken: Equatable, Sendable {
+        public let text: String
+        public let category: CaptureSemanticCategory
+
+        public init(text: String, category: CaptureSemanticCategory) {
+            self.text = text
+            self.category = category
+        }
+    }
+
+    /// The teaching hint shown under the destination before a drop is typed:
+    /// structured `tokens` for tinted rendering plus the joined `text`.
+    public struct TeachingHint: Equatable, Sendable {
+        public let tokens: [HintToken]
+        public let text: String
+
+        public init(tokens: [HintToken]) {
+            self.tokens = tokens
+            self.text = tokens.map(\.text).joined()
+        }
     }
 
     public struct TaskRow: Equatable, Sendable {
@@ -36,10 +62,42 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         public let locatorText: String
         /// Unresolved rows carry the warning the card renders as help text.
         public let warning: String?
+        /// The 1-based lineup number Bob assigned this row, or nil for
+        /// unnumbered rows (older Bob), which render exactly like today's
+        /// card: no badge, still capped under `+N more`.
+        public let index: Int?
+        /// True when the task line carries `#now`: the row gets the close
+        /// card's mint `NOW` capsule, and a dropped `#now` row adds the
+        /// `"stays in NOW"` caption.
+        public let now: Bool
+        /// True for rows removed by the typed `~<K>` list. They render
+        /// struck and dimmed with the `minus.circle` gray glyph, in place in
+        /// lineup order.
+        public let isDropped: Bool
+        /// `"\(n).circle"`, or `"\(n).circle.fill"` for dropped (listed)
+        /// rows; nil for unnumbered rows and for `n > 50`, which render a
+        /// monospaced-digit capsule instead (`usesNumericBadgeFallback`).
+        public let badgeSymbolName: String?
+        /// True for `n > 50`, which fall back to a monospaced-digit `Text` in
+        /// a `Capsule` because no such SF Symbol exists.
+        public let usesNumericBadgeFallback: Bool
+        /// Dropped rows always dim: they leave today entirely.
+        public let isDimmed: Bool
+        /// Dropped rows render their text with strikethrough in the card.
+        public let isStruck: Bool
+        /// `"stays in NOW"` and/or `"with N nested line(s)"` on dropped
+        /// rows, else nil.
+        public let caption: String?
+        /// `"Task 1, <text>, queued"` for numbered kept rows;
+        /// `"Task 2, <text>, drops from today"` for numbered dropped rows;
+        /// the task text for unnumbered rows.
+        public let accessibilityLabel: String
     }
 
     /// At most this many task rows render in the card before a "+N more" line —
-    /// the same cap as the close card.
+    /// the same cap as the close card. Numbered rows never hide under it: the
+    /// cap only hides unnumbered rows beyond `max(0, 6 − numbered)`, so a
+    /// number is never hidden.
     public static var maxVisibleTaskRows: Int {
         CapturePomodoroClosePresentation.maxVisibleTaskRows
     }
@@ -66,12 +124,15 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
     /// `"Start CAPTURE"` (dry run) or `"Started CAPTURE"`.
     public let title: String
     /// `"Would start CAPTURE 0940-1005 (25m) at line 13"` (dry run) or
-    /// `"Started … at line 13"` (committed).
+    /// `"Started … at line 13"` (committed), plus `" · drops 2"` (dry run)
+    /// or `" · dropped 2"` (committed) once a drop is typed.
     public let statusText: String
     /// `"0940-1005 (25m)"` — the calm, legible session line shown in preview.
     public let sessionText: String
     /// `"2026/20260928.md · line 13"` — the day file and `pomodoro_line`.
     public let destinationText: String
+    /// Kept and dropped rows merged in lineup order (`index` ascending; rows
+    /// without `index` keep ledger order after the numbered rows).
     public let taskRows: [TaskRow]
     public let visibleTaskRows: [TaskRow]
     public let overflowTaskCount: Int
@@ -82,17 +143,24 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
     /// `"Started CAPTURE"`, the single-capture notification title.
     public let notificationTitle: String
     /// `"0940-1005 (25m) · 2 queued tasks"` (`"1 queued task"` for one,
-    /// `"Nothing queued"` for none). A created session instead reads
+    /// `"Nothing queued"` for none), plus `" · dropped 2"` once a drop is
+    /// typed. The queued count counts `tasks` only, so a drop leaves the
+    /// count truthful. A created session instead reads
     /// `"0940–1005 (25m) · New session"`.
     public let notificationBody: String
     /// `"New"` on a dry run that creates the session, `"Created"` once
     /// committed, nil for starts of an existing entry. Rendered as a small
     /// pink capsule next to the card title.
     public let createdBadgeText: String?
-    /// `"Type #name to start a specific Pomodoro"` for a bare `=`/`=<X>`
-    /// start, nil for a named `=<X>#name` start. Rendered as a quiet caption
-    /// in the close card's teaching-hint style.
-    public let teachingHint: String?
+    /// The teaching hint, present while no drop is typed and the lineup is
+    /// non-empty — or, for a bare start with an empty lineup, today's
+    /// `#name` hint. Nil once a drop is typed (the summary shows instead)
+    /// and for named starts with an empty lineup. Rendered as a quiet
+    /// caption in the close card's teaching-hint style.
+    public let teachingHint: TeachingHint?
+    /// `"Dropped 2, 4"` once a drop is typed, plus `" · nothing left
+    /// queued"` when no kept rows remain. Nil before that.
+    public let dropSummary: String?
     /// `" (started CAPTURE 0940-1005)"`, appended to batch lines for starts.
     public let batchSuffix: String
     public let primaryActionTitle: String
@@ -125,24 +193,58 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         createdPomodoro = summary.createdPomodoro
         timeRange = summary.timeRange
 
+        let dropList = summary.drop
+        let hasDrop = !dropList.isEmpty
+        let dropNumbers = dropList.map(String.init).joined(separator: ", ")
+
         title = "\(dryRun ? "Start" : "Started") \(pomodoroName)"
         let verb = dryRun ? "Would start" : "Started"
         let created = summary.createdPomodoro ? " (created)" : ""
+        let dropSuffix = hasDrop ? (dryRun ? " · drops \(dropNumbers)" : " · dropped \(dropNumbers)") : ""
         statusText =
-            "\(verb) \(pomodoroName) \(start)-\(end) (\(durationMinutes)m)\(created) at line \(pomodoroLine)"
+            "\(verb) \(pomodoroName) \(start)-\(end) (\(durationMinutes)m)\(created) at line \(pomodoroLine)\(dropSuffix)"
         sessionText = "\(start)-\(end) (\(durationMinutes)m)"
         destinationText = "\(relativeTarget) · line \(pomodoroLine)"
 
-        // The start card only renders for whole-item starts, whose capture
-        // text is the token itself: no `#` means a bare `=`/`=<X>` start.
+        // The start card only renders for whole-item starts. A `#` in the
+        // capture text means a named `=<X>#name` start.
         createdBadgeText = summary.createdPomodoro ? (dryRun ? "New" : "Created") : nil
-        teachingHint = captureText.contains("#")
-            ? nil : "Type #name to start a specific Pomodoro"
+        let isNamed = captureText.contains("#")
 
-        taskRows = (summary.tasks ?? []).map(Self.taskRow(for:))
-        visibleTaskRows = Array(taskRows.prefix(Self.maxVisibleTaskRows))
-        overflowTaskCount = max(0, taskRows.count - Self.maxVisibleTaskRows)
+        taskRows = Self.mergedRows(summary: summary)
+        let numberedCount = taskRows.filter { $0.index != nil }.count
+        let unnumberedAllowance = max(0, Self.maxVisibleTaskRows - numberedCount)
+        var visible: [TaskRow] = []
+        visible.reserveCapacity(min(taskRows.count, Self.maxVisibleTaskRows))
+        var unnumberedShown = 0
+        for row in taskRows {
+            if row.index != nil {
+                visible.append(row)
+            } else if unnumberedShown < unnumberedAllowance {
+                visible.append(row)
+                unnumberedShown += 1
+            }
+        }
+        visibleTaskRows = visible
+        overflowTaskCount = taskRows.count - visible.count
         emptyText = "Nothing queued"
+
+        if hasDrop {
+            teachingHint = nil
+            var summaryText = "Dropped \(dropNumbers)"
+            if (summary.tasks ?? []).isEmpty {
+                summaryText += " · nothing left queued"
+            }
+            dropSummary = summaryText
+        } else if taskRows.isEmpty {
+            dropSummary = nil
+            teachingHint = isNamed ? nil : TeachingHint(tokens: Self.nameHintTokens)
+        } else {
+            dropSummary = nil
+            teachingHint = TeachingHint(
+                tokens: Self.dropHintTokens(rowCount: taskRows.count) + (isNamed ? [] : Self.nameHintTokens)
+            )
+        }
 
         let createdPhrase = summary.createdPomodoro ? ", created new entry" : ", uses existing entry"
         var spoken =
@@ -155,28 +257,88 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
                 ? ", nothing queued"
                 : ", \(tasks.count) queued task\(tasks.count == 1 ? "" : "s")"
         }
+        spoken += taskRows.compactMap { $0.index == nil ? nil : ", \($0.accessibilityLabel)" }.joined()
         if let teachingHint {
-            spoken += ". \(teachingHint)"
+            spoken += ". \(teachingHint.text)"
+        }
+        if let dropSummary {
+            spoken += ". \(dropSummary)"
         }
         accessibilitySummary = spoken
         notificationDetail = statusText
 
         notificationTitle = "Started \(pomodoroName)"
+        let notificationDropSuffix = hasDrop ? " · dropped \(dropNumbers)" : ""
         if summary.createdPomodoro {
-            notificationBody = "\(enDashRange(sessionText)) · New session"
+            notificationBody = "\(enDashRange(sessionText)) · New session\(notificationDropSuffix)"
         } else if let tasks = summary.tasks, !tasks.isEmpty {
             notificationBody =
-                "\(sessionText) · \(tasks.count) queued task\(tasks.count == 1 ? "" : "s")"
+                "\(sessionText) · \(tasks.count) queued task\(tasks.count == 1 ? "" : "s")\(notificationDropSuffix)"
         } else {
-            notificationBody = "\(sessionText) · Nothing queued"
+            notificationBody = "\(sessionText) · Nothing queued\(notificationDropSuffix)"
         }
         batchSuffix = " (started \(pomodoroName) \(start)-\(end))"
         primaryActionTitle = "Start"
     }
 
-    private static func taskRow(for task: PomodoroStartTask) -> TaskRow {
+    /// Kept (`tasks`) and dropped (`dropped`) rows merged in lineup order:
+    /// `index` ascending, with unnumbered rows (older Bob) keeping ledger
+    /// order after the numbered rows so they render exactly like today's
+    /// card.
+    private static func mergedRows(summary: PomodoroStartSummary) -> [TaskRow] {
+        let kept = (summary.tasks ?? []).map { ($0, false) }
+        let dropped = summary.dropped.map { ($0, true) }
+        let ordered = (kept + dropped).enumerated().sorted { lhs, rhs in
+            switch (lhs.element.0.index, rhs.element.0.index) {
+            case let (a?, b?):
+                if a != b {
+                    return a < b
+                }
+                return lhs.offset < rhs.offset
+            case (nil, nil):
+                return lhs.offset < rhs.offset
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            }
+        }
+        return ordered.map { taskRow(for: $0.element.0, dropped: $0.element.1) }
+    }
+
+    /// The `Type ~N to drop task N` example tokens. The `~N` token shares the
+    /// editor `pomodoro_start_drop` span color; prose stays neutral. A lone
+    /// row reads `Type ~1 to drop it`.
+    static func dropHintTokens(rowCount: Int) -> [HintToken] {
+        if rowCount < 2 {
+            return [
+                HintToken(text: "Type ", category: .neutral),
+                HintToken(text: "~1", category: .pomodoroStartDrop),
+                HintToken(text: " to drop it", category: .neutral),
+            ]
+        }
+        return [
+            HintToken(text: "Type ", category: .neutral),
+            HintToken(text: "~2", category: .pomodoroStartDrop),
+            HintToken(text: " to drop task 2", category: .neutral),
+        ]
+    }
+
+    /// The ` · #name to start a specific Pomodoro` suffix for bare starts:
+    /// the `#name` example shares the editor `pomodoro_name` span color.
+    static var nameHintTokens: [HintToken] {
+        [
+            HintToken(text: "Type ", category: .neutral),
+            HintToken(text: "#name", category: .section),
+            HintToken(text: " to start a specific Pomodoro", category: .neutral),
+        ]
+    }
+
+    private static func taskRow(for task: PomodoroStartTask, dropped: Bool) -> TaskRow {
         let glyph: TaskGlyph
-        if !task.resolved {
+        if dropped {
+            glyph = .dropped
+        } else if !task.resolved {
             glyph = .unresolved
         } else {
             switch task.statusSymbol {
@@ -198,12 +360,59 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         } else {
             locator = task.blockLink
         }
+        let taskText = task.text ?? task.blockLink
+        let badgeSymbolName: String?
+        let usesNumericBadgeFallback: Bool
+        if let index = task.index {
+            if index > 50 {
+                badgeSymbolName = nil
+                usesNumericBadgeFallback = true
+            } else {
+                badgeSymbolName = "\(index).circle\(dropped ? ".fill" : "")"
+                usesNumericBadgeFallback = false
+            }
+        } else {
+            badgeSymbolName = nil
+            usesNumericBadgeFallback = false
+        }
+        let caption: String?
+        if dropped {
+            var parts: [String] = []
+            if task.now {
+                parts.append("stays in NOW")
+            }
+            if task.nestedLines > 0 {
+                parts.append(
+                    "with \(task.nestedLines) nested line\(task.nestedLines == 1 ? "" : "s")"
+                )
+            }
+            caption = parts.isEmpty ? nil : parts.joined(separator: " · ")
+        } else {
+            caption = nil
+        }
+        let accessibilityLabel: String
+        if let index = task.index {
+            accessibilityLabel = dropped
+                ? "Task \(index), \(taskText), drops from today"
+                : "Task \(index), \(taskText), queued"
+        } else {
+            accessibilityLabel = taskText
+        }
         return TaskRow(
             glyph: glyph,
             blockLink: task.blockLink,
-            taskText: task.text ?? task.blockLink,
+            taskText: taskText,
             locatorText: locator,
-            warning: task.warning
+            warning: task.warning,
+            index: task.index,
+            now: task.now,
+            isDropped: dropped,
+            badgeSymbolName: badgeSymbolName,
+            usesNumericBadgeFallback: usesNumericBadgeFallback,
+            isDimmed: dropped,
+            isStruck: dropped,
+            caption: caption,
+            accessibilityLabel: accessibilityLabel
         )
     }
 }

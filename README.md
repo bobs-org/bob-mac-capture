@@ -119,7 +119,16 @@ mutation.
   close removes those links from today without carrying or starting them; the
   card strikes and dims dropped rows, summarizes `Dropped 4, 5`, and reads
   "drops from today" for VoiceOver. Rows whose task carries `#now` show a
-  `NOW` badge, and a dropped `#now` row adds a "stays in NOW" caption. Older
+  `NOW` badge, and a dropped `#now` row adds a "stays in NOW" caption. A whole-item
+  `=`/`=<X>` start reports the same numbered lineup: per-row `index` and `now` in the
+  capture summary, a `drop` list on the parse spec and capture summary, and removed rows
+  in `dropped` with their `index`, `now`, pre-image `ledger_line`, and `nested_lines`
+  count; a trailing `~<K>` adds a `pomodoro_start_drop` span in the same muted gray as
+  `pomodoro_close_drop`, and a dangling `~`/`,` reports mode `incomplete` with a
+  `pomodoro_start_task` need and an `interactive_placeholder` span instead of an error.
+  A start summary whose `drop`, `dropped`, `index`, `now`, or `nested_lines` fields are
+  absent still previews as today's unnumbered card: the spec decodes as no drop, rows
+  decode as unnumbered without badges, and no drop hint or summary renders. Older
   Bob builds may implement the previous task-toggle spellings. The app labels
   actions and notifications from Bob's returned behavior metadata, so a response
   that omits `toggle_behavior` still shows the two-way Set Next/Open footer,
@@ -550,26 +559,42 @@ or expired certificate can require reauthorizing those system permissions.
   callout shows Bob's message unchanged; a strict plan-budget refusal
   (`code == plan_theme_cap_exceeded`) adds the hint line `Queue it with ^, keep
   it this week with #now, or defer with p:<N>.` While a
-  list dangles on `,`/`!`, the card previews the trimmed draft dimmed with a
+  list dangles on `,`/`!`/`~`, the card previews the trimmed draft dimmed with a
   `Type a task number after ,` row, **Close** is disabled, and Return cannot
-  submit; a valid draft restores the normal card. A whole-item `=`/`=<X>` start instead shows its own card
+  submit; a valid draft restores the normal card. While a start list dangles on
+  `~`/`,`, the start card previews the trimmed draft dimmed the same way with
+  **Start** disabled instead. A whole-item `=`/`=<X>` start instead shows its own card
   whenever `kind` is `pomodoro_start`: a `play.circle.fill` header with the
   `Start NAME` title and the monospaced session range, the day-file destination,
-  up to six queued-task rows with status glyphs (`circle` Ready,
-  `circle.inset.filled` Next, `circle.lefthalf.filled` In Progress,
-  `questionmark.circle` other, `exclamationmark.triangle` unresolved with the
-  warning as help text), task text with a truncating `note ^id` locator, then a
-  `+N more` row or the `Nothing queued` empty state. A created session shows a
+  then one caption row — the teaching hint before a drop is typed, the drop
+  summary after (`Dropped 2, 4`, plus ` · nothing left queued` when nothing stays
+  queued), or the pending notice while a list dangles — followed by the queued-task
+  rows merged with dropped rows in lineup order. Each numbered row gets the close
+  card's number badge (`n.circle`, filled for dropped rows, capsule above 50) with
+  status glyphs (`circle` Ready, `circle.inset.filled` Next,
+  `circle.lefthalf.filled` In Progress, `questionmark.circle` other,
+  `minus.circle` dropped, `exclamationmark.triangle` unresolved with the warning
+  as help text), task text with a truncating `note ^id` locator; every `#now` row
+  gets the mint `NOW` capsule, and dropped rows render struck and dimmed with a
+  caption joining `stays in NOW` and `with N nested line(s)`. Numbered rows never
+  hide under `+N more`; rows without numbers (older Bob) render exactly like
+  today's card. A created session shows a
   small pink **New** capsule next to the title on a dry run (**Created** once
   committed, and the notification reads `Started NAME` with `0905–0930 (25m)
-  · New session`); a bare `=`/`=<X>` start instead shows the quiet caption
-  `Type #name to start a specific Pomodoro` under the destination, with
-  `#name` tinted like the editor's name span. Named starts show no hint, and
-  a still-running error keeps the red error block with Bob's one-line-switch
+  · New session`); with no drop typed and a non-empty lineup, a bare `=`/`=<X>`
+  start teaches `Type ~2 to drop task 2 · #name to start a specific Pomodoro`
+  (`Type ~1 to drop it · …` for one row), with `~N` tinted like the drop span and
+  `#name` like the editor's name span, while a named start teaches only the drop
+  half. An empty lineup keeps the quiet `Type #name to start a specific Pomodoro`
+  caption, and named starts with an empty lineup show no hint. Dropped rows read
+  "Task 2, …, drops from today" and queued rows "Task 1, …, queued" for VoiceOver.
+  A still-running error keeps the red error block with Bob's one-line-switch
   message unchanged. The footer's primary action
   becomes **Start**, the live-preview, preview, and submit status read
-  `Would start …` / `Started …` with the session and line, and the notification
-  reads `Started NAME` with the session and queued-task count. One item stays compact; a batch renders an ordered stack with item count,
+  `Would start …` / `Started …` with the session and line (plus ` · drops 2` /
+  ` · dropped 2` once a drop is typed), and the notification
+  reads `Started NAME` with the session and queued-task count (counting `tasks`
+  only, plus ` · dropped 2`). One item stays compact; a batch renders an ordered stack with item count,
   destination/kind metadata, dividers, and exact `previewBlockLines` or toggle
   transition rows. When Bob reports a global destination, preview and the destination
   detail show one compact shared-scope line (`All items → foo.md` or
@@ -798,13 +823,20 @@ the running Pomodoro; `@route:block-id=x` links an existing task first, and
 Appending task numbers chooses each Task Link's outcome: `=x2` keeps only 2 in
 progress, `=x!2` completes 2, `=x1!2` does both, and `=x0` defers all (single-quote
 the argument in zsh, since `=` and `!` expand). The same suffix works on link
-forms. The
+forms. A trailing `~<K>` drop list on a whole-item start (`=~2`, `=3~2,4`,
+`=#bugs~2`) starts the next session without those numbered queued Task Links —
+`~` drops, so `=~2` drops task 2 from the session you start the way `=x~2` drops
+task 2 from the session you stop, using the numbers the start card shows. The
+start card numbers every queued row, strikes and dims dropped rows in place with
+a `Dropped 2` summary, and teaches `Type ~2 to drop task 2` until a drop is typed.
+The
 dedicated close preview shows Bob's session timing, task transitions, Work Log entries,
 and next session. The footer says **Close**, and the notification summarizes the same
 returned close. Missing or ambiguous running sessions surface Bob's error in the
-preview. A list left dangling on `,`/`!` is an editing state, not an error: the
+preview. A list left dangling on `,`/`!`/`~` is an editing state, not an error: the
 card stays live on what is typed so far with **Close** disabled until a task
-number follows. A marker-only `@route+block-id` ensures that existing task is Next and
+number follows; a start list left dangling on `~`/`,` previews the trimmed start
+the same way with **Start** disabled instead. A marker-only `@route+block-id` ensures that existing task is Next and
 relocates its Task Link, `@route+block-id#pomodoro` does the
 same onto a named Pomodoro (creating the named future Pomodoro if needed),
 `@route+block-id!` is the explicit two-way add/clear toggle, and `@route+block-id` with

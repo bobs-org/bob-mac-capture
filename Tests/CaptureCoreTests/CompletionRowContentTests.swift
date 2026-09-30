@@ -716,6 +716,10 @@ final class CompletionRowContentTests: XCTestCase {
             captureSemanticCategory(forSpanKind: "pomodoro_close_drop"),
             .pomodoroCloseDrop
         )
+        XCTAssertEqual(
+            captureSemanticCategory(forSpanKind: "pomodoro_start_drop"),
+            .pomodoroStartDrop
+        )
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "now_tag"), .nowTag)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "unrecognized_future_kind"), .neutral)
     }

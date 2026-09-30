@@ -21,6 +21,7 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case pomodoroCloseInProgress
     case pomodoroCloseComplete
     case pomodoroCloseDrop
+    case pomodoroStartDrop
     case nowTag
     case neutral
 }
@@ -89,6 +90,11 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         // The `~<K>` digits select the rows that drop from today, so they
         // get their own muted category distinct from neutral text.
         return .pomodoroCloseDrop
+    case "pomodoro_start_drop":
+        // The `~<K>` digits on a whole-item start select the queued rows
+        // that drop as the session starts: the same muted gray as the close
+        // drop list.
+        return .pomodoroStartDrop
     case "now_tag":
         // Every exact `#now` token in the body carries this span. Mint is
         // unused elsewhere: purple already means section/Pomodoro names and
