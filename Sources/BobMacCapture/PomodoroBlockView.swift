@@ -1,3 +1,4 @@
+import AppKit
 import CaptureCore
 import SwiftUI
 
@@ -62,7 +63,11 @@ struct PomodoroBlockView: View {
     }
 
     private var hairline: Color {
-        contrast == .increased ? .separator : .separator.opacity(0.5)
+        // `Color.separator` is a shape style, not a color, so the hairline
+        // reads the AppKit separator directly; it stays adaptive in light,
+        // dark, and increased-contrast appearances.
+        let base = Color(nsColor: .separatorColor)
+        return contrast == .increased ? base : base.opacity(0.5)
     }
 
     var body: some View {
@@ -173,29 +178,32 @@ struct PomodoroBlockView: View {
         if row.change == .removed {
             // A removed line reads uniformly: struck, secondary, dimmed.
             Text(row.content)
+                .font(.system(.callout, design: .monospaced))
                 .strikethrough()
                 .foregroundStyle(.secondary)
                 .opacity(0.55)
         } else {
-            row.tokens.reduce(Text("")) { partial, token in
-                partial + tokenText(token)
-            }
+            // One text view per row, built the way the close card builds its
+            // hint: verbatim bytes with display-only tinting, wrapping as a
+            // unit so continuation lines keep the hanging indent.
+            Text(
+                row.tokens.map { token in
+                    var part = AttributedString(token.text)
+                    part.foregroundColor = tokenColor(for: token)
+                    if token.role == .timeRange || token.role == .name {
+                        part.inlinePresentationIntent = .stronglyEmphasized
+                    }
+                    if token.struck {
+                        part.strikethroughStyle = .single
+                    }
+                    if token.role == .code {
+                        part.backgroundColor = Color.secondary.opacity(0.12)
+                    }
+                    return part
+                }.reduce(AttributedString()) { $0 + $1 }
+            )
+            .font(.system(.callout, design: .monospaced))
         }
-    }
-
-    private func tokenText(_ token: CapturePomodoroLineToken) -> Text {
-        var text = Text(token.text)
-            .foregroundStyle(tokenColor(for: token))
-        if token.role == .timeRange || token.role == .name {
-            text = text.fontWeight(.semibold)
-        }
-        if token.struck {
-            text = text.strikethrough()
-        }
-        if token.role == .code {
-            text = text.background(Color.secondary.opacity(0.12))
-        }
-        return text
     }
 
     private func tokenColor(for token: CapturePomodoroLineToken) -> Color {
@@ -205,7 +213,8 @@ struct PomodoroBlockView: View {
         }
         switch token.role {
         case .syntax:
-            return .tertiary
+            // `Color.tertiary` is a shape style, not a color.
+            return Color(nsColor: .tertiaryLabelColor)
         case .checkbox(let symbol):
             return CaptureEditorPalette.checkboxSymbolColor(symbol)
         case .timeRange:

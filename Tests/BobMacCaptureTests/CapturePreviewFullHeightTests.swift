@@ -150,7 +150,7 @@ final class CapturePreviewFullHeightTests: XCTestCase {
         XCTAssertEqual(emptied.pomodoroBlocks, [])
 
         // The block view adds real height at full and minimum panel widths.
-        for width in [724.0, 620.0] {
+        for width in [724, 620] as [CGFloat] {
             let withBlocks = hostedPreviewHeight(for: readyModel(for: close), width: width)
             let withoutBlocks = hostedPreviewHeight(for: readyModel(for: emptied), width: width)
             XCTAssertGreaterThan(

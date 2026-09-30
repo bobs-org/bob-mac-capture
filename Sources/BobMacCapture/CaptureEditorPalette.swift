@@ -1,3 +1,4 @@
+import AppKit
 import CaptureCore
 import SwiftUI
 
@@ -43,7 +44,8 @@ enum CaptureEditorPalette {
         case "*":
             return .blue
         case " ":
-            return .tertiary
+            // `Color.tertiary` is a shape style, not a color.
+            return Color(nsColor: .tertiaryLabelColor)
         default:
             return .secondary
         }
