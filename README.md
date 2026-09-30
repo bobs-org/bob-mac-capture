@@ -288,32 +288,43 @@ or expired certificate can require reauthorizing those system permissions.
   filter removes the `^` trigger and its fragment. Ctrl-S is consumed; Ctrl-C still
   stashes the draft and closes. While the chip is visible, Tab, Down, and Ctrl-N reopen
   the picker and Escape hides the chip.
-- Typing `:` as the whole capture item opens the Task Link Picker (`task_link`
-  context), the same card as `^` with scope `:` and caption Open Tasks. Bob lists
-  every open (not done or canceled) task in area, project, and inbox notes; the app
-  filters locally with spaces as AND terms. With an empty filter tasks group in Bob's
-  order: one section per queued Pomodoro, then In Progress, Next, This Week's Bets,
-  then one section per note (`route.md` with its Inbox/Area/Project subtitle). Rows
-  show a schedule capsule (`calendar` glyph) when Bob sends one and a Pomodoro chip in
-  the filtered view; the detail strip shows the insert action and, when linking pulls
-  a future schedule forward, `Scheduled Oct 3 — linking pulls it forward`. Return (or
-  Tab) replaces the `:` query with `@route:block-id`; Shift-Return inserts
-  `@route:block-id=` so the live preview shows the start before Return captures;
-  Command-Return inserts then captures. Escape clears the filter, then cancels to the
-  reopen chip; Backspace on an empty filter removes the `:` token. Tasks without an
-  ID show `route:` plus a dim `plus.circle` suggestion; accepting one opens the Add
-  block ID prompt in link mode, prefilled with the first suggestion (fully selected),
-  with clickable suggestion chips and Tab / Shift-Tab cycling, a live
-  `Inserts @route:<typed>[=]` line, and buttons Add ID & Link / Add ID & Start / Add
-  ID & Capture. Return names the task via `bob capture-task-id` then splices the link
-  (appending `=` for Start, submitting for Capture); failure keeps the prompt open with
-  Bob's error; Escape returns to the picker with the filter intact. Bulk drafts work:
-  each blank-line-separated item is judged alone. When `capture-parse` reports
-  `task_link` in `needs`, the app skips the doomed dry run and shows
-  "Pick any open task — press Tab to browse".
-- Task Link Picker keys: Return/Tab Link, Shift-Return Link & Start, Command-Return
-  Link & Capture, Escape Clear/Cancel, Backspace on empty filter removes `:`. In the
-  link-mode Add block ID prompt, Tab / Shift-Tab cycle suggestions.
+### Task Link Picker
+
+Typing `:` as the whole capture item opens the Task Link Picker (`task_link`
+context), the same card as `^` with scope `:` and caption Open Tasks. When
+`capture-parse` reports `task_link` in `needs`, the app skips the doomed live dry
+run and shows "Pick any open task — press Tab to browse".
+
+Bob lists every open (not done or canceled) task in area, project, and inbox
+notes. With an empty filter tasks group in Bob's order: one section per queued
+Pomodoro, then In Progress, Next, This Week's Bets, then one section per note
+(`route.md` with its Inbox/Area/Project subtitle). The app filters locally with
+spaces as AND terms; a non-empty filter replaces the groups with one ranked flat
+list. Rows show a schedule capsule (`calendar` glyph) when Bob sends one and a
+Pomodoro chip in the filtered view; the detail strip shows the insert action and,
+when linking pulls a future schedule forward,
+`Scheduled Oct 3 — linking pulls it forward`.
+
+Return (or Tab) replaces the `:` query with `@route:block-id`; Shift-Return
+inserts `@route:block-id=` so the live preview shows the start before Return
+captures; Command-Return inserts then captures. Escape clears the filter, then
+cancels to the reopen chip; Backspace on an empty filter removes the `:` token.
+
+Tasks without an ID show `route:` plus a dim `plus.circle` suggestion; accepting
+one opens the Add block ID prompt in link mode, prefilled with the first
+suggestion (fully selected), with clickable suggestion chips and Tab / Shift-Tab
+cycling, a live `Inserts @route:<typed>[=]` line, and buttons Add ID & Link /
+Add ID & Start / Add ID & Capture. Return names the task via
+`bob capture-task-id` then splices the link (appending `=` for Start, submitting
+for Capture); failure keeps the prompt open with Bob's error; Escape returns to
+the picker with the filter intact.
+
+Bulk drafts work: each blank-line-separated item is judged alone.
+
+Task Link Picker keys: Return/Tab Link, Shift-Return Link & Start,
+Command-Return Link & Capture, Escape Clear/Cancel, Backspace on empty filter
+removes `:`. In the link-mode Add block ID prompt, Tab / Shift-Tab cycle
+suggestions.
 - Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
   valid opens the Block ID Picker (`pomodoro_block_id` / `task_block_id` contexts),
   and typing a trailing ` :` / ` ^` on a project-note bullet opens the Project task
@@ -361,7 +372,8 @@ or expired certificate can require reauthorizing those system permissions.
   | Printables, Cmd-A/C/V/X/Z, Ctrl-A/E, ←/→  | Native filter edit  | Native edit; trailing illegal character commits the ID and keeps typing it in the editor (type-through) |
   | Return / keypad Enter, Tab                 | Insert selected row | Insert selected row             |
   | Command-Return                             | Insert, then capture| Insert, then capture            |
-  | Shift/Option-Return, Shift-Tab             | Consumed            | Consumed                        |
+  | Shift/Option-Return                        | Consumed (`:` picker uses Shift-Return for Link & Start) | Consumed (`:` picker uses Shift-Return for Link & Start) |
+  | Shift-Tab                                  | Consumed            | Consumed                        |
   | Down / Ctrl-N / Ctrl-J, Up / Ctrl-P / Ctrl-K | Move (wrap)       | Move (wrap), skipping status and info rows |
   | Page Up/Down, Home/End, Cmd-Up/Down        | Page / first / last | Page / first / last             |
   | Escape / Ctrl-[                            | Clear filter, else cancel (suppress, show chip) | Same |
@@ -693,8 +705,8 @@ or expired certificate can require reauthorizing those system permissions.
 | Command-V | Insert the clipboard's plain text, discarding source formatting; when an empty bullet row receives a Markdown bullet list, consume the first pasted marker and align the list to that row | Same paste edit, and close completion | Native text-field paste | Native text-field paste |
 | Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace | Native text-field Backspace |
 | + | Insert `+` | While route completion is visible, directly after the route being completed: accept the selected route, keep the `+`, and open task completion | Native text-field behavior | Native text-field behavior |
-| Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion | Consume the key; do not expand, indent, or capture | Consume the key; do not expand, indent, or capture |
-| Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion | Consume the key; do not outdent or capture | Consume the key; do not outdent or capture |
+| Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion | In link mode cycle suggestions; in the `@route+` prompt consume the key | Consume the key; do not expand, indent, or capture |
+| Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion | In link mode cycle suggestions backward; in the `@route+` prompt consume the key | Consume the key; do not outdent or capture |
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion | Consume the key; do not move completion selection | Consume the key; do not move completion selection |
 | Up / Ctrl-P | (normal focus traversal) | Select the previous completion | Consume the key; do not move completion selection | Consume the key; do not move completion selection |
 | Escape / Ctrl-[ | Close the panel, retaining a nonempty draft without confirmation | Close completion | Cancel back to the task list | Cancel back to the Pomodoro list |

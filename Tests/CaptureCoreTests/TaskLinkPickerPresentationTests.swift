@@ -442,6 +442,14 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.emptyState?.title, "No matches")
     }
 
+    func testNoMatchesEmptyStateUsesOpenTasks() throws {
+        let presentation = try workedExamplePresentation(filter: "zzz-no-such-task")
+        XCTAssertEqual(
+            presentation.emptyState?.message,
+            "No open tasks match “zzz-no-such-task” — Esc clears the filter."
+        )
+    }
+
     // MARK: - Queries
 
     func testSeedQueryWithLeadingColon() throws {
@@ -477,7 +485,8 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
     }
 
     func testScheduledTextAndPullForward() throws {
-        let presentation = try workedExamplePresentation()
+        let index = TaskLinkPickerIndex(candidates: try workedExampleCandidates())
+        let presentation = index.presentation(filter: "")
         let dentist = try XCTUnwrap(presentation.rowsByID["health|3:eeee5555"])
         // Pinned against the same formatter so the row stays correct outside
         // the sample's calendar year; exact shapes are pinned below.
@@ -485,13 +494,13 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
         XCTAssertEqual(dentist.scheduledText, rendered)
         XCTAssertTrue(dentist.pullsForward)
         XCTAssertEqual(
-            presentation.pullForwardLine(for: dentist),
+            index.pullForwardLine(for: dentist),
             "Scheduled \(rendered) — linking pulls it forward"
         )
         let queued = try XCTUnwrap(presentation.rowsByID["sase|7:aaaa1111"])
         XCTAssertNil(queued.scheduledText)
         XCTAssertFalse(queued.pullsForward)
-        XCTAssertNil(presentation.pullForwardLine(for: queued))
+        XCTAssertNil(index.pullForwardLine(for: queued))
     }
 
     // MARK: - Detail lines

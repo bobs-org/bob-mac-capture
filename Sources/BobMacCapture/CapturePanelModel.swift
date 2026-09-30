@@ -1525,7 +1525,7 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         let query = Self.taskLinkPickerQuery(in: draft, range: r, cursor: cursor)
-        if cursor != r.start {
+        if cursor > r.start + 1 {
             if let snapshot = try? await processClient.captureComplete(draft, cursor: r.start),
                isCurrentAnalysis(generation),
                plainDraft == draft,
@@ -2001,11 +2001,17 @@ final class CapturePanelModel: ObservableObject {
     /// here; other sources keep Shift-Return consumed.
     func acceptPickerRowAndStart(id: String) {
         guard let picker = picker,
-              picker.source == .taskLink,
-              plainDraft == picker.draftSnapshot,
-              let range = stringRange(in: plainDraft, byteRange: picker.replacementRange),
-              let row = pickerPresentation?.row(id: id)
+              picker.source == .taskLink
         else {
+            return
+        }
+        guard plainDraft == picker.draftSnapshot,
+              let range = stringRange(in: plainDraft, byteRange: picker.replacementRange)
+        else {
+            closePickerAfterStaleDraft()
+            return
+        }
+        guard let row = pickerPresentation?.row(id: id) else {
             return
         }
         if row.insertion == nil, let pending = row.pendingBlockID {
@@ -2093,20 +2099,6 @@ final class CapturePanelModel: ObservableObject {
             if plainDraft == picker.draftSnapshot,
                r.start < caretBytes.count,
                caretBytes[r.start] == 58,
-               let deleteRange = stringRange(in: plainDraft, start: r.start, end: r.end)
-            {
-                var text = plainDraft
-                text.removeSubrange(deleteRange)
-                let caret = r.start
-                closePickerForAccept()
-                pickerAutoOpenSuppressedStart = nil
-                suppressedCompletionAcceptanceDraft = text
-                setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
-                scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
-                return
-            }
-            // Empty the item when the `:` token is already gone.
-            if plainDraft == picker.draftSnapshot,
                let deleteRange = stringRange(in: plainDraft, start: r.start, end: r.end)
             {
                 var text = plainDraft
@@ -2626,6 +2618,16 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         if case .taskLink(_, _, _, _, let returnPicker) = prompt.purpose {
+            if clearCompletion {
+                // The draft changed under a link-mode prompt: dismiss the
+                // stashed picker and completion instead of restoring a stale
+                // picker, matching the `.parentTask` path.
+                clearTaskIDPrompt()
+                selectedCompletionIndex = prompt.selectedCompletionIndex
+                dismissCompletion()
+                requestFocus(.editor)
+                return
+            }
             // Escape returns to the picker with the same filter and selection,
             // without a refetch.
             clearTaskIDPrompt()
@@ -3037,8 +3039,8 @@ final class CapturePanelModel: ObservableObject {
 
         switch response {
         case .success(let success):
-            if case .taskLink(let linkRoute, _, _, let followUp, _) = prompt.purpose {
-                let link = "@\(linkRoute):\(success.blockID)" + (followUp == .start ? "=" : "")
+            if case .taskLink(_, _, _, let followUp, _) = prompt.purpose {
+                let link = "@\(success.route):\(success.blockID)" + (followUp == .start ? "=" : "")
                 guard let range = stringRange(in: prompt.draftSnapshot, byteRange: prompt.replacementRange) else {
                     prompt.isSaving = false
                     prompt.errorMessage = "Completion range is stale. Return to the task list and choose again."
@@ -3068,7 +3070,7 @@ final class CapturePanelModel: ObservableObject {
                 )
                 scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false, trigger: .edit)
                 statusText = "Added ^\(success.blockID) to \(success.relativeTarget)"
-                announceStatus("Added ^\(success.blockID) to \(linkRoute).md and inserted \(link)")
+                announceStatus("Added ^\(success.blockID) to \(success.route).md and inserted \(link)")
                 requestFocus(.editor)
                 if followUp == .submit {
                     submit(openAfterCapture: false)

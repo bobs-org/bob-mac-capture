@@ -707,8 +707,14 @@ private struct CapturePickerRowView: View {
         if let pending = row.pendingBlockID {
             return AnyView(HStack(spacing: 2) {
                 if !pending.route.isEmpty {
-                    Text(pending.route)
-                        .foregroundStyle(CaptureEditorPalette.color(for: .route))
+                    Text(
+                        CapturePickerRichText.displayText(
+                            pending.route,
+                            segments: [],
+                            matches: row.routeMatchRanges
+                        )
+                    )
+                    .foregroundStyle(CaptureEditorPalette.color(for: .route))
                     Text(":")
                         .foregroundStyle(.secondary)
                 }

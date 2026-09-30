@@ -257,6 +257,14 @@ final class CapturePickerDesignTests: XCTestCase {
             ["Move", "Insert", "Insert & Capture", "Clear / Cancel"]
         )
         XCTAssertEqual(
+            CapturePickerKeyHints.items(for: .taskLink).map { $0.keys },
+            ["↑↓", "↩", "⇧↩", "⌘↩", "esc"]
+        )
+        XCTAssertEqual(
+            CapturePickerKeyHints.items(for: .taskLink).map { $0.action },
+            ["Move", "Link", "Link & Start", "Link & Capture", "Clear / Cancel"]
+        )
+        XCTAssertEqual(
             CapturePickerKeyHints.items(for: .blockID(Self.linkContext)).map { $0.keys },
             ["↑↓", "↩", "⌘↩", "esc"]
         )

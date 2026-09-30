@@ -2277,7 +2277,11 @@ JSON
     elif [[ "${draft}" == ":" ]]; then
       cat "${fixtures_dir}/task-link-complete-full.json"
     elif [[ "${draft}" == ":dee" ]]; then
-      cat "${fixtures_dir}/task-link-complete-dee.json"
+      if [[ "${cursor}" == "0" ]]; then
+        cat "${fixtures_dir}/task-link-complete-full.json"
+      else
+        cat "${fixtures_dir}/task-link-complete-dee.json"
+      fi
     elif [[ "${draft}" == "^sase:deep-fix#b" ]]; then
       cat <<JSON
 {

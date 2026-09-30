@@ -160,6 +160,36 @@ final class CaptureTaskLinkPanelTests: XCTestCase {
         )
     }
 
+    func testRemovePickerTriggerNonColonByteCancelsAndDeletesNothing() {
+        let model = installTwoRowPicker()
+        XCTAssertTrue(model.pickerVisible)
+        model.plainDraft = "x"
+        model.removePickerTrigger()
+        XCTAssertEqual(model.plainDraft, "x")
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertNotNil(model.pickerChip)
+    }
+
+    func testAcceptPickerRowAndStartStaleDraftCloses() {
+        let model = installTwoRowPicker()
+        XCTAssertTrue(model.pickerVisible)
+        model.plainDraft = ":changed"
+        model.acceptPickerRowAndStart(id: "sase|6:41d049f2")
+        XCTAssertEqual(model.plainDraft, ":changed")
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertEqual(model.statusText, "Draft changed — reopen the task picker")
+    }
+
+    func testDraftChangeUnderLinkPromptDismissesInsteadOfRestoring() {
+        let model = installTwoRowPicker()
+        model.acceptPickerRow(id: "sase|7:446bd057", submitAfterInsert: false)
+        XCTAssertTrue(model.taskIDPromptVisible)
+        model.cancelTaskIDPrompt(clearCompletion: true)
+        XCTAssertFalse(model.taskIDPromptVisible)
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertFalse(model.editorInputLocked)
+    }
+
     private func keyEvent(
         keyCode: UInt16,
         modifiers: NSEvent.ModifierFlags = [],

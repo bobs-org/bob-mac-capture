@@ -930,9 +930,8 @@ private struct TaskIDPromptCard: View {
                 }
 
                 if isTaskLink {
-                    Text(linkInsertsLine(for: prompt))
+                    linkInsertsText(for: prompt)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -1002,6 +1001,24 @@ private struct TaskIDPromptCard: View {
         let typed = prompt.authoredID.isEmpty ? "…" : prompt.authoredID
         let suffix = followUp == .start ? "=" : ""
         return "Inserts @\(route):\(typed)\(suffix)"
+    }
+
+    private func linkInsertsText(for prompt: CaptureTaskIDPromptState) -> Text {
+        guard case .taskLink(let route, _, _, let followUp, _) = prompt.purpose else {
+            return Text("")
+        }
+        let typed = prompt.authoredID.isEmpty ? "…" : prompt.authoredID
+        let suffix = followUp == .start ? "=" : ""
+        return Text("Inserts @")
+            .foregroundStyle(.secondary)
+            + Text(route)
+            .foregroundStyle(CaptureEditorPalette.color(for: .route))
+            + Text(":")
+            .foregroundStyle(.secondary)
+            + Text(typed)
+            .foregroundStyle(CaptureEditorPalette.color(for: .blockID))
+            + Text(suffix)
+            .foregroundStyle(.secondary)
     }
 
     private func taskSummary(_ prompt: CaptureTaskIDPromptState) -> some View {

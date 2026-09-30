@@ -666,10 +666,10 @@ public struct CapturePickerEmptyState: Equatable, Sendable {
         )
     }
 
-    public static func noMatches(query: String) -> Self {
+    public static func noMatches(query: String, noun: String = "active tasks") -> Self {
         Self(
             title: "No matches",
-            message: "No active tasks match “\(query)” — Esc clears the filter."
+            message: "No \(noun) match “\(query)” — Esc clears the filter."
         )
     }
 }

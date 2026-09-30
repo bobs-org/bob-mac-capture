@@ -94,7 +94,7 @@ public struct TaskLinkPickerIndex: Sendable {
             totalCount: entries.count,
             matchCount: rows.count,
             countText: "\(rows.count) of \(entries.count)",
-            emptyState: rows.isEmpty ? .noMatches(query: filter) : nil,
+            emptyState: rows.isEmpty ? .noMatches(query: filter, noun: "open tasks") : nil,
             visibleRowBudget: budget
         )
     }
