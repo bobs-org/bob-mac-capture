@@ -221,52 +221,69 @@ public final class BobProcessClient: @unchecked Sendable {
                 // makes the other a no-op instead of a fatal double-resume.
                 let resumeGuard = ResumeGuard()
 
+                // A pipe holds at most 64 KiB: a child writing more blocks in
+                // `write(2)` until someone drains it. `task_link` responses are
+                // hundreds of KiB, so stdout and stderr must drain concurrently
+                // while the child runs — never only after it exits.
+                let drain = ProcessOutputDrain(
+                    stdout: stdoutPipe.fileHandleForReading,
+                    stderr: stderrPipe.fileHandleForReading
+                )
+
                 // Runs on `stateQueue` (see `asyncAfter` below), so it must use the
                 // already-on-the-queue clear helper, not the `.sync`-wrapping one.
                 //
                 // `DispatchWorkItem.cancel()` is documented thread-safe, so it's sound to
                 // share this across the termination handler's `@Sendable` closure even
                 // though the type itself isn't `Sendable`.
+                //
+                // The timeout covers the whole span (exit plus both drains reaching
+                // EOF) and is cancelled only when all three are done. A grandchild
+                // that inherits a pipe then times out instead of hanging forever.
                 nonisolated(unsafe) let timeoutWorkItem = DispatchWorkItem { [weak self] in
                     guard resumeGuard.markResumed() else { return }
                     Self.terminateIfRunning(process)
                     self?.clearActiveProcessAlreadyOnStateQueue(process: process, generation: generation, lane: lane)
                     continuation.resume(throwing: BobClientError.timedOut(command: command, seconds: timeout))
                 }
+                // Every resume funnels through `ResumeGuard`, so sharing the
+                // continuation with the `@Sendable` drain completion below is sound.
+                let unsafeContinuation = continuation
+                let completionQueue = stateQueue
                 stateQueue.asyncAfter(deadline: .now() + timeout, execute: timeoutWorkItem)
 
                 process.terminationHandler = { [weak self] completedProcess in
-                    timeoutWorkItem.cancel()
-                    guard resumeGuard.markResumed() else { return }
-
-                    let stdout = String(
-                        data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(),
-                        encoding: .utf8
-                    ) ?? ""
-                    let stderr = String(
-                        data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
-                        encoding: .utf8
-                    ) ?? ""
-
-                    self?.clearActiveProcess(
-                        process: completedProcess,
-                        generation: generation,
-                        lane: lane
-                    )
-                    continuation.resume(
-                        returning: BobProcessResult(
-                            generation: generation,
-                            command: command,
-                            exitStatus: completedProcess.terminationStatus,
-                            stdout: stdout,
-                            stderr: stderr
+                    let exitStatus = completedProcess.terminationStatus
+                    drain.notifyComplete(on: completionQueue) { [weak self] stdout, stderr in
+                        timeoutWorkItem.cancel()
+                        guard resumeGuard.markResumed() else { return }
+                        // Already on `stateQueue` (see `notifyComplete` call site),
+                        // so use the already-on-the-queue clear helper to keep the
+                        // no-reentrant `stateQueue.sync` rule.
+                        if let self {
+                            self.clearActiveProcessAlreadyOnStateQueue(
+                                process: completedProcess,
+                                generation: generation,
+                                lane: lane
+                            )
+                        }
+                        unsafeContinuation.resume(
+                            returning: BobProcessResult(
+                                generation: generation,
+                                command: command,
+                                exitStatus: exitStatus,
+                                stdout: stdout,
+                                stderr: stderr
+                            )
                         )
-                    )
+                    }
                 }
 
                 do {
                     try Self.launch(process)
+                    drain.start()
                 } catch {
+                    drain.cancelForLaunchFailure()
                     timeoutWorkItem.cancel()
                     guard resumeGuard.markResumed() else { return }
                     clearActiveProcess(process: process, generation: generation, lane: lane)
@@ -570,6 +587,64 @@ public final class BobProcessClient: @unchecked Sendable {
 private struct ActiveProcess {
     let generation: UInt64
     let process: Process
+}
+
+/// Concurrent stdout/stderr drain for one child process.
+///
+/// A pipe holds at most 64 KiB: a child writing more blocks in `write(2)` until
+/// someone reads. `task_link` responses are hundreds of KiB, so both pipes must
+/// drain on background readers while the child runs — never only after exit.
+private final class ProcessOutputDrain: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stdoutData = Data()
+    private var stderrData = Data()
+    private let group = DispatchGroup()
+    private let stdoutHandle: FileHandle
+    private let stderrHandle: FileHandle
+
+    init(stdout: FileHandle, stderr: FileHandle) {
+        stdoutHandle = stdout
+        stderrHandle = stderr
+        // Enter before launch so an instant exit cannot race ahead of the readers.
+        group.enter()
+        group.enter()
+    }
+
+    func start() {
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            let data = stdoutHandle.readDataToEndOfFile()
+            lock.lock()
+            stdoutData = data
+            lock.unlock()
+            group.leave()
+        }
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            let data = stderrHandle.readDataToEndOfFile()
+            lock.lock()
+            stderrData = data
+            lock.unlock()
+            group.leave()
+        }
+    }
+
+    func cancelForLaunchFailure() {
+        group.leave()
+        group.leave()
+    }
+
+    func notifyComplete(on queue: DispatchQueue, handler: @escaping @Sendable (String, String) -> Void) {
+        group.notify(queue: queue) { [self] in
+            // Buffers are read only here, after both readers reached EOF.
+            lock.lock()
+            let stdout = stdoutData
+            let stderr = stderrData
+            lock.unlock()
+            handler(
+                String(data: stdout, encoding: .utf8) ?? "",
+                String(data: stderr, encoding: .utf8) ?? ""
+            )
+        }
+    }
 }
 
 private final class ResumeGuard: @unchecked Sendable {

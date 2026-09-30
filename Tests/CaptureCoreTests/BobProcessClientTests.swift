@@ -1472,6 +1472,41 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertFalse(result.stdout.isEmpty)
     }
 
+    func testRunDrainsLargeStdoutAndStderrWithoutDeadlock() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_BULK_STDOUT_BYTES": "1048576",
+                "FAKE_BOB_BULK_STDERR_BYTES": "262144",
+            ]
+        )
+
+        let result = try await client.run(arguments: ["capture-targets"], lane: "bulk", timeout: 5)
+
+        XCTAssertEqual(result.exitStatus, 0)
+        XCTAssertEqual(result.stdout.count, 1_048_576)
+        XCTAssertEqual(result.stderr.count, 262_144)
+    }
+
+    func testCaptureCompleteDecodesVaultSizedTaskLinkResponse() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_TASK_LINK_ROWS": "600",
+            ]
+        )
+
+        let response = try await client.captureComplete(":", cursor: 1)
+
+        XCTAssertEqual(response.context, "task_link")
+        XCTAssertEqual(response.candidates.count, 600)
+        XCTAssertEqual(response.replacement, CaptureRange(start: 0, end: 1))
+    }
+
     private func fakeBobPath() throws -> String {
         let source = URL(fileURLWithPath: #filePath)
         let packageRoot = source

@@ -1009,16 +1009,7 @@ private struct TaskIDPromptCard: View {
         }
         let typed = prompt.authoredID.isEmpty ? "…" : prompt.authoredID
         let suffix = followUp == .start ? "=" : ""
-        return Text("Inserts @")
-            .foregroundStyle(.secondary)
-            + Text(route)
-            .foregroundStyle(CaptureEditorPalette.color(for: .route))
-            + Text(":")
-            .foregroundStyle(.secondary)
-            + Text(typed)
-            .foregroundStyle(CaptureEditorPalette.color(for: .blockID))
-            + Text(suffix)
-            .foregroundStyle(.secondary)
+        return Text("\(Text("Inserts @").foregroundStyle(.secondary))\(Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))\(Text(suffix).foregroundStyle(.secondary))")
     }
 
     private func taskSummary(_ prompt: CaptureTaskIDPromptState) -> some View {
@@ -1554,7 +1545,7 @@ private struct CompletionRow: View {
         let matched = String(characters[matchRange.lowerBound..<matchRange.upperBound])
         let suffix = String(characters[matchRange.upperBound...])
 
-        return Text(prefix) + Text(matched).fontWeight(.semibold) + Text(suffix)
+        return Text("\(Text(prefix))\(Text(matched).fontWeight(.semibold))\(Text(suffix))")
     }
 }
 

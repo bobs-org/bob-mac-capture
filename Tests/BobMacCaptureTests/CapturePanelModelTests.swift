@@ -583,6 +583,64 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
     }
 
+    func testColonOpensVaultSizedTaskLinkPickerWithoutDeadlock() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                    "FAKE_BOB_TASK_LINK_ROWS": "600",
+                ]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = ":"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        XCTAssertEqual(model.picker?.source, .taskLink)
+        XCTAssertEqual(model.picker?.candidates.count, 600)
+        XCTAssertEqual(model.pickerPresentation?.totalCount, 600)
+        XCTAssertEqual(model.focusRequest.target, .pickerFilter)
+        XCTAssertTrue(model.editorInputLocked)
+        XCTAssertEqual(model.statusText, "Pick any open task — press Tab to browse")
+        XCTAssertEqual(model.previewState, .idle)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
+    }
+
+    func testColonChipReopensWithoutRefetch() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = ":"
+        model.editorSelectionDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerChipVisible }
+
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertEqual(model.pickerChip?.candidates.count, 8)
+
+        model.openPickerFromChip()
+        await waitUntil { model.pickerVisible }
+
+        XCTAssertEqual(model.picker?.source, .taskLink)
+        XCTAssertEqual(model.picker?.candidates.count, 8)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 1)
+    }
+
     func testCaretFragmentFetchesFullSnapshotAndSeedsFilter() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(

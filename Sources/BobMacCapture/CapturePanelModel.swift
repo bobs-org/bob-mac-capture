@@ -2162,7 +2162,17 @@ final class CapturePanelModel: ObservableObject {
         } else {
             query = Self.pickerQuery(in: draft, range: r, cursor: chip.cursor)
         }
-        if chip.cursor != r.start, let processClient {
+        // `:` includes the sigil in `r`, so a bare `:` chip always has
+        // `cursor == r.start + 1` with no query typed: present from the chip's
+        // candidates instead of refetching the same 246 KB list. Only a query
+        // after `:` refetches at `r.start`.
+        let needsRefetch: Bool
+        if chip.source == .taskLink {
+            needsRefetch = chip.cursor > r.start + 1
+        } else {
+            needsRefetch = chip.cursor != r.start
+        }
+        if needsRefetch, let processClient {
             // The chip came from a caret snapshot; refetch the full list at
             // the token start. A keystroke in the meantime abandons the open.
             Task { [weak self, processClient] in

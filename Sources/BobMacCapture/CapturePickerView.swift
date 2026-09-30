@@ -831,15 +831,16 @@ private struct CapturePickerDetailStrip: View {
     }
 
     private func metadataText(for row: CapturePickerRow) -> Text {
-        var metadata = Text(row.detail.statusText)
         let (label, icon) = noteLabel(for: row.detail.route)
+        var notePart = Text("")
         if !label.isEmpty {
-            metadata = metadata + Text(" · ") + Text(Image(systemName: icon)) + Text(" \(label)")
+            notePart = Text("\(Text(" · "))\(Text(Image(systemName: icon)))\(Text(" \(label)"))")
         }
+        var sectionPart = Text("")
         if let section = row.detail.section, !section.isEmpty {
-            metadata = metadata + Text(" › \(section)")
+            sectionPart = Text(" › \(section)")
         }
-        return metadata + Text(" · \(row.detail.summary)")
+        return Text("\(Text(row.detail.statusText))\(notePart)\(sectionPart)\(Text(" · \(row.detail.summary)"))")
     }
 
     /// Note kind icon plus label from the capture-targets cache, falling back
@@ -904,9 +905,7 @@ private struct CapturePickerDetailStrip: View {
                     .foregroundColor(.secondary)
             }
         }
-        return Text("↩ inserts ") .foregroundColor(.secondary)
-            + Text(row.detail.insertionPrefix).foregroundColor(.primary)
-            + locatorInsertionText(for: row)
+        return Text("\(Text("↩ inserts ").foregroundStyle(.secondary))\(Text(row.detail.insertionPrefix).foregroundStyle(.primary))\(locatorInsertionText(for: row))")
     }
 
     private func pullForwardLine(for row: CapturePickerRow) -> String? {
@@ -925,20 +924,23 @@ private struct CapturePickerDetailStrip: View {
         } else {
             marker = ":"
         }
-        var text = Text("")
+        var routePart = Text("")
         if let route = row.route {
-            text = text + Text(route).foregroundColor(CaptureEditorPalette.color(for: .route))
+            routePart = Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route))
         }
+        var markerPart = Text("")
         if row.blockID != nil {
-            text = text + Text(marker).foregroundColor(.secondary)
+            markerPart = Text(marker).foregroundStyle(.secondary)
         }
+        var blockPart = Text("")
         if let blockID = row.blockID {
-            text = text + Text(blockID).foregroundColor(CaptureEditorPalette.color(for: .blockID))
+            blockPart = Text(blockID).foregroundStyle(CaptureEditorPalette.color(for: .blockID))
         }
+        var idPart = Text("")
         if row.route == nil, row.blockID == nil {
-            text = text + Text(row.id).foregroundColor(.primary)
+            idPart = Text(row.id).foregroundStyle(.primary)
         }
-        return text
+        return Text("\(routePart)\(markerPart)\(blockPart)\(idPart)")
     }
 }
 
