@@ -295,11 +295,12 @@ public enum CapturePickerSource: Equatable, Sendable {
 
 /// Which incomplete picker need a parse reports. Each need carries the calm
 /// status line shown instead of the doomed live dry run. Precedence is
-/// `activeTask`, then `pomodoroID`, then `blockID`.
+/// `activeTask`, then `pomodoroID`, then `blockID`, then `pomodoroStart`.
 public enum CapturePickerNeed: Equatable, Sendable {
     case activeTask
     case pomodoroID
     case blockID
+    case pomodoroStart
 
     public var statusText: String {
         switch self {
@@ -309,6 +310,8 @@ public enum CapturePickerNeed: Equatable, Sendable {
             return "Pick a task or type a new ID — press Tab to browse"
         case .blockID:
             return "Type a new block ID — press Tab for suggestions"
+        case .pomodoroStart:
+            return "Pick a Pomodoro to start, or type a new name"
         }
     }
 }

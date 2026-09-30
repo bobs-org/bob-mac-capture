@@ -276,6 +276,180 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.accessibilityHint, "Inserts this Pomodoro name.")
     }
 
+    func testPomodoroStartNameNextUpRowLeadsWithNextAndSingularLink() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "bugs",
+            taskRef: "7:49ff9cb6",
+            statusSymbol: " ",
+            childCount: 1,
+            name: "BUGS",
+            requiresName: false,
+            line: 7,
+            state: "open",
+            timeRange: nil,
+            placeholder: true,
+            isCurrent: false,
+            matchCount: 1,
+            createsPomodoro: false,
+            nextUp: true
+        )
+
+        let content = completionRowContent(for: candidate, context: "pomodoro_start_name", query: "bu")
+
+        XCTAssertEqual(content.category, .pomodoroStart)
+        XCTAssertEqual(content.symbolName, "play.circle")
+        XCTAssertEqual(content.contextLabel, "Start")
+        XCTAssertEqual(content.primaryText, "BUGS")
+        XCTAssertEqual(content.secondaryText, "Next up")
+        XCTAssertEqual(content.badges, ["Next", "1 link"])
+        XCTAssertEqual(content.primaryMatchRange, 0..<2)
+        XCTAssertEqual(content.accessibilityHint, "Starts this Pomodoro now.")
+    }
+
+    func testPomodoroStartNamePlannedRowUsesPluralLinks() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "deep-work",
+            taskRef: "9:a1781cce",
+            statusSymbol: " ",
+            childCount: 2,
+            name: "DEEP WORK",
+            requiresName: false,
+            line: 9,
+            state: "open",
+            timeRange: nil,
+            placeholder: true,
+            isCurrent: false,
+            matchCount: 1
+        )
+
+        let content = completionRowContent(for: candidate, context: "pomodoro_start_name", query: "")
+
+        XCTAssertEqual(content.category, .pomodoroStart)
+        XCTAssertEqual(content.symbolName, "play.circle")
+        XCTAssertEqual(content.contextLabel, "Start")
+        XCTAssertEqual(content.primaryText, "DEEP WORK")
+        XCTAssertEqual(content.secondaryText, "Planned")
+        XCTAssertEqual(content.badges, ["2 links"])
+        XCTAssertNil(content.primaryMatchRange)
+        XCTAssertEqual(content.accessibilityHint, "Starts this Pomodoro now.")
+    }
+
+    func testPomodoroStartNameNewRowCreatesAndStarts() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "rev",
+            childCount: 0,
+            name: "REV",
+            requiresName: false,
+            state: "open",
+            timeRange: nil,
+            placeholder: true,
+            isCurrent: false,
+            matchCount: 1,
+            createsPomodoro: true
+        )
+
+        let content = completionRowContent(for: candidate, context: "pomodoro_start_name", query: "rev")
+
+        XCTAssertEqual(content.category, .priority)
+        XCTAssertEqual(content.symbolName, "timer.badge.plus")
+        XCTAssertEqual(content.contextLabel, "Start")
+        XCTAssertEqual(content.primaryText, "REV")
+        XCTAssertEqual(content.secondaryText, "New session")
+        XCTAssertEqual(content.badges, ["New"])
+        XCTAssertEqual(content.primaryMatchRange, 0..<3)
+        XCTAssertEqual(
+            content.accessibilityHint,
+            "Creates this Pomodoro and starts it now."
+        )
+    }
+
+    func testPomodoroStartNameAgainRowNamesCompletedSessionWithEnDashRange() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "plan",
+            taskRef: "5:fc7e2072",
+            statusSymbol: "x",
+            childCount: 1,
+            name: "PLAN",
+            requiresName: false,
+            line: 5,
+            state: "completed",
+            timeRange: "0830-0855",
+            placeholder: false,
+            isCurrent: false,
+            matchCount: 1,
+            createsPomodoro: true
+        )
+
+        let content = completionRowContent(for: candidate, context: "pomodoro_start_name", query: "pl")
+
+        XCTAssertEqual(content.category, .pomodoroStart)
+        XCTAssertEqual(content.symbolName, "arrow.clockwise.circle")
+        XCTAssertEqual(content.contextLabel, "Start")
+        XCTAssertEqual(content.primaryText, "PLAN")
+        XCTAssertEqual(content.secondaryText, "Last ran 0830–0855")
+        XCTAssertEqual(content.badges, ["Again"])
+        XCTAssertEqual(content.primaryMatchRange, 0..<2)
+        XCTAssertEqual(content.accessibilityHint, "Starts a new PLAN session now.")
+    }
+
+    func testPomodoroStartNameItRowKeepsPriorityAndNameItBadge() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "",
+            taskRef: "12:5c651ef9",
+            statusSymbol: " ",
+            childCount: 1,
+            name: nil,
+            requiresName: true,
+            line: 12,
+            state: "open",
+            timeRange: nil,
+            placeholder: true,
+            isCurrent: false,
+            matchCount: 1,
+            nextUp: true
+        )
+
+        let content = completionRowContent(for: candidate, context: "pomodoro_start_name", query: "")
+
+        XCTAssertEqual(content.category, .priority)
+        XCTAssertEqual(content.symbolName, "square.and.pencil")
+        XCTAssertEqual(content.contextLabel, "Start")
+        XCTAssertEqual(content.primaryText, "Unnamed Pomodoro")
+        XCTAssertEqual(content.secondaryText, "Next up")
+        XCTAssertEqual(content.badges, ["1 link", "Name it"])
+        XCTAssertEqual(content.accessibilityHint, "Names this Pomodoro, then selects it.")
+    }
+
+    func testPomodoroStartNameRunningRowWarnsToCloseFirst() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "bugs",
+            taskRef: "7:63a70f13",
+            statusSymbol: " ",
+            childCount: 1,
+            name: "BUGS",
+            requiresName: false,
+            line: 7,
+            state: "open",
+            timeRange: "0840-0905",
+            placeholder: false,
+            isCurrent: true,
+            matchCount: 1
+        )
+
+        let content = completionRowContent(for: candidate, context: "pomodoro_start_name", query: "")
+
+        XCTAssertEqual(content.category, .neutral)
+        XCTAssertEqual(content.symbolName, "timer")
+        XCTAssertEqual(content.contextLabel, "Start")
+        XCTAssertEqual(content.primaryText, "BUGS")
+        XCTAssertEqual(content.secondaryText, "Running 0840–0905")
+        XCTAssertEqual(content.badges, ["Running"])
+        XCTAssertEqual(
+            content.accessibilityHint,
+            "Already running. Close it first with =x, or write =x =#name."
+        )
+    }
+
     func testPomodoroBlockIDContextUsesItsOwnLabel() {
         let candidate = CaptureCompletionCandidate(
             replacement: "goog-exit",
@@ -541,12 +715,20 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "unrecognized_future_kind"), .neutral)
     }
 
+    func testNamedStartSpansReadAsTwoTones() {
+        // `=3#bugs` colors the `=<X>` start pink and the name purple, with no
+        // mapping change: the shared palette already resolves both span kinds.
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_start"), .pomodoroStart)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_name"), .section)
+    }
+
     func testCompletionContextParsesAllWireValuesAndRejectsUnknown() {
         XCTAssertEqual(CaptureCompletionContext(rawContext: "route"), .route)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "section"), .section)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "pomodoro_block_id"), .pomodoroBlockID)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "project_task_block_id"), .projectTaskBlockID)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "pomodoro_name"), .pomodoroName)
+        XCTAssertEqual(CaptureCompletionContext(rawContext: "pomodoro_start_name"), .pomodoroStartName)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "task"), .task)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "task_section"), .taskSection)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "active_task"), .activeTask)

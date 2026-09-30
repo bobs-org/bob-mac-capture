@@ -1997,8 +1997,9 @@ final class CapturePanelModel: ObservableObject {
     /// An incomplete picker token is a state, not an error: skip the doomed
     /// live dry run and show a calm status line instead of red errors.
     /// Precedence is `active_task`, then `pomodoro_id`, then `block_id`,
-    /// checked top-level or in any item. Suffix-only states such as
-    /// `@sase:x#` (`pomodoro_name`) keep today's behavior.
+    /// then the `=<X>#` named-start incomplete, checked top-level or in any
+    /// item. Suffix-only states such as `@sase:x#` (`pomodoro_name` without a
+    /// `pomodoro_start` object) keep today's behavior.
     private static func pickerNeed(in parse: CaptureParseResponse) -> CapturePickerNeed? {
         let itemNeeds = parse.items.flatMap { $0.needs }
         func needs(_ need: String) -> Bool {
@@ -2012,6 +2013,20 @@ final class CapturePanelModel: ObservableObject {
         }
         if needs("block_id") {
             return .blockID
+        }
+        // A `=<X>#` draft (or chain token) is `incomplete` with a
+        // `pomodoro_name` need and a partial `pomodoro_start` spec. It keeps
+        // the completion list open while the preview stays calm.
+        let scopes: [(mode: String, needs: [String], hasStart: Bool)] =
+            if parse.items.isEmpty {
+                [(parse.mode, parse.needs, parse.pomodoroStart != nil)]
+            } else {
+                parse.items.map { ($0.mode, $0.needs, $0.pomodoroStart != nil) }
+            }
+        if scopes.contains(where: {
+            $0.mode == "incomplete" && $0.needs.contains("pomodoro_name") && $0.hasStart
+        }) {
+            return .pomodoroStart
         }
         return nil
     }
@@ -2181,6 +2196,28 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
+        // A `pomodoro_start_name` create row either makes a brand-new session
+        // or starts a new session named like a completed one ("again",
+        // `state == "completed"`); both only splice the slug, and the daily
+        // note is not mutated until the later `bob capture` transaction.
+        if completionResponse.context == "pomodoro_start_name", candidate.createsPomodoro {
+            guard applySelectedCompletionReplacement(
+                candidate: candidate,
+                range: range,
+                completionResponse: completionResponse
+            ) else {
+                return
+            }
+            let name = candidate.name.flatMap { $0.isEmpty ? nil : $0 } ?? candidate.replacement
+            if candidate.state == "completed" {
+                announceStatus("Starts a new \(name) session when captured")
+            } else {
+                announceStatus("\(name) will be created and started when captured")
+            }
+            requestFocus(.editor)
+            return
+        }
+
         if completionResponse.context == "pomodoro_name", candidate.createsPomodoro {
             guard applySelectedCompletionReplacement(
                 candidate: candidate,
@@ -2195,7 +2232,13 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
-        if completionResponse.context == "pomodoro_name", candidate.requiresName {
+        // A `pomodoro_start_name` name-it row shares the `pomodoro_name`
+        // prompt flow and the slug splice: naming the placeholder selects it
+        // for the pending named start.
+        if completionResponse.context == "pomodoro_name"
+            || completionResponse.context == "pomodoro_start_name",
+            candidate.requiresName
+        {
             presentPomodoroNamePrompt(
                 candidate: candidate,
                 draftSnapshot: plainDraft,

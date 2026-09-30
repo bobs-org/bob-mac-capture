@@ -2466,6 +2466,10 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let isCurrent: Bool
     public let matchCount: Int?
     public let createsPomodoro: Bool
+    // Additive `next_up` marker on `pomodoro_start_name` rows: true for the
+    // entry a bare `=` would start. Omitted when false, and older Bob never
+    // sends it, so missing decodes as false.
+    public let nextUp: Bool
     // Additive plan-budget preview on `pomodoro_name` create rows: the
     // resulting theme count and cap when the row is accepted. Only on
     // `creates_pomodoro` rows; omitted when the daily note or the plan
@@ -2527,6 +2531,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         isCurrent: Bool = false,
         matchCount: Int? = nil,
         createsPomodoro: Bool = false,
+        nextUp: Bool = false,
         planThemesAfter: Int? = nil,
         planThemesCap: Int? = nil,
         pomodoro: ActiveTaskPomodoro? = nil
@@ -2563,6 +2568,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.isCurrent = isCurrent
         self.matchCount = matchCount
         self.createsPomodoro = createsPomodoro
+        self.nextUp = nextUp
         self.planThemesAfter = planThemesAfter
         self.planThemesCap = planThemesCap
         self.pomodoro = pomodoro
@@ -2602,6 +2608,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         isCurrent = try container.decodeIfPresent(Bool.self, forKey: .isCurrent) ?? false
         matchCount = try container.decodeIfPresent(Int.self, forKey: .matchCount)
         createsPomodoro = try container.decodeIfPresent(Bool.self, forKey: .createsPomodoro) ?? false
+        nextUp = try container.decodeIfPresent(Bool.self, forKey: .nextUp) ?? false
         planThemesAfter = try container.decodeIfPresent(Int.self, forKey: .planThemesAfter)
         planThemesCap = try container.decodeIfPresent(Int.self, forKey: .planThemesCap)
         pomodoro = try container.decodeIfPresent(ActiveTaskPomodoro.self, forKey: .pomodoro)
@@ -2640,6 +2647,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case isCurrent = "is_current"
         case matchCount = "match_count"
         case createsPomodoro = "creates_pomodoro"
+        case nextUp = "next_up"
         case planThemesAfter = "plan_themes_after"
         case planThemesCap = "plan_themes_cap"
         case pomodoro

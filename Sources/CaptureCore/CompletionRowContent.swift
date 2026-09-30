@@ -98,6 +98,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case taskBlockID
     case projectTaskBlockID
     case pomodoroName
+    case pomodoroStartName
     case task
     case taskSection
     case activeTask
@@ -113,6 +114,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "task_block_id": self = .taskBlockID
         case "project_task_block_id": self = .projectTaskBlockID
         case "pomodoro_name": self = .pomodoroName
+        case "pomodoro_start_name": self = .pomodoroStartName
         case "task": self = .task
         case "task_section": self = .taskSection
         case "active_task": self = .activeTask
@@ -302,6 +304,64 @@ public func completionRowContent(
                 : "Inserts this Pomodoro name."
         }
 
+    case .pomodoroStartName:
+        // Rows for the name part of a whole-item `=<X>#name` named start.
+        // Bob orders them start, new, again, name-it, running; the kind is
+        // read off the existing candidate fields, exactly as the contract
+        // table documents. `.pomodoroName` rows are untouched.
+        contextLabel = "Start"
+        if candidate.requiresName {
+            category = .priority
+            symbolName = "square.and.pencil"
+            if let timeRange = candidate.timeRange, !timeRange.isEmpty {
+                primaryText = timeRange
+            } else {
+                primaryText = "Unnamed Pomodoro"
+            }
+            secondaryText = candidate.nextUp ? "Next up" : "Planned"
+            badges = [startNameLinkBadge(childCount: candidate.childCount), "Name it"]
+            accessibilityHint = "Names this Pomodoro, then selects it."
+        } else if candidate.createsPomodoro, candidate.state == "completed" {
+            category = .pomodoroStart
+            symbolName = "arrow.clockwise.circle"
+            primaryText = startNameDisplayName(for: candidate)
+            if let timeRange = candidate.timeRange, !timeRange.isEmpty {
+                secondaryText = "Last ran \(enDashRange(timeRange))"
+            } else {
+                secondaryText = "Completed"
+            }
+            badges = ["Again"]
+            let name = candidate.name.flatMap { $0.isEmpty ? nil : $0 } ?? candidate.replacement
+            accessibilityHint = "Starts a new \(name) session now."
+        } else if candidate.createsPomodoro {
+            category = .priority
+            symbolName = "timer.badge.plus"
+            primaryText = startNameDisplayName(for: candidate)
+            secondaryText = "New session"
+            badges = ["New"]
+            accessibilityHint = "Creates this Pomodoro and starts it now."
+        } else if let timeRange = candidate.timeRange, !timeRange.isEmpty {
+            category = .neutral
+            symbolName = "timer"
+            primaryText = startNameDisplayName(for: candidate)
+            secondaryText = "Running \(enDashRange(timeRange))"
+            badges = ["Running"]
+            accessibilityHint = "Already running. Close it first with =x, or write =x =#name."
+        } else {
+            category = .pomodoroStart
+            symbolName = "play.circle"
+            primaryText = startNameDisplayName(for: candidate)
+            secondaryText = candidate.nextUp ? "Next up" : "Planned"
+            if candidate.nextUp {
+                badges.append("Next")
+            }
+            badges.append(startNameLinkBadge(childCount: candidate.childCount))
+            if let matchCount = candidate.matchCount, matchCount > 1 {
+                badges.append("\(matchCount) matches")
+            }
+            accessibilityHint = "Starts this Pomodoro now."
+        }
+
     case .activeTask:
         // In Progress tasks are already being worked; Next tasks are queued but
         // untouched. The glyph and the palette tint both say which, so the row
@@ -387,6 +447,32 @@ public func completionRowContent(
         accessibilityLabel: accessibilityLabel,
         accessibilityHint: accessibilityHint
     )
+}
+
+/// The queued-link badge for a `pomodoro_start_name` start or name-it row.
+/// Unlike the `pomodoro_name` context, the singular "1 link" is used here.
+private func startNameLinkBadge(childCount: Int?) -> String {
+    let count = childCount ?? 0
+    if count == 0 {
+        return "Empty"
+    }
+    return count == 1 ? "1 link" : "\(count) links"
+}
+
+/// The display name for a `pomodoro_start_name` start, new, again, or running
+/// row: Bob's canonical name, falling back to the typed slug.
+private func startNameDisplayName(for candidate: CaptureCompletionCandidate) -> String {
+    if let name = candidate.name, !name.isEmpty {
+        return name
+    }
+    return candidate.replacement
+}
+
+/// Renders a `HHMM-HHMM` range with an en dash, matching the app's session
+/// typography for the "Last ran", "Running", and "New session" lines. Shared
+/// with the start card, which renders the created-session body the same way.
+func enDashRange(_ timeRange: String) -> String {
+    timeRange.replacingOccurrences(of: "-", with: "\u{2013}")
 }
 
 /// The single Pomodoro badge for an active-task row: the current entry shows when

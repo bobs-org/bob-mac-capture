@@ -240,6 +240,9 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
             "pomodoro-start-timed.json",
             "pomodoro-start-empty.json",
             "pomodoro-start-switch.json",
+            "pomodoro-start-named-existing.json",
+            "pomodoro-start-named-created.json",
+            "pomodoro-start-named-again.json",
         ] {
             let success = try decodeFixture(name)
             XCTAssertNotNil(
@@ -251,6 +254,7 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         for name in [
             "pomodoro-start-running.json",
             "pomodoro-start-none.json",
+            "pomodoro-start-named-still-running.json",
         ] {
             let raw = try fixtureText(name)
             let response = try JSONDecoder().decode(
@@ -274,6 +278,121 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
             )
             XCTAssertEqual(response.mode, "pomodoro_start", name)
         }
+        for name in [
+            "pomodoro-start-named-parse.json",
+            "pomodoro-start-named-parse-query.json",
+            "pomodoro-start-named-parse-existing.json",
+            "pomodoro-start-named-parse-created.json",
+            "pomodoro-start-named-parse-again.json",
+        ] {
+            let response = try JSONDecoder().decode(
+                CaptureParseResponse.self,
+                from: Data(fixtureText(name).utf8)
+            )
+            XCTAssertEqual(response.mode, "pomodoro_start", name)
+        }
+        for name in [
+            "pomodoro-start-named-parse-chain.json",
+            "pomodoro-start-named-parse-chain-query.json",
+        ] {
+            let response = try JSONDecoder().decode(
+                CaptureParseResponse.self,
+                from: Data(fixtureText(name).utf8)
+            )
+            XCTAssertEqual(response.items.last?.mode, "pomodoro_start", name)
+        }
+        for name in [
+            "pomodoro-start-named-parse-incomplete.json",
+            "pomodoro-start-named-parse-counted.json",
+        ] {
+            let response = try JSONDecoder().decode(
+                CaptureParseResponse.self,
+                from: Data(fixtureText(name).utf8)
+            )
+            XCTAssertEqual(response.mode, "incomplete", name)
+            XCTAssertEqual(response.needs, ["pomodoro_name"], name)
+            XCTAssertNotNil(response.pomodoroStart, name)
+        }
+        do {
+            let response = try JSONDecoder().decode(
+                CaptureParseResponse.self,
+                from: Data(fixtureText("pomodoro-start-named-parse-near-miss.json").utf8)
+            )
+            XCTAssertEqual(response.mode, "pomodoro_start")
+            XCTAssertEqual(response.diagnostics.first?.code, "invalid_pomodoro_start")
+        }
+    }
+
+    func testNamedIncompleteFixtureParsesNameSpans() throws {
+        let response = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-start-named-parse.json").utf8)
+        )
+        XCTAssertEqual(response.body, "=3#bugs")
+        XCTAssertEqual(response.section, "bugs")
+        XCTAssertEqual(response.spans.map(\.kind), ["pomodoro_start", "pomodoro_name"])
+    }
+
+    func testCreatedDryRunShowsNewBadgeAndNewSessionBody() throws {
+        let presentation = try XCTUnwrap(
+            CapturePomodoroStartPresentation(capture: decodeFixture("pomodoro-start-named-created.json"))
+        )
+
+        XCTAssertTrue(presentation.createdPomodoro)
+        XCTAssertEqual(presentation.createdBadgeText, "New")
+        XCTAssertEqual(presentation.notificationBody, "0905–0930 (25m) · New session")
+        XCTAssertTrue(presentation.accessibilitySummary.contains("new session"))
+        XCTAssertNil(presentation.teachingHint)
+    }
+
+    func testCreatedCommitShowsCreatedBadge() throws {
+        let summary = try XCTUnwrap(decodeFixture("pomodoro-start-named-created.json").pomodoroStart)
+        let committed = CapturePomodoroStartPresentation(
+            summary: summary,
+            dryRun: false,
+            relativeTarget: "2026/20260710.md",
+            captureText: "=#review"
+        )
+        XCTAssertEqual(committed.createdBadgeText, "Created")
+        XCTAssertEqual(committed.notificationBody, "0905–0930 (25m) · New session")
+        XCTAssertTrue(committed.accessibilitySummary.contains("new session"))
+        XCTAssertNil(committed.teachingHint)
+    }
+
+    func testExistingNamedStartShowsNoBadgeAndNoHint() throws {
+        let presentation = try XCTUnwrap(
+            CapturePomodoroStartPresentation(capture: decodeFixture("pomodoro-start-named-existing.json"))
+        )
+
+        XCTAssertFalse(presentation.createdPomodoro)
+        XCTAssertNil(presentation.createdBadgeText)
+        XCTAssertNil(presentation.teachingHint)
+        XCTAssertEqual(presentation.notificationBody, "0905-0930 (25m) · 2 queued tasks")
+        XCTAssertFalse(presentation.accessibilitySummary.contains("new session"))
+    }
+
+    func testBareStartTeachesHashNameAndJoinsAccessibilitySummary() throws {
+        let presentation = try XCTUnwrap(
+            CapturePomodoroStartPresentation(capture: decodeFixture("pomodoro-start-next.json"))
+        )
+
+        XCTAssertEqual(presentation.teachingHint, "Type #name to start a specific Pomodoro")
+        XCTAssertTrue(
+            presentation.accessibilitySummary.contains("Type #name to start a specific Pomodoro")
+        )
+    }
+
+    func testStillRunningFixtureTeachesOneLineSwitch() throws {
+        let raw = try fixtureText("pomodoro-start-named-still-running.json")
+        let response = try JSONDecoder().decode(
+            CaptureCommandResponse.self,
+            from: Data(raw.utf8)
+        )
+        guard case .failure(let failure) = response else {
+            return XCTFail("expected failed Bob response")
+        }
+        XCTAssertTrue(failure.error.contains("is still running"), failure.error)
+        XCTAssertTrue(failure.error.contains("=x =#deep-work"), failure.error)
     }
 
     private func sessionStartJSON(dryRun: Bool, name: String?, tasks: String) -> String {

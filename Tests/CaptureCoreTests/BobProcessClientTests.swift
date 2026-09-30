@@ -868,6 +868,92 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(nearMiss.diagnostics.first?.code, "invalid_pomodoro_start")
     }
 
+    func testCaptureCompleteStartNameContextDecodesRowsAndNextUp() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.captureComplete("=#", cursor: 2)
+
+        XCTAssertEqual(response.context, "pomodoro_start_name")
+        XCTAssertEqual(response.replacement, CaptureRange(start: 2, end: 2))
+        XCTAssertEqual(response.candidates.count, 4)
+        let start = response.candidates[0]
+        XCTAssertEqual(start.replacement, "bugs")
+        XCTAssertEqual(start.name, "BUGS")
+        XCTAssertFalse(start.requiresName)
+        XCTAssertFalse(start.createsPomodoro)
+        XCTAssertTrue(start.nextUp)
+        XCTAssertEqual(start.childCount, 1)
+        let again = response.candidates[2]
+        XCTAssertEqual(again.replacement, "plan")
+        XCTAssertTrue(again.createsPomodoro)
+        XCTAssertEqual(again.state, "completed")
+        XCTAssertEqual(again.timeRange, "0830-0855")
+        XCTAssertFalse(again.nextUp)
+        let nameIt = response.candidates[3]
+        XCTAssertTrue(nameIt.requiresName)
+        XCTAssertEqual(nameIt.replacement, "")
+        XCTAssertFalse(nameIt.nextUp)
+    }
+
+    func testCaptureCompleteStartNameRunningVariantTrailsRunningRow() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_POMODORO_RUNNING": "1",
+            ]
+        )
+
+        let response = try await client.captureComplete("=#", cursor: 2)
+
+        XCTAssertEqual(response.context, "pomodoro_start_name")
+        XCTAssertEqual(response.candidates.count, 4)
+        XCTAssertEqual(response.candidates[0].replacement, "deep-work")
+        XCTAssertTrue(response.candidates[0].nextUp)
+        let running = response.candidates[3]
+        XCTAssertEqual(running.replacement, "bugs")
+        XCTAssertFalse(running.requiresName)
+        XCTAssertFalse(running.createsPomodoro)
+        XCTAssertEqual(running.timeRange, "0840-0905")
+        XCTAssertFalse(running.nextUp)
+    }
+
+    func testCaptureCompleteStartNameChainDraftScopesToToken() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.captureComplete("=x =#de", cursor: 6)
+
+        XCTAssertEqual(response.context, "pomodoro_start_name")
+        XCTAssertEqual(response.replacement, CaptureRange(start: 5, end: 7))
+        XCTAssertEqual(response.candidates.first?.replacement, "deep-work")
+    }
+
+    func testNamedStartStillRunningFailureTeachesOneLineSwitch() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_POMODORO_RUNNING": "1",
+            ]
+        )
+
+        let response = try await client.captureLivePreview("=#deep-work", priorityRollSeed: "fixed")
+
+        guard case .failure(let failure) = response else {
+            return XCTFail("Expected a failed live preview response")
+        }
+        XCTAssertTrue(failure.error.contains("is still running"))
+        XCTAssertTrue(failure.error.contains("=x =#deep-work"))
+    }
+
     func testCaptureCompleteOffersNoCandidatesForStart() async throws {
         let client = BobProcessClient(
             executablePath: try fakeBobPath(),

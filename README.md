@@ -66,6 +66,12 @@ mutation.
   plus whole-item `=`/`=<X>` session starts (`pomodoro_start` parse/capture
   JSON and the `pomodoro_start` span, where `<X>` mirrors the `se<X>` snippet
   and the capture summary carries the session's queued Task Links),
+  plus whole-item `=<X>#name` named starts (the `pomodoro_name` span over the
+  name bytes, the `pomodoro_start_name` completion context with the additive
+  `next_up` row marker, the `=#` incomplete state with its
+  `interactive_placeholder` span, `=x#name` close near-miss diagnostics, and
+  the additive `created_pomodoro` capture summary for new and "again"
+  sessions),
   plus Pomodoro close `=x` and its additive `pomodoro_close` capture summary,
   plus the project-note `@route^block-id+#pomodoro` marker (the retired
   `@route:block-id+` spelling is a parse diagnostic), the trailing ` :id` /
@@ -420,6 +426,25 @@ or expired certificate can require reauthorizing those system permissions.
   confirmed Bob success splices the returned canonical `slug` into the saved replacement
   range, restores the caret after it, and reruns analysis. Cancel and every error keep
   the draft unchanged. The create-future row never calls `capture-pomodoro-name`.
+- In the `pomodoro_start_name` context — the name part of a whole-item
+  `=<X>#name` named start, per token inside chains — the inline list is Bob's
+  start-aware **Start** list: today's planned placeholders first (the entry a
+  bare `=` would start carries `Next up` and a `Next` badge), then a **New
+  session** create row for a missing name, then **Again** rows that start a
+  new session named like a completed one (`Last ran 0830–0855`), then
+  **Name it** rows for unnamed placeholders (which open the same **Name
+  Pomodoro** prompt as `pomodoro_name`), and finally the already-running entry
+  (`Running 0840–0905`), which can never be the default. Accepting a new row
+  announces `NAME will be created and started when captured`; accepting an
+  again row announces `Starts a new NAME session when captured`; both only
+  splice the slug and the daily note is not mutated until the later `bob
+  capture` transaction. Typing `=#` opens the list immediately and shows the
+  calm `Pick a Pomodoro to start, or type a new name` status instead of a
+  doomed dry run; a caret on the `=<X>` suffix itself requests nothing. The
+  list narrows as you type while the live preview already shows the resolved
+  session, and Return starts it. An older Bob that reports no
+  `pomodoro_start_name` context offers no rows there; the panel simply shows
+  no completion until Bob is upgraded.
 - Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through
   a dedicated process-client API that asserts `--no-clip`. `%` markers stay literal in
   continuous preview; clipboard-resolving preview is a separate explicit action.
@@ -517,7 +542,14 @@ or expired certificate can require reauthorizing those system permissions.
   `circle.inset.filled` Next, `circle.lefthalf.filled` In Progress,
   `questionmark.circle` other, `exclamationmark.triangle` unresolved with the
   warning as help text), task text with a truncating `note ^id` locator, then a
-  `+N more` row or the `Nothing queued` empty state. The footer's primary action
+  `+N more` row or the `Nothing queued` empty state. A created session shows a
+  small pink **New** capsule next to the title on a dry run (**Created** once
+  committed, and the notification reads `Started NAME` with `0905–0930 (25m)
+  · New session`); a bare `=`/`=<X>` start instead shows the quiet caption
+  `Type #name to start a specific Pomodoro` under the destination, with
+  `#name` tinted like the editor's name span. Named starts show no hint, and
+  a still-running error keeps the red error block with Bob's one-line-switch
+  message unchanged. The footer's primary action
   becomes **Start**, the live-preview, preview, and submit status read
   `Would start …` / `Started …` with the session and line, and the notification
   reads `Started NAME` with the session and queued-task count. One item stays compact; a batch renders an ordered stack with item count,

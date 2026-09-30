@@ -82,8 +82,17 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
     /// `"Started CAPTURE"`, the single-capture notification title.
     public let notificationTitle: String
     /// `"0940-1005 (25m) · 2 queued tasks"` (`"1 queued task"` for one,
-    /// `"Nothing queued"` for none).
+    /// `"Nothing queued"` for none). A created session instead reads
+    /// `"0940–1005 (25m) · New session"`.
     public let notificationBody: String
+    /// `"New"` on a dry run that creates the session, `"Created"` once
+    /// committed, nil for starts of an existing entry. Rendered as a small
+    /// pink capsule next to the card title.
+    public let createdBadgeText: String?
+    /// `"Type #name to start a specific Pomodoro"` for a bare `=`/`=<X>`
+    /// start, nil for a named `=<X>#name` start. Rendered as a quiet caption
+    /// in the close card's teaching-hint style.
+    public let teachingHint: String?
     /// `" (started CAPTURE 0940-1005)"`, appended to batch lines for starts.
     public let batchSuffix: String
     public let primaryActionTitle: String
@@ -92,10 +101,20 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         guard let summary = capture.pomodoroStart else {
             return nil
         }
-        self.init(summary: summary, dryRun: capture.dryRun, relativeTarget: capture.relativeTarget)
+        self.init(
+            summary: summary,
+            dryRun: capture.dryRun,
+            relativeTarget: capture.relativeTarget,
+            captureText: capture.text
+        )
     }
 
-    public init(summary: PomodoroStartSummary, dryRun: Bool, relativeTarget: String = "") {
+    public init(
+        summary: PomodoroStartSummary,
+        dryRun: Bool,
+        relativeTarget: String = "",
+        captureText: String = ""
+    ) {
         isDryRun = dryRun
         pomodoroName = summary.pomodoroName ?? "next session"
         start = summary.start
@@ -114,6 +133,12 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         sessionText = "\(start)-\(end) (\(durationMinutes)m)"
         destinationText = "\(relativeTarget) · line \(pomodoroLine)"
 
+        // The start card only renders for whole-item starts, whose capture
+        // text is the token itself: no `#` means a bare `=`/`=<X>` start.
+        createdBadgeText = summary.createdPomodoro ? (dryRun ? "New" : "Created") : nil
+        teachingHint = captureText.contains("#")
+            ? nil : "Type #name to start a specific Pomodoro"
+
         taskRows = (summary.tasks ?? []).map(Self.taskRow(for:))
         visibleTaskRows = Array(taskRows.prefix(Self.maxVisibleTaskRows))
         overflowTaskCount = max(0, taskRows.count - Self.maxVisibleTaskRows)
@@ -122,16 +147,24 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         let createdPhrase = summary.createdPomodoro ? ", created new entry" : ", uses existing entry"
         var spoken =
             "Starts \(pomodoroName), \(start) to \(end), \(durationMinutes) minutes, line \(pomodoroLine)\(createdPhrase)"
+        if summary.createdPomodoro {
+            spoken += ", new session"
+        }
         if let tasks = summary.tasks {
             spoken += tasks.isEmpty
                 ? ", nothing queued"
                 : ", \(tasks.count) queued task\(tasks.count == 1 ? "" : "s")"
         }
+        if let teachingHint {
+            spoken += ". \(teachingHint)"
+        }
         accessibilitySummary = spoken
         notificationDetail = statusText
 
         notificationTitle = "Started \(pomodoroName)"
-        if let tasks = summary.tasks, !tasks.isEmpty {
+        if summary.createdPomodoro {
+            notificationBody = "\(enDashRange(sessionText)) · New session"
+        } else if let tasks = summary.tasks, !tasks.isEmpty {
             notificationBody =
                 "\(sessionText) · \(tasks.count) queued task\(tasks.count == 1 ? "" : "s")"
         } else {

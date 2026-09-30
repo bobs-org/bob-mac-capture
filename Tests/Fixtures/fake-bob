@@ -90,6 +90,28 @@ case "${command}" in
       cat "${fixtures_dir}/pomodoro-start-parse-counted.json"
     elif [[ "${draft}" == "=3 more" ]]; then
       cat "${fixtures_dir}/pomodoro-start-parse-near-miss.json"
+    elif [[ "${draft}" == "=#" ]]; then
+      # Named-start incomplete: calm picker state with a `pomodoro_start`
+      # spec (real `bob capture-parse` output).
+      cat "${fixtures_dir}/pomodoro-start-named-parse-incomplete.json"
+    elif [[ "${draft}" == "=3#" ]]; then
+      cat "${fixtures_dir}/pomodoro-start-named-parse-counted.json"
+    elif [[ "${draft}" == "=#de" ]]; then
+      cat "${fixtures_dir}/pomodoro-start-named-parse-query.json"
+    elif [[ "${draft}" == "=3#bugs" ]]; then
+      cat "${fixtures_dir}/pomodoro-start-named-parse.json"
+    elif [[ "${draft}" == "=#deep-work" ]]; then
+      cat "${fixtures_dir}/pomodoro-start-named-parse-existing.json"
+    elif [[ "${draft}" == "=#review" ]]; then
+      cat "${fixtures_dir}/pomodoro-start-named-parse-created.json"
+    elif [[ "${draft}" == "=#plan" ]]; then
+      cat "${fixtures_dir}/pomodoro-start-named-parse-again.json"
+    elif [[ "${draft}" == "=#deep work" ]]; then
+      cat "${fixtures_dir}/pomodoro-start-named-parse-near-miss.json"
+    elif [[ "${draft}" == "=x =#bugs" ]]; then
+      cat "${fixtures_dir}/pomodoro-start-named-parse-chain.json"
+    elif [[ "${draft}" == "=x =#de" ]]; then
+      cat "${fixtures_dir}/pomodoro-start-named-parse-chain-query.json"
     elif [[ "${draft}" == "^bob:ready=x" ]]; then
       cat "${fixtures_dir}/pomodoro-close-parse-link.json"
     elif [[ "${draft}" == *"[[AI"* ]]; then
@@ -2683,6 +2705,30 @@ JSON
   }
 }
 JSON
+    elif [[ "${draft}" == "=#" ]]; then
+      # Named-start rows for the worked-example ledger (real
+      # `bob capture-complete` output; only the cursor varies).
+      # `FAKE_BOB_POMODORO_RUNNING=1` serves the running-ledger variant,
+      # where DEEP WORK leads with `next_up` and BUGS trails as running.
+      if [[ "${FAKE_BOB_POMODORO_RUNNING:-0}" == "1" ]]; then
+        sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-running.json"
+      else
+        sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete.json"
+      fi
+    elif [[ "${draft}" == "=3#" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-counted.json"
+    elif [[ "${draft}" == "=#rev" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-new.json"
+    elif [[ "${draft}" == "=#de" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-query.json"
+    elif [[ "${draft}" == "=x =#de" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-chain-query.json"
+    elif [[ "${draft}" == "=#deep-work" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-existing.json"
+    elif [[ "${draft}" == "=#review" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-created.json"
+    elif [[ "${draft}" == "=#plan" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-again.json"
     elif [[ "${draft}" == $'Finish it @cash^goog-exit+\n- Draft the memo :' ]]; then
       cat <<JSON
 {
@@ -3914,6 +3960,19 @@ JSON
       # Strict-mode refusal: exit 1 with `code plan_theme_cap_exceeded`.
       cat "${fixtures_dir}/plan-budget-strict-refusal.json"
       exit 1
+    elif [[ "${draft}" == "=#deep-work" ]]; then
+      # Named starts on the worked-example ledger (real
+      # `bob capture --dry-run` output; only the dry-run flag varies).
+      # `FAKE_BOB_POMODORO_RUNNING=1` serves the running-ledger R4 failure.
+      if [[ "${FAKE_BOB_POMODORO_RUNNING:-0}" == "1" ]]; then
+        cat "${fixtures_dir}/pomodoro-start-named-still-running.json"
+        exit 1
+      fi
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-named-existing.json"
+    elif [[ "${draft}" == "=#review" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-named-created.json"
+    elif [[ "${draft}" == "=#plan" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-named-again.json"
     else
       cat <<JSON
 {

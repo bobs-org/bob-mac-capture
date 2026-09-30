@@ -2042,6 +2042,18 @@ struct PreviewPane: View {
                     .accessibilityHidden(true)
                 Text(start.title)
                     .fontWeight(.semibold)
+                // A created session carries a small pink New/Created capsule
+                // next to the title so the fresh entry reads at a glance.
+                if let badge = start.createdBadgeText {
+                    Text(badge)
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.pink)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(.pink.opacity(0.15), in: Capsule())
+                        .accessibilityHidden(true)
+                }
                 Spacer(minLength: 4)
                 Text(start.sessionText)
                     .font(.system(.callout, design: .monospaced))
@@ -2054,6 +2066,21 @@ struct PreviewPane: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .textSelection(.enabled)
+            }
+
+            // A bare `=`/`=<X>` start teaches `#name` under the destination,
+            // in the close card's teaching-hint style: the example token
+            // shares the editor `pomodoro_name` span color, prose stays
+            // secondary. Named starts show no hint.
+            if let hint = start.teachingHint {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "number.circle")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(startTeachingHintText(hint))
+                        .font(.caption)
+                        .textSelection(.enabled)
+                }
             }
 
             if start.taskRows.isEmpty {
@@ -2105,6 +2132,23 @@ struct PreviewPane: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(start.accessibilitySummary)
+    }
+
+    /// Tints the `#name` example in the start-card teaching hint like the
+    /// editor's `pomodoro_name` span; prose stays secondary, matching the
+    /// close card's hint rendering.
+    private func startTeachingHintText(_ hint: String) -> AttributedString {
+        let marker = "#name"
+        guard let range = hint.range(of: marker) else {
+            return AttributedString(hint)
+        }
+        var leading = AttributedString(String(hint[..<range.lowerBound]))
+        leading.foregroundColor = .secondary
+        var token = AttributedString(String(hint[range]))
+        token.foregroundColor = CaptureEditorPalette.color(for: .section)
+        var trailing = AttributedString(String(hint[range.upperBound...]))
+        trailing.foregroundColor = .secondary
+        return leading + token + trailing
     }
 
     @ViewBuilder

@@ -1851,6 +1851,322 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.primaryActionTitle, "Capture")
     }
 
+    func testNamedStartIncompleteDraftRequestsStartNameCompletion() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        model.plainDraft = "=#"
+        model.editorTextDidChange(cursorUTF8Offset: 2)
+        await waitUntil { model.completionResponse?.context == "pomodoro_start_name" }
+
+        XCTAssertTrue(model.completionVisible)
+        XCTAssertEqual(model.completionResponse?.candidates.count, 4)
+        XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "bugs")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 2 --format json -- =#"))
+    }
+
+    func testNamedStartCountedIncompleteRequestsStartNameCompletion() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "=3#"
+        model.editorTextDidChange(cursorUTF8Offset: 3)
+        await waitUntil { model.completionResponse?.context == "pomodoro_start_name" }
+
+        XCTAssertTrue(model.completionVisible)
+    }
+
+    func testNamedStartQueryRequestsStartNameCompletion() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "=#de"
+        model.editorTextDidChange(cursorUTF8Offset: 4)
+        await waitUntil { model.completionResponse?.context == "pomodoro_start_name" }
+
+        XCTAssertTrue(model.completionVisible)
+        XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "deep-work")
+    }
+
+    func testNamedStartChainTokenRequestsStartNameCompletion() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        model.plainDraft = "=x =#de"
+        model.editorTextDidChange(cursorUTF8Offset: 6)
+        await waitUntil { model.completionResponse?.context == "pomodoro_start_name" }
+
+        XCTAssertTrue(model.completionVisible)
+        XCTAssertEqual(
+            model.completionResponse?.replacement,
+            CaptureRange(start: 5, end: 7)
+        )
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 6 --format json -- =x =#de"))
+    }
+
+    func testStartSuffixCaretRequestsNoCompletion() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        // A caret on the `=<X>` suffix offers no name completion: Bob is never
+        // even asked. The dry run still runs (and fails on the running ledger).
+        model.plainDraft = "=3"
+        model.editorTextDidChange(cursorUTF8Offset: 2)
+        await waitUntil {
+            if case .failed = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertNil(model.completionResponse)
+        XCTAssertFalse(model.completionVisible)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertFalse(record.contains("argv=capture-complete"))
+    }
+
+    func testNamedStartIncompleteShowsCalmStatusWithoutDryRun() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        model.plainDraft = "=#"
+        model.editorTextDidChange(cursorUTF8Offset: 2)
+        await waitUntil { model.completionResponse?.context == "pomodoro_start_name" }
+
+        // An incomplete `=#` is a state, not an error: no doomed dry run, no
+        // red error, just the calm status line — with the list kept open.
+        XCTAssertEqual(model.previewState, .idle)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertNil(model.previewResult)
+        XCTAssertTrue(model.previewResults.isEmpty)
+        XCTAssertEqual(model.statusText, "Pick a Pomodoro to start, or type a new name")
+        XCTAssertTrue(model.completionVisible)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertFalse(record.contains("argv=capture --dry-run"))
+    }
+
+    func testNamedStartRunningVariantLeadsWithNextUpAndTrailsRunning() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_POMODORO_RUNNING": "1",
+            ]
+        )
+        model.plainDraft = "=#"
+        model.editorTextDidChange(cursorUTF8Offset: 2)
+        await waitUntil { model.completionResponse?.context == "pomodoro_start_name" }
+
+        XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "deep-work")
+        XCTAssertEqual(model.completionResponse?.candidates.last?.replacement, "bugs")
+        XCTAssertEqual(model.statusText, "Pick a Pomodoro to start, or type a new name")
+        XCTAssertTrue(model.completionVisible)
+    }
+
+    func testNamedStartLivePreviewShowsStartCardWithStartFooter() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "=#deep-work"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.sessionStartPresentation?.title, "Start DEEP WORK")
+        XCTAssertNil(model.sessionStartPresentation?.createdBadgeText)
+        XCTAssertNil(model.sessionStartPresentation?.teachingHint)
+        XCTAssertEqual(model.primaryActionTitle, "Start")
+        XCTAssertEqual(
+            model.statusText,
+            "Would start DEEP WORK 0905-0930 (25m) at line 7"
+        )
+    }
+
+    func testNamedCreatedLivePreviewShowsNewBadge() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "=#review"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.sessionStartPresentation?.title, "Start REVIEW")
+        XCTAssertEqual(model.sessionStartPresentation?.createdBadgeText, "New")
+        XCTAssertNil(model.sessionStartPresentation?.teachingHint)
+        XCTAssertTrue(model.statusText.contains("(created)"))
+        XCTAssertEqual(model.primaryActionTitle, "Start")
+    }
+
+    func testNamedStartStillRunningKeepsRedErrorBlock() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_POMODORO_RUNNING": "1",
+            ]
+        )
+        let draft = "=#deep-work"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .failed = model.previewState { return true }
+            return false
+        }
+
+        // Error previews keep the existing red error block: no card, and
+        // Bob's message already teaches the one-line switch.
+        XCTAssertNil(model.sessionStartPresentation)
+        XCTAssertEqual(model.statusText, "Preview failed")
+        XCTAssertTrue(model.errorMessage?.contains("is still running") ?? false)
+        XCTAssertTrue(model.errorMessage?.contains("=x =#deep-work") ?? false)
+    }
+
+    func testAcceptingStartNameNewRowAnnouncesCreationAndStart() {
+        let model = CapturePanelModel()
+        installStartNameCompletion(
+            on: model,
+            draft: "=#rev",
+            replacementStart: 2,
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "rev",
+                    childCount: 0,
+                    name: "REV",
+                    requiresName: false,
+                    state: "open",
+                    placeholder: true,
+                    createsPomodoro: true
+                ),
+            ]
+        )
+
+        model.acceptSelectedCompletion()
+
+        XCTAssertEqual(model.plainDraft, "=#rev")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 5)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertNil(model.pomodoroNamePrompt)
+        XCTAssertEqual(model.statusText, "REV will be created and started when captured")
+    }
+
+    func testAcceptingStartNameAgainRowAnnouncesNewSession() {
+        let model = CapturePanelModel()
+        installStartNameCompletion(
+            on: model,
+            draft: "=#pl",
+            replacementStart: 2,
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "plan",
+                    taskRef: "5:fc7e2072",
+                    statusSymbol: "x",
+                    childCount: 1,
+                    name: "PLAN",
+                    requiresName: false,
+                    line: 5,
+                    state: "completed",
+                    timeRange: "0830-0855",
+                    placeholder: false,
+                    createsPomodoro: true
+                ),
+            ]
+        )
+
+        model.acceptSelectedCompletion()
+
+        XCTAssertEqual(model.plainDraft, "=#plan")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 6)
+        XCTAssertNil(model.completionResponse)
+        XCTAssertNil(model.pomodoroNamePrompt)
+        XCTAssertEqual(model.statusText, "Starts a new PLAN session when captured")
+    }
+
+    func testAcceptingStartNameItRowOpensNamePromptWithoutChangingDraft() {
+        let model = CapturePanelModel()
+        installStartNameCompletion(
+            on: model,
+            draft: "=#",
+            replacementStart: 2,
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "",
+                    taskRef: "12:5c651ef9",
+                    statusSymbol: " ",
+                    childCount: 1,
+                    name: nil,
+                    requiresName: true,
+                    line: 12,
+                    state: "open",
+                    timeRange: nil,
+                    placeholder: true,
+                    isCurrent: false,
+                    matchCount: 1
+                ),
+            ]
+        )
+        let initialFocusSequence = model.focusRequest.sequence
+
+        model.acceptSelectedCompletion()
+
+        XCTAssertEqual(model.plainDraft, "=#")
+        XCTAssertFalse(model.completionVisible)
+        XCTAssertEqual(model.pomodoroNamePrompt?.candidate.taskRef, "12:5c651ef9")
+        XCTAssertEqual(model.statusText, "Name Pomodoro")
+        XCTAssertEqual(model.focusRequest.target, .pomodoroNamePromptName)
+        XCTAssertGreaterThan(model.focusRequest.sequence, initialFocusSequence)
+        XCTAssertTrue(model.editorInputLocked)
+    }
+
     func testRepresentationRefreshesStaleCloseTiming() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
@@ -5054,6 +5370,24 @@ final class CapturePanelModelTests: XCTestCase {
                     matchCount: 1
                 ),
             ]
+        )
+        model.selectedCompletionIndex = 0
+    }
+
+    private func installStartNameCompletion(
+        on model: CapturePanelModel,
+        draft: String,
+        replacementStart: Int,
+        candidates: [CaptureCompletionCandidate]
+    ) {
+        let end = draft.utf8.count
+        model.plainDraft = draft
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: end,
+            replacement: CaptureRange(start: replacementStart, end: end),
+            context: "pomodoro_start_name",
+            candidates: candidates
         )
         model.selectedCompletionIndex = 0
     }
