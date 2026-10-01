@@ -2283,22 +2283,10 @@ struct PreviewPane: View {
                                     .accessibilityLabel("Warning: \(warning)")
                             }
                             if let caption = row.caption {
-                                if row.outcome == .parked {
-                                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                                        Image(systemName: "pause.circle")
-                                            .foregroundStyle(.teal)
-                                            .accessibilityHidden(true)
-                                        Text(caption)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .textSelection(.enabled)
-                                    }
-                                } else {
-                                    Text(caption)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .textSelection(.enabled)
-                                }
+                                Text(caption)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
                             }
                         }
                         .opacity(row.isDimmed ? 0.5 : 1)
