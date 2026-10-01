@@ -269,6 +269,36 @@ public struct CaptureParseItem: Codable, Equatable {
     }
 }
 
+/// One typed Work Log entry from Bob's `pomodoro_close.log`: the 1-based
+/// task index plus its literal entry text, in typed order. Additive: an
+/// older Bob that omits `log` decodes as empty. `details` holds the nested
+/// detail lines typed under the entry (`  - …` bullets), in typed order;
+/// an older Bob that omits `details` decodes as empty.
+public struct PomodoroCloseLogEntry: Codable, Equatable, Sendable {
+    public let index: Int
+    public let text: String
+    public let details: [String]
+
+    public init(index: Int, text: String, details: [String] = []) {
+        self.index = index
+        self.text = text
+        self.details = details
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        index = try container.decodeIfPresent(Int.self, forKey: .index) ?? 0
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        details = try container.decodeIfPresent([String].self, forKey: .details) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case index
+        case text
+        case details
+    }
+}
+
 /// The typed `=x[<N>][!<M>][~<K>]` token from `bob capture-parse`: `raw`
 /// preserves exactly what was typed (`"=x"`, `"=X1!2"`, `"=x1~2`).
 /// `inProgress` is the sorted `in_progress` list, or nil when `<N>` was
@@ -278,30 +308,6 @@ public struct CaptureParseItem: Codable, Equatable {
 /// Present on whole-item closes and on link and body-bearing items carrying
 /// the close suffix. Older Bob binaries omit all three lists; they decode as
 /// none/empty so the card is exactly today's.
-/// One typed Work Log entry from Bob's `pomodoro_close.log`: the 1-based
-/// task index plus its literal entry text, in typed order. Additive: an
-/// older Bob that omits `log` decodes as empty.
-public struct PomodoroCloseLogEntry: Codable, Equatable, Sendable {
-    public let index: Int
-    public let text: String
-
-    public init(index: Int, text: String) {
-        self.index = index
-        self.text = text
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        index = try container.decodeIfPresent(Int.self, forKey: .index) ?? 0
-        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case index
-        case text
-    }
-}
-
 public struct PomodoroCloseSpec: Codable, Equatable, Sendable {
     public let raw: String
     public let inProgress: [Int]?
@@ -1080,6 +1086,11 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
     public let workLog: [String]
     public let workLogCreated: Bool
     public let typedWorkLog: [String]
+    /// Detail lines written under each typed entry, aligned 1:1 with
+    /// `typedWorkLog`: element _i_ lists the detail lines under typed entry
+    /// _i_. Additive: an older Bob that omits `typed_work_log_details`
+    /// decodes as empty, and a missing element counts as empty.
+    public let typedWorkLogDetails: [[String]]
     public let warning: String?
 
     public init(
@@ -1100,6 +1111,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
         workLog: [String] = [],
         workLogCreated: Bool = false,
         typedWorkLog: [String] = [],
+        typedWorkLogDetails: [[String]] = [],
         warning: String? = nil
     ) {
         self.role = role
@@ -1119,6 +1131,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
         self.workLog = workLog
         self.workLogCreated = workLogCreated
         self.typedWorkLog = typedWorkLog
+        self.typedWorkLogDetails = typedWorkLogDetails
         self.warning = warning
     }
 
@@ -1150,6 +1163,10 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
             forKey: .workLogCreated
         ) ?? false
         typedWorkLog = try container.decodeIfPresent([String].self, forKey: .typedWorkLog) ?? []
+        typedWorkLogDetails = try container.decodeIfPresent(
+            [[String]].self,
+            forKey: .typedWorkLogDetails
+        ) ?? []
         warning = try container.decodeIfPresent(String.self, forKey: .warning)
     }
 
@@ -1171,6 +1188,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
         case workLog = "work_log"
         case workLogCreated = "work_log_created"
         case typedWorkLog = "typed_work_log"
+        case typedWorkLogDetails = "typed_work_log_details"
         case warning
     }
 }

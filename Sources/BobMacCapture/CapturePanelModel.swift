@@ -2365,20 +2365,23 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// The pending close/start-list trim for a draft that dangles on a list
-    /// separator or a Work Log index: for every item whose `needs` contains
+    /// separator or a Work Log bullet: for every item whose `needs` contains
     /// `pomodoro_close_task` (`,`/`!`/`~`), `pomodoro_start_task` (`~`/`,`),
-    /// or `pomodoro_close_log_text` (a task number), the one
-    /// `interactive_placeholder` span Bob reported inside that item's range
-    /// is removed, so the live preview runs on the trimmed draft — exactly
-    /// what has been typed so far. Returns the trimmed draft, the dangling
-    /// separator (or task number for a log pend) for the pending notice, and
-    /// the footer action the pending card disables (`"Start"` when every
-    /// pending scope is a start list, else `"Close"`). Single-item drafts
-    /// carry no `items[]`; then the top-level `needs` and spans apply. Nil
-    /// when nothing dangles, when the picker needs win (checked by the
-    /// caller), or when the placeholder shape is unexpected — then the draft
-    /// previews exactly as today. No Swift-side ledger logic: the placeholder
-    /// range comes straight from Bob. Chains trim per item, as closes do.
+    /// or `pomodoro_close_log_text` (a `- <n>` bullet with no entry text
+    /// yet), the one `interactive_placeholder` span Bob reported inside that
+    /// item's range is removed, so the live preview runs on the trimmed
+    /// draft — exactly what has been typed so far. For a dangling bullet the
+    /// removal leaves a `- ` placeholder row (or `-` after the trailing-space
+    /// strip), which bob treats as a harmless placeholder, so the card
+    /// previews the rest. Returns the trimmed draft, the dangling separator
+    /// (or task number for a log pend) for the pending notice, and the footer
+    /// action the pending card disables (`"Start"` when every pending scope
+    /// is a start list, else `"Close"`). Single-item drafts carry no
+    /// `items[]`; then the top-level `needs` and spans apply. Nil when nothing
+    /// dangles, when the picker needs win (checked by the caller), or when the
+    /// placeholder shape is unexpected — then the draft previews exactly as
+    /// today. No Swift-side ledger logic: the placeholder range comes straight
+    /// from Bob. Chains trim per item, as closes do.
     static func closePendingTrim(
         in parse: CaptureParseResponse,
         draft: String
@@ -2438,8 +2441,9 @@ final class CapturePanelModel: ObservableObject {
         for range in ordered.reversed() {
             trimmed.removeSubrange(range)
         }
-        // A dangling index leaves a trailing space (`=x 1` trims to `=x `):
-        // strip it so the preview runs on the rest (`=x`).
+        // A dangling bullet leaves a trailing space (`=x\n- 1` trims to
+        // `=x\n- `): strip it so the preview runs on the placeholder row
+        // (`=x\n-`, still a harmless placeholder).
         if isLogIndex {
             while trimmed.hasSuffix(" ") || trimmed.hasSuffix("\t") {
                 trimmed.removeLast()
@@ -3596,7 +3600,7 @@ final class CapturePanelModel: ObservableObject {
                             // pending, dim it in the view, and disable the
                             // pending action so Return cannot submit the real
                             // draft. A numeric separator is a dangling Work
-                            // Log index, which teaches the escape.
+                            // Log bullet, which teaches the entry text.
                             let pending: String
                             if !separator.isEmpty, separator.allSatisfy({ $0.isASCII && $0.isNumber }),
                                let index = Int(separator)

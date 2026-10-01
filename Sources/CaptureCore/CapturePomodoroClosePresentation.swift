@@ -97,6 +97,12 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         /// `*YYYY-MM-DD* — ` date prefix stripped. An older Bob that omits
         /// `typed_work_log` decodes as empty.
         public let typedWorkLogPreviews: [String]
+        /// Detail lines under each typed entry, aligned 1:1 with
+        /// `typedWorkLogPreviews`: element _i_ lists the details under typed
+        /// entry _i_. Typed, so never capped. A missing element counts as
+        /// empty; an older Bob that omits `typed_work_log_details` decodes
+        /// as empty.
+        public let typedWorkLogDetails: [[String]]
         /// Up to two remaining entry previews with the `*YYYY-MM-DD* — ` date
         /// prefix stripped, excluding the typed entries above.
         public let workLogPreviews: [String]
@@ -354,6 +360,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         }
         summaryParts.append(contentsOf: taskRows.map(\.accessibilityLabel))
         summaryParts.append(contentsOf: taskRows.flatMap(\.typedWorkLogPreviews))
+        summaryParts.append(contentsOf: taskRows.flatMap { $0.typedWorkLogDetails.flatMap { $0 } })
         summaryParts.append(contentsOf: taskRows.flatMap(\.workLogPreviews))
         if let teachingHint {
             summaryParts.append(teachingHint.text)
@@ -510,6 +517,9 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             }
         }
         let otherPreviews = remaining.prefix(2).map(Self.strippedWorkLogDate)
+        let typedDetails: [[String]] = typedPreviews.indices.map { i in
+            i < task.typedWorkLogDetails.count ? task.typedWorkLogDetails[i] : []
+        }
         let accessibilityLabel: String
         if let index = task.index, let outcome {
             let fate: String
@@ -520,7 +530,13 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             case .dropped: fate = "drops from today"
             }
             let chosen = source == .listed ? ", chosen" : ""
-            let typed = typedPreviews.isEmpty ? "" : ", \(typedPreviews.joined(separator: ", "))"
+            var typedParts: [String] = []
+            typedParts.reserveCapacity(typedPreviews.count + typedDetails.flatMap { $0 }.count)
+            for (i, preview) in typedPreviews.enumerated() {
+                typedParts.append(preview)
+                typedParts.append(contentsOf: typedDetails[i])
+            }
+            let typed = typedParts.isEmpty ? "" : ", \(typedParts.joined(separator: ", "))"
             accessibilityLabel = "Task \(index), \(taskText), \(fate)\(chosen)\(typed)"
         } else {
             accessibilityLabel = transition
@@ -534,6 +550,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             locatorText: locator,
             workLogCount: task.workLog.count,
             typedWorkLogPreviews: typedPreviews,
+            typedWorkLogDetails: typedDetails,
             workLogPreviews: otherPreviews,
             warning: task.warning,
             carried: task.carried,
@@ -557,7 +574,8 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     static func hintTokens(numberedRows: Int) -> [HintToken] {
         let close: [HintToken] = [HintToken(text: "=x", category: .pomodoroStart)]
         let logExample: [HintToken] = [HintToken(text: " · ", category: .neutral)]
-            + close + [HintToken(text: "1", category: .pomodoroCloseLog)]
+            + close + [HintToken(text: "⌃J", category: .neutral)]
+            + [HintToken(text: "1", category: .pomodoroCloseLog)]
             + [HintToken(text: " wrote the tests logs work to 1", category: .neutral)]
         if numberedRows >= 2 {
             return close + [HintToken(text: "1,2", category: .pomodoroCloseInProgress)]
@@ -623,10 +641,11 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         "Type a task number after \(separator)"
     }
 
-    /// The pending summary row for a draft whose Work Log index dangles
-    /// (`=x 1`): teaches the entry plus the escape.
+    /// The pending summary row for a draft whose Work Log bullet dangles
+    /// (`=x` plus `- <n>` with no entry text yet): teaches the entry. The
+    /// inline tail is retired, so there is no escape to teach.
     public static func pendingLogText(index: Int) -> String {
-        "Type the Work Log entry for task \(index) — or write \\\(index) to keep the number"
+        "Type the Work Log entry for task \(index)"
     }
 
     /// Work Log entries arrive dated (`*2026-09-28* — Designed …`); the card

@@ -2170,30 +2170,80 @@ final class CapturePanelModelTests: XCTestCase {
         )
     }
 
-    func testLogPendingTrimRemovesDanglingIndex() {
+    func testLogPendingTrimRemovesDanglingBullet() {
+        // Real `bob capture-parse` output for `=x` plus `- 1`: the number
+        // under the placeholder is removed, leaving a `-` placeholder row.
         let parse = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
-            input: "=x 1",
-            body: "=x 1",
+            input: "=x\n- 1",
+            body: "=x",
             mode: "incomplete",
             needs: ["pomodoro_close_log_text"],
             spans: [
                 CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
-                CaptureSpan(start: 3, end: 4, kind: "interactive_placeholder"),
+                CaptureSpan(start: 5, end: 6, kind: "interactive_placeholder"),
             ]
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: parse, draft: "=x 1")?.trimmed,
-            "=x"
+            CapturePanelModel.closePendingTrim(in: parse, draft: "=x\n- 1")?.trimmed,
+            "=x\n-"
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: parse, draft: "=x 1")?.separator,
+            CapturePanelModel.closePendingTrim(in: parse, draft: "=x\n- 1")?.separator,
             "1"
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: parse, draft: "=x 1")?.action,
+            CapturePanelModel.closePendingTrim(in: parse, draft: "=x\n- 1")?.action,
             "Close"
+        )
+    }
+
+    func testLogPendingTrimRemovesMidDraftDanglingBullets() {
+        // A dangling bullet between complete entries trims to a placeholder
+        // row: `=x\n- 2 a\n- 1` and `=x\n- 1\n- 2 a` both keep the complete
+        // entry and leave a `-` row for the dangling one.
+        let final = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: "=x\n- 2 a\n- 1",
+            body: "=x",
+            mode: "incomplete",
+            needs: ["pomodoro_close_log_text"],
+            spans: [
+                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
+                CaptureSpan(start: 5, end: 6, kind: "pomodoro_close_log_index"),
+                CaptureSpan(start: 11, end: 12, kind: "interactive_placeholder"),
+            ]
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: final, draft: "=x\n- 2 a\n- 1")?.trimmed,
+            "=x\n- 2 a\n-"
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: final, draft: "=x\n- 2 a\n- 1")?.separator,
+            "1"
+        )
+        let mid = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: "=x\n- 1\n- 2 a",
+            body: "=x",
+            mode: "incomplete",
+            needs: ["pomodoro_close_log_text"],
+            spans: [
+                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
+                CaptureSpan(start: 5, end: 6, kind: "interactive_placeholder"),
+                CaptureSpan(start: 9, end: 10, kind: "pomodoro_close_log_index"),
+            ]
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: mid, draft: "=x\n- 1\n- 2 a")?.trimmed,
+            "=x\n-\n- 2 a"
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: mid, draft: "=x\n- 1\n- 2 a")?.separator,
+            "1"
         )
     }
 
@@ -2201,16 +2251,21 @@ final class CapturePanelModelTests: XCTestCase {
         let parse = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
-            input: "=x 1 wired the lexer",
-            body: "=x 1 wired the lexer",
+            input: "=x\n- 1 wired the lexer\n  - chose a hand-rolled lexer",
+            body: "=x",
             mode: "pomodoro_close",
             needs: [],
             spans: [
                 CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
-                CaptureSpan(start: 3, end: 4, kind: "pomodoro_close_log_index"),
+                CaptureSpan(start: 5, end: 6, kind: "pomodoro_close_log_index"),
             ]
         )
-        XCTAssertNil(CapturePanelModel.closePendingTrim(in: parse, draft: "=x 1 wired the lexer"))
+        XCTAssertNil(
+            CapturePanelModel.closePendingTrim(
+                in: parse,
+                draft: "=x\n- 1 wired the lexer\n  - chose a hand-rolled lexer"
+            )
+        )
     }
 
     func testStartPendingListPreviewsTrimmedDraftWithStartDisabled() async throws {
@@ -2327,20 +2382,17 @@ final class CapturePanelModelTests: XCTestCase {
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
             ]
         )
-        let draft = "=x 1"
+        let draft = "=x\n- 1"
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
         await waitUntil { model.closePendingText != nil }
 
-        XCTAssertEqual(
-            model.closePendingText,
-            "Type the Work Log entry for task 1 — or write \\1 to keep the number"
-        )
+        XCTAssertEqual(model.closePendingText, "Type the Work Log entry for task 1")
         XCTAssertTrue(model.isClosePending)
         XCTAssertEqual(model.closePendingAction, "Close")
         XCTAssertEqual(
             model.statusText,
-            "Type the Work Log entry for task 1 — or write \\1 to keep the number — Close is disabled"
+            "Type the Work Log entry for task 1 — Close is disabled"
         )
         XCTAssertEqual(model.primaryActionTitle, "Close")
 
@@ -2348,7 +2400,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertFalse(model.isSubmitting)
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- =x\n"))
-        XCTAssertFalse(record.contains("argv=capture --format json -- =x 1"))
+        XCTAssertFalse(record.contains("argv=capture --format json -- =x\n- 1"))
     }
 
     func testStartPresentationUsesBobSummaryAndOffersStartFooterAction() throws {

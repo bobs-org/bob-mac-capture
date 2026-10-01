@@ -1894,7 +1894,7 @@ struct PreviewPane: View {
                             ForEach(
                                 Array(row.typedWorkLogPreviews.enumerated()),
                                 id: \.offset
-                            ) { _, entry in
+                            ) { index, entry in
                                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                                     Image(systemName: "square.and.pencil")
                                         .foregroundStyle(logTint)
@@ -1904,6 +1904,22 @@ struct PreviewPane: View {
                                         .lineLimit(1)
                                         .truncationMode(.tail)
                                         .textSelection(.enabled)
+                                }
+                                let details =
+                                    index < row.typedWorkLogDetails.count
+                                    ? row.typedWorkLogDetails[index] : []
+                                ForEach(Array(details.enumerated()), id: \.offset) { _, detail in
+                                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                        Image(systemName: "square.and.pencil")
+                                            .foregroundStyle(.clear)
+                                            .accessibilityHidden(true)
+                                        Text(detail)
+                                            .font(.callout)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
+                                            .textSelection(.enabled)
+                                    }
                                 }
                             }
                             ForEach(
