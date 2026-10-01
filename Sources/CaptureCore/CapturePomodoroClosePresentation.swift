@@ -41,11 +41,12 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         case neutral
     }
 
-    /// The outcome Bob's `=x[<N>][!<M>][~<K>]` selection gives a numbered row,
-    /// joined from `tasks[].index` to `task_links`. Unknown wire strings
+    /// The outcome Bob's `=x[<N>][*<P>][!<M>][~<K>]` selection gives a numbered
+    /// row, joined from `tasks[].index` to `task_links`. Unknown wire strings
     /// degrade to nil, which renders exactly like today's unnumbered card.
     public enum TaskOutcome: Equatable, Sendable {
         case inProgress
+        case parked
         case deferred
         case complete
         case dropped
@@ -256,7 +257,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             summary.taskLinks.map { ($0.index, $0) },
             uniquingKeysWith: { first, _ in first }
         )
-        hasSelection = summary.inProgress != nil || !summary.complete.isEmpty || !summary.drop.isEmpty
+        hasSelection = summary.inProgress != nil || !summary.park.isEmpty || !summary.complete.isEmpty || !summary.drop.isEmpty
         completedCount = summary.taskLinks.filter { $0.outcome == "complete" }.count
         taskRows = summary.tasks.map { task in
             Self.taskRow(
@@ -390,6 +391,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         let outcome: TaskOutcome? = link.flatMap { link in
             switch link.outcome {
             case "in_progress": .inProgress
+            case "parked": .parked
             case "deferred": .deferred
             case "complete": .complete
             case "dropped": .dropped
@@ -474,10 +476,15 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             usesNumericBadgeFallback = false
         }
         let isDropped = outcome == .dropped || task.role == "dropped"
+        let isParked = outcome == .parked && source == .listed
+        // Parked rows keep normal readable, unstruck, undimmed text with
+        // their actual transition; the caption carries the not-carried
+        // signal so color is never the only signal.
         let isDimmed = source == .unlisted || isDropped
         let isStruck = task.role == "struck" || outcome == .complete || isDropped
         let caption: String? = isDropped
-            ? "stays \(CaptureTogglePresentation.staysStatusName(symbol: task.statusSymbol, name: task.statusName))" : nil
+            ? "stays \(CaptureTogglePresentation.staysStatusName(symbol: task.statusSymbol, name: task.statusName))"
+            : isParked ? "Parked · not carried" : nil
         let typedPreviews = task.typedWorkLog.map(Self.strippedWorkLogDate)
         // Subtract typed entries by occurrence count so a hand-written entry
         // with identical dated text survives alongside its typed twin.
@@ -525,6 +532,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             let fate: String
             switch outcome {
             case .inProgress: fate = "stays in progress"
+            case .parked: fate = "parked, not carried to the next Pomodoro"
             case .deferred: fate = "deferred"
             case .complete: fate = "completes"
             case .dropped: fate = "drops from today"
@@ -537,7 +545,11 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
                 typedParts.append(contentsOf: typedDetails[i])
             }
             let typed = typedParts.isEmpty ? "" : ", \(typedParts.joined(separator: ", "))"
-            accessibilityLabel = "Task \(index), \(taskText), \(fate)\(chosen)\(typed)"
+            if outcome == .parked {
+                accessibilityLabel = "Task \(index), \(taskText), \(transition), parked, not carried to the next Pomodoro\(chosen)\(typed)"
+            } else {
+                accessibilityLabel = "Task \(index), \(taskText), \(fate)\(chosen)\(typed)"
+            }
         } else {
             accessibilityLabel = transition
         }
@@ -569,8 +581,9 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
 
     /// The teaching hint tokens for a lineup of `numberedRows` rows. Example
     /// tokens carry the editor span category whose color they share (`=x` is
-    /// Pomodoro-session pink, `<N>` digits are orange, `!<M>` digits are
-    /// green, `~<K>` digits are muted gray); prose carries `.neutral`.
+    /// Pomodoro-session pink, `<N>` digits are orange, `*<P>` digits are teal,
+    /// `!<M>` digits are green, `~<K>` digits are muted gray); prose carries
+    /// `.neutral`. Uses only numbers available in the current lineup.
     static func hintTokens(numberedRows: Int) -> [HintToken] {
         let close: [HintToken] = [HintToken(text: "=x", category: .pomodoroStart)]
         let logExample: [HintToken] = [HintToken(text: " · ", category: .neutral)]
@@ -578,8 +591,11 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             + [HintToken(text: "1", category: .pomodoroCloseLog)]
             + [HintToken(text: " wrote the tests logs work to 1", category: .neutral)]
         if numberedRows >= 2 {
+            let parkNumber = numberedRows >= 2 ? "2" : "1"
             return close + [HintToken(text: "1,2", category: .pomodoroCloseInProgress)]
                 + [HintToken(text: " keeps only these in progress · ", category: .neutral)]
+                + close + [HintToken(text: "*\(parkNumber)", category: .pomodoroClosePark)]
+                + [HintToken(text: " parks \(parkNumber) (not carried) · ", category: .neutral)]
                 + close + [HintToken(text: "!2", category: .pomodoroCloseComplete)]
                 + [HintToken(text: " completes 2 · ", category: .neutral)]
                 + close + [HintToken(text: "~3", category: .pomodoroCloseDrop)]
@@ -598,10 +614,12 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     }
 
     /// The selection summary from `task_links` in ascending order, for example
-    /// `"In progress 1, 3 · Complete 2 · Deferred 4 · Dropped 5"`. Empty
-    /// groups are omitted, except that `=x0` (an explicitly empty `<N>` list,
-    /// `inProgressEmpty`) shows `"In progress none"`. Nil when every group is
-    /// empty.
+    /// `"Continue 1 · Parked 2, 3 · Complete 4, 5"`. Empty groups are omitted.
+    /// `Continue` means ordinary worked links carried onward and never names a
+    /// task status. `=x0*2` reports `"Continue none · Parked 2"` and never
+    /// `"In progress none"` while a parked task is being worked. Nil when
+    /// every group is empty. Old syntax without `*` keeps its historical
+    /// `"In progress"` wording.
     static func summaryText(links: [PomodoroCloseTaskLink], inProgressEmpty: Bool) -> String? {
         func group(_ outcome: String) -> [Int] {
             links.filter { $0.outcome == outcome }.map(\.index).sorted()
@@ -611,17 +629,29 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         }
         var parts: [String] = []
         let inProgress = group("in_progress")
+        let parked = group("parked")
         let complete = group("complete")
         let deferred = group("deferred")
         let dropped = group("dropped")
-        if inProgress.isEmpty, complete.isEmpty, deferred.isEmpty, dropped.isEmpty {
+        if inProgress.isEmpty, parked.isEmpty, complete.isEmpty, deferred.isEmpty, dropped.isEmpty {
             return nil
         }
-        if inProgress.isEmpty, inProgressEmpty {
-            // `=x0`: no task stays in progress.
-            parts.append("In progress none")
-        } else if !inProgress.isEmpty {
-            parts.append("In progress \(joined(inProgress))")
+        let hasPark = !parked.isEmpty
+        if hasPark {
+            if !inProgress.isEmpty {
+                parts.append("Continue \(joined(inProgress))")
+            } else if inProgressEmpty {
+                // `=x0*2`: nothing continues, but work was recorded via parking.
+                parts.append("Continue none")
+            }
+            parts.append("Parked \(joined(parked))")
+        } else {
+            if inProgress.isEmpty, inProgressEmpty {
+                // `=x0`: no task stays in progress.
+                parts.append("In progress none")
+            } else if !inProgress.isEmpty {
+                parts.append("In progress \(joined(inProgress))")
+            }
         }
         if !complete.isEmpty {
             parts.append("Complete \(joined(complete))")

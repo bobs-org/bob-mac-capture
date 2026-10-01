@@ -299,25 +299,29 @@ public struct PomodoroCloseLogEntry: Codable, Equatable, Sendable {
     }
 }
 
-/// The typed `=x[<N>][!<M>][~<K>]` token from `bob capture-parse`: `raw`
-/// preserves exactly what was typed (`"=x"`, `"=X1!2"`, `"=x1~2`).
-/// `inProgress` is the sorted `in_progress` list, or nil when `<N>` was
-/// omitted (plain `=x` leaves unlisted links at their ledger outcome);
-/// `complete` is the sorted `!<M>` list, empty when no `!` list was typed;
-/// `drop` is the sorted `~<K>` list, empty when no `~` list was typed.
+/// The typed `=x[<N>][*<P>][!<M>][~<K>]` token from `bob capture-parse`:
+/// `raw` preserves exactly what was typed (`"=x"`, `"=X1!2"`, `"=x1~2"`,
+/// `"=x*2"`). `inProgress` is the sorted `in_progress` list, or nil when
+/// `<N>` was omitted (plain `=x` leaves unlisted links at their ledger
+/// outcome unless `*<P>` is present, which activates selection mode like
+/// `<N>`); `park` is the sorted `*<P>` list, empty when no `*` list was
+/// typed; `complete` is the sorted `!<M>` list, empty when no `!` list was
+/// typed; `drop` is the sorted `~<K>` list, empty when no `~` list was typed.
 /// Present on whole-item closes and on link and body-bearing items carrying
-/// the close suffix. Older Bob binaries omit all three lists; they decode as
+/// the close suffix. Older Bob binaries omit all four lists; they decode as
 /// none/empty so the card is exactly today's.
 public struct PomodoroCloseSpec: Codable, Equatable, Sendable {
     public let raw: String
     public let inProgress: [Int]?
+    public let park: [Int]
     public let complete: [Int]
     public let drop: [Int]
     public let log: [PomodoroCloseLogEntry]
 
-    public init(raw: String, inProgress: [Int]? = nil, complete: [Int] = [], drop: [Int] = [], log: [PomodoroCloseLogEntry] = []) {
+    public init(raw: String, inProgress: [Int]? = nil, park: [Int] = [], complete: [Int] = [], drop: [Int] = [], log: [PomodoroCloseLogEntry] = []) {
         self.raw = raw
         self.inProgress = inProgress
+        self.park = park
         self.complete = complete
         self.drop = drop
         self.log = log
@@ -327,6 +331,7 @@ public struct PomodoroCloseSpec: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         raw = try container.decodeIfPresent(String.self, forKey: .raw) ?? ""
         inProgress = try container.decodeIfPresent([Int].self, forKey: .inProgress)
+        park = try container.decodeIfPresent([Int].self, forKey: .park) ?? []
         complete = try container.decodeIfPresent([Int].self, forKey: .complete) ?? []
         drop = try container.decodeIfPresent([Int].self, forKey: .drop) ?? []
         log = try container.decodeIfPresent([PomodoroCloseLogEntry].self, forKey: .log) ?? []
@@ -335,6 +340,7 @@ public struct PomodoroCloseSpec: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case raw
         case inProgress = "in_progress"
+        case park
         case complete
         case drop
         case log
@@ -1247,12 +1253,14 @@ public struct PomodoroCloseNext: Codable, Equatable, Sendable {
 /// to capture schema v1 and absent on older Bob binaries. Every field decodes
 /// tolerantly (booleans default to false, arrays to empty, lines to zero) so a
 /// partial object still previews instead of failing the whole capture.
-/// `inProgress`/`complete`/`drop` echo the `=x[<N>][!<M>][~<K>]` selection
-/// (nil/empty when none was typed); `taskLinks` is the numbered lineup,
-/// possibly empty. Older Bob omits all four and the card is exactly today's.
+/// `inProgress`/`park`/`complete`/`drop` echo the `=x[<N>][*<P>][!<M>][~<K>]`
+/// selection (nil/empty when none was typed); `taskLinks` is the numbered
+/// lineup, possibly empty. Older Bob omits all five and the card is exactly
+/// today's.
 public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
     public let raw: String
     public let inProgress: [Int]?
+    public let park: [Int]
     public let complete: [Int]
     public let drop: [Int]
     public let log: [PomodoroCloseLogEntry]
@@ -1274,6 +1282,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
     public init(
         raw: String,
         inProgress: [Int]? = nil,
+        park: [Int] = [],
         complete: [Int] = [],
         drop: [Int] = [],
         log: [PomodoroCloseLogEntry] = [],
@@ -1304,6 +1313,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
     ) {
         self.raw = raw
         self.inProgress = inProgress
+        self.park = park
         self.complete = complete
         self.drop = drop
         self.log = log
@@ -1327,6 +1337,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         raw = try container.decodeIfPresent(String.self, forKey: .raw) ?? ""
         inProgress = try container.decodeIfPresent([Int].self, forKey: .inProgress)
+        park = try container.decodeIfPresent([Int].self, forKey: .park) ?? []
         complete = try container.decodeIfPresent([Int].self, forKey: .complete) ?? []
         drop = try container.decodeIfPresent([Int].self, forKey: .drop) ?? []
         log = try container.decodeIfPresent([PomodoroCloseLogEntry].self, forKey: .log) ?? []
@@ -1370,6 +1381,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case raw
         case inProgress = "in_progress"
+        case park
         case complete
         case drop
         case log

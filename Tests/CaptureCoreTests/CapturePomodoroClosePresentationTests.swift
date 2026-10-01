@@ -391,6 +391,10 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
             "pomodoro-close-select-complete.json",
             "pomodoro-close-select-none.json",
             "pomodoro-close-select-one.json",
+            "pomodoro-close-select-park.json",
+            "pomodoro-close-select-park-star-only.json",
+            "pomodoro-close-select-park-all.json",
+            "pomodoro-close-select-park-log.json",
         ] {
             let success = try decodeFixture(name)
             XCTAssertNotNil(
@@ -543,11 +547,14 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         let hint = try XCTUnwrap(presentation.teachingHint)
         XCTAssertEqual(
             hint.text,
-            "=x1,2 keeps only these in progress · =x!2 completes 2 · =x~3 drops 3 · =x0 defers all · =x⌃J1 wrote the tests logs work to 1"
+            "=x1,2 keeps only these in progress · =x*2 parks 2 (not carried) · =x!2 completes 2 · =x~3 drops 3 · =x0 defers all · =x⌃J1 wrote the tests logs work to 1"
         )
         XCTAssertEqual(hint.tokens.first?.category, .pomodoroStart)
         XCTAssertTrue(
             hint.tokens.contains { $0.text == "1,2" && $0.category == .pomodoroCloseInProgress }
+        )
+        XCTAssertTrue(
+            hint.tokens.contains { $0.text == "*2" && $0.category == .pomodoroClosePark }
         )
         XCTAssertTrue(
             hint.tokens.contains { $0.text == "!2" && $0.category == .pomodoroCloseComplete }
@@ -782,6 +789,69 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertEqual(
             CapturePomodoroClosePresentation.pendingText(separator: "!"),
             "Type a task number after !"
+        )
+        XCTAssertEqual(
+            CapturePomodoroClosePresentation.pendingText(separator: "*"),
+            "Type a task number after *"
+        )
+    }
+
+    func testParkedCloseSummaryGroupsAndRows() throws {
+        let success = try decodeFixture("pomodoro-close-select-park.json")
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+
+        XCTAssertTrue(presentation.hasSelection)
+        XCTAssertEqual(presentation.selectionSummary, "Continue 1 · Parked 2, 3 · Complete 4, 5")
+
+        let continued = presentation.taskRows[0]
+        XCTAssertEqual(continued.outcome, .inProgress)
+        XCTAssertEqual(continued.source, .listed)
+        XCTAssertTrue(continued.carried)
+        XCTAssertFalse(continued.isDimmed)
+        XCTAssertFalse(continued.isStruck)
+        XCTAssertNil(continued.caption)
+
+        for index in [1, 2] {
+            let parked = presentation.taskRows[index]
+            XCTAssertEqual(parked.outcome, .parked)
+            XCTAssertEqual(parked.source, .listed)
+            XCTAssertEqual(parked.caption, "Parked · not carried")
+            XCTAssertFalse(parked.carried)
+            XCTAssertFalse(parked.isDimmed)
+            XCTAssertFalse(parked.isStruck)
+            XCTAssertTrue(parked.accessibilityLabel.contains("parked, not carried"))
+        }
+        // Parked rows keep their real In Progress transition.
+        XCTAssertTrue(presentation.taskRows[1].transitionText.contains("→") || presentation.taskRows[1].transitionText.contains("/"))
+
+        let starOnly = try decodeFixture("pomodoro-close-select-park-star-only.json")
+        let starPresentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: starOnly))
+        XCTAssertTrue(starPresentation.hasSelection)
+        XCTAssertTrue(starPresentation.selectionSummary?.contains("Parked 2") == true)
+    }
+
+    func testStarOnlyCloseDefersUnlistedLikeOrdinary() throws {
+        let success = try decodeFixture("pomodoro-close-select-park-star-only.json")
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+        let first = presentation.taskRows[0]
+        XCTAssertEqual(first.outcome, .deferred)
+        XCTAssertEqual(first.source, .unlisted)
+        XCTAssertTrue(first.isDimmed)
+    }
+
+    func testParseParkSpecDecodesListsAndSpans() throws {
+        let response = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-park.json").utf8)
+        )
+        XCTAssertEqual(response.mode, "pomodoro_close")
+        XCTAssertEqual(response.pomodoroClose?.raw, "=x1*2,3!4,5")
+        XCTAssertEqual(response.pomodoroClose?.inProgress, [1])
+        XCTAssertEqual(response.pomodoroClose?.park, [2, 3])
+        XCTAssertEqual(response.pomodoroClose?.complete, [4, 5])
+        XCTAssertEqual(
+            response.spans.map(\.kind),
+            ["pomodoro_close", "pomodoro_close_in_progress", "pomodoro_close_park", "pomodoro_close_complete"]
         )
     }
 

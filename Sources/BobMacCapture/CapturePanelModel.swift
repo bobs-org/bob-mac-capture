@@ -103,7 +103,7 @@ final class CapturePanelModel: ObservableObject {
     @Published var isSubmitting = false
     @Published var isPreviewing = false
     /// The pending-list notice (`"Type a task number after ,"`) while a close
-    /// draft dangles on `,`/`!`/`~` or a start draft dangles on `~`/`,`.
+    /// draft dangles on `,`/`!`/`~`/`*` or a start draft dangles on `~`/`,`.
     /// Non-nil exactly while the visible card previews the trimmed draft: the
     /// card renders dimmed and the footer action named by `closePendingAction`
     /// is disabled. Nil for every other draft, including a valid list.
@@ -2366,7 +2366,7 @@ final class CapturePanelModel: ObservableObject {
 
     /// The pending close/start-list trim for a draft that dangles on a list
     /// separator or a Work Log bullet: for every item whose `needs` contains
-    /// `pomodoro_close_task` (`,`/`!`/`~`), `pomodoro_start_task` (`~`/`,`),
+    /// `pomodoro_close_task` (`,`/`!`/`~`/`*`), `pomodoro_start_task` (`~`/`,`),
     /// or `pomodoro_close_log_text` (a `- <n>` bullet with no entry text
     /// yet), the one `interactive_placeholder` span Bob reported inside that
     /// item's range is removed, so the live preview runs on the trimmed
@@ -2432,7 +2432,7 @@ final class CapturePanelModel: ObservableObject {
             return nil
         }
         let separator = String(draft[first])
-        let isListSeparator = separator == "," || separator == "!" || separator == "~"
+        let isListSeparator = separator == "," || separator == "!" || separator == "~" || separator == "*"
         let isLogIndex = !separator.isEmpty && separator.allSatisfy { $0.isASCII && $0.isNumber }
         guard isListSeparator || isLogIndex else {
             return nil
@@ -3775,6 +3775,7 @@ final class CapturePanelModel: ObservableObject {
             "wikilink_block_id",
             "wikilink_alias",
             "pomodoro_close_drop",
+            "pomodoro_close_park",
             "pomodoro_start_drop",
         ])
 

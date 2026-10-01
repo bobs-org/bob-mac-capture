@@ -107,16 +107,17 @@ mutation.
   `=x`. A close summary whose task, carried, notes, or next fields are absent
   still previews: booleans read as false, arrays as empty, and missing lines as
   zero, and unknown task roles degrade to a neutral row. A close summary whose
-  `in_progress`, `complete`, `drop`, `task_links`, or `index` fields are absent
+  `in_progress`, `park`, `complete`, `drop`, `task_links`, or `index` fields are absent
   still previews as today's unnumbered card: the spec decodes as no selection,
   rows decode as unnumbered, and no hint, summary, or badge renders. Whole-item
   `=x` reports `pomodoro_close` mode with a `pomodoro_close` span and a
   `{"raw": "=x"}` parse spec; link items keep `pomodoro_link`/`pomodoro_task`
   mode with a `pomodoro_close` span kind over the suffix. A selection-bearing
-  close adds `pomodoro_close_in_progress`, `pomodoro_close_complete`, and
-  `pomodoro_close_drop` spans, an `in_progress`/`complete`/`drop` parse spec,
+  close adds `pomodoro_close_in_progress`, `pomodoro_close_park`,
+  `pomodoro_close_complete`, and `pomodoro_close_drop` spans, an
+  `in_progress`/`park`/`complete`/`drop` parse spec,
   and `task_links` plus per-row `index` in the capture summary; a dangling
-  `,`/`!`/`~` reports mode `incomplete` with a `pomodoro_close_task` need and
+  `,`/`!`/`~`/`*` reports mode `incomplete` with a `pomodoro_close_task` need and
   an `interactive_placeholder` span instead of an error. A close with Work Log
   bullets (`=x` plus `- 1 wired the lexer`, with `  - …` detail bullets under
   entries) adds `pomodoro_close_log_index` spans over each entry index and a
@@ -130,11 +131,23 @@ mutation.
   entries, an older Bob that omits `details` decodes each entry without
   details, and an older Bob that omits `typed_work_log` or
   `typed_work_log_details` decodes as empty so the card shows only the capped
-  `work_log` previews. A dropped (`~<K>`)
+  `work_log` previews. A parked (`*<P>`)
+  close records normal In Progress work without carrying those links forward;
+  parked rows keep readable, unstruck, undimmed text with their actual
+  transition, a `pause.circle` accent beside `Parked \u00b7 not carried`, and
+  VoiceOver reading the task number, text, actual status, and
+  "parked, not carried to the next Pomodoro". The summary uses `Continue`,
+  `Parked`, `Complete`, `Deferred`, and `Dropped` groups in that order
+  (for example `Continue 1 \u00b7 Parked 2, 3 \u00b7 Complete 4, 5`);
+  `Continue` means ordinary worked links carried onward and never names a
+  task status. `=x0*2` reports `Continue none \u00b7 Parked 2`. A dropped (`~<K>`)
   close removes those links from today without carrying or starting them; the
   card strikes and dims dropped rows, summarizes `Dropped 4, 5`, and reads
   "drops from today" for VoiceOver. A dropped row adds a "stays <status>"
-  caption naming the lane the task keeps. A whole-item
+  caption naming the lane the task keeps. New star syntax requires an updated
+  Bob binary (CLI-first rollout): an older Bob may classify `*` as ordinary
+  task text. The app never parses selection lists in Swift and keeps
+  schema-version rejection unchanged. A whole-item
   `=`/`=<X>` start reports the same numbered lineup: per-row `index` in the
   capture summary, a `drop` list on the parse spec and capture summary, and removed rows
   in `dropped` with their `index`, pre-image `ledger_line`, and `nested_lines`

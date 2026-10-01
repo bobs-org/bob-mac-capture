@@ -19,6 +19,7 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case explicitToggle
     case pomodoroStart
     case pomodoroCloseInProgress
+    case pomodoroClosePark
     case pomodoroCloseComplete
     case pomodoroCloseDrop
     case pomodoroCloseLog
@@ -82,6 +83,10 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         // The `<N>` digits select the rows that stay in progress, so they
         // share the badge color of an in-progress outcome.
         return .pomodoroCloseInProgress
+    case "pomodoro_close_park":
+        // The `*<P>` digits select the rows that park (recorded but not
+        // carried), so they share the teal parking accent.
+        return .pomodoroClosePark
     case "pomodoro_close_complete":
         // The `!<M>` digits select the rows that complete, so they share the
         // badge color of a complete outcome.

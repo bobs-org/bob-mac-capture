@@ -1945,10 +1945,22 @@ struct PreviewPane: View {
                                     .textSelection(.enabled)
                             }
                             if let caption = row.caption {
-                                Text(caption)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .textSelection(.enabled)
+                                if row.outcome == .parked {
+                                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                        Image(systemName: "pause.circle")
+                                            .foregroundStyle(.teal)
+                                            .accessibilityHidden(true)
+                                        Text(caption)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .textSelection(.enabled)
+                                    }
+                                } else {
+                                    Text(caption)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .textSelection(.enabled)
+                                }
                             }
                         }
                         .opacity(row.isDimmed ? 0.5 : 1)
@@ -2084,6 +2096,8 @@ struct PreviewPane: View {
         switch row.outcome {
         case .inProgress:
             return .orange
+        case .parked:
+            return .teal
         case .complete:
             return .green
         case .dropped:
@@ -2269,10 +2283,22 @@ struct PreviewPane: View {
                                     .accessibilityLabel("Warning: \(warning)")
                             }
                             if let caption = row.caption {
-                                Text(caption)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .textSelection(.enabled)
+                                if row.outcome == .parked {
+                                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                        Image(systemName: "pause.circle")
+                                            .foregroundStyle(.teal)
+                                            .accessibilityHidden(true)
+                                        Text(caption)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .textSelection(.enabled)
+                                    }
+                                } else {
+                                    Text(caption)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .textSelection(.enabled)
+                                }
                             }
                         }
                         .opacity(row.isDimmed ? 0.5 : 1)
