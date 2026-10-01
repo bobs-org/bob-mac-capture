@@ -1041,6 +1041,123 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertTrue(tokens.map(\.text).joined().contains("wrote the tests logs work to 1"))
     }
 
+    func testDuplicateTypedAndHandwrittenEntriesBothAppear() throws {
+        let summary = PomodoroCloseSummary(
+            raw: "=x",
+            pomodoroLine: 5,
+            pomodoroName: "CAPTURE",
+            tasks: [
+                PomodoroCloseTask(
+                    role: "worked",
+                    blockLink: "[[bob#^dup]]",
+                    resolved: true,
+                    relativeTarget: "bob.md",
+                    blockID: "dup",
+                    text: "Dup task",
+                    workLog: [
+                        "*2026-09-28* — Same",
+                        "*2026-09-28* — Same",
+                    ],
+                    typedWorkLog: [
+                        "*2026-09-28* — Same",
+                    ]
+                ),
+            ]
+        )
+        let presentation = try XCTUnwrap(
+            CapturePomodoroClosePresentation(capture: closeCapture(summary: summary))
+        )
+        let row = try XCTUnwrap(presentation.taskRows.first)
+        XCTAssertEqual(row.typedWorkLogPreviews, ["Same"])
+        XCTAssertEqual(row.workLogPreviews, ["Same"])
+    }
+
+    func testRepeatedTypedEntriesSubtractByOccurrenceCount() throws {
+        let summary = PomodoroCloseSummary(
+            raw: "=x",
+            pomodoroLine: 5,
+            pomodoroName: "CAPTURE",
+            tasks: [
+                PomodoroCloseTask(
+                    role: "worked",
+                    blockLink: "[[bob#^dup]]",
+                    resolved: true,
+                    relativeTarget: "bob.md",
+                    blockID: "dup",
+                    text: "Dup task",
+                    workLog: [
+                        "*2026-09-28* — Same",
+                        "*2026-09-28* — Same",
+                        "*2026-09-28* — Same",
+                    ],
+                    typedWorkLog: [
+                        "*2026-09-28* — Same",
+                        "*2026-09-28* — Same",
+                    ]
+                ),
+            ]
+        )
+        let presentation = try XCTUnwrap(
+            CapturePomodoroClosePresentation(capture: closeCapture(summary: summary))
+        )
+        let row = try XCTUnwrap(presentation.taskRows.first)
+        XCTAssertEqual(row.typedWorkLogPreviews, ["Same", "Same"])
+        XCTAssertEqual(row.workLogPreviews, ["Same"])
+    }
+
+    func testStrippedFallbackConsumesOneEntryPerTypedEntry() throws {
+        let summary = PomodoroCloseSummary(
+            raw: "=x",
+            pomodoroLine: 5,
+            pomodoroName: "CAPTURE",
+            tasks: [
+                PomodoroCloseTask(
+                    role: "worked",
+                    blockLink: "[[bob#^dup]]",
+                    resolved: true,
+                    relativeTarget: "bob.md",
+                    blockID: "dup",
+                    text: "Dup task",
+                    workLog: [
+                        "*2026-09-28* — Same",
+                        "*2026-09-28* — Same",
+                    ],
+                    typedWorkLog: ["Same"]
+                ),
+            ]
+        )
+        let presentation = try XCTUnwrap(
+            CapturePomodoroClosePresentation(capture: closeCapture(summary: summary))
+        )
+        let row = try XCTUnwrap(presentation.taskRows.first)
+        XCTAssertEqual(row.typedWorkLogPreviews, ["Same"])
+        XCTAssertEqual(row.workLogPreviews, ["Same"])
+
+        let unmatched = PomodoroCloseSummary(
+            raw: "=x",
+            pomodoroLine: 5,
+            pomodoroName: "CAPTURE",
+            tasks: [
+                PomodoroCloseTask(
+                    role: "worked",
+                    blockLink: "[[bob#^plain]]",
+                    resolved: true,
+                    relativeTarget: "bob.md",
+                    blockID: "plain",
+                    text: "Plain task",
+                    workLog: ["*2026-09-28* — Same"],
+                    typedWorkLog: ["*2026-09-28* — Other"]
+                ),
+            ]
+        )
+        let unmatchedPresentation = try XCTUnwrap(
+            CapturePomodoroClosePresentation(capture: closeCapture(summary: unmatched))
+        )
+        let unmatchedRow = try XCTUnwrap(unmatchedPresentation.taskRows.first)
+        XCTAssertEqual(unmatchedRow.typedWorkLogPreviews, ["Other"])
+        XCTAssertEqual(unmatchedRow.workLogPreviews, ["Same"])
+    }
+
     // MARK: - Helpers
 
     private func closeCapture(summary: PomodoroCloseSummary) -> CaptureCommandSuccess {

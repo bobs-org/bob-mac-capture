@@ -472,17 +472,41 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         let caption: String? = isDropped
             ? "stays \(CaptureTogglePresentation.staysStatusName(symbol: task.statusSymbol, name: task.statusName))" : nil
         let typedPreviews = task.typedWorkLog.map(Self.strippedWorkLogDate)
-        let typedSet = Set(task.typedWorkLog)
-        var remaining = task.workLog.filter { !typedSet.contains($0) }
+        // Subtract typed entries by occurrence count so a hand-written entry
+        // with identical dated text survives alongside its typed twin.
+        var typedCounts: [String: Int] = [:]
+        for entry in task.typedWorkLog {
+            typedCounts[entry, default: 0] += 1
+        }
+        var remaining: [String] = []
+        remaining.reserveCapacity(task.workLog.count)
+        for entry in task.workLog {
+            if let count = typedCounts[entry], count > 0 {
+                typedCounts[entry] = count - 1
+            } else {
+                remaining.append(entry)
+            }
+        }
         if remaining.count == task.workLog.count, !task.typedWorkLog.isEmpty {
             // Defensive: dated typed entries may differ in whitespace from
-            // `work_log`; fall back to stripping comparison.
-            let strippedTyped = Set(typedPreviews)
-            remaining = task.workLog.filter {
-                !strippedTyped.contains(Self.strippedWorkLogDate($0))
+            // `work_log`; fall back to stripped comparison, consuming one
+            // normalized entry per still-unmatched typed entry.
+            var strippedCounts: [String: Int] = [:]
+            for preview in typedPreviews {
+                strippedCounts[preview, default: 0] += 1
             }
-            if remaining.count == task.workLog.count {
-                remaining = task.workLog
+            var strippedRemaining: [String] = []
+            strippedRemaining.reserveCapacity(task.workLog.count)
+            for entry in task.workLog {
+                let stripped = Self.strippedWorkLogDate(entry)
+                if let count = strippedCounts[stripped], count > 0 {
+                    strippedCounts[stripped] = count - 1
+                } else {
+                    strippedRemaining.append(entry)
+                }
+            }
+            if strippedRemaining.count != task.workLog.count {
+                remaining = strippedRemaining
             }
         }
         let otherPreviews = remaining.prefix(2).map(Self.strippedWorkLogDate)
