@@ -2239,7 +2239,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         XCTAssertEqual(
             CapturePanelModel.closePendingTrim(in: mid, draft: "=x\n- 1\n- 2 a")?.trimmed,
-            "=x\n-\n- 2 a"
+            "=x\n- \n- 2 a"
         )
         XCTAssertEqual(
             CapturePanelModel.closePendingTrim(in: mid, draft: "=x\n- 1\n- 2 a")?.separator,

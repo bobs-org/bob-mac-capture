@@ -86,6 +86,7 @@ close_log_draft=$'=x\n- 1 wired the lexer\n  - chose a hand-rolled lexer'
 close_log_dangling_draft=$'=x\n- 1'
 close_log_chain_draft=$'=x =\n- 1 wired it'
 close_log_invalid_draft=$'=x\n- 1 see [[bob#^x]]'
+close_log_trimmed_draft=$'=x\n-'
 
 case "${command}" in
   capture-parse)
@@ -2984,6 +2985,10 @@ JSON
     done
     draft="${*: -1}"
     if [[ "${draft}" == "=x" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-worked.json"
+    elif [[ "${draft}" == "${close_log_trimmed_draft}" ]]; then
+      # A dangling Work Log bullet trims to a `-` placeholder row, which real
+      # bob skips: the trimmed draft previews exactly the plain `=x` close.
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-worked.json"
     elif [[ "${draft}" == "=x2" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-worked.json"
