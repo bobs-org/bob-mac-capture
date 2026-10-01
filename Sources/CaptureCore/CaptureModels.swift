@@ -278,17 +278,43 @@ public struct CaptureParseItem: Codable, Equatable {
 /// Present on whole-item closes and on link and body-bearing items carrying
 /// the close suffix. Older Bob binaries omit all three lists; they decode as
 /// none/empty so the card is exactly today's.
+/// One typed Work Log entry from Bob's `pomodoro_close.log`: the 1-based
+/// task index plus its literal entry text, in typed order. Additive: an
+/// older Bob that omits `log` decodes as empty.
+public struct PomodoroCloseLogEntry: Codable, Equatable, Sendable {
+    public let index: Int
+    public let text: String
+
+    public init(index: Int, text: String) {
+        self.index = index
+        self.text = text
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        index = try container.decodeIfPresent(Int.self, forKey: .index) ?? 0
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case index
+        case text
+    }
+}
+
 public struct PomodoroCloseSpec: Codable, Equatable, Sendable {
     public let raw: String
     public let inProgress: [Int]?
     public let complete: [Int]
     public let drop: [Int]
+    public let log: [PomodoroCloseLogEntry]
 
-    public init(raw: String, inProgress: [Int]? = nil, complete: [Int] = [], drop: [Int] = []) {
+    public init(raw: String, inProgress: [Int]? = nil, complete: [Int] = [], drop: [Int] = [], log: [PomodoroCloseLogEntry] = []) {
         self.raw = raw
         self.inProgress = inProgress
         self.complete = complete
         self.drop = drop
+        self.log = log
     }
 
     public init(from decoder: Decoder) throws {
@@ -297,6 +323,7 @@ public struct PomodoroCloseSpec: Codable, Equatable, Sendable {
         inProgress = try container.decodeIfPresent([Int].self, forKey: .inProgress)
         complete = try container.decodeIfPresent([Int].self, forKey: .complete) ?? []
         drop = try container.decodeIfPresent([Int].self, forKey: .drop) ?? []
+        log = try container.decodeIfPresent([PomodoroCloseLogEntry].self, forKey: .log) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -304,6 +331,7 @@ public struct PomodoroCloseSpec: Codable, Equatable, Sendable {
         case inProgress = "in_progress"
         case complete
         case drop
+        case log
     }
 }
 
@@ -1051,6 +1079,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
     public let carried: Bool
     public let workLog: [String]
     public let workLogCreated: Bool
+    public let typedWorkLog: [String]
     public let warning: String?
 
     public init(
@@ -1070,6 +1099,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
         carried: Bool = false,
         workLog: [String] = [],
         workLogCreated: Bool = false,
+        typedWorkLog: [String] = [],
         warning: String? = nil
     ) {
         self.role = role
@@ -1088,6 +1118,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
         self.carried = carried
         self.workLog = workLog
         self.workLogCreated = workLogCreated
+        self.typedWorkLog = typedWorkLog
         self.warning = warning
     }
 
@@ -1118,6 +1149,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
             Bool.self,
             forKey: .workLogCreated
         ) ?? false
+        typedWorkLog = try container.decodeIfPresent([String].self, forKey: .typedWorkLog) ?? []
         warning = try container.decodeIfPresent(String.self, forKey: .warning)
     }
 
@@ -1138,6 +1170,7 @@ public struct PomodoroCloseTask: Codable, Equatable, Sendable {
         case carried
         case workLog = "work_log"
         case workLogCreated = "work_log_created"
+        case typedWorkLog = "typed_work_log"
         case warning
     }
 }
@@ -1204,6 +1237,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
     public let inProgress: [Int]?
     public let complete: [Int]
     public let drop: [Int]
+    public let log: [PomodoroCloseLogEntry]
     public let pomodoroLine: Int
     public let pomodoroName: String?
     public let dayRelative: String?
@@ -1224,6 +1258,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         inProgress: [Int]? = nil,
         complete: [Int] = [],
         drop: [Int] = [],
+        log: [PomodoroCloseLogEntry] = [],
         pomodoroLine: Int = 0,
         pomodoroName: String? = nil,
         dayRelative: String? = nil,
@@ -1253,6 +1288,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         self.inProgress = inProgress
         self.complete = complete
         self.drop = drop
+        self.log = log
         self.pomodoroLine = pomodoroLine
         self.pomodoroName = pomodoroName
         self.dayRelative = dayRelative
@@ -1275,6 +1311,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         inProgress = try container.decodeIfPresent([Int].self, forKey: .inProgress)
         complete = try container.decodeIfPresent([Int].self, forKey: .complete) ?? []
         drop = try container.decodeIfPresent([Int].self, forKey: .drop) ?? []
+        log = try container.decodeIfPresent([PomodoroCloseLogEntry].self, forKey: .log) ?? []
         pomodoroLine = try container.decodeIfPresent(Int.self, forKey: .pomodoroLine) ?? 0
         pomodoroName = try container.decodeIfPresent(String.self, forKey: .pomodoroName)
         dayRelative = try container.decodeIfPresent(String.self, forKey: .dayRelative)
@@ -1317,6 +1354,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         case inProgress = "in_progress"
         case complete
         case drop
+        case log
         case pomodoroLine = "pomodoro_line"
         case pomodoroName = "pomodoro_name"
         case dayRelative = "day_relative"

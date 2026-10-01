@@ -117,7 +117,15 @@ mutation.
   `pomodoro_close_drop` spans, an `in_progress`/`complete`/`drop` parse spec,
   and `task_links` plus per-row `index` in the capture summary; a dangling
   `,`/`!`/`~` reports mode `incomplete` with a `pomodoro_close_task` need and
-  an `interactive_placeholder` span instead of an error. A dropped (`~<K>`)
+  an `interactive_placeholder` span instead of an error. A close with a Work
+  Log tail (`=x 1 wired the lexer`) adds `pomodoro_close_log_index` spans over
+  each entry index and a `log` parse spec with the typed entries in order;
+  entry text keeps its wikilink spans but is otherwise neutral prose, and a
+  dangling index (`=x 1`) reports mode `incomplete` with a
+  `pomodoro_close_log_text` need and an `interactive_placeholder` span over the
+  index instead of an error. An older Bob that omits `log` decodes as no typed
+  entries, and an older Bob that omits `typed_work_log` decodes as empty so the
+  card shows only the capped `work_log` previews. A dropped (`~<K>`)
   close removes those links from today without carrying or starting them; the
   card strikes and dims dropped rows, summarizes `Dropped 4, 5`, and reads
   "drops from today" for VoiceOver. A dropped row adds a "stays <status>"
@@ -231,7 +239,9 @@ or expired certificate can require reauthorizing those system permissions.
   `wikilink_alias`) — resolves through the single palette in `CaptureEditorPalette`.
   The close-list spans `pomodoro_close_in_progress` and `pomodoro_close_complete`
   render orange and green, sharing the badge colors of the rows they select;
-  `pomodoro_close_drop` renders muted gray.
+  `pomodoro_close_drop` renders muted gray. The Work Log index span
+  `pomodoro_close_log_index` renders cyan, sharing the tint of the typed entry
+  line it lands on in the close card; it is not a completion span kind.
   Global destination spans (`global_route`, `global_sub_bullet_route`, and
   `global_sub_bullet_block_id`) reuse the existing destination and block-ID colors, so
   the editor and the completion list never disagree about what color represents what
@@ -581,8 +591,11 @@ suggestions.
   row for link closes (`Linked bob.md · ^ready into CAPTURE`, `Moved from SASE`)
   or a `plus.circle` row for new-task closes, up to six task rows with per-role
   glyphs, transitions (`[*] → [/]`, `[*] deferred`, `[x] closed`, `[x]`), text
-  with strikethrough on struck rows, trailing locators, and dated Work Log
-  previews, then a notes row (`1 note stays`), a next-session footer row, and an
+  with strikethrough on struck rows, trailing locators, and Work Log previews —
+  each row shows its `typed_work_log` entries first, all of them, with the date
+  stripped, a `square.and.pencil` glyph in the cyan log tint, and primary text,
+  followed by the remaining `work_log` entries in secondary text capped at two —
+  then a notes row (`1 note stays`), a next-session footer row, and an
   empty state (`No Task Links — the session simply closes`) when there are no
   task rows. Numbered rows start with a fixed-width badge — a filled
   `N.circle.fill` when the row is listed, an open `N.circle` otherwise (monospaced
@@ -592,10 +605,12 @@ suggestions.
   no numbered rows the card looks exactly like today's. Completed rows keep the
   embedded glyph tinted green with struck text and a `[*] → [x]` transition when
   the status changed. One caption row under the task rows teaches the syntax
-  before a selection is typed (`=x1,2 keeps only these in progress · …`, tinted
-  like the editor spans) and shows the outcome summary after (`In progress 1, 3
+  before a selection is typed (`=x1,2 keeps only these in progress · … · =x1
+  wrote the tests logs work to 1`, tinted like the editor spans, with the `1`
+  in the cyan log tint) and shows the outcome summary after (`In progress 1, 3
   · Complete 2 · Deferred 4`, or `In progress none` for `=x0`); numbered rows
-  never hide under `+N more`. The footer's primary action becomes **Close**,
+  never hide under `+N more`. The accessibility label includes the typed
+  entries. The footer's primary action becomes **Close**,
   the live-preview, preview, and submit status read `Would close …` / `Closed …`
   with started, completed (only when nonzero), and Work Log counts, and a failed
   dry run clears the card so no stale preview sits beside the error. The error
@@ -604,7 +619,10 @@ suggestions.
   defer with p:<N>.` While a
   list dangles on `,`/`!`/`~`, the card previews the trimmed draft dimmed with a
   `Type a task number after ,` row, **Close** is disabled, and Return cannot
-  submit; a valid draft restores the normal card. While a start list dangles on
+  submit; while a Work Log index dangles (`=x 1`), the card previews the rest
+  dimmed with a `Type the Work Log entry for task 1 — or write \1 to keep the
+  number` row, **Close** stays disabled, and Return cannot submit; a valid draft
+  restores the normal card. While a start list dangles on
   `~`/`,`, the start card previews the trimmed draft dimmed the same way with
   **Start** disabled instead. A whole-item `=`/`=<X>` start instead shows its own card
   whenever `kind` is `pomodoro_start`: a `play.circle.fill` header with the
@@ -866,7 +884,11 @@ the running Pomodoro; `@route:block-id=x` links an existing task first, and
 Appending task numbers chooses each Task Link's outcome: `=x2` keeps only 2 in
 progress, `=x!2` completes 2, `=x1!2` does both, and `=x0` defers all (single-quote
 the argument in zsh, since `=` and `!` expand). The same suffix works on link
-forms. A trailing `~<K>` drop list on a whole-item start (`=~2`, `=3~2,4`,
+forms. Appending a Work Log tail logs while closing: `=x 1 wired the lexer`
+adds `wired the lexer` under link 1 before the unchanged close writes it to
+that task's Work Log (`=x2,3 2 wired the lexer`, `=x 1 wrote docs 1 opened the
+PR`); a number in the text that names a loggable task needs `\` (`fixed \3
+bugs`), and the index chip renders cyan to match the card's new entry line. A trailing `~<K>` drop list on a whole-item start (`=~2`, `=3~2,4`,
 `=#bugs~2`) starts the next session without those numbered queued Task Links —
 `~` drops, so `=~2` drops task 2 from the session you start the way `=x~2` drops
 task 2 from the session you stop, using the numbers the start card shows. The
@@ -878,7 +900,9 @@ and next session. The footer says **Close**, and the notification summarizes the
 returned close. Missing or ambiguous running sessions surface Bob's error in the
 preview. A list left dangling on `,`/`!`/`~` is an editing state, not an error: the
 card stays live on what is typed so far with **Close** disabled until a task
-number follows; a start list left dangling on `~`/`,` previews the trimmed start
+number follows; a dangling Work Log index (`=x 1`) previews the rest dimmed with
+`Type the Work Log entry for task 1 — or write \1 to keep the number` and keeps
+**Close** disabled; a start list left dangling on `~`/`,` previews the trimmed start
 the same way with **Start** disabled instead. A marker-only `@route+block-id` ensures that existing task is Next and
 relocates its Task Link, `@route+block-id#pomodoro` does the
 same onto a named Pomodoro (creating the named future Pomodoro if needed),

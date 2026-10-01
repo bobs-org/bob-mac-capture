@@ -1,0 +1,1 @@
+{"error":"capture item 1 starting on line 1: a Work Log entry can't contain the block link `[[bob#^x]]`; the close would treat it as a Task Link","ok":false}

@@ -1799,6 +1799,7 @@ struct PreviewPane: View {
         // The locator truncates first at narrow widths, so the task text and
         // transition always stay legible.
         let sessionTint = CaptureEditorPalette.color(for: .pomodoroStart)
+        let logTint = CaptureEditorPalette.color(for: .pomodoroCloseLog)
         // A pending list previews the trimmed draft: the card stays live but
         // dimmed, and Close is disabled until a task number is typed.
         let isPending = model.closePendingText != nil
@@ -1889,6 +1890,21 @@ struct PreviewPane: View {
                                     .lineLimit(1)
                                     .truncationMode(.tail)
                                     .textSelection(.enabled)
+                            }
+                            ForEach(
+                                Array(row.typedWorkLogPreviews.enumerated()),
+                                id: \.offset
+                            ) { _, entry in
+                                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                    Image(systemName: "square.and.pencil")
+                                        .foregroundStyle(logTint)
+                                        .accessibilityHidden(true)
+                                    Text(entry)
+                                        .font(.callout)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                        .textSelection(.enabled)
+                                }
                             }
                             ForEach(
                                 Array(row.workLogPreviews.enumerated()),

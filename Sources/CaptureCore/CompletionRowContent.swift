@@ -21,6 +21,7 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case pomodoroCloseInProgress
     case pomodoroCloseComplete
     case pomodoroCloseDrop
+    case pomodoroCloseLog
     case pomodoroStartDrop
     case neutral
 }
@@ -89,6 +90,10 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         // The `~<K>` digits select the rows that drop from today, so they
         // get their own muted category distinct from neutral text.
         return .pomodoroCloseDrop
+    case "pomodoro_close_log_index":
+        // Each Work Log entry index chip shares the log tint with the typed
+        // entry line it lands on in the close card.
+        return .pomodoroCloseLog
     case "pomodoro_start_drop":
         // The `~<K>` digits on a whole-item start select the queued rows
         // that drop as the session starts: the same muted gray as the close

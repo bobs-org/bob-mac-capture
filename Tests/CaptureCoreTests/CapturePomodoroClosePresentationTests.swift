@@ -543,7 +543,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         let hint = try XCTUnwrap(presentation.teachingHint)
         XCTAssertEqual(
             hint.text,
-            "=x1,2 keeps only these in progress · =x!2 completes 2 · =x~3 drops 3 · =x0 defers all"
+            "=x1,2 keeps only these in progress · =x!2 completes 2 · =x~3 drops 3 · =x0 defers all · =x1 wrote the tests logs work to 1"
         )
         XCTAssertEqual(hint.tokens.first?.category, .pomodoroStart)
         XCTAssertTrue(
@@ -565,7 +565,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         let tokens = CapturePomodoroClosePresentation.hintTokens(numberedRows: 1)
         XCTAssertEqual(
             tokens.map(\.text).joined(),
-            "=x!1 completes it · =x~1 drops it · =x0 defers it"
+            "=x!1 completes it · =x~1 drops it · =x0 defers it · =x1 wrote the tests logs work to 1"
         )
     }
 
@@ -880,6 +880,165 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
         XCTAssertTrue(presentation.taskRows.allSatisfy { $0.caption == nil })
         XCTAssertTrue(presentation.taskRows.allSatisfy { $0.outcome != .dropped })
+    }
+
+    func testLogParseSpecDecodesEntriesAndIndexSpan() throws {
+        let response = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-log.json").utf8)
+        )
+        XCTAssertEqual(response.mode, "pomodoro_close")
+        XCTAssertEqual(
+            response.spans.map(\.kind),
+            ["pomodoro_close", "pomodoro_close_log_index"]
+        )
+        let log = try XCTUnwrap(response.pomodoroClose?.log)
+        XCTAssertEqual(log, [PomodoroCloseLogEntry(index: 1, text: "wired the lexer")])
+    }
+
+    func testLogParseIncompleteNeedsLogTextWithPlaceholder() throws {
+        let response = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-log-incomplete.json").utf8)
+        )
+        XCTAssertEqual(response.mode, "incomplete")
+        XCTAssertEqual(response.needs, ["pomodoro_close_log_text"])
+        XCTAssertEqual(
+            response.spans.map(\.kind),
+            ["pomodoro_close", "interactive_placeholder"]
+        )
+        XCTAssertTrue(response.pomodoroClose?.log.isEmpty == true)
+    }
+
+    func testLogParseChainSplitsCloseAndStart() throws {
+        let response = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-log-chain.json").utf8)
+        )
+        XCTAssertEqual(response.mode, "pomodoro_close")
+        XCTAssertEqual(response.items.count, 2)
+        XCTAssertEqual(response.items[0].mode, "pomodoro_close")
+        XCTAssertEqual(response.items[0].pomodoroClose?.log, [PomodoroCloseLogEntry(index: 1, text: "wired it")])
+        XCTAssertEqual(response.items[1].mode, "pomodoro_start")
+        XCTAssertEqual(response.pomodoroClose?.log, [PomodoroCloseLogEntry(index: 1, text: "wired it")])
+    }
+
+    func testLogIndexChipKeepsWikilinkSpansInEntryText() throws {
+        let response = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data("""
+            {"ok":true,"schema_version":1,"input":"=x 1 see [[note]]","body":"=x 1 see [[note]]","mode":"pomodoro_close","needs":[],"spans":[{"start":0,"end":2,"kind":"pomodoro_close"},{"start":3,"end":4,"kind":"pomodoro_close_log_index"},{"start":9,"end":11,"kind":"wikilink_delimiter"},{"start":11,"end":15,"kind":"wikilink_target"},{"start":15,"end":17,"kind":"wikilink_delimiter"}],"diagnostics":[],"pomodoro_close":{"raw":"=x","log":[{"index":1,"text":"see [[note]]"}]}}
+            """.utf8)
+        )
+        XCTAssertEqual(
+            response.spans.map(\.kind),
+            ["pomodoro_close", "pomodoro_close_log_index", "wikilink_delimiter", "wikilink_target", "wikilink_delimiter"]
+        )
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "pomodoro_close_log_index"), .pomodoroCloseLog)
+        XCTAssertEqual(response.pomodoroClose?.log, [PomodoroCloseLogEntry(index: 1, text: "see [[note]]")])
+    }
+
+    func testRealBobLogCaptureDecodesTypedWorkLog() throws {
+        let success = try decodeFixture("pomodoro-close-log.json")
+        let summary = try XCTUnwrap(success.pomodoroClose)
+        XCTAssertEqual(summary.log, [PomodoroCloseLogEntry(index: 1, text: "wired the lexer")])
+        let row = try XCTUnwrap(summary.tasks.first(where: { $0.index == 1 }))
+        XCTAssertEqual(row.typedWorkLog, ["*2026-09-28* — wired the lexer"])
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+        let presented = try XCTUnwrap(presentation.taskRows.first(where: { $0.index == 1 }))
+        XCTAssertEqual(presented.typedWorkLogPreviews, ["wired the lexer"])
+        XCTAssertTrue(presented.workLogPreviews.contains("Designed the `=x` grammar"))
+        XCTAssertFalse(presented.workLogPreviews.contains("wired the lexer"))
+        XCTAssertTrue(presented.accessibilityLabel.contains("wired the lexer"))
+        XCTAssertTrue(presentation.accessibilitySummary.contains("wired the lexer"))
+    }
+
+    func testTypedEntriesRenderFirstAndUncapped() throws {
+        let summary = PomodoroCloseSummary(
+            raw: "=x",
+            pomodoroLine: 5,
+            pomodoroName: "CAPTURE",
+            tasks: [
+                PomodoroCloseTask(
+                    role: "worked",
+                    blockLink: "[[bob#^a]]",
+                    ledgerLine: 6,
+                    index: 1,
+                    resolved: true,
+                    relativeTarget: "bob.md",
+                    blockID: "a",
+                    text: "Task",
+                    previousStatusSymbol: "*",
+                    statusSymbol: "/",
+                    statusChanged: true,
+                    workLog: [
+                        "*2026-09-28* — First",
+                        "*2026-09-28* — Second",
+                        "*2026-09-28* — Third",
+                        "*2026-09-28* — Fourth",
+                    ],
+                    typedWorkLog: [
+                        "*2026-09-28* — Third",
+                        "*2026-09-28* — Fourth",
+                        "*2026-09-28* — Fifth",
+                    ]
+                ),
+            ]
+        )
+        let presentation = try XCTUnwrap(
+            CapturePomodoroClosePresentation(capture: closeCapture(summary: summary))
+        )
+        let row = try XCTUnwrap(presentation.taskRows.first)
+        XCTAssertEqual(row.typedWorkLogPreviews, ["Third", "Fourth", "Fifth"])
+        XCTAssertEqual(row.workLogPreviews, ["First", "Second"])
+    }
+
+    func testOlderBobWithoutLogDecodesAsEmpty() throws {
+        let success = try decodeSuccess(
+            #"""
+            {
+              "ok": true,
+              "dry_run": true,
+              "routed": false,
+              "route": null,
+              "route_label": "",
+              "relative_target": "2026/20260928.md",
+              "target": "/tmp/bob/2026/20260928.md",
+              "text": "=x",
+              "task_line": "- [x] entry",
+              "kind": "pomodoro_close",
+              "created": "2026-09-28",
+              "scheduled": null,
+              "placement": "closed",
+              "pomodoro_close": {
+                "raw": "=x",
+                "pomodoro_line": 5,
+                "tasks": [
+                  {"role": "worked", "block_link": "[[bob#^a]]", "work_log": ["*2026-09-28* — Old"]}
+                ]
+              }
+            }
+            """#
+        )
+        let summary = try XCTUnwrap(success.pomodoroClose)
+        XCTAssertTrue(summary.log.isEmpty)
+        XCTAssertTrue(summary.tasks.first?.typedWorkLog.isEmpty == true)
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+        XCTAssertTrue(presentation.taskRows.first?.typedWorkLogPreviews.isEmpty == true)
+        XCTAssertEqual(presentation.taskRows.first?.workLogPreviews, ["Old"])
+    }
+
+    func testPendingLogTextTeachesEscape() throws {
+        XCTAssertEqual(
+            CapturePomodoroClosePresentation.pendingLogText(index: 3),
+            "Type the Work Log entry for task 3 — or write \\3 to keep the number"
+        )
+    }
+
+    func testHintTokensIncludeLogExample() throws {
+        let tokens = CapturePomodoroClosePresentation.hintTokens(numberedRows: 2)
+        XCTAssertTrue(tokens.contains { $0.text == "1" && $0.category == .pomodoroCloseLog })
+        XCTAssertTrue(tokens.map(\.text).joined().contains("wrote the tests logs work to 1"))
     }
 
     // MARK: - Helpers

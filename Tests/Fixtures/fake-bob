@@ -96,6 +96,12 @@ case "${command}" in
       cat "${fixtures_dir}/pomodoro-close-parse-invalid.json"
     elif [[ "${draft}" == "=x1~2" ]]; then
       cat "${fixtures_dir}/pomodoro-close-parse-drop.json"
+    elif [[ "${draft}" == "=x 1 wired the lexer" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-log.json"
+    elif [[ "${draft}" == "=x 1" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-log-incomplete.json"
+    elif [[ "${draft}" == "=x 1 wired it =" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-log-chain.json"
     elif [[ "${draft}" == "=" ]]; then
       cat "${fixtures_dir}/pomodoro-start-parse.json"
     elif [[ "${draft}" == "=3" ]]; then
@@ -3016,6 +3022,11 @@ JSON
       exit 2
     elif [[ "${draft}" == "=x3" ]]; then
       cat "${fixtures_dir}/pomodoro-close-select-out-of-range.json"
+      exit 1
+    elif [[ "${draft}" == "=x 1 wired the lexer" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-log.json"
+    elif [[ "${draft}" == "=x 1 see [[bob#^x]]" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-log-invalid.json"
       exit 1
     elif [[ "${draft}" == "${close_batch_draft}" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/g" "${fixtures_dir}/pomodoro-close-batch-adjust.json"

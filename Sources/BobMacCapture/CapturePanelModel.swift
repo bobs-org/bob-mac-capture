@@ -2365,37 +2365,40 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// The pending close/start-list trim for a draft that dangles on a list
-    /// separator: for every item whose `needs` contains `pomodoro_close_task`
-    /// (`,`/`!`/`~`) or `pomodoro_start_task` (`~`/`,`), the one
+    /// separator or a Work Log index: for every item whose `needs` contains
+    /// `pomodoro_close_task` (`,`/`!`/`~`), `pomodoro_start_task` (`~`/`,`),
+    /// or `pomodoro_close_log_text` (a task number), the one
     /// `interactive_placeholder` span Bob reported inside that item's range
-    /// (the dangling separator) is removed, so the live preview runs on the
-    /// trimmed draft — exactly what has been typed so far. Returns the trimmed
-    /// draft, the dangling separator for the pending notice, and the footer
-    /// action the pending card disables (`"Start"` when every pending scope
-    /// is a start list, else `"Close"`). Single-item drafts carry no
-    /// `items[]`; then the top-level `needs` and spans apply. Nil when nothing
-    /// dangles, when the picker needs win (checked by the caller), or when the
-    /// placeholder shape is unexpected — then the draft previews exactly as
-    /// today. No Swift-side ledger logic: the placeholder range comes straight
-    /// from Bob. Chains trim per item, as closes do.
+    /// is removed, so the live preview runs on the trimmed draft — exactly
+    /// what has been typed so far. Returns the trimmed draft, the dangling
+    /// separator (or task number for a log pend) for the pending notice, and
+    /// the footer action the pending card disables (`"Start"` when every
+    /// pending scope is a start list, else `"Close"`). Single-item drafts
+    /// carry no `items[]`; then the top-level `needs` and spans apply. Nil
+    /// when nothing dangles, when the picker needs win (checked by the
+    /// caller), or when the placeholder shape is unexpected — then the draft
+    /// previews exactly as today. No Swift-side ledger logic: the placeholder
+    /// range comes straight from Bob. Chains trim per item, as closes do.
     static func closePendingTrim(
         in parse: CaptureParseResponse,
         draft: String
     ) -> (trimmed: String, separator: String, action: String)? {
-        let scopes: [(range: CaptureRange?, needsTask: Bool, isStart: Bool)]
+        let scopes: [(range: CaptureRange?, needsTask: Bool, needsLog: Bool, isStart: Bool)]
         if parse.items.isEmpty {
             let isStart = parse.needs.contains("pomodoro_start_task")
             let needsTask = parse.needs.contains("pomodoro_close_task") || isStart
-            scopes = [(nil, needsTask, isStart)]
+            let needsLog = parse.needs.contains("pomodoro_close_log_text")
+            scopes = [(nil, needsTask, needsLog, isStart)]
         } else {
             scopes = parse.items.map { item in
                 let isStart = item.needs.contains("pomodoro_start_task")
                 let needsTask =
                     item.needs.contains("pomodoro_close_task") || isStart
-                return (item.range, needsTask, isStart)
+                let needsLog = item.needs.contains("pomodoro_close_log_text")
+                return (item.range, needsTask, needsLog, isStart)
             }
         }
-        let pending = scopes.filter { $0.needsTask }
+        let pending = scopes.filter { $0.needsTask || $0.needsLog }
         guard !pending.isEmpty else {
             return nil
         }
@@ -2426,12 +2429,21 @@ final class CapturePanelModel: ObservableObject {
             return nil
         }
         let separator = String(draft[first])
-        guard separator == "," || separator == "!" || separator == "~" else {
+        let isListSeparator = separator == "," || separator == "!" || separator == "~"
+        let isLogIndex = !separator.isEmpty && separator.allSatisfy { $0.isASCII && $0.isNumber }
+        guard isListSeparator || isLogIndex else {
             return nil
         }
         var trimmed = draft
         for range in ordered.reversed() {
             trimmed.removeSubrange(range)
+        }
+        // A dangling index leaves a trailing space (`=x 1` trims to `=x `):
+        // strip it so the preview runs on the rest (`=x`).
+        if isLogIndex {
+            while trimmed.hasSuffix(" ") || trimmed.hasSuffix("\t") {
+                trimmed.removeLast()
+            }
         }
         let action = pending.allSatisfy { $0.isStart } ? "Start" : "Close"
         return (trimmed, separator, action)
@@ -3583,10 +3595,18 @@ final class CapturePanelModel: ObservableObject {
                             // The card previews the trimmed draft: mark it
                             // pending, dim it in the view, and disable the
                             // pending action so Return cannot submit the real
-                            // draft.
-                            let pending = CapturePomodoroClosePresentation.pendingText(
-                                separator: separator
-                            )
+                            // draft. A numeric separator is a dangling Work
+                            // Log index, which teaches the escape.
+                            let pending: String
+                            if !separator.isEmpty, separator.allSatisfy({ $0.isASCII && $0.isNumber }),
+                               let index = Int(separator)
+                            {
+                                pending = CapturePomodoroClosePresentation.pendingLogText(index: index)
+                            } else {
+                                pending = CapturePomodoroClosePresentation.pendingText(
+                                    separator: separator
+                                )
+                            }
                             let action = pendingAction ?? "Close"
                             self?.closePendingText = pending
                             self?.closePendingAction = action

@@ -93,8 +93,12 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         /// the resolved target parts (unresolved rows).
         public let locatorText: String
         public let workLogCount: Int
-        /// Up to two entry previews with the `*YYYY-MM-DD* — ` date prefix
-        /// stripped for compact display.
+        /// Typed Work Log entries first, all of them, never capped, with the
+        /// `*YYYY-MM-DD* — ` date prefix stripped. An older Bob that omits
+        /// `typed_work_log` decodes as empty.
+        public let typedWorkLogPreviews: [String]
+        /// Up to two remaining entry previews with the `*YYYY-MM-DD* — ` date
+        /// prefix stripped, excluding the typed entries above.
         public let workLogPreviews: [String]
         public let warning: String?
         public let carried: Bool
@@ -349,6 +353,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             summaryParts.append(viaText)
         }
         summaryParts.append(contentsOf: taskRows.map(\.accessibilityLabel))
+        summaryParts.append(contentsOf: taskRows.flatMap(\.typedWorkLogPreviews))
         summaryParts.append(contentsOf: taskRows.flatMap(\.workLogPreviews))
         if let teachingHint {
             summaryParts.append(teachingHint.text)
@@ -466,6 +471,21 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         let isStruck = task.role == "struck" || outcome == .complete || isDropped
         let caption: String? = isDropped
             ? "stays \(CaptureTogglePresentation.staysStatusName(symbol: task.statusSymbol, name: task.statusName))" : nil
+        let typedPreviews = task.typedWorkLog.map(Self.strippedWorkLogDate)
+        let typedSet = Set(task.typedWorkLog)
+        var remaining = task.workLog.filter { !typedSet.contains($0) }
+        if remaining.count == task.workLog.count, !task.typedWorkLog.isEmpty {
+            // Defensive: dated typed entries may differ in whitespace from
+            // `work_log`; fall back to stripping comparison.
+            let strippedTyped = Set(typedPreviews)
+            remaining = task.workLog.filter {
+                !strippedTyped.contains(Self.strippedWorkLogDate($0))
+            }
+            if remaining.count == task.workLog.count {
+                remaining = task.workLog
+            }
+        }
+        let otherPreviews = remaining.prefix(2).map(Self.strippedWorkLogDate)
         let accessibilityLabel: String
         if let index = task.index, let outcome {
             let fate: String
@@ -476,7 +496,8 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             case .dropped: fate = "drops from today"
             }
             let chosen = source == .listed ? ", chosen" : ""
-            accessibilityLabel = "Task \(index), \(taskText), \(fate)\(chosen)"
+            let typed = typedPreviews.isEmpty ? "" : ", \(typedPreviews.joined(separator: ", "))"
+            accessibilityLabel = "Task \(index), \(taskText), \(fate)\(chosen)\(typed)"
         } else {
             accessibilityLabel = transition
         }
@@ -488,7 +509,8 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             transitionText: transition,
             locatorText: locator,
             workLogCount: task.workLog.count,
-            workLogPreviews: task.workLog.prefix(2).map(Self.strippedWorkLogDate),
+            typedWorkLogPreviews: typedPreviews,
+            workLogPreviews: otherPreviews,
             warning: task.warning,
             carried: task.carried,
             tag: tag,
@@ -510,6 +532,9 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     /// green, `~<K>` digits are muted gray); prose carries `.neutral`.
     static func hintTokens(numberedRows: Int) -> [HintToken] {
         let close: [HintToken] = [HintToken(text: "=x", category: .pomodoroStart)]
+        let logExample: [HintToken] = [HintToken(text: " · ", category: .neutral)]
+            + close + [HintToken(text: "1", category: .pomodoroCloseLog)]
+            + [HintToken(text: " wrote the tests logs work to 1", category: .neutral)]
         if numberedRows >= 2 {
             return close + [HintToken(text: "1,2", category: .pomodoroCloseInProgress)]
                 + [HintToken(text: " keeps only these in progress · ", category: .neutral)]
@@ -519,6 +544,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
                 + [HintToken(text: " drops 3 · ", category: .neutral)]
                 + close + [HintToken(text: "0", category: .pomodoroCloseInProgress)]
                 + [HintToken(text: " defers all", category: .neutral)]
+                + logExample
         }
         return close + [HintToken(text: "!1", category: .pomodoroCloseComplete)]
             + [HintToken(text: " completes it · ", category: .neutral)]
@@ -526,6 +552,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             + [HintToken(text: " drops it · ", category: .neutral)]
             + close + [HintToken(text: "0", category: .pomodoroCloseInProgress)]
             + [HintToken(text: " defers it", category: .neutral)]
+            + logExample
     }
 
     /// The selection summary from `task_links` in ascending order, for example
@@ -570,6 +597,12 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     /// number after ,"` (or `"after !"` / `"after ~"`).
     public static func pendingText(separator: String) -> String {
         "Type a task number after \(separator)"
+    }
+
+    /// The pending summary row for a draft whose Work Log index dangles
+    /// (`=x 1`): teaches the entry plus the escape.
+    public static func pendingLogText(index: Int) -> String {
+        "Type the Work Log entry for task \(index) — or write \\\(index) to keep the number"
     }
 
     /// Work Log entries arrive dated (`*2026-09-28* — Designed …`); the card

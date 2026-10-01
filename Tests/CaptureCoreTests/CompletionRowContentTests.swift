@@ -717,6 +717,10 @@ final class CompletionRowContentTests: XCTestCase {
             .pomodoroCloseDrop
         )
         XCTAssertEqual(
+            captureSemanticCategory(forSpanKind: "pomodoro_close_log_index"),
+            .pomodoroCloseLog
+        )
+        XCTAssertEqual(
             captureSemanticCategory(forSpanKind: "pomodoro_start_drop"),
             .pomodoroStartDrop
         )

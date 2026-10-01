@@ -2170,6 +2170,49 @@ final class CapturePanelModelTests: XCTestCase {
         )
     }
 
+    func testLogPendingTrimRemovesDanglingIndex() {
+        let parse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: "=x 1",
+            body: "=x 1",
+            mode: "incomplete",
+            needs: ["pomodoro_close_log_text"],
+            spans: [
+                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
+                CaptureSpan(start: 3, end: 4, kind: "interactive_placeholder"),
+            ]
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: parse, draft: "=x 1")?.trimmed,
+            "=x"
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: parse, draft: "=x 1")?.separator,
+            "1"
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: parse, draft: "=x 1")?.action,
+            "Close"
+        )
+    }
+
+    func testLogPendingTrimIgnoresValidLogDraft() {
+        let parse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: "=x 1 wired the lexer",
+            body: "=x 1 wired the lexer",
+            mode: "pomodoro_close",
+            needs: [],
+            spans: [
+                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
+                CaptureSpan(start: 3, end: 4, kind: "pomodoro_close_log_index"),
+            ]
+        )
+        XCTAssertNil(CapturePanelModel.closePendingTrim(in: parse, draft: "=x 1 wired the lexer"))
+    }
+
     func testStartPendingListPreviewsTrimmedDraftWithStartDisabled() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
@@ -2271,6 +2314,41 @@ final class CapturePanelModelTests: XCTestCase {
             model.statusText,
             "Would close CAPTURE · 1 started · 3 Work Log entries"
         )
+    }
+
+    func testLogPendingPreviewsTrimmedDraftWithCloseDisabled() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "=x 1"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.closePendingText != nil }
+
+        XCTAssertEqual(
+            model.closePendingText,
+            "Type the Work Log entry for task 1 — or write \\1 to keep the number"
+        )
+        XCTAssertTrue(model.isClosePending)
+        XCTAssertEqual(model.closePendingAction, "Close")
+        XCTAssertEqual(
+            model.statusText,
+            "Type the Work Log entry for task 1 — or write \\1 to keep the number — Close is disabled"
+        )
+        XCTAssertEqual(model.primaryActionTitle, "Close")
+
+        model.submit(openAfterCapture: false)
+        XCTAssertFalse(model.isSubmitting)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- =x\n"))
+        XCTAssertFalse(record.contains("argv=capture --format json -- =x 1"))
     }
 
     func testStartPresentationUsesBobSummaryAndOffersStartFooterAction() throws {
