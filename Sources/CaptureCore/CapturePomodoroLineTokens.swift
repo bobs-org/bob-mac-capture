@@ -19,13 +19,16 @@ public struct CapturePomodoroLineToken: Equatable, Sendable {
 /// The Markdown shapes a block row can carry. `checkbox` holds the symbol
 /// inside the brackets (` `, `x`, `/`, `*`, …); `wikilinkHeading` and
 /// `wikilinkBlock` keep their leading `#` (and `^`); `wikilinkAlias` keeps
-/// its leading `|`.
+/// its leading `|`; `tag` is a `#tag` word; `blockID` is a trailing
+/// `^block-id` (keeping its `^`).
 public enum CapturePomodoroLineTokenRole: Equatable, Sendable {
     case syntax
     case checkbox(Character)
     case timeRange
     case field
     case name
+    case tag
+    case blockID
     case wikilinkDelimiter
     case wikilinkTarget
     case wikilinkHeading
@@ -53,6 +56,184 @@ public enum CapturePomodoroLineTokens {
         }
         return scanner.tokens
     }
+
+    /// Display-only tokenizer for parent-task block rows: an optional list
+    /// marker (`-`, `*`, `+`, `N.`, `N)`) as `.syntax`, then an optional
+    /// `[c]` checkbox as `.checkbox(c)`, then the existing inline scan,
+    /// then a byte-preserving post-pass that splits `#tag` words into
+    /// `.tag` and a trailing ` ^block-id` into `.blockID`. Headline and
+    /// body rows tokenize identically today; `isHeadline` keeps the call
+    /// shape the card rows share. The hard invariant still holds:
+    /// `tokens.map(\.text).joined()` always equals the input.
+    public static func tokenizeTaskRow(
+        _ content: String,
+        isHeadline: Bool
+    ) -> [CapturePomodoroLineToken] {
+        var tokens: [CapturePomodoroLineToken] = []
+        var remainder = content
+
+        func takeMarker() {
+            if let marker = taskListMarkerPrefix(remainder) {
+                tokens.append(CapturePomodoroLineToken(text: marker, role: .syntax))
+                remainder.removeFirst(marker.count)
+                let spaces = remainder.prefix(while: { $0 == " " || $0 == "\t" })
+                if !spaces.isEmpty {
+                    tokens.append(CapturePomodoroLineToken(text: String(spaces), role: .text))
+                    remainder.removeFirst(spaces.count)
+                }
+            }
+        }
+
+        takeMarker()
+        if let checkbox = taskCheckboxPrefix(remainder) {
+            tokens.append(
+                CapturePomodoroLineToken(
+                    text: String(remainder.prefix(3)),
+                    role: .checkbox(checkbox)
+                )
+            )
+            remainder.removeFirst(3)
+            let spaces = remainder.prefix(while: { $0 == " " || $0 == "\t" })
+            if !spaces.isEmpty {
+                tokens.append(CapturePomodoroLineToken(text: String(spaces), role: .text))
+                remainder.removeFirst(spaces.count)
+            }
+        }
+        if !remainder.isEmpty {
+            var scanner = LineScanner(remainder)
+            scanner.scanInline()
+            tokens.append(contentsOf: scanner.tokens)
+        }
+        return splitTaskSuffixes(tokens)
+    }
+}
+
+/// A list marker at the start of `value` (`-`, `*`, `+`, `N.`, `N)`),
+/// requiring trailing whitespace or end of line so `--foo` and `**bold**`
+/// never read as markers. Nil when `value` opens with anything else.
+private func taskListMarkerPrefix(_ value: String) -> String? {
+    guard let first = value.first else {
+        return nil
+    }
+    if first == "-" || first == "*" || first == "+" {
+        let after = value.index(after: value.startIndex)
+        if after == value.endIndex || value[after] == " " || value[after] == "\t" {
+            return String(first)
+        }
+        return nil
+    }
+    let digits = value.prefix(while: { $0.isWholeNumber })
+    guard !digits.isEmpty else {
+        return nil
+    }
+    let rest = value.dropFirst(digits.count)
+    guard let punct = rest.first, punct == "." || punct == ")" else {
+        return nil
+    }
+    let after = rest.index(after: rest.startIndex)
+    if after == rest.endIndex || rest[after] == " " || rest[after] == "\t" {
+        return String(digits) + String(punct)
+    }
+    return nil
+}
+
+/// The checkbox symbol of a `[c]` prefix, or nil. Any single middle
+/// character counts, matching the Pomodoro headline rule.
+private func taskCheckboxPrefix(_ value: String) -> Character? {
+    let prefix = Array(value.prefix(3))
+    guard prefix.count == 3, prefix[0] == "[", prefix[2] == "]" else {
+        return nil
+    }
+    return prefix[1]
+}
+
+private func isTaskTagChar(_ value: Character) -> Bool {
+    value.isLetter || value.isWholeNumber || value == "_" || value == "/" || value == "-"
+}
+
+private func isTaskBoundary(_ value: Character?) -> Bool {
+    guard let value else {
+        return true
+    }
+    return value == " " || value == "\t"
+}
+
+/// Byte-preserving post-pass over task-row tokens: a trailing
+/// ` ^block-id` becomes `.blockID`, and `#tag` words inside `.text`
+/// tokens become `.tag`. Code, links, fields, and every other role pass
+/// through untouched, so `` `#code` `` and `[[#target]]` never split.
+private func splitTaskSuffixes(_ tokens: [CapturePomodoroLineToken]) -> [CapturePomodoroLineToken] {
+    var tokens = tokens
+    // A trailing ` ^block-id` only counts at the very end of the row, so
+    // only the last token can carry it, and only when the inline scan left
+    // it plain text.
+    if let last = tokens.last, last.role == .text,
+        let range = last.text.range(
+            of: "[ \\t]+\\^[A-Za-z0-9-]+$",
+            options: .regularExpression
+        ),
+        let idStart = last.text[range].firstIndex(of: "^")
+    {
+        let head = String(last.text[..<range.lowerBound])
+        // The match always starts with whitespace by construction.
+        tokens.removeLast()
+        if !head.isEmpty {
+            tokens.append(CapturePomodoroLineToken(text: head, role: .text))
+        }
+        let gap = String(last.text[range.lowerBound..<idStart])
+        if !gap.isEmpty {
+            tokens.append(CapturePomodoroLineToken(text: gap, role: .text))
+        }
+        tokens.append(
+            CapturePomodoroLineToken(text: String(last.text[idStart...]), role: .blockID)
+        )
+    }
+
+    var result: [CapturePomodoroLineToken] = []
+    var previous: Character? = nil
+    for token in tokens {
+        if token.role != .text {
+            result.append(token)
+            previous = token.text.last
+            continue
+        }
+        var cursor = token.text.startIndex
+        var chunk = ""
+        var boundary = isTaskBoundary(previous)
+        func flush() {
+            if !chunk.isEmpty {
+                result.append(CapturePomodoroLineToken(text: chunk, role: .text))
+                chunk = ""
+            }
+        }
+        while cursor < token.text.endIndex {
+            let char = token.text[cursor]
+            if char == "#", boundary {
+                let runStart = token.text.index(after: cursor)
+                var runEnd = runStart
+                while runEnd < token.text.endIndex, isTaskTagChar(token.text[runEnd]) {
+                    runEnd = token.text.index(after: runEnd)
+                }
+                let run = String(token.text[runStart..<runEnd])
+                if !run.isEmpty, run.contains(where: { !$0.isWholeNumber }) {
+                    flush()
+                    result.append(
+                        CapturePomodoroLineToken(text: "#" + run, role: .tag)
+                    )
+                    previous = token.text[token.text.index(before: runEnd)]
+                    cursor = runEnd
+                    boundary = false
+                    continue
+                }
+            }
+            chunk.append(char)
+            boundary = char == " " || char == "\t"
+            previous = char
+            cursor = token.text.index(after: cursor)
+        }
+        flush()
+    }
+    return result
 }
 
 private struct LineScanner {

@@ -10,19 +10,8 @@ import Foundation
 /// ledger logic here, only wording. Works for dry-run previews and
 /// committed captures alike; `dryRun` only changes the created badge.
 public struct CapturePomodoroBlockPresentation: Equatable, Sendable {
-    public struct Row: Equatable, Sendable {
-        /// The line with its leading spaces and tabs dropped.
-        public let content: String
-        /// The nesting level relative to the headline, clamped to
-        /// `maxDepth`.
-        public let depth: Int
-        public let change: CapturePomodoroBlockChange
-        /// The old text on `changed` rows, likewise stripped, nil otherwise.
-        public let beforeContent: String?
-        /// True for a non-empty depth-0 row.
-        public let isHeadline: Bool
-        public let tokens: [CapturePomodoroLineToken]
-    }
+    /// Shared with the parent-task presentation: one display-only diff row.
+    public typealias Row = CaptureBlockDiffRow
 
     /// The deepest rendered indent step; deeper Bob depths still show,
     /// clamped to this level.

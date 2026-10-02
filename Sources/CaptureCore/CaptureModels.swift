@@ -972,6 +972,87 @@ extension CapturePomodoroBlockChange: Codable {
     }
 }
 
+/// Neutral alias for one verbatim line of any batch-level block diff, so new
+/// block kinds share the Pomodoro line shape without a Pomodoro name.
+public typealias CaptureBlockLine = CapturePomodoroBlockLine
+
+/// Batch-level `task_blocks` entry: a parent task a sub-bullet capture wrote
+/// under, in its final after-state, with every line of its block and a
+/// per-line cumulative diff against the note before the capture. `line` is
+/// the 1-based task line in the final staged note; `blockID` is the parent's
+/// trailing block ID, nil when it has none (a picker task-ref parent);
+/// `created` marks a parent that did not exist before the batch (every row
+/// then reads `added`); `roles` is informational first-touch order the app
+/// never depends on. Every field decodes tolerantly so a partial object
+/// still yields a block instead of failing the whole capture.
+public struct CaptureTaskBlock: Codable, Equatable, Sendable {
+    public let relativeTarget: String
+    public let route: String
+    public let line: Int
+    public let blockID: String?
+    public let text: String
+    public let statusSymbol: String
+    public let statusName: String
+    public let created: Bool
+    public let roles: [String]
+    public let lines: [CaptureBlockLine]
+
+    public init(
+        relativeTarget: String,
+        route: String,
+        line: Int,
+        blockID: String? = nil,
+        text: String = "",
+        statusSymbol: String = "",
+        statusName: String = "",
+        created: Bool = false,
+        roles: [String] = [],
+        lines: [CaptureBlockLine] = []
+    ) {
+        self.relativeTarget = relativeTarget
+        self.route = route
+        self.line = line
+        self.blockID = blockID
+        self.text = text
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
+        self.created = created
+        self.roles = roles
+        self.lines = lines
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        relativeTarget = try container.decodeIfPresent(String.self, forKey: .relativeTarget) ?? ""
+        route = try container.decodeIfPresent(String.self, forKey: .route) ?? ""
+        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol) ?? ""
+        statusName = try container.decodeIfPresent(String.self, forKey: .statusName) ?? ""
+        created = try container.decodeIfPresent(Bool.self, forKey: .created) ?? false
+        roles = try container.decodeIfPresent([String].self, forKey: .roles) ?? []
+        lines =
+            try container.decodeIfPresent(
+                [CaptureBlockLine].self,
+                forKey: .lines
+            ) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case relativeTarget = "relative_target"
+        case route
+        case line
+        case blockID = "block_id"
+        case text
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
+        case created
+        case roles
+        case lines
+    }
+}
+
 /// One timing value from Bob's additive `pomodoro_close` result. Every field
 /// decodes tolerantly so a partial or older-bob object still yields a row.
 public struct PomodoroCloseTiming: Codable, Equatable, Sendable {
@@ -1811,6 +1892,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     public let pomodoroLinkPlacement: String?
     public let parentLine: Int?
     public let parentText: String?
+    public let parentSection: String?
     public let parentStatusSymbol: String?
     public let parentStatusName: String?
     // Additive: only present when `kind == "task_toggle"`. Bob always populates every
@@ -1863,6 +1945,11 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     // omits it entirely, and a malformed value decodes as empty so it can
     // never fail the capture decode.
     public let pomodoroBlocks: [CapturePomodoroBlock]
+    // Additive batch-level `task_blocks`: every parent task a sub-bullet
+    // capture wrote under, in its final after-state. Older Bob omits it
+    // entirely, and a malformed value decodes as empty so it can never
+    // fail the capture decode.
+    public let taskBlocks: [CaptureTaskBlock]
     public let captures: [CaptureCommandSuccess]
     public let globalDestination: CaptureGlobalDestination?
     public let warnings: [String]
@@ -1892,6 +1979,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         pomodoroLinkPlacement: String? = nil,
         parentLine: Int? = nil,
         parentText: String? = nil,
+        parentSection: String? = nil,
         parentStatusSymbol: String? = nil,
         parentStatusName: String? = nil,
         toggleDirection: String? = nil,
@@ -1920,7 +2008,8 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         captures: [CaptureCommandSuccess] = [],
         globalDestination: CaptureGlobalDestination? = nil,
         warnings: [String] = [],
-        pomodoroBlocks: [CapturePomodoroBlock] = []
+        pomodoroBlocks: [CapturePomodoroBlock] = [],
+        taskBlocks: [CaptureTaskBlock] = []
     ) {
         self.ok = ok
         self.dryRun = dryRun
@@ -1946,6 +2035,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.pomodoroLinkPlacement = pomodoroLinkPlacement
         self.parentLine = parentLine
         self.parentText = parentText
+        self.parentSection = parentSection
         self.parentStatusSymbol = parentStatusSymbol
         self.parentStatusName = parentStatusName
         self.toggleDirection = toggleDirection
@@ -1972,6 +2062,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.projectNote = projectNote
         self.planBudget = planBudget
         self.pomodoroBlocks = pomodoroBlocks
+        self.taskBlocks = taskBlocks
         self.captures = captures
         self.globalDestination = globalDestination
         self.warnings = warnings
@@ -2003,6 +2094,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         pomodoroLinkPlacement = try container.decodeIfPresent(String.self, forKey: .pomodoroLinkPlacement)
         parentLine = try container.decodeIfPresent(Int.self, forKey: .parentLine)
         parentText = try container.decodeIfPresent(String.self, forKey: .parentText)
+        parentSection = try container.decodeIfPresent(String.self, forKey: .parentSection)
         parentStatusSymbol = try container.decodeIfPresent(String.self, forKey: .parentStatusSymbol)
         parentStatusName = try container.decodeIfPresent(String.self, forKey: .parentStatusName)
         toggleDirection = try container.decodeIfPresent(String.self, forKey: .toggleDirection)
@@ -2057,6 +2149,11 @@ public struct CaptureCommandSuccess: Codable, Equatable {
                 [CapturePomodoroBlock].self,
                 forKey: .pomodoroBlocks
             )) ?? []
+        taskBlocks =
+            (try? container.decodeIfPresent(
+                [CaptureTaskBlock].self,
+                forKey: .taskBlocks
+            )) ?? []
         captures = try container.decodeIfPresent([CaptureCommandSuccess].self, forKey: .captures) ?? []
         globalDestination = try container.decodeIfPresent(
             CaptureGlobalDestination.self,
@@ -2090,6 +2187,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case pomodoroLinkPlacement = "pomodoro_link_placement"
         case parentLine = "parent_line"
         case parentText = "parent_text"
+        case parentSection = "parent_section"
         case parentStatusSymbol = "parent_status_symbol"
         case parentStatusName = "parent_status_name"
         case toggleDirection = "toggle_direction"
@@ -2116,6 +2214,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case projectNote = "project_note"
         case planBudget = "plan_budget"
         case pomodoroBlocks = "pomodoro_blocks"
+        case taskBlocks = "task_blocks"
         case captures
         case globalDestination = "global_destination"
         case warnings

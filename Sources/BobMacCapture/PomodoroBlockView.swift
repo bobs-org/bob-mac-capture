@@ -223,6 +223,10 @@ struct PomodoroBlockView: View {
             return .secondary
         case .name:
             return .primary
+        case .tag:
+            return .secondary
+        case .blockID:
+            return CaptureEditorPalette.color(for: .blockID)
         case .wikilinkDelimiter:
             return CaptureEditorPalette.color(for: .wikilinkDelimiter)
         case .wikilinkTarget:

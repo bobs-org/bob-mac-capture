@@ -276,6 +276,159 @@ final class CapturePomodoroLineTokensTests: XCTestCase {
         XCTAssertEqual(roles(tokens), [.text, .syntax, .text, .syntax])
         XCTAssertEqual(tokens[2].text, "WORK LOG")
     }
+
+    // MARK: - Task rows
+
+    private func checkTaskRow(
+        _ content: String,
+        isHeadline: Bool,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> [Token] {
+        let tokens = CapturePomodoroLineTokens.tokenizeTaskRow(
+            content,
+            isHeadline: isHeadline
+        )
+        XCTAssertEqual(
+            tokens.map(\.text).joined(),
+            content,
+            "task-row tokens must preserve every byte",
+            file: file,
+            line: line
+        )
+        return tokens
+    }
+
+    private func taskFixtureLines(_ name: String) throws -> [(content: String, isHeadline: Bool)] {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let text = try String(
+            contentsOf: fixtures.appendingPathComponent(name),
+            encoding: .utf8
+        )
+        let decoded = try JSONDecoder().decode(
+            CaptureCommandResponse.self,
+            from: Data(text.utf8)
+        )
+        guard case .success(let success) = decoded else {
+            throw LineTokensFixtureError.expectedSuccess
+        }
+        return success.taskBlocks.flatMap { block in
+            block.lines.enumerated().map { index, line in
+                (Self.stripped(line.text), index == 0)
+            }
+        }
+    }
+
+    func testTaskRowInvariantOverEveryFixtureLine() throws {
+        let fixtures = [
+            "sub-bullet-task-block.json",
+            "sub-bullet-section-task-block.json",
+            "sub-bullet-children-task-block.json",
+            "sub-bullet-global-task-block.json",
+            "sub-bullet-long-task-block.json",
+        ]
+        var lineCount = 0
+        for fixture in fixtures {
+            for row in try taskFixtureLines(fixture) {
+                let tokens = checkTaskRow(row.content, isHeadline: row.isHeadline)
+                XCTAssertFalse(tokens.isEmpty, "\(fixture): \(row.content)")
+                lineCount += 1
+            }
+        }
+        XCTAssertGreaterThan(lineCount, 20)
+    }
+
+    func testTaskHeadlineWithCheckboxTagFieldAndBlockID() throws {
+        let tokens = checkTaskRow(
+            "- [/] #task Port capture [created:: 2026-09-30] ^capture",
+            isHeadline: true
+        )
+
+        XCTAssertEqual(tokens[0].text, "-")
+        XCTAssertEqual(tokens[0].role, .syntax)
+        XCTAssertEqual(tokens[2].role, .checkbox("/"))
+        XCTAssertTrue(tokens.contains { $0.role == .tag && $0.text == "#task" })
+        XCTAssertTrue(tokens.contains { $0.role == .field })
+        XCTAssertEqual(tokens.last?.role, .blockID)
+        XCTAssertEqual(tokens.last?.text, "^capture")
+    }
+
+    func testTaskDoneCheckboxAndSlashTag() throws {
+        let done = checkTaskRow("- [x] Done ^done", isHeadline: true)
+        XCTAssertEqual(done[2].role, .checkbox("x"))
+        XCTAssertEqual(done.last?.role, .blockID)
+
+        let slash = checkTaskRow("- file under #a/b today", isHeadline: false)
+        XCTAssertTrue(slash.contains { $0.role == .tag && $0.text == "#a/b" })
+        XCTAssertNil(slash.first(where: { $0.role == .blockID }))
+    }
+
+    func testTaskNumberedMarkers() throws {
+        let dotted = checkTaskRow("1. first", isHeadline: false)
+        XCTAssertEqual(dotted[0].role, .syntax)
+        XCTAssertEqual(dotted[0].text, "1.")
+
+        let paren = checkTaskRow("2) second", isHeadline: false)
+        XCTAssertEqual(paren[0].text, "2)")
+
+        let star = checkTaskRow("* star", isHeadline: false)
+        XCTAssertEqual(star[0].text, "*")
+        XCTAssertEqual(star[0].role, .syntax)
+    }
+
+    func testTaskDigitsOnlyHashIsNotATag() throws {
+        let tokens = checkTaskRow("- issue #123 today", isHeadline: false)
+
+        XCTAssertFalse(tokens.contains { $0.role == .tag })
+    }
+
+    func testTaskMidWordHashIsNotATag() throws {
+        let tokens = checkTaskRow("- C# and F# today", isHeadline: false)
+
+        XCTAssertFalse(tokens.contains { $0.role == .tag })
+    }
+
+    func testTaskMidLineCaretIsNotABlockID() throws {
+        let tokens = checkTaskRow("- foo ^bar baz", isHeadline: false)
+
+        XCTAssertFalse(tokens.contains { $0.role == .blockID })
+    }
+
+    func testTaskFieldWikilinkCodeAndBold() throws {
+        let field = checkTaskRow("- effort [t:: 75m] done", isHeadline: false)
+        XCTAssertTrue(field.contains { $0.role == .field && $0.text == "[t:: 75m]" })
+
+        let link = checkTaskRow("- See [[sase#^target]] here", isHeadline: false)
+        XCTAssertTrue(link.contains { $0.role == .wikilinkBlock })
+        XCTAssertFalse(link.contains { $0.role == .tag })
+
+        let code = checkTaskRow("- use `#notag` here", isHeadline: false)
+        XCTAssertTrue(code.contains { $0.role == .code })
+        XCTAssertFalse(code.contains { $0.role == .tag })
+
+        let schedule = checkTaskRow("- 🗓️ **SCHEDULE LOG**", isHeadline: false)
+        XCTAssertTrue(schedule.contains { $0.role == .syntax && $0.text == "**" })
+        XCTAssertTrue(schedule.contains { $0.text == "SCHEDULE LOG" })
+        XCTAssertFalse(schedule.contains { $0.role == .tag })
+    }
+
+    func testPomodoroTokenizeLeavesTaskRolesUntouched() throws {
+        for content in [
+            "- [ ] #task Port capture ^capture",
+            "- foo #a/b ^bar",
+        ] {
+            for isHeadline in [true, false] {
+                let tokens = checkInvariant(content, isHeadline: isHeadline)
+                XCTAssertFalse(
+                    tokens.contains { $0.role == .tag || $0.role == .blockID },
+                    "Pomodoro tokenize must not emit task roles: \(content)"
+                )
+            }
+        }
+    }
 }
 
 private enum LineTokensFixtureError: Error {
