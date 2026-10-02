@@ -299,14 +299,15 @@ public struct PomodoroCloseLogEntry: Codable, Equatable, Sendable {
     }
 }
 
-/// The typed `=x[<N>][*<P>][!<M>][~<K>]` token from `bob capture-parse`:
-/// `raw` preserves exactly what was typed (`"=x"`, `"=X1!2"`, `"=x1~2"`,
-/// `"=x*2"`). `inProgress` is the sorted `in_progress` list, or nil when
-/// `<N>` was omitted (plain `=x` leaves unlisted links at their ledger
-/// outcome unless `*<P>` is present, which activates selection mode like
-/// `<N>`); `park` is the sorted `*<P>` list, empty when no `*` list was
-/// typed; `complete` is the sorted `!<M>` list, empty when no `!` list was
-/// typed; `drop` is the sorted `~<K>` list, empty when no `~` list was typed.
+/// The typed close token from `bob capture-parse` (`=x[…]` or the `=*`/`=!`
+/// aliases): `raw` preserves exactly what was typed (`"=x"`, `"=X1!2"`,
+/// `"=x1~2"`, `"=x*2"`, `"=*"`, `"=!"`). `inProgress` is the sorted
+/// `in_progress` list, or nil when `<N>` was omitted (plain `=x` leaves
+/// unlisted links at their ledger outcome unless `*<P>` is present, which
+/// activates selection mode like `<N>`); `park` is the sorted `*<P>` list,
+/// defaulting to `[1]` for a present-but-empty `*` group; `complete` is the
+/// sorted `!<M>` list, defaulting to `[1]` for a present-but-empty `!` group;
+/// `drop` is the sorted `~<K>` list, empty when no `~` list was typed.
 /// Present on whole-item closes and on link and body-bearing items carrying
 /// the close suffix. Older Bob binaries omit all four lists; they decode as
 /// none/empty so the card is exactly today's.

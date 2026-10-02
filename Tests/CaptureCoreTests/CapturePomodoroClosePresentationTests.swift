@@ -547,9 +547,18 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         let hint = try XCTUnwrap(presentation.teachingHint)
         XCTAssertEqual(
             hint.text,
-            "=x1,2 keeps only these in progress · =x*2 parks 2 (not carried) · =x!2 completes 2 · =x~3 drops 3 · =x0 defers all · =x 2 wrote the tests logs work to 2"
+            "=* parks 1 · =! completes 1 · add numbers for other tasks (e.g. =*2) · =x1,2 keeps only these in progress · =x*2 parks 2 (not carried) · =x!2 completes 2 · =x~2 drops 2 · =x0 defers all · =x 2 wrote the tests logs work to 2"
         )
+        // Short syntax leads with structured colors: `=` pink, `*` teal,
+        // `!` green; prose stays secondary.
+        XCTAssertEqual(hint.tokens.first?.text, "=")
         XCTAssertEqual(hint.tokens.first?.category, .pomodoroStart)
+        XCTAssertTrue(
+            hint.tokens.contains { $0.text == "*" && $0.category == .pomodoroClosePark }
+        )
+        XCTAssertTrue(
+            hint.tokens.contains { $0.text == "!" && $0.category == .pomodoroCloseComplete }
+        )
         XCTAssertTrue(
             hint.tokens.contains { $0.text == "1,2" && $0.category == .pomodoroCloseInProgress }
         )
@@ -560,7 +569,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
             hint.tokens.contains { $0.text == "!2" && $0.category == .pomodoroCloseComplete }
         )
         XCTAssertTrue(
-            hint.tokens.contains { $0.text == "~3" && $0.category == .pomodoroCloseDrop }
+            hint.tokens.contains { $0.text == "~2" && $0.category == .pomodoroCloseDrop }
         )
         // Plain `=x`: every row keeps its ledger outcome, nothing dims.
         XCTAssertTrue(presentation.taskRows.allSatisfy { !$0.isDimmed })
@@ -572,8 +581,17 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         let tokens = CapturePomodoroClosePresentation.hintTokens(numberedRows: 1)
         XCTAssertEqual(
             tokens.map(\.text).joined(),
-            "=x!1 completes it · =x~1 drops it · =x0 defers it · =x wrote the tests logs work to it"
+            "=* parks 1 · =! completes 1 · =x~1 drops it · =x0 defers it · =x wrote the tests logs work to it"
         )
+    }
+
+    func testTwoLinkHintAvoidsOutOfRangeDrop() throws {
+        let tokens = CapturePomodoroClosePresentation.hintTokens(numberedRows: 2)
+        let text = tokens.map(\.text).joined()
+        XCTAssertTrue(text.hasPrefix("=* parks 1 · =! completes 1"))
+        XCTAssertTrue(text.contains("add numbers for other tasks (e.g. =*2)"))
+        XCTAssertTrue(text.contains("~2 drops 2"))
+        XCTAssertFalse(text.contains("~3"))
     }
 
     func testNumberedRowsNeverOverflow() throws {
@@ -1451,6 +1469,106 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         )
         let success = try decodeSuccess(replaced)
         return try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+    }
+
+    func testShortAliasDefaultsDecodeWithRawAndSpans() throws {
+        let park = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-alias-park.json").utf8)
+        )
+        XCTAssertEqual(park.mode, "pomodoro_close")
+        XCTAssertEqual(park.pomodoroClose?.raw, "=*")
+        XCTAssertNil(park.pomodoroClose?.inProgress)
+        XCTAssertEqual(park.pomodoroClose?.park, [1])
+        XCTAssertEqual(
+            park.spans.map(\.kind),
+            ["pomodoro_close", "pomodoro_close_park"]
+        )
+        XCTAssertEqual(park.spans[0].start, 0)
+        XCTAssertEqual(park.spans[0].end, 1)
+        XCTAssertEqual(park.spans[1].start, 1)
+        XCTAssertEqual(park.spans[1].end, 2)
+
+        let complete = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-alias-complete.json").utf8)
+        )
+        XCTAssertEqual(complete.pomodoroClose?.raw, "=!")
+        XCTAssertEqual(complete.pomodoroClose?.complete, [1])
+        XCTAssertEqual(
+            complete.spans.map(\.kind),
+            ["pomodoro_close", "pomodoro_close_complete"]
+        )
+
+        let mixed = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-alias-mixed.json").utf8)
+        )
+        XCTAssertEqual(mixed.pomodoroClose?.raw, "=*!2")
+        XCTAssertEqual(mixed.pomodoroClose?.park, [1])
+        XCTAssertEqual(mixed.pomodoroClose?.complete, [2])
+
+        let conflict = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-alias-conflict.json").utf8)
+        )
+        XCTAssertEqual(conflict.mode, "pomodoro_close")
+        XCTAssertFalse(conflict.diagnostics.isEmpty)
+        XCTAssertEqual(conflict.diagnostics.first?.code, "invalid_pomodoro_close")
+
+        let incomplete = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-alias-incomplete.json").utf8)
+        )
+        XCTAssertEqual(incomplete.mode, "incomplete")
+        XCTAssertEqual(incomplete.needs, ["pomodoro_close_task"])
+    }
+
+    func testShortAliasPreviewShowsDefaultTaskOne() throws {
+        let park = try XCTUnwrap(
+            CapturePomodoroClosePresentation(capture: decodePreview("pomodoro-close-select-alias-park.json"))
+        )
+        XCTAssertTrue(park.hasSelection)
+        XCTAssertEqual(park.selectionSummary, "Parked 1 · Deferred 2")
+        let parked = try XCTUnwrap(park.taskRows.first(where: { $0.index == 1 }))
+        XCTAssertEqual(parked.outcome, .parked)
+        XCTAssertEqual(parked.source, .listed)
+        XCTAssertEqual(parked.badgeSymbolName, "1.circle.fill")
+        XCTAssertFalse(parked.isStruck)
+        XCTAssertTrue(parked.accessibilityLabel.contains("Task 1"))
+        XCTAssertTrue(parked.accessibilityLabel.contains("Parked"))
+
+        let complete = try XCTUnwrap(
+            CapturePomodoroClosePresentation(capture: decodePreview("pomodoro-close-select-alias-complete.json"))
+        )
+        XCTAssertTrue(complete.hasSelection)
+        XCTAssertEqual(complete.selectionSummary, "Complete 1 · Deferred 2")
+        let done = try XCTUnwrap(complete.taskRows.first(where: { $0.index == 1 }))
+        XCTAssertEqual(done.outcome, .complete)
+        XCTAssertEqual(done.source, .listed)
+        XCTAssertTrue(done.isStruck)
+        XCTAssertTrue(done.accessibilityLabel.contains("Task 1"))
+    }
+
+    func testLegacyStarPlaceholderStillTrims() throws {
+        // Older Bob reported `=x*` as incomplete with a `*` placeholder;
+        // updated Bob reports it valid. The trim helper keeps supporting the
+        // stale shape so old binaries still preview.
+        let legacy = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-park-incomplete.json").utf8)
+        )
+        // The checked-in legacy fixture is now the real conflict response;
+        // synthesize the historical incomplete shape for the trim check.
+        let historical = """
+        {"ok":true,"schema_version":1,"input":"=x*","body":"=x*","mode":"incomplete","needs":["pomodoro_close_task"],"spans":[{"start":0,"end":2,"kind":"pomodoro_close"},{"start":2,"end":3,"kind":"interactive_placeholder"}],"diagnostics":[]}
+        """
+        let old = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(historical.utf8)
+        )
+        XCTAssertEqual(old.mode, "incomplete")
+        XCTAssertFalse(legacy.diagnostics.isEmpty)
     }
 
     private func decodePreview(_ name: String) throws -> CaptureCommandSuccess {

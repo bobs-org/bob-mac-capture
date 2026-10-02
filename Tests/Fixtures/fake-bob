@@ -101,6 +101,26 @@ case "${command}" in
       cat "${fixtures_dir}/pomodoro-close-parse-invalid.json"
     elif [[ "${draft}" == "=x1~2" ]]; then
       cat "${fixtures_dir}/pomodoro-close-parse-drop.json"
+    elif [[ "${draft}" == "=*" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-alias-park.json"
+    elif [[ "${draft}" == "=!" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-alias-complete.json"
+    elif [[ "${draft}" == "=*2" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-alias-explicit.json"
+    elif [[ "${draft}" == "=*!2" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-alias-mixed.json"
+    elif [[ "${draft}" == "=!2*" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-alias-mixed-rev.json"
+    elif [[ "${draft}" == "=x*" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-alias-long-default.json"
+    elif [[ "${draft}" == "=x!" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-alias-long-complete.json"
+    elif [[ "${draft}" == "=*1," ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-alias-incomplete.json"
+    elif [[ "${draft}" == "=x1*" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-alias-conflict.json"
+    elif [[ "${draft}" == "=*abc" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-alias-bad.json"
     elif [[ "${draft}" == "${close_log_draft}" ]]; then
       cat "${fixtures_dir}/pomodoro-close-parse-log.json"
     elif [[ "${draft}" == "${close_log_dangling_draft}" ]]; then
@@ -2994,6 +3014,18 @@ JSON
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-worked.json"
     elif [[ "${draft}" == "=x1!2" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-complete.json"
+    elif [[ "${draft}" == "=*" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-alias-park.json"
+    elif [[ "${draft}" == "=!" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-alias-complete.json"
+    elif [[ "${draft}" == "=*2" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-alias-explicit.json"
+    elif [[ "${draft}" == "=*!2" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-alias-mixed.json"
+    elif [[ "${draft}" == "=x*" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-alias-long-park.json"
+    elif [[ "${draft}" == "=x!" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-alias-long-complete.json"
     elif [[ "${draft}" == "=x0" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-none.json"
     elif [[ "${draft}" == "=x1" ]]; then
@@ -3031,6 +3063,12 @@ JSON
       exit 2
     elif [[ "${draft}" == "=x3" ]]; then
       cat "${fixtures_dir}/pomodoro-close-select-out-of-range.json"
+      exit 1
+    elif [[ "${draft}" == "=*3" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-select-alias-out-of-range.json"
+      exit 1
+    elif [[ "${draft}" == "=x1*" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-parse-alias-conflict.json"
       exit 1
     elif [[ "${draft}" == "${close_log_draft}" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-log.json"

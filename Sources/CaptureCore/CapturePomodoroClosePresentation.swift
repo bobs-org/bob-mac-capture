@@ -580,34 +580,50 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     }
 
     /// The teaching hint tokens for a lineup of `numberedRows` rows. Example
-    /// tokens carry the editor span category whose color they share (`=x` is
-    /// Pomodoro-session pink, `<N>` digits are orange, `*<P>` digits are teal,
-    /// `!<M>` digits are green, `~<K>` digits are muted gray); prose carries
-    /// `.neutral`. Uses only numbers available in the current lineup.
+    /// tokens carry the editor span category whose color they share (`=` is
+    /// Pomodoro-session pink, `*` and its list are teal, `!` and its list are
+    /// green, `<N>` digits are orange, `~<K>` digits are muted gray); prose
+    /// carries `.neutral`. Uses only numbers available in the current lineup.
+    /// Leads with the short `=*`/`=!` defaults, then the continue/drop/defer
+    /// and log examples.
     static func hintTokens(numberedRows: Int) -> [HintToken] {
+        let eq: [HintToken] = [HintToken(text: "=", category: .pomodoroStart)]
+        let star: [HintToken] = [HintToken(text: "*", category: .pomodoroClosePark)]
+        let bang: [HintToken] = [HintToken(text: "!", category: .pomodoroCloseComplete)]
         let close: [HintToken] = [HintToken(text: "=x", category: .pomodoroStart)]
+        // Short-syntax lead: omitted `*`/`!` lists mean task 1.
+        var tokens: [HintToken] = eq + star
+            + [HintToken(text: " parks 1 · ", category: .neutral)]
+            + eq + bang
+            + [HintToken(text: " completes 1", category: .neutral)]
         if numberedRows >= 2 {
-            let parkNumber = numberedRows >= 2 ? "2" : "1"
+            tokens += [HintToken(text: " · add numbers for other tasks (e.g. ", category: .neutral)]
+                + eq + [HintToken(text: "*2", category: .pomodoroClosePark)]
+                + [HintToken(text: ")", category: .neutral)]
             let logExample: [HintToken] = [HintToken(text: " · ", category: .neutral)]
                 + close + [HintToken(text: " ", category: .neutral)]
                 + [HintToken(text: "2", category: .pomodoroCloseLog)]
                 + [HintToken(text: " wrote the tests logs work to 2", category: .neutral)]
-            return close + [HintToken(text: "1,2", category: .pomodoroCloseInProgress)]
+            // Drop uses only indices present in the lineup.
+            let dropIndex = numberedRows >= 3 ? "3" : "2"
+            tokens += [HintToken(text: " · ", category: .neutral)]
+                + close + [HintToken(text: "1,2", category: .pomodoroCloseInProgress)]
                 + [HintToken(text: " keeps only these in progress · ", category: .neutral)]
-                + close + [HintToken(text: "*\(parkNumber)", category: .pomodoroClosePark)]
-                + [HintToken(text: " parks \(parkNumber) (not carried) · ", category: .neutral)]
+                + close + [HintToken(text: "*2", category: .pomodoroClosePark)]
+                + [HintToken(text: " parks 2 (not carried) · ", category: .neutral)]
                 + close + [HintToken(text: "!2", category: .pomodoroCloseComplete)]
                 + [HintToken(text: " completes 2 · ", category: .neutral)]
-                + close + [HintToken(text: "~3", category: .pomodoroCloseDrop)]
-                + [HintToken(text: " drops 3 · ", category: .neutral)]
+                + close + [HintToken(text: "~\(dropIndex)", category: .pomodoroCloseDrop)]
+                + [HintToken(text: " drops \(dropIndex) · ", category: .neutral)]
                 + close + [HintToken(text: "0", category: .pomodoroCloseInProgress)]
                 + [HintToken(text: " defers all", category: .neutral)]
                 + logExample
+            return tokens
         }
         let logExample: [HintToken] = [HintToken(text: " · ", category: .neutral)]
             + close + [HintToken(text: " wrote the tests logs work to it", category: .neutral)]
-        return close + [HintToken(text: "!1", category: .pomodoroCloseComplete)]
-            + [HintToken(text: " completes it · ", category: .neutral)]
+        return tokens
+            + [HintToken(text: " · ", category: .neutral)]
             + close + [HintToken(text: "~1", category: .pomodoroCloseDrop)]
             + [HintToken(text: " drops it · ", category: .neutral)]
             + close + [HintToken(text: "0", category: .pomodoroCloseInProgress)]

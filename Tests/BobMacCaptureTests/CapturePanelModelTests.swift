@@ -1897,6 +1897,8 @@ final class CapturePanelModelTests: XCTestCase {
             ","
         )
 
+        // Legacy older-Bob shape: `=x!` used to dangle. Updated Bob reports
+        // it valid; the trim helper keeps supporting the stale response.
         let bang = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
@@ -1955,6 +1957,74 @@ final class CapturePanelModelTests: XCTestCase {
             ]
         )
         XCTAssertNil(CapturePanelModel.closePendingTrim(in: valid, draft: "=x1"))
+    }
+
+    func testCloseAliasPreviewSubmitsUntouchedDraft() async throws {
+        // Bare aliases and long-form defaults get an immediate dry-run and
+        // enable Close; submission sends the exact original argv.
+        for draft in ["=*", "=!", "=*2", "=x*", "=x!"] {
+            let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let model = CapturePanelModel(debounceNanoseconds: 0)
+            model.processClient = BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            )
+            model.plainDraft = draft
+            model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+            await waitUntil {
+                if case .ready = model.previewState { return true }
+                return false
+            }
+            XCTAssertEqual(model.primaryActionTitle, "Close", "\(draft)")
+            XCTAssertNotNil(model.closePresentation, "\(draft)")
+            XCTAssertNil(model.pickerPresentation, "\(draft): no completion picker")
+            model.submit(openAfterCapture: false)
+            await waitUntil { !model.isSubmitting }
+            let record = try String(contentsOf: recordURL)
+            XCTAssertTrue(
+                record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"),
+                "\(draft)"
+            )
+            XCTAssertTrue(
+                record.contains("argv=capture --format json -- \(draft)"),
+                "\(draft)"
+            )
+        }
+    }
+
+    func testCloseAliasInvalidBlocksSubmissionAndClearsStaleCard() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "=*"
+        model.editorTextDidChange(cursorUTF8Offset: 2)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+        XCTAssertNotNil(model.closePresentation)
+        // A malformed alias cannot submit and clears the stale card.
+        model.plainDraft = "=*abc"
+        model.editorTextDidChange(cursorUTF8Offset: 5)
+        await waitUntil {
+            if case .failed = model.previewState { return true }
+            return false
+        }
+        XCTAssertNil(model.closePresentation)
+        // A genuinely incomplete draft disables submission with a pending card.
+        model.plainDraft = "=*1,"
+        model.editorTextDidChange(cursorUTF8Offset: 4)
+        await waitUntil {
+            if case .pending = model.previewState { return true }
+            return false
+        }
+        XCTAssertNil(model.closePresentation)
     }
 
     func testClosePendingTrimTrimsOnlyNeedingItems() {
