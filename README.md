@@ -707,6 +707,22 @@ suggestions.
   `pomodoro_blocks` previews exactly as before. `PomodoroBlockDesignTests` renders the
   adjust, close, link-move, created-named-start, and chain fixtures to PNG
   (light/dark, 760/620 pt, scale 2) when `BOB_MAC_CAPTURE_RENDER_DIR` is set.
+  Whenever Bob reports batch-level `task_blocks`, every parent task a sub-bullet
+  capture wrote under renders once below the item stack as a full task card, before the
+  Pomodoro blocks: a picker-status caption (`In Progress · sase.md · line 1` with the
+  `@+` chooser glyph and color) plus a pink **New** capsule on a dry run (**Created**
+  once committed), then the shared diff card with task tinting (tertiary list markers,
+  checkbox colors, secondary `#tags` and `[key:: value]` fields, indigo trailing
+  `^block-id`, wikilink colors, semibold task-line prose) and no truncation. Covered
+  sub-bullet items switch to a compact `↳ Sub-bullet under ^id` header (with
+  ` › SECTION` when Bob reports one) and drop the verbatim stack and trailing note
+  line; uncovered items render exactly as before. Blocks above 24 rows fold quiet runs
+  of 4 or more unchanged rows into `⋯ N unchanged lines` rows that expand on click
+  (with a **Show all lines** action); smaller blocks never fold. A single sub-bullet
+  names its parent in the status and summary (`Preview → sase.md › ^id`), and an older
+  Bob without `task_blocks` previews exactly as before. `TaskBlockDesignTests` renders
+  every task-block fixture to PNG (light/dark, 760/620 pt, scale 2) when
+  `BOB_MAC_CAPTURE_RENDER_DIR` is set.
 - The preview path assigns a fixed `BOB_PRIORITY_ROLL_SEED` for the draft lifecycle so
   randomized `p:<N>` scheduled dates can be reused by submission. Bob derives
   item-specific rolls from that seed for batch drafts, and the seed resets only after a

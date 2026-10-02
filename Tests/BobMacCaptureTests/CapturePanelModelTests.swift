@@ -5855,6 +5855,112 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 9 --format json -- prefix [[AI suffix"))
     }
 
+    func testLivePreviewWithSubBulletYieldsTaskBlockAndParentStatus() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "Should reuse as much of PIW sase-core code as possible! @sase+capture"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        // The batch task block arrives with the live preview: one ^capture
+        // block with the cumulative sub-bullet diff.
+        let blocks = try XCTUnwrap(model.previewResult?.taskBlocks)
+        XCTAssertEqual(blocks.count, 1)
+        XCTAssertEqual(blocks.first?.blockID, "capture")
+        // A single sub-bullet names its parent in the status and summary.
+        let summary = try XCTUnwrap(model.destinationSummary)
+        XCTAssertTrue(summary.contains("Preview \u{2192} sase.md \u{203A} ^capture:"))
+        model.preview()
+        await waitUntil { !model.isPreviewing }
+        XCTAssertTrue(model.statusText.contains("sase.md \u{203A} ^capture"))
+    }
+
+    func testLivePreviewStaleFailureClearsToReadyOnSubBulletSuccess() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let failing = "+0"
+        model.plainDraft = failing
+        model.editorTextDidChange(cursorUTF8Offset: failing.utf8.count)
+        await waitUntil {
+            if case .failed = model.previewState { return true }
+            return false
+        }
+        XCTAssertEqual(model.statusText, "Preview failed")
+
+        let draft = "Should reuse as much of PIW sase-core code as possible! @sase+capture"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+        // A successful live preview with no kind-specific status clears the
+        // stale failure; empty reads as Ready in the footer.
+        XCTAssertEqual(model.statusText, "")
+        XCTAssertEqual(model.previewResult?.taskBlocks.count, 1)
+    }
+
+    func testFailedDryRunClearsTaskBlocksAlongWithTheCard() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "+0"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .failed = model.previewState { return true }
+            return false
+        }
+
+        // A failed live dry run must never leave a stale card — or stale
+        // task blocks — beside the red error.
+        XCTAssertNil(model.previewResult)
+        XCTAssertEqual(model.previewResults, [])
+        XCTAssertNil(model.destinationSummary)
+    }
+
+    func testOlderBobSubBulletHasNoTaskBlocks() throws {
+        // A Bob without `task_blocks` still previews: the pane renders the
+        // old item lines exactly as before.
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let data = try Data(contentsOf: fixtures.appendingPathComponent("sub-bullet-task-block.json"))
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        object.removeValue(forKey: "task_blocks")
+        let stripped = try JSONSerialization.data(withJSONObject: object)
+        let response = try JSONDecoder().decode(CaptureCommandResponse.self, from: stripped)
+        guard case .success(let success) = response else {
+            XCTFail("expected a successful Bob response")
+            throw NSError(domain: "CapturePanelModelTests", code: 3)
+        }
+        XCTAssertEqual(success.taskBlocks, [])
+        XCTAssertEqual(success.kind, "sub_bullet")
+
+        let model = CapturePanelModel()
+        model.previewResult = success
+        model.previewResults = [success]
+        XCTAssertEqual(model.previewResult?.taskBlocks, [])
+        XCTAssertNotNil(model.destinationSummary)
+    }
+
     private func waitUntil(
         timeout: TimeInterval = 5,
         file: StaticString = #filePath,

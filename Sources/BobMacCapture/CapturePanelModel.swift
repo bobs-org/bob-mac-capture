@@ -3596,6 +3596,12 @@ final class CapturePanelModel: ObservableObject {
                             self?.statusText = close.statusText
                         } else if let start = Self.soleSessionStartPresentation(for: captures) {
                             self?.statusText = start.statusText
+                        } else if self?.statusText == "Preview failed" {
+                            // A successful live preview that sets no
+                            // kind-specific status clears a stale failure
+                            // footer; empty reads as Ready. Any other text,
+                            // such as rewrite notices, is left untouched.
+                            self?.statusText = ""
                         }
                         if let separator = pendingSeparator {
                             // The card previews the trimmed draft: mark it
@@ -3959,6 +3965,14 @@ final class CapturePanelModel: ObservableObject {
         guard captures.count != 1 else {
             let capture = captures[0]
             let label = displayLabel(for: capture)
+            // A single sub-bullet capture names its parent task: the card
+            // below shows where the bullet landed.
+            if let subBullet = CaptureSubBulletPresentation(capture: capture) {
+                if label == capture.relativeTarget {
+                    return "\(prefix) \u{2192} \(label) \u{203A} \(subBullet.parentLabel): \(capture.taskLine)"
+                }
+                return "\(prefix) \u{2192} \(label) (\(capture.relativeTarget)) \u{203A} \(subBullet.parentLabel): \(capture.taskLine)"
+            }
             // The display label already is the path for unrouted captures,
             // so the parenthetical would repeat it verbatim.
             if label == capture.relativeTarget {
@@ -3993,7 +4007,12 @@ final class CapturePanelModel: ObservableObject {
         }
 
         guard captures.count != 1 else {
-            return "\(prefix) \u{2192} \(displayLabel(for: captures[0]))"
+            let capture = captures[0]
+            // A single sub-bullet capture names its parent task.
+            if let subBullet = CaptureSubBulletPresentation(capture: capture) {
+                return "\(prefix) \u{2192} \(displayLabel(for: capture)) \u{203A} \(subBullet.parentLabel)"
+            }
+            return "\(prefix) \u{2192} \(displayLabel(for: capture))"
         }
         return "\(prefix) \(captures.count) items"
     }

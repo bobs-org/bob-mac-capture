@@ -163,6 +163,49 @@ final class CapturePreviewFullHeightTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
+    func testPreviewPaneWithTaskBlocksIsTallerThanWithout() throws {
+        let success = try taskBlockFixture("sub-bullet-task-block.json")
+        XCTAssertFalse(success.taskBlocks.isEmpty)
+        let emptied = try successStrippingTaskBlocks(success)
+        XCTAssertEqual(emptied.taskBlocks, [])
+
+        // The task card adds real height at full and minimum panel widths.
+        for width in [724, 620] as [CGFloat] {
+            let withBlocks = hostedPreviewHeight(for: readyModel(for: success), width: width)
+            let withoutBlocks = hostedPreviewHeight(for: readyModel(for: emptied), width: width)
+            XCTAssertGreaterThan(
+                withBlocks,
+                withoutBlocks,
+                "task blocks should grow the pane at width \(width)"
+            )
+        }
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testLongTaskBlockFoldsShorterThanExpanded() throws {
+        let success = try taskBlockFixture("sub-bullet-long-task-block.json")
+        let block = try XCTUnwrap(success.taskBlocks.first)
+        let presentation = CaptureTaskBlockPresentation(block: block, dryRun: success.dryRun)
+        XCTAssertGreaterThan(presentation.rows.count, CaptureTaskBlockPresentation.foldThreshold)
+        let folded = presentation.items(expandedFolds: [])
+        let foldIDs = Set(folded.compactMap { item -> Int? in
+            if case .fold(let fold) = item { return fold.id }
+            return nil
+        })
+        XCTAssertFalse(foldIDs.isEmpty, "the long Work Log tail should fold")
+        let expanded = presentation.items(expandedFolds: foldIDs)
+        XCTAssertLessThan(folded.count, expanded.count)
+        XCTAssertEqual(expanded.count, presentation.rows.count)
+
+        // The folded card measures shorter than the fully expanded card.
+        let foldedHeight = hostedCardHeight(items: folded, width: 724)
+        let expandedHeight = hostedCardHeight(items: expanded, width: 724)
+        XCTAssertGreaterThan(expandedHeight, foldedHeight)
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
     func testPreviewPaneHoldsHeightWhileReloading() throws {
         let close = try closeSuccessFixture("pomodoro-close-worked.json")
         let model = CapturePanelModel()
@@ -202,6 +245,43 @@ final class CapturePreviewFullHeightTests: XCTestCase {
         model.previewResults = [success]
         model.previewState = .ready(success)
         return model
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    private func hostedCardHeight(items: [CaptureTaskBlockPresentation.Item], width: CGFloat) -> CGFloat {
+        let hostingView = NSHostingView(
+            rootView: BlockDiffCard(railTint: .orange, items: items, headlineEmphasis: true, onExpandFold: nil)
+                .frame(width: width)
+        )
+        hostingView.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        hostingView.layoutSubtreeIfNeeded()
+        return hostingView.fittingSize.height
+    }
+
+    private func taskBlockFixture(_ name: String) throws -> CaptureCommandSuccess {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let data = try Data(contentsOf: fixtures.appendingPathComponent(name))
+        let response = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+        guard case .success(let success) = response else {
+            XCTFail("expected a successful Bob task-block response in \(name)")
+            throw NSError(domain: "CapturePreviewFullHeightTests", code: 3)
+        }
+        return success
+    }
+
+    private func successStrippingTaskBlocks(_ success: CaptureCommandSuccess) throws -> CaptureCommandSuccess {
+        let data = try JSONEncoder().encode(success)
+        guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NSError(domain: "CapturePreviewFullHeightTests", code: 4)
+        }
+        object.removeValue(forKey: "task_blocks")
+        let stripped = try JSONSerialization.data(withJSONObject: object)
+        return try JSONDecoder().decode(CaptureCommandSuccess.self, from: stripped)
     }
 
     private func successStrippingBlocks(_ success: CaptureCommandSuccess) throws -> CaptureCommandSuccess {

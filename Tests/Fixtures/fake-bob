@@ -3612,6 +3612,27 @@ JSON
   "placement": "inserted"
 }
 JSON
+    elif [[ "${draft}" == "Should reuse as much of PIW sase-core code as possible! @sase+capture" ]]; then
+      # Parent-task card example: a sub-bullet insertion before the Schedule
+      # Log (real `bob capture --dry-run -f json` output; only the dry-run
+      # flag varies).
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/sub-bullet-task-block.json"
+    elif [[ "${draft}" == "Postgres 17 minimum @foo+bar#requirements" ]]; then
+      # Section insertion: the bullet lands inside REQUIREMENTS (real `bob`
+      # output; only the dry-run flag varies).
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/sub-bullet-section-task-block.json"
+    elif [[ "${draft}" == "new note @sase+capture" ]]; then
+      # Authored children: the new bullet plus its nested rows are all added
+      # (real `bob` output; only the dry-run flag varies).
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/sub-bullet-children-task-block.json"
+    elif [[ "${draft}" == "fresh note @sase+long" ]]; then
+      # Long parent with a 30-entry Work Log, so the card folds (real `bob`
+      # output; only the dry-run flag varies).
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/sub-bullet-long-task-block.json"
+    elif [[ "${draft}" == $'@@sase+capture\nfirst note\n\nsecond note' ]]; then
+      # Global batch: two items under one parent, one card with two added
+      # rows (real `bob` output; only the dry-run flag varies).
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/sub-bullet-global-task-block.json"
     elif [[ "${draft}" == "${multiline_draft}" ]]; then
       cat <<JSON
 {

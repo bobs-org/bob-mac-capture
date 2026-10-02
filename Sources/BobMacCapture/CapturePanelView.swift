@@ -1639,8 +1639,26 @@ struct PreviewPane: View {
                 index: index,
                 total: captures.count,
                 globalDestination: success.globalDestination,
-                blocks: success.pomodoroBlocks
+                blocks: success.pomodoroBlocks,
+                taskBlocks: success.taskBlocks
             )
+        }
+
+        // Batch-level task blocks render once, after the item stack and
+        // before the Pomodoro blocks: each card shows the parent task's final
+        // state with Bob's cumulative diff. They dim together with the close
+        // card while a close-list selection dangles. An older Bob omits
+        // `task_blocks` and the pane renders exactly as before.
+        if !success.taskBlocks.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(success.taskBlocks.enumerated()), id: \.offset) { _, block in
+                    TaskBlockView(block: block, dryRun: success.dryRun) {
+                        model.requestFocus(.editor)
+                    }
+                }
+            }
+            .padding(.top, 4)
+            .opacity(model.closePendingText != nil ? 0.6 : 1)
         }
 
         // Batch-level Pomodoro blocks render once, after the item stack:
@@ -1745,7 +1763,8 @@ struct PreviewPane: View {
         index: Int,
         total: Int,
         globalDestination: CaptureGlobalDestination?,
-        blocks: [CapturePomodoroBlock]
+        blocks: [CapturePomodoroBlock],
+        taskBlocks: [CaptureTaskBlock] = []
     ) -> some View {
         let isLocalOverride = globalDestination.map {
             !captureUsesGlobalDestination(success, $0)
@@ -1782,7 +1801,8 @@ struct PreviewPane: View {
                 index: index,
                 total: total,
                 isLocalOverride: isLocalOverride,
-                blocks: blocks
+                blocks: blocks,
+                taskBlocks: taskBlocks
             )
         }
     }
@@ -2426,20 +2446,78 @@ struct PreviewPane: View {
         .lineLimit(1)
     }
 
+    private func subBulletHeader(
+        _ subBullet: CaptureSubBulletPresentation,
+        success: CaptureCommandSuccess,
+        index: Int,
+        total: Int,
+        isLocalOverride: Bool
+    ) -> some View {
+        // A covered sub-bullet item names what it did; the task card below
+        // names where it landed. Wire words (`placement`, `kind`) and the
+        // route label stay off: the caption names the note.
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if total > 1 {
+                Text("\(index + 1)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Image(systemName: "arrow.turn.down.right")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text("Sub-bullet")
+                .fontWeight(.semibold)
+            Text(subBullet.headerDetail)
+                .foregroundStyle(.secondary)
+            if isLocalOverride {
+                Text("local override")
+                    .foregroundStyle(.secondary)
+            }
+            if let scheduled = success.scheduled {
+                Text(scheduled)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .lineLimit(1)
+    }
+
     @ViewBuilder
     private func standardPreviewItem(
         _ success: CaptureCommandSuccess,
         index: Int,
         total: Int,
         isLocalOverride: Bool,
-        blocks: [CapturePomodoroBlock]
+        blocks: [CapturePomodoroBlock],
+        taskBlocks: [CaptureTaskBlock] = []
     ) -> some View {
         // When the batch blocks already show every verbatim preview line,
         // the item omits its `previewBlockLines` stack so the headline never
         // prints twice. VoiceOver still announces the item summary once,
         // from the header row.
         let covered = CapturePomodoroBlockPresentation.covers(success, blocks: blocks)
-        if covered {
+        // A covered sub-bullet item switches to the compact header and drops
+        // both the verbatim stack and the trailing `relativeTarget` line;
+        // the task card below shows where it landed.
+        let taskCovered = CaptureTaskBlockPresentation.covers(success, blocks: taskBlocks)
+        let subBullet = CaptureSubBulletPresentation(capture: success)
+        let compactSubBullet = taskCovered && subBullet != nil
+        if compactSubBullet, let subBullet {
+            subBulletHeader(
+                subBullet,
+                success: success,
+                index: index,
+                total: total,
+                isLocalOverride: isLocalOverride
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(subBulletAccessibilityLabel(
+                for: success,
+                subBullet: subBullet,
+                index: index,
+                total: total,
+                isLocalOverride: isLocalOverride
+            ))
+        } else if covered {
             standardHeader(
                 success,
                 index: index,
@@ -2555,7 +2633,9 @@ struct PreviewPane: View {
         // children, and the schedule log in the exact order Bob writes them, already
         // carrying the target note's indentation. Lines the batch blocks
         // already cover are omitted: the block view below shows them.
-        if !covered {
+        // Covered sub-bullet items omit the stack too: the task card shows
+        // where the bullet landed.
+        if !covered, !compactSubBullet {
             let blockLines = success.previewBlockLines
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(blockLines.enumerated()), id: \.offset) { _, line in
@@ -2574,10 +2654,14 @@ struct PreviewPane: View {
             ))
         }
 
-        Text(success.relativeTarget)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .textSelection(.enabled)
+        // Covered sub-bullet items drop the trailing `relativeTarget` line:
+        // the task card caption already names the note.
+        if !compactSubBullet {
+            Text(success.relativeTarget)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .textSelection(.enabled)
+        }
     }
 
     @ViewBuilder
@@ -2759,6 +2843,20 @@ struct PreviewPane: View {
             return summary
         }
         return "\(summary), \(success.previewBlockLines.joined(separator: ", "))"
+    }
+
+    private func subBulletAccessibilityLabel(
+        for success: CaptureCommandSuccess,
+        subBullet: CaptureSubBulletPresentation,
+        index: Int,
+        total: Int,
+        isLocalOverride: Bool
+    ) -> String {
+        // VoiceOver announces the compact item once, from the header: the
+        // sub-bullet phrase plus the item text, with position and override.
+        let position = total > 1 ? "Item \(index + 1) of \(total), " : ""
+        let override = isLocalOverride ? ", local override" : ""
+        return "\(position)\(subBullet.accessibilityText)\(override), \(success.taskLine)"
     }
 
     private func togglePreviewAccessibilityLabel(
