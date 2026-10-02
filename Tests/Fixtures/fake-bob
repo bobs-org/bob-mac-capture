@@ -83,6 +83,9 @@ later_task_id_batch_suffix=$'\n\nFile follow-up @file+new-id'
 close_batch_draft=$'-2\n\n=x'
 start_switch_draft=$'=x\n\n='
 close_log_draft=$'=x\n- 1 wired the lexer\n  - chose a hand-rolled lexer'
+close_log_positional_draft=$'=x3,4\n- foo bar\n- baz bam'
+close_log_unresolved_draft=$'=x\n- wired the lexer\n- sketched the URL parser'
+close_log_mixed_draft=$'=x\n- foo\n- 2 bar'
 close_log_dangling_draft=$'=x\n- 1'
 close_log_chain_draft=$'=x =\n- 1 wired it'
 close_log_invalid_draft=$'=x\n- 1 see [[bob#^x]]'
@@ -127,6 +130,18 @@ case "${command}" in
       cat "${fixtures_dir}/pomodoro-close-parse-log-incomplete.json"
     elif [[ "${draft}" == "${close_log_chain_draft}" ]]; then
       cat "${fixtures_dir}/pomodoro-close-parse-log-chain.json"
+    elif [[ "${draft}" == "${close_log_positional_draft}" ]]; then
+      # Unnumbered bullets under `=x3,4` resolve lexically (real `bob
+      # capture-parse` output): indices 3 and 4, no `log_index` spans.
+      cat "${fixtures_dir}/pomodoro-close-parse-log-positional.json"
+    elif [[ "${draft}" == "${close_log_unresolved_draft}" ]]; then
+      # Unnumbered bullets under plain `=x` stay unresolved (real `bob
+      # capture-parse` output): `log` entries with no `index` key.
+      cat "${fixtures_dir}/pomodoro-close-parse-log-unresolved.json"
+    elif [[ "${draft}" == "${close_log_mixed_draft}" ]]; then
+      # A numbered bullet after an unnumbered one (real `bob
+      # capture-parse` output): an `invalid_pomodoro_close` diagnostic.
+      cat "${fixtures_dir}/pomodoro-close-parse-log-mixed.json"
     elif [[ "${draft}" == "=" ]]; then
       cat "${fixtures_dir}/pomodoro-start-parse.json"
     elif [[ "${draft}" == "=3" ]]; then
@@ -3072,6 +3087,11 @@ JSON
       exit 1
     elif [[ "${draft}" == "${close_log_draft}" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-log.json"
+    elif [[ "${draft}" == "${close_log_unresolved_draft}" ]]; then
+      # The plain unnumbered draft previews on a vault with two worked
+      # links (real `bob capture --dry-run` output): each typed entry lands
+      # on its own row's `typed_work_log`.
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-log-positional.json"
     elif [[ "${draft}" == "${close_log_invalid_draft}" ]]; then
       cat "${fixtures_dir}/pomodoro-close-log-invalid.json"
       exit 1

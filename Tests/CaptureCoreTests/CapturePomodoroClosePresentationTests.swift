@@ -994,6 +994,92 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         )
     }
 
+    func testPositionalParseResolvesLexicalIndicesWithoutIndexSpans() throws {
+        // Real `bob capture-parse` output for `=x3,4` plus two unnumbered
+        // bullets: indices resolve lexically, with no `log_index` spans.
+        let response = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-log-positional.json").utf8)
+        )
+        XCTAssertEqual(response.mode, "pomodoro_close")
+        XCTAssertEqual(response.input, "=x3,4\n- foo bar\n- baz bam")
+        XCTAssertEqual(
+            response.spans.map(\.kind),
+            ["pomodoro_close", "pomodoro_close_in_progress"]
+        )
+        XCTAssertEqual(
+            response.pomodoroClose?.log,
+            [
+                PomodoroCloseLogEntry(index: 3, text: "foo bar"),
+                PomodoroCloseLogEntry(index: 4, text: "baz bam"),
+            ]
+        )
+    }
+
+    func testUnresolvedParseOmitsIndicesWithoutIndexSpans() throws {
+        // Real `bob capture-parse` output for plain `=x` plus unnumbered
+        // bullets: `bob capture` resolves them, so `log` omits `index`.
+        let response = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-log-unresolved.json").utf8)
+        )
+        XCTAssertEqual(response.mode, "pomodoro_close")
+        XCTAssertEqual(response.spans.map(\.kind), ["pomodoro_close"])
+        let log = try XCTUnwrap(response.pomodoroClose?.log)
+        XCTAssertEqual(log.map(\.text), ["wired the lexer", "sketched the URL parser"])
+        XCTAssertTrue(log.allSatisfy { $0.index == nil })
+    }
+
+    func testMissingIndexDecodesAsNilWhileNumberedStays() throws {
+        let unresolved = try JSONDecoder().decode(
+            PomodoroCloseLogEntry.self,
+            from: Data("""
+            {"text":"wired the lexer"}
+            """.utf8)
+        )
+        XCTAssertNil(unresolved.index)
+        let numbered = try JSONDecoder().decode(
+            PomodoroCloseLogEntry.self,
+            from: Data("""
+            {"index":1,"text":"wired the lexer"}
+            """.utf8)
+        )
+        XCTAssertEqual(numbered.index, 1)
+    }
+
+    func testMixedNumberingParseSurfacesBobDiagnostic() throws {
+        // Real `bob capture-parse` output for `=x` plus `- foo` then
+        // `- 2 bar`: bullets are numbered all or none.
+        let response = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-close-parse-log-mixed.json").utf8)
+        )
+        XCTAssertEqual(response.diagnostics.map(\.code), ["invalid_pomodoro_close"])
+        XCTAssertTrue(
+            response.diagnostics.first?.message.contains("numbered all or none") == true
+        )
+    }
+
+    func testPositionalPreviewShowsEachEntryOnItsOwnRow() throws {
+        // Real `bob capture --dry-run` output for the plain unnumbered
+        // draft on a vault with two worked links: each typed entry lands
+        // on its own row.
+        let success = try decodeFixture("pomodoro-close-log-positional.json")
+        let summary = try XCTUnwrap(success.pomodoroClose)
+        XCTAssertEqual(
+            summary.log,
+            [
+                PomodoroCloseLogEntry(index: 1, text: "wired the lexer"),
+                PomodoroCloseLogEntry(index: 2, text: "sketched the URL parser"),
+            ]
+        )
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+        let first = try XCTUnwrap(presentation.taskRows.first(where: { $0.index == 1 }))
+        let second = try XCTUnwrap(presentation.taskRows.first(where: { $0.index == 2 }))
+        XCTAssertEqual(first.typedWorkLogPreviews, ["wired the lexer"])
+        XCTAssertEqual(second.typedWorkLogPreviews, ["sketched the URL parser"])
+    }
+
     func testLogParseIncompleteNeedsLogTextWithPlaceholder() throws {
         let response = try JSONDecoder().decode(
             CaptureParseResponse.self,

@@ -125,14 +125,23 @@ mutation.
   `pomodoro_close_log_index` span in cyan on the close line while the default
   adds none, and a dangling inline number (`=x 2`) reports mode `incomplete`
   with a `pomodoro_close_log_text` need and an `interactive_placeholder`
-  span over the number. Several entries still use ⌃J bullets
+  span over the number. Several entries use ⌃J bullets
   (`=x` plus `- 1 wired the lexer`, with `  - …` detail bullets under
-  entries), which add `pomodoro_close_log_index` spans over each entry index
-  and a `log` parse spec with the typed entries in order, each carrying its
-  `details`; entry and detail text keeps wikilink spans but is otherwise
-  neutral prose, and a dangling bullet (`=x` plus `- 1`) reports mode
-  `incomplete` with a `pomodoro_close_log_text` need and an
-  `interactive_placeholder` span over the number instead of an error.
+  entries), which add a `log` parse spec with the typed entries in order,
+  each carrying its `details`. Bullets may omit the number: unnumbered
+  bullets log in order to the close's worked tasks (`=x3,4` plus `- foo bar`
+  plus `- baz bam` writes exactly what `- 3 foo bar` plus `- 4 baz bam`
+  writes), and a single worked task takes them all. Bullets are numbered
+  all or none, and a leading number is always a task number (to log text
+  that starts with a number, number every bullet). Numbered entries add
+  `pomodoro_close_log_index` spans in cyan over each entry index while
+  positional entries get no index chip; `capture-parse` omits `log[].index`
+  for entries `bob capture` resolves against the running session, and the
+  app decodes a missing index as nil. Entry and detail text keeps wikilink
+  spans but is otherwise neutral prose, and a dangling bullet (`=x` plus
+  `- 1`) reports mode `incomplete` with a `pomodoro_close_log_text` need
+  and an `interactive_placeholder` span over the number instead of an
+  error.
   Inline entries require a bob that understands them; an older bob reports
   `invalid_pomodoro_close` on the entry. An older Bob that omits `log` decodes as no typed
   entries, an older Bob that omits `details` decodes each entry without
@@ -634,8 +643,8 @@ suggestions.
   no numbered rows the card looks exactly like today's. Completed rows keep the
   embedded glyph tinted green with struck text and a `[*] → [x]` transition when
   the status changed. One caption row under the task rows teaches the syntax
-  before a selection is typed (`=x1,2 keeps only these in progress · … · =x⌃J1
-  wrote the tests logs work to 1`, tinted like the editor spans, with the `1`
+  before a selection is typed (`=x1,2 keeps only these in progress · … · =x 2
+  wrote the tests logs work to 2`, tinted like the editor spans, with the `2`
   in the cyan log tint) and shows the outcome summary after (`In progress 1, 3
   · Complete 2 · Deferred 4`, or `In progress none` for `=x0`); numbered rows
   never hide under `+N more`. The accessibility label includes the typed
@@ -930,13 +939,17 @@ Appending task numbers chooses each Task Link's outcome: `=x2` keeps only 2 in
 progress, `=x!2` completes 2, `=x1!2` does both, and `=x0` defers all (single-quote
 the argument in zsh, since `=` and `!` expand). The same suffix works on link
 forms. Work Log bullets log while closing: type `=x`, then `⌃J` for a `- ` bullet,
-`1 wired the lexer` to add `wired the lexer` under link 1 before the unchanged
-close writes it to that task's Work Log; `⌃J` then `Tab` nests a `  - …` detail
-under the entry, `⌃J` then `⇧Tab` starts the next entry, and `⌫` on a bare
-`- ` row deletes it. Only the bullet's first token is a task number, so
-`- 1 fixed 3 bugs` needs no escape, and the index chip renders cyan to match
-the card's new entry line. Text on the `=x` line itself is retired: it shows
-the bullet to write instead. A trailing `~<K>` drop list on a whole-item start (`=~2`, `=3~2,4`,
+then either `1 wired the lexer` to add `wired the lexer` under link 1, or just
+`wired the lexer` to let Bob file it by position — unnumbered bullets log in
+order to the close's worked tasks, and a single worked task takes them all —
+before the unchanged close writes it to that task's Work Log; `⌃J` then `Tab`
+nests a `  - …` detail under the entry, `⌃J` then `⇧Tab` starts the next entry,
+and `⌫` on a bare `- ` row deletes it. Bullets are numbered all or none, and
+a leading number is always a task number, so `- 1 fixed 3 bugs` needs no escape
+(to log text that starts with a number, number every bullet). Numbered entries
+get a cyan index chip matching the card's new entry line, while positional
+entries get none. Text on the `=x` line itself still takes an inline entry
+(`=x wired the lexer` logs to task 1): it shows the bullet to write instead. A trailing `~<K>` drop list on a whole-item start (`=~2`, `=3~2,4`,
 `=#bugs~2`) starts the next session without those numbered queued Task Links —
 `~` drops, so `=~2` drops task 2 from the session you start the way `=x~2` drops
 task 2 from the session you stop, using the numbers the start card shows. The

@@ -2563,6 +2563,75 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertFalse(record.contains("argv=capture --format json -- =x\n- 1"))
     }
 
+    func testUnnumberedDraftPreviewsWithoutPendingTrimAndKeepsCloseEnabled() async throws {
+        // Unnumbered bullets are complete entries, not dangling ones: the
+        // real `bob capture-parse` output carries no placeholder, so no
+        // pending trim applies and Close stays enabled.
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let parseData = try Data(
+            contentsOf: fixtures.appendingPathComponent("pomodoro-close-parse-log-unresolved.json")
+        )
+        let parse = try JSONDecoder().decode(CaptureParseResponse.self, from: parseData)
+        let draft = "=x\n- wired the lexer\n- sketched the URL parser"
+        XCTAssertNil(CapturePanelModel.closePendingTrim(in: parse, draft: draft))
+
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+        XCTAssertNil(model.closePendingText)
+        XCTAssertFalse(model.isClosePending)
+        XCTAssertEqual(model.primaryActionTitle, "Close")
+        let rows = try XCTUnwrap(model.closePresentation?.taskRows)
+        XCTAssertEqual(
+            rows.first(where: { $0.index == 1 })?.typedWorkLogPreviews,
+            ["wired the lexer"]
+        )
+        XCTAssertEqual(
+            rows.first(where: { $0.index == 2 })?.typedWorkLogPreviews,
+            ["sketched the URL parser"]
+        )
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains(
+                "argv=capture --dry-run --no-clip --format json -- =x\n- wired the lexer\n- sketched the URL parser"
+            )
+        )
+    }
+
+    func testMixedDraftSurfacesBobDiagnostic() async throws {
+        // A numbered bullet after an unnumbered one fails the live parse
+        // with Bob's diagnostic and clears the stale card.
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "=x\n- foo\n- 2 bar"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .failed = model.previewState { return true }
+            return false
+        }
+        XCTAssertNil(model.closePresentation)
+    }
+
     func testStartPresentationUsesBobSummaryAndOffersStartFooterAction() throws {
         let start = try startSuccessFixture("pomodoro-start-next.json")
         let model = CapturePanelModel()

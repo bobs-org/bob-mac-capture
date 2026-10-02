@@ -270,16 +270,19 @@ public struct CaptureParseItem: Codable, Equatable {
 }
 
 /// One typed Work Log entry from Bob's `pomodoro_close.log`: the 1-based
-/// task index plus its literal entry text, in typed order. Additive: an
-/// older Bob that omits `log` decodes as empty. `details` holds the nested
-/// detail lines typed under the entry (`  - …` bullets), in typed order;
-/// an older Bob that omits `details` decodes as empty.
+/// task index plus its literal entry text, in typed order. `index` is nil
+/// for an unnumbered bullet (`- foo`) under a close without `<N>`/`*<P>`,
+/// which `bob capture` resolves against the running session at execution;
+/// `bob capture-parse` omits the key there. Additive: an older Bob that
+/// omits `log` decodes as empty. `details` holds the nested detail lines
+/// typed under the entry (`  - …` bullets), in typed order; an older Bob
+/// that omits `details` decodes as empty.
 public struct PomodoroCloseLogEntry: Codable, Equatable, Sendable {
-    public let index: Int
+    public let index: Int?
     public let text: String
     public let details: [String]
 
-    public init(index: Int, text: String, details: [String] = []) {
+    public init(index: Int?, text: String, details: [String] = []) {
         self.index = index
         self.text = text
         self.details = details
@@ -287,7 +290,7 @@ public struct PomodoroCloseLogEntry: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        index = try container.decodeIfPresent(Int.self, forKey: .index) ?? 0
+        index = try container.decodeIfPresent(Int.self, forKey: .index)
         text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
         details = try container.decodeIfPresent([String].self, forKey: .details) ?? []
     }
