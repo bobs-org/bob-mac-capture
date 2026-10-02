@@ -176,16 +176,17 @@ private func splitTaskSuffixes(_ tokens: [CapturePomodoroLineToken]) -> [Capture
     {
         let head = String(last.text[..<range.lowerBound])
         // The match always starts with whitespace by construction.
+        let struck = last.struck
         tokens.removeLast()
         if !head.isEmpty {
-            tokens.append(CapturePomodoroLineToken(text: head, role: .text))
+            tokens.append(CapturePomodoroLineToken(text: head, role: .text, struck: struck))
         }
         let gap = String(last.text[range.lowerBound..<idStart])
         if !gap.isEmpty {
-            tokens.append(CapturePomodoroLineToken(text: gap, role: .text))
+            tokens.append(CapturePomodoroLineToken(text: gap, role: .text, struck: struck))
         }
         tokens.append(
-            CapturePomodoroLineToken(text: String(last.text[idStart...]), role: .blockID)
+            CapturePomodoroLineToken(text: String(last.text[idStart...]), role: .blockID, struck: struck)
         )
     }
 
@@ -200,9 +201,10 @@ private func splitTaskSuffixes(_ tokens: [CapturePomodoroLineToken]) -> [Capture
         var cursor = token.text.startIndex
         var chunk = ""
         var boundary = isTaskBoundary(previous)
+        let struck = token.struck
         func flush() {
             if !chunk.isEmpty {
-                result.append(CapturePomodoroLineToken(text: chunk, role: .text))
+                result.append(CapturePomodoroLineToken(text: chunk, role: .text, struck: struck))
                 chunk = ""
             }
         }
@@ -218,7 +220,7 @@ private func splitTaskSuffixes(_ tokens: [CapturePomodoroLineToken]) -> [Capture
                 if !run.isEmpty, run.contains(where: { !$0.isWholeNumber }) {
                     flush()
                     result.append(
-                        CapturePomodoroLineToken(text: "#" + run, role: .tag)
+                        CapturePomodoroLineToken(text: "#" + run, role: .tag, struck: struck)
                     )
                     previous = token.text[token.text.index(before: runEnd)]
                     cursor = runEnd

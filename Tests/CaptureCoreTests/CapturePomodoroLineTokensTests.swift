@@ -415,6 +415,39 @@ final class CapturePomodoroLineTokensTests: XCTestCase {
         XCTAssertFalse(schedule.contains { $0.role == .tag })
     }
 
+    func testTaskStruckTextPreservesStrikeFlags() throws {
+        let tokens = checkTaskRow("- ~~old~~", isHeadline: false)
+
+        XCTAssertEqual(tokens.map(\.text).joined(), "- ~~old~~")
+        let struckTexts = tokens.filter { $0.role == .text && $0.text == "old" }
+        XCTAssertEqual(struckTexts.count, 1)
+        XCTAssertTrue(struckTexts[0].struck)
+    }
+
+    func testTaskStruckTextWithTagPreservesStrikeFlags() throws {
+        let tokens = checkTaskRow("- ~~old #task~~ ^parent", isHeadline: false)
+
+        XCTAssertEqual(tokens.map(\.text).joined(), "- ~~old #task~~ ^parent")
+        let old = tokens.first { $0.text == "old " }
+        XCTAssertNotNil(old)
+        XCTAssertEqual(old?.struck, true)
+        let tag = tokens.first { $0.role == .tag && $0.text == "#task" }
+        XCTAssertNotNil(tag)
+        XCTAssertEqual(tag?.struck, true)
+    }
+
+    func testTaskUnclosedStrikeReachingBlockIDSplitsStruck() throws {
+        let tokens = checkTaskRow("- ~~old ^parent", isHeadline: false)
+
+        XCTAssertEqual(tokens.map(\.text).joined(), "- ~~old ^parent")
+        let old = tokens.first { $0.text.contains("old") && $0.role == .text }
+        XCTAssertNotNil(old)
+        XCTAssertEqual(old?.struck, true)
+        XCTAssertEqual(tokens.last?.role, .blockID)
+        XCTAssertEqual(tokens.last?.text, "^parent")
+        XCTAssertEqual(tokens.last?.struck, true)
+    }
+
     func testPomodoroTokenizeLeavesTaskRolesUntouched() throws {
         for content in [
             "- [ ] #task Port capture ^capture",
