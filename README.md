@@ -118,16 +118,22 @@ mutation.
   `in_progress`/`park`/`complete`/`drop` parse spec,
   and `task_links` plus per-row `index` in the capture summary; a dangling
   `,`/`!`/`~`/`*` reports mode `incomplete` with a `pomodoro_close_task` need and
-  an `interactive_placeholder` span instead of an error. A close with Work Log
-  bullets (`=x` plus `- 1 wired the lexer`, with `  - …` detail bullets under
-  entries) adds `pomodoro_close_log_index` spans over each entry index and a
-  `log` parse spec with the typed entries in order, each carrying its
+  an `interactive_placeholder` span instead of an error. One entry may sit
+  on the close line itself (`=x wired the lexer` logs to task 1,
+  `=x1,3 3 fixed the flake` logs to task 3): an explicit number adds a
+  `pomodoro_close_log_index` span in cyan on the close line while the default
+  adds none, and a dangling inline number (`=x 2`) reports mode `incomplete`
+  with a `pomodoro_close_log_text` need and an `interactive_placeholder`
+  span over the number. Several entries still use ⌃J bullets
+  (`=x` plus `- 1 wired the lexer`, with `  - …` detail bullets under
+  entries), which add `pomodoro_close_log_index` spans over each entry index
+  and a `log` parse spec with the typed entries in order, each carrying its
   `details`; entry and detail text keeps wikilink spans but is otherwise
   neutral prose, and a dangling bullet (`=x` plus `- 1`) reports mode
   `incomplete` with a `pomodoro_close_log_text` need and an
-  `interactive_placeholder` span over the number instead of an error. Text on
-  the close's own line is retired: it reports `invalid_pomodoro_close` with
-  the bullet to write. An older Bob that omits `log` decodes as no typed
+  `interactive_placeholder` span over the number instead of an error.
+  Inline entries require a bob that understands them; an older bob reports
+  `invalid_pomodoro_close` on the entry. An older Bob that omits `log` decodes as no typed
   entries, an older Bob that omits `details` decodes each entry without
   details, and an older Bob that omits `typed_work_log` or
   `typed_work_log_details` decodes as empty so the card shows only the capped

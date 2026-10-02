@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"=x wired the lexer","body":"=x","mode":"pomodoro_close","route":null,"section":null,"block_id":null,"needs":[],"spans":[{"start":0,"end":2,"kind":"pomodoro_close"}],"diagnostics":[],"pomodoro_close":{"raw":"=x","in_progress":null,"complete":[],"log":[{"index":1,"text":"wired the lexer"}]}}

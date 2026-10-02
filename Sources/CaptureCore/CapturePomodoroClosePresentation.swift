@@ -586,12 +586,12 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     /// `.neutral`. Uses only numbers available in the current lineup.
     static func hintTokens(numberedRows: Int) -> [HintToken] {
         let close: [HintToken] = [HintToken(text: "=x", category: .pomodoroStart)]
-        let logExample: [HintToken] = [HintToken(text: " · ", category: .neutral)]
-            + close + [HintToken(text: "⌃J", category: .neutral)]
-            + [HintToken(text: "1", category: .pomodoroCloseLog)]
-            + [HintToken(text: " wrote the tests logs work to 1", category: .neutral)]
         if numberedRows >= 2 {
             let parkNumber = numberedRows >= 2 ? "2" : "1"
+            let logExample: [HintToken] = [HintToken(text: " · ", category: .neutral)]
+                + close + [HintToken(text: " ", category: .neutral)]
+                + [HintToken(text: "2", category: .pomodoroCloseLog)]
+                + [HintToken(text: " wrote the tests logs work to 2", category: .neutral)]
             return close + [HintToken(text: "1,2", category: .pomodoroCloseInProgress)]
                 + [HintToken(text: " keeps only these in progress · ", category: .neutral)]
                 + close + [HintToken(text: "*\(parkNumber)", category: .pomodoroClosePark)]
@@ -604,6 +604,8 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
                 + [HintToken(text: " defers all", category: .neutral)]
                 + logExample
         }
+        let logExample: [HintToken] = [HintToken(text: " · ", category: .neutral)]
+            + close + [HintToken(text: " wrote the tests logs work to it", category: .neutral)]
         return close + [HintToken(text: "!1", category: .pomodoroCloseComplete)]
             + [HintToken(text: " completes it · ", category: .neutral)]
             + close + [HintToken(text: "~1", category: .pomodoroCloseDrop)]
@@ -671,9 +673,10 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         "Type a task number after \(separator)"
     }
 
-    /// The pending summary row for a draft whose Work Log bullet dangles
-    /// (`=x` plus `- <n>` with no entry text yet): teaches the entry. The
-    /// inline tail is retired, so there is no escape to teach.
+    /// The pending summary row for a draft whose Work Log entry dangles:
+    /// either a bullet (`=x` plus `- <n>` with no entry text yet) or the
+    /// inline number on the close line itself (`=x 2`). Teaches the entry;
+    /// the text stays `Type the Work Log entry for task N`.
     public static func pendingLogText(index: Int) -> String {
         "Type the Work Log entry for task \(index)"
     }

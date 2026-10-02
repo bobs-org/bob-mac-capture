@@ -2199,6 +2199,96 @@ final class CapturePanelModelTests: XCTestCase {
         )
     }
 
+    func testLogPendingTrimRemovesDanglingInlineNumber() {
+        // Real `bob capture-parse` output for `=x 2`: the numeric
+        // `interactive_placeholder` is removed, leaving `=x`.
+        let parse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: "=x 2",
+            body: "=x 2",
+            mode: "incomplete",
+            needs: ["pomodoro_close_log_text"],
+            spans: [
+                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
+                CaptureSpan(start: 3, end: 4, kind: "interactive_placeholder"),
+            ]
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: parse, draft: "=x 2")?.trimmed,
+            "=x"
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: parse, draft: "=x 2")?.separator,
+            "2"
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: parse, draft: "=x 2")?.action,
+            "Close"
+        )
+        // `=x1,3 3` trims to the bare selection.
+        let explicit = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: "=x1,3 3",
+            body: "=x1,3 3",
+            mode: "incomplete",
+            needs: ["pomodoro_close_log_text"],
+            spans: [
+                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
+                CaptureSpan(start: 2, end: 5, kind: "pomodoro_close_in_progress"),
+                CaptureSpan(start: 6, end: 7, kind: "interactive_placeholder"),
+            ]
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: explicit, draft: "=x1,3 3")?.trimmed,
+            "=x1,3"
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: explicit, draft: "=x1,3 3")?.separator,
+            "3"
+        )
+        // `=x 2 =` trims to `=x  =`, which bob reads as the chain `=x =`.
+        // Real `bob capture-parse` output: the owner item dangles with the
+        // trail start as its sibling.
+        let chained = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: "=x 2 =",
+            body: "=x 2",
+            mode: "incomplete",
+            needs: ["pomodoro_close_log_text"],
+            spans: [
+                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
+                CaptureSpan(start: 3, end: 4, kind: "interactive_placeholder"),
+                CaptureSpan(start: 5, end: 6, kind: "pomodoro_start"),
+            ],
+            items: [
+                CaptureParseItem(
+                    index: 1,
+                    range: CaptureRange(start: 0, end: 4),
+                    lineStart: 1,
+                    lineEnd: 1,
+                    body: "=x 2",
+                    mode: "incomplete",
+                    needs: ["pomodoro_close_log_text"]
+                ),
+                CaptureParseItem(
+                    index: 2,
+                    range: CaptureRange(start: 5, end: 6),
+                    lineStart: 1,
+                    lineEnd: 1,
+                    body: "=",
+                    mode: "pomodoro_start"
+                ),
+            ]
+        )
+        XCTAssertEqual(
+            CapturePanelModel.closePendingTrim(in: chained, draft: "=x 2 =")?.trimmed,
+            "=x  ="
+        )
+    }
+
     func testLogPendingTrimRemovesMidDraftDanglingBullets() {
         // A dangling bullet between complete entries trims to a placeholder
         // row: `=x\n- 2 a\n- 1` and `=x\n- 1\n- 2 a` both keep the complete
