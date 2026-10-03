@@ -44,7 +44,13 @@ mutation.
   declarations anywhere in the draft, `capture-rewrite`, `capture-complete --all-tasks`,
   `capture-task-id`, `capture-pomodoro-name`, the `task_link` completion context for
   `:` picker queries (with `note_kind`, `block_id_suggestions`, `group`, `scheduled`,
-  and `pulls_forward` candidate fields), `task_section` completion for
+  and `pulls_forward` candidate fields), the `task_parent` completion context for
+  leading and prose-terminal `+` (with the additive `picker` descriptor:
+  `kind: parent_task`, `scope: note|vault`, `scope_token`, `note_target`,
+  `marker_range`, `trigger_removal_range`, optional `action_continuation_keys`,
+  and top-level `query`), the same descriptor on scoped `@route+` `task` responses,
+  `parent_replacement` on `capture-task-id` for vault-wide ID-less picks,
+  `task_section` completion for
   `@route+block-id#`, `pomodoro_name` completion for `@route:block-id#` and bare
   task-toggle `@route+block-id#`, the `task_block_id` completion context for the
   `@route^block-id` ordinary task-with-ID marker, the additive top-level `block_id`
@@ -83,7 +89,10 @@ mutation.
   Older builds can still capture ordinary drafts, but
   global declarations, bare-`@@` absorption, the Add block ID flow, the Name Pomodoro
   flow, the task-section popup, and the task-toggle footer/preview report the local Bob
-  error or an empty list until Bob is upgraded. An older Bob that sees bare
+  error or an empty list until Bob is upgraded. An older Bob that returns scoped
+  `@route+` `task` completion without the additive `picker` descriptor keeps the
+  inline parent-task list; vault-wide `+` and `parent_replacement` need a Bob that
+  emits the phase-one contract. An older Bob that sees bare
   `@route+block-id` as a missing-text sub-bullet reports `task text is required`, which
   the panel surfaces unchanged. An older Bob that does not emit `creates_pomodoro` still
   captures `@route:id#name` create-on-submit; the Mac app decodes a missing flag as false
@@ -374,6 +383,50 @@ Task Link Picker keys: Return/Tab Link, Shift-Return Link & Start,
 Command-Return Link & Capture, Escape Clear/Cancel, Backspace on empty filter
 removes `:`. In the link-mode Add block ID prompt, Tab / Shift-Tab cycle
 suggestions.
+
+### Parent Task Picker
+
+Typing `@file+` opens the parent-task picker scoped to that note (`task` context
+with Bob's additive `picker` descriptor, `scope: note`). Typing `+` at the start
+of an otherwise empty item, or after a space at the end of a capture line, opens
+the same card across capture notes (`task_parent`, `scope: vault`). Choosing a
+task inserts `@file+id`. An older Bob that returns `task` without the descriptor
+keeps the inline parent-task list.
+
+The card uses the same picker lifecycle as `:` and `^`. Scope capsules read
+`@cash+ · cash.md` or `+ · All capture notes`. Vault empty-query rows keep the
+colon groups (queued Pomodoros, In Progress, Next, notes). Scoped empty-query
+rows keep Bob's document order. A nonempty filter is one ranked list with spaces
+as AND terms. Rows never show a Link & Start action or a schedule pull-forward
+warning. The detail strip always says **Inserts @cash+goog-exit**.
+
+When `capture-parse` reports `task_parent` in `needs`, the app skips the doomed
+live dry run and shows "Choose a task to append to — press Tab to browse". A
+lone whole-item `+` stays a valid +5m Pomodoro adjustment: the picker still
+opens, Escape leaves the draft unchanged, and submitting it extends as before.
+Bob lists `action_continuation_keys` (`0`–`9` and `+`) only for that dual-use
+item. With an empty filter, an unmodified digit or second `+` closes the picker,
+inserts that key once, and suppresses reopen so `+2` / `++3` match fast typing.
+Scoped and prose-terminal pickers never use that handoff. A quiet footer hint
+reads **Type a number or + to adjust; Esc to extend +5m**.
+
+Return/Tab selects the task; Command-Return selects then captures;
+Shift-Return is consumed and never appends `=`. Escape clears a nonempty filter,
+then cancels to the reopen chip (**Select a parent task** / **Append to a
+task**). Backspace on an empty filter uses Bob's `trigger_removal_range`: it
+deletes a vault `+query` token, or removes scoped `+query` while leaving
+`@route`. Exact identified `@cash+goog-exit` does not auto-open; Tab or the chip
+still browses.
+
+ID-less rows open Add block ID with suggestion cycling and a live
+`Inserts @route+typed` line. Vault success requires Bob's `parent_replacement`;
+if that field is absent the prompt stays open and asks to update Bob. Scoped
+success inserts the returned ID into the ID-only range. Buttons read Add ID &
+Select / Add ID & Capture.
+
+Parent Task Picker keys: Return/Tab Select Task, Command-Return Select &
+Capture, Escape Clear/Cancel, Backspace on empty filter removes Bob's trigger
+range. In the card-mode Add block ID prompt, Tab / Shift-Tab cycle suggestions.
 
 ### Dependency Picker
 
@@ -1021,7 +1074,7 @@ body text nests beneath the task. `@route+block-id#section` nests under that tas
 matching section bullet once body text is present; the same `#` position opens the
 Pomodoro-name popup while the item is still marker-only, including the
 create-future-Pomodoro row and **Name Pomodoro** prompt. The app labels Ensure Next
-versus Set Next/Open from Bob's returned `toggle_behavior`, never by parsing `#` or `!`. The unchanged `@route+` task picker and Add block ID prompt are still how a task
+versus Set Next/Open from Bob's returned `toggle_behavior`, never by parsing `#` or `!`. The `@route+` parent-task picker (and the vault-wide `+` picker) plus Add block ID prompt are still how a task
 without a block ID becomes selectable. The app does not duplicate those grammar rules; it
 colors the span kinds Bob reports, asks Bob for completion at the real caret, and
 submits the original draft text.

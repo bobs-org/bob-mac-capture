@@ -74,6 +74,23 @@ final class CapturePickerMarkerHighlightTests: XCTestCase {
         )
     }
 
+    func testMarkerHighlightRangeForParentTaskUsesDescriptorRange() {
+        let context = ParentTaskPickerContext.note(
+            route: "cash",
+            noteTarget: "cash.md",
+            markerRange: CaptureRange(start: 0, end: 6),
+            triggerRemovalRange: CaptureRange(start: 5, end: 6)
+        )
+        XCTAssertEqual(
+            CapturePanelModel.pickerMarkerHighlightRange(
+                source: .parentTask(context),
+                replacementRange: CaptureRange(start: 6, end: 6),
+                markerRange: nil
+            ),
+            CaptureRange(start: 0, end: 6)
+        )
+    }
+
     func testScopeLineNumberNeedsMultilineDraft() {
         XCTAssertNil(CapturePanelModel.scopeLineNumber(draft: "@sase:", markerStart: 0))
         XCTAssertEqual(CapturePanelModel.scopeLineNumber(draft: "one\ntwo", markerStart: 4), 2)

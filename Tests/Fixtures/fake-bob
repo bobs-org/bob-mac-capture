@@ -1053,6 +1053,54 @@ JSON
 JSON
     elif [[ "${draft}" == ":" ]]; then
       cat "${fixtures_dir}/task-link-parse-colon.json"
+    elif [[ "${draft}" == "+" ]]; then
+      cat "${fixtures_dir}/parent-task-parse-plus.json"
+    elif [[ "${draft}" == "+bank" ]]; then
+      cat "${fixtures_dir}/parent-task-parse-bank.json"
+    elif [[ "${draft}" == "Called the bank +" ]]; then
+      cat "${fixtures_dir}/parent-task-parse-prose.json"
+    elif [[ "${draft}" == "@cash+" ]]; then
+      cat "${fixtures_dir}/parent-task-parse-cash.json"
+    elif [[ "${draft}" == $'First item\n\nCalled the bank +' ]]; then
+      cat "${fixtures_dir}/parent-task-parse-later.json"
+    elif [[ "${draft}" == "+2" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "+2",
+  "body": "+2",
+  "mode": "pomodoro_adjust",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": [],
+  "spans": [
+    { "start": 0, "end": 2, "kind": "pomodoro_adjust" }
+  ],
+  "diagnostics": [],
+  "pomodoro_adjust": { "raw": "+2", "plus": true, "units": 2 }
+}
+JSON
+    elif [[ "${draft}" == "++" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "++",
+  "body": "++",
+  "mode": "pomodoro_shift",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": [],
+  "spans": [
+    { "start": 0, "end": 2, "kind": "pomodoro_shift" }
+  ],
+  "diagnostics": [],
+  "pomodoro_shift": { "raw": "++", "plus": true, "units": 1 }
+}
+JSON
     elif [[ "${draft}" == "&" ]]; then
       cat "${fixtures_dir}/task-dependency-parse-amp.json"
     elif [[ "${draft}" == "${task_link_batch_draft}" ]]; then
@@ -2108,7 +2156,7 @@ JSON
   ]
 }
 JSON
-    elif [[ "${draft}" == "+5" || "${draft}" == "-2" || "${draft}" == "++3" || "${draft}" == "--" || "${draft}" == "--2" || "${draft}" == "=" || "${draft}" == "=3" || "${draft}" == "=-2" ]]; then
+    elif [[ "${draft}" == "+5" || "${draft}" == "+2" || "${draft}" == "++" || "${draft}" == "-2" || "${draft}" == "++3" || "${draft}" == "--" || "${draft}" == "--2" || "${draft}" == "=" || "${draft}" == "=3" || "${draft}" == "=-2" ]]; then
       # An adjustment, shift, or whole-item start is an action, so Bob offers
       # no route or task completion candidates for it (mirrors
       # `bob capture-complete --cursor 2 -- '+5'`).
@@ -2346,6 +2394,25 @@ JSON
       else
         cat "${fixtures_dir}/task-link-complete-full.json"
       fi
+    elif [[ "${draft}" == "+" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-full.json"
+    elif [[ "${draft}" == "+bank" ]]; then
+      if [[ "${cursor}" == "0" ]]; then
+        sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-full.json"
+      else
+        sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-bank.json"
+      fi
+    elif [[ "${draft}" == "Called the bank +" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-prose.json"
+    elif [[ "${draft}" == "@cash+" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-scoped-cash.json"
+    elif [[ "${draft}" == "@cash+goog-exit" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-scoped-exact.json"
+    elif [[ "${draft}" == $'First item\n\nCalled the bank +' ]]; then
+      sed -e "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" \
+          -e 's/"start":16/"start":28/g' \
+          -e 's/"end":17/"end":29/g' \
+          "${fixtures_dir}/parent-task-complete-prose.json"
     elif [[ "${draft}" == "${task_link_batch_draft}" ]]; then
       # Batch draft with `:` on the second item (real `bob capture-complete`
       # output; only the cursor varies).
@@ -2941,6 +3008,10 @@ JSON
       cat "${fixtures_dir}/task-link-task-id-success.json"
       exit 0
     fi
+    if [[ "${route}" == "mac_inbox" && "${task_ref}" == "4:bf5e981c" && "${block_id}" == "call-bank" ]]; then
+      cat "${fixtures_dir}/parent-task-task-id-success.json"
+      exit 0
+    fi
     if [[ "${block_id}" == "duplicate-id" ]]; then
       cat <<'JSON'
 {"ok":false,"error":"block ID ^duplicate-id already exists in file.md"}
@@ -2964,6 +3035,7 @@ JSON
   "block_id": "${block_id}",
   "line": 8,
   "ref": "${updated_ref}",
+  "parent_replacement": "@${route}+${block_id}",
   "task": {
     "ref": "${updated_ref}",
     "line": 8,

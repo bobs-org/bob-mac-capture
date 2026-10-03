@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "@cash+",
+  "body": "",
+  "mode": "incomplete",
+  "route": "cash",
+  "needs": ["task"],
+  "spans": [
+    { "start": 0, "end": 5, "kind": "task_toggle_route" },
+    { "start": 5, "end": 6, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": []
+}

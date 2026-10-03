@@ -1,0 +1,41 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "First item\n\nCalled the bank +",
+  "body": "First item",
+  "mode": "task",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": [],
+  "spans": [
+    { "start": 28, "end": 29, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": [],
+  "items": [
+    {
+      "index": 1,
+      "range": { "start": 0, "end": 10 },
+      "line_start": 1,
+      "line_end": 1,
+      "body": "First item",
+      "mode": "task",
+      "route": null,
+      "section": null,
+      "block_id": null,
+      "needs": []
+    },
+    {
+      "index": 2,
+      "range": { "start": 12, "end": 29 },
+      "line_start": 3,
+      "line_end": 3,
+      "body": "Called the bank",
+      "mode": "incomplete",
+      "route": null,
+      "section": null,
+      "block_id": null,
+      "needs": ["task_parent"]
+    }
+  ]
+}

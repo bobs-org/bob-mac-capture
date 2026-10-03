@@ -1178,6 +1178,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .cancelPomodoroNamePrompt:
             model.cancelPomodoroNamePrompt()
             return true
+        case .continuePickerOperator(let key):
+            model.continuePickerOperator(key)
+            return true
         }
     }
 
@@ -1213,7 +1216,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     pickerVisible: self.model.pickerVisible,
                     pickerSourceIsTaskLink: self.model.pickerSourceIsTaskLink,
                     pickerFilterIsEmpty: self.model.pickerFilterIsEmpty,
-                    pickerChipVisible: self.model.pickerChipVisible
+                    pickerChipVisible: self.model.pickerChipVisible,
+                    pickerOperatorContinuationKeys: self.model.pickerOperatorContinuationKeys,
+                    taskIDPromptCyclesSuggestions: self.model.taskIDPromptCyclesSuggestions
                 )
             ) else {
                 return event

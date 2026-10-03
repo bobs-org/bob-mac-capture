@@ -2533,6 +2533,9 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
     /// splice on a successful explicit ID assignment. Older Bob omits it;
     /// decode as nil.
     public let dependencyReplacement: String?
+    /// Backend-formatted `@route+id` to splice on a successful vault-wide
+    /// parent-task ID assignment. Older Bob omits it; decode as nil.
+    public let parentReplacement: String?
 
     public init(
         ok: Bool,
@@ -2545,7 +2548,8 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
         taskRef: String,
         task: CaptureTaskIDTask,
         notePath: String? = nil,
-        dependencyReplacement: String? = nil
+        dependencyReplacement: String? = nil,
+        parentReplacement: String? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -2558,6 +2562,7 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
         self.task = task
         self.notePath = notePath
         self.dependencyReplacement = dependencyReplacement
+        self.parentReplacement = parentReplacement
     }
 
     public init(from decoder: Decoder) throws {
@@ -2575,6 +2580,7 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
         task = try container.decode(CaptureTaskIDTask.self, forKey: .task)
         notePath = try container.decodeIfPresent(String.self, forKey: .notePath)
         dependencyReplacement = try container.decodeIfPresent(String.self, forKey: .dependencyReplacement)
+        parentReplacement = try container.decodeIfPresent(String.self, forKey: .parentReplacement)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2589,6 +2595,7 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
         case task
         case notePath = "note_path"
         case dependencyReplacement = "dependency_replacement"
+        case parentReplacement = "parent_replacement"
     }
 }
 
@@ -2955,6 +2962,10 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     /// (the capture-parse `dependency_target` for the cursor's item), so the
     /// app never derives the dependent itself. Set only for that context.
     public let owner: DependencyOwner?
+    /// Additive parent-task picker descriptor on `task` and `task_parent`
+    /// responses. Older Bob omits it; scoped `task` without one keeps the
+    /// inline parent-task list.
+    public let picker: CapturePickerDescriptor?
 
     public init(
         ok: Bool,
@@ -2966,7 +2977,8 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         warnings: [String] = [],
         blockID: CaptureBlockIDField? = nil,
         query: String? = nil,
-        owner: DependencyOwner? = nil
+        owner: DependencyOwner? = nil,
+        picker: CapturePickerDescriptor? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -2978,6 +2990,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         self.blockID = blockID
         self.query = query
         self.owner = owner
+        self.picker = picker
     }
 
     public init(from decoder: Decoder) throws {
@@ -2992,6 +3005,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         blockID = try container.decodeIfPresent(CaptureBlockIDField.self, forKey: .blockID)
         query = try container.decodeIfPresent(String.self, forKey: .query)
         owner = try container.decodeIfPresent(DependencyOwner.self, forKey: .owner)
+        picker = try container.decodeIfPresent(CapturePickerDescriptor.self, forKey: .picker)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -3005,8 +3019,87 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         case blockID = "block_id"
         case query
         case owner
+        case picker
     }
 
+}
+
+/// Additive server-authored picker lifecycle metadata for parent-task
+/// completion. All ranges are half-open UTF-8 byte offsets into the draft.
+/// Older Bob omits the whole object, so missing decodes as nil.
+public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
+    public let kind: String
+    public let scope: String
+    public let scopeToken: String
+    public let noteTarget: String?
+    public let markerRange: CaptureRange
+    public let triggerRemovalRange: CaptureRange
+    public let actionContinuationKeys: [String]
+
+    public init(
+        kind: String,
+        scope: String,
+        scopeToken: String,
+        noteTarget: String? = nil,
+        markerRange: CaptureRange,
+        triggerRemovalRange: CaptureRange,
+        actionContinuationKeys: [String] = []
+    ) {
+        self.kind = kind
+        self.scope = scope
+        self.scopeToken = scopeToken
+        self.noteTarget = noteTarget
+        self.markerRange = markerRange
+        self.triggerRemovalRange = triggerRemovalRange
+        self.actionContinuationKeys = actionContinuationKeys
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decodeIfPresent(String.self, forKey: .kind) ?? ""
+        scope = try container.decodeIfPresent(String.self, forKey: .scope) ?? ""
+        scopeToken = try container.decodeIfPresent(String.self, forKey: .scopeToken) ?? ""
+        noteTarget = try container.decodeIfPresent(String.self, forKey: .noteTarget)
+        markerRange = try container.decodeIfPresent(CaptureRange.self, forKey: .markerRange)
+            ?? CaptureRange(start: 0, end: 0)
+        triggerRemovalRange = try container.decodeIfPresent(
+            CaptureRange.self,
+            forKey: .triggerRemovalRange
+        ) ?? markerRange
+        actionContinuationKeys = try container.decodeIfPresent(
+            [String].self,
+            forKey: .actionContinuationKeys
+        ) ?? []
+    }
+
+    /// True when this descriptor is the parent-task picker contract.
+    public var isParentTask: Bool {
+        kind == "parent_task"
+    }
+
+    public var parentTaskContext: ParentTaskPickerContext? {
+        guard isParentTask, let scope = ParentTaskPickerScope(rawValue: scope) else {
+            return nil
+        }
+        return ParentTaskPickerContext(
+            scope: scope,
+            scopeToken: scopeToken,
+            noteTarget: noteTarget,
+            markerRange: markerRange,
+            triggerRemovalRange: triggerRemovalRange,
+            actionContinuationKeys: actionContinuationKeys
+        )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case scope
+        case scopeToken = "scope_token"
+        case noteTarget = "note_target"
+        case markerRange = "marker_range"
+        case triggerRemovalRange = "trigger_removal_range"
+        case actionContinuationKeys = "action_continuation_keys"
+    }
 }
 
 /// Lexical owner of the `task_dependency` modifier under the cursor: the

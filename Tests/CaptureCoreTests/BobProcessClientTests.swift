@@ -1558,6 +1558,62 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(response.replacement, CaptureRange(start: 0, end: 1))
     }
 
+    func testCaptureCompleteDecodesVaultAndScopedParentTaskPickers() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let vault = try await client.captureComplete("+", cursor: 1)
+        XCTAssertEqual(vault.context, "task_parent")
+        XCTAssertEqual(vault.query, "")
+        XCTAssertEqual(vault.picker?.kind, "parent_task")
+        XCTAssertEqual(vault.picker?.scope, "vault")
+        XCTAssertEqual(vault.picker?.actionContinuationKeys.last, "+")
+        XCTAssertEqual(vault.candidates.first?.replacement, "@sase+deep-fix")
+        XCTAssertFalse(vault.candidates.contains { $0.pullsForward })
+
+        let prose = try await client.captureComplete("Called the bank +", cursor: 16)
+        XCTAssertEqual(prose.context, "task_parent")
+        XCTAssertEqual(prose.picker?.actionContinuationKeys, [])
+        XCTAssertEqual(prose.replacement, CaptureRange(start: 16, end: 17))
+
+        let scoped = try await client.captureComplete("@cash+", cursor: 6)
+        XCTAssertEqual(scoped.context, "task")
+        XCTAssertEqual(scoped.picker?.scope, "note")
+        XCTAssertEqual(scoped.picker?.noteTarget, "cash.md")
+        XCTAssertEqual(scoped.candidates.first?.replacement, "goog-exit")
+
+        let older = try await client.captureComplete("@file+", cursor: 6)
+        XCTAssertEqual(older.context, "task")
+        XCTAssertNil(older.picker)
+    }
+
+    func testCaptureParseLonePlusStaysAdjustmentAndProseNeedsParent() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let lone = try await client.captureParse("+")
+        XCTAssertEqual(lone.mode, "pomodoro_adjust")
+        XCTAssertEqual(lone.needs, [])
+        XCTAssertEqual(lone.pomodoroAdjust?.units, 1)
+
+        let prose = try await client.captureParse("Called the bank +")
+        XCTAssertEqual(prose.mode, "incomplete")
+        XCTAssertEqual(prose.needs, ["task_parent"])
+
+        let later = try await client.captureParse("First item\n\nCalled the bank +")
+        XCTAssertEqual(later.needs, [])
+        XCTAssertEqual(later.items.last?.needs, ["task_parent"])
+
+        let plusTwo = try await client.captureParse("+2")
+        XCTAssertEqual(plusTwo.mode, "pomodoro_adjust")
+        XCTAssertEqual(plusTwo.needs, [])
+        XCTAssertEqual(plusTwo.pomodoroAdjust?.units, 2)
+    }
+
     private func fakeBobPath() throws -> String {
         let source = URL(fileURLWithPath: #filePath)
         let packageRoot = source

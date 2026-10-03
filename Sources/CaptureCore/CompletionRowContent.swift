@@ -129,6 +129,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case taskSection
     case activeTask
     case taskLink
+    case taskParent
     case taskDependency
     case wikilinkNote
     case wikilinkHeading
@@ -147,6 +148,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "task_section": self = .taskSection
         case "active_task": self = .activeTask
         case "task_link": self = .taskLink
+        case "task_parent": self = .taskParent
         case "task_dependency": self = .taskDependency
         case "wikilink_note": self = .wikilinkNote
         case "wikilink_heading": self = .wikilinkHeading
@@ -249,7 +251,7 @@ public func completionRowContent(
         badges.append(childCount == 0 ? "Empty" : "\(childCount) items")
         accessibilityHint = "Nests the capture under this task section."
 
-    case .pomodoroBlockID, .taskBlockID, .projectTaskBlockID, .task:
+    case .pomodoroBlockID, .taskBlockID, .projectTaskBlockID, .task, .taskParent:
         let needsBlockID = context == .task && candidate.requiresBlockID
         category = needsBlockID ? .priority : .blockID
         symbolName = needsBlockID ? "link.badge.plus" : "link"
@@ -258,6 +260,8 @@ public func completionRowContent(
         // honestly rather than as tasks.
         if context == .taskBlockID || context == .projectTaskBlockID {
             contextLabel = "Block ID"
+        } else if context == .taskParent {
+            contextLabel = "Parent Task"
         } else {
             contextLabel = context == .pomodoroBlockID ? "Pomodoro Task" : "Parent Task"
         }

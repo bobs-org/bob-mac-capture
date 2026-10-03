@@ -288,6 +288,17 @@ final class CapturePickerDesignTests: XCTestCase {
             CapturePickerKeyHints.items(for: .blockID(Self.newIDContext)).map { $0.action },
             ["Move", "Insert", "Insert & Capture", "Insert & keep typing", "Clear / Cancel"]
         )
+        let parentTask = CapturePickerSource.parentTask(
+            .vault(markerRange: CaptureRange(start: 0, end: 1), actionContinuationKeys: ["+"])
+        )
+        XCTAssertEqual(
+            CapturePickerKeyHints.items(for: parentTask).map { $0.keys },
+            ["↑↓", "↩", "⌘↩", "esc"]
+        )
+        XCTAssertEqual(
+            CapturePickerKeyHints.items(for: parentTask).map { $0.action },
+            ["Move", "Select Task", "Select & Capture", "Clear / Cancel"]
+        )
     }
 
     @MainActor
@@ -357,6 +368,101 @@ final class CapturePickerDesignTests: XCTestCase {
                 model.installPickerForPreviews(
                     candidates: state.candidates,
                     filter: state.filter
+                )
+                let card = CapturePickerCard(model: model)
+                    .frame(width: 760)
+                    .environment(
+                        \.colorScheme,
+                        appearance == .darkAqua ? .dark : .light
+                    )
+                let renderer = ImageRenderer(content: card)
+                renderer.scale = 2
+                guard let image = renderer.nsImage else {
+                    XCTFail("Could not render \(state.name) (\(appearance.rawValue))")
+                    continue
+                }
+                let url = directory.appendingPathComponent(
+                    "capture-picker-\(state.name)-\(appearance == .darkAqua ? "dark" : "light").png"
+                )
+                try Self.pngData(for: image).write(to: url)
+            }
+        }
+
+        // Parent-task review: vault grouped/filtered/empty/no-matches/warning,
+        // scoped note, ID-less row, and the lone-plus operator hint.
+        let parentTaskStates: [(name: String, candidates: [CaptureCompletionCandidate], context: ParentTaskPickerContext, filter: String, draft: String, replacement: CaptureRange)] = [
+            (
+                "parent-task-vault-grouped",
+                Self.parentTaskRenderCandidates,
+                .vault(
+                    markerRange: CaptureRange(start: 0, end: 1),
+                    actionContinuationKeys: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "+"]
+                ),
+                "",
+                "+",
+                CaptureRange(start: 0, end: 1)
+            ),
+            (
+                "parent-task-vault-filtered",
+                Self.parentTaskRenderCandidates,
+                .vault(markerRange: CaptureRange(start: 0, end: 1)),
+                "bank",
+                "+",
+                CaptureRange(start: 0, end: 1)
+            ),
+            (
+                "parent-task-vault-empty",
+                [],
+                .vault(markerRange: CaptureRange(start: 0, end: 1)),
+                "",
+                "+",
+                CaptureRange(start: 0, end: 1)
+            ),
+            (
+                "parent-task-scoped",
+                Self.parentTaskScopedCandidates,
+                .note(
+                    route: "cash",
+                    noteTarget: "cash.md",
+                    markerRange: CaptureRange(start: 0, end: 6),
+                    triggerRemovalRange: CaptureRange(start: 5, end: 6)
+                ),
+                "",
+                "@cash+",
+                CaptureRange(start: 6, end: 6)
+            ),
+            (
+                "parent-task-vault-no-matches",
+                Self.parentTaskRenderCandidates,
+                .vault(markerRange: CaptureRange(start: 0, end: 1)),
+                "zzz-no-match",
+                "+",
+                CaptureRange(start: 0, end: 1)
+            ),
+            (
+                "parent-task-vault-warning",
+                [],
+                .vault(
+                    markerRange: CaptureRange(start: 0, end: 1),
+                    actionContinuationKeys: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "+"]
+                ),
+                "",
+                "+",
+                CaptureRange(start: 0, end: 1)
+            ),
+        ]
+        for state in parentTaskStates {
+            for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
+                let model = CapturePanelModel()
+                model.installParentTaskPickerForPreviews(
+                    candidates: state.candidates,
+                    context: state.context,
+                    warnings: state.name == "parent-task-vault-warning"
+                        ? ["no open tasks in capture notes"]
+                        : [],
+                    filter: state.filter,
+                    draft: state.draft,
+                    replacement: state.replacement
                 )
                 let card = CapturePickerCard(model: model)
                     .frame(width: 760)
@@ -625,6 +731,53 @@ final class CapturePickerDesignTests: XCTestCase {
                 statusName: "Next",
                 text: "Queue the solo next step",
                 section: "Next & In Progress"
+            ),
+        ]
+    }
+
+    private static var parentTaskRenderCandidates: [CaptureCompletionCandidate] {
+        [
+            CaptureCompletionCandidate(
+                replacement: "@sase+deep-fix",
+                route: "sase",
+                taskRef: "6:41d049f2",
+                blockID: "deep-fix",
+                statusSymbol: "*",
+                statusName: "Next",
+                text: "Fix deep bug",
+                section: "Bugs",
+                pomodoro: ActiveTaskPomodoro(line: 2, name: "BUGS"),
+                noteKind: "project",
+                group: "queued"
+            ),
+            CaptureCompletionCandidate(
+                replacement: "",
+                route: "mac_inbox",
+                taskRef: "4:bf5e981c",
+                requiresBlockID: true,
+                statusSymbol: " ",
+                statusName: "Todo",
+                text: "Call the bank",
+                noteKind: "inbox",
+                blockIDSuggestions: ["call-bank"],
+                group: "note"
+            ),
+        ]
+    }
+
+    private static var parentTaskScopedCandidates: [CaptureCompletionCandidate] {
+        [
+            CaptureCompletionCandidate(
+                replacement: "goog-exit",
+                route: "cash",
+                taskRef: "4:googexit",
+                blockID: "goog-exit",
+                statusSymbol: "*",
+                statusName: "Next",
+                text: "Finish Google Exit Packet!",
+                section: "Tasks",
+                noteKind: "area",
+                group: "note"
             ),
         ]
     }

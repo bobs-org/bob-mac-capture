@@ -154,6 +154,27 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.accessibilityHint, "Adds a block ID, then selects this task.")
     }
 
+    func testTaskParentContextShowsParentTaskLabel() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "@sase+deep-fix",
+            route: "sase",
+            blockID: "deep-fix",
+            statusSymbol: "*",
+            statusName: "Next",
+            text: "Fix deep bug",
+            section: "Bugs"
+        )
+
+        let content = completionRowContent(for: candidate, context: "task_parent", query: "deep")
+
+        XCTAssertEqual(content.category, .blockID)
+        XCTAssertEqual(content.contextLabel, "Parent Task")
+        XCTAssertEqual(content.primaryText, "Fix deep bug")
+        XCTAssertEqual(content.secondaryText, "Bugs")
+        XCTAssertEqual(content.badges, ["[*] Next", "^deep-fix"])
+        XCTAssertEqual(content.primaryMatchRange, 4..<8)
+    }
+
     func testPomodoroNameSelectableRowShowsNameTimeAndCurrentDuplicateBadges() {
         let candidate = CaptureCompletionCandidate(
             replacement: "memory",

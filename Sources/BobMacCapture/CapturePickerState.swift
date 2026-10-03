@@ -78,6 +78,7 @@ enum CapturePickerIndex {
     case taskLink(TaskLinkPickerIndex)
     case dependency(DependencyPickerIndex)
     case blockID(BlockIDPickerIndex)
+    case parentTask(ParentTaskPickerIndex)
 
     func presentation(filter: String) -> CapturePickerPresentation {
         switch self {
@@ -89,6 +90,17 @@ enum CapturePickerIndex {
             return index.presentation(filter: filter)
         case .blockID(let index):
             return index.presentation(filter: filter)
+        case .parentTask(let index):
+            return index.presentation(filter: filter)
+        }
+    }
+
+    func actionLine(for row: CapturePickerRow) -> String? {
+        switch self {
+        case .parentTask(let index):
+            return index.actionLine(for: row)
+        default:
+            return nil
         }
     }
 }

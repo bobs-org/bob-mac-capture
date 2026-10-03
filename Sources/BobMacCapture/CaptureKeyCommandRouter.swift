@@ -46,6 +46,7 @@ enum CaptureKeyCommand: Equatable {
     case openPickerFromChip
     case cycleTaskLinkSuggestionForward
     case cycleTaskLinkSuggestionBackward
+    case continuePickerOperator(String)
 }
 
 struct CaptureKeyRoutingContext: Equatable {
@@ -60,6 +61,8 @@ struct CaptureKeyRoutingContext: Equatable {
     var pickerSourceIsTaskLink = false
     var pickerFilterIsEmpty = true
     var pickerChipVisible = false
+    var pickerOperatorContinuationKeys: [String] = []
+    var taskIDPromptCyclesSuggestions = false
 }
 
 struct CaptureKeyCommandRouter {
@@ -200,7 +203,9 @@ struct CaptureKeyCommandRouter {
     ) -> CaptureKeyCommand? {
         // Link-mode Add block ID prompt: Tab / Shift-Tab cycle suggestions.
         // The parent-task flow keeps Tab consumed.
-        if context.taskIDPromptIsTaskLink || context.taskIDPromptIsDependency,
+        if context.taskIDPromptCyclesSuggestions
+            || context.taskIDPromptIsTaskLink
+            || context.taskIDPromptIsDependency,
            event.keyCode == KeyCode.tab
         {
             if modifiers.isEmpty {
@@ -298,6 +303,15 @@ struct CaptureKeyCommandRouter {
         case KeyCode.c:
             return modifiers == .control ? .stashDraftAndClose : nil
         default:
+            if context.pickerFilterIsEmpty,
+               !context.pickerOperatorContinuationKeys.isEmpty,
+               modifiers.intersection([.command, .option, .control]).isEmpty,
+               let characters = event.characters,
+               characters.count == 1,
+               context.pickerOperatorContinuationKeys.contains(characters)
+            {
+                return .continuePickerOperator(characters)
+            }
             return nil
         }
     }

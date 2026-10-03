@@ -73,6 +73,7 @@ public enum CapturePickerSource: Equatable, Sendable {
     case taskLink
     case dependency
     case blockID(BlockIDPickerContext)
+    case parentTask(ParentTaskPickerContext)
 
     /// The block-ID scope, so the fuzzy index shapes rows (no `@route`)
     /// for a project-task session. `.note` for the `^` source.
@@ -83,9 +84,19 @@ public enum CapturePickerSource: Equatable, Sendable {
         return .note
     }
 
+    /// Server-authored parent-task context when this source is `.parentTask`.
+    public var parentTaskContext: ParentTaskPickerContext? {
+        if case .parentTask(let context) = self {
+            return context
+        }
+        return nil
+    }
+
     /// Draft byte the picker opened on (`^` for active tasks, `:` or `&`
-    /// for the pickers, `:` or `^` for block IDs). Backspace on an empty
-    /// filter removes this byte together with any fragment it opened on.
+    /// for the pickers, `:` or `^` for block IDs, `+` for parent tasks).
+    /// Backspace on an empty filter removes this byte together with any
+    /// fragment it opened on, except parent-task which uses Bob's
+    /// `trigger_removal_range` instead of hunting for the marker.
     public var triggerByte: UInt8 {
         switch self {
         case .activeTask:
@@ -96,6 +107,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return 38 // `&`
         case .blockID(let context):
             return context.marker == "^" ? 94 : 58 // `^` or `:`
+        case .parentTask:
+            return 43 // `+`
         }
     }
 
@@ -114,6 +127,11 @@ public enum CapturePickerSource: Equatable, Sendable {
             }
             let suffix = context.field == nil ? "" : ", or type a new ID"
             return "Filter \(context.noteTarget) tasks\(suffix)"
+        case .parentTask(let context):
+            if context.isVault {
+                return "Search tasks by text, note, or +id"
+            }
+            return "Filter \(context.noteFileName) tasks"
         }
     }
 
@@ -131,6 +149,11 @@ public enum CapturePickerSource: Equatable, Sendable {
                 return "Type a new block ID for \(context.noteTarget)"
             }
             return "Filter \(context.noteTarget) tasks"
+        case .parentTask(let context):
+            if context.isVault {
+                return "Search open tasks across capture notes"
+            }
+            return "Filter \(context.noteFileName) tasks"
         }
     }
 
@@ -144,6 +167,8 @@ public enum CapturePickerSource: Equatable, Sendable {
         case .dependency:
             return "&"
         case .blockID(let context):
+            return context.scopeToken
+        case .parentTask(let context):
             return context.scopeToken
         }
     }
@@ -166,6 +191,8 @@ public enum CapturePickerSource: Equatable, Sendable {
                 return context.marker == ":" ? "Linked task" : "Task ID"
             }
             return context.isNewIDMode ? "New ID" : "Tasks"
+        case .parentTask(let context):
+            return context.isVault ? "All capture notes" : context.noteFileName
         }
     }
 
@@ -183,6 +210,8 @@ public enum CapturePickerSource: Equatable, Sendable {
                 return "Suggest an ID for \(context.noteTarget)"
             }
             return "Browse \(context.noteTarget) tasks"
+        case .parentTask(let context):
+            return context.isVault ? "Select a parent task" : "Append to a task"
         }
     }
 
@@ -197,6 +226,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "link"
         case .blockID(let context):
             return context.isNewIDMode ? "sparkles" : "list.bullet.rectangle.portrait"
+        case .parentTask:
+            return "plus"
         }
     }
 
@@ -211,6 +242,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Reopen the dependency picker for the & item (Tab)."
         case .blockID(let context):
             return "Reopen the Block ID picker for \(context.scopeToken) (Tab)."
+        case .parentTask(let context):
+            return "Reopen the parent-task picker for the \(context.scopeToken) item (Tab)."
         }
     }
 
@@ -224,6 +257,8 @@ public enum CapturePickerSource: Equatable, Sendable {
         case .dependency:
             return "Choose dependency"
         case .blockID:
+            return chipLabel
+        case .parentTask:
             return chipLabel
         }
     }
@@ -239,6 +274,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Opens the dependency picker for the current item."
         case .blockID(let context):
             return "Opens the Block ID picker for \(context.scopeToken)."
+        case .parentTask(let context):
+            return "Opens the parent-task picker for \(context.scopeToken)."
         }
     }
 
@@ -256,6 +293,11 @@ public enum CapturePickerSource: Equatable, Sendable {
                 return "New block ID for \(context.noteTarget)"
             }
             return "Task picker for \(context.noteTarget)"
+        case .parentTask(let context):
+            if context.isVault {
+                return "Parent task picker"
+            }
+            return "Parent task picker for \(context.noteFileName)"
         }
     }
 
@@ -273,6 +315,8 @@ public enum CapturePickerSource: Equatable, Sendable {
                 return "Arrow keys move, Return inserts the ID, Escape cancels."
             }
             return "Arrow keys move, Return inserts the task, Escape cancels."
+        case .parentTask:
+            return "Arrow keys move, Return inserts the parent task, Escape cancels."
         }
     }
 
@@ -290,6 +334,8 @@ public enum CapturePickerSource: Equatable, Sendable {
                 return "New ID for \(context.noteTarget)"
             }
             return "\(context.noteTarget) tasks"
+        case .parentTask(let context):
+            return context.isVault ? "All capture notes" : "\(context.noteFileName) tasks"
         }
     }
 
@@ -336,6 +382,15 @@ public enum CapturePickerSource: Equatable, Sendable {
                 ("⌘↩", "Insert & Capture"),
                 ("esc", "Clear / Cancel"),
             ]
+        case .parentTask:
+            // Shift-Return never starts a plus-selected task; it is consumed
+            // like the other non-link sources.
+            return [
+                ("↑↓", "Move"),
+                ("↩", "Select Task"),
+                ("⌘↩", "Select & Capture"),
+                ("esc", "Clear / Cancel"),
+            ]
         }
     }
 
@@ -353,6 +408,8 @@ public enum CapturePickerSource: Equatable, Sendable {
                 return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Space to insert and keep typing, Escape to clear or cancel."
             }
             return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Escape to clear or cancel."
+        case .parentTask:
+            return "Picker keys: up and down to move, Return to select the task, Command Return to select and capture, Escape to clear or cancel."
         }
     }
 
@@ -368,17 +425,41 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "org.bobs.bob-mac-capture.dependency-picker-used"
         case .blockID:
             return "org.bobs.bob-mac-capture.block-id-picker-used"
+        case .parentTask:
+            return "org.bobs.bob-mac-capture.parent-task-picker-used"
+        }
+    }
+
+    /// Quiet dual-use hint for the exact whole-item `+`. Nil everywhere else.
+    public var operatorContinuationHint: String? {
+        guard case .parentTask(let context) = self, context.isLonePlusOperator else {
+            return nil
+        }
+        return "Type a number or + to adjust; Esc to extend +5m"
+    }
+
+    /// Locator separator between route and block ID (`:` for `:`/`^`/`&`,
+    /// `+` for parent-task, the session marker for block IDs).
+    public var locatorMarker: String {
+        switch self {
+        case .parentTask:
+            return "+"
+        case .blockID(let context):
+            return context.marker
+        case .activeTask, .taskLink, .dependency:
+            return ":"
         }
     }
 }
 
 /// Which incomplete picker need a parse reports. Each need carries the calm
 /// status line shown instead of the doomed live dry run. Precedence is
-/// `activeTask`, then `taskLink`, then `pomodoroID`, then `blockID`, then
-/// `pomodoroStart`.
+/// `activeTask`, then `taskLink`, then `taskParent`, then `dependency`, then
+/// `pomodoroID`, then `blockID`, then `pomodoroStart`.
 public enum CapturePickerNeed: Equatable, Sendable {
     case activeTask
     case taskLink
+    case taskParent
     case dependency
     case pomodoroID
     case blockID
@@ -390,6 +471,8 @@ public enum CapturePickerNeed: Equatable, Sendable {
             return "Pick an active task — press Tab to browse"
         case .taskLink:
             return "Pick any open task — press Tab to browse"
+        case .taskParent:
+            return "Choose a task to append to — press Tab to browse"
         case .dependency:
             return "Pick a prerequisite — press Tab to browse"
         case .pomodoroID:
@@ -705,6 +788,20 @@ public struct CapturePickerEmptyState: Equatable, Sendable {
         Self(
             title: "No open tasks",
             message: "No open tasks in your area or project notes."
+        )
+    }
+
+    public static var noCaptureNoteTasks: Self {
+        Self(
+            title: "No open tasks",
+            message: "No open tasks in your capture notes."
+        )
+    }
+
+    public static func noTasksInNote(_ note: String) -> Self {
+        Self(
+            title: "No tasks in \(note)",
+            message: "No open tasks in \(note)."
         )
     }
 

@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Called the bank +",
+  "body": "Called the bank",
+  "mode": "incomplete",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": ["task_parent"],
+  "spans": [
+    { "start": 16, "end": 17, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": []
+}

@@ -400,7 +400,10 @@ struct CapturePanelView: View {
             }
 
             if model.pickerVisible {
-                CapturePickerKeyHints(source: model.picker?.source ?? .activeTask)
+                CapturePickerKeyHints(
+                    source: model.picker?.source ?? .activeTask,
+                    showOperatorHint: model.pickerFilterIsEmpty
+                )
                     .fixedSize(horizontal: false, vertical: true)
                     .layoutPriority(2)
                     .onGeometryChange(for: CGFloat.self) { geometry in
@@ -990,10 +993,20 @@ private struct TaskIDPromptCard: View {
         return false
     }
 
-    /// Either link-mode prompt (task-link or dependency): both show
-    /// suggestion chips and the inserts line.
+    private var isParentTaskPickerPrompt: Bool {
+        guard let prompt else {
+            return false
+        }
+        if case .parentTaskPicker = prompt.purpose {
+            return true
+        }
+        return false
+    }
+
+    /// Either link-mode prompt (task-link, dependency, or parent-task card):
+    /// all show suggestion chips and the inserts line.
     private var isIDLinkMode: Bool {
-        isTaskLink || isDependencyPrompt
+        isTaskLink || isDependencyPrompt || isParentTaskPickerPrompt
     }
 
     private func linkSubmitTitle(for prompt: CaptureTaskIDPromptState) -> String {
@@ -1016,6 +1029,13 @@ private struct TaskIDPromptCard: View {
             }
         case .parentTask:
             return "Add & Select"
+        case .parentTaskPicker(_, _, _, let followUp, _, _):
+            switch followUp {
+            case .submit:
+                return "Add ID & Capture"
+            case .none, .start:
+                return "Add ID & Select"
+            }
         }
     }
 
@@ -1029,6 +1049,8 @@ private struct TaskIDPromptCard: View {
             return "Inserts &\(notePath):\(typed)"
         case .parentTask:
             return ""
+        case .parentTaskPicker(let route, _, _, _, _, _):
+            return "Inserts @\(route)+\(typed)"
         }
     }
 
@@ -1042,6 +1064,8 @@ private struct TaskIDPromptCard: View {
             return Text("\(Text("Inserts &").foregroundStyle(.secondary))\(Text(notePath).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
         case .parentTask:
             return Text("")
+        case .parentTaskPicker(let route, _, _, _, _, _):
+            return Text("\(Text("Inserts @").foregroundStyle(.secondary))\(Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text("+").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
         }
     }
 

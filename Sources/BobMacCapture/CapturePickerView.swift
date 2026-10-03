@@ -306,6 +306,16 @@ struct CapturePickerCard: View {
                 .padding(.horizontal, 8)
                 .padding(.top, 2)
         }
+        if let hint = source.operatorContinuationHint,
+           model.pickerFilterIsEmpty
+        {
+            Text(hint)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .padding(.top, 2)
+        }
     }
 
     private func postAnnouncement(_ message: String) {
@@ -730,13 +740,11 @@ private struct CapturePickerRowView: View {
     }
 
     /// The separator between the route and the block ID comes from the picker's
-    /// own marker (`:` or `^`), never a hard-coded `:` — a `^` session reads
-    /// `route^id`, and a project-task session reads the bare `:id` / `^id`.
+    /// own marker (`:` or `^` or `+`), never a hard-coded `:` — a `^` session
+    /// reads `route^id`, a parent-task session reads `route+id`, and a
+    /// project-task session reads the bare `:id` / `^id`.
     private var locatorMarker: String {
-        if case .blockID(let context) = model.picker?.source {
-            return context.marker
-        }
-        return ":"
+        model.picker?.source.locatorMarker ?? ":"
     }
 
     private var locatorText: some View {
@@ -756,7 +764,7 @@ private struct CapturePickerRowView: View {
                         )
                     )
                     .foregroundStyle(CaptureEditorPalette.color(for: .route))
-                    Text(":")
+                    Text(locatorMarker)
                         .foregroundStyle(.secondary)
                 }
                 Image(systemName: "plus.circle")
@@ -931,6 +939,8 @@ private struct CapturePickerDetailStrip: View {
                 return "Then type + for a project note (+#name picks its Pomodoro)"
             }
             return "Then type #name or = to start"
+        case .parentTask:
+            return nil
         }
     }
 
@@ -949,7 +959,23 @@ private struct CapturePickerDetailStrip: View {
                     .foregroundColor(.secondary)
             }
         }
+        if case .parentTask = source {
+            return Text(parentTaskActionLine(for: row)).foregroundColor(.secondary)
+        }
         return Text("\(Text("↩ inserts ").foregroundStyle(.secondary))\(Text(row.detail.insertionPrefix).foregroundStyle(.primary))\(locatorInsertionText(for: row))")
+    }
+
+    private func parentTaskActionLine(for row: CapturePickerRow) -> String {
+        if let insertion = row.insertion {
+            return "Inserts \(insertion)"
+        }
+        if let pending = row.pendingBlockID {
+            if let first = pending.suggestions.first {
+                return "↩ adds ^\(first) to \(pending.route).md, then inserts @\(pending.route)+\(first)"
+            }
+            return "↩ names this task, then inserts @route+id"
+        }
+        return "↩ names this task, then inserts @route+id"
     }
 
     private func pullForwardLine(for row: CapturePickerRow) -> String? {
@@ -962,12 +988,7 @@ private struct CapturePickerDetailStrip: View {
     /// The `↩ inserts …` locator mirrors the row locator: the route (absent
     /// for project-task rows), then the session's own marker, then the ID.
     private func locatorInsertionText(for row: CapturePickerRow) -> Text {
-        let marker: String
-        if case .blockID(let context) = source {
-            marker = context.marker
-        } else {
-            marker = ":"
-        }
+        let marker = source.locatorMarker
         var routePart = Text("")
         if let route = row.route {
             routePart = Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route))
@@ -1054,6 +1075,7 @@ struct CapturePickerChip: View {
 @available(macOS 26.0, *)
 struct CapturePickerKeyHints: View {
     var source: CapturePickerSource = .activeTask
+    var showOperatorHint = false
 
     /// Keycap plus action pairs, in display order. Kept static so tests can
     /// assert the documented keyboard contract without rendering.
@@ -1062,26 +1084,33 @@ struct CapturePickerKeyHints: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            ForEach(0..<Self.items(for: source).count, id: \.self) { index in
-                let item = Self.items(for: source)[index]
-                HStack(spacing: 4) {
-                    Text(item.keys)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 4))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
-                        )
-                    Text(item.action)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                ForEach(0..<Self.items(for: source).count, id: \.self) { index in
+                    let item = Self.items(for: source)[index]
+                    HStack(spacing: 4) {
+                        Text(item.keys)
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 4))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                            )
+                        Text(item.action)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                Spacer(minLength: 12)
             }
-            Spacer(minLength: 12)
+            if showOperatorHint, let hint = source.operatorContinuationHint {
+                Text(hint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(source.keyHintsAccessibilityLabel)

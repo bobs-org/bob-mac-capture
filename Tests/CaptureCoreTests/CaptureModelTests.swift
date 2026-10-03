@@ -1236,6 +1236,164 @@ final class CaptureModelTests: XCTestCase {
         )
     }
 
+    func testCompletionResponseDecodesParentTaskPickerDescriptor() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 1,
+              "replacement": { "start": 0, "end": 1 },
+              "context": "task_parent",
+              "query": "",
+              "picker": {
+                "kind": "parent_task",
+                "scope": "vault",
+                "scope_token": "+",
+                "marker_range": { "start": 0, "end": 1 },
+                "trigger_removal_range": { "start": 0, "end": 1 },
+                "action_continuation_keys": ["0", "1", "+"]
+              },
+              "candidates": [
+                {
+                  "replacement": "@sase+deep-fix",
+                  "ref": "6:41d049f2",
+                  "route": "sase",
+                  "block_id": "deep-fix",
+                  "text": "Fix deep bug"
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+        XCTAssertEqual(decoded.context, "task_parent")
+        XCTAssertEqual(decoded.query, "")
+        let picker = try XCTUnwrap(decoded.picker)
+        XCTAssertTrue(picker.isParentTask)
+        XCTAssertEqual(picker.scope, "vault")
+        XCTAssertEqual(picker.scopeToken, "+")
+        XCTAssertNil(picker.noteTarget)
+        XCTAssertEqual(picker.actionContinuationKeys, ["0", "1", "+"])
+        let context = try XCTUnwrap(picker.parentTaskContext)
+        XCTAssertTrue(context.isVault)
+        XCTAssertTrue(context.isLonePlusOperator)
+        XCTAssertEqual(decoded.candidates[0].replacement, "@sase+deep-fix")
+    }
+
+    func testCompletionResponseDecodesScopedPickerAndOmitsDescriptorForOlderBob() throws {
+        let scoped = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 6,
+              "replacement": { "start": 6, "end": 6 },
+              "context": "task",
+              "query": "",
+              "picker": {
+                "kind": "parent_task",
+                "scope": "note",
+                "scope_token": "@cash+",
+                "note_target": "cash.md",
+                "marker_range": { "start": 0, "end": 6 },
+                "trigger_removal_range": { "start": 5, "end": 6 }
+              },
+              "candidates": [
+                { "replacement": "goog-exit", "block_id": "goog-exit", "route": "cash" }
+              ]
+            }
+            """.utf8
+        )
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: scoped)
+        let picker = try XCTUnwrap(decoded.picker)
+        XCTAssertEqual(picker.scope, "note")
+        XCTAssertEqual(picker.noteTarget, "cash.md")
+        XCTAssertEqual(picker.actionContinuationKeys, [])
+        XCTAssertEqual(picker.triggerRemovalRange, CaptureRange(start: 5, end: 6))
+        let context = try XCTUnwrap(picker.parentTaskContext)
+        XCTAssertFalse(context.isVault)
+        XCTAssertFalse(context.isLonePlusOperator)
+
+        let older = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 6,
+              "replacement": { "start": 6, "end": 6 },
+              "context": "task",
+              "candidates": [
+                { "replacement": "goog-exit", "block_id": "goog-exit" }
+              ]
+            }
+            """.utf8
+        )
+        let olderDecoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: older)
+        XCTAssertNil(olderDecoded.picker)
+        XCTAssertNil(olderDecoded.query)
+    }
+
+    func testTaskIDSuccessDecodesParentReplacementAndOmitsForOlderBob() throws {
+        let withField = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "dry_run": false,
+              "route": "mac_inbox",
+              "relative_target": "mac_inbox.md",
+              "block_id": "call-bank",
+              "line": 4,
+              "ref": "4:callbank",
+              "parent_replacement": "@mac_inbox+call-bank",
+              "task": {
+                "ref": "4:callbank",
+                "line": 4,
+                "block_id": "call-bank",
+                "status_symbol": " ",
+                "status_name": "Todo",
+                "status_type": "TODO",
+                "text": "Call the bank",
+                "depth": 0,
+                "child_count": 0
+              }
+            }
+            """.utf8
+        )
+        let success = try JSONDecoder().decode(CaptureTaskIDSuccess.self, from: withField)
+        XCTAssertEqual(success.parentReplacement, "@mac_inbox+call-bank")
+
+        let older = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "dry_run": false,
+              "route": "sase",
+              "relative_target": "sase.md",
+              "block_id": "fix-flaky-gkeep",
+              "line": 7,
+              "ref": "7:198b8e3e",
+              "task": {
+                "ref": "7:198b8e3e",
+                "line": 7,
+                "block_id": "fix-flaky-gkeep",
+                "status_symbol": " ",
+                "status_name": "Todo",
+                "status_type": "TODO",
+                "text": "Fix flaky gkeep test",
+                "depth": 0,
+                "child_count": 0
+              }
+            }
+            """.utf8
+        )
+        let olderSuccess = try JSONDecoder().decode(CaptureTaskIDSuccess.self, from: older)
+        XCTAssertNil(olderSuccess.parentReplacement)
+    }
+
     func testCompletionResponseDecodesCandidatesWithoutPomodoroForOlderBob() throws {
         let data = Data(
             """

@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"dry_run":false,"route":"mac_inbox","relative_target":"mac_inbox.md","block_id":"call-bank","line":4,"ref":"4:callbank","parent_replacement":"@mac_inbox+call-bank","task":{"ref":"4:callbank","line":4,"block_id":"call-bank","status_symbol":" ","status_name":"Todo","status_type":"TODO","text":"Call the bank","section":null,"depth":0,"child_count":0}}
