@@ -121,16 +121,21 @@ mutation.
   rows decode as unnumbered, and no hint, summary, or badge renders. Whole-item
   `=x` (or the `=*`/`=!` aliases omitting `x`) reports `pomodoro_close` mode with a `pomodoro_close` span and a
   `{"raw": "=x"}` parse spec (`raw` preserves the exact alias, `=*` parks
-  task 1 and `=!` completes it); link items keep `pomodoro_link`/`pomodoro_task`
+  all numbered links and `=!` completes them); link items keep `pomodoro_link`/`pomodoro_task`
   mode with a `pomodoro_close` span kind over the suffix. A selection-bearing
   close adds `pomodoro_close_in_progress`, `pomodoro_close_park`,
   `pomodoro_close_complete`, and `pomodoro_close_drop` spans, an
-  `in_progress`/`park`/`complete`/`drop` parse spec,
+  `in_progress`/`park`/`complete`/`drop` parse spec plus additive
+  `park_all`/`complete_all` intent flags,
   and `task_links` plus per-row `index` in the capture summary; a dangling
   `,`/`~` reports mode `incomplete` with a `pomodoro_close_task` need and
-  an `interactive_placeholder` span instead of an error (a trailing `*`/`!` defaults to task 1). One entry may sit
-  on the close line itself (`=x wired the lexer` logs to task 1,
-  `=x1,3 3 fixed the flake` logs to task 3): an explicit number adds a
+  an `interactive_placeholder` span instead of an error. A present-but-empty
+  `*`/`!` group selects all numbered links left after explicit assignments;
+  explicit forms such as `=*1` and `=!1` narrow the action to task 1. Two
+  empty wildcard groups compete and need numbers on at least one group. One
+  entry may sit on the close line itself (`=x wired the lexer` logs to task 1
+  for a plain close, or to the first eligible top-level worked link with
+  wildcard intent; `=x1,3 3 fixed the flake` logs to task 3): an explicit number adds a
   `pomodoro_close_log_index` span in cyan on the close line while the default
   adds none, and a dangling inline number (`=x 2`) reports mode `incomplete`
   with a `pomodoro_close_log_text` need and an `interactive_placeholder`
@@ -169,11 +174,11 @@ mutation.
   close removes those links from today without carrying or starting them; the
   card strikes and dims dropped rows, summarizes `Dropped 4, 5`, and reads
   "drops from today" for VoiceOver. A dropped row adds a "stays <status>"
-  caption naming the lane the task keeps. The `=*`/`=!` shorthands and
-  defaulted `=x*`/`=x!` require an updated Bob binary (CLI-first rollout):
-  an older Bob may classify aliases as task text and long-form defaults as
-  incomplete. The app never parses selection lists in Swift, submits the
-  untouched draft through one Bob capture call, and keeps
+  caption naming the lane the task keeps. The `=*`/`=!` and bare `=x*`/`=x!`
+  all-task behavior requires the corresponding updated Bob executable. With an
+  older Bob, the app displays that Bob's actual preview and submits the
+  untouched draft through one Bob capture call; it never parses selection lists
+  in Swift or simulates the new behavior. The app keeps
   schema-version rejection unchanged. A whole-item
   `=`/`=<X>` start reports the same numbered lineup: per-row `index` in the
   capture summary, a `drop` list on the parse spec and capture summary, and removed rows

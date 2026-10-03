@@ -174,8 +174,8 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     /// The outcome summary, present once a selection is typed (for example
     /// `"In progress 1, 3 · Complete 2 · Deferred 4"`). Nil before that.
     public let selectionSummary: String?
-    /// True when the draft carried an `=x[<N>][!<M>]` selection
-    /// (`in_progress` non-nil or `complete` non-empty).
+    /// True when the draft carried a concrete close selection or a wildcard
+    /// intent, including `park_all`/`complete_all` on an empty lineup.
     public let hasSelection: Bool
     /// How many numbered rows complete (`task_links` outcome `complete`).
     public let completedCount: Int
@@ -257,7 +257,12 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             summary.taskLinks.map { ($0.index, $0) },
             uniquingKeysWith: { first, _ in first }
         )
-        hasSelection = summary.inProgress != nil || !summary.park.isEmpty || !summary.complete.isEmpty || !summary.drop.isEmpty
+        hasSelection = summary.inProgress != nil
+            || !summary.park.isEmpty
+            || summary.parkAll
+            || !summary.complete.isEmpty
+            || summary.completeAll
+            || !summary.drop.isEmpty
         completedCount = summary.taskLinks.filter { $0.outcome == "complete" }.count
         taskRows = summary.tasks.map { task in
             Self.taskRow(
@@ -584,51 +589,69 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     /// Pomodoro-session pink, `*` and its list are teal, `!` and its list are
     /// green, `<N>` digits are orange, `~<K>` digits are muted gray); prose
     /// carries `.neutral`. Uses only numbers available in the current lineup.
-    /// Leads with the short `=*`/`=!` defaults, then the continue/drop/defer
-    /// and log examples.
+    /// Leads with the short all-task `=*`/`=!` forms, then shows how numbered
+    /// lists narrow the scope before the continue/drop/defer and log examples.
     static func hintTokens(numberedRows: Int) -> [HintToken] {
-        let eq: [HintToken] = [HintToken(text: "=", category: .pomodoroStart)]
-        let star: [HintToken] = [HintToken(text: "*", category: .pomodoroClosePark)]
-        let bang: [HintToken] = [HintToken(text: "!", category: .pomodoroCloseComplete)]
-        let close: [HintToken] = [HintToken(text: "=x", category: .pomodoroStart)]
-        // Short-syntax lead: omitted `*`/`!` lists mean task 1.
-        var tokens: [HintToken] = eq + star
-            + [HintToken(text: " parks 1 · ", category: .neutral)]
-            + eq + bang
-            + [HintToken(text: " completes 1", category: .neutral)]
+        var tokens: [HintToken] = []
+        func append(_ text: String, _ category: CaptureSemanticCategory) {
+            tokens.append(HintToken(text: text, category: category))
+        }
+
+        // Short-syntax lead: omitted `*`/`!` lists select all remaining links.
+        append("=", .pomodoroStart)
+        append("*", .pomodoroClosePark)
+        append(" parks all · ", .neutral)
+        append("=", .pomodoroStart)
+        append("!", .pomodoroCloseComplete)
+        append(" completes all", .neutral)
         if numberedRows >= 2 {
-            tokens += [HintToken(text: " · add numbers for other tasks (e.g. ", category: .neutral)]
-                + eq + [HintToken(text: "*2", category: .pomodoroClosePark)]
-                + [HintToken(text: ")", category: .neutral)]
-            let logExample: [HintToken] = [HintToken(text: " · ", category: .neutral)]
-                + close + [HintToken(text: " ", category: .neutral)]
-                + [HintToken(text: "2", category: .pomodoroCloseLog)]
-                + [HintToken(text: " wrote the tests logs work to 2", category: .neutral)]
+            append(" · add numbers to narrow scope (e.g. ", .neutral)
+            append("=", .pomodoroStart)
+            append("*1", .pomodoroClosePark)
+            append(" or ", .neutral)
+            append("=", .pomodoroStart)
+            append("!1", .pomodoroCloseComplete)
+            append(")", .neutral)
             // Drop uses only indices present in the lineup.
             let dropIndex = numberedRows >= 3 ? "3" : "2"
-            tokens += [HintToken(text: " · ", category: .neutral)]
-                + close + [HintToken(text: "1,2", category: .pomodoroCloseInProgress)]
-                + [HintToken(text: " keeps only these in progress · ", category: .neutral)]
-                + close + [HintToken(text: "*2", category: .pomodoroClosePark)]
-                + [HintToken(text: " parks 2 (not carried) · ", category: .neutral)]
-                + close + [HintToken(text: "!2", category: .pomodoroCloseComplete)]
-                + [HintToken(text: " completes 2 · ", category: .neutral)]
-                + close + [HintToken(text: "~\(dropIndex)", category: .pomodoroCloseDrop)]
-                + [HintToken(text: " drops \(dropIndex) · ", category: .neutral)]
-                + close + [HintToken(text: "0", category: .pomodoroCloseInProgress)]
-                + [HintToken(text: " defers all", category: .neutral)]
-                + logExample
+            append(" · ", .neutral)
+            append("=x", .pomodoroStart)
+            append("1,2", .pomodoroCloseInProgress)
+            append(" keeps only these in progress · ", .neutral)
+            append("=x", .pomodoroStart)
+            append("*2", .pomodoroClosePark)
+            append(" parks 2 (not carried) · ", .neutral)
+            append("=x", .pomodoroStart)
+            append("!2", .pomodoroCloseComplete)
+            append(" completes 2 · ", .neutral)
+            append("=x", .pomodoroStart)
+            append("~\(dropIndex)", .pomodoroCloseDrop)
+            append(" drops \(dropIndex) · ", .neutral)
+            append("=x", .pomodoroStart)
+            append("0", .pomodoroCloseInProgress)
+            append(" defers all · ", .neutral)
+            append("=x", .pomodoroStart)
+            append(" ", .neutral)
+            append("2", .pomodoroCloseLog)
+            append(" wrote the tests logs work to 2", .neutral)
             return tokens
         }
-        let logExample: [HintToken] = [HintToken(text: " · ", category: .neutral)]
-            + close + [HintToken(text: " wrote the tests logs work to it", category: .neutral)]
+        append(" · add a number to narrow scope (e.g. ", .neutral)
+        append("=", .pomodoroStart)
+        append("*1", .pomodoroClosePark)
+        append(" or ", .neutral)
+        append("=", .pomodoroStart)
+        append("!1", .pomodoroCloseComplete)
+        append(") · ", .neutral)
+        append("=x", .pomodoroStart)
+        append("~1", .pomodoroCloseDrop)
+        append(" drops it · ", .neutral)
+        append("=x", .pomodoroStart)
+        append("0", .pomodoroCloseInProgress)
+        append(" defers it · ", .neutral)
+        append("=x", .pomodoroStart)
+        append(" wrote the tests logs work to it", .neutral)
         return tokens
-            + [HintToken(text: " · ", category: .neutral)]
-            + close + [HintToken(text: "~1", category: .pomodoroCloseDrop)]
-            + [HintToken(text: " drops it · ", category: .neutral)]
-            + close + [HintToken(text: "0", category: .pomodoroCloseInProgress)]
-            + [HintToken(text: " defers it", category: .neutral)]
-            + logExample
     }
 
     /// The selection summary from `task_links` in ascending order, for example

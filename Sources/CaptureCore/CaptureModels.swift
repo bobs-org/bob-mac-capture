@@ -307,9 +307,9 @@ public struct PomodoroCloseLogEntry: Codable, Equatable, Sendable {
 /// `"=x1~2"`, `"=x*2"`, `"=*"`, `"=!"`). `inProgress` is the sorted
 /// `in_progress` list, or nil when `<N>` was omitted (plain `=x` leaves
 /// unlisted links at their ledger outcome unless `*<P>` is present, which
-/// activates selection mode like `<N>`); `park` is the sorted `*<P>` list,
-/// defaulting to `[1]` for a present-but-empty `*` group; `complete` is the
-/// sorted `!<M>` list, defaulting to `[1]` for a present-but-empty `!` group;
+/// activates selection mode like `<N>`); `parkAll`/`completeAll` preserve a
+/// present-but-empty `*`/`!` group until Bob resolves the current lineup;
+/// `park` and `complete` carry only concrete numbers.
 /// `drop` is the sorted `~<K>` list, empty when no `~` list was typed.
 /// Present on whole-item closes and on link and body-bearing items carrying
 /// the close suffix. Older Bob binaries omit all four lists; they decode as
@@ -318,15 +318,19 @@ public struct PomodoroCloseSpec: Codable, Equatable, Sendable {
     public let raw: String
     public let inProgress: [Int]?
     public let park: [Int]
+    public let parkAll: Bool
     public let complete: [Int]
+    public let completeAll: Bool
     public let drop: [Int]
     public let log: [PomodoroCloseLogEntry]
 
-    public init(raw: String, inProgress: [Int]? = nil, park: [Int] = [], complete: [Int] = [], drop: [Int] = [], log: [PomodoroCloseLogEntry] = []) {
+    public init(raw: String, inProgress: [Int]? = nil, park: [Int] = [], parkAll: Bool = false, complete: [Int] = [], completeAll: Bool = false, drop: [Int] = [], log: [PomodoroCloseLogEntry] = []) {
         self.raw = raw
         self.inProgress = inProgress
         self.park = park
+        self.parkAll = parkAll
         self.complete = complete
+        self.completeAll = completeAll
         self.drop = drop
         self.log = log
     }
@@ -336,7 +340,9 @@ public struct PomodoroCloseSpec: Codable, Equatable, Sendable {
         raw = try container.decodeIfPresent(String.self, forKey: .raw) ?? ""
         inProgress = try container.decodeIfPresent([Int].self, forKey: .inProgress)
         park = try container.decodeIfPresent([Int].self, forKey: .park) ?? []
+        parkAll = try container.decodeIfPresent(Bool.self, forKey: .parkAll) ?? false
         complete = try container.decodeIfPresent([Int].self, forKey: .complete) ?? []
+        completeAll = try container.decodeIfPresent(Bool.self, forKey: .completeAll) ?? false
         drop = try container.decodeIfPresent([Int].self, forKey: .drop) ?? []
         log = try container.decodeIfPresent([PomodoroCloseLogEntry].self, forKey: .log) ?? []
     }
@@ -345,7 +351,9 @@ public struct PomodoroCloseSpec: Codable, Equatable, Sendable {
         case raw
         case inProgress = "in_progress"
         case park
+        case parkAll = "park_all"
         case complete
+        case completeAll = "complete_all"
         case drop
         case log
     }
@@ -1338,15 +1346,17 @@ public struct PomodoroCloseNext: Codable, Equatable, Sendable {
 /// to capture schema v1 and absent on older Bob binaries. Every field decodes
 /// tolerantly (booleans default to false, arrays to empty, lines to zero) so a
 /// partial object still previews instead of failing the whole capture.
-/// `inProgress`/`park`/`complete`/`drop` echo the `=x[<N>][*<P>][!<M>][~<K>]`
-/// selection (nil/empty when none was typed); `taskLinks` is the numbered
-/// lineup, possibly empty. Older Bob omits all five and the card is exactly
-/// today's.
+/// `inProgress`/`park`/`complete`/`drop` report concrete selections;
+/// `parkAll`/`completeAll` preserve wildcard intent after Bob expands it over
+/// the resolved lineup. `taskLinks` is that numbered lineup, possibly empty.
+/// Older Bob omits the additive flags and they decode as false.
 public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
     public let raw: String
     public let inProgress: [Int]?
     public let park: [Int]
+    public let parkAll: Bool
     public let complete: [Int]
+    public let completeAll: Bool
     public let drop: [Int]
     public let log: [PomodoroCloseLogEntry]
     public let pomodoroLine: Int
@@ -1368,7 +1378,9 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         raw: String,
         inProgress: [Int]? = nil,
         park: [Int] = [],
+        parkAll: Bool = false,
         complete: [Int] = [],
+        completeAll: Bool = false,
         drop: [Int] = [],
         log: [PomodoroCloseLogEntry] = [],
         pomodoroLine: Int = 0,
@@ -1399,7 +1411,9 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         self.raw = raw
         self.inProgress = inProgress
         self.park = park
+        self.parkAll = parkAll
         self.complete = complete
+        self.completeAll = completeAll
         self.drop = drop
         self.log = log
         self.pomodoroLine = pomodoroLine
@@ -1423,7 +1437,9 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         raw = try container.decodeIfPresent(String.self, forKey: .raw) ?? ""
         inProgress = try container.decodeIfPresent([Int].self, forKey: .inProgress)
         park = try container.decodeIfPresent([Int].self, forKey: .park) ?? []
+        parkAll = try container.decodeIfPresent(Bool.self, forKey: .parkAll) ?? false
         complete = try container.decodeIfPresent([Int].self, forKey: .complete) ?? []
+        completeAll = try container.decodeIfPresent(Bool.self, forKey: .completeAll) ?? false
         drop = try container.decodeIfPresent([Int].self, forKey: .drop) ?? []
         log = try container.decodeIfPresent([PomodoroCloseLogEntry].self, forKey: .log) ?? []
         pomodoroLine = try container.decodeIfPresent(Int.self, forKey: .pomodoroLine) ?? 0
@@ -1467,7 +1483,9 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         case raw
         case inProgress = "in_progress"
         case park
+        case parkAll = "park_all"
         case complete
+        case completeAll = "complete_all"
         case drop
         case log
         case pomodoroLine = "pomodoro_line"

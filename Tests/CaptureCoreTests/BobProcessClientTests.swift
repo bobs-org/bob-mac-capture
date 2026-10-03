@@ -580,6 +580,40 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(record.contains("BOB_PRIORITY_ROLL_SEED=fixed"))
     }
 
+    func testWildcardCloseDraftPassesUnchangedToPreviewAndSubmit() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let preview = try await client.captureLivePreview("=*", priorityRollSeed: "fixed")
+        guard case .success(let previewSuccess) = preview else {
+            return XCTFail("Expected a successful wildcard preview response")
+        }
+        XCTAssertTrue(previewSuccess.dryRun)
+        XCTAssertEqual(previewSuccess.text, "=*")
+        XCTAssertTrue(previewSuccess.pomodoroClose?.parkAll == true)
+
+        let submitted = try await client.capture("=*", dryRun: false, readClipboard: false)
+        guard case .success(let submittedSuccess) = submitted else {
+            return XCTFail("Expected a successful wildcard submission response")
+        }
+        XCTAssertFalse(submittedSuccess.dryRun)
+        XCTAssertEqual(submittedSuccess.text, "=*")
+        XCTAssertTrue(submittedSuccess.pomodoroClose?.parkAll == true)
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- =*"))
+        XCTAssertTrue(record.contains("argv=capture --format json --no-clip -- =*"))
+        XCTAssertEqual(record.components(separatedBy: "argv=capture").count - 1, 2)
+    }
+
     func testLivePreviewDecodesPomodoroStartFromDryRunJSON() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
