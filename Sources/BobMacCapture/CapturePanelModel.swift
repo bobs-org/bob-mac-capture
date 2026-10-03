@@ -3255,10 +3255,10 @@ final class CapturePanelModel: ObservableObject {
             ($0.notePath ?? $0.route ?? "") == pending.route && ($0.taskRef ?? "") == pending.taskRef
         } ?? CaptureCompletionCandidate(
             replacement: "",
-            notePath: pending.route,
             taskRef: pending.taskRef,
             requiresBlockID: true,
-            blockIDSuggestions: pending.suggestions
+            blockIDSuggestions: pending.suggestions,
+            notePath: pending.route
         )
         let prefill = pending.suggestions.first ?? ""
         // Done/Cancelled history rows name IDs without reopening: the

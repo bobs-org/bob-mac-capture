@@ -698,9 +698,9 @@ final class CapturePickerDesignTests: XCTestCase {
                 statusName: "Todo",
                 text: "Confirm grocery budget for the very long quarterly household spending review",
                 section: "Errands",
+                group: "open",
                 notePath: "cash.md",
-                locator: "cash",
-                group: "open"
+                locator: "cash"
             ),
             CaptureCompletionCandidate(
                 replacement: "",
@@ -709,10 +709,10 @@ final class CapturePickerDesignTests: XCTestCase {
                 statusSymbol: " ",
                 statusName: "Todo",
                 text: "Call the bank about the overdraft fee",
-                notePath: "cash.md",
-                locator: "cash",
                 blockIDSuggestions: ["call-bank"],
-                group: "open"
+                group: "open",
+                notePath: "cash.md",
+                locator: "cash"
             ),
             CaptureCompletionCandidate(
                 replacement: "&projects/shopping:weekly-list-with-a-very-long-block-id",
@@ -722,9 +722,9 @@ final class CapturePickerDesignTests: XCTestCase {
                 statusName: "In Progress",
                 text: "Buy the weekly list",
                 section: "Lists",
+                group: "in_progress",
                 notePath: "projects/shopping.md",
-                locator: "projects/shopping",
-                group: "in_progress"
+                locator: "projects/shopping"
             ),
             CaptureCompletionCandidate(
                 replacement: "&cash:budget",
@@ -733,10 +733,10 @@ final class CapturePickerDesignTests: XCTestCase {
                 statusSymbol: " ",
                 statusName: "Todo",
                 text: "Confirm grocery budget",
+                group: "open",
                 notePath: "cash.md",
                 locator: "cash",
-                alreadyDependency: true,
-                group: "open"
+                alreadyDependency: true
             ),
             CaptureCompletionCandidate(
                 replacement: "&sase:old-ship",
@@ -745,10 +745,10 @@ final class CapturePickerDesignTests: XCTestCase {
                 statusSymbol: "x",
                 statusName: "Done",
                 text: "Ship old release",
+                group: "completed",
                 notePath: "sase.md",
                 locator: "sase",
-                disabledReason: "Completed tasks never block",
-                group: "completed"
+                disabledReason: "Completed tasks never block"
             ),
         ]
     }

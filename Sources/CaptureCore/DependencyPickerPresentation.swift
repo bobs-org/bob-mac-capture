@@ -264,13 +264,16 @@ public struct DependencyPickerIndex: Sendable {
             badge = nil
         } else {
             pending = nil
-            insertion = candidate.replacement.isEmpty ? nil : candidate.replacement
+            // Bob still sends the replacement for an already-present row, so
+            // drop it here: a redundant accept must never splice a duplicate.
+            insertion = candidate.replacement.isEmpty || candidate.alreadyDependency
+                ? nil : candidate.replacement
             badge = candidate.alreadyDependency ? "Already added" : nil
         }
         // Accepting an already-present or guarded row is a harmless no-op:
-        // both already carry a nil insertion above, so the accept keeps the
-        // draft unchanged with the explanation. Backend idempotence is the
-        // last defense for typed duplicates.
+        // both carry a nil insertion above, so the accept keeps the draft
+        // unchanged with the explanation. Backend idempotence is the last
+        // defense for typed duplicates.
         return CapturePickerRow(
             id: Self.key(for: candidate),
             bobIndex: entry.bobIndex,

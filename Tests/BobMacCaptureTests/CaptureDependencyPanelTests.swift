@@ -19,9 +19,9 @@ final class CaptureDependencyPanelTests: XCTestCase {
             statusType: "TODO",
             text: "Confirm grocery budget",
             section: "Errands",
+            group: "open",
             notePath: "cash.md",
-            locator: "cash",
-            group: "open"
+            locator: "cash"
         )
     }
 
@@ -33,10 +33,10 @@ final class CaptureDependencyPanelTests: XCTestCase {
             statusSymbol: " ",
             statusName: "Todo",
             text: "Call the bank",
-            notePath: "cash.md",
-            locator: "cash",
             blockIDSuggestions: ["call-bank"],
-            group: "open"
+            group: "open",
+            notePath: "cash.md",
+            locator: "cash"
         )
     }
 
@@ -49,10 +49,10 @@ final class CaptureDependencyPanelTests: XCTestCase {
             statusSymbol: " ",
             statusName: "Todo",
             text: "Confirm grocery budget",
+            group: "open",
             notePath: "cash.md",
             locator: "cash",
-            alreadyDependency: true,
-            group: "open"
+            alreadyDependency: true
         )
     }
 
