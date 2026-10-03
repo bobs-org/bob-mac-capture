@@ -1208,6 +1208,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     stashEntryCount: self.model.stashCount,
                     taskIDPromptVisible: self.model.taskIDPromptVisible,
                     taskIDPromptIsTaskLink: self.model.taskIDPromptIsTaskLink,
+                    taskIDPromptIsDependency: self.model.taskIDPromptIsDependency,
                     pomodoroNamePromptVisible: self.model.pomodoroNamePromptVisible,
                     pickerVisible: self.model.pickerVisible,
                     pickerSourceIsTaskLink: self.model.pickerSourceIsTaskLink,

@@ -54,6 +54,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var stashEntryCount = 0
     var taskIDPromptVisible = false
     var taskIDPromptIsTaskLink = false
+    var taskIDPromptIsDependency = false
     var pomodoroNamePromptVisible = false
     var pickerVisible = false
     var pickerSourceIsTaskLink = false
@@ -199,7 +200,9 @@ struct CaptureKeyCommandRouter {
     ) -> CaptureKeyCommand? {
         // Link-mode Add block ID prompt: Tab / Shift-Tab cycle suggestions.
         // The parent-task flow keeps Tab consumed.
-        if context.taskIDPromptIsTaskLink, event.keyCode == KeyCode.tab {
+        if context.taskIDPromptIsTaskLink || context.taskIDPromptIsDependency,
+           event.keyCode == KeyCode.tab
+        {
             if modifiers.isEmpty {
                 return .cycleTaskLinkSuggestionForward
             }

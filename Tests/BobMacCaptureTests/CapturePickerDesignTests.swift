@@ -265,6 +265,14 @@ final class CapturePickerDesignTests: XCTestCase {
             ["Move", "Link", "Link & Start", "Link & Capture", "Clear / Cancel"]
         )
         XCTAssertEqual(
+            CapturePickerKeyHints.items(for: .dependency).map { $0.keys },
+            ["↑↓", "↩", "⌘↩", "esc"]
+        )
+        XCTAssertEqual(
+            CapturePickerKeyHints.items(for: .dependency).map { $0.action },
+            ["Move", "Use task", "Capture", "Clear / Cancel"]
+        )
+        XCTAssertEqual(
             CapturePickerKeyHints.items(for: .blockID(Self.linkContext)).map { $0.keys },
             ["↑↓", "↩", "⌘↩", "esc"]
         )
@@ -471,6 +479,48 @@ final class CapturePickerDesignTests: XCTestCase {
                 }
             }
         }
+
+        // Dependency review: grouped with an existing dependent, filtered
+        // with match highlights, the ownerless prompt, and already-added /
+        // guard / completed-history rows — at full and minimum panel widths,
+        // in both appearances. Inspect the PNGs with an image reader and
+        // iterate on spacing, contrast, truncation, and focus before
+        // completion.
+        let dependencyStates: [(name: String, filter: String, draft: String, replacement: CaptureRange, owner: DependencyOwner?)] = [
+            ("dependency-grouped", "", "Buy Groceries! &", CaptureRange(start: 15, end: 16), DependencyOwner(kind: "new_task")),
+            ("dependency-filtered", "budget", "Buy Groceries! &budget", CaptureRange(start: 15, end: 22), DependencyOwner(kind: "new_task")),
+            ("dependency-ownerless", "", "&", CaptureRange(start: 0, end: 1), nil),
+        ]
+        for state in dependencyStates {
+            for width in [760, 620] as [CGFloat] {
+                for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
+                    let model = CapturePanelModel()
+                    model.installDependencyPickerForPreviews(
+                        candidates: Self.dependencyRenderCandidates,
+                        filter: state.filter,
+                        draft: state.draft,
+                        replacement: state.replacement,
+                        owner: state.owner
+                    )
+                    let card = CapturePickerCard(model: model)
+                        .frame(width: width)
+                        .environment(
+                            \.colorScheme,
+                            appearance == .darkAqua ? .dark : .light
+                        )
+                    let renderer = ImageRenderer(content: card)
+                    renderer.scale = 2
+                    guard let image = renderer.nsImage else {
+                        XCTFail("Could not render \(state.name) (\(appearance.rawValue))")
+                        continue
+                    }
+                    let url = directory.appendingPathComponent(
+                        "capture-picker-\(state.name)-\(Int(width))-\(appearance == .darkAqua ? "dark" : "light").png"
+                    )
+                    try Self.pngData(for: image).write(to: url)
+                }
+            }
+        }
     }
 
     private static func pngData(for image: NSImage) throws -> Data {
@@ -633,6 +683,74 @@ final class CapturePickerDesignTests: XCTestCase {
             allowedDescription: "A-Z, a-z, 0-9 or '-'",
             suggestions: ["retreat", "offsite-plan"]
         )
+    }
+
+    /// Dependency render fixture: long task/path text, match highlights via
+    /// the `budget` filter, a nested-note row, an ID-less row, an
+    /// already-added row, a guarded row, and completed history.
+    private static var dependencyRenderCandidates: [CaptureCompletionCandidate] {
+        [
+            CaptureCompletionCandidate(
+                replacement: "&cash:budget",
+                taskRef: "12:cccc3333",
+                blockID: "budget",
+                statusSymbol: " ",
+                statusName: "Todo",
+                text: "Confirm grocery budget for the very long quarterly household spending review",
+                section: "Errands",
+                notePath: "cash.md",
+                locator: "cash",
+                group: "open"
+            ),
+            CaptureCompletionCandidate(
+                replacement: "",
+                taskRef: "1:dddd4444",
+                requiresBlockID: true,
+                statusSymbol: " ",
+                statusName: "Todo",
+                text: "Call the bank about the overdraft fee",
+                notePath: "cash.md",
+                locator: "cash",
+                blockIDSuggestions: ["call-bank"],
+                group: "open"
+            ),
+            CaptureCompletionCandidate(
+                replacement: "&projects/shopping:weekly-list-with-a-very-long-block-id",
+                taskRef: "4:eeee5555",
+                blockID: "weekly-list-with-a-very-long-block-id",
+                statusSymbol: "/",
+                statusName: "In Progress",
+                text: "Buy the weekly list",
+                section: "Lists",
+                notePath: "projects/shopping.md",
+                locator: "projects/shopping",
+                group: "in_progress"
+            ),
+            CaptureCompletionCandidate(
+                replacement: "&cash:budget",
+                taskRef: "12:cccc3333",
+                blockID: "budget",
+                statusSymbol: " ",
+                statusName: "Todo",
+                text: "Confirm grocery budget",
+                notePath: "cash.md",
+                locator: "cash",
+                alreadyDependency: true,
+                group: "open"
+            ),
+            CaptureCompletionCandidate(
+                replacement: "&sase:old-ship",
+                taskRef: "2:ffff6666",
+                blockID: "old-ship",
+                statusSymbol: "x",
+                statusName: "Done",
+                text: "Ship old release",
+                notePath: "sase.md",
+                locator: "sase",
+                disabledReason: "Completed tasks never block",
+                group: "completed"
+            ),
+        ]
     }
 
     /// Project-task field for a trailing ` :` on a project-note bullet.

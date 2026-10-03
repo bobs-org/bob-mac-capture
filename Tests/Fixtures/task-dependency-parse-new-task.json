@@ -1,0 +1,44 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Buy Groceries! &cash:budget",
+  "body": "Buy Groceries!",
+  "mode": "task",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": [],
+  "spans": [
+    {
+      "start": 15,
+      "end": 16,
+      "kind": "dependency_sigil"
+    },
+    {
+      "start": 16,
+      "end": 20,
+      "kind": "dependency_note"
+    },
+    {
+      "start": 21,
+      "end": 27,
+      "kind": "dependency_block_id"
+    }
+  ],
+  "diagnostics": [],
+  "dependencies": [
+    {
+      "raw": "&cash:budget",
+      "note": "cash",
+      "block_id": "budget",
+      "quoted": false,
+      "range": {
+        "start": 15,
+        "end": 27
+      }
+    }
+  ],
+  "dependency_target": {
+    "kind": "new_task"
+  }
+}

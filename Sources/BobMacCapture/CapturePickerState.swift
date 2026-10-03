@@ -38,6 +38,11 @@ struct CapturePickerState: Equatable {
     /// announced only when this changes, so typing within one category stays
     /// quiet. A fresh session starts unannounced.
     var lastAvailabilityKey: String? = nil
+    /// Lexical owner of the `task_dependency` modifier the session opened
+    /// on (nil for every other source, and for an ownerless leading `&`).
+    /// Command-Return submits after insert only when this is non-nil: an
+    /// ownerless pick must first gain task text or `@note+id`.
+    var dependencyOwner: DependencyOwner? = nil
 }
 
 /// The compact reopen affordance shown instead of the picker: after a
@@ -53,6 +58,10 @@ struct CapturePickerChipState: Equatable {
     var cursor: Int
     var candidates: [CaptureCompletionCandidate]
     var warnings: [String]
+    /// Lexical `task_dependency` owner the chip's snapshot belongs to, so a
+    /// refetch-free reopen keeps the Command-Return gate. Nil for other
+    /// sources and ownerless picks.
+    var dependencyOwner: DependencyOwner? = nil
 }
 
 /// Whether an analysis was triggered by a draft edit or by a caret-only
@@ -67,6 +76,7 @@ enum CompletionTrigger {
 enum CapturePickerIndex {
     case activeTask(ActiveTaskPickerIndex)
     case taskLink(TaskLinkPickerIndex)
+    case dependency(DependencyPickerIndex)
     case blockID(BlockIDPickerIndex)
 
     func presentation(filter: String) -> CapturePickerPresentation {
@@ -74,6 +84,8 @@ enum CapturePickerIndex {
         case .activeTask(let index):
             return index.presentation(filter: filter)
         case .taskLink(let index):
+            return index.presentation(filter: filter)
+        case .dependency(let index):
             return index.presentation(filter: filter)
         case .blockID(let index):
             return index.presentation(filter: filter)

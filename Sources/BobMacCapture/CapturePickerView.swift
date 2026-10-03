@@ -172,6 +172,10 @@ struct CapturePickerCard: View {
             CapturePickerFilterBar(model: model)
                 .frame(height: CapturePanelLayout.pickerFilterBarHeight)
 
+            if source == .dependency {
+                dependencyHeader
+            }
+
             Divider()
 
             ScrollViewReader { proxy in
@@ -247,6 +251,40 @@ struct CapturePickerCard: View {
             }
             postAnnouncement(row.accessibilityLabel)
         }
+    }
+
+    /// Dependent header for the `&` source: the owner Bob reported, or the
+    /// ownerless prompt. Choosing a prerequisite stays allowed before the
+    /// dependent exists.
+    @ViewBuilder
+    private var dependencyHeader: some View {
+        let owner = model.picker?.dependencyOwner
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 6) {
+                Image(systemName: "link")
+                    .foregroundStyle(CaptureEditorPalette.color(for: .blockID))
+                    .accessibilityHidden(true)
+                Text(DependencyPickerIndex.headerTitle(owner: owner, dependentText: nil))
+                    .font(.callout.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            if let subtitle = DependencyPickerIndex.headerSubtitle(owner: owner, dependentText: nil) {
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            DependencyPickerIndex.headerSubtitle(owner: owner, dependentText: nil)
+                .map { "\(DependencyPickerIndex.headerTitle(owner: owner, dependentText: nil)). \($0)" }
+                ?? DependencyPickerIndex.headerTitle(owner: owner, dependentText: nil)
+        )
     }
 
     @ViewBuilder
@@ -702,14 +740,17 @@ private struct CapturePickerRowView: View {
     }
 
     private var locatorText: some View {
-        // ID-less `:` rows show `route:` in accent, a plus glyph, and the dim
-        // italic suggestion, middle-truncated at 260 pt.
+        // ID-less rows show `route:` in accent, a plus glyph, and the dim
+        // italic suggestion, middle-truncated at 260 pt. The display route
+        // is the row's locator (`:` route, `&` locator); the pending route
+        // is Bob's exact note path, used only for the ID assignment.
         if let pending = row.pendingBlockID {
+            let displayRoute = row.route ?? pending.route
             return AnyView(HStack(spacing: 2) {
-                if !pending.route.isEmpty {
+                if !displayRoute.isEmpty {
                     Text(
                         CapturePickerRichText.displayText(
-                            pending.route,
+                            displayRoute,
                             segments: [],
                             matches: row.routeMatchRanges
                         )
@@ -878,6 +919,9 @@ private struct CapturePickerDetailStrip: View {
             return "Then type #name, = to start, or =x to close"
         case .taskLink:
             // The panel phase owns the task-link teaching line.
+            return nil
+        case .dependency:
+            // The detail strip already teaches "space adds another &".
             return nil
         case .blockID(let context):
             if context.intent == .projectNote || context.scope == .projectTask {

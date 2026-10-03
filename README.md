@@ -374,6 +374,53 @@ Task Link Picker keys: Return/Tab Link, Shift-Return Link & Start,
 Command-Return Link & Capture, Escape Clear/Cancel, Backspace on empty filter
 removes `:`. In the link-mode Add block ID prompt, Tab / Shift-Tab cycle
 suggestions.
+
+### Dependency Picker
+
+Typing `&` at the start of an item or after whitespace opens the Dependency
+Picker (`task_dependency` context), the same card with scope `&` and caption
+Depends On. It consumes Bob's additive contract and never parses quoted note
+components itself: Bob sends the decoded `query`, the lexical `owner`
+(`new_task` / `existing_task`), the exact `note_path` (extension included, case
+and Unicode preserved), the display `locator`, the `group`, `hidden`,
+`already_dependency`, and `disabled_reason` per row, plus a Bob-authored
+`replacement` (`&note:id`, quoted when the locator needs it) that is empty for
+ID-less and guarded rows.
+
+The header names the dependent (`For: @route+id`) or, for an ownerless leading
+`&`, says Choose a prerequisite with "Then add task text or @note+id" —
+choosing first stays allowed. With an empty filter rows group in Bob's order:
+In Progress, Next, one section per note (`note_path`), then a separate
+Completed history section (selecting there never blocks); `#hide` rows render
+subdued and sort last within their section. A non-empty filter replaces the
+groups with one ranked flat list. Already-added rows show Already added and
+accepting one changes nothing; guarded rows carry Bob's explanation and neither
+insert nor open the ID flow.
+
+Return (or Tab) replaces only Bob's range with the replacement and returns to
+the editor; at a terminal token one separating space is left for typing another
+`&`. Command-Return inserts then captures only when the dependent is complete;
+with no dependent yet it keeps the draft open ("Add task text or @note+id,
+then capture"). Shift-Return has no start-session behavior on this source.
+Escape restores the draft/caret and shows the Choose dependency chip; Backspace
+on an empty filter removes the `&` token.
+
+Rows without an ID show `locator:` plus a dim suggestion; accepting one opens
+the Add block ID prompt ("Add ID and use task — edits that note now") in
+dependency mode, calling `bob capture-task-id --note-path` with the exact path
+(passing `--allow-closed` for Done/Cancelled history rows, which never
+reopens them) and splicing Bob's `dependency_replacement` verbatim. Escape
+returns to the picker with the filter intact; assignment failure inserts
+nothing. The prompt buttons read Add ID & Use / Add ID & Capture.
+
+Preview shows `New task · depends on …` or `Add dependency to "…"`, the
+resulting `DEPENDS ON` child, the waiting count, and the Blocked/closed
+distinction from Bob's `dependency_update`, reusing the final task-block
+cards for target ID/status effects. A dependency-only action is never labeled
+"Create task". The `&` editor text highlights through Bob's `dependency_sigil` /
+`dependency_note` / `dependency_block_id` spans; Swift never regexes
+ampersands. An older Bob does not understand `&`: the feature needs the
+updated CLI (decoders stay backward compatible for every older payload).
 - Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
   valid opens the Block ID Picker (`pomodoro_block_id` / `task_block_id` contexts),
   and typing a trailing ` :` / ` ^` on a project-note bullet opens the Project task

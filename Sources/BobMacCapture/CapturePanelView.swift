@@ -914,7 +914,7 @@ private struct TaskIDPromptCard: View {
                     blockIDFieldIsFocused = false
                 }
 
-                if isTaskLink, !prompt.linkSuggestions.isEmpty {
+                if isIDLinkMode, !prompt.linkSuggestions.isEmpty {
                     HStack(spacing: 6) {
                         ForEach(prompt.linkSuggestions, id: \.self) { suggestion in
                             Button {
@@ -929,7 +929,7 @@ private struct TaskIDPromptCard: View {
                     }
                 }
 
-                if isTaskLink {
+                if isIDLinkMode {
                     linkInsertsText(for: prompt)
                         .font(.caption)
                         .lineLimit(1)
@@ -980,36 +980,69 @@ private struct TaskIDPromptCard: View {
         return false
     }
 
-    private func linkSubmitTitle(for prompt: CaptureTaskIDPromptState) -> String {
-        guard case .taskLink(_, _, _, let followUp, _) = prompt.purpose else {
-            return "Add & Select"
+    private var isDependencyPrompt: Bool {
+        guard let prompt else {
+            return false
         }
-        switch followUp {
-        case .none:
-            return "Add ID & Link"
-        case .start:
-            return "Add ID & Start"
-        case .submit:
-            return "Add ID & Capture"
+        if case .dependency = prompt.purpose {
+            return true
+        }
+        return false
+    }
+
+    /// Either link-mode prompt (task-link or dependency): both show
+    /// suggestion chips and the inserts line.
+    private var isIDLinkMode: Bool {
+        isTaskLink || isDependencyPrompt
+    }
+
+    private func linkSubmitTitle(for prompt: CaptureTaskIDPromptState) -> String {
+        switch prompt.purpose {
+        case .taskLink(_, _, _, let followUp, _):
+            switch followUp {
+            case .none:
+                return "Add ID & Link"
+            case .start:
+                return "Add ID & Start"
+            case .submit:
+                return "Add ID & Capture"
+            }
+        case .dependency(_, _, _, let followUp, _, _):
+            switch followUp {
+            case .submit:
+                return "Add ID & Capture"
+            case .none, .start:
+                return "Add ID & Use"
+            }
+        case .parentTask:
+            return "Add & Select"
         }
     }
 
     private func linkInsertsLine(for prompt: CaptureTaskIDPromptState) -> String {
-        guard case .taskLink(let route, _, _, let followUp, _) = prompt.purpose else {
+        let typed = prompt.authoredID.isEmpty ? "…" : prompt.authoredID
+        switch prompt.purpose {
+        case .taskLink(let route, _, _, let followUp, _):
+            let suffix = followUp == .start ? "=" : ""
+            return "Inserts @\(route):\(typed)\(suffix)"
+        case .dependency(let notePath, _, _, _, _, _):
+            return "Inserts &\(notePath):\(typed)"
+        case .parentTask:
             return ""
         }
-        let typed = prompt.authoredID.isEmpty ? "…" : prompt.authoredID
-        let suffix = followUp == .start ? "=" : ""
-        return "Inserts @\(route):\(typed)\(suffix)"
     }
 
     private func linkInsertsText(for prompt: CaptureTaskIDPromptState) -> Text {
-        guard case .taskLink(let route, _, _, let followUp, _) = prompt.purpose else {
+        let typed = prompt.authoredID.isEmpty ? "…" : prompt.authoredID
+        switch prompt.purpose {
+        case .taskLink(let route, _, _, let followUp, _):
+            let suffix = followUp == .start ? "=" : ""
+            return Text("\(Text("Inserts @").foregroundStyle(.secondary))\(Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))\(Text(suffix).foregroundStyle(.secondary))")
+        case .dependency(let notePath, _, _, _, _, _):
+            return Text("\(Text("Inserts &").foregroundStyle(.secondary))\(Text(notePath).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
+        case .parentTask:
             return Text("")
         }
-        let typed = prompt.authoredID.isEmpty ? "…" : prompt.authoredID
-        let suffix = followUp == .start ? "=" : ""
-        return Text("\(Text("Inserts @").foregroundStyle(.secondary))\(Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))\(Text(suffix).foregroundStyle(.secondary))")
     }
 
     private func taskSummary(_ prompt: CaptureTaskIDPromptState) -> some View {
@@ -2627,6 +2660,33 @@ struct PreviewPane: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(projectNote.previewAccessibilitySummary)
+        }
+
+        // A dependency capture names its prerequisites from Bob's resolved
+        // `dependency_update` object: the headline never reads "Create task"
+        // for a dependency-only action, and the waiting count plus the
+        // Blocked/closed distinction come straight from Bob. No Swift-side
+        // graph logic — only Bob's rows and wording.
+        if let dependency = success.dependencyUpdate {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "link")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(dependency.headline)
+                        .font(.system(.callout, design: .monospaced))
+                        .fontWeight(.semibold)
+                }
+                Text("⛓️ \(dependency.managedLineText)")
+                    .font(.system(.callout, design: .monospaced))
+                    .textSelection(.enabled)
+                Text(dependency.waitingText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(dependency.previewAccessibilitySummary)
         }
 
         // `previewBlockLines` is the parent line, the authored children, the clipboard

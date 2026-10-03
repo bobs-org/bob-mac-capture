@@ -114,6 +114,40 @@ public final class BobProcessClient: @unchecked Sendable {
         return try await decodeCaptureTaskIDResult(arguments: arguments, lane: "task-id")
     }
 
+    /// Explicit Add block ID for a `task_dependency` candidate: the exact
+    /// vault-relative `notePath` round-trips nested, case-sensitive, and
+    /// quoted paths without touching the lowercasing route parser, so the
+    /// app never rebuilds a locator with string interpolation. `allowClosed`
+    /// additionally permits Done/Cancelled history rows without reopening
+    /// them. The success carries Bob's `dependency_replacement` to splice.
+    public func assignDependencyTaskID(
+        notePath: String,
+        taskRef: String,
+        blockID: String,
+        dryRun: Bool = false,
+        allowClosed: Bool = false
+    ) async throws -> CaptureTaskIDResponse {
+        var arguments = [
+            "capture-task-id",
+            "--note-path",
+            notePath,
+            "--task-ref",
+            taskRef,
+            "--block-id",
+            blockID,
+            "--format",
+            "json",
+        ]
+        if dryRun {
+            arguments.append("--dry-run")
+        }
+        if allowClosed {
+            arguments.append("--allow-closed")
+        }
+
+        return try await decodeCaptureTaskIDResult(arguments: arguments, lane: "task-id")
+    }
+
     public func assignPomodoroName(
         ref: String,
         name: String,

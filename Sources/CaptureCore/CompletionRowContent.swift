@@ -39,8 +39,13 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .section
     case "task_block_id", "pomodoro_block_id", "sub_bullet_block_id",
          "global_sub_bullet_block_id", "task_toggle_block_id", "active_task_block_id",
-         "project_task_block_id":
+         "project_task_block_id", "dependency_block_id":
         return .blockID
+    case "dependency_sigil", "dependency_note":
+        // `&note:id` renders like `@route:id`: the sigil and note share
+        // the route family, the ID the block family. Never claimed by a
+        // Swift-side regex — only Bob's semantic spans highlight here.
+        return .route
     case "schedule":
         return .schedule
     case "priority":
@@ -124,6 +129,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case taskSection
     case activeTask
     case taskLink
+    case taskDependency
     case wikilinkNote
     case wikilinkHeading
     case wikilinkBlock
@@ -141,6 +147,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "task_section": self = .taskSection
         case "active_task": self = .activeTask
         case "task_link": self = .taskLink
+        case "task_dependency": self = .taskDependency
         case "wikilink_note": self = .wikilinkNote
         case "wikilink_heading": self = .wikilinkHeading
         case "wikilink_block": self = .wikilinkBlock
@@ -439,6 +446,34 @@ public func completionRowContent(
             secondaryText = candidate.section
         }
         accessibilityHint = "Inserts this task's route and block ID."
+
+    case .taskDependency:
+        // The `&` picker owns the card; this is only the stray inline
+        // rendering, which reads as a prerequisite rather than neutral
+        // text. The locator uses Bob's exact `note_path`, never a
+        // lowercased route.
+        category = .blockID
+        symbolName = "link"
+        contextLabel = "Prerequisite"
+        primaryText = candidate.text ?? candidate.replacement
+        let locator = candidate.locator ?? candidate.route
+        if let locator, let blockID = candidate.blockID ?? candidate.blockIDSuggestions.first {
+            var secondary = "\(locator):\(blockID)"
+            if let section = candidate.section, !section.isEmpty {
+                secondary += " · \(section)"
+            }
+            secondaryText = secondary
+        } else {
+            secondaryText = candidate.section
+        }
+        if candidate.alreadyDependency {
+            badges = ["Already added"]
+        } else if let reason = candidate.disabledReason, !reason.isEmpty {
+            badges = [reason]
+        } else if candidate.requiresBlockID {
+            badges = ["Needs ID"]
+        }
+        accessibilityHint = "Inserts this prerequisite."
 
     case .wikilinkNote:
         category = .wikilinkTarget

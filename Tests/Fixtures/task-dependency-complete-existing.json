@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 19,
+  "replacement": {
+    "start": 0,
+    "end": 20
+  },
+  "context": "task_dependency",
+  "candidates": [
+    {
+      "replacement": "&body:hospital-swarm",
+      "ref": "30:32a6a0da",
+      "note_path": "body.md",
+      "locator": "body",
+      "group": "in_this_note",
+      "hidden": false,
+      "block_id": "hospital-swarm",
+      "requires_block_id": false,
+      "block_id_suggestions": [],
+      "already_dependency": true,
+      "status_symbol": "?",
+      "status_name": "Blocked",
+      "status_type": "ON_HOLD",
+      "text": "Launch swarm to find hospital!",
+      "section": "Blocked",
+      "depth": 0,
+      "line": 30
+    }
+  ],
+  "query": "body:hospital-swar",
+  "owner": {
+    "kind": "existing_task",
+    "route": "body",
+    "block_id": "rahway"
+  }
+}

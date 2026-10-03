@@ -1,0 +1,23 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "dry_run": true,
+  "relative_target": "bob.md",
+  "note_path": "bob.md",
+  "block_id": "grocery-run",
+  "dependency_replacement": "&bob:grocery-run",
+  "line": 20,
+  "ref": "20:a99a1f6e",
+  "task": {
+    "ref": "20:a99a1f6e",
+    "line": 20,
+    "block_id": "grocery-run",
+    "status_symbol": " ",
+    "status_name": "Todo",
+    "status_type": "TODO",
+    "text": "Figure out how to easily configure new Obsidian snippets!",
+    "section": "Tasks",
+    "depth": 0,
+    "child_count": 0
+  }
+}

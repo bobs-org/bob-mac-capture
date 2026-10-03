@@ -1053,6 +1053,8 @@ JSON
 JSON
     elif [[ "${draft}" == ":" ]]; then
       cat "${fixtures_dir}/task-link-parse-colon.json"
+    elif [[ "${draft}" == "&" ]]; then
+      cat "${fixtures_dir}/task-dependency-parse-amp.json"
     elif [[ "${draft}" == "${task_link_batch_draft}" ]]; then
       # Batch draft with `:` on the second item (real `bob capture-parse`
       # output).
@@ -2328,6 +2330,10 @@ JSON
   ]
 }
 JSON
+    elif [[ "${draft}" == "&" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/task-dependency-complete-ownerless.json"
+    elif [[ "${draft}" == "Buy Groceries! &" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/task-dependency-complete-new-task.json"
     elif [[ "${draft}" == ":" ]]; then
       if [[ -n "${FAKE_BOB_TASK_LINK_ROWS:-}" ]]; then
         rows="${FAKE_BOB_TASK_LINK_ROWS}"
@@ -2895,9 +2901,11 @@ JSON
     ;;
   capture-task-id)
     route=""
+    note_path=""
     task_ref=""
     block_id=""
     dry_run="false"
+    allow_closed="false"
     args=("$@")
     for ((i = 0; i < ${#args[@]}; i++)); do
       case "${args[$i]}" in
@@ -2907,6 +2915,12 @@ JSON
         --task-ref|-t)
           task_ref="${args[$((i + 1))]:-}"
           ;;
+        --note-path|-n)
+          note_path="${args[$((i + 1))]:-}"
+          ;;
+        --allow-closed|-a)
+          allow_closed="true"
+          ;;
         --block-id|-i)
           block_id="${args[$((i + 1))]:-}"
           ;;
@@ -2915,6 +2929,12 @@ JSON
           ;;
       esac
     done
+    if [[ "${note_path}" == "bob.md" && "${task_ref}" == "20:59a5d28a" && "${block_id}" == "grocery-run" ]]; then
+      # Worked-example dependency assignment (real `bob capture-task-id
+      # --note-path` output on a fresh vault copy).
+      cat "${fixtures_dir}/task-dependency-task-id-success.json"
+      exit 0
+    fi
     if [[ "${route}" == "sase" && "${task_ref}" == "7:446bd057" && "${block_id}" == "fix-flaky-gkeep" ]]; then
       # Worked-example ID-less assignment (real `bob capture-task-id`
       # output on a fresh vault copy).

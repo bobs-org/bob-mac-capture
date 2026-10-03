@@ -1,0 +1,63 @@
+{
+  "ok": true,
+  "dry_run": true,
+  "routed": false,
+  "route": null,
+  "route_label": "",
+  "relative_target": "mac_inbox.md",
+  "target": "/home/bryan/bob/mac_inbox.md",
+  "text": "Buy Groceries!",
+  "task_line": "- [?] #task Buy Groceries! [created::2026-10-03] [dependsOn:: cash__find-real-id-number]",
+  "kind": "task",
+  "created": "2026-10-03",
+  "scheduled": null,
+  "placement": "inserted",
+  "dependency_update": {
+    "dependent_note": "mac_inbox.md",
+    "dependent_text": "Buy Groceries!",
+    "new_task": true,
+    "added": 1,
+    "already_present": 0,
+    "open_prerequisites": 1,
+    "prerequisites": [
+      {
+        "note": "cash.md",
+        "block_id": "find-real-id-number",
+        "link": "[[cash#^find-real-id-number]]",
+        "status_symbol": "?",
+        "status_name": "Blocked",
+        "text": "Find number you need to call to get [[cash#^call-real-id]] going!",
+        "open": true
+      }
+    ],
+    "dependent_status": "?",
+    "dependent_status_name": "Blocked",
+    "status_changed": true
+  },
+  "task_blocks": [
+    {
+      "relative_target": "mac_inbox.md",
+      "route": "",
+      "line": 36,
+      "text": "Buy Groceries!",
+      "status_symbol": "?",
+      "status_name": "Blocked",
+      "created": true,
+      "roles": [
+        "dependency"
+      ],
+      "lines": [
+        {
+          "text": "- [?] #task Buy Groceries! [created::2026-10-03] [dependsOn:: cash__find-real-id-number]",
+          "depth": 0,
+          "change": "added"
+        },
+        {
+          "text": "\t- ⛓️ **DEPENDS ON:** [[cash#^find-real-id-number]]",
+          "depth": 1,
+          "change": "added"
+        }
+      ]
+    }
+  ]
+}

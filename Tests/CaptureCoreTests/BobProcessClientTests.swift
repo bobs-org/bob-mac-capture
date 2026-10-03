@@ -380,6 +380,57 @@ final class BobProcessClientTests: XCTestCase {
         )
     }
 
+    func testAssignDependencyTaskIDUsesNotePathAndDecodesReplacement() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let response = try await client.assignDependencyTaskID(
+            notePath: "bob.md",
+            taskRef: "20:59a5d28a",
+            blockID: "grocery-run"
+        )
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected dependency assignment success")
+        }
+        XCTAssertEqual(success.notePath, "bob.md")
+        XCTAssertEqual(success.dependencyReplacement, "&bob:grocery-run")
+        XCTAssertEqual(success.task.blockID, "grocery-run")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture-task-id --note-path bob.md --task-ref 20:59a5d28a --block-id grocery-run --format json")
+        )
+    }
+
+    func testCaptureCompleteDecodesDependencyContext() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let ownerless = try await client.captureComplete("&", cursor: 1)
+        XCTAssertEqual(ownerless.context, "task_dependency")
+        XCTAssertEqual(ownerless.query, "")
+        XCTAssertNil(ownerless.owner)
+        XCTAssertFalse(ownerless.candidates.isEmpty)
+        let idLess = try XCTUnwrap(ownerless.candidates.first { $0.requiresBlockID })
+        XCTAssertEqual(idLess.replacement, "")
+        XCTAssertFalse(idLess.notePath?.isEmpty ?? true)
+        XCTAssertFalse(idLess.blockIDSuggestions.isEmpty)
+
+        let newTask = try await client.captureComplete("Buy Groceries! &", cursor: 16)
+        XCTAssertEqual(newTask.context, "task_dependency")
+        XCTAssertEqual(newTask.owner?.kind, "new_task")
+    }
+
     func testAssignCaptureTaskIDDecodesJSONFailureOnNonZeroExit() async throws {
         let client = BobProcessClient(
             executablePath: try fakeBobPath(),
