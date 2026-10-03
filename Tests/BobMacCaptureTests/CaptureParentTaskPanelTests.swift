@@ -380,7 +380,9 @@ final class CaptureParentTaskPanelTests: XCTestCase {
         await waitUntil { model.pickerVisible }
 
         XCTAssertEqual(model.picker?.filterText, "bank")
-        XCTAssertEqual(model.picker?.snapshotIsPartial, true)
+        XCTAssertEqual(model.picker?.snapshotIsPartial, false)
+        XCTAssertEqual(model.picker?.candidates.count, 8)
+        XCTAssertEqual(model.pickerPresentation?.mode, .filtered)
         let record = try String(contentsOf: recordURL)
         XCTAssertEqual(record.components(separatedBy: "argv=capture-complete").count - 1, 2)
         XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 0 "))

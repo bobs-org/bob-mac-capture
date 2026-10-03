@@ -2398,7 +2398,11 @@ JSON
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-full.json"
     elif [[ "${draft}" == "+bank" ]]; then
       if [[ "${cursor}" == "0" ]]; then
-        sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-full.json"
+        # Real bob keeps the whole +bank token range at replacement.start
+        # and returns the unfiltered catalog so the app can filter locally.
+        sed -e "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" \
+            -e 's/"start":0,"end":1/"start":0,"end":5/g' \
+            "${fixtures_dir}/parent-task-complete-full.json"
       else
         sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-bank.json"
       fi

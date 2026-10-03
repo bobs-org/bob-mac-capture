@@ -454,4 +454,69 @@ final class ParentTaskPickerPresentationTests: XCTestCase {
             "Choose a task to append to — press Tab to browse"
         )
     }
+
+    func testBackendVaultFixtureMatchesUnfilteredPresentation() throws {
+        let data = try Data(contentsOf: fixtureURL("parent-task-complete-full.json"))
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+        XCTAssertEqual(decoded.context, "task_parent")
+        XCTAssertEqual(decoded.candidates.count, 8)
+        let context = try XCTUnwrap(decoded.picker?.parentTaskContext)
+        XCTAssertTrue(context.isVault)
+        XCTAssertEqual(context.scopeToken, "+")
+        let presentation = ParentTaskPickerIndex(
+            candidates: decoded.candidates,
+            context: context
+        ).presentation(filter: "")
+        XCTAssertEqual(presentation.totalCount, 8)
+        XCTAssertEqual(presentation.matchCount, 8)
+        XCTAssertEqual(presentation.mode, .grouped)
+        XCTAssertEqual(
+            presentation.sections.map(\.kind),
+            [.pomodoro, .unqueuedInProgress, .note, .note, .note, .note]
+        )
+        let insertions = presentation.orderedRowIDs.compactMap { presentation.rowsByID[$0]?.insertion }
+        XCTAssertTrue(insertions.contains("@sase+deep-fix"))
+        XCTAssertTrue(insertions.contains("@bob+polish"))
+        XCTAssertFalse(insertions.contains(where: { $0.contains(":") && !$0.contains("+") }))
+        let idless = try XCTUnwrap(presentation.rowsByID["mac_inbox|4:bf5e981c"])
+        XCTAssertNil(idless.insertion)
+        XCTAssertEqual(idless.pendingBlockID?.suggestions, ["call-bank"])
+    }
+
+    func testBackendScopedFixtureKeepsDocumentOrderAndIDOnlyInsert() throws {
+        let data = try Data(contentsOf: fixtureURL("parent-task-complete-scoped-cash.json"))
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+        XCTAssertEqual(decoded.context, "task")
+        let context = try XCTUnwrap(decoded.picker?.parentTaskContext)
+        XCTAssertEqual(context.scope, .note)
+        XCTAssertEqual(context.noteTarget, "cash.md")
+        let presentation = ParentTaskPickerIndex(
+            candidates: decoded.candidates,
+            context: context
+        ).presentation(filter: "")
+        XCTAssertEqual(presentation.orderedRowIDs, ["cash|4:googexit", "cash|8:handoff"])
+        XCTAssertEqual(presentation.row(id: "cash|4:googexit")?.insertion, "goog-exit")
+        XCTAssertNil(presentation.row(id: "cash|8:handoff")?.insertion)
+    }
+
+    func testBackendEmptyVaultFixtureUsesCaptureNoteEmptyState() throws {
+        let data = try Data(contentsOf: fixtureURL("parent-task-complete-empty.json"))
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+        let context = try XCTUnwrap(decoded.picker?.parentTaskContext)
+        let presentation = ParentTaskPickerIndex(
+            candidates: decoded.candidates,
+            context: context
+        ).presentation(filter: "")
+        XCTAssertEqual(presentation.emptyState?.title, "No open tasks")
+        XCTAssertEqual(presentation.emptyState?.message, "No open tasks in your capture notes.")
+        XCTAssertEqual(decoded.warnings, ["no open tasks in capture notes"])
+    }
+
+    private func fixtureURL(_ name: String) -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+            .appendingPathComponent(name)
+    }
 }

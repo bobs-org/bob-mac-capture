@@ -748,9 +748,9 @@ private struct CapturePickerRowView: View {
     }
 
     private var locatorText: some View {
-        // ID-less rows show `route:` in accent, a plus glyph, and the dim
-        // italic suggestion, middle-truncated at 260 pt. The display route
-        // is the row's locator (`:` route, `&` locator); the pending route
+        // ID-less rows show `route` plus this session's marker (`:` / `^` /
+        // `+`), a plus glyph, and the dim italic suggestion, middle-truncated
+        // at 260 pt. The display route is the row locator; the pending route
         // is Bob's exact note path, used only for the ID assignment.
         if let pending = row.pendingBlockID {
             let displayRoute = row.route ?? pending.route

@@ -450,6 +450,19 @@ final class CapturePickerDesignTests: XCTestCase {
                 "+",
                 CaptureRange(start: 0, end: 1)
             ),
+            (
+                "parent-task-scoped-empty",
+                [],
+                .note(
+                    route: "empty",
+                    noteTarget: "empty.md",
+                    markerRange: CaptureRange(start: 0, end: 7),
+                    triggerRemovalRange: CaptureRange(start: 6, end: 7)
+                ),
+                "",
+                "@empty+",
+                CaptureRange(start: 7, end: 7)
+            ),
         ]
         for state in parentTaskStates {
             for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
@@ -760,6 +773,17 @@ final class CapturePickerDesignTests: XCTestCase {
                 text: "Call the bank",
                 noteKind: "inbox",
                 blockIDSuggestions: ["call-bank"],
+                group: "note"
+            ),
+            CaptureCompletionCandidate(
+                replacement: "@cash+cafe",
+                route: "cash",
+                taskRef: "6:cafejp",
+                blockID: "cafe",
+                statusSymbol: " ",
+                statusName: "Todo",
+                text: "Café 日本語 — a very long task that should stay searchable in the plus picker even when the title wraps past the panel width",
+                noteKind: "area",
                 group: "note"
             ),
         ]
