@@ -3129,6 +3129,8 @@ JSON
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-complete.json"
     elif [[ "${draft}" == "=*" ]]; then
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-alias-park.json"
+    elif [[ "${draft}" == "=*1" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-alias-one.json"
     elif [[ "${draft}" == "=!" ]]; then
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-alias-complete.json"
     elif [[ "${draft}" == "=*2" ]]; then
