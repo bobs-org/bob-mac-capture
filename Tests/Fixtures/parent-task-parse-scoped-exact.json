@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"@cash+goog-exit","body":"","mode":"task_toggle","route":"cash","section":null,"block_id":"goog-exit","needs":[],"spans":[{"start":0,"end":5,"kind":"task_toggle_route"},{"start":6,"end":15,"kind":"task_toggle_block_id"}],"diagnostics":[]}

@@ -1,0 +1,1 @@
+{"error":"capture item 1 starting on line 1: Work Log bullets are numbered all or none, and the first one has no task number; to log text that starts with `2`, number every bullet: `- 1 2 bar`","ok":false}

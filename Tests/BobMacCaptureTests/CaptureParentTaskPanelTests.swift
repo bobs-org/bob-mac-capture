@@ -352,10 +352,16 @@ final class CaptureParentTaskPanelTests: XCTestCase {
     }
 
     func testPlusOpensVaultPickerFromFakeBob() async throws {
-        let model = try parentTaskModel()
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = try parentTaskModel(recordURL: recordURL)
         model.plainDraft = "+"
         model.editorTextDidChange(cursorUTF8Offset: 1)
         await waitUntil { model.pickerVisible }
+        await waitUntil {
+            ((try? String(contentsOf: recordURL)) ?? "").contains(
+                "argv=capture --dry-run --no-clip --format json -- +\n"
+            )
+        }
 
         XCTAssertTrue(model.pickerSourceIsParentTask)
         XCTAssertNil(model.completionResponse)
@@ -369,7 +375,6 @@ final class CaptureParentTaskPanelTests: XCTestCase {
         } else {
             XCTFail("expected parent-task source")
         }
-        XCTAssertEqual(model.previewState, .idle)
     }
 
     func testBankQuerySeedsFilterAndRefetchesAtStart() async throws {

@@ -1061,6 +1061,8 @@ JSON
       cat "${fixtures_dir}/parent-task-parse-prose.json"
     elif [[ "${draft}" == "@cash+" ]]; then
       cat "${fixtures_dir}/parent-task-parse-cash.json"
+    elif [[ "${draft}" == "@cash+goog-exit" ]]; then
+      cat "${fixtures_dir}/parent-task-parse-scoped-exact.json"
     elif [[ "${draft}" == $'First item\n\nCalled the bank +' ]]; then
       cat "${fixtures_dir}/parent-task-parse-later.json"
     elif [[ "${draft}" == "+2" ]]; then
@@ -2156,7 +2158,7 @@ JSON
   ]
 }
 JSON
-    elif [[ "${draft}" == "+5" || "${draft}" == "+2" || "${draft}" == "++" || "${draft}" == "-2" || "${draft}" == "++3" || "${draft}" == "--" || "${draft}" == "--2" || "${draft}" == "=" || "${draft}" == "=3" || "${draft}" == "=-2" ]]; then
+    elif [[ "${draft}" == "+5" || "${draft}" == "+2" || "${draft}" == "+0" || "${draft}" == "-" || "${draft}" == "++" || "${draft}" == "-2" || "${draft}" == "++3" || "${draft}" == "--" || "${draft}" == "--2" || "${draft}" == "=" || "${draft}" == "=3" || "${draft}" == "=-2" ]]; then
       # An adjustment, shift, or whole-item start is an action, so Bob offers
       # no route or task completion candidates for it (mirrors
       # `bob capture-complete --cursor 2 -- '+5'`).
@@ -3178,6 +3180,9 @@ JSON
     elif [[ "${draft}" == "=*3" ]]; then
       cat "${fixtures_dir}/pomodoro-close-select-alias-out-of-range.json"
       exit 1
+    elif [[ "${draft}" == "=*abc" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-select-alias-bad.json"
+      exit 2
     elif [[ "${draft}" == "=x1*" ]]; then
       cat "${fixtures_dir}/pomodoro-close-parse-alias-conflict.json"
       exit 1
@@ -3191,6 +3196,9 @@ JSON
     elif [[ "${draft}" == "${close_log_invalid_draft}" ]]; then
       cat "${fixtures_dir}/pomodoro-close-log-invalid.json"
       exit 1
+    elif [[ "${draft}" == "${close_log_mixed_draft}" ]]; then
+      cat "${fixtures_dir}/pomodoro-close-log-mixed.json"
+      exit 2
     elif [[ "${draft}" == "${close_batch_draft}" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/g" "${fixtures_dir}/pomodoro-close-batch-adjust.json"
     elif [[ "${draft}" == "Write outline @sase:outline=3" ]]; then

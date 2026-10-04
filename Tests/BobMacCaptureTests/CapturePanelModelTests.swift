@@ -1997,10 +1997,15 @@ final class CapturePanelModelTests: XCTestCase {
     }
 
     func testCloseAliasInvalidBlocksSubmissionAndClearsStaleCard() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
-            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
         )
         model.plainDraft = "=*"
         model.editorTextDidChange(cursorUTF8Offset: 2)
@@ -2020,11 +2025,18 @@ final class CapturePanelModelTests: XCTestCase {
         // A genuinely incomplete draft disables submission with a pending card.
         model.plainDraft = "=*1,"
         model.editorTextDidChange(cursorUTF8Offset: 4)
-        await waitUntil {
-            if case .pending = model.previewState { return true }
-            return false
-        }
-        XCTAssertNil(model.closePresentation)
+        await waitUntil { model.closePendingText != nil }
+        XCTAssertEqual(model.closePendingText, "Type a task number after ,")
+        XCTAssertTrue(model.isClosePending)
+        XCTAssertEqual(model.closePendingAction, "Close")
+        XCTAssertEqual(model.statusText, "Type a task number after , — Close is disabled")
+        XCTAssertEqual(model.primaryActionTitle, "Close")
+
+        model.submit(openAfterCapture: false)
+        XCTAssertFalse(model.isSubmitting)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- =*1\n"))
+        XCTAssertFalse(record.contains("argv=capture --format json -- =*1,"))
     }
 
     func testClosePendingTrimTrimsOnlyNeedingItems() {

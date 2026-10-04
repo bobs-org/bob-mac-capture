@@ -4674,6 +4674,9 @@ final class CapturePanelModel: ObservableObject {
         // completion the same way `pomodoro_block_id` already does, and the
         // `project_task_*` spans (a trailing ` :id` / ` ^id` token on a
         // project-note bullet) request `project_task_block_id` the same way.
+        // A lone whole-item + is dual-use: Swift asks Bob for completion and Bob
+        // decides whether to open the picker. Other adjustments return a null
+        // context with no candidates.
         let completionSpanKinds = Set([
             "route",
             "section",
@@ -4699,6 +4702,7 @@ final class CapturePanelModel: ObservableObject {
             "global_sub_bullet_route",
             "global_sub_bullet_block_id",
             "interactive_placeholder",
+            "pomodoro_adjust",
             "wikilink_delimiter",
             "wikilink_target",
             "wikilink_heading",

@@ -1,0 +1,1 @@
+{"error":"capture item 1 starting on line 1: `=*abc` is not a task list: write `=x`, then comma-separated task numbers, then optionally `*` and the numbers to park, `!` and the numbers to complete, and `~` and the numbers to drop (for example `=x1*2!3~4`)","ok":false}
