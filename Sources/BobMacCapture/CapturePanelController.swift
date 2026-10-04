@@ -132,6 +132,9 @@ enum CaptureBulletNewlineEditResolver {
         line.range(of: #"^\s*[-*+]\s*$"#, options: .regularExpression) != nil
     }
 
+    /// Returns the range of a populated dash row's leading whitespace plus `- ` when the
+    /// caret sits anywhere from the line start through the first body character. Only that
+    /// prefix is removed; the body and any extra whitespace after the first space stay.
     private static func removableDashBulletPrefixRange(
         in line: String,
         lineStart: Int,
@@ -154,8 +157,16 @@ enum CaptureBulletNewlineEditResolver {
             return nil
         }
 
-        let hyphenLocation = lineStart + hyphenOffset
-        guard caretLocation <= hyphenLocation else {
+        var bodyOffset = hyphenOffset + 2
+        while bodyOffset < nsLine.length {
+            let character = nsLine.character(at: bodyOffset)
+            guard character == 0x20 || character == 0x09 else {
+                break
+            }
+            bodyOffset += 1
+        }
+
+        guard caretLocation <= lineStart + bodyOffset else {
             return nil
         }
 
