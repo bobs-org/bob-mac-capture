@@ -338,8 +338,8 @@ public struct TaskCompletePickerIndex: Sendable {
         } else {
             pending = nil
             insertion = candidate.replacement.isEmpty ? nil : candidate.replacement
-            if candidate.sessions >= 2 {
-                badge = "🍅 \(candidate.sessions)"
+            if entry.sessions >= 2 {
+                badge = "🍅 \(entry.sessions)"
             } else {
                 badge = nil
             }
