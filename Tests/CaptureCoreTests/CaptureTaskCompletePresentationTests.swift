@@ -269,17 +269,20 @@ final class CaptureTaskCompletePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.previewText, "Blocked root")
         XCTAssertNil(presentation.ledgerText)
         XCTAssertEqual(presentation.subtaskRows.count, 1)
+        // The refreshed real-bob fixture completes `!sase:root` ("Blocked
+        // root"): closed subtask `sub1` ("Sub one"), left-open `sub2`
+        // ("Sub two").
         XCTAssertEqual(
             presentation.subtaskRows[0].transitionText,
-            "[/] → [x]  Write the regression test"
+            "[/] → [x]  Sub one"
         )
-        XCTAssertEqual(presentation.subtaskRows[0].locatorText, "sase.md ^write-test")
+        XCTAssertEqual(presentation.subtaskRows[0].locatorText, "sase.md ^sub1")
         XCTAssertEqual(presentation.leftOpenRows.count, 1)
         XCTAssertTrue(presentation.leftOpenRows[0].displayText.contains("Blocked"))
-        XCTAssertTrue(presentation.leftOpenRows[0].displayText.contains("Ask infra"))
-        XCTAssertEqual(presentation.leftOpenRows[0].locatorText, "sase.md ^ask-infra")
+        XCTAssertTrue(presentation.leftOpenRows[0].displayText.contains("Sub two"))
+        XCTAssertEqual(presentation.leftOpenRows[0].locatorText, "sase.md ^sub2")
         XCTAssertTrue(presentation.previewAccessibilitySummary.contains("closes"))
-        XCTAssertTrue(presentation.previewAccessibilitySummary.contains("Ask infra"))
+        XCTAssertTrue(presentation.previewAccessibilitySummary.contains("Sub two"))
     }
 
     func testMoveFixtureLedgerNamesSourceAndDestination() throws {
