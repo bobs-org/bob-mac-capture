@@ -1062,7 +1062,7 @@ final class NotificationServiceTests: XCTestCase {
         let success = try closeSuccessFixture("task-complete-strike.json")
         let content = NotificationService.successContent(captures: [success])
 
-        XCTAssertEqual(content.title, "Completed: #task Fix flaky gkeep test")
+        XCTAssertEqual(content.title, "Completed: Fix flaky gkeep test")
         XCTAssertEqual(content.subtitle, "sase.md · ^fix-flaky")
         XCTAssertTrue(content.body.contains("sase.md"))
     }

@@ -19,17 +19,15 @@
  "previous_status_symbol": "x",
  "previous_status_name": "Done",
  "status_changed": false,
- "task_complete": [
-  {
-   "raw": "!sase:fin",
-   "note": "sase",
-   "note_path": "sase.md",
-   "block_id": "fin",
-   "action": "already_done",
-   "text": "Finished",
-   "subtasks": [],
-   "subtasks_left_open": [],
-   "unblocked": []
-  }
- ]
+ "task_complete": {
+  "raw": "!sase:fin",
+  "note": "sase",
+  "note_path": "sase.md",
+  "block_id": "fin",
+  "action": "already_done",
+  "text": "Finished",
+  "subtasks": [],
+  "subtasks_left_open": [],
+  "unblocked": []
+ }
 }

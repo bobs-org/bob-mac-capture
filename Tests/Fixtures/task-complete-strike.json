@@ -19,35 +19,33 @@
  "previous_status_symbol": "*",
  "previous_status_name": "Next",
  "status_changed": true,
- "task_complete": [
-  {
-   "raw": "!sase:fix-flaky",
-   "note": "sase",
-   "note_path": "sase.md",
-   "block_id": "fix-flaky",
-   "action": "completed",
-   "completion_date": "2026-10-05",
-   "text": "Fix flaky gkeep test",
-   "subtasks": [],
-   "subtasks_left_open": [],
-   "ledger": {
-    "day_file": "20261005.md",
-    "struck": 1,
-    "struck_in": [
-     {
-      "line": 2,
-      "name": "CAPTURE",
-      "status": "running"
-     }
-    ],
-    "moved": [],
-    "deduplicated": 0,
-    "dropped": [],
-    "removed_placeholders": []
-   },
-   "unblocked": []
-  }
- ],
+ "task_complete": {
+  "raw": "!sase:fix-flaky",
+  "note": "sase",
+  "note_path": "sase.md",
+  "block_id": "fix-flaky",
+  "action": "completed",
+  "completion_date": "2026-10-05",
+  "text": "Fix flaky gkeep test",
+  "subtasks": [],
+  "subtasks_left_open": [],
+  "ledger": {
+   "day_file": "20261005.md",
+   "struck": 1,
+   "struck_in": [
+    {
+     "line": 2,
+     "name": "CAPTURE",
+     "status": "running"
+    }
+   ],
+   "moved": [],
+   "deduplicated": 0,
+   "dropped": [],
+   "removed_placeholders": []
+  },
+  "unblocked": []
+ },
  "plan_budget": {
   "status": "ok",
   "themes": {

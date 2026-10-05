@@ -19,31 +19,29 @@
  "previous_status_symbol": " ",
  "previous_status_name": "Ready",
  "status_changed": true,
- "task_complete": [
-  {
-   "raw": "!travel:dep",
-   "note": "travel",
-   "note_path": "travel.md",
-   "block_id": "dep",
-   "action": "completed",
-   "completion_date": "2026-10-05",
-   "text": "Dep root",
-   "subtasks": [],
-   "subtasks_left_open": [],
-   "unblocked": [
-    {
-     "note_path": "travel.md",
-     "block_id": "waiter",
-     "line": 2,
-     "text": "Waiter",
-     "previous_status_symbol": "?",
-     "previous_status_name": "Blocked",
-     "status_symbol": " ",
-     "status_name": "Ready"
-    }
-   ]
-  }
- ],
+ "task_complete": {
+  "raw": "!travel:dep",
+  "note": "travel",
+  "note_path": "travel.md",
+  "block_id": "dep",
+  "action": "completed",
+  "completion_date": "2026-10-05",
+  "text": "Dep root",
+  "subtasks": [],
+  "subtasks_left_open": [],
+  "unblocked": [
+   {
+    "note_path": "travel.md",
+    "block_id": "waiter",
+    "line": 2,
+    "text": "Waiter",
+    "previous_status_symbol": "?",
+    "previous_status_name": "Blocked",
+    "status_symbol": " ",
+    "status_name": "Ready"
+   }
+  ]
+ },
  "task_blocks": [
   {
    "relative_target": "travel.md",

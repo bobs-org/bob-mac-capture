@@ -406,6 +406,9 @@ final class CaptureTaskCompletePresentationTests: XCTestCase {
             .deletingLastPathComponent()
             .appendingPathComponent("Fixtures", isDirectory: true)
         var text = try String(contentsOf: fixtures.appendingPathComponent(name), encoding: .utf8)
+        // Real-bob fixtures are pretty-printed (`"dry_run": false`); older
+        // compact fixtures use `"dry_run":false`. Flip both spellings.
+        text = text.replacingOccurrences(of: "\"dry_run\": false", with: "\"dry_run\":true")
         text = text.replacingOccurrences(of: "\"dry_run\":false", with: "\"dry_run\":true")
         return try decodeCaptureSuccess(text)
     }

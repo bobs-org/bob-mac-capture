@@ -19,52 +19,50 @@
  "previous_status_symbol": " ",
  "previous_status_name": "Ready",
  "status_changed": true,
- "task_complete": [
-  {
-   "raw": "!sase:mv1",
-   "note": "sase",
-   "note_path": "sase.md",
-   "block_id": "mv1",
-   "action": "completed",
-   "completion_date": "2026-10-05",
-   "text": "Move me",
-   "subtasks": [],
-   "subtasks_left_open": [],
-   "ledger": {
-    "day_file": "20261005.md",
-    "struck": 1,
-    "struck_in": [
-     {
+ "task_complete": {
+  "raw": "!sase:mv1",
+  "note": "sase",
+  "note_path": "sase.md",
+  "block_id": "mv1",
+  "action": "completed",
+  "completion_date": "2026-10-05",
+  "text": "Move me",
+  "subtasks": [],
+  "subtasks_left_open": [],
+  "ledger": {
+   "day_file": "20261005.md",
+   "struck": 1,
+   "struck_in": [
+    {
+     "line": 4,
+     "name": "SASE",
+     "status": "queued"
+    }
+   ],
+   "moved": [
+    {
+     "from": {
       "line": 4,
       "name": "SASE",
       "status": "queued"
+     },
+     "to": {
+      "line": 2,
+      "name": "CAPTURE",
+      "status": "running"
      }
-    ],
-    "moved": [
-     {
-      "from": {
-       "line": 4,
-       "name": "SASE",
-       "status": "queued"
-      },
-      "to": {
-       "line": 2,
-       "name": "CAPTURE",
-       "status": "running"
-      }
-     }
-    ],
-    "deduplicated": 0,
-    "dropped": [],
-    "removed_placeholders": [
-     {
-      "name": "SASE"
-     }
-    ]
-   },
-   "unblocked": []
-  }
- ],
+    }
+   ],
+   "deduplicated": 0,
+   "dropped": [],
+   "removed_placeholders": [
+    {
+     "name": "SASE"
+    }
+   ]
+  },
+  "unblocked": []
+ },
  "plan_budget": {
   "status": "ok",
   "themes": {

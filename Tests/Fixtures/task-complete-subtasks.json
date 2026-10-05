@@ -19,41 +19,39 @@
  "previous_status_symbol": "*",
  "previous_status_name": "Next",
  "status_changed": true,
- "task_complete": [
-  {
-   "raw": "!sase:root",
-   "note": "sase",
-   "note_path": "sase.md",
-   "block_id": "root",
-   "action": "completed",
-   "completion_date": "2026-10-05",
-   "text": "Blocked root",
-   "subtasks": [
-    {
-     "note_path": "sase.md",
-     "block_id": "sub1",
-     "line": 4,
-     "text": "Sub one",
-     "previous_status_symbol": "/",
-     "previous_status_name": "In Progress",
-     "status_symbol": "x",
-     "status_name": "Done"
-    }
-   ],
-   "subtasks_left_open": [
-    {
-     "note_path": "sase.md",
-     "block_id": "sub2",
-     "line": 5,
-     "text": "Sub two",
-     "status_symbol": "?",
-     "status_name": "Blocked",
-     "reason": "blocked"
-    }
-   ],
-   "unblocked": []
-  }
- ],
+ "task_complete": {
+  "raw": "!sase:root",
+  "note": "sase",
+  "note_path": "sase.md",
+  "block_id": "root",
+  "action": "completed",
+  "completion_date": "2026-10-05",
+  "text": "Blocked root",
+  "subtasks": [
+   {
+    "note_path": "sase.md",
+    "block_id": "sub1",
+    "line": 4,
+    "text": "Sub one",
+    "previous_status_symbol": "/",
+    "previous_status_name": "In Progress",
+    "status_symbol": "x",
+    "status_name": "Done"
+   }
+  ],
+  "subtasks_left_open": [
+   {
+    "note_path": "sase.md",
+    "block_id": "sub2",
+    "line": 5,
+    "text": "Sub two",
+    "status_symbol": "?",
+    "status_name": "Blocked",
+    "reason": "blocked"
+   }
+  ],
+  "unblocked": []
+ },
  "plan_budget": {
   "status": "ok",
   "themes": {
