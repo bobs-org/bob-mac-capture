@@ -43,6 +43,11 @@ struct CapturePickerState: Equatable {
     /// Command-Return submits after insert only when this is non-nil: an
     /// ownerless pick must first gain task text or `@note+id`.
     var dependencyOwner: DependencyOwner? = nil
+    /// Bob's `action_continuation_keys` for the Complete (`!`) picker:
+    /// `["!", "["]` on a bare whole-item `!`, else empty. While the filter
+    /// is empty, typing one closes the picker and types the key so `!!`
+    /// falls back to prose and `![` hands off to embed completion.
+    var taskCompleteContinuationKeys: [String] = []
 }
 
 /// The compact reopen affordance shown instead of the picker: after a
@@ -77,6 +82,7 @@ enum CapturePickerIndex {
     case activeTask(ActiveTaskPickerIndex)
     case taskLink(TaskLinkPickerIndex)
     case dependency(DependencyPickerIndex)
+    case taskComplete(TaskCompletePickerIndex)
     case blockID(BlockIDPickerIndex)
     case parentTask(ParentTaskPickerIndex)
 
@@ -88,6 +94,8 @@ enum CapturePickerIndex {
             return index.presentation(filter: filter)
         case .dependency(let index):
             return index.presentation(filter: filter)
+        case .taskComplete(let index):
+            return index.presentation(filter: filter)
         case .blockID(let index):
             return index.presentation(filter: filter)
         case .parentTask(let index):
@@ -98,6 +106,8 @@ enum CapturePickerIndex {
     func actionLine(for row: CapturePickerRow) -> String? {
         switch self {
         case .parentTask(let index):
+            return index.actionLine(for: row)
+        case .taskComplete(let index):
             return index.actionLine(for: row)
         default:
             return nil

@@ -2932,6 +2932,10 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
     /// Backend-formatted `@route+id` to splice on a successful vault-wide
     /// parent-task ID assignment. Older Bob omits it; decode as nil.
     public let parentReplacement: String?
+    /// Backend-formatted `!note:id` (quoted when the locator needs it) to
+    /// splice on a successful Complete picker ID assignment. Older Bob
+    /// omits it; decode as nil.
+    public let completeReplacement: String?
 
     public init(
         ok: Bool,
@@ -2945,7 +2949,8 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
         task: CaptureTaskIDTask,
         notePath: String? = nil,
         dependencyReplacement: String? = nil,
-        parentReplacement: String? = nil
+        parentReplacement: String? = nil,
+        completeReplacement: String? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -2959,6 +2964,7 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
         self.notePath = notePath
         self.dependencyReplacement = dependencyReplacement
         self.parentReplacement = parentReplacement
+        self.completeReplacement = completeReplacement
     }
 
     public init(from decoder: Decoder) throws {
@@ -2977,6 +2983,7 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
         notePath = try container.decodeIfPresent(String.self, forKey: .notePath)
         dependencyReplacement = try container.decodeIfPresent(String.self, forKey: .dependencyReplacement)
         parentReplacement = try container.decodeIfPresent(String.self, forKey: .parentReplacement)
+        completeReplacement = try container.decodeIfPresent(String.self, forKey: .completeReplacement)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -2992,6 +2999,7 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
         case notePath = "note_path"
         case dependencyReplacement = "dependency_replacement"
         case parentReplacement = "parent_replacement"
+        case completeReplacement = "complete_replacement"
     }
 }
 
@@ -3473,6 +3481,11 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
         kind == "parent_task"
     }
 
+    /// True when this descriptor is the Complete (`!`) picker contract.
+    public var isTaskComplete: Bool {
+        kind == "task_complete"
+    }
+
     public var parentTaskContext: ParentTaskPickerContext? {
         guard isParentTask, let scope = ParentTaskPickerScope(rawValue: scope) else {
             return nil
@@ -3584,6 +3597,64 @@ public struct ActiveTaskPomodoro: Codable, Equatable, Sendable {
     }
 }
 
+/// Today's Task Link placement for a `task_complete` candidate: the winning
+/// role, its entry, and how many distinct Pomodoros link the task today.
+/// `noted` rows carry no entry. Older Bob omits the whole object, so
+/// missing decodes as nil.
+public struct TaskCompleteTodayPomodoro: Codable, Equatable, Sendable {
+    public let line: Int
+    public let name: String?
+    public let timeRange: String?
+    public let status: String
+
+    public init(line: Int, name: String? = nil, timeRange: String? = nil, status: String = "queued") {
+        self.line = line
+        self.name = name
+        self.timeRange = timeRange
+        self.status = status
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        line = try container.decode(Int.self, forKey: .line)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange)
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? "queued"
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case line
+        case name
+        case timeRange = "time_range"
+        case status
+    }
+}
+
+public struct TaskCompleteToday: Codable, Equatable, Sendable {
+    public let role: String
+    public let pomodoro: TaskCompleteTodayPomodoro?
+    public let sessions: Int
+
+    public init(role: String, pomodoro: TaskCompleteTodayPomodoro? = nil, sessions: Int = 0) {
+        self.role = role
+        self.pomodoro = pomodoro
+        self.sessions = sessions
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        role = try container.decodeIfPresent(String.self, forKey: .role) ?? "noted"
+        pomodoro = try container.decodeIfPresent(TaskCompleteTodayPomodoro.self, forKey: .pomodoro)
+        sessions = try container.decodeIfPresent(Int.self, forKey: .sessions) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case role
+        case pomodoro
+        case sessions
+    }
+}
+
 public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let replacement: String
     public let route: String?
@@ -3650,6 +3721,14 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let alreadyDependency: Bool
     public let disabledReason: String?
     public let hidden: Bool
+    // Additive `task_complete` fields from Bob's completable-task scanner:
+    // whether capture refuses the row as recurring, whether another `!`
+    // item in the draft already names it, and today's Task Link placement.
+    // Older Bob and every other context omit them, so missing decodes to
+    // false/false/nil.
+    public let recurring: Bool
+    public let alreadySelected: Bool
+    public let today: TaskCompleteToday?
 
     public var id: String {
         [
@@ -3719,7 +3798,10 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         locator: String? = nil,
         alreadyDependency: Bool = false,
         disabledReason: String? = nil,
-        hidden: Bool = false
+        hidden: Bool = false,
+        recurring: Bool = false,
+        alreadySelected: Bool = false,
+        today: TaskCompleteToday? = nil
     ) {
         self.replacement = replacement
         self.route = route
@@ -3767,6 +3849,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.alreadyDependency = alreadyDependency
         self.disabledReason = disabledReason
         self.hidden = hidden
+        self.recurring = recurring
+        self.alreadySelected = alreadySelected
+        self.today = today
     }
 
     public init(from decoder: Decoder) throws {
@@ -3817,6 +3902,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         alreadyDependency = try container.decodeIfPresent(Bool.self, forKey: .alreadyDependency) ?? false
         disabledReason = try container.decodeIfPresent(String.self, forKey: .disabledReason)
         hidden = try container.decodeIfPresent(Bool.self, forKey: .hidden) ?? false
+        recurring = try container.decodeIfPresent(Bool.self, forKey: .recurring) ?? false
+        alreadySelected = try container.decodeIfPresent(Bool.self, forKey: .alreadySelected) ?? false
+        today = try container.decodeIfPresent(TaskCompleteToday.self, forKey: .today)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -3866,6 +3954,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case alreadyDependency = "already_dependency"
         case disabledReason = "disabled_reason"
         case hidden
+        case recurring
+        case alreadySelected = "already_selected"
+        case today
     }
 }
 

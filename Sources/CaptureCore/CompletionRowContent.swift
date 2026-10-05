@@ -141,6 +141,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case taskLink
     case taskParent
     case taskDependency
+    case taskComplete
     case wikilinkNote
     case wikilinkHeading
     case wikilinkBlock
@@ -160,6 +161,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "task_link": self = .taskLink
         case "task_parent": self = .taskParent
         case "task_dependency": self = .taskDependency
+        case "task_complete": self = .taskComplete
         case "wikilink_note": self = .wikilinkNote
         case "wikilink_heading": self = .wikilinkHeading
         case "wikilink_block": self = .wikilinkBlock
@@ -488,6 +490,31 @@ public func completionRowContent(
             badges = ["Needs ID"]
         }
         accessibilityHint = "Inserts this prerequisite."
+
+    case .taskComplete:
+        // The `!` picker owns the card; this is only the stray inline
+        // rendering, which reads as a completable task. The locator uses
+        // Bob's exact `note_path`, never a lowercased route.
+        category = .blockID
+        symbolName = "checkmark.circle"
+        contextLabel = "Complete"
+        primaryText = candidate.text ?? candidate.replacement
+        let completeLocator = candidate.locator ?? candidate.route
+        if let completeLocator, let blockID = candidate.blockID ?? candidate.blockIDSuggestions.first {
+            var secondary = "\(completeLocator):\(blockID)"
+            if let section = candidate.section, !section.isEmpty {
+                secondary += " · \(section)"
+            }
+            secondaryText = secondary
+        } else {
+            secondaryText = candidate.section
+        }
+        if let reason = candidate.disabledReason, !reason.isEmpty {
+            badges = [reason]
+        } else if candidate.requiresBlockID {
+            badges = ["Needs ID"]
+        }
+        accessibilityHint = "Inserts this task to complete."
 
     case .wikilinkNote:
         category = .wikilinkTarget

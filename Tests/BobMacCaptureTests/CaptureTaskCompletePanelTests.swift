@@ -1,0 +1,290 @@
+import AppKit
+import CaptureCore
+import Foundation
+import XCTest
+
+@testable import BobMacCapture
+
+/// Complete picker panel wiring: accept, Shift-Return chaining,
+/// continuation keys, ID prompt, marker highlight, and key routing.
+@MainActor
+final class CaptureTaskCompletePanelTests: XCTestCase {
+    private func identifiedCandidate() -> CaptureCompletionCandidate {
+        CaptureCompletionCandidate(
+            replacement: "!sase:deep-fix",
+            taskRef: "1:41d049f2",
+            blockID: "deep-fix",
+            requiresBlockID: false,
+            statusSymbol: "*",
+            statusName: "Next",
+            statusType: "ON_HOLD",
+            text: "Fix deep bug",
+            group: "today",
+            notePath: "sase.md",
+            locator: "sase",
+            today: TaskCompleteToday(
+                role: "running",
+                pomodoro: TaskCompleteTodayPomodoro(line: 2, name: "CAPTURE", timeRange: "0920-0950", status: "running"),
+                sessions: 1
+            )
+        )
+    }
+
+    private func idlessCandidate() -> CaptureCompletionCandidate {
+        CaptureCompletionCandidate(
+            replacement: "",
+            taskRef: "3:f5826a74",
+            requiresBlockID: true,
+            statusSymbol: " ",
+            statusName: "Ready",
+            statusType: "TODO",
+            text: "No id yet",
+            blockIDSuggestions: ["no-id-yet"],
+            group: "open",
+            notePath: "sase.md",
+            locator: "sase"
+        )
+    }
+
+    private func disabledCandidate() -> CaptureCompletionCandidate {
+        CaptureCompletionCandidate(
+            replacement: "",
+            taskRef: "4:39f413d7",
+            blockID: "water",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Ready",
+            statusType: "TODO",
+            text: "Water plants",
+            group: "open",
+            notePath: "sase.md",
+            locator: "sase",
+            disabledReason: "Recurring — complete it in Obsidian so Tasks writes the next occurrence",
+            hidden: false,
+            recurring: true
+        )
+    }
+
+    private func installPicker() -> CapturePanelModel {
+        let model = CapturePanelModel()
+        model.installTaskCompletePickerForPreviews(
+            candidates: [identifiedCandidate(), idlessCandidate(), disabledCandidate()],
+            draft: "!",
+            replacement: CaptureRange(start: 0, end: 1)
+        )
+        return model
+    }
+
+    func testAcceptInsertsBobReplacement() {
+        let model = installPicker()
+        XCTAssertTrue(model.pickerVisible)
+        model.acceptPickerRow(id: "sase.md|1:41d049f2", submitAfterInsert: false)
+        XCTAssertEqual(model.plainDraft, "!sase:deep-fix")
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertEqual(model.statusText, "Inserted !sase:deep-fix")
+    }
+
+    func testShiftReturnChainsNextItem() {
+        let model = installPicker()
+        model.acceptPickerRowAndContinue(id: "sase.md|1:41d049f2")
+        XCTAssertEqual(model.plainDraft, "!sase:deep-fix\n\n!")
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertTrue(model.statusText.contains("pick the next task"))
+    }
+
+    func testAcceptDisabledKeepsPickerOpen() {
+        let model = installPicker()
+        model.acceptPickerRow(id: "sase.md|4:39f413d7", submitAfterInsert: false)
+        XCTAssertEqual(model.plainDraft, "!")
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertEqual(model.statusText, "Recurring — complete it in Obsidian so Tasks writes the next occurrence")
+    }
+
+    func testAcceptIdlessOpensCompletePrompt() {
+        let model = installPicker()
+        model.acceptPickerRow(id: "sase.md|3:f5826a74", submitAfterInsert: false)
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertTrue(model.taskIDPromptVisible)
+        XCTAssertTrue(model.taskIDPromptIsTaskComplete)
+        XCTAssertFalse(model.taskIDPromptIsTaskLink)
+        XCTAssertEqual(model.taskIDPrompt?.authoredID, "no-id-yet")
+    }
+
+    func testEscapePromptReturnsToCompletePicker() {
+        let model = installPicker()
+        model.acceptPickerRow(id: "sase.md|3:f5826a74", submitAfterInsert: false)
+        XCTAssertTrue(model.taskIDPromptVisible)
+        model.cancelTaskIDPrompt()
+        XCTAssertFalse(model.taskIDPromptVisible)
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertTrue(model.pickerSourceIsTaskComplete)
+    }
+
+    func testContinuationKeysClosePickerAndTypeKey() {
+        let model = installPicker()
+        XCTAssertEqual(model.pickerOperatorContinuationKeys, ["!", "["])
+        model.continuePickerOperator("[")
+        XCTAssertEqual(model.plainDraft, "![")
+        XCTAssertFalse(model.pickerVisible)
+    }
+
+    func testContinuationKeysRequireEmptyFilter() {
+        let model = CapturePanelModel()
+        model.installTaskCompletePickerForPreviews(
+            candidates: [identifiedCandidate()],
+            filter: "fix",
+            draft: "!fix",
+            replacement: CaptureRange(start: 0, end: 4)
+        )
+        XCTAssertTrue(model.pickerOperatorContinuationKeys.isEmpty)
+        model.continuePickerOperator("[")
+        XCTAssertEqual(model.plainDraft, "!fix")
+    }
+
+    func testBangBangHandsOffToProse() {
+        let model = installPicker()
+        model.continuePickerOperator("!")
+        XCTAssertEqual(model.plainDraft, "!!")
+        XCTAssertFalse(model.pickerVisible)
+    }
+
+    func testMarkerHighlightCoversToken() {
+        let range = CapturePanelModel.pickerMarkerHighlightRange(
+            source: .taskComplete,
+            replacementRange: CaptureRange(start: 0, end: 1),
+            markerRange: nil
+        )
+        XCTAssertEqual(range, CaptureRange(start: 0, end: 1))
+    }
+
+    func testRemovePickerTriggerDeletesBangToken() {
+        let model = installPicker()
+        XCTAssertTrue(model.pickerVisible)
+        model.removePickerTrigger()
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertFalse(model.pickerVisible)
+    }
+
+    func testRouterShiftReturnContinuesForComplete() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(
+            pickerVisible: true,
+            pickerSourceIsTaskLink: false,
+            pickerSourceIsTaskComplete: true
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .shift), context: context),
+            .acceptPickerRowAndContinue
+        )
+    }
+
+    func testRouterShiftReturnStartsForTaskLink() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(
+            pickerVisible: true,
+            pickerSourceIsTaskLink: true,
+            pickerSourceIsTaskComplete: false
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .shift), context: context),
+            .acceptPickerRowAndStart
+        )
+    }
+
+    func testRouterContinuationKeys() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(
+            pickerVisible: true,
+            pickerFilterIsEmpty: true,
+            pickerOperatorContinuationKeys: ["!", "["]
+        )
+        // Printable continuation is handled via characters: "[" continues.
+        let bracket = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "[",
+            charactersIgnoringModifiers: "[",
+            isARepeat: false,
+            keyCode: 33
+        )!
+        XCTAssertEqual(
+            router.command(for: bracket, context: context),
+            .continuePickerOperator("[")
+        )
+        let bang = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "!",
+            charactersIgnoringModifiers: "!",
+            isARepeat: false,
+            keyCode: 18
+        )!
+        XCTAssertEqual(
+            router.command(for: bang, context: context),
+            .continuePickerOperator("!")
+        )
+    }
+
+    func testRouterTabCyclesInCompletePrompt() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(
+            taskIDPromptVisible: true,
+            taskIDPromptIsTaskComplete: true
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 48, modifiers: []), context: context),
+            .cycleTaskLinkSuggestionForward
+        )
+    }
+
+    func testFakeBobServesCompletePicker() throws {
+        let fakeBob = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/fake-bob")
+        let output = try runFakeBob(fakeBob.path, args: ["capture-complete", "-c", "1", "-f", "json", "--", "!"])
+        let response = try JSONDecoder().decode(CaptureCompletionResponse.self, from: Data(output.utf8))
+        XCTAssertEqual(response.context, "task_complete")
+        XCTAssertEqual(response.picker?.kind, "task_complete")
+        XCTAssertFalse(response.candidates.isEmpty)
+    }
+
+    private func runFakeBob(_ path: String, args: [String]) throws -> String {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = args
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        try process.run()
+        process.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    private func keyEvent(
+        keyCode: UInt16,
+        modifiers: NSEvent.ModifierFlags = [],
+        characters: String = ""
+    ) -> NSEvent {
+        NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: modifiers,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: characters,
+            charactersIgnoringModifiers: characters,
+            isARepeat: false,
+            keyCode: keyCode
+        )!
+    }
+}

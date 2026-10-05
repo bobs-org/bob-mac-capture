@@ -72,6 +72,7 @@ public enum CapturePickerSource: Equatable, Sendable {
     case activeTask
     case taskLink
     case dependency
+    case taskComplete
     case blockID(BlockIDPickerContext)
     case parentTask(ParentTaskPickerContext)
 
@@ -105,6 +106,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return 58 // `:`
         case .dependency:
             return 38 // `&`
+        case .taskComplete:
+            return 33 // `!`
         case .blockID(let context):
             return context.marker == "^" ? 94 : 58 // `^` or `:`
         case .parentTask:
@@ -121,6 +124,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Search tasks by text, note, or ^id"
         case .dependency:
             return "Search tasks by text, note, or ^id"
+        case .taskComplete:
+            return "Search open tasks to complete"
         case .blockID(let context):
             if context.isNewIDMode {
                 return "Type a new ID for \(context.noteTarget)"
@@ -144,6 +149,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Search open tasks"
         case .dependency:
             return "Search tasks to depend on"
+        case .taskComplete:
+            return "Search open tasks to complete"
         case .blockID(let context):
             if context.isNewIDMode {
                 return "Type a new block ID for \(context.noteTarget)"
@@ -166,6 +173,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return ":"
         case .dependency:
             return "&"
+        case .taskComplete:
+            return "!"
         case .blockID(let context):
             return context.scopeToken
         case .parentTask(let context):
@@ -183,6 +192,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Open Tasks"
         case .dependency:
             return "Depends On"
+        case .taskComplete:
+            return "Complete"
         case .blockID(let context):
             if context.intent == .projectNote {
                 return "Project note"
@@ -205,6 +216,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Browse open tasks"
         case .dependency:
             return "Choose dependency"
+        case .taskComplete:
+            return "Pick a task to complete"
         case .blockID(let context):
             if context.isNewIDMode {
                 return "Suggest an ID for \(context.noteTarget)"
@@ -224,6 +237,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "magnifyingglass"
         case .dependency:
             return "link"
+        case .taskComplete:
+            return "checkmark.circle"
         case .blockID(let context):
             return context.isNewIDMode ? "sparkles" : "list.bullet.rectangle.portrait"
         case .parentTask:
@@ -240,6 +255,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Reopen the Task Link Picker for the : item (Tab)."
         case .dependency:
             return "Reopen the dependency picker for the & item (Tab)."
+        case .taskComplete:
+            return "Reopen the Complete picker for the ! item (Tab)."
         case .blockID(let context):
             return "Reopen the Block ID picker for \(context.scopeToken) (Tab)."
         case .parentTask(let context):
@@ -256,6 +273,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Browse open tasks"
         case .dependency:
             return "Choose dependency"
+        case .taskComplete:
+            return "Pick a task to complete"
         case .blockID:
             return chipLabel
         case .parentTask:
@@ -272,6 +291,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Opens the Task Link Picker for the current item."
         case .dependency:
             return "Opens the dependency picker for the current item."
+        case .taskComplete:
+            return "Opens the Complete picker for the current item."
         case .blockID(let context):
             return "Opens the Block ID picker for \(context.scopeToken)."
         case .parentTask(let context):
@@ -288,6 +309,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Task link picker"
         case .dependency:
             return "Dependency picker"
+        case .taskComplete:
+            return "Complete picker"
         case .blockID(let context):
             if context.isNewIDMode {
                 return "New block ID for \(context.noteTarget)"
@@ -310,6 +333,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Arrow keys move, Return inserts the task link, Shift-Return inserts it and starts its session, Escape cancels."
         case .dependency:
             return "Arrow keys move, Return inserts the prerequisite, Command Return inserts and captures, Escape cancels."
+        case .taskComplete:
+            return "Arrow keys move, Return inserts the task, Shift Return inserts it and starts the next, Command Return inserts and captures, Escape cancels."
         case .blockID(let context):
             if context.isNewIDMode {
                 return "Arrow keys move, Return inserts the ID, Escape cancels."
@@ -329,6 +354,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Open tasks"
         case .dependency:
             return "Prerequisites"
+        case .taskComplete:
+            return "Tasks to complete"
         case .blockID(let context):
             if context.isNewIDMode {
                 return "New ID for \(context.noteTarget)"
@@ -364,6 +391,14 @@ public enum CapturePickerSource: Equatable, Sendable {
                 ("↑↓", "Move"),
                 ("↩", "Use task"),
                 ("⌘↩", "Capture"),
+                ("esc", "Clear / Cancel"),
+            ]
+        case .taskComplete:
+            return [
+                ("↑↓", "Move"),
+                ("↩", "Insert"),
+                ("⇧↩", "Insert & next"),
+                ("⌘↩", "Complete"),
                 ("esc", "Clear / Cancel"),
             ]
         case .blockID(let context):
@@ -403,6 +438,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Picker keys: up and down to move, Return to link, Shift Return to link and start, Command Return to link and capture, Escape to clear or cancel."
         case .dependency:
             return "Picker keys: up and down to move, Return to use the task, Command Return to use it and capture, Escape to clear or cancel."
+        case .taskComplete:
+            return "Picker keys: up and down to move, Return to insert, Shift Return to insert and start the next, Command Return to insert and capture, Escape to clear or cancel."
         case .blockID(let context):
             if context.isNewIDMode {
                 return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Space to insert and keep typing, Escape to clear or cancel."
@@ -423,6 +460,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "org.bobs.bob-mac-capture.task-link-picker-used"
         case .dependency:
             return "org.bobs.bob-mac-capture.dependency-picker-used"
+        case .taskComplete:
+            return "org.bobs.bob-mac-capture.task-complete-picker-used"
         case .blockID:
             return "org.bobs.bob-mac-capture.block-id-picker-used"
         case .parentTask:
@@ -446,7 +485,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "+"
         case .blockID(let context):
             return context.marker
-        case .activeTask, .taskLink, .dependency:
+        case .activeTask, .taskLink, .dependency, .taskComplete:
             return ":"
         }
     }
@@ -461,6 +500,7 @@ public enum CapturePickerNeed: Equatable, Sendable {
     case taskLink
     case taskParent
     case dependency
+    case taskComplete
     case pomodoroID
     case blockID
     case pomodoroStart
@@ -475,6 +515,8 @@ public enum CapturePickerNeed: Equatable, Sendable {
             return "Choose a task to append to — press Tab to browse"
         case .dependency:
             return "Pick a prerequisite — press Tab to browse"
+        case .taskComplete:
+            return "Pick a task to complete — press Tab to browse"
         case .pomodoroID:
             return "Pick a task or type a new ID — press Tab to browse"
         case .blockID:

@@ -54,6 +54,17 @@ enum CaptureTaskIDPromptPurpose: Equatable {
         returnPicker: CapturePickerState,
         allowClosed: Bool = false
     )
+    /// Complete mode for an ID-less `!` row: name the task with the exact
+    /// vault-relative note path (never the lowercased route), then splice
+    /// Bob's `complete_replacement`. Only `.none` and `.submit` occur:
+    /// Shift-Return chains via the picker, never via the prompt.
+    case taskComplete(
+        notePath: String,
+        taskRef: String,
+        suggestions: [String],
+        followUp: CaptureTaskLinkFollowUp,
+        returnPicker: CapturePickerState
+    )
 }
 
 struct CaptureTaskIDPromptState: Equatable {
@@ -74,6 +85,9 @@ struct CaptureTaskIDPromptState: Equatable {
         if case .dependency(_, _, let suggestions, _, _, _) = purpose {
             return suggestions
         }
+        if case .taskComplete(_, _, let suggestions, _, _) = purpose {
+            return suggestions
+        }
         if case .parentTaskPicker(_, _, let suggestions, _, _, _) = purpose {
             return suggestions
         }
@@ -86,6 +100,9 @@ struct CaptureTaskIDPromptState: Equatable {
             return followUp
         }
         if case .dependency(_, _, _, let followUp, _, _) = purpose {
+            return followUp
+        }
+        if case .taskComplete(_, _, _, let followUp, _) = purpose {
             return followUp
         }
         if case .parentTaskPicker(_, _, _, let followUp, _, _) = purpose {
@@ -319,10 +336,10 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// True when Tab / Shift-Tab cycle ID suggestions (link, dependency,
-    /// and parent-task card). The old inline `.parentTask` path keeps Tab
-    /// consumed.
+    /// Complete, and parent-task card). The old inline `.parentTask` path
+    /// keeps Tab consumed.
     var taskIDPromptCyclesSuggestions: Bool {
-        taskIDPromptIsTaskLink || taskIDPromptIsDependency || taskIDPromptIsParentTaskPicker
+        taskIDPromptIsTaskLink || taskIDPromptIsDependency || taskIDPromptIsTaskComplete || taskIDPromptIsParentTaskPicker
     }
 
     /// True when the Add block ID prompt is open for a parent-task card row.
@@ -346,6 +363,22 @@ final class CapturePanelModel: ObservableObject {
         picker?.source == .dependency
     }
 
+    /// True when the open picker belongs to the `!` source.
+    var pickerSourceIsTaskComplete: Bool {
+        picker?.source == .taskComplete
+    }
+
+    /// True when the Add block ID prompt is open in Complete mode.
+    var taskIDPromptIsTaskComplete: Bool {
+        guard let prompt = taskIDPrompt else {
+            return false
+        }
+        if case .taskComplete = prompt.purpose {
+            return true
+        }
+        return false
+    }
+
     /// True when the open picker belongs to the parent-task source.
     var pickerSourceIsParentTask: Bool {
         if case .parentTask = picker?.source {
@@ -355,15 +388,20 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// Lone-plus operator-continuation keys while the parent-task filter is
-    /// empty. Empty for every other source, a nonempty filter, and scoped or
-    /// prose-terminal plus pickers (Bob omits the keys there).
+    /// empty, plus Bob's Complete (`!`) continuation keys while its filter
+    /// is empty. Empty for every other source, a nonempty filter, and scoped
+    /// or prose-terminal plus pickers (Bob omits the keys there).
     var pickerOperatorContinuationKeys: [String] {
-        guard pickerFilterIsEmpty,
-              case .parentTask(let context) = picker?.source
-        else {
+        guard pickerFilterIsEmpty else {
             return []
         }
-        return context.actionContinuationKeys
+        if case .parentTask(let context) = picker?.source {
+            return context.actionContinuationKeys
+        }
+        if picker?.source == .taskComplete {
+            return picker?.taskCompleteContinuationKeys ?? []
+        }
+        return []
     }
 
     var taskIDPromptCanSubmit: Bool {
@@ -1147,6 +1185,32 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
+    /// Complete preview hook: mounts the `!` session production presents
+    /// for a decoded `task_complete` response, so design tests and the
+    /// image review render the card production mounts.
+    func installTaskCompletePickerForPreviews(
+        candidates: [CaptureCompletionCandidate],
+        warnings: [String] = [],
+        filter: String = "",
+        draft: String = "!",
+        replacement: CaptureRange = CaptureRange(start: 0, end: 1),
+        continuationKeys: [String] = ["!", "["]
+    ) {
+        let index = CapturePickerIndex.taskComplete(TaskCompletePickerIndex(candidates: candidates))
+        installPickerSessionForPreviews(
+            source: .taskComplete,
+            index: index,
+            candidates: candidates,
+            warnings: warnings,
+            draftSnapshot: draft,
+            replacementRange: replacement,
+            restoreCursor: replacement.end,
+            filter: filter,
+            snapshotIsPartial: false,
+            taskCompleteContinuationKeys: continuationKeys
+        )
+    }
+
     /// Block-ID preview hook: mounts the same Link or New ID session
     /// production presents for a decoded `block_id` field, so design tests
     /// and the image review render the card production mounts. `draft` seeds
@@ -1212,7 +1276,8 @@ final class CapturePanelModel: ObservableObject {
         filter: String,
         snapshotIsPartial: Bool,
         scopeLineNumber: Int? = nil,
-        dependencyOwner: DependencyOwner? = nil
+        dependencyOwner: DependencyOwner? = nil,
+        taskCompleteContinuationKeys: [String] = []
     ) {
         if !draftSnapshot.isEmpty {
             plainDraft = draftSnapshot
@@ -1232,7 +1297,8 @@ final class CapturePanelModel: ObservableObject {
             visibleRowBudget: presentation.visibleRowBudget,
             snapshotIsPartial: snapshotIsPartial,
             scopeLineNumber: scopeLineNumber,
-            dependencyOwner: dependencyOwner
+            dependencyOwner: dependencyOwner,
+            taskCompleteContinuationKeys: taskCompleteContinuationKeys
         )
         pickerMarkerHighlight = Self.pickerMarkerHighlightRange(
             source: source,
@@ -1303,6 +1369,17 @@ final class CapturePanelModel: ObservableObject {
         }
         if completion.context == "task_dependency" {
             await handleDependencyCompletion(
+                completion,
+                draft: draft,
+                cursor: cursor,
+                generation: generation,
+                processClient: processClient,
+                trigger: trigger
+            )
+            return
+        }
+        if completion.context == "task_complete" {
+            await handleTaskCompleteCompletion(
                 completion,
                 draft: draft,
                 cursor: cursor,
@@ -2046,6 +2123,105 @@ final class CapturePanelModel: ObservableObject {
         return String(draft[queryRange])
     }
 
+    /// Routes a `task_complete` completion response into the picker card,
+    /// mirroring `handleDependencyCompletion`: dismiss the inline list,
+    /// auto-open only on `.edit` when not suppressed, show the chip on
+    /// `.selection`, and refetch the full list at `r.start` when the caret
+    /// is past it. Bob's `query` seeds the filter; the stale-safe refetch
+    /// uses the same guards.
+    private func handleTaskCompleteCompletion(
+        _ completion: CaptureCompletionResponse,
+        draft: String,
+        cursor: Int,
+        generation: UInt64,
+        processClient: BobProcessClient,
+        trigger: CompletionTrigger
+    ) async {
+        dismissCompletion()
+        let r = completion.replacement
+        guard stringRange(in: draft, byteRange: r) != nil,
+              stringRange(in: draft, start: r.start, end: min(cursor, r.end)) != nil
+        else {
+            return
+        }
+        guard trigger == .edit, pickerAutoOpenSuppressedStart != r.start else {
+            pickerChip = CapturePickerChipState(
+                source: .taskComplete,
+                draftSnapshot: draft,
+                replacementRange: r,
+                cursor: cursor,
+                candidates: completion.candidates,
+                warnings: completion.warnings
+            )
+            return
+        }
+        let query = completion.query ?? Self.taskCompletePickerQuery(in: draft, range: r, cursor: cursor)
+        let continuationKeys = completion.picker?.actionContinuationKeys ?? []
+        if cursor > r.start + 1 {
+            if let snapshot = try? await processClient.captureComplete(draft, cursor: r.start),
+               isCurrentAnalysis(generation),
+               plainDraft == draft,
+               snapshot.context == "task_complete",
+               snapshot.replacement == r
+            {
+                presentPicker(
+                    source: .taskComplete,
+                    index: .taskComplete(TaskCompletePickerIndex(candidates: snapshot.candidates)),
+                    candidates: snapshot.candidates,
+                    warnings: snapshot.warnings,
+                    draft: draft,
+                    range: r,
+                    restoreCursor: cursor,
+                    query: query,
+                    snapshotIsPartial: false,
+                    taskCompleteContinuationKeys: snapshot.picker?.actionContinuationKeys ?? []
+                )
+                return
+            }
+            guard isCurrentAnalysis(generation), plainDraft == draft else {
+                return
+            }
+            presentPicker(
+                source: .taskComplete,
+                index: .taskComplete(TaskCompletePickerIndex(candidates: completion.candidates)),
+                candidates: completion.candidates,
+                warnings: completion.warnings,
+                draft: draft,
+                range: r,
+                restoreCursor: cursor,
+                query: query,
+                snapshotIsPartial: true,
+                taskCompleteContinuationKeys: continuationKeys
+            )
+            return
+        }
+        presentPicker(
+            source: .taskComplete,
+            index: .taskComplete(TaskCompletePickerIndex(candidates: completion.candidates)),
+            candidates: completion.candidates,
+            warnings: completion.warnings,
+            draft: draft,
+            range: r,
+            restoreCursor: cursor,
+            query: query,
+            snapshotIsPartial: false,
+            taskCompleteContinuationKeys: continuationKeys
+        )
+    }
+
+    /// The `!` filter seed: draft bytes `(r.start + 1)..<caret`, so the sigil
+    /// itself never filters. The index also strips a leading `!`
+    /// defensively.
+    private static func taskCompletePickerQuery(in draft: String, range: CaptureRange, cursor: Int) -> String {
+        let start = range.start + 1
+        guard start <= range.end,
+              let queryRange = stringRange(in: draft, start: start, end: min(cursor, range.end))
+        else {
+            return ""
+        }
+        return String(draft[queryRange])
+    }
+
     private func presentPicker(
         source: CapturePickerSource,
         index: CapturePickerIndex,
@@ -2056,7 +2232,8 @@ final class CapturePanelModel: ObservableObject {
         restoreCursor: Int,
         query: String,
         snapshotIsPartial: Bool,
-        dependencyOwner: DependencyOwner? = nil
+        dependencyOwner: DependencyOwner? = nil,
+        taskCompleteContinuationKeys: [String] = []
     ) {
         let presentation = index.presentation(filter: query)
         pickerIndex = index
@@ -2082,7 +2259,8 @@ final class CapturePanelModel: ObservableObject {
             visibleRowBudget: presentation.visibleRowBudget,
             snapshotIsPartial: snapshotIsPartial,
             scopeLineNumber: scopeLine,
-            dependencyOwner: dependencyOwner
+            dependencyOwner: dependencyOwner,
+            taskCompleteContinuationKeys: taskCompleteContinuationKeys
         )
         pickerMarkerHighlight = markerRange
         applyPickerMarkerHighlight()
@@ -2114,6 +2292,10 @@ final class CapturePanelModel: ObservableObject {
             return replacementRange
         case .dependency:
             // Bob's `task_dependency` replacement already includes the `&`
+            // sigil, quoted note included.
+            return replacementRange
+        case .taskComplete:
+            // Bob's `task_complete` replacement already includes the `!`
             // sigil, quoted note included.
             return replacementRange
         case .blockID:
@@ -2386,6 +2568,13 @@ final class CapturePanelModel: ObservableObject {
         acceptPickerRowAndStart(id: selectedRowID)
     }
 
+    func acceptSelectedPickerRowAndContinue() {
+        guard let selectedRowID = picker?.selectedRowID else {
+            return
+        }
+        acceptPickerRowAndContinue(id: selectedRowID)
+    }
+
     func acceptPickerRow(id: String, submitAfterInsert: Bool) {
         guard let picker = picker,
               plainDraft == picker.draftSnapshot,
@@ -2429,12 +2618,20 @@ final class CapturePanelModel: ObservableObject {
             )
             return
         }
+        if picker.source == .taskComplete, row.insertion == nil, let pending = row.pendingBlockID {
+            presentTaskCompleteIDPrompt(
+                pending: pending,
+                pickerSnapshot: picker,
+                followUp: submitAfterInsert ? .submit : .none
+            )
+            return
+        }
         guard let insertion = row.insertion else {
             if case .blockID = picker.source {
                 announceStatus(
                     Self.blockIDNoAcceptReason(filter: picker.filterText, presentation: pickerPresentation)
                 )
-            } else if picker.source == .dependency {
+            } else if picker.source == .dependency || picker.source == .taskComplete {
                 // Already-added and guarded rows keep the draft unchanged and
                 // say why, leaving the picker open.
                 announceStatus(row.badgeText ?? "That task cannot be used yet")
@@ -2477,7 +2674,7 @@ final class CapturePanelModel: ObservableObject {
             } else {
                 announceStatus("Inserted @\(context.route)\(context.marker)\(insertionText)")
             }
-        } else if source == .taskLink || source == .dependency {
+        } else if source == .taskLink || source == .dependency || source == .taskComplete {
             announceStatus("Inserted \(insertionText)")
         } else if case .parentTask = source {
             announceStatus("Inserted \(insertionText)")
@@ -2539,6 +2736,52 @@ final class CapturePanelModel: ObservableObject {
         announceStatus("Inserted \(started) — starts its session when captured")
     }
 
+    /// Shift-Return on a `!` row: insert Bob's replacement, append a blank
+    /// line plus `!`, and re-analyse with completion requested so the fresh
+    /// item auto-opens a new picker with the just-picked task marked
+    /// "Already in this draft". Only the Complete source maps here.
+    func acceptPickerRowAndContinue(id: String) {
+        guard let picker = picker,
+              picker.source == .taskComplete
+        else {
+            return
+        }
+        guard plainDraft == picker.draftSnapshot,
+              let range = stringRange(in: plainDraft, byteRange: picker.replacementRange)
+        else {
+            closePickerAfterStaleDraft()
+            return
+        }
+        guard let row = pickerPresentation?.row(id: id) else {
+            return
+        }
+        if row.insertion == nil, let pending = row.pendingBlockID {
+            presentTaskCompleteIDPrompt(
+                pending: pending,
+                pickerSnapshot: picker,
+                followUp: .none
+            )
+            return
+        }
+        guard let insertion = row.insertion else {
+            announceStatus(row.badgeText ?? "That task cannot be used yet")
+            return
+        }
+        let continued = insertion + "\n\n!"
+        var text = plainDraft
+        text.replaceSubrange(range, with: continued)
+        let caret = picker.replacementRange.start + continued.utf8.count
+        guard stringRange(in: text, start: caret, end: caret) != nil else {
+            closePickerAfterStaleDraft()
+            return
+        }
+        closePickerForAccept()
+        suppressedCompletionAcceptanceDraft = text
+        setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+        scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: true, trigger: .edit)
+        announceStatus("Inserted \(insertion) — pick the next task to complete")
+    }
+
     /// First Escape clears a non-empty filter; otherwise the picker cancels.
     func escapePicker() {
         guard let picker = picker else {
@@ -2551,15 +2794,13 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
-    /// Lone-plus operator continuation: insert `key` once at the restored
-    /// caret, close the picker without a chip, and suppress reopening so
-    /// `+2` / `++` match fast typing.
+    /// Lone-plus operator continuation, plus the Complete (`!`) continuation:
+    /// insert `key` once at the restored caret, close the picker without a
+    /// chip, and suppress reopening so `+2` / `++` match fast typing and
+    /// `!!` / `![` fall back to prose or embed completion.
     func continuePickerOperator(_ key: String) {
         guard let openPicker = picker,
-              case .parentTask(let context) = openPicker.source,
-              context.isLonePlusOperator,
               openPicker.filterText.isEmpty,
-              context.actionContinuationKeys.contains(key),
               plainDraft == openPicker.draftSnapshot,
               let insertRange = stringRange(
                   in: plainDraft,
@@ -2567,6 +2808,19 @@ final class CapturePanelModel: ObservableObject {
                   end: openPicker.restoreCursor
               )
         else {
+            return
+        }
+        if case .parentTask(let context) = openPicker.source {
+            guard context.isLonePlusOperator,
+                  context.actionContinuationKeys.contains(key)
+            else {
+                return
+            }
+        } else if openPicker.source == .taskComplete {
+            guard openPicker.taskCompleteContinuationKeys.contains(key) else {
+                return
+            }
+        } else {
             return
         }
         var text = plainDraft
@@ -2646,8 +2900,15 @@ final class CapturePanelModel: ObservableObject {
             cancelPicker()
             return
         }
-        if picker.source == .taskLink || picker.source == .dependency {
-            let sigil: UInt8 = picker.source == .taskLink ? 58 : 38 // `:` or `&`
+        if picker.source == .taskLink || picker.source == .dependency || picker.source == .taskComplete {
+            let sigil: UInt8
+            if picker.source == .taskLink {
+                sigil = 58 // `:`
+            } else if picker.source == .dependency {
+                sigil = 38 // `&`
+            } else {
+                sigil = 33 // `!`
+            }
             if plainDraft == picker.draftSnapshot,
                r.start < caretBytes.count,
                caretBytes[r.start] == sigil,
@@ -2713,6 +2974,8 @@ final class CapturePanelModel: ObservableObject {
             query = Self.taskLinkPickerQuery(in: draft, range: r, cursor: chip.cursor)
         } else if chip.source == .dependency {
             query = Self.dependencyPickerQuery(in: draft, range: r, cursor: chip.cursor)
+        } else if chip.source == .taskComplete {
+            query = Self.taskCompletePickerQuery(in: draft, range: r, cursor: chip.cursor)
         } else if case .parentTask(let context) = chip.source {
             query = Self.parentTaskPickerQuery(in: draft, range: r, cursor: chip.cursor, context: context)
         } else {
@@ -2724,7 +2987,7 @@ final class CapturePanelModel: ObservableObject {
         // after the sigil refetches at `r.start`. Vault parent-task matches
         // that rule; scoped parent-task matches `^` (ID-only range).
         let needsRefetch: Bool
-        if chip.source == .taskLink || chip.source == .dependency {
+        if chip.source == .taskLink || chip.source == .dependency || chip.source == .taskComplete {
             needsRefetch = chip.cursor > r.start + 1
         } else if case .parentTask(let context) = chip.source {
             needsRefetch = context.isVault ? chip.cursor > r.start + 1 : chip.cursor != r.start
@@ -2805,6 +3068,22 @@ final class CapturePanelModel: ObservableObject {
                             snapshotIsPartial: false,
                             dependencyOwner: snapshot.owner
                         )
+                    case .taskComplete:
+                        guard snapshot.context == "task_complete" else {
+                            return
+                        }
+                        self.presentPicker(
+                            source: chip.source,
+                            index: .taskComplete(TaskCompletePickerIndex(candidates: snapshot.candidates)),
+                            candidates: snapshot.candidates,
+                            warnings: snapshot.warnings,
+                            draft: draft,
+                            range: r,
+                            restoreCursor: chip.cursor,
+                            query: query,
+                            snapshotIsPartial: false,
+                            taskCompleteContinuationKeys: snapshot.picker?.actionContinuationKeys ?? []
+                        )
                     case .parentTask(let context):
                         guard Self.isMatchingParentTaskSnapshot(
                             snapshot,
@@ -2864,6 +3143,18 @@ final class CapturePanelModel: ObservableObject {
                 query: query,
                 snapshotIsPartial: false,
                 dependencyOwner: chip.dependencyOwner
+            )
+        case .taskComplete:
+            presentPicker(
+                source: chip.source,
+                index: .taskComplete(TaskCompletePickerIndex(candidates: chip.candidates)),
+                candidates: chip.candidates,
+                warnings: chip.warnings,
+                draft: draft,
+                range: r,
+                restoreCursor: chip.cursor,
+                query: query,
+                snapshotIsPartial: false
             )
         case .blockID(let context):
             // The chip's source already carries the opening snapshot's
@@ -2952,6 +3243,9 @@ final class CapturePanelModel: ObservableObject {
         }
         if needs("task_dependency") {
             return .dependency
+        }
+        if needs("task_complete") {
+            return .taskComplete
         }
         if needs("pomodoro_id") {
             return .pomodoroID
@@ -3275,6 +3569,8 @@ final class CapturePanelModel: ObservableObject {
             returnPicker = pickerSnapshot
         case .dependency(_, _, _, _, let pickerSnapshot, _):
             returnPicker = pickerSnapshot
+        case .taskComplete(_, _, _, _, let pickerSnapshot):
+            returnPicker = pickerSnapshot
         case .parentTaskPicker(_, _, _, _, let pickerSnapshot, _):
             returnPicker = pickerSnapshot
         case .parentTask:
@@ -3301,6 +3597,8 @@ final class CapturePanelModel: ObservableObject {
                 index = .dependency(DependencyPickerIndex(candidates: returnPicker.candidates))
             case .taskLink:
                 index = .taskLink(TaskLinkPickerIndex(candidates: returnPicker.candidates))
+            case .taskComplete:
+                index = .taskComplete(TaskCompletePickerIndex(candidates: returnPicker.candidates))
             case .activeTask:
                 index = .activeTask(ActiveTaskPickerIndex(candidates: returnPicker.candidates))
             case .blockID:
@@ -3325,10 +3623,12 @@ final class CapturePanelModel: ObservableObject {
             editorInputLocked = true
             if case .parentTask = returnPicker.source {
                 statusText = CapturePickerNeed.taskParent.statusText
+            } else if returnPicker.source == .dependency {
+                statusText = CapturePickerNeed.dependency.statusText
+            } else if returnPicker.source == .taskComplete {
+                statusText = CapturePickerNeed.taskComplete.statusText
             } else {
-                statusText = returnPicker.source == .dependency
-                    ? CapturePickerNeed.dependency.statusText
-                    : "Pick any open task — press Tab to browse"
+                statusText = "Pick any open task — press Tab to browse"
             }
             requestFocus(.pickerFilter)
             return
@@ -3476,6 +3776,11 @@ final class CapturePanelModel: ObservableObject {
             taskRef = depRef
             dependencyNotePath = notePath
             dependencyAllowClosed = depAllowClosed
+        } else if case .taskComplete(let notePath, let completeRef, _, _, _) = prompt.purpose {
+            route = notePath
+            taskRef = completeRef
+            dependencyNotePath = notePath
+            dependencyAllowClosed = false
         } else if let candidateRoute = prompt.candidate.route,
                   let candidateRef = prompt.candidate.taskRef
         {
@@ -3734,6 +4039,55 @@ final class CapturePanelModel: ObservableObject {
         editorInputLocked = true
     }
 
+    /// Complete-mode Add block ID prompt for an ID-less `!` row: prefill
+    /// with the first suggestion, keep the picker snapshot for Escape, and
+    /// remember whether to submit after naming. The prompt says **Add ID &
+    /// Insert** / **Add ID & Complete** and splices Bob's
+    /// `complete_replacement`; it never builds the token in Swift.
+    private func presentTaskCompleteIDPrompt(
+        pending: CapturePickerPendingBlockID,
+        pickerSnapshot: CapturePickerState,
+        followUp: CaptureTaskLinkFollowUp
+    ) {
+        clearPomodoroNamePrompt()
+        invalidateAnalysis()
+        activeTaskIDRequestID = nil
+        let candidate = pickerSnapshot.candidates.first {
+            ($0.notePath ?? $0.locator ?? $0.route ?? "") == pending.route && ($0.taskRef ?? "") == pending.taskRef
+        } ?? CaptureCompletionCandidate(
+            replacement: "",
+            taskRef: pending.taskRef,
+            requiresBlockID: true,
+            blockIDSuggestions: pending.suggestions,
+            notePath: pending.route
+        )
+        let prefill = pending.suggestions.first ?? ""
+        let returnPicker = pickerSnapshot
+        clearPickerMarkerHighlight(draftSnapshot: pickerSnapshot.draftSnapshot)
+        picker = nil
+        pickerPresentation = nil
+        pickerIndex = nil
+        taskIDPrompt = CaptureTaskIDPromptState(
+            candidate: candidate,
+            draftSnapshot: pickerSnapshot.draftSnapshot,
+            replacementRange: pickerSnapshot.replacementRange,
+            selectedCompletionIndex: selectedCompletionIndex,
+            authoredID: prefill,
+            isSaving: false,
+            errorMessage: nil,
+            purpose: .taskComplete(
+                notePath: pending.route,
+                taskRef: pending.taskRef,
+                suggestions: pending.suggestions,
+                followUp: followUp,
+                returnPicker: returnPicker
+            )
+        )
+        statusText = "Add block ID and complete task"
+        requestFocus(.taskIDPromptBlockID)
+        editorInputLocked = true
+    }
+
     /// Cycle the link-mode suggestion chips with Tab / Shift-Tab. Both link
     /// purposes use this; the parent-task flow keeps Tab consumed.
     func cycleTaskLinkSuggestion(forward: Bool) {
@@ -3748,6 +4102,8 @@ final class CapturePanelModel: ObservableObject {
             suggestions = linkSuggestions
         case .dependency(_, _, let dependencySuggestions, _, _, _):
             suggestions = dependencySuggestions
+        case .taskComplete(_, _, let completeSuggestions, _, _):
+            suggestions = completeSuggestions
         case .parentTaskPicker(_, _, let parentSuggestions, _, _, _):
             suggestions = parentSuggestions
         case .parentTask:
@@ -3925,6 +4281,54 @@ final class CapturePanelModel: ObservableObject {
                 guard let replacement = success.dependencyReplacement else {
                     prompt.isSaving = false
                     prompt.errorMessage = "This Bob is too old for dependency picks. Update Bob first."
+                    taskIDPrompt = prompt
+                    statusText = "Add block ID failed"
+                    requestFocus(.taskIDPromptBlockID)
+                    return
+                }
+                guard let range = stringRange(in: prompt.draftSnapshot, byteRange: prompt.replacementRange) else {
+                    prompt.isSaving = false
+                    prompt.errorMessage = "Completion range is stale. Return to the task list and choose again."
+                    taskIDPrompt = prompt
+                    statusText = "Add block ID failed"
+                    requestFocus(.taskIDPromptBlockID)
+                    return
+                }
+                var text = prompt.draftSnapshot
+                text.replaceSubrange(range, with: replacement)
+                let cursor = prompt.replacementRange.start + replacement.utf8.count
+                guard stringRange(in: text, start: cursor, end: cursor) != nil else {
+                    prompt.isSaving = false
+                    prompt.errorMessage = "Completion cursor is stale. Return to the task list and choose again."
+                    taskIDPrompt = prompt
+                    statusText = "Add block ID failed"
+                    requestFocus(.taskIDPromptBlockID)
+                    return
+                }
+                clearTaskIDPrompt()
+                dismissCompletion()
+                suppressedCompletionAcceptanceDraft = text
+                setPlainDraft(
+                    text,
+                    cursorUTF8Offset: cursor,
+                    suppressSelectionCallbacks: true
+                )
+                scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false, trigger: .edit)
+                statusText = "Added ^\(success.blockID) to \(success.relativeTarget)"
+                announceStatus("Added ^\(success.blockID) to \(success.relativeTarget) and inserted \(replacement)")
+                requestFocus(.editor)
+                if followUp == .submit {
+                    submit(openAfterCapture: false)
+                }
+                return
+            }
+            if case .taskComplete(_, _, _, let followUp, _) = prompt.purpose {
+                // Splice Bob's backend-formatted Complete replacement
+                // verbatim: it carries the quoting and case the app must
+                // never rebuild.
+                guard let replacement = success.completeReplacement, !replacement.isEmpty else {
+                    prompt.isSaving = false
+                    prompt.errorMessage = "This Bob is too old for Complete picks. Update Bob first."
                     taskIDPrompt = prompt
                     statusText = "Add block ID failed"
                     requestFocus(.taskIDPromptBlockID)
@@ -4683,7 +5087,7 @@ final class CapturePanelModel: ObservableObject {
         let completionNeeds = Set([
             "route", "section", "pomodoro_id", "pomodoro_name", "task", "task_section",
             "active_task", "task_link", "task_parent", "task_dependency", "dependency_target",
-            "block_id",
+            "task_complete", "block_id",
         ])
         if !completionNeeds.isDisjoint(with: Set(parse.needs)) {
             return true
@@ -4727,6 +5131,9 @@ final class CapturePanelModel: ObservableObject {
             "dependency_sigil",
             "dependency_note",
             "dependency_block_id",
+            "task_complete_sigil",
+            "task_complete_note",
+            "task_complete_block_id",
             "global_route",
             "global_sub_bullet_route",
             "global_sub_bullet_block_id",

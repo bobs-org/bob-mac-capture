@@ -475,6 +475,37 @@ reopens them) and splicing Bob's `dependency_replacement` verbatim. Escape
 returns to the picker with the filter intact; assignment failure inserts
 nothing. The prompt buttons read Add ID & Use / Add ID & Capture.
 
+### Complete Picker
+
+Typing `!` at the start of an item opens the Complete picker
+(`task_complete` context), the same card with scope `!` and caption
+Complete. When `capture-parse` reports `task_complete` in `needs`, the app
+skips the doomed live dry run and shows "Pick a task to complete — press Tab
+to browse".
+
+Bob lists every open task (Ready, Blocked, Next, In Progress) vault-wide,
+today first. With an empty filter rows group in Bob's order: one section per
+today Pomodoro (the running entry with the pink NOW pill, completed entries
+recent-first with 🍅 and their time range, queued entries with UP NEXT),
+then "In today's note", In Progress, Next, and one section per note
+(`note_path` with a `doc` icon). While filtering, two ranked sections appear:
+Today then All open tasks. Rows show the status glyph (Blocked is
+`pause.circle`), text, and locator (note in accent, `:` , ID in indigo), a
+`🍅 N` capsule when the task was in two or more Pomodoros today, and a
+schedule capsule when present. Disabled rows stay visible with their reason
+badge and no insertion; recurring rows sort last.
+
+Return (or Tab) inserts Bob's `!note:block-id`; Shift-Return inserts, appends
+a blank line plus `!`, and the fresh picker opens with the just-picked task
+marked "Already in this draft" for bulk completions; Command-Return inserts,
+then captures. With an empty filter, Bob's continuation keys `!` and `[`
+close the picker and type the key, so `!!` falls back to prose and `![`
+hands off to embed completion. Escape and Backspace behave as in `:`.
+
+ID-less rows open the Add block ID prompt via `capture-task-id --note-path`
+and splice Bob's `complete_replacement` verbatim; Swift never builds the
+token. The buttons read Add ID & Insert and Add ID & Complete.
+
 Preview shows `New task · depends on …` or `Add dependency to "…"`, the
 resulting `DEPENDS ON` child, the waiting count, and the Blocked/closed
 distinction from Bob's `dependency_update`, reusing the final task-block

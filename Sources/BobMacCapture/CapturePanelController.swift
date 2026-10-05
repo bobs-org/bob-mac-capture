@@ -1103,6 +1103,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .acceptPickerRowAndStart:
             model.acceptSelectedPickerRowAndStart()
             return true
+        case .acceptPickerRowAndContinue:
+            model.acceptSelectedPickerRowAndContinue()
+            return true
         case .acceptPickerRowAndSubmit:
             model.acceptSelectedPickerRow(submitAfterInsert: true)
             return true
@@ -1223,9 +1226,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     taskIDPromptVisible: self.model.taskIDPromptVisible,
                     taskIDPromptIsTaskLink: self.model.taskIDPromptIsTaskLink,
                     taskIDPromptIsDependency: self.model.taskIDPromptIsDependency,
+                    taskIDPromptIsTaskComplete: self.model.taskIDPromptIsTaskComplete,
                     pomodoroNamePromptVisible: self.model.pomodoroNamePromptVisible,
                     pickerVisible: self.model.pickerVisible,
                     pickerSourceIsTaskLink: self.model.pickerSourceIsTaskLink,
+                    pickerSourceIsTaskComplete: self.model.pickerSourceIsTaskComplete,
                     pickerFilterIsEmpty: self.model.pickerFilterIsEmpty,
                     pickerChipVisible: self.model.pickerChipVisible,
                     pickerOperatorContinuationKeys: self.model.pickerOperatorContinuationKeys,

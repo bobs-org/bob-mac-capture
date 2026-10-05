@@ -2456,6 +2456,12 @@ JSON
       else
         cat "${fixtures_dir}/task-link-complete-full.json"
       fi
+    elif [[ "${draft}" == "!" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/task-complete-complete-full.json"
+    elif [[ "${draft}" == "!fix" ]]; then
+      sed -e "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" \
+          -e 's/"start":0,"end":1/"start":0,"end":4/g' \
+          "${fixtures_dir}/task-complete-complete-full.json"
     elif [[ "${draft}" == "+" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-full.json"
     elif [[ "${draft}" == "+bank" ]]; then

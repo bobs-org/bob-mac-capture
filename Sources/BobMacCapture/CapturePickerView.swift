@@ -931,6 +931,8 @@ private struct CapturePickerDetailStrip: View {
         case .dependency:
             // The detail strip already teaches "space adds another &".
             return nil
+        case .taskComplete:
+            return nil
         case .blockID(let context):
             if context.intent == .projectNote || context.scope == .projectTask {
                 return nil
@@ -957,6 +959,24 @@ private struct CapturePickerDetailStrip: View {
                 }
                 return Text("↩ names this task, then inserts its link")
                     .foregroundColor(.secondary)
+            }
+        }
+        if source == .taskComplete {
+            if let insertion = row.insertion {
+                return Text("Inserts \(insertion) — completes it")
+                    .foregroundColor(.secondary)
+            }
+            if let pending = row.pendingBlockID {
+                if let first = pending.suggestions.first {
+                    let locator = row.route ?? pending.route
+                    return Text("↩ adds ^\(first), then inserts !\(locator):\(first)")
+                        .foregroundColor(.secondary)
+                }
+                return Text("↩ names this task, then inserts its completion")
+                    .foregroundColor(.secondary)
+            }
+            if let badge = row.badgeText, !badge.isEmpty {
+                return Text(badge).foregroundColor(.secondary)
             }
         }
         if case .parentTask = source {

@@ -640,6 +640,43 @@ final class CapturePickerDesignTests: XCTestCase {
                 }
             }
         }
+
+        // Complete review: Today-first grouped with per-Pomodoro sections,
+        // filtered Today/All split, and an ID-less plus disabled row — at
+        // full and minimum panel widths, in both appearances.
+        let completeStates: [(name: String, filter: String, draft: String, replacement: CaptureRange)] = [
+            ("complete-grouped", "", "!", CaptureRange(start: 0, end: 1)),
+            ("complete-filtered", "fix", "!fix", CaptureRange(start: 0, end: 4)),
+        ]
+        for state in completeStates {
+            for width in [760, 620] as [CGFloat] {
+                for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
+                    let model = CapturePanelModel()
+                    model.installTaskCompletePickerForPreviews(
+                        candidates: Self.taskCompleteRenderCandidates,
+                        filter: state.filter,
+                        draft: state.draft,
+                        replacement: state.replacement
+                    )
+                    let card = CapturePickerCard(model: model)
+                        .frame(width: width)
+                        .environment(
+                            \.colorScheme,
+                            appearance == .darkAqua ? .dark : .light
+                        )
+                    let renderer = ImageRenderer(content: card)
+                    renderer.scale = 2
+                    guard let image = renderer.nsImage else {
+                        XCTFail("Could not render \(state.name) (\(appearance.rawValue))")
+                        continue
+                    }
+                    let url = directory.appendingPathComponent(
+                        "capture-picker-\(state.name)-\(Int(width))-\(appearance == .darkAqua ? "dark" : "light").png"
+                    )
+                    try Self.pngData(for: image).write(to: url)
+                }
+            }
+        }
     }
 
     private static func pngData(for image: NSImage) throws -> Data {
@@ -926,6 +963,74 @@ final class CapturePickerDesignTests: XCTestCase {
                 notePath: "sase.md",
                 locator: "sase",
                 disabledReason: "Completed tasks never block"
+            ),
+        ]
+    }
+
+    /// Complete render fixture: running and worked today rows, an ID-less
+    /// row, a sessions capsule, a disabled row, and per-note open rows.
+    private static var taskCompleteRenderCandidates: [CaptureCompletionCandidate] {
+        [
+            CaptureCompletionCandidate(
+                replacement: "!sase:fix-flaky",
+                taskRef: "1:41d049f2",
+                blockID: "fix-flaky",
+                statusSymbol: "*",
+                statusName: "Next",
+                statusType: "ON_HOLD",
+                text: "Fix flaky gkeep test",
+                group: "today",
+                notePath: "sase.md",
+                locator: "sase",
+                today: TaskCompleteToday(
+                    role: "running",
+                    pomodoro: TaskCompleteTodayPomodoro(line: 2, name: "CAPTURE", timeRange: "0920-0950", status: "running"),
+                    sessions: 1
+                )
+            ),
+            CaptureCompletionCandidate(
+                replacement: "!sase:outline",
+                taskRef: "2:4911df91",
+                blockID: "outline",
+                statusSymbol: "/",
+                statusName: "In Progress",
+                statusType: "IN_PROGRESS",
+                text: "Outline the talk",
+                group: "today",
+                notePath: "sase.md",
+                locator: "sase",
+                today: TaskCompleteToday(
+                    role: "worked",
+                    pomodoro: TaskCompleteTodayPomodoro(line: 5, name: "PLAN", timeRange: "0830-0855", status: "completed"),
+                    sessions: 2
+                )
+            ),
+            CaptureCompletionCandidate(
+                replacement: "",
+                taskRef: "3:f5826a74",
+                requiresBlockID: true,
+                statusSymbol: " ",
+                statusName: "Ready",
+                statusType: "TODO",
+                text: "No id yet",
+                blockIDSuggestions: ["no-id-yet"],
+                group: "open",
+                notePath: "sase.md",
+                locator: "sase"
+            ),
+            CaptureCompletionCandidate(
+                replacement: "",
+                taskRef: "4:39f413d7",
+                blockID: "water",
+                statusSymbol: " ",
+                statusName: "Ready",
+                statusType: "TODO",
+                text: "Water plants",
+                group: "open",
+                notePath: "sase.md",
+                locator: "sase",
+                disabledReason: "Recurring — complete it in Obsidian so Tasks writes the next occurrence",
+                recurring: true
             ),
         ]
     }

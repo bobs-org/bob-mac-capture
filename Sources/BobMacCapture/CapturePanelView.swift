@@ -1003,10 +1003,20 @@ private struct TaskIDPromptCard: View {
         return false
     }
 
-    /// Either link-mode prompt (task-link, dependency, or parent-task card):
-    /// all show suggestion chips and the inserts line.
+    private var isTaskCompletePrompt: Bool {
+        guard let prompt else {
+            return false
+        }
+        if case .taskComplete = prompt.purpose {
+            return true
+        }
+        return false
+    }
+
+    /// Either link-mode prompt (task-link, dependency, Complete, or
+    /// parent-task card): all show suggestion chips and the inserts line.
     private var isIDLinkMode: Bool {
-        isTaskLink || isDependencyPrompt || isParentTaskPickerPrompt
+        isTaskLink || isDependencyPrompt || isTaskCompletePrompt || isParentTaskPickerPrompt
     }
 
     private func linkSubmitTitle(for prompt: CaptureTaskIDPromptState) -> String {
@@ -1026,6 +1036,13 @@ private struct TaskIDPromptCard: View {
                 return "Add ID & Capture"
             case .none, .start:
                 return "Add ID & Use"
+            }
+        case .taskComplete(_, _, _, let followUp, _):
+            switch followUp {
+            case .submit:
+                return "Add ID & Complete"
+            case .none, .start:
+                return "Add ID & Insert"
             }
         case .parentTask:
             return "Add & Select"
@@ -1047,6 +1064,8 @@ private struct TaskIDPromptCard: View {
             return "Inserts @\(route):\(typed)\(suffix)"
         case .dependency(let notePath, _, _, _, _, _):
             return "Inserts &\(notePath):\(typed)"
+        case .taskComplete(let notePath, _, _, _, _):
+            return "Inserts !\(notePath):\(typed)"
         case .parentTask:
             return ""
         case .parentTaskPicker(let route, _, _, _, _, _):
@@ -1062,6 +1081,8 @@ private struct TaskIDPromptCard: View {
             return Text("\(Text("Inserts @").foregroundStyle(.secondary))\(Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))\(Text(suffix).foregroundStyle(.secondary))")
         case .dependency(let notePath, _, _, _, _, _):
             return Text("\(Text("Inserts &").foregroundStyle(.secondary))\(Text(notePath).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
+        case .taskComplete(let notePath, _, _, _, _):
+            return Text("\(Text("Inserts !").foregroundStyle(.secondary))\(Text(notePath).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
         case .parentTask:
             return Text("")
         case .parentTaskPicker(let route, _, _, _, _, _):

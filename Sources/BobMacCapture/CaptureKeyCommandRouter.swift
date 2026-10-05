@@ -34,6 +34,7 @@ enum CaptureKeyCommand: Equatable {
     case cancelPomodoroNamePrompt
     case acceptPickerRow
     case acceptPickerRowAndStart
+    case acceptPickerRowAndContinue
     case acceptPickerRowAndSubmit
     case nextPickerRow
     case previousPickerRow
@@ -56,9 +57,11 @@ struct CaptureKeyRoutingContext: Equatable {
     var taskIDPromptVisible = false
     var taskIDPromptIsTaskLink = false
     var taskIDPromptIsDependency = false
+    var taskIDPromptIsTaskComplete = false
     var pomodoroNamePromptVisible = false
     var pickerVisible = false
     var pickerSourceIsTaskLink = false
+    var pickerSourceIsTaskComplete = false
     var pickerFilterIsEmpty = true
     var pickerChipVisible = false
     var pickerOperatorContinuationKeys: [String] = []
@@ -205,7 +208,8 @@ struct CaptureKeyCommandRouter {
         // The parent-task flow keeps Tab consumed.
         if context.taskIDPromptCyclesSuggestions
             || context.taskIDPromptIsTaskLink
-            || context.taskIDPromptIsDependency,
+            || context.taskIDPromptIsDependency
+            || context.taskIDPromptIsTaskComplete,
            event.keyCode == KeyCode.tab
         {
             if modifiers.isEmpty {
@@ -250,7 +254,13 @@ struct CaptureKeyCommandRouter {
                 return .acceptPickerRowAndSubmit
             }
             if modifiers.contains(.shift) {
-                return context.pickerSourceIsTaskLink ? .acceptPickerRowAndStart : .consumeKey
+                if context.pickerSourceIsTaskLink {
+                    return .acceptPickerRowAndStart
+                }
+                if context.pickerSourceIsTaskComplete {
+                    return .acceptPickerRowAndContinue
+                }
+                return .consumeKey
             }
             if modifiers.contains(.option) {
                 return .consumeKey
