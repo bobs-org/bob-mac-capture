@@ -2898,6 +2898,7 @@ struct PreviewPane: View {
             .foregroundStyle(complete.isAlreadyDone ? .gray : .secondary))
     }
 
+    @ViewBuilder
     private func togglePreviewItem(
         _ toggle: CaptureTogglePresentation,
         success: CaptureCommandSuccess,
