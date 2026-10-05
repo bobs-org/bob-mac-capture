@@ -1836,6 +1836,14 @@ struct PreviewPane: View {
                   let start = CapturePomodoroStartPresentation(capture: success)
         {
             startPreviewItem(start, success: success, index: index, total: total)
+        } else if let complete = CaptureTaskCompletePresentation(capture: success) {
+            completePreviewItem(
+                complete,
+                success: success,
+                index: index,
+                total: total,
+                isLocalOverride: isLocalOverride
+            )
         } else if let toggle = CaptureTogglePresentation(capture: success) {
             togglePreviewItem(
                 toggle,
@@ -2749,6 +2757,147 @@ struct PreviewPane: View {
     }
 
     @ViewBuilder
+    private func completePreviewItem(
+        _ complete: CaptureTaskCompletePresentation,
+        success: CaptureCommandSuccess,
+        index: Int,
+        total: Int,
+        isLocalOverride: Bool
+    ) -> some View {
+        // The completion card renders Bob's resolved `task_complete` object
+        // exactly as the presentation words it: no Swift-side status or
+        // ledger math. The locator truncates first at narrow widths, so the
+        // task text and transition always stay legible.
+        let sealColor: Color = complete.isAlreadyDone ? .gray : .green
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if total > 1 {
+                    Text("\(index + 1)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(sealColor)
+                    .accessibilityHidden(true)
+                Text(complete.headline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(complete.isAlreadyDone ? .gray : .primary)
+                Spacer(minLength: 4)
+                Text(complete.destinationLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .textSelection(.enabled)
+                if isLocalOverride {
+                    Text("local override")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .lineLimit(1)
+
+            completeTransitionLine(complete)
+                .font(.system(.callout, design: .monospaced))
+                .textSelection(.enabled)
+
+            ForEach(Array(complete.subtaskRows.enumerated()), id: \.offset) { _, row in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "list.bullet.indent")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(row.transitionText)
+                        .font(.system(.callout, design: .monospaced))
+                        .textSelection(.enabled)
+                    Spacer(minLength: 4)
+                    Text(row.locatorText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .textSelection(.enabled)
+                }
+            }
+
+            ForEach(Array(complete.leftOpenRows.enumerated()), id: \.offset) { _, row in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "list.bullet.indent")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(row.displayText)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                    Spacer(minLength: 4)
+                    Text(row.locatorText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .textSelection(.enabled)
+                }
+            }
+
+            if let ledgerText = complete.ledgerText {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "timer")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(ledgerText)
+                        .font(.system(.callout, design: .monospaced))
+                        .textSelection(.enabled)
+                }
+            }
+
+            ForEach(Array(complete.unblockedRows.enumerated()), id: \.offset) { _, row in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "lock.open.fill")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(row.transitionText)
+                        .font(.system(.callout, design: .monospaced))
+                        .textSelection(.enabled)
+                    Spacer(minLength: 4)
+                    Text(row.locatorText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(completePreviewAccessibilityLabel(
+            for: complete,
+            success: success,
+            index: index,
+            total: total,
+            isLocalOverride: isLocalOverride
+        ))
+    }
+
+    private func completeTransitionLine(
+        _ complete: CaptureTaskCompletePresentation
+    ) -> some View {
+        // Only the post-arrow task text is struck and dimmed; the status
+        // markers stay legible. The presentation guarantees `transitionText`
+        // ends with `previewText` except when the preview is empty.
+        let transition = complete.transitionText
+        let preview = complete.previewText
+        if !preview.isEmpty, transition.hasSuffix(preview) {
+            let prefix = String(transition.dropLast(preview.count))
+            return AnyView(HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text(prefix)
+                Text(preview)
+                    .strikethrough(true)
+                    .foregroundStyle(.secondary)
+            })
+        }
+        return AnyView(Text(transition)
+            .strikethrough(true)
+            .foregroundStyle(complete.isAlreadyDone ? .gray : .secondary))
+    }
+
     private func togglePreviewItem(
         _ toggle: CaptureTogglePresentation,
         success: CaptureCommandSuccess,
@@ -2953,6 +3102,18 @@ struct PreviewPane: View {
         let position = total > 1 ? "Item \(index + 1) of \(total), " : ""
         let override = isLocalOverride ? ", local override" : ""
         return "\(position)\(success.kind)\(override), \(toggle.previewAccessibilitySummary)"
+    }
+
+    private func completePreviewAccessibilityLabel(
+        for complete: CaptureTaskCompletePresentation,
+        success: CaptureCommandSuccess,
+        index: Int,
+        total: Int,
+        isLocalOverride: Bool
+    ) -> String {
+        let position = total > 1 ? "Item \(index + 1) of \(total), " : ""
+        let override = isLocalOverride ? ", local override" : ""
+        return "\(position)\(success.kind)\(override), \(complete.previewAccessibilitySummary)"
     }
 
     private func linkPreviewAccessibilityLabel(

@@ -371,6 +371,14 @@ final class NotificationService: NSObject, ObservableObject {
                     targetPaths: targetPaths
                 )
             }
+            if let complete = CaptureTaskCompletePresentation(capture: capture) {
+                return CaptureNotificationPresentation(
+                    title: complete.notificationTitle,
+                    subtitle: complete.destinationLabel,
+                    body: complete.notificationBody,
+                    targetPaths: targetPaths
+                )
+            }
             if let close = CapturePomodoroClosePresentation(capture: capture) {
                 return CaptureNotificationPresentation(
                     title: close.notificationTitle,
@@ -413,6 +421,21 @@ final class NotificationService: NSObject, ObservableObject {
             return globalBatchPresentation(
                 captures: nonemptyCaptures,
                 globalDestination: globalDestination,
+                targetPaths: targetPaths
+            )
+        }
+
+        if nonemptyCaptures.allSatisfy({ CaptureTaskCompletePresentation(capture: $0) != nil }) {
+            let lines = nonemptyCaptures.enumerated().map { index, capture in
+                let presentation = CaptureTaskCompletePresentation(capture: capture)
+                let detail = presentation.map { "\($0.destinationLabel): \($0.transitionText)" } ?? batchLineText(capture)
+                return "\(index + 1). \(detail)"
+            }
+            let summary = "\(nonemptyCaptures.count) completed tasks"
+            return CaptureNotificationPresentation(
+                title: "Completed \(nonemptyCaptures.count) tasks",
+                subtitle: summary,
+                body: ([summary] + lines).filter { !$0.isEmpty }.joined(separator: "\n"),
                 targetPaths: targetPaths
             )
         }
@@ -519,6 +542,9 @@ final class NotificationService: NSObject, ObservableObject {
         if let link = CapturePomodoroLinkPresentation(capture: capture) {
             return link.transitionText
         }
+        if let complete = CaptureTaskCompletePresentation(capture: capture) {
+            return complete.transitionText
+        }
         return semanticText(capture)
     }
 
@@ -546,6 +572,8 @@ final class NotificationService: NSObject, ObservableObject {
             return "Note"
         case "task-toggle", "task_toggle":
             return "Toggle"
+        case "task-complete", "task_complete":
+            return "Complete"
         case "pomodoro-link", "pomodoro_link":
             return "Link"
         case "pomodoro-adjust", "pomodoro_adjust":
@@ -619,6 +647,9 @@ final class NotificationService: NSObject, ObservableObject {
         }
         if let toggle = CaptureTogglePresentation(capture: capture) {
             return toggle.dayFileChanged
+        }
+        if CaptureTaskCompletePresentation(capture: capture) != nil {
+            return capture.taskComplete?.ledger != nil
         }
         if let link = CapturePomodoroLinkPresentation(capture: capture) {
             return link.dayFileChanged

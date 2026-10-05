@@ -46,6 +46,16 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         // the route family, the ID the block family. Never claimed by a
         // Swift-side regex — only Bob's semantic spans highlight here.
         return .route
+    case "task_complete_sigil":
+        // The `!` sigil completes like `=x!`: it shares the complete-green
+        // with the close-list complete digits.
+        return .pomodoroCloseComplete
+    case "task_complete_note":
+        // The note side of `!note:id` renders like `@route:id`'s route.
+        return .route
+    case "task_complete_block_id":
+        // The ID side of `!note:id` renders like every other block ID.
+        return .blockID
     case "schedule":
         return .schedule
     case "priority":

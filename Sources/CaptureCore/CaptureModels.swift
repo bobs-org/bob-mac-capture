@@ -1959,6 +1959,10 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     // prerequisite summaries, open prerequisite count, and resulting
     // dependent status. Older Bob omits it entirely; decode as nil.
     public let dependencyUpdate: DependencyUpdateSummary?
+    // Additive `task_complete` object on a whole-item `!note:block-id`
+    // completion. Older Bob binaries omit it entirely; decode as nil, and a
+    // malformed value decodes as nil so it can never fail the capture decode.
+    public let taskComplete: CaptureTaskComplete?
     // Additive `project_note` object (including `task_links`) on a
     // `project_note` capture. Older Bob binaries omit it entirely; decode
     // as nil.
@@ -2031,6 +2035,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         pomodoroShift: PomodoroShiftSummary? = nil,
         pomodoroClose: PomodoroCloseSummary? = nil,
         dependencyUpdate: DependencyUpdateSummary? = nil,
+        taskComplete: CaptureTaskComplete? = nil,
         projectNote: CaptureProjectNoteSummary? = nil,
         planBudget: CapturePlanBudget? = nil,
         captures: [CaptureCommandSuccess] = [],
@@ -2088,6 +2093,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.pomodoroShift = pomodoroShift
         self.pomodoroClose = pomodoroClose
         self.dependencyUpdate = dependencyUpdate
+        self.taskComplete = taskComplete
         self.projectNote = projectNote
         self.planBudget = planBudget
         self.pomodoroBlocks = pomodoroBlocks
@@ -2169,6 +2175,11 @@ public struct CaptureCommandSuccess: Codable, Equatable {
             DependencyUpdateSummary.self,
             forKey: .dependencyUpdate
         )
+        taskComplete =
+            (try? container.decodeIfPresent(
+                CaptureTaskComplete.self,
+                forKey: .taskComplete
+            )) ?? nil
         projectNote = try container.decodeIfPresent(
             CaptureProjectNoteSummary.self,
             forKey: .projectNote
@@ -2245,6 +2256,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case pomodoroShift = "pomodoro_shift"
         case pomodoroClose = "pomodoro_close"
         case dependencyUpdate = "dependency_update"
+        case taskComplete = "task_complete"
         case projectNote = "project_note"
         case planBudget = "plan_budget"
         case pomodoroBlocks = "pomodoro_blocks"
@@ -2475,6 +2487,372 @@ public struct DependencyUpdateSummary: Codable, Equatable, Sendable {
         case dependentStatus = "dependent_status"
         case dependentStatusName = "dependent_status_name"
         case statusChanged = "status_changed"
+    }
+}
+
+/// One embedded subtask closed by a whole-item `!note:block-id` completion.
+/// Every field decodes tolerantly so a partial object still yields a row
+/// instead of failing the whole capture.
+public struct TaskCompleteSubtask: Codable, Equatable, Sendable {
+    public let notePath: String
+    public let blockID: String
+    public let line: Int
+    public let text: String
+    public let previousStatusSymbol: String
+    public let previousStatusName: String
+    public let statusSymbol: String
+    public let statusName: String
+
+    public init(
+        notePath: String = "",
+        blockID: String = "",
+        line: Int = 0,
+        text: String = "",
+        previousStatusSymbol: String = "",
+        previousStatusName: String = "",
+        statusSymbol: String = "",
+        statusName: String = ""
+    ) {
+        self.notePath = notePath
+        self.blockID = blockID
+        self.line = line
+        self.text = text
+        self.previousStatusSymbol = previousStatusSymbol
+        self.previousStatusName = previousStatusName
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        notePath = try container.decodeIfPresent(String.self, forKey: .notePath) ?? ""
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID) ?? ""
+        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        previousStatusSymbol = try container.decodeIfPresent(String.self, forKey: .previousStatusSymbol) ?? ""
+        previousStatusName = try container.decodeIfPresent(String.self, forKey: .previousStatusName) ?? ""
+        statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol) ?? ""
+        statusName = try container.decodeIfPresent(String.self, forKey: .statusName) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case notePath = "note_path"
+        case blockID = "block_id"
+        case line
+        case text
+        case previousStatusSymbol = "previous_status_symbol"
+        case previousStatusName = "previous_status_name"
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
+    }
+}
+
+/// One descendant left open by a whole-item `!note:block-id` completion.
+/// `reason` is `blocked`, `recurring`, `unknown_status`, or `cap`.
+public struct TaskCompleteLeftOpen: Codable, Equatable, Sendable {
+    public let notePath: String
+    public let blockID: String
+    public let line: Int
+    public let text: String
+    public let statusSymbol: String
+    public let statusName: String
+    public let reason: String
+
+    public init(
+        notePath: String = "",
+        blockID: String = "",
+        line: Int = 0,
+        text: String = "",
+        statusSymbol: String = "",
+        statusName: String = "",
+        reason: String = ""
+    ) {
+        self.notePath = notePath
+        self.blockID = blockID
+        self.line = line
+        self.text = text
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
+        self.reason = reason
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        notePath = try container.decodeIfPresent(String.self, forKey: .notePath) ?? ""
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID) ?? ""
+        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol) ?? ""
+        statusName = try container.decodeIfPresent(String.self, forKey: .statusName) ?? ""
+        reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case notePath = "note_path"
+        case blockID = "block_id"
+        case line
+        case text
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
+        case reason
+    }
+}
+
+/// One ledger endpoint for a `task_complete` move: 1-based line, short
+/// entry name, and entry status.
+public struct TaskCompleteLedgerEndpoint: Codable, Equatable, Sendable {
+    public let line: Int
+    public let name: String
+    public let status: String
+
+    public init(line: Int = 0, name: String = "", status: String = "") {
+        self.line = line
+        self.name = name
+        self.status = status
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case line
+        case name
+        case status
+    }
+}
+
+/// One moved bullet's source and destination ledger entries.
+public struct TaskCompleteLedgerMove: Codable, Equatable, Sendable {
+    public let from: TaskCompleteLedgerEndpoint
+    public let to: TaskCompleteLedgerEndpoint
+
+    public init(
+        from: TaskCompleteLedgerEndpoint = TaskCompleteLedgerEndpoint(),
+        to: TaskCompleteLedgerEndpoint = TaskCompleteLedgerEndpoint()
+    ) {
+        self.from = from
+        self.to = to
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        from = try container.decodeIfPresent(
+            TaskCompleteLedgerEndpoint.self,
+            forKey: .from
+        ) ?? TaskCompleteLedgerEndpoint()
+        to = try container.decodeIfPresent(
+            TaskCompleteLedgerEndpoint.self,
+            forKey: .to
+        ) ?? TaskCompleteLedgerEndpoint()
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case from
+        case to
+    }
+}
+
+/// One placeholder removed by a `task_complete` item.
+public struct TaskCompleteRemovedPlaceholder: Codable, Equatable, Sendable {
+    public let name: String
+
+    public init(name: String = "") {
+        self.name = name
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name
+    }
+}
+
+/// Ledger retirement for a `task_complete` item, omitted when today's
+/// ledger was untouched.
+public struct TaskCompleteLedger: Codable, Equatable, Sendable {
+    public let dayFile: String
+    public let struck: Int
+    public let moved: [TaskCompleteLedgerMove]
+    public let deduplicated: Int
+    public let removedPlaceholders: [TaskCompleteRemovedPlaceholder]
+
+    public init(
+        dayFile: String = "",
+        struck: Int = 0,
+        moved: [TaskCompleteLedgerMove] = [],
+        deduplicated: Int = 0,
+        removedPlaceholders: [TaskCompleteRemovedPlaceholder] = []
+    ) {
+        self.dayFile = dayFile
+        self.struck = struck
+        self.moved = moved
+        self.deduplicated = deduplicated
+        self.removedPlaceholders = removedPlaceholders
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        dayFile = try container.decodeIfPresent(String.self, forKey: .dayFile) ?? ""
+        struck = try container.decodeIfPresent(Int.self, forKey: .struck) ?? 0
+        moved = try container.decodeIfPresent(
+            [TaskCompleteLedgerMove].self,
+            forKey: .moved
+        ) ?? []
+        deduplicated = try container.decodeIfPresent(Int.self, forKey: .deduplicated) ?? 0
+        removedPlaceholders = try container.decodeIfPresent(
+            [TaskCompleteRemovedPlaceholder].self,
+            forKey: .removedPlaceholders
+        ) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case dayFile = "day_file"
+        case struck
+        case moved
+        case deduplicated
+        case removedPlaceholders = "removed_placeholders"
+    }
+}
+
+/// One dependent recovered by a `task_complete` item.
+public struct TaskCompleteUnblocked: Codable, Equatable, Sendable {
+    public let notePath: String
+    public let blockID: String
+    public let line: Int
+    public let text: String
+    public let previousStatusSymbol: String
+    public let previousStatusName: String
+    public let statusSymbol: String
+    public let statusName: String
+
+    public init(
+        notePath: String = "",
+        blockID: String = "",
+        line: Int = 0,
+        text: String = "",
+        previousStatusSymbol: String = "",
+        previousStatusName: String = "",
+        statusSymbol: String = "",
+        statusName: String = ""
+    ) {
+        self.notePath = notePath
+        self.blockID = blockID
+        self.line = line
+        self.text = text
+        self.previousStatusSymbol = previousStatusSymbol
+        self.previousStatusName = previousStatusName
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        notePath = try container.decodeIfPresent(String.self, forKey: .notePath) ?? ""
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID) ?? ""
+        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        previousStatusSymbol = try container.decodeIfPresent(String.self, forKey: .previousStatusSymbol) ?? ""
+        previousStatusName = try container.decodeIfPresent(String.self, forKey: .previousStatusName) ?? ""
+        statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol) ?? ""
+        statusName = try container.decodeIfPresent(String.self, forKey: .statusName) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case notePath = "note_path"
+        case blockID = "block_id"
+        case line
+        case text
+        case previousStatusSymbol = "previous_status_symbol"
+        case previousStatusName = "previous_status_name"
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
+    }
+}
+
+/// Bob's resolved preview for a whole-item `!note:block-id` completion.
+/// Additive to capture schema v1 and absent on older Bob binaries. Every
+/// field decodes tolerantly so a partial object still previews instead of
+/// failing the whole capture. `subtasks`, `subtasks_left_open`, and
+/// `unblocked` are always present (possibly empty) on a real Bob response;
+/// `ledger` is omitted when today's ledger was untouched and
+/// `completion_date` is omitted when `action` is `already_done`.
+public struct CaptureTaskComplete: Codable, Equatable, Sendable {
+    public let raw: String
+    public let note: String
+    public let notePath: String
+    public let blockID: String
+    public let action: String
+    public let completionDate: String?
+    public let subtasks: [TaskCompleteSubtask]
+    public let subtasksLeftOpen: [TaskCompleteLeftOpen]
+    public let ledger: TaskCompleteLedger?
+    public let unblocked: [TaskCompleteUnblocked]
+
+    public init(
+        raw: String = "",
+        note: String = "",
+        notePath: String = "",
+        blockID: String = "",
+        action: String = "",
+        completionDate: String? = nil,
+        subtasks: [TaskCompleteSubtask] = [],
+        subtasksLeftOpen: [TaskCompleteLeftOpen] = [],
+        ledger: TaskCompleteLedger? = nil,
+        unblocked: [TaskCompleteUnblocked] = []
+    ) {
+        self.raw = raw
+        self.note = note
+        self.notePath = notePath
+        self.blockID = blockID
+        self.action = action
+        self.completionDate = completionDate
+        self.subtasks = subtasks
+        self.subtasksLeftOpen = subtasksLeftOpen
+        self.ledger = ledger
+        self.unblocked = unblocked
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        raw = try container.decodeIfPresent(String.self, forKey: .raw) ?? ""
+        note = try container.decodeIfPresent(String.self, forKey: .note) ?? ""
+        notePath = try container.decodeIfPresent(String.self, forKey: .notePath) ?? ""
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID) ?? ""
+        action = try container.decodeIfPresent(String.self, forKey: .action) ?? ""
+        completionDate = try container.decodeIfPresent(String.self, forKey: .completionDate)
+        subtasks = try container.decodeIfPresent(
+            [TaskCompleteSubtask].self,
+            forKey: .subtasks
+        ) ?? []
+        subtasksLeftOpen = try container.decodeIfPresent(
+            [TaskCompleteLeftOpen].self,
+            forKey: .subtasksLeftOpen
+        ) ?? []
+        ledger = try container.decodeIfPresent(TaskCompleteLedger.self, forKey: .ledger)
+        unblocked = try container.decodeIfPresent(
+            [TaskCompleteUnblocked].self,
+            forKey: .unblocked
+        ) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case raw
+        case note
+        case notePath = "note_path"
+        case blockID = "block_id"
+        case action
+        case completionDate = "completion_date"
+        case subtasks
+        case subtasksLeftOpen = "subtasks_left_open"
+        case ledger
+        case unblocked
     }
 }
 

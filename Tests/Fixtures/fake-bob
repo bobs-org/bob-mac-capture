@@ -1352,6 +1352,66 @@ JSON
   "diagnostics": []
 }
 JSON
+    elif [[ "${draft}" == "!sase:fix-flaky" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "!sase:fix-flaky",
+  "body": "",
+  "mode": "task_complete",
+  "route": null,
+  "section": null,
+  "block_id": "fix-flaky",
+  "needs": [],
+  "spans": [
+    { "start": 0, "end": 1, "kind": "task_complete_sigil" },
+    { "start": 1, "end": 5, "kind": "task_complete_note" },
+    { "start": 6, "end": 15, "kind": "task_complete_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "!sase:mv1" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "!sase:mv1",
+  "body": "",
+  "mode": "task_complete",
+  "route": null,
+  "section": null,
+  "block_id": "mv1",
+  "needs": [],
+  "spans": [
+    { "start": 0, "end": 1, "kind": "task_complete_sigil" },
+    { "start": 1, "end": 5, "kind": "task_complete_note" },
+    { "start": 6, "end": 9, "kind": "task_complete_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
+    elif [[ "${draft}" == "!sase:big-task" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "!sase:big-task",
+  "body": "",
+  "mode": "task_complete",
+  "route": null,
+  "section": null,
+  "block_id": "big-task",
+  "needs": [],
+  "spans": [
+    { "start": 0, "end": 1, "kind": "task_complete_sigil" },
+    { "start": 1, "end": 5, "kind": "task_complete_note" },
+    { "start": 6, "end": 14, "kind": "task_complete_block_id" }
+  ],
+  "diagnostics": []
+}
+JSON
     else
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
@@ -4312,6 +4372,37 @@ JSON
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-named-created.json"
     elif [[ "${draft}" == "=#plan" ]]; then
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-named-again.json"
+    elif [[ "${draft}" == "!sase:fix-flaky" ]]; then
+      # Whole-item completion with a running-session strike (real `bob
+      # capture --dry-run -f json` output; only the dry-run flag varies).
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-complete-strike.json"
+    elif [[ "${draft}" == "!sase:mv1" ]]; then
+      # Placeholder move plus removal (real `bob` output; only the dry-run
+      # flag varies).
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-complete-move.json"
+    elif [[ "${draft}" == "!sase:carry" ]]; then
+      # Dedupe into the morning entry (real `bob` output; only the dry-run
+      # flag varies).
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-complete-dedupe.json"
+    elif [[ "${draft}" == "!sase:big-task" ]]; then
+      # Subtasks plus left open (real `bob` output; only the dry-run flag
+      # varies).
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-complete-subtasks.json"
+    elif [[ "${draft}" == "!travel:dep" ]]; then
+      # Unblocked dependent (real `bob` output; only the dry-run flag
+      # varies).
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-complete-unblocked.json"
+    elif [[ "${draft}" == "!sase:fin" ]]; then
+      # Already done no-op (real `bob` output; only the dry-run flag
+      # varies).
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-complete-already-done.json"
+    elif [[ "${draft}" == "!sase:cx" ]]; then
+      # Canceled refusal (real `bob` output).
+      cat "${fixtures_dir}/task-complete-refusal.json"
+      exit 1
+    elif [[ "${draft}" == $'!sase:one\n\n!sase:two' ]]; then
+      # Two-item batch (real `bob` output; only the dry-run flag varies).
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/g" "${fixtures_dir}/task-complete-batch.json"
     else
       cat <<JSON
 {

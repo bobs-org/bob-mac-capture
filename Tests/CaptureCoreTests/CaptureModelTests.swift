@@ -2640,6 +2640,61 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertNil(withoutNote.projectNote)
     }
 
+    func testTaskCompleteDecodesTolerantly() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/bob/sase.md",
+            "text":"","task_line":"- [x] #task Done ^fin",
+            "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fin",
+            "previous_task_line":"- [*] #task Done ^fin",
+            "status_symbol":"x","status_name":"Done",
+            "previous_status_symbol":"*","previous_status_name":"Next","status_changed":true,
+            "task_complete":{"raw":"!sase:fin","note":"sase","note_path":"sase.md",
+            "block_id":"fin","action":"completed","completion_date":"2026-10-05",
+            "subtasks":[{"note_path":"sase.md","block_id":"sub","line":2,"text":"Sub",
+            "previous_status_symbol":"/","previous_status_name":"In Progress",
+            "status_symbol":"x","status_name":"Done"}],
+            "subtasks_left_open":[{"note_path":"sase.md","block_id":"open","line":3,
+            "text":"Open","status_symbol":"?","status_name":"Blocked","reason":"blocked"}],
+            "ledger":{"day_file":"20261005.md","struck":1,"moved":[],
+            "deduplicated":0,"removed_placeholders":[]},
+            "unblocked":[{"note_path":"travel.md","block_id":"waiter","line":2,"text":"Waiter",
+            "previous_status_symbol":"?","previous_status_name":"Blocked",
+            "status_symbol":" ","status_name":"Ready"}]}}
+            """
+        )
+        let summary = try XCTUnwrap(success.taskComplete)
+        XCTAssertEqual(summary.raw, "!sase:fin")
+        XCTAssertEqual(summary.action, "completed")
+        XCTAssertEqual(summary.subtasks.count, 1)
+        XCTAssertEqual(summary.subtasksLeftOpen.count, 1)
+        XCTAssertEqual(summary.unblocked.count, 1)
+        XCTAssertEqual(summary.ledger?.struck, 1)
+
+        let withoutComplete = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/bob/sase.md",
+            "text":"","task_line":"- [x] #task Done ^fin",
+            "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fin"}
+            """
+        )
+        XCTAssertNil(withoutComplete.taskComplete)
+
+        // A malformed `task_complete` object never fails the capture decode.
+        let malformed = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/bob/sase.md",
+            "text":"","task_line":"- [x] #task Done ^fin",
+            "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fin",
+            "task_complete":{"raw":42}}
+            """
+        )
+        XCTAssertNil(malformed.taskComplete)
+    }
+
     // MARK: - Pomodoro blocks
 
     private func decodeBlockFixture(_ name: String) throws -> CaptureCommandSuccess {

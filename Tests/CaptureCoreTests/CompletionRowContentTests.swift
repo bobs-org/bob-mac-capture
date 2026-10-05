@@ -734,6 +734,15 @@ final class CompletionRowContentTests: XCTestCase {
             .pomodoroCloseComplete
         )
         XCTAssertEqual(
+            captureSemanticCategory(forSpanKind: "task_complete_sigil"),
+            .pomodoroCloseComplete
+        )
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "task_complete_note"), .route)
+        XCTAssertEqual(
+            captureSemanticCategory(forSpanKind: "task_complete_block_id"),
+            .blockID
+        )
+        XCTAssertEqual(
             captureSemanticCategory(forSpanKind: "pomodoro_close_drop"),
             .pomodoroCloseDrop
         )

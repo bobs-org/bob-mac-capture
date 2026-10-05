@@ -454,6 +454,16 @@ final class CapturePanelModel: ObservableObject {
         return CapturePomodoroLinkPresentation(capture: previewResult)
     }
 
+    /// The live preview's task-complete presentation, when the current draft
+    /// is exactly one whole-item `!note:block-id` completion — the same
+    /// single-item gate as the toggle presentation.
+    var taskCompletePresentation: CaptureTaskCompletePresentation? {
+        guard previewResults.count == 1, let previewResult else {
+            return nil
+        }
+        return CaptureTaskCompletePresentation(capture: previewResult)
+    }
+
     /// The live preview's close presentation for a single plain, linked-task, or
     /// new-task close. Bob's additive summary is the sole source of close effects.
     var closePresentation: CapturePomodoroClosePresentation? {
@@ -502,6 +512,7 @@ final class CapturePanelModel: ObservableObject {
             ?? sessionStartPresentation.map { _ in "Start" }
             ?? togglePresentation?.primaryActionTitle
             ?? linkPresentation?.primaryActionTitle
+            ?? taskCompletePresentation?.primaryActionTitle
             ?? shiftPresentation.map { _ in "Shift" }
             ?? adjustPresentation.map { _ in "Adjust" } ?? "Capture"
     }
@@ -4111,6 +4122,8 @@ final class CapturePanelModel: ObservableObject {
             previewState = .idle
             if let presentation = Self.soleTogglePresentation(for: captures) {
                 statusText = presentation.voiceOverAnnouncement
+            } else if let presentation = Self.soleTaskCompletePresentation(for: captures) {
+                statusText = presentation.statusText
             } else if let presentation = Self.soleClosePresentation(for: captures) {
                 statusText = presentation.statusText
             } else if let presentation = Self.soleSessionStartPresentation(for: captures) {
@@ -4176,6 +4189,8 @@ final class CapturePanelModel: ObservableObject {
                 statusText = presentation.statusText
             } else if let presentation = Self.soleTogglePresentation(for: captures) {
                 statusText = presentation.statusText
+            } else if let presentation = Self.soleTaskCompletePresentation(for: captures) {
+                statusText = presentation.statusText
             } else {
                 statusText = captureStatus(
                     prefix: "Preview",
@@ -4205,6 +4220,18 @@ final class CapturePanelModel: ObservableObject {
             return nil
         }
         return CaptureTogglePresentation(capture: captures[0])
+    }
+
+    /// A batch's task-complete presentation, only when it is exactly one
+    /// `task_complete` item — the same single-item gate as the toggle
+    /// presentation.
+    private static func soleTaskCompletePresentation(
+        for captures: [CaptureCommandSuccess]
+    ) -> CaptureTaskCompletePresentation? {
+        guard captures.count == 1 else {
+            return nil
+        }
+        return CaptureTaskCompletePresentation(capture: captures[0])
     }
 
     /// A batch's link presentation, only when it is exactly one `pomodoro_link`
@@ -4510,6 +4537,8 @@ final class CapturePanelModel: ObservableObject {
                             self?.statusText = presentation.statusText
                         } else if let link = Self.soleLinkPresentation(for: captures) {
                             self?.statusText = link.statusText
+                        } else if let complete = Self.soleTaskCompletePresentation(for: captures) {
+                            self?.statusText = complete.statusText
                         } else if let close = Self.soleClosePresentation(for: captures) {
                             self?.statusText = close.statusText
                         } else if let start = Self.soleSessionStartPresentation(for: captures) {
@@ -4981,6 +5010,9 @@ final class CapturePanelModel: ObservableObject {
         }
         if let toggle = CaptureTogglePresentation(capture: capture) {
             return toggle.dayFileChanged
+        }
+        if CaptureTaskCompletePresentation(capture: capture) != nil {
+            return capture.taskComplete?.ledger != nil
         }
         if let link = CapturePomodoroLinkPresentation(capture: capture) {
             return link.dayFileChanged

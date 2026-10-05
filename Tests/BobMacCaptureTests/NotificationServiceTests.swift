@@ -1058,6 +1058,25 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertFalse(NotificationAuthorizationDisplay(status: .denied).displayName.isEmpty)
     }
 
+    func testTaskCompleteSingleUsesCompletedTitleAndNoteBody() throws {
+        let success = try closeSuccessFixture("task-complete-strike.json")
+        let content = NotificationService.successContent(captures: [success])
+
+        XCTAssertEqual(content.title, "Completed: #task Fix flaky gkeep test")
+        XCTAssertEqual(content.subtitle, "sase.md · ^fix-flaky")
+        XCTAssertTrue(content.body.contains("sase.md"))
+    }
+
+    func testTaskCompleteBatchUsesCompletedNTasksTitle() throws {
+        let batch = try closeSuccessFixture("task-complete-batch.json")
+        let captures = batch.captures
+        XCTAssertEqual(captures.count, 2)
+        let content = NotificationService.successContent(captures: captures)
+
+        XCTAssertEqual(content.title, "Completed 2 tasks")
+        XCTAssertTrue(content.body.contains("2 completed tasks"))
+    }
+
     private func capture(
         kind: String,
         routeLabel: String,

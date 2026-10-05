@@ -288,7 +288,11 @@ or expired certificate can require reauthorizing those system permissions.
   kinds (`wikilink_delimiter`, `wikilink_target`, `wikilink_heading`, `wikilink_block_id`,
   `wikilink_alias`) — resolves through the single palette in `CaptureEditorPalette`.
   The close-list spans `pomodoro_close_in_progress` and `pomodoro_close_complete`
-  render orange and green, sharing the badge colors of the rows they select;
+  render orange and green, sharing the badge colors of the rows they select; the
+  whole-item completion spans `task_complete_sigil` (green, the same complete-green
+  as `=x!`), `task_complete_note` (route), and `task_complete_block_id` (block ID)
+  reuse those existing colors, so the editor and the completion card never disagree
+  about what a completion is;
   `pomodoro_close_drop` renders muted gray. The Work Log index span
   `pomodoro_close_log_index` renders cyan, sharing the tint of the typed entry
   line it lands on in the close card; it is not a completion span kind.
@@ -689,7 +693,8 @@ updated CLI (decoders stay backward compatible for every older payload).
   Bob's returned behavior metadata; when it reports exactly one `pomodoro_link`,
   the action becomes **Start** if the link starts a session and **Link** otherwise;
   a single close — whole-item `=x`, link `=x`, or new-task `=x` — becomes
-  **Close**; a single whole-item `=`/`=<X>` start becomes **Start**;
+  **Close**; a single whole-item `=`/`=<X>` start becomes **Start**; a single
+  whole-item `!note:block-id` completion becomes **Complete**;
   batches keep **Capture** because Return will submit more than the toggle.
   Ensure Next preview, VoiceOver, and notifications present status and relocation
   independently ("Ready → Next" vs "Next unchanged", "Moved LATER → CURRENT" vs
@@ -867,6 +872,27 @@ updated CLI (decoders stay backward compatible for every older payload).
   reductions keep the newest entries and drop older overflow. Repeated cancellations are
   retained as separate entries, even when their text is identical. Settings also shows
   the retained count and a confirmed **Clear Stash...** action, which deletes the file.
+
+### Completing tasks with `!`
+
+A capture item that is exactly `!note:block-id` completes that existing open task
+without closing a Pomodoro: the task line closes exactly as `=x!N` would write it,
+its Task Links retire in today's ledger the way `bob task reconcile` would retire
+them, and Blocked dependents recover the way Ctrl+Enter recovers them. Bulk works
+one `!` item per blank-line-separated block; any failure rolls the whole batch back.
+
+The completion preview card shows the struck task (`[*] → [x]` with the task text
+struck and dimmed), one row per closed embedded subtask, one row per descendant left
+open, the ledger effect (`Strikes`/`Struck`, `Moves … SASE → CAPTURE, struck`,
+`dropped N duplicates`, `removes/removed empty …`), and one row per unblocked
+dependent — with `list.bullet.indent`, `timer`, and `lock.open.fill` fact rows under
+a green `checkmark.circle.fill` seal (`Already done — nothing to change` in gray for
+the idempotent no-op). The footer action is **Complete** and every fact joins the
+VoiceOver summary. Notifications read `Completed: <task>` (`Completed N tasks` for
+an all-completion batch) with `sase.md · unblocked <name>` bodies, and Open Note(s)
+includes the daily note whenever the ledger changed. An older Bob without
+`task_complete` decodes as no completion preview and keeps the standard card; upgrade
+Bob before using `!`.
 
 ## Keyboard
 

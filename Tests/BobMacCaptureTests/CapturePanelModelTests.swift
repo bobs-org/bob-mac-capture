@@ -3146,6 +3146,28 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(model.statusText.hasPrefix("Would close CAPTURE"))
     }
 
+    func testTaskCompleteLivePreviewDecodesFakeBobFixtureAndShowsCompleteAction() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "!sase:fix-flaky"
+        model.editorTextDidChange(cursorUTF8Offset: 15)
+
+        await waitUntil {
+            if case .ready(let preview) = model.previewState {
+                return preview.kind == "task_complete"
+            }
+            return false
+        }
+
+        let complete = try XCTUnwrap(model.taskCompletePresentation)
+        XCTAssertEqual(complete.destinationLabel, "sase.md · ^fix-flaky")
+        XCTAssertEqual(model.primaryActionTitle, "Complete")
+        XCTAssertTrue(model.statusText.contains("sase.md"))
+    }
+
     func testEditingDraftClearsStaleClosePreviewAndFooterAction() throws {
         let close = try closeSuccessFixture("pomodoro-close-worked.json")
         let model = CapturePanelModel(debounceNanoseconds: 10_000_000_000)
