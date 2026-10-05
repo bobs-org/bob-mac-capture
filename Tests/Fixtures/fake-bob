@@ -2462,6 +2462,10 @@ JSON
       sed -e "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" \
           -e 's/"start":0,"end":1/"start":0,"end":4/g' \
           "${fixtures_dir}/task-complete-complete-full.json"
+    elif [[ "${draft}" == *$'\n\n!' ]]; then
+      # Shift-Return chaining: the fresh item reopens the Complete picker
+      # (real `bob capture-complete` output for the trailing `!`).
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/task-complete-complete-full.json"
     elif [[ "${draft}" == "+" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-full.json"
     elif [[ "${draft}" == "+bank" ]]; then
@@ -3095,6 +3099,40 @@ JSON
       # output; exit status included).
       cat "${fixtures_dir}/task-link-task-id-duplicate.json"
       exit 1
+    fi
+    if [[ -n "${note_path}" && -n "${block_id}" ]]; then
+      # ID assignment via `--note-path` (the `!` Complete and `&` dependency
+      # flows): splice Bob's backend-formatted replacement verbatim. The
+      # locator strips the `.md` extension; it never echoes the file name.
+      locator="${note_path%.md}"
+      updated_ref="8:${block_id}-updated"
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "dry_run": ${dry_run},
+  "relative_target": "${note_path}",
+  "note_path": "${note_path}",
+  "block_id": "${block_id}",
+  "line": 8,
+  "ref": "${updated_ref}",
+  "dependency_replacement": "&${locator}:${block_id}",
+  "complete_replacement": "!${locator}:${block_id}",
+  "task": {
+    "ref": "${updated_ref}",
+    "line": 8,
+    "block_id": "${block_id}",
+    "status_symbol": " ",
+    "status_name": "Todo",
+    "status_type": "TODO",
+    "text": "Plan the handoff",
+    "section": "Tasks",
+    "depth": 1,
+    "child_count": 0
+  }
+}
+JSON
+      exit 0
     fi
     updated_ref="8:${block_id}-updated"
     cat <<JSON

@@ -477,7 +477,49 @@ final class TaskCompletePickerPresentationTests: XCTestCase {
         let presentation = try workedExamplePresentation(filter: "sase")
         XCTAssertEqual(presentation.mode, .filtered)
         XCTAssertEqual(presentation.sections.map { $0.title }, ["Today", "All open tasks"])
+        XCTAssertTrue(presentation.sections.allSatisfy { $0.kind == .taskCompleteFiltered })
         XCTAssertTrue(presentation.rowsByID["sase.md|1:41d049f2"] != nil)
+    }
+
+    func testCompletedPomodoroSectionsCarryDoneCapsule() throws {
+        let presentation = try workedExamplePresentation()
+        let worked = try XCTUnwrap(presentation.sections.first { $0.title == "🍅 PLAN" })
+        XCTAssertTrue(worked.showsDoneCapsule)
+        let running = try XCTUnwrap(presentation.sections.first { $0.title == "CAPTURE" })
+        XCTAssertFalse(running.showsDoneCapsule)
+        XCTAssertTrue(running.isCurrent)
+        let queued = try XCTUnwrap(presentation.sections.first { $0.title == "UP NEXT SASE" })
+        XCTAssertFalse(queued.showsDoneCapsule)
+    }
+
+    func testTwoWorkedPomodorosStayMostRecentFirst() throws {
+        let first = try JSONDecoder().decode(
+            CaptureCompletionCandidate.self,
+            from: Data("""
+            {"replacement": "!sase:newer", "ref": "1:aa01", "note_path": "sase.md",
+             "locator": "sase", "group": "today", "block_id": "newer",
+             "status_symbol": " ", "status_name": "Ready", "text": "Newer",
+             "today": {"role": "worked",
+              "pomodoro": {"line": 9, "name": "EVENING", "time_range": "1800-1830", "status": "completed"},
+              "sessions": 0}}
+            """.utf8)
+        )
+        let second = try JSONDecoder().decode(
+            CaptureCompletionCandidate.self,
+            from: Data("""
+            {"replacement": "!sase:older", "ref": "1:aa02", "note_path": "sase.md",
+             "locator": "sase", "group": "today", "block_id": "older",
+             "status_symbol": " ", "status_name": "Ready", "text": "Older",
+             "today": {"role": "worked",
+              "pomodoro": {"line": 5, "name": "PLAN", "time_range": "0800-0830", "status": "completed"},
+              "sessions": 0}}
+            """.utf8)
+        )
+        let presentation = TaskCompletePickerIndex(candidates: [first, second]).presentation(filter: "")
+        let titles = presentation.sections.map { $0.title }
+        XCTAssertEqual(titles, ["🍅 EVENING", "🍅 PLAN"])
+        XCTAssertTrue(presentation.sections.allSatisfy { $0.showsDoneCapsule })
+        XCTAssertEqual(presentation.sections.map { $0.timeRangeText }, ["18:00–18:30", "08:00–08:30"])
     }
 
     func testFilterNoMatches() throws {

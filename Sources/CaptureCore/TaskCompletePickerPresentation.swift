@@ -97,7 +97,7 @@ public struct TaskCompletePickerIndex: Sendable {
         if !todayRows.isEmpty {
             sections.append(CapturePickerSection(
                 id: "task-complete-today",
-                kind: .matches,
+                kind: .taskCompleteFiltered,
                 title: "Today",
                 rows: todayRows
             ))
@@ -105,7 +105,7 @@ public struct TaskCompletePickerIndex: Sendable {
         if !allRows.isEmpty {
             sections.append(CapturePickerSection(
                 id: "task-complete-all",
-                kind: .matches,
+                kind: .taskCompleteFiltered,
                 title: "All open tasks",
                 rows: allRows
             ))
@@ -197,6 +197,7 @@ public struct TaskCompletePickerIndex: Sendable {
                 timeRangeText: pomodoro?.timeRange.map { ActiveTaskPickerIndex.formattedTimeRange($0) },
                 ordinal: ordinal,
                 isCurrent: isCurrent,
+                showsDoneCapsule: status == "completed",
                 rows: rows
             ))
         }
@@ -378,8 +379,14 @@ public struct TaskCompletePickerIndex: Sendable {
 
     /// The detail-strip action line for `row`: the insertion for identified
     /// rows, the Add block ID outcome for ID-less rows, or the guard reason
-    /// for disabled rows.
+    /// for disabled rows. The picker detail strip calls this directly so the
+    /// wording lives in exactly one place.
     public func actionLine(for row: CapturePickerRow) -> String {
+        Self.actionLine(for: row)
+    }
+
+    /// Type-level action line so SwiftUI can render it without owning an index.
+    public static func actionLine(for row: CapturePickerRow) -> String {
         if let insertion = row.insertion {
             let symbol = statusSymbol(for: row) ?? " "
             return "Inserts \(insertion) — completes it [\(symbol)] → [x]"
@@ -397,7 +404,7 @@ public struct TaskCompletePickerIndex: Sendable {
         return "↩ names this task, then inserts its completion"
     }
 
-    private func statusSymbol(for row: CapturePickerRow) -> String? {
+    private static func statusSymbol(for row: CapturePickerRow) -> String? {
         switch row.glyph {
         case .task(let status):
             switch status {

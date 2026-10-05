@@ -486,14 +486,17 @@ to browse".
 Bob lists every open task (Ready, Blocked, Next, In Progress) vault-wide,
 today first. With an empty filter rows group in Bob's order: one section per
 today Pomodoro (the running entry with the pink NOW pill, completed entries
-recent-first with 🍅 and their time range, queued entries with UP NEXT),
-then "In today's note", In Progress, Next, and one section per note
-(`note_path` with a `doc` icon). While filtering, two ranked sections appear:
-Today then All open tasks. Rows show the status glyph (Blocked is
-`pause.circle`), text, and locator (note in accent, `:` , ID in indigo), a
-`🍅 N` capsule when the task was in two or more Pomodoros today, and a
-schedule capsule when present. Disabled rows stay visible with their reason
-badge and no insertion; recurring rows sort last.
+recent-first with 🍅, their time range, and a Done capsule, queued entries
+with UP NEXT), then "In today's note", In Progress, Next, and one section
+per note (`note_path` with a `doc` icon). While filtering, two ranked
+sections appear with their headers: Today then All open tasks. Rows show the
+status glyph (Blocked is `pause.circle`), text, and locator (note in accent,
+`:` , ID in indigo), a `🍅 N` capsule when the task was in two or more
+Pomodoros today, and a schedule capsule when present. Disabled rows stay
+visible with their reason badge and no insertion; recurring rows sort last.
+The detail strip renders Bob's action line for the selected row
+(`Inserts !sase:fix-flaky — completes it [*] → [x]`, with a Blocked variant
+and the disabled reason).
 
 Return (or Tab) inserts Bob's `!note:block-id`; Shift-Return inserts, appends
 a blank line plus `!`, and the fresh picker opens with the just-picked task
@@ -504,7 +507,8 @@ hands off to embed completion. Escape and Backspace behave as in `:`.
 
 ID-less rows open the Add block ID prompt via `capture-task-id --note-path`
 and splice Bob's `complete_replacement` verbatim; Swift never builds the
-token. The buttons read Add ID & Insert and Add ID & Complete.
+token. The prompt previews `!<locator>:<id>` from Bob's candidate locator,
+never the file name. The buttons read Add ID & Insert and Add ID & Complete.
 
 Preview shows `New task · depends on …` or `Add dependency to "…"`, the
 resulting `DEPENDS ON` child, the waiting count, and the Blocked/closed
@@ -912,15 +916,20 @@ its Task Links retire in today's ledger the way `bob task reconcile` would retir
 them, and Blocked dependents recover the way Ctrl+Enter recovers them. Bulk works
 one `!` item per blank-line-separated block; any failure rolls the whole batch back.
 
-The completion preview card shows the struck task (`[*] → [x]` with the task text
-struck and dimmed), one row per closed embedded subtask, one row per descendant left
-open, the ledger effect (`Strikes`/`Struck`, `Moves … SASE → CAPTURE, struck`,
-`dropped N duplicates`, `removes/removed empty …`), and one row per unblocked
-dependent — with `list.bullet.indent`, `timer`, and `lock.open.fill` fact rows under
+The completion preview card shows the struck task (`[*] → [x]` with Bob's clean
+task text struck and dimmed), one row per closed embedded subtask, one row per
+descendant left open, the ledger effect named per entry (`Strikes/Struck its Task
+Link in CAPTURE`, with ` (completed)` for completed entries,
+`Moves/Moved its Task Link SASE → CAPTURE, struck`,
+`Task Link already in PLAN; drops/dropped the SASE copy`,
+`removes/removed empty SASE`), and one row per unblocked dependent — with
+`list.bullet.indent`, `timer`, and `lock.open.fill` fact rows under
 a green `checkmark.circle.fill` seal (`Already done — nothing to change` in gray for
-the idempotent no-op). The footer action is **Complete** and every fact joins the
-VoiceOver summary. Notifications read `Completed: <task>` (`Completed N tasks` for
-an all-completion batch) with `sase.md · unblocked <name>` bodies, and Open Note(s)
+the idempotent no-op). An older Bob without `text`, `struck_in`, or `dropped` keeps
+the count-based ledger wording and the local task-line text. The footer action is
+**Complete** and every fact joins the VoiceOver summary. Notifications read
+`Completed: <task>` (`Completed N tasks` for an all-completion batch) with
+`sase.md · unblocked <name>` bodies, and Open Note(s)
 includes the daily note whenever the ledger changed. An older Bob without
 `task_complete` decodes as no completion preview and keeps the standard card; upgrade
 Bob before using `!`.

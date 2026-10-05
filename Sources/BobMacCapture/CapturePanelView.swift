@@ -1065,12 +1065,22 @@ private struct TaskIDPromptCard: View {
         case .dependency(let notePath, _, _, _, _, _):
             return "Inserts &\(notePath):\(typed)"
         case .taskComplete(let notePath, _, _, _, _):
-            return "Inserts !\(notePath):\(typed)"
+            return "Inserts !\(taskCompleteLocator(for: prompt, fallback: notePath)):\(typed)"
         case .parentTask:
             return ""
         case .parentTaskPicker(let route, _, _, _, _, _):
             return "Inserts @\(route)+\(typed)"
         }
+    }
+
+    /// Bob's candidate locator for the Complete ID prompt (for example
+    /// `sase`), never the file name. Falls back to the stored note path for
+    /// older snapshots without a locator.
+    private func taskCompleteLocator(for prompt: CaptureTaskIDPromptState, fallback: String) -> String {
+        if let locator = prompt.candidate.locator, !locator.isEmpty {
+            return locator
+        }
+        return fallback
     }
 
     private func linkInsertsText(for prompt: CaptureTaskIDPromptState) -> Text {
@@ -1082,7 +1092,7 @@ private struct TaskIDPromptCard: View {
         case .dependency(let notePath, _, _, _, _, _):
             return Text("\(Text("Inserts &").foregroundStyle(.secondary))\(Text(notePath).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
         case .taskComplete(let notePath, _, _, _, _):
-            return Text("\(Text("Inserts !").foregroundStyle(.secondary))\(Text(notePath).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
+            return Text("\(Text("Inserts !").foregroundStyle(.secondary))\(Text(taskCompleteLocator(for: prompt, fallback: notePath)).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
         case .parentTask:
             return Text("")
         case .parentTaskPicker(let route, _, _, _, _, _):

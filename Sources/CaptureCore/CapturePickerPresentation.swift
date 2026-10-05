@@ -606,13 +606,16 @@ public enum CapturePickerAvailability: Equatable, Sendable {
 /// Pomodoro, unqueued, other, and matches buckets; the Block ID source adds
 /// note headings, suggestions, and used IDs; the `:` source reuses the
 /// Pomodoro and unqueued buckets and adds per-note sections. The
-/// filtered view uses a single header-less `.matches` section.
+/// filtered view uses a single header-less `.matches` section, except the
+/// Complete picker, which uses header-bearing `.taskCompleteFiltered`
+/// sections for its Today / All open tasks split.
 public enum CapturePickerSectionKind: Equatable, Sendable {
     case pomodoro
     case unqueuedInProgress
     case unqueuedNext
     case other
     case matches
+    case taskCompleteFiltered
     case noteHeading
     case suggestions
     case usedIDs
@@ -634,6 +637,9 @@ public struct CapturePickerSection: Equatable, Sendable {
     public let isCurrent: Bool
     /// Overrides the `"N task(s)"` header count when set. Unset for `^`.
     public let countText: String?
+    /// Shows the `Done` capsule in the section header. Set only for
+    /// completed Pomodoro sections in the Complete picker.
+    public let showsDoneCapsule: Bool
     public let rows: [CapturePickerRow]
 
     public init(
@@ -645,6 +651,7 @@ public struct CapturePickerSection: Equatable, Sendable {
         ordinal: Int = 0,
         isCurrent: Bool = false,
         countText: String? = nil,
+        showsDoneCapsule: Bool = false,
         rows: [CapturePickerRow] = []
     ) {
         self.id = id
@@ -655,6 +662,7 @@ public struct CapturePickerSection: Equatable, Sendable {
         self.ordinal = ordinal
         self.isCurrent = isCurrent
         self.countText = countText
+        self.showsDoneCapsule = showsDoneCapsule
         self.rows = rows
     }
 }

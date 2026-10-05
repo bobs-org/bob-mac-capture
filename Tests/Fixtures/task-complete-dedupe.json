@@ -1,1 +1,126 @@
-{"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md","relative_target":"sase.md","target":"/tmp/bob-mac-capture-task-complete/vault/sase.md","text":"","task_line":"- [x] #task Carried  [completion:: 2026-10-05] ^carry","kind":"task_complete","created":"2026-10-05","scheduled":null,"placement":"completed","block_id":"carry","previous_task_line":"- [*] #task Carried ^carry","status_symbol":"x","status_name":"Done","previous_status_symbol":"*","previous_status_name":"Next","status_changed":true,"task_complete":{"raw":"!sase:carry","note":"sase","note_path":"sase.md","block_id":"carry","action":"completed","completion_date":"2026-10-05","subtasks":[],"subtasks_left_open":[],"ledger":{"day_file":"20261005.md","struck":1,"moved":[],"deduplicated":1,"removed_placeholders":[{"name":"SASE"}]},"unblocked":[]},"plan_budget":{"status":"ok","themes":{"count":0,"cap":3,"over":false,"before":1},"links":{"count":0,"cap":10,"over":false,"before":1}},"pomodoro_blocks":[{"relative_target":"20261005.md","line":2,"name":"PLAN","time_range":"0830-0855","status":"completed","created":false,"roles":["changed"],"lines":[{"text":"- [x] (**0830-0855**) \u2014 PLAN","depth":0,"change":"unchanged"},{"text":"  - \ud83c\udf45 ~~[[sase#^carry]]~~","depth":1,"change":"changed","before":"  - [[sase#^carry]]"}]}],"task_blocks":[{"relative_target":"sase.md","route":"sase","line":1,"block_id":"carry","text":"Carried","status_symbol":"x","status_name":"Done","created":false,"roles":["completed"],"lines":[{"text":"- [x] #task Carried  [completion:: 2026-10-05] ^carry","depth":0,"change":"changed","before":"- [*] #task Carried ^carry"}]}]}
+{
+ "ok": true,
+ "dry_run": false,
+ "routed": true,
+ "route": null,
+ "route_label": "sase.md",
+ "relative_target": "sase.md",
+ "target": "/tmp/bob-mac-capture-task-complete/vault/sase.md",
+ "text": "",
+ "task_line": "- [x] #task Carried  [completion:: 2026-10-05] ^carry",
+ "kind": "task_complete",
+ "created": "2026-10-05",
+ "scheduled": null,
+ "placement": "completed",
+ "block_id": "carry",
+ "previous_task_line": "- [*] #task Carried ^carry",
+ "status_symbol": "x",
+ "status_name": "Done",
+ "previous_status_symbol": "*",
+ "previous_status_name": "Next",
+ "status_changed": true,
+ "task_complete": [
+  {
+   "raw": "!sase:carry",
+   "note": "sase",
+   "note_path": "sase.md",
+   "block_id": "carry",
+   "action": "completed",
+   "completion_date": "2026-10-05",
+   "text": "Carried",
+   "subtasks": [],
+   "subtasks_left_open": [],
+   "ledger": {
+    "day_file": "20261005.md",
+    "struck": 0,
+    "struck_in": [],
+    "moved": [],
+    "deduplicated": 1,
+    "dropped": [
+     {
+      "from": {
+       "line": 4,
+       "name": "SASE",
+       "status": "queued"
+      },
+      "to": {
+       "line": 2,
+       "name": "MORNING",
+       "status": "completed"
+      }
+     }
+    ],
+    "removed_placeholders": [
+     {
+      "name": "SASE"
+     }
+    ]
+   },
+   "unblocked": []
+  }
+ ],
+ "plan_budget": {
+  "status": "ok",
+  "themes": {
+   "count": 0,
+   "cap": 3,
+   "over": false,
+   "before": 1
+  },
+  "links": {
+   "count": 0,
+   "cap": 10,
+   "over": false,
+   "before": 1
+  }
+ },
+ "pomodoro_blocks": [
+  {
+   "relative_target": "20261005.md",
+   "line": 2,
+   "name": "PLAN",
+   "time_range": "0830-0855",
+   "status": "completed",
+   "created": false,
+   "roles": [
+    "changed"
+   ],
+   "lines": [
+    {
+     "text": "- [x] (**0830-0855**) \u2014 PLAN",
+     "depth": 0,
+     "change": "unchanged"
+    },
+    {
+     "text": "  - \ud83c\udf45 ~~[[sase#^carry]]~~",
+     "depth": 1,
+     "change": "changed",
+     "before": "  - [[sase#^carry]]"
+    }
+   ]
+  }
+ ],
+ "task_blocks": [
+  {
+   "relative_target": "sase.md",
+   "route": "sase",
+   "line": 1,
+   "block_id": "carry",
+   "text": "Carried",
+   "status_symbol": "x",
+   "status_name": "Done",
+   "created": false,
+   "roles": [
+    "completed"
+   ],
+   "lines": [
+    {
+     "text": "- [x] #task Carried  [completion:: 2026-10-05] ^carry",
+     "depth": 0,
+     "change": "changed",
+     "before": "- [*] #task Carried ^carry"
+    }
+   ]
+  }
+ ]
+}

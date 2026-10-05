@@ -99,10 +99,13 @@ public struct CaptureTaskCompletePresentation: Equatable, Sendable {
             destinationLabel = routeLabel
         }
 
-        previewText = CaptureTogglePresentation.taskPreviewText(
+        // Bob's clean task text when present; fall back to the local
+        // task-line parse so older bob still previews.
+        let fallbackPreview = CaptureTogglePresentation.taskPreviewText(
             from: capture.taskLine,
             blockID: capture.blockID ?? (summary.blockID.isEmpty ? nil : summary.blockID)
         )
+        previewText = summary.text.isEmpty ? fallbackPreview : summary.text
         let previousMarker = CaptureTogglePresentation.marker(for: capture.previousStatusSymbol)
         let currentMarker = CaptureTogglePresentation.marker(for: capture.statusSymbol)
         if isAlreadyDone {
@@ -114,7 +117,7 @@ public struct CaptureTaskCompletePresentation: Equatable, Sendable {
         subtaskRows = summary.subtasks.map { subtask in
             let from = CaptureTogglePresentation.marker(for: subtask.previousStatusSymbol)
             let to = CaptureTogglePresentation.marker(for: subtask.statusSymbol)
-            let locator = "\(subtask.notePath) ^\(subtask.blockID)"
+            let locator = Self.locator(notePath: subtask.notePath, blockID: subtask.blockID)
             if subtask.text.isEmpty {
                 return SubtaskRow(transitionText: "\(from) → \(to)", locatorText: locator)
             }
@@ -126,7 +129,7 @@ public struct CaptureTaskCompletePresentation: Equatable, Sendable {
 
         leftOpenRows = summary.subtasksLeftOpen.map { left in
             let marker = CaptureTogglePresentation.marker(for: left.statusSymbol)
-            let locator = "\(left.notePath) ^\(left.blockID)"
+            let locator = Self.locator(notePath: left.notePath, blockID: left.blockID)
             if left.text.isEmpty {
                 return LeftOpenRow(
                     displayText: "left \(left.statusName) \(marker)",
@@ -142,7 +145,7 @@ public struct CaptureTaskCompletePresentation: Equatable, Sendable {
         unblockedRows = summary.unblocked.map { item in
             let from = CaptureTogglePresentation.marker(for: item.previousStatusSymbol)
             let to = CaptureTogglePresentation.marker(for: item.statusSymbol)
-            let locator = "\(item.notePath) ^\(item.blockID)"
+            let locator = Self.locator(notePath: item.notePath, blockID: item.blockID)
             if item.text.isEmpty {
                 return UnblockedRow(
                     transitionText: "\(from) → \(to)",
@@ -218,11 +221,75 @@ public struct CaptureTaskCompletePresentation: Equatable, Sendable {
         previewAccessibilitySummary = parts.joined(separator: ", ")
     }
 
+    /// Human locator for a row: the note path plus ` ^block-id`, or just
+    /// the note path when the row has no block ID.
+    private static func locator(notePath: String, blockID: String) -> String {
+        if blockID.isEmpty {
+            return notePath
+        }
+        return "\(notePath) ^\(blockID)"
+    }
+
+    /// Ledger entry label mirroring Bob's human line: the short entry name,
+    /// or `line N` when the entry has no name.
+    private static func entryLabel(name: String, line: Int) -> String {
+        if name.isEmpty {
+            return "line \(line)"
+        }
+        return name
+    }
+
     private static func ledgerText(ledger: TaskCompleteLedger, isDryRun: Bool) -> String? {
+        // New Bob always sends both arrays (possibly empty) whenever ledger
+        // is present; older Bob omits them, so keep the count-based wording
+        // as the fallback.
+        if let struckIn = ledger.struckIn, let dropped = ledger.dropped {
+            var parts: [String] = []
+            for struck in struckIn {
+                let label = entryLabel(name: struck.name, line: struck.line)
+                let completed = struck.status == "completed" ? " (completed)" : ""
+                if isDryRun {
+                    parts.append("Strikes its Task Link in \(label)\(completed)")
+                } else {
+                    parts.append("Struck its Task Link in \(label)\(completed)")
+                }
+            }
+            for item in ledger.moved {
+                let from = entryLabel(name: item.from.name, line: item.from.line)
+                let to = entryLabel(name: item.to.name, line: item.to.line)
+                if isDryRun {
+                    parts.append("Moves its Task Link \(from) → \(to), struck")
+                } else {
+                    parts.append("Moved its Task Link \(from) → \(to), struck")
+                }
+            }
+            for item in dropped {
+                let from = entryLabel(name: item.from.name, line: item.from.line)
+                let to = entryLabel(name: item.to.name, line: item.to.line)
+                if isDryRun {
+                    parts.append("Task Link already in \(to); drops the \(from) copy")
+                } else {
+                    parts.append("Task Link already in \(to); dropped the \(from) copy")
+                }
+            }
+            for removed in ledger.removedPlaceholders {
+                if isDryRun {
+                    parts.append("removes empty \(removed.name)")
+                } else {
+                    parts.append("removed empty \(removed.name)")
+                }
+            }
+            guard !parts.isEmpty else {
+                return nil
+            }
+            return parts.joined(separator: " · ")
+        }
         var parts: [String] = []
         if !ledger.moved.isEmpty {
-            let moves = ledger.moved.map { "\($0.from.name) → \($0.to.name)" }
-                .joined(separator: ", ")
+            let moves = ledger.moved.map {
+                "\(entryLabel(name: $0.from.name, line: $0.from.line)) → \(entryLabel(name: $0.to.name, line: $0.to.line))"
+            }
+            .joined(separator: ", ")
             let verb = isDryRun ? "Moves" : "Moved"
             parts.append("\(verb) its Task Link \(moves), struck")
         } else if ledger.struck > 0, ledger.deduplicated == 0 {

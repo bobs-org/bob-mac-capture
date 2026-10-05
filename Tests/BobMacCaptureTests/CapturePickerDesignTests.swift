@@ -967,8 +967,10 @@ final class CapturePickerDesignTests: XCTestCase {
         ]
     }
 
-    /// Complete render fixture: running and worked today rows, an ID-less
-    /// row, a sessions capsule, a disabled row, and per-note open rows.
+    /// Complete render fixture: running and two worked today rows (most
+    /// recent first, each with a Done capsule), an ID-less row, a sessions
+    /// capsule, a disabled row, and per-note open rows. The filtered state
+    /// also exercises the Today / All open tasks headers.
     private static var taskCompleteRenderCandidates: [CaptureCompletionCandidate] {
         [
             CaptureCompletionCandidate(
@@ -986,6 +988,23 @@ final class CapturePickerDesignTests: XCTestCase {
                     role: "running",
                     pomodoro: TaskCompleteTodayPomodoro(line: 2, name: "CAPTURE", timeRange: "0920-0950", status: "running"),
                     sessions: 1
+                )
+            ),
+            CaptureCompletionCandidate(
+                replacement: "!sase:evening-review",
+                taskRef: "4:aa01bb02",
+                blockID: "evening-review",
+                statusSymbol: " ",
+                statusName: "Ready",
+                statusType: "TODO",
+                text: "Evening review",
+                group: "today",
+                notePath: "sase.md",
+                locator: "sase",
+                today: TaskCompleteToday(
+                    role: "worked",
+                    pomodoro: TaskCompleteTodayPomodoro(line: 9, name: "EVENING", timeRange: "1800-1830", status: "completed"),
+                    sessions: 0
                 )
             ),
             CaptureCompletionCandidate(

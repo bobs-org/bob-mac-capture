@@ -265,6 +265,103 @@ final class CaptureTaskCompletePanelTests: XCTestCase {
         XCTAssertFalse(response.candidates.isEmpty)
     }
 
+    func testBangAutoOpensCompletePickerFromFakeBob() async throws {
+        let model = try liveModel()
+        model.plainDraft = "!"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        XCTAssertTrue(model.pickerSourceIsTaskComplete)
+        XCTAssertFalse(model.picker?.candidates.isEmpty ?? true)
+        XCTAssertEqual(model.picker?.filterText, "")
+    }
+
+    func testShiftReturnReopensPickerAfterChaining() async throws {
+        let model = try liveModel()
+        model.plainDraft = "!"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        let firstID = try XCTUnwrap(model.pickerPresentation?.orderedRowIDs.first)
+        let first = try XCTUnwrap(model.pickerPresentation?.row(id: firstID))
+        let insertion = try XCTUnwrap(first.insertion)
+        model.acceptPickerRowAndContinue(id: firstID)
+        XCTAssertEqual(model.plainDraft, "\(insertion)\n\n!")
+        XCTAssertTrue(model.statusText.contains("pick the next task"))
+        await waitUntil { model.pickerVisible }
+        XCTAssertTrue(model.pickerSourceIsTaskComplete)
+    }
+
+    func testIDPromptSplicesBobCompleteReplacement() async throws {
+        let model = try liveModel()
+        model.plainDraft = "!"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        let idlessID = try XCTUnwrap(
+            model.pickerPresentation?.orderedRowIDs.first {
+                model.pickerPresentation?.row(id: $0)?.pendingBlockID != nil
+            }
+        )
+        let pending = try XCTUnwrap(model.pickerPresentation?.row(id: idlessID)?.pendingBlockID)
+        let authored = try XCTUnwrap(pending.suggestions.first)
+        model.acceptPickerRow(id: idlessID, submitAfterInsert: false)
+        XCTAssertTrue(model.taskIDPromptVisible)
+        XCTAssertTrue(model.taskIDPromptIsTaskComplete)
+        XCTAssertEqual(model.taskIDPrompt?.authoredID, authored)
+        model.submitTaskIDPrompt()
+        await waitUntil { !model.taskIDPromptVisible }
+        // Bob's `complete_replacement` verbatim: the locator, never the file name.
+        XCTAssertEqual(model.plainDraft, "!sase:\(authored)")
+    }
+
+    func testRefusalFixtureSurfacesBobError() async throws {
+        let model = try liveModel()
+        model.plainDraft = "!sase:cx"
+        model.submit(openAfterCapture: false)
+        await waitUntil { model.errorMessage != nil || model.statusText == "Capture failed" }
+        let message = model.errorMessage ?? model.statusText
+        XCTAssertTrue(
+            message.contains("Canceled"),
+            "refusal surfaces Bob's error, got: \(message)"
+        )
+        XCTAssertEqual(model.plainDraft, "!sase:cx")
+    }
+
+    private func liveModel() throws -> CapturePanelModel {
+        CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+    }
+
+    private func fakeBobPath() throws -> String {
+        let source = URL(fileURLWithPath: #filePath)
+        let packageRoot = source
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return packageRoot
+            .appendingPathComponent("Tests/Fixtures/fake-bob")
+            .path
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ condition: @escaping () -> Bool
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline {
+                XCTFail("Condition not met before timeout", file: file, line: line)
+                return
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
     private func runFakeBob(_ path: String, args: [String]) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)

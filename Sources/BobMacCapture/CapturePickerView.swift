@@ -471,9 +471,29 @@ private struct CapturePickerSectionHeader: View {
             suggestionHeader
         case .usedIDs:
             usedIDsHeader
+        case .taskCompleteFiltered:
+            taskCompleteFilteredHeader
         case .pomodoro, .unqueuedInProgress, .unqueuedNext, .other, .matches, .note:
             standardHeader
         }
+    }
+
+    private var taskCompleteFilteredHeader: some View {
+        HStack(spacing: 6) {
+            Text(section.title)
+                .font(.callout.weight(.semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 8)
+            Text(section.countText ?? "\(section.rows.count) task\(section.rows.count == 1 ? "" : "s")")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+        }
+        .frame(height: CapturePanelLayout.pickerSectionHeaderHeight)
+        .padding(.horizontal, 8)
+        .background(.regularMaterial)
+        .accessibilityAddTraits(.isHeader)
     }
 
     private var noteHeadingHeader: some View {
@@ -563,6 +583,15 @@ private struct CapturePickerSectionHeader: View {
                     .padding(.vertical, 1)
                     .background(.pink, in: Capsule())
                     .accessibilityLabel("Current Pomodoro")
+            }
+            if section.showsDoneCapsule {
+                Text("Done")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(.secondary.opacity(0.15), in: Capsule())
+                    .accessibilityLabel("Completed Pomodoro")
             }
             if section.kind == .note, let subtitle = section.subtitle, !subtitle.isEmpty {
                 Text("· \(subtitle)")
@@ -962,22 +991,7 @@ private struct CapturePickerDetailStrip: View {
             }
         }
         if source == .taskComplete {
-            if let insertion = row.insertion {
-                return Text("Inserts \(insertion) — completes it")
-                    .foregroundColor(.secondary)
-            }
-            if let pending = row.pendingBlockID {
-                if let first = pending.suggestions.first {
-                    let locator = row.route ?? pending.route
-                    return Text("↩ adds ^\(first), then inserts !\(locator):\(first)")
-                        .foregroundColor(.secondary)
-                }
-                return Text("↩ names this task, then inserts its completion")
-                    .foregroundColor(.secondary)
-            }
-            if let badge = row.badgeText, !badge.isEmpty {
-                return Text(badge).foregroundColor(.secondary)
-            }
+            return Text(TaskCompletePickerIndex.actionLine(for: row)).foregroundColor(.secondary)
         }
         if case .parentTask = source {
             return Text(parentTaskActionLine(for: row)).foregroundColor(.secondary)

@@ -14,11 +14,12 @@ import XCTest
 //   $BOB capture -b $VAULT -f json --dry-run -- '!sase:fix-flaky'   # task-complete-strike.json
 //   $BOB capture -b $VAULT -f json --dry-run -- '!sase:mv1'        # task-complete-move.json
 //   $BOB capture -b $VAULT -f json --dry-run -- '!sase:carry'      # task-complete-dedupe.json
-//   $BOB capture -b $VAULT -f json --dry-run -- '!sase:big-task'   # task-complete-subtasks.json
+//   $BOB capture -b $VAULT -f json --dry-run -- '!sase:root'       # task-complete-subtasks.json
 //   $BOB capture -b $VAULT -f json --dry-run -- '!travel:dep'      # task-complete-unblocked.json
 //   $BOB capture -b $VAULT -f json --dry-run -- '!sase:fin'        # task-complete-already-done.json
 //   $BOB capture -b $VAULT -f json --dry-run -- '!sase:one        # task-complete-batch.json
 //     <blank line>!sase:two'
+//   $BOB capture -b $VAULT -f json --dry-run -- '!sase:ptask'       # task-complete-strike-completed.json
 //   $BOB capture -b $VAULT -f json --dry-run -- '!sase:cx'         # task-complete-refusal.json (ok:false)
 final class CaptureTaskCompletePresentationTests: XCTestCase {
     func testInitReturnsNilForANonCompleteCapture() throws {
@@ -77,16 +78,16 @@ final class CaptureTaskCompletePresentationTests: XCTestCase {
         XCTAssertFalse(presentation.isAlreadyDone)
         XCTAssertEqual(presentation.headline, "Complete")
         XCTAssertEqual(presentation.destinationLabel, "sase.md · ^fix-flaky")
-        XCTAssertEqual(presentation.transitionText, "[*] → [x]  #task Fix flaky gkeep test")
-        XCTAssertEqual(presentation.previewText, "#task Fix flaky gkeep test")
+        XCTAssertEqual(presentation.transitionText, "[*] → [x]  Fix flaky gkeep test")
+        XCTAssertEqual(presentation.previewText, "Fix flaky gkeep test")
         XCTAssertEqual(presentation.primaryActionTitle, "Complete")
-        XCTAssertTrue(presentation.ledgerText?.contains("Struck its Task Link") == true)
+        XCTAssertEqual(presentation.ledgerText, "Struck its Task Link in CAPTURE")
         XCTAssertEqual(presentation.subtaskRows, [])
         XCTAssertEqual(presentation.leftOpenRows, [])
         XCTAssertEqual(presentation.unblockedRows, [])
         XCTAssertEqual(presentation.chips, [])
         XCTAssertTrue(presentation.statusText.hasPrefix("Complete → sase.md · ^fix-flaky"))
-        XCTAssertEqual(presentation.notificationTitle, "Completed: #task Fix flaky gkeep test")
+        XCTAssertEqual(presentation.notificationTitle, "Completed: Fix flaky gkeep test")
         XCTAssertTrue(presentation.notificationBody.contains("sase.md"))
         XCTAssertTrue(presentation.previewAccessibilitySummary.contains("sase.md · ^fix-flaky"))
         XCTAssertTrue(presentation.previewAccessibilitySummary.contains("[*] → [x]"))
@@ -98,14 +99,175 @@ final class CaptureTaskCompletePresentationTests: XCTestCase {
 
         XCTAssertTrue(presentation.isDryRun)
         XCTAssertEqual(presentation.headline, "Would complete")
-        XCTAssertTrue(presentation.ledgerText?.contains("Strikes its Task Link") == true)
+        XCTAssertEqual(presentation.ledgerText, "Strikes its Task Link in CAPTURE")
         XCTAssertTrue(presentation.statusText.hasPrefix("Would complete →"))
+    }
+
+    func testCleanTextFromBobFallsBackWithoutText() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": null,
+              "route_label": "sase.md",
+              "relative_target": "sase.md",
+              "target": "/tmp/bob/sase.md",
+              "text": "",
+              "task_line": "- [x] #task Fix flaky gkeep test  [completion:: 2026-10-05] ^fix-flaky",
+              "kind": "task_complete",
+              "created": "2026-10-05",
+              "placement": "completed",
+              "block_id": "fix-flaky",
+              "previous_task_line": "- [*] #task Fix flaky gkeep test ^fix-flaky",
+              "status_symbol": "x",
+              "status_name": "Done",
+              "previous_status_symbol": "*",
+              "previous_status_name": "Next",
+              "task_complete": {
+                "raw": "!sase:fix-flaky",
+                "note": "sase",
+                "note_path": "sase.md",
+                "block_id": "fix-flaky",
+                "action": "completed",
+                "completion_date": "2026-10-05",
+                "subtasks": [],
+                "subtasks_left_open": [],
+                "unblocked": []
+              }
+            }
+            """
+        )
+        let presentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: success))
+        // Without Bob's text the local parse keeps the global-filter tag.
+        XCTAssertEqual(presentation.previewText, "#task Fix flaky gkeep test")
+        XCTAssertEqual(presentation.transitionText, "[*] → [x]  #task Fix flaky gkeep test")
+        XCTAssertEqual(presentation.notificationTitle, "Completed: #task Fix flaky gkeep test")
+    }
+
+    func testStrikeUnderCompletedEntryNamesCompleted() throws {
+        let success = try decodeFixture("task-complete-strike-completed.json")
+        let presentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: success))
+        XCTAssertEqual(presentation.ledgerText, "Struck its Task Link in PLAN (completed) · removed empty CAPTURE")
+        let dry = try decodeDryRunFixture("task-complete-strike-completed.json")
+        let dryPresentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: dry))
+        XCTAssertEqual(dryPresentation.ledgerText, "Strikes its Task Link in PLAN (completed) · removes empty CAPTURE")
+    }
+
+    func testNamelessEntryFallsBackToLineNumber() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": null,
+              "route_label": "sase.md",
+              "relative_target": "sase.md",
+              "target": "/tmp/bob/sase.md",
+              "text": "",
+              "task_line": "- [x] #task T ^t",
+              "kind": "task_complete",
+              "created": "2026-10-05",
+              "placement": "completed",
+              "block_id": "t",
+              "status_symbol": "x",
+              "status_name": "Done",
+              "previous_status_symbol": " ",
+              "previous_status_name": "Ready",
+              "task_complete": {
+                "raw": "!sase:t",
+                "note": "sase",
+                "note_path": "sase.md",
+                "block_id": "t",
+                "action": "completed",
+                "completion_date": "2026-10-05",
+                "text": "T",
+                "subtasks": [],
+                "subtasks_left_open": [],
+                "ledger": {
+                  "day_file": "20261005.md",
+                  "struck": 1,
+                  "struck_in": [{"line": 2, "name": "", "status": "running"}],
+                  "moved": [],
+                  "deduplicated": 0,
+                  "dropped": [],
+                  "removed_placeholders": []
+                },
+                "unblocked": []
+              }
+            }
+            """
+        )
+        let presentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: success))
+        XCTAssertEqual(presentation.ledgerText, "Struck its Task Link in line 2")
+    }
+
+    func testEmptyBlockIDLocatorsOmitCaret() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": null,
+              "route_label": "sase.md",
+              "relative_target": "sase.md",
+              "target": "/tmp/bob/sase.md",
+              "text": "",
+              "task_line": "- [x] #task R ^r",
+              "kind": "task_complete",
+              "created": "2026-10-05",
+              "placement": "completed",
+              "block_id": "r",
+              "status_symbol": "x",
+              "status_name": "Done",
+              "previous_status_symbol": "?",
+              "previous_status_name": "Blocked",
+              "task_complete": {
+                "raw": "!sase:r",
+                "note": "sase",
+                "note_path": "sase.md",
+                "block_id": "r",
+                "action": "completed",
+                "completion_date": "2026-10-05",
+                "text": "R",
+                "subtasks": [],
+                "subtasks_left_open": [{
+                  "note_path": "sase.md",
+                  "block_id": "",
+                  "line": 3,
+                  "text": "No id",
+                  "status_symbol": "?",
+                  "status_name": "Blocked",
+                  "reason": "blocked"
+                }],
+                "unblocked": [{
+                  "note_path": "travel.md",
+                  "block_id": "",
+                  "line": 2,
+                  "text": "Waiter",
+                  "previous_status_symbol": "?",
+                  "previous_status_name": "Blocked",
+                  "status_symbol": " ",
+                  "status_name": "Ready"
+                }]
+              }
+            }
+            """
+        )
+        let presentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: success))
+        XCTAssertEqual(presentation.leftOpenRows[0].locatorText, "sase.md")
+        XCTAssertEqual(presentation.unblockedRows[0].locatorText, "travel.md")
     }
 
     func testSubtasksAndLeftOpenRows() throws {
         let success = try decodeFixture("task-complete-subtasks.json")
         let presentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: success))
 
+        XCTAssertEqual(presentation.previewText, "Blocked root")
+        XCTAssertNil(presentation.ledgerText)
         XCTAssertEqual(presentation.subtaskRows.count, 1)
         XCTAssertEqual(
             presentation.subtaskRows[0].transitionText,
@@ -124,24 +286,40 @@ final class CaptureTaskCompletePresentationTests: XCTestCase {
         let success = try decodeFixture("task-complete-move.json")
         let presentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: success))
 
-        let ledger = try XCTUnwrap(presentation.ledgerText)
-        XCTAssertTrue(ledger.contains("SASE → CAPTURE"), ledger)
-        XCTAssertTrue(ledger.contains("struck"), ledger)
-        XCTAssertTrue(presentation.previewAccessibilitySummary.contains(ledger))
+        XCTAssertEqual(
+            presentation.ledgerText,
+            "Struck its Task Link in SASE · Moved its Task Link SASE → CAPTURE, struck · removed empty SASE"
+        )
+        let dry = try decodeDryRunFixture("task-complete-move.json")
+        let dryPresentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: dry))
+        XCTAssertEqual(
+            dryPresentation.ledgerText,
+            "Strikes its Task Link in SASE · Moves its Task Link SASE → CAPTURE, struck · removes empty SASE"
+        )
+        XCTAssertTrue(presentation.previewAccessibilitySummary.contains(presentation.ledgerText ?? ""))
     }
 
     func testDedupeFixtureReportsDroppedDuplicate() throws {
         let success = try decodeFixture("task-complete-dedupe.json")
         let presentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: success))
 
-        let ledger = try XCTUnwrap(presentation.ledgerText)
-        XCTAssertTrue(ledger.contains("dropped 1 duplicate"), ledger)
+        XCTAssertEqual(
+            presentation.ledgerText,
+            "Task Link already in MORNING; dropped the SASE copy · removed empty SASE"
+        )
+        let dry = try decodeDryRunFixture("task-complete-dedupe.json")
+        let dryPresentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: dry))
+        XCTAssertEqual(
+            dryPresentation.ledgerText,
+            "Task Link already in MORNING; drops the SASE copy · removes empty SASE"
+        )
     }
 
     func testUnblockedRowsCarryTransitionAndLocator() throws {
         let success = try decodeFixture("task-complete-unblocked.json")
         let presentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: success))
 
+        XCTAssertEqual(presentation.previewText, "Dep root")
         XCTAssertEqual(presentation.unblockedRows.count, 1)
         XCTAssertEqual(presentation.unblockedRows[0].transitionText, "[?] → [ ]  Waiter")
         XCTAssertEqual(presentation.unblockedRows[0].locatorText, "travel.md ^waiter")
@@ -154,6 +332,7 @@ final class CaptureTaskCompletePresentationTests: XCTestCase {
         let presentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: success))
 
         XCTAssertTrue(presentation.isAlreadyDone)
+        XCTAssertEqual(presentation.previewText, "Finished")
         XCTAssertEqual(presentation.headline, "Already done")
         XCTAssertNil(presentation.ledgerText)
         XCTAssertEqual(presentation.statusText, "Already done — nothing to change")
@@ -166,8 +345,11 @@ final class CaptureTaskCompletePresentationTests: XCTestCase {
         let success = try decodeFixture("task-complete-batch.json")
 
         XCTAssertEqual(success.captures.count, 2)
+        let texts = success.captures.map { $0.taskComplete?.text }
+        XCTAssertEqual(texts, ["One", "Two"])
         for item in success.captures {
-            XCTAssertNotNil(CaptureTaskCompletePresentation(capture: item))
+            let presentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: item))
+            XCTAssertEqual(presentation.ledgerText, "Struck its Task Link in CAPTURE")
         }
     }
 

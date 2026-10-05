@@ -2667,10 +2667,16 @@ final class CaptureModelTests: XCTestCase {
         let summary = try XCTUnwrap(success.taskComplete)
         XCTAssertEqual(summary.raw, "!sase:fin")
         XCTAssertEqual(summary.action, "completed")
+        // Older payloads omit `text`, `struck_in`, and `dropped`: clean text
+        // defaults to empty and the ledger arrays decode as nil so the
+        // presentation keeps its count-based fallback.
+        XCTAssertEqual(summary.text, "")
         XCTAssertEqual(summary.subtasks.count, 1)
         XCTAssertEqual(summary.subtasksLeftOpen.count, 1)
         XCTAssertEqual(summary.unblocked.count, 1)
         XCTAssertEqual(summary.ledger?.struck, 1)
+        XCTAssertNil(summary.ledger?.struckIn)
+        XCTAssertNil(summary.ledger?.dropped)
 
         let withoutComplete = try decodeCaptureSuccess(
             """
@@ -2693,6 +2699,58 @@ final class CaptureModelTests: XCTestCase {
             """
         )
         XCTAssertNil(malformed.taskComplete)
+    }
+
+    func testTaskCompleteDecodesNewTextAndLedgerNames() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/bob/sase.md",
+            "text":"","task_line":"- [x] #task Done ^fin",
+            "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fin",
+            "status_symbol":"x","status_name":"Done",
+            "previous_status_symbol":"*","previous_status_name":"Next","status_changed":true,
+            "task_complete":{"raw":"!sase:fin","note":"sase","note_path":"sase.md",
+            "block_id":"fin","action":"completed","completion_date":"2026-10-05",
+            "text":"Done","subtasks":[],"subtasks_left_open":[],
+            "ledger":{"day_file":"20261005.md","struck":1,
+            "struck_in":[{"line":2,"name":"CAPTURE","status":"running"}],
+            "moved":[],"deduplicated":1,
+            "dropped":[{"from":{"line":4,"name":"SASE","status":"queued"},
+            "to":{"line":2,"name":"MORNING","status":"completed"}}],
+            "removed_placeholders":[{"name":"SASE"}]},
+            "unblocked":[]}}
+            """
+        )
+        let summary = try XCTUnwrap(success.taskComplete)
+        XCTAssertEqual(summary.text, "Done")
+        let ledger = try XCTUnwrap(summary.ledger)
+        XCTAssertEqual(ledger.struckIn?.count, 1)
+        XCTAssertEqual(ledger.struckIn?.first?.name, "CAPTURE")
+        XCTAssertEqual(ledger.struckIn?.first?.status, "running")
+        XCTAssertEqual(ledger.dropped?.count, 1)
+        XCTAssertEqual(ledger.dropped?.first?.from.name, "SASE")
+        XCTAssertEqual(ledger.dropped?.first?.to.name, "MORNING")
+        // Present-but-empty arrays stay non-nil so the presentation uses
+        // the named wording rather than the count fallback.
+        let emptyArrays = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/bob/sase.md",
+            "text":"","task_line":"- [x] #task Done ^fin",
+            "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fin",
+            "task_complete":{"raw":"!sase:fin","note":"sase","note_path":"sase.md",
+            "block_id":"fin","action":"completed","text":"",
+            "subtasks":[],"subtasks_left_open":[],
+            "ledger":{"day_file":"20261005.md","struck":0,
+            "struck_in":[],"moved":[],"deduplicated":0,"dropped":[],
+            "removed_placeholders":[]},
+            "unblocked":[]}}
+            """
+        )
+        let emptyLedger = try XCTUnwrap(emptyArrays.taskComplete?.ledger)
+        XCTAssertEqual(emptyLedger.struckIn, [])
+        XCTAssertEqual(emptyLedger.dropped, [])
     }
 
     // MARK: - Pomodoro blocks

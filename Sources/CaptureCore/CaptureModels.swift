@@ -2675,25 +2675,34 @@ public struct TaskCompleteRemovedPlaceholder: Codable, Equatable, Sendable {
 }
 
 /// Ledger retirement for a `task_complete` item, omitted when today's
-/// ledger was untouched.
+/// ledger was untouched. `struckIn` and `dropped` are nil on older Bob
+/// payloads that predate them, so the presentation can keep the
+/// count-based wording as a fallback; new Bob always sends both arrays
+/// (possibly empty) whenever `ledger` is present.
 public struct TaskCompleteLedger: Codable, Equatable, Sendable {
     public let dayFile: String
     public let struck: Int
+    public let struckIn: [TaskCompleteLedgerEndpoint]?
     public let moved: [TaskCompleteLedgerMove]
     public let deduplicated: Int
+    public let dropped: [TaskCompleteLedgerMove]?
     public let removedPlaceholders: [TaskCompleteRemovedPlaceholder]
 
     public init(
         dayFile: String = "",
         struck: Int = 0,
+        struckIn: [TaskCompleteLedgerEndpoint]? = nil,
         moved: [TaskCompleteLedgerMove] = [],
         deduplicated: Int = 0,
+        dropped: [TaskCompleteLedgerMove]? = nil,
         removedPlaceholders: [TaskCompleteRemovedPlaceholder] = []
     ) {
         self.dayFile = dayFile
         self.struck = struck
+        self.struckIn = struckIn
         self.moved = moved
         self.deduplicated = deduplicated
+        self.dropped = dropped
         self.removedPlaceholders = removedPlaceholders
     }
 
@@ -2701,11 +2710,19 @@ public struct TaskCompleteLedger: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         dayFile = try container.decodeIfPresent(String.self, forKey: .dayFile) ?? ""
         struck = try container.decodeIfPresent(Int.self, forKey: .struck) ?? 0
+        struckIn = try container.decodeIfPresent(
+            [TaskCompleteLedgerEndpoint].self,
+            forKey: .struckIn
+        )
         moved = try container.decodeIfPresent(
             [TaskCompleteLedgerMove].self,
             forKey: .moved
         ) ?? []
         deduplicated = try container.decodeIfPresent(Int.self, forKey: .deduplicated) ?? 0
+        dropped = try container.decodeIfPresent(
+            [TaskCompleteLedgerMove].self,
+            forKey: .dropped
+        )
         removedPlaceholders = try container.decodeIfPresent(
             [TaskCompleteRemovedPlaceholder].self,
             forKey: .removedPlaceholders
@@ -2715,8 +2732,10 @@ public struct TaskCompleteLedger: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case dayFile = "day_file"
         case struck
+        case struckIn = "struck_in"
         case moved
         case deduplicated
+        case dropped
         case removedPlaceholders = "removed_placeholders"
     }
 }
@@ -2790,6 +2809,10 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
     public let blockID: String
     public let action: String
     public let completionDate: String?
+    /// Clean display text for the root task from Bob (configured global
+    /// filter, inline fields, and trailing block ID stripped). Empty on
+    /// older Bob payloads, which omit the key.
+    public let text: String
     public let subtasks: [TaskCompleteSubtask]
     public let subtasksLeftOpen: [TaskCompleteLeftOpen]
     public let ledger: TaskCompleteLedger?
@@ -2802,6 +2825,7 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
         blockID: String = "",
         action: String = "",
         completionDate: String? = nil,
+        text: String = "",
         subtasks: [TaskCompleteSubtask] = [],
         subtasksLeftOpen: [TaskCompleteLeftOpen] = [],
         ledger: TaskCompleteLedger? = nil,
@@ -2813,6 +2837,7 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
         self.blockID = blockID
         self.action = action
         self.completionDate = completionDate
+        self.text = text
         self.subtasks = subtasks
         self.subtasksLeftOpen = subtasksLeftOpen
         self.ledger = ledger
@@ -2827,6 +2852,7 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
         blockID = try container.decodeIfPresent(String.self, forKey: .blockID) ?? ""
         action = try container.decodeIfPresent(String.self, forKey: .action) ?? ""
         completionDate = try container.decodeIfPresent(String.self, forKey: .completionDate)
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
         subtasks = try container.decodeIfPresent(
             [TaskCompleteSubtask].self,
             forKey: .subtasks
@@ -2849,6 +2875,7 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
         case blockID = "block_id"
         case action
         case completionDate = "completion_date"
+        case text
         case subtasks
         case subtasksLeftOpen = "subtasks_left_open"
         case ledger

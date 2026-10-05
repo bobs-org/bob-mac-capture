@@ -1,0 +1,122 @@
+{
+ "ok": true,
+ "dry_run": false,
+ "routed": true,
+ "route": null,
+ "route_label": "sase.md",
+ "relative_target": "sase.md",
+ "target": "/tmp/bob-mac-capture-task-complete/vault/sase.md",
+ "text": "",
+ "task_line": "- [x] #task Plan task  [completion:: 2026-10-05] ^ptask",
+ "kind": "task_complete",
+ "created": "2026-10-05",
+ "scheduled": null,
+ "placement": "completed",
+ "block_id": "ptask",
+ "previous_task_line": "- [*] #task Plan task ^ptask",
+ "status_symbol": "x",
+ "status_name": "Unknown",
+ "previous_status_symbol": "*",
+ "previous_status_name": "Unknown",
+ "status_changed": true,
+ "task_complete": {
+  "raw": "!sase:ptask",
+  "note": "sase",
+  "note_path": "sase.md",
+  "block_id": "ptask",
+  "action": "completed",
+  "completion_date": "2026-10-05",
+  "text": "Plan task",
+  "subtasks": [],
+  "subtasks_left_open": [],
+  "ledger": {
+   "day_file": "20261005.md",
+   "struck": 1,
+   "struck_in": [
+    {
+     "line": 2,
+     "name": "PLAN",
+     "status": "completed"
+    }
+   ],
+   "moved": [],
+   "deduplicated": 0,
+   "dropped": [],
+   "removed_placeholders": [
+    {
+     "name": "CAPTURE"
+    }
+   ]
+  },
+  "unblocked": []
+ },
+ "plan_budget": {
+  "status": "ok",
+  "themes": {
+   "count": 0,
+   "cap": 3,
+   "over": false,
+   "before": 1
+  },
+  "links": {
+   "count": 0,
+   "cap": 10,
+   "over": false,
+   "before": 0
+  }
+ },
+ "pomodoro_blocks": [
+  {
+   "relative_target": "20261005.md",
+   "line": 2,
+   "name": "PLAN",
+   "time_range": "0800-0830",
+   "status": "completed",
+   "created": false,
+   "roles": [
+    "changed"
+   ],
+   "lines": [
+    {
+     "text": "- [x] (0800-0830) \u2014 PLAN",
+     "depth": 0,
+     "change": "unchanged"
+    },
+    {
+     "text": "  - ~~[[sase#^old]]~~",
+     "depth": 1,
+     "change": "unchanged"
+    },
+    {
+     "text": "  - \ud83c\udf45 ~~[[sase#^ptask]]~~",
+     "depth": 1,
+     "change": "changed",
+     "before": "  - [[sase#^ptask]]"
+    }
+   ]
+  }
+ ],
+ "task_blocks": [
+  {
+   "relative_target": "sase.md",
+   "route": "sase",
+   "line": 1,
+   "block_id": "ptask",
+   "text": "Plan task",
+   "status_symbol": "x",
+   "status_name": "Unknown",
+   "created": false,
+   "roles": [
+    "completed"
+   ],
+   "lines": [
+    {
+     "text": "- [x] #task Plan task  [completion:: 2026-10-05] ^ptask",
+     "depth": 0,
+     "change": "changed",
+     "before": "- [*] #task Plan task ^ptask"
+    }
+   ]
+  }
+ ]
+}
