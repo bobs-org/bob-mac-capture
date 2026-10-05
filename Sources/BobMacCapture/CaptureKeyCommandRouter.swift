@@ -292,7 +292,21 @@ struct CaptureKeyCommandRouter {
         case KeyCode.escape:
             return .escapePicker
         case KeyCode.leftBracket:
-            return modifiers == .control ? .escapePicker : nil
+            if modifiers == .control {
+                return .escapePicker
+            }
+            // Plain "[" doubles as a Complete-picker continuation key when the
+            // filter is empty. The explicit keyCode case must not swallow it.
+            if context.pickerFilterIsEmpty,
+               !context.pickerOperatorContinuationKeys.isEmpty,
+               modifiers.intersection([.command, .option, .control]).isEmpty,
+               let characters = event.characters,
+               characters.count == 1,
+               context.pickerOperatorContinuationKeys.contains(characters)
+            {
+                return .continuePickerOperator(characters)
+            }
+            return nil
         case KeyCode.delete:
             // Only an unmodified Backspace on an empty filter removes the
             // trigger; any other Backspace edits the filter natively.

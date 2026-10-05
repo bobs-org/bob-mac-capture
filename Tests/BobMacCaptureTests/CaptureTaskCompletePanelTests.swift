@@ -231,6 +231,14 @@ final class CaptureTaskCompletePanelTests: XCTestCase {
             router.command(for: bang, context: context),
             .continuePickerOperator("!")
         )
+        // Ctrl-[ keeps its escape binding even when "[" is a continuation key.
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 33, modifiers: .control, characters: "["),
+                context: context
+            ),
+            .escapePicker
+        )
     }
 
     func testRouterTabCyclesInCompletePrompt() {
