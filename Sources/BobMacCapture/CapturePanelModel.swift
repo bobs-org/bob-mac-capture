@@ -492,6 +492,16 @@ final class CapturePanelModel: ObservableObject {
         return CapturePomodoroLinkPresentation(capture: previewResult)
     }
 
+    /// The live preview's reference presentation, when the current draft is
+    /// exactly one `ref` item — the same single-item gate as the toggle
+    /// presentation. Batches keep today's footer title.
+    var refPresentation: CaptureRefPresentation? {
+        guard previewResults.count == 1, let previewResult else {
+            return nil
+        }
+        return CaptureRefPresentation(capture: previewResult)
+    }
+
     /// The live preview's task-complete presentation, when the current draft
     /// is exactly one whole-item `!note:block-id` completion — the same
     /// single-item gate as the toggle presentation.
@@ -551,6 +561,7 @@ final class CapturePanelModel: ObservableObject {
             ?? togglePresentation?.primaryActionTitle
             ?? linkPresentation?.primaryActionTitle
             ?? taskCompletePresentation?.primaryActionTitle
+            ?? refPresentation?.primaryActionTitle
             ?? shiftPresentation.map { _ in "Shift" }
             ?? adjustPresentation.map { _ in "Adjust" } ?? "Capture"
     }
@@ -4532,6 +4543,8 @@ final class CapturePanelModel: ObservableObject {
                 statusText = presentation.statusText
             } else if let presentation = Self.soleSessionStartPresentation(for: captures) {
                 statusText = presentation.statusText
+            } else if let presentation = Self.soleRefPresentation(for: captures) {
+                statusText = presentation.statusText
             } else {
                 statusText = captureStatus(
                     prefix: "Captured",
@@ -4595,6 +4608,8 @@ final class CapturePanelModel: ObservableObject {
                 statusText = presentation.statusText
             } else if let presentation = Self.soleTaskCompletePresentation(for: captures) {
                 statusText = presentation.statusText
+            } else if let presentation = Self.soleRefPresentation(for: captures) {
+                statusText = presentation.statusText
             } else {
                 statusText = captureStatus(
                     prefix: "Preview",
@@ -4647,6 +4662,17 @@ final class CapturePanelModel: ObservableObject {
             return nil
         }
         return CapturePomodoroLinkPresentation(capture: captures[0])
+    }
+
+    /// A batch's reference presentation, only when it is exactly one `ref`
+    /// item — the same single-item gate as the toggle presentation.
+    private static func soleRefPresentation(
+        for captures: [CaptureCommandSuccess]
+    ) -> CaptureRefPresentation? {
+        guard captures.count == 1 else {
+            return nil
+        }
+        return CaptureRefPresentation(capture: captures[0])
     }
 
     private static func soleClosePresentation(
@@ -4947,6 +4973,8 @@ final class CapturePanelModel: ObservableObject {
                             self?.statusText = close.statusText
                         } else if let start = Self.soleSessionStartPresentation(for: captures) {
                             self?.statusText = start.statusText
+                        } else if let ref = Self.soleRefPresentation(for: captures) {
+                            self?.statusText = ref.statusText
                         } else if self?.statusText == "Preview failed" {
                             // A successful live preview that sets no
                             // kind-specific status clears a stale failure
@@ -5054,6 +5082,7 @@ final class CapturePanelModel: ObservableObject {
         isApplyingProgrammaticDraft = true
         attributedDraft.transform(updating: &editorSelection) { text in
             text.foregroundColor = nil
+            text.underlineStyle = nil
             for item in ranges {
                 guard let lower = AttributedString.Index(item.range.lowerBound, within: text),
                       let upper = AttributedString.Index(item.range.upperBound, within: text)
@@ -5064,6 +5093,9 @@ final class CapturePanelModel: ObservableObject {
 
                 let category = captureSemanticCategory(forSpanKind: item.span.kind)
                 text[lower..<upper].foregroundColor = CaptureEditorPalette.color(for: category)
+                if category.isUnderlined {
+                    text[lower..<upper].underlineStyle = .single
+                }
             }
         }
         isApplyingProgrammaticDraft = false

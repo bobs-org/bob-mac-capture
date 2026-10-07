@@ -1861,7 +1861,15 @@ struct PreviewPane: View {
         // link landing names where its Task Link went without disturbing the
         // existing card below.
         planDestinationRow(for: success)
-        if let close = CapturePomodoroClosePresentation(capture: success) {
+        if let ref = CaptureRefPresentation(capture: success) {
+            refPreviewItem(
+                ref,
+                success: success,
+                index: index,
+                total: total,
+                isLocalOverride: isLocalOverride
+            )
+        } else if let close = CapturePomodoroClosePresentation(capture: success) {
             closePreviewItem(close, success: success, index: index, total: total)
         } else if CapturePomodoroStartPresentation.isSessionStart(success),
                   let start = CapturePomodoroStartPresentation(capture: success)
@@ -2788,6 +2796,74 @@ struct PreviewPane: View {
     }
 
     @ViewBuilder
+    private func refPreviewItem(
+        _ ref: CaptureRefPresentation,
+        success _: CaptureCommandSuccess,
+        index: Int,
+        total: Int,
+        isLocalOverride: Bool
+    ) -> some View {
+        // The reference card renders Bob's resolved `ref` object exactly as
+        // the presentation words it: a link glyph, the display URL (or the
+        // library path when already known), bob's own detail line, the route
+        // or reading-state chips, and the inbox fallback hint. No Swift-side
+        // library or network math — only Bob's verdict and wording.
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if total > 1 {
+                    Text("\(index + 1)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "link")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(ref.headline)
+                    .fontWeight(.semibold)
+                Spacer(minLength: 4)
+                Text(ref.destinationLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .textSelection(.enabled)
+                if isLocalOverride {
+                    Text("local override")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .lineLimit(1)
+
+            Text(ref.detailText)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+
+            if !ref.chips.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(ref.chips, id: \.self) { chip in
+                        Text(chip)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(.quaternary, in: Capsule())
+                    }
+                }
+            }
+
+            if let fallbackHint = ref.fallbackHint {
+                Text(fallbackHint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(ref.previewAccessibilitySummary)
+    }
+
     private func completePreviewItem(
         _ complete: CaptureTaskCompletePresentation,
         success: CaptureCommandSuccess,

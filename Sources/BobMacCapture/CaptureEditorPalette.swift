@@ -93,6 +93,8 @@ enum CaptureEditorPalette {
             return .cyan
         case .pomodoroStartDrop:
             return .gray
+        case .link:
+            return Color(nsColor: .linkColor)
         case .neutral:
             return .primary
         }

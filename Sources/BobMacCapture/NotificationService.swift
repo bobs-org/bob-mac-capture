@@ -405,6 +405,14 @@ final class NotificationService: NSObject, ObservableObject {
                     targetPaths: targetPaths
                 )
             }
+            if let ref = CaptureRefPresentation(capture: capture) {
+                return CaptureNotificationPresentation(
+                    title: ref.notificationTitle,
+                    subtitle: ref.destinationLabel,
+                    body: ref.notificationBody,
+                    targetPaths: targetPaths
+                )
+            }
             let kind = friendlyKindLabel(capture.kind)
             return CaptureNotificationPresentation(
                 title: "\(kind) captured",
@@ -545,6 +553,9 @@ final class NotificationService: NSObject, ObservableObject {
         if let complete = CaptureTaskCompletePresentation(capture: capture) {
             return complete.transitionText
         }
+        if let ref = CaptureRefPresentation(capture: capture) {
+            return "\(ref.destinationLabel): \(ref.detailText)"
+        }
         return semanticText(capture)
     }
 
@@ -584,6 +595,8 @@ final class NotificationService: NSObject, ObservableObject {
             return "Start"
         case "project-note", "project_note":
             return "Project"
+        case "ref":
+            return "Reference"
         default:
             return kind
                 .split { $0 == "-" || $0 == "_" || $0 == " " }

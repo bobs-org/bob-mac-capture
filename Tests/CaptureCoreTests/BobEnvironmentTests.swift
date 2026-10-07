@@ -21,4 +21,22 @@ final class BobEnvironmentTests: XCTestCase {
         XCTAssertNil(environment["SHELL"])
         XCTAssertFalse(environment["PATH", default: ""].contains("/bin/zsh"))
     }
+
+    func testPathSeesLocalBinBeforeCargoBin() {
+        let environment = BobEnvironmentBuilder(
+            homeDirectory: "/Users/bryan",
+            currentEnvironment: [:]
+        ).build()
+
+        let path = environment["PATH", default: ""]
+        let components = path.split(separator: ":").map(String.init)
+        guard let localBin = components.firstIndex(of: "/Users/bryan/.local/bin"),
+              let cargoBin = components.firstIndex(of: "/Users/bryan/.cargo/bin"),
+              let homeBin = components.firstIndex(of: "/Users/bryan/bin")
+        else {
+            return XCTFail("expected .local/bin, .cargo/bin, and bin on PATH: \(path)")
+        }
+        XCTAssertLessThan(localBin, cargoBin)
+        XCTAssertLessThan(cargoBin, homeBin)
+    }
 }

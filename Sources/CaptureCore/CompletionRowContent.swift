@@ -24,7 +24,16 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case pomodoroCloseDrop
     case pomodoroCloseLog
     case pomodoroStartDrop
+    case link
     case neutral
+}
+
+extension CaptureSemanticCategory {
+    /// Only the reading-queue link underline uses this: `ref_url` renders as
+    /// an underlined link, every other span kind renders without one.
+    public var isUnderlined: Bool {
+        self == .link
+    }
 }
 
 /// Maps a `capture-parse` span kind to its semantic category. Unrecognized kinds fall back to
@@ -119,6 +128,9 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         // that drop as the session starts: the same muted gray as the close
         // drop list.
         return .pomodoroStartDrop
+    case "ref_url":
+        // The whole reference URL token on a `ref` item renders as a link.
+        return .link
     default:
         return .neutral
     }

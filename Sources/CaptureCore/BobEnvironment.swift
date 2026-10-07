@@ -25,6 +25,7 @@ public struct BobEnvironmentBuilder: Sendable {
                 "/sbin",
                 "/opt/homebrew/bin",
                 "/usr/local/bin",
+                "\(homeDirectory)/.local/bin",
                 "\(homeDirectory)/.cargo/bin",
                 "\(homeDirectory)/bin",
             ].joined(separator: ":"),

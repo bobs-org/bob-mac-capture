@@ -214,7 +214,12 @@ mutation.
   still sends the `now` flag, the `now_tag` span or completion context, or
   the `now` picker group still previews and captures; the Mac app decodes an
   unknown span as neutral, an unknown context as a generic row, and an
-  unknown group as `note`.
+  unknown group as `note`. Saving links to the reading queue needs a Bob that
+  emits the `ref` capture kind with the additive `ref` object, `ref` parse
+  mode, and the `ref_url` span. An older Bob keeps capturing a bare link as an
+  ordinary inbox task; the Mac app decodes the missing `ref` object as no
+  reference preview and keeps the standard card, so upgrade Bob before
+  queueing links.
 
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.
@@ -933,6 +938,32 @@ the count-based ledger wording and the local task-line text. The footer action i
 includes the daily note whenever the ledger changed. An older Bob without
 `task_complete` decodes as no completion preview and keeps the standard card; upgrade
 Bob before using `!`.
+
+### Saving links to your reading queue
+
+A capture item that is exactly one bare link (alone, one per line in a pasted
+URL list, or mixed with ordinary tasks in a blank-line-separated batch) queues
+that link for the reading queue instead of becoming an inbox task. Bob classifies
+the URL, checks the library without touching the network, and reports one of
+`not_found`, `in_library`, `in_intake`, `clipping`, `duplicate`, `legacy`, or
+`unknown`; a real run stages a durable ref job that a background worker clips,
+while a dry run previews the same card without staging anything.
+
+The reference preview card shows the display URL (or the library path when the
+link is already known), Bob's own detail line (`new to your library · clips in
+the background` for a new link, `Captured Post · queued` for a library hit,
+`waiting for bob ref scan` for an intake hit), an `Article`/`PDF`/`arXiv` chip
+(or the reading-state chip
+in the library), and — on queued items — the inbox fallback hint naming where
+the task goes if clipping fails. The footer action is **Queue** for a queued
+single link and **Done** for an already-known one; batches keep **Capture**.
+The editor underlines the whole link in the link color via the `ref_url` span.
+Notifications read `Queued for reading: <link>` (or `Already in your library:
+<title>`), and Command-Return opens the note or intake PDF only for
+`in_library` and `in_intake` — a queued link opens nothing, because Bob reports
+no target for it. An older Bob without the `ref` object keeps capturing the
+link as an ordinary task with the standard card; upgrade Bob before queueing
+links. Queueing can be turned off per draft with `bob capture -R/--no-ref`.
 
 ## Keyboard
 

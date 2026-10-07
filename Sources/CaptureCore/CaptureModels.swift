@@ -1885,6 +1885,161 @@ public struct CaptureProjectNoteSummary: Codable, Equatable, Sendable {
     }
 }
 
+/// The offline library verdict on a reference item: one of `not_found`,
+/// `in_library`, `in_intake`, `clipping`, `duplicate`, `legacy`, or `unknown`.
+/// Every field decodes tolerantly so a malformed verdict degrades to defaults
+/// instead of failing the capture decode.
+public struct CaptureRefLibrary: Codable, Equatable, Sendable {
+    public let verdict: String
+    public let path: String?
+    public let title: String?
+    public let readingState: String?
+    public let message: String?
+
+    public init(
+        verdict: String = "",
+        path: String? = nil,
+        title: String? = nil,
+        readingState: String? = nil,
+        message: String? = nil
+    ) {
+        self.verdict = verdict
+        self.path = path
+        self.title = title
+        self.readingState = readingState
+        self.message = message
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        verdict = try container.decodeIfPresent(String.self, forKey: .verdict) ?? ""
+        path = try container.decodeIfPresent(String.self, forKey: .path)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        readingState = try container.decodeIfPresent(String.self, forKey: .readingState)
+        message = try container.decodeIfPresent(String.self, forKey: .message)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case verdict
+        case path
+        case title
+        case readingState = "reading_state"
+        case message
+    }
+}
+
+/// The staged ref job on a real run that queued the link. Present only when
+/// the run queued a job; dry runs and unchanged items omit it.
+public struct CaptureRefJob: Codable, Equatable, Sendable {
+    public let id: String
+    public let state: String
+
+    public init(id: String = "", state: String = "") {
+        self.id = id
+        self.state = state
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
+        state = try container.decodeIfPresent(String.self, forKey: .state) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case state
+    }
+}
+
+/// The inbox fallback on a queued reference item: where the task goes when the
+/// background clip fails. Present only on queued items.
+public struct CaptureRefFallback: Codable, Equatable, Sendable {
+    public let relativeTarget: String
+    public let taskLine: String
+
+    public init(relativeTarget: String = "", taskLine: String = "") {
+        self.relativeTarget = relativeTarget
+        self.taskLine = taskLine
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        relativeTarget = try container.decodeIfPresent(String.self, forKey: .relativeTarget) ?? ""
+        taskLine = try container.decodeIfPresent(String.self, forKey: .taskLine) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case relativeTarget = "relative_target"
+        case taskLine = "task_line"
+    }
+}
+
+/// The additive `ref` object on a reference (`kind == "ref"`) capture result:
+/// the classified URL, its offline library verdict, the staged job (real runs
+/// that queued only), and the inbox fallback (queued items only). Older Bob
+/// binaries omit it entirely; decode as nil, and a malformed value decodes as
+/// nil so it can never fail the capture decode.
+public struct CaptureRef: Codable, Equatable, Sendable {
+    public let url: String
+    public let cleanedURL: String
+    public let dedupeKey: String
+    public let display: String
+    public let routeHint: String
+    public let library: CaptureRefLibrary
+    public let job: CaptureRefJob?
+    public let fallback: CaptureRefFallback?
+
+    public init(
+        url: String = "",
+        cleanedURL: String = "",
+        dedupeKey: String = "",
+        display: String = "",
+        routeHint: String = "",
+        library: CaptureRefLibrary = CaptureRefLibrary(),
+        job: CaptureRefJob? = nil,
+        fallback: CaptureRefFallback? = nil
+    ) {
+        self.url = url
+        self.cleanedURL = cleanedURL
+        self.dedupeKey = dedupeKey
+        self.display = display
+        self.routeHint = routeHint
+        self.library = library
+        self.job = job
+        self.fallback = fallback
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        url = try container.decodeIfPresent(String.self, forKey: .url) ?? ""
+        cleanedURL = try container.decodeIfPresent(String.self, forKey: .cleanedURL) ?? ""
+        dedupeKey = try container.decodeIfPresent(String.self, forKey: .dedupeKey) ?? ""
+        display = try container.decodeIfPresent(String.self, forKey: .display) ?? ""
+        routeHint = try container.decodeIfPresent(String.self, forKey: .routeHint) ?? ""
+        library = try container.decodeIfPresent(CaptureRefLibrary.self, forKey: .library)
+            ?? CaptureRefLibrary()
+        job = try container.decodeIfPresent(CaptureRefJob.self, forKey: .job)
+        fallback = try container.decodeIfPresent(CaptureRefFallback.self, forKey: .fallback)
+    }
+
+    /// Whether the object carries no identity at all: every field defaulted,
+    /// as from `{"ref": {"raw": 42}}`. Such an object presents as nothing.
+    public var isEmpty: Bool {
+        url.isEmpty && display.isEmpty && dedupeKey.isEmpty && library.verdict.isEmpty
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case url
+        case cleanedURL = "cleaned_url"
+        case dedupeKey = "dedupe_key"
+        case display
+        case routeHint = "route_hint"
+        case library
+        case job
+        case fallback
+    }
+}
+
 public struct CaptureCommandSuccess: Codable, Equatable {
     public let ok: Bool
     public let dryRun: Bool
@@ -1967,6 +2122,10 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     // `project_note` capture. Older Bob binaries omit it entirely; decode
     // as nil.
     public let projectNote: CaptureProjectNoteSummary?
+    // Additive `ref` object on a `ref` capture. Older Bob binaries omit it
+    // entirely; decode as nil, and a malformed value decodes as nil so it
+    // can never fail the capture decode.
+    public let ref: CaptureRef?
     // Additive top-level `plan_budget`: present only when the batch changed
     // today's Pomodoros section. It is not per item. Older Bob omits it
     // entirely; decode as nil.
@@ -2037,6 +2196,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         dependencyUpdate: DependencyUpdateSummary? = nil,
         taskComplete: CaptureTaskComplete? = nil,
         projectNote: CaptureProjectNoteSummary? = nil,
+        ref: CaptureRef? = nil,
         planBudget: CapturePlanBudget? = nil,
         captures: [CaptureCommandSuccess] = [],
         globalDestination: CaptureGlobalDestination? = nil,
@@ -2095,6 +2255,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.dependencyUpdate = dependencyUpdate
         self.taskComplete = taskComplete
         self.projectNote = projectNote
+        self.ref = ref
         self.planBudget = planBudget
         self.pomodoroBlocks = pomodoroBlocks
         self.taskBlocks = taskBlocks
@@ -2184,6 +2345,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
             CaptureProjectNoteSummary.self,
             forKey: .projectNote
         )
+        ref = (try? container.decodeIfPresent(CaptureRef.self, forKey: .ref)) ?? nil
         planBudget = try container.decodeIfPresent(
             CapturePlanBudget.self,
             forKey: .planBudget
@@ -2258,6 +2420,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case dependencyUpdate = "dependency_update"
         case taskComplete = "task_complete"
         case projectNote = "project_note"
+        case ref
         case planBudget = "plan_budget"
         case pomodoroBlocks = "pomodoro_blocks"
         case taskBlocks = "task_blocks"
