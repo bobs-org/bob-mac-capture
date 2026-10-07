@@ -2864,6 +2864,7 @@ struct PreviewPane: View {
         .accessibilityLabel(ref.previewAccessibilitySummary)
     }
 
+    @ViewBuilder
     private func completePreviewItem(
         _ complete: CaptureTaskCompletePresentation,
         success: CaptureCommandSuccess,
