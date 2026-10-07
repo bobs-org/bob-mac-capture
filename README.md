@@ -249,12 +249,35 @@ Ad-hoc signatures are useful for local development, but notification permissions
 launch-at-login trust are tied to the installed signed bundle. Reinstalling with a new
 or expired certificate can require reauthorizing those system permissions.
 
+## Menu-Bar Icon
+
+The only always-visible surface is a purpose-designed monochrome mark: a geometric
+lowercase "b" (a vertical stem plus a circular bowl, one stroke weight) with a solid
+bullet centered in the bowl. The bullet is the captured thought — every capture becomes
+a bullet in the vault. The glyph is drawn in code (`Sources/BobMacCapture/StatusItemGlyph.swift`)
+as a template image, so AppKit tints it for light and dark menu bars, Liquid Glass
+wallpapers, and the highlighted (menu-open) state, with no bundled assets.
+
+- **Ready**: the bullet-b. Tooltip and accessibility label are `Bob Mac Capture`.
+- **bob unresolved**: the bullet becomes a "!". The tooltip reads
+  `Bob Mac Capture — bob is not resolved. Check Settings.`, and the menu gains a
+  `bob Not Resolved — Open Settings…` row above the healthy items.
+- **Capture landed**: after every successful submit, the bullet briefly swells and
+  settles (420 ms). The pulse is skipped when Reduce Motion is on.
+
+To eyeball the real AppKit rendering, run
+`BOB_MAC_CAPTURE_RENDER_DIR=… ./Scripts/xcode-swift.sh test --filter StatusItemGlyphDesignTests`
+and inspect the PNGs it writes: each state at 1x, 2x, and 3x on light, dark, and accent
+backgrounds, 8x enlargements, and a pulse filmstrip.
+
 ## Runtime Contract
 
 - Bundle identifier: `org.bobs.bob-mac-capture`.
 - App type: `LSUIElement` resident menu-bar app.
-- The `Bob` status-item menu offers Capture, Settings, Recheck Bob, Restart Bob Mac
-  Capture, and Quit Bob Mac Capture, in that order. Restart discards an unsent draft;
+- The menu-bar icon's menu offers Capture, Settings, Recheck Bob, Restart Bob Mac
+  Capture, and Quit Bob Mac Capture, in that order, plus a conditional
+  `bob Not Resolved — Open Settings…` row (with a separator) while `bob` is
+  unresolved. Restart discards an unsent draft;
   retained canceled drafts survive Restart and Quit. There is no confirmation dialog.
   Restart refuses to quit (reporting a failure instead) when the running process is not
   launched from an installed `.app` bundle or that bundle no longer exists on disk. See
@@ -1363,7 +1386,7 @@ It is requested only for that one-shot install-triggered restart, and only when 
 already allows notifications for the signed bundle. An install never prompts for
 notification permission. Denied or not-yet-requested authorization is silent and
 non-fatal: the replacement still launches. A stopped install does not launch the app and
-does not notify. `Bob → Restart Bob Mac Capture` is a manual relaunch, not an install
+does not notify. `menu-bar icon → Restart Bob Mac Capture` is a manual relaunch, not an install
 completion, and does not show this banner.
 
 ## Hotkey Conflicts and Launch at Login
@@ -1403,7 +1426,7 @@ other supported install target (`/Applications` versus `~/Applications`) or from
 `swift run` / a raw `.build` binary is not touched.
 
 Automatic restart uses the same quit-and-relaunch sequence as
-`Bob → Restart Bob Mac Capture`: an unsent draft is discarded, retained canceled drafts
+`menu-bar icon → Restart Bob Mac Capture`: an unsent draft is discarded, retained canceled drafts
 survive, and there is no confirmation dialog. The menu item remains the manual restart
 mechanism when you want to relaunch without reinstalling.
 
@@ -1413,12 +1436,12 @@ setup. Clicking the banner or `Capture` opens the capture panel; dismissing it d
 nothing. The banner is best-effort: `just install` never prompts for notification
 permission, and missing, denied, or reset authorization is silent and does not change
 installer output, restart ordering, or whether the replacement launches. A stopped
-install still does not launch or notify. `Bob → Restart Bob Mac Capture` does not show
+install still does not launch or notify. `menu-bar icon → Restart Bob Mac Capture` does not show
 the install-complete notification.
 
 If the new bundle is installed and verified but the running-process handoff fails,
 `just install` exits non-zero without rolling back that verified bundle. The error names
-the installed path so you can start that copy, or use `Bob → Restart Bob Mac Capture` if
+the installed path so you can start that copy, or use `menu-bar icon → Restart Bob Mac Capture` if
 an old instance is still running.
 
 To roll back deliberately, keep the previous release's commit or tag and rerun
@@ -1486,7 +1509,8 @@ text is stored separately in that Application Support directory (see Privacy).
   macOS SDK, update/select Command Line Tools for Xcode 26+ or select a compatible full
   Xcode installation (see Requirements above) and rerun `just test`.
 - **"Bob is not resolved"**: Settings shows the resolved path (or "Not resolved") and the
-  underlying error. Set an absolute path under "Executable override" or install `bob` at
+  underlying error. The menu-bar glyph swaps its bullet for a "!", and the menu gains an
+  **Open Settings…** row. Set an absolute path under "Executable override" or install `bob` at
   one of the default candidate locations, then use "Recheck Bob."
 - **A `bob` command times out**: every `bob` invocation is bounded (20s by default); a
   wedged process is terminated automatically rather than leaving the panel stuck, and the
@@ -1501,8 +1525,9 @@ text is stored separately in that Application Support directory (see Privacy).
   use "Open System Notification Settings" to re-enable it there.
 - **The install-complete banner does not appear after `just install`**: that banner is
   posted only when install restarts an already-running copy, and only if notifications
-  are already authorized for the signed bundle. A stopped install, `Bob → Restart Bob
-  Mac Capture`, `swift run`, and denied or not-yet-requested authorization are all
+  are already authorized for the signed bundle. A stopped install,
+  `menu-bar icon → Restart Bob Mac Capture`, `swift run`, and denied or
+  not-yet-requested authorization are all
   silent by design; installation still succeeds. Check Settings → Notifications and
   Diagnostics → Signing, and look for `install-restart-notification-requested` in
   `log show --signpost --predicate 'subsystem == "org.bobs.bob-mac-capture"'`.
@@ -1530,13 +1555,13 @@ text is stored separately in that Application Support directory (see Privacy).
   to show it. A panel that vanished after Return means the capture landed; the success
   notification names the route it took. Use "Copy Diagnostic" next to the error to
   capture the exact `bob` error for a bug report.
-- **Restart reports "Restart failed"**: `Bob → Restart Bob Mac Capture` refuses to quit
+- **Restart reports "Restart failed"**: `menu-bar icon → Restart Bob Mac Capture` refuses to quit
   rather than leaving no menu-bar item behind. This fires for two reasons: the process
   is running unbundled (`swift run BobMacCapture` or a raw `.build` binary, which has no
   `.app` to relaunch from) or the installed bundle at the launch-time path is missing.
   Both cases post a "Restart failed" notification and record the reason in Settings →
   Diagnostics; install the app with `just bundle` + `just install` and try again.
-- **The `Bob` menu-bar item does not appear** (no crash dialog, hotkey does nothing,
+- **The menu-bar icon does not appear** (no crash dialog, hotkey does nothing,
   Settings will not open): the app has no nib, so its entry point
   (`BobMacCaptureMain.swift`) must construct `AppDelegate`, assign it to
   `NSApplication.shared.delegate` itself, and supply its own main menu — nothing in

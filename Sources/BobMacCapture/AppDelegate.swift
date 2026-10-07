@@ -31,6 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var processClient: BobProcessClient?
     private var settingsSceneRepresentation: SettingsSceneRepresentation?
     private var settingsCancellables: Set<AnyCancellable> = []
+    private var statusItemController: StatusItemController?
+    private var statusItemCancellables: Set<AnyCancellable> = []
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         // No nib supplies a main menu under the explicit `BobMacCaptureMain` entry point,
@@ -70,6 +72,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelModel = model
         panelController = CapturePanelController(model: model)
         panelController?.prewarm()
+        // A capture-landed pulse per successful submit. A dedicated set: the
+        // stash-capacity observer guards on `settingsCancellables` being empty.
+        model.$successAnnouncementTick
+            .dropFirst()
+            .sink { [weak self] _ in
+                self?.statusItemController?.playCaptureLandedPulse()
+            }
+            .store(in: &statusItemCancellables)
 
         hotKeyManager = HotKeyManager { [weak self] in
             CaptureSignpost.event("hotkey-received")
@@ -190,11 +200,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func configureStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.title = "Bob"
-        item.button?.toolTip = "Bob Mac Capture"
-        item.menu = Self.makeStatusMenu()
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item.button?.imagePosition = .imageOnly
+        item.button?.title = ""
+        let menu = Self.makeStatusMenu()
+        item.menu = menu
         statusItem = item
+        let controller = StatusItemController(
+            render: { [weak item] frame in
+                item?.button?.image = StatusItemGlyph.image(
+                    for: frame.glyphState,
+                    bulletRadius: frame.bulletRadius
+                )
+                item?.button?.toolTip = frame.toolTip
+                item?.button?.setAccessibilityLabel(frame.accessibilityLabel)
+            },
+            menu: menu
+        )
+        statusItemController = controller
+        // Render Ready immediately; configureProcessClient() runs right after
+        // and corrects the state when bob is unresolved.
+        controller.update(isBobResolved: true)
     }
 
     private func observeCanceledDraftStashCapacity() {
@@ -271,10 +297,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // The menu-bar glyph is the only always-visible surface for an `LSUIElement` app,
     // so it must reflect a broken bob resolution at a glance without opening Settings.
     private func updateStatusItemAppearance() {
-        statusItem?.button?.title = processClient == nil ? "Bob \u{26A0}\u{FE0F}" : "Bob"
-        statusItem?.button?.toolTip = processClient == nil
-            ? "Bob Mac Capture — bob is not resolved. Check Settings."
-            : "Bob Mac Capture"
+        statusItemController?.update(isBobResolved: processClient != nil)
     }
 
     private func registerHotKey() {
