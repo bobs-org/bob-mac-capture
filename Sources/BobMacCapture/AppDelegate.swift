@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var relauncher = AppRelauncher()
 
     private var statusItem: NSStatusItem?
-    private var hotKeyManager: HotKeyManager?
+    private var hotKeyRegistry: HotKeyRegistry?
     private var panelController: CapturePanelController?
     private var panelModel: CapturePanelModel?
     private var vaultWatcher: VaultTargetWatcher?
@@ -81,10 +81,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &statusItemCancellables)
 
-        hotKeyManager = HotKeyManager { [weak self] in
-            CaptureSignpost.event("hotkey-received")
-            Task { @MainActor in
-                self?.showCapturePanel()
+        hotKeyRegistry = HotKeyRegistry { [weak self] action in
+            switch action {
+            case .capture:
+                CaptureSignpost.event("hotkey-received")
+                Task { @MainActor in
+                    self?.showCapturePanel()
+                }
+            case .refs, .refsHighlightsOpen:
+                // Wired by refs-entry-points; the registry owns the ids now
+                // so later phases only register and route.
+                break
             }
         }
         registerHotKey()
@@ -104,7 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The canceled-draft stash is write-through on every mutation, so there is
         // nothing to flush here. A terminate-only save would drop drafts on force
         // quit, crash, logout SIGKILL, or a just install that replaces the bundle.
-        hotKeyManager?.invalidate()
+        hotKeyRegistry?.invalidate()
         vaultWatcher?.invalidate()
         processClient?.cancelActiveProcess()
     }
@@ -302,7 +309,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func registerHotKey() {
         do {
-            try hotKeyManager?.register(configuration: settings.hotKeyConfiguration)
+            try hotKeyRegistry?.register(
+                .capture,
+                configuration: settings.hotKeyConfiguration
+            )
             settings.diagnosticStatus = "Hotkey registered: \(settings.hotKeyConfiguration.displayName)"
         } catch {
             settings.diagnosticStatus = "Hotkey conflict: \(error)"

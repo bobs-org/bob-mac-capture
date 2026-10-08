@@ -1389,7 +1389,16 @@ non-fatal: the replacement still launches. A stopped install does not launch the
 does not notify. `menu-bar icon → Restart Bob Mac Capture` is a manual relaunch, not an install
 completion, and does not show this banner.
 
-## Hotkey Conflicts and Launch at Login
+## Hotkey Registry, Conflicts, and Launch at Login
+
+One Carbon event handler (`HotKeyRegistry`) owns every Bob hotkey and routes each
+press by its `EventHotKeyID` under the shared `'BOBC'` signature: capture (id 1),
+refs (id 2), and refs Highlights-Open (id 3). Each action registers independently,
+so registering or unregistering one never disturbs the others, and a failed
+registration leaves every other registration intact. Pressing the production
+hotkey behaves exactly as before. The refs bindings — Control-Shift-Command-R
+globally, Command-O or Control-O while Highlights is frontmost — are reserved by
+the registry but stay no-ops until the Bob Refs panel wires them.
 
 If `RegisterEventHotKey` fails — most often because another app already owns the
 configured shortcut — the app does not silently do nothing. Settings' Diagnostics

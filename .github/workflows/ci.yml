@@ -37,7 +37,21 @@ jobs:
         run: ./Scripts/xcode-swift.sh build
 
       - name: Test
-        run: ./Scripts/xcode-swift.sh test
+        env:
+          BOB_MAC_CAPTURE_RENDER_DIR: ${{ runner.temp }}/render-fixtures
+        run: |
+          set -euo pipefail
+          mkdir -p "${BOB_MAC_CAPTURE_RENDER_DIR}"
+          ./Scripts/xcode-swift.sh test
+
+      - name: Upload render fixtures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-fixtures
+          path: ${{ runner.temp }}/render-fixtures
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Bundle
         run: ./Scripts/bundle.sh --identity "-"

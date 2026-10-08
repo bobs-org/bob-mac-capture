@@ -3660,9 +3660,9 @@ final class BobMacCaptureTests: XCTestCase {
     func testHotKeyRegistrationConflictIsReported() {
         let conflictStatus = OSStatus(eventHotKeyExistsErr)
         let registrar = FakeHotKeyRegistrar(status: conflictStatus)
-        let manager = HotKeyManager(registrar: registrar) {}
+        let manager = HotKeyRegistry(registrar: registrar) { _ in }
 
-        XCTAssertThrowsError(try manager.register(configuration: .development)) { error in
+        XCTAssertThrowsError(try manager.register(.capture, configuration: .development)) { error in
             XCTAssertEqual(
                 error as? HotKeyRegistrationError,
                 .registrationFailed(conflictStatus)
