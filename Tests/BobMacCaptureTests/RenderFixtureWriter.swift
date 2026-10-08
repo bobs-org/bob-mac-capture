@@ -9,7 +9,10 @@ import XCTest
 /// opaque `windowBackgroundColor` base, then writes
 /// `<name>-<light|dark>.png` to `BOB_MAC_CAPTURE_RENDER_DIR`. Throws `XCTSkip`
 /// when that variable is unset, like the design tests that predate it.
+/// Call it from a `@MainActor` context: `ImageRenderer` is main-actor
+/// isolated, the way the neighbor design tests already assume.
 enum RenderFixtureWriter {
+    @MainActor
     static func write<V: View>(
         _ view: V,
         name: String,
