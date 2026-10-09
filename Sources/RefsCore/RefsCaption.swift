@@ -312,7 +312,7 @@ public enum RefsExplanation {
             }
             return "Added by your scan"
         case .today:
-            if let name = signals.today.entries[item.id]?.pomodoroName, !name.isEmpty {
+            if let name = signals.today.entry(for: item)?.pomodoroName, !name.isEmpty {
                 return "In Today · \(name) Pomodoro"
             }
             return "In Today"

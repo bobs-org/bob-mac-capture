@@ -1060,10 +1060,17 @@ JSON report `bob` returns.
 - Snapshot: `bob ref list -R all -A -f json` (schema version 1), plus `-g`
   when some row still lacks an `added` date. Every optional field decodes
   with `decodeIfPresent`, so an older `bob` still works — a `bob` without
-  `blocked` decodes every row as not blocked — and unknown fields are
-  ignored. Any other schema version is rejected like any other refresh
-  failure.
-- Today: `bob plan -f json` (schema version 2).
+  `blocked` decodes every row as not blocked, and a row without `task`
+  joins Today on the note path — and unknown fields are ignored. Any
+  other schema version is rejected like any other refresh failure.
+  Each row's `task` object (`path`, `block_id`, `link`, `mark`,
+  `archived`; `block_id` `ref` on frozen v1 trackers) names the
+  reference's single ordinary reading task: where it lives is the
+  reference's parent, and a `done/` path reads as archived.
+- Today: `bob plan -f json` (schema version 2). Today entries join on
+  `(task.path, task.block_id)`, so two references whose tasks share one
+  parent note no longer both light up when only one is linked; rows
+  without a task fall back to the note-path join.
 - Scan: `bob ref scan -w -f json` (schema version 1) names every created and
   updated note, the intake moves, and per-PDF failures or a coded hard
   failure. The app decodes every field except `schema_version` loosely,
@@ -1084,7 +1091,8 @@ JSON report `bob` returns.
 `RefsLibrary` owns the refresh service: the snapshot, the `-g`
 backfill on its own lane, Today, a one-shot Spotlight sweep for
 last-used dates and page counts, and missing-PDF checks. It paints from
-the cache at launch, watches `<vault>/ref` and `<vault>/lib`
+the cache at launch, watches the vault root (root `*.md` notes) plus
+`<vault>/ref`, `<vault>/lib`, and `<vault>/done`
 (0.5 s debounce), refreshes Today every 10 minutes, after sleep, after
 every capture, and in the background on every panel open, and re-reads
 a stale snapshot on every panel open. The `-g` lane runs only while
@@ -1193,9 +1201,9 @@ are 26 pt and pinned. VoiceOver reads each row as one element —
 Pomodoro, never opened" — with the kind said once and the selected
 row carrying `.isSelected`. The inspector fills instantly from the
 list item (hero, kind/state/Today chips, title, byline, an
-Added/Finished/Pages/Opened/Notes/Narration facts grid with absent
-rows omitted, the why-here line, and the vault PDF path; see
-"Inspector" below for the hydrated column); a missing PDF shows an
+Added/Finished/Pages/Opened/Notes/Reading task/Narration facts grid
+with absent rows omitted, the why-here line, and the vault PDF path;
+see "Inspector" below for the hydrated column); a missing PDF shows an
 orange callout reading "↵ opens the note instead". States: 8
 skeleton rows on first launch, a centered callout card with Retry
 (⌘R) and Copy Diagnostic when no cache exists and the refresh
@@ -1287,6 +1295,11 @@ one thumbnail PNG each). What each kind shows:
   their page labels, quotes, and comments ("+N more" beyond that).
 - Chats name consolidated reports and researcher drafts in the
   byline from the stem (`__final`, `__x`).
+- The Reading task fact names where the reference's task lives: the
+  `book` symbol, the real parent route, and the lane label
+  (`sase · Next`), or `Archived · done/sase_done` once archived.
+  Parent captions use the real route; only frozen v1 rows keep the
+  legacy `_ref`-stripping (`obsidian_ref` reads as `obsidian`).
 
 Honesty rules: absence stays absence (facts omit their row); a
 publication date is not a file date; a highlight count is not
@@ -1684,6 +1697,8 @@ rows), a primary line with restrained emphasis on the part of the text
 that matched what you typed, and a secondary line with the canonical vault-relative
 path, parent task, or `route:block-id` plus small badges — `Alias`, a heading level
 like `H2`, a short block preview, `^block-id`, `Add ID`, `N items`, or `Empty`.
+Reading tasks (`task_kind` `ref`) draw the `book` symbol in the `^`, `:`,
+`+`, `&`, and `!` pickers; the text already arrives without `#ref`.
 `^` active tasks no longer use this list; they open the Active Task Picker above.
 `@route+` task suggestions are grouped as
 **Ready to use** followed by **Needs block ID**, preserving Bob's order inside each

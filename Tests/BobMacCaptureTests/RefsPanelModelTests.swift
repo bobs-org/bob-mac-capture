@@ -275,7 +275,7 @@ final class RefsPanelModelTests: XCTestCase {
         ])
         await harness.waitForSnapshot()
         await harness.waitForModel { _ in
-            harness.library.signals.today.entries.count == 4
+            harness.library.signals.today.taskEntries.count == 4
         }
         // Settle the `-g` lane before the baseline, so no late git-date
         // call can land between the counts below.

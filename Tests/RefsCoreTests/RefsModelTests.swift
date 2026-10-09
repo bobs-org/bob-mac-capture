@@ -128,10 +128,76 @@ final class RefsModelTests: XCTestCase {
     }
 
     func testParentLabelStripsBracketsAndRefSuffix() {
-        XCTAssertEqual(RefItem.parentLabel(from: "obsidian_ref"), "obsidian")
-        XCTAssertEqual(RefItem.parentLabel(from: "[[obsidian_ref]]"), "obsidian")
-        XCTAssertEqual(RefItem.parentLabel(from: "plain"), "plain")
-        XCTAssertNil(RefItem.parentLabel(from: nil))
+        XCTAssertEqual(parentLabel(parent: "obsidian_ref"), "obsidian")
+        XCTAssertEqual(parentLabel(parent: "[[obsidian_ref]]"), "obsidian")
+        XCTAssertEqual(parentLabel(parent: "plain"), "plain")
+        XCTAssertNil(parentLabel(parent: nil))
+    }
+
+    func testV2ParentKeepsTheRealRoute() throws {
+        let items = try v2Items()
+        let byID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+
+        XCTAssertEqual(
+            try XCTUnwrap(byID["ref/chat/first_essay.md"]).parentLabel,
+            "sase"
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(byID["ref/chat/frozen_tracker.md"]).parentLabel,
+            "obsidian"
+        )
+    }
+
+    func testV2ItemsCarryTheirLocatedTask() throws {
+        let items = try v2Items()
+        let byID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+
+        let live = try XCTUnwrap(byID["ref/chat/first_essay.md"])
+        XCTAssertEqual(live.task?.path, "sase.md")
+        XCTAssertEqual(live.task?.blockID, "ref-first-essay")
+        XCTAssertFalse(live.task?.archived ?? true)
+
+        let archived = try XCTUnwrap(byID["ref/papers/finished_paper.md"])
+        XCTAssertTrue(archived.task?.archived ?? false)
+    }
+
+    func testIsV2TaskComparesResidenceAgainstTheNote() {
+        XCTAssertTrue(
+            RefItem.isV2Task(
+                RefTask(path: "sase.md", blockID: "ref-x"),
+                for: "ref/chat/x.md"
+            )
+        )
+        XCTAssertFalse(
+            RefItem.isV2Task(
+                RefTask(path: "ref/chat/x.md", blockID: "ref"),
+                for: "ref/chat/x.md"
+            )
+        )
+        XCTAssertFalse(RefItem.isV2Task(nil, for: "ref/chat/x.md"))
+    }
+
+    func v2Items() throws -> [RefItem] {
+        let response = try JSONDecoder().decode(
+            RefsListResponse.self,
+            from: Self.fixtureData("refs-list-v2.json")
+        )
+        return RefsCatalog.items(
+            from: RefsSnapshot(
+                fetchedAt: Date(timeIntervalSince1970: 1),
+                records: response.refs
+            )
+        )
+    }
+
+    func parentLabel(parent: String?, task: RefTask? = nil) -> String? {
+        RefItem.parentLabel(from: RefRecord(
+            path: "ref/chat/x.md",
+            link: "[[ref/chat/x]]",
+            title: "X",
+            parent: parent,
+            task: task
+        ))
     }
 
     func testBacktickTitleParsesToCodeSegments() throws {

@@ -310,9 +310,14 @@ public final class RefsPanelModel: ObservableObject {
     }
 
     /// The Today Pomodoro name for an id, or nil when the row is not
-    /// in Today. An empty name reads "TODAY" in the pill.
+    /// in Today. An empty name reads "TODAY" in the pill. The join runs
+    /// through the row's located task, so two references sharing one
+    /// parent note do not both claim the pill.
     public func pomodoroName(for id: String) -> String? {
-        library.signals.today.entries[id]?.pomodoroName
+        guard let item = library.items.first(where: { $0.id == id }) else {
+            return nil
+        }
+        return library.signals.today.entry(for: item)?.pomodoroName
     }
 
     /// The selected item, or nil when nothing is selected.

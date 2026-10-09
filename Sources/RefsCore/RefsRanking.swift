@@ -563,7 +563,7 @@ public enum RefsRanker {
     /// The lane prior `L`: Today wins over the state lane; a blocked row
     /// uses its lane's prior minus the blocked penalty.
     public static func lanePrior(_ item: RefItem, signals: RefsSignals) -> Double {
-        if signals.today.entries[item.id] != nil {
+        if signals.today.entry(for: item) != nil {
             return RefsRankingConstants.todayLanePrior
         }
         let base: Double
@@ -617,10 +617,10 @@ public enum RefsRanker {
         // stay only in Just scanned: every item appears once.
         let todayIDs = scoped
             .filter { !placed.contains($0.id) }
-            .filter { signals.today.entries[$0.id] != nil }
+            .filter { signals.today.entry(for: $0) != nil }
             .sorted {
-                let a = signals.today.entries[$0.id]?.order ?? Int.max
-                let b = signals.today.entries[$1.id]?.order ?? Int.max
+                let a = signals.today.entry(for: $0)?.order ?? Int.max
+                let b = signals.today.entry(for: $1)?.order ?? Int.max
                 if a != b {
                     return a < b
                 }

@@ -413,7 +413,7 @@ final class RefsEntryPointsTests: XCTestCase {
 
         library.refresh(reason: .manual)
         await waitForEntryPoints { library.lastSuccessAt != nil }
-        await waitForEntryPoints { library.signals.today.entries.count == 4 }
+        await waitForEntryPoints { library.signals.today.taskEntries.count == 4 }
         let plansBefore = entryPointsPlanCount(recordURL)
 
         let delegate = AppDelegate()

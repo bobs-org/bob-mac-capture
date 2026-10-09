@@ -576,6 +576,10 @@ public func completionRowContent(
         accessibilityHint = "Inserts this completion."
     }
 
+    // Reading tasks (`#task #ref`) draw the book symbol in the task
+    // pickers (`^`, `:`, `+`, `&`, `!`). Bob already strips `#ref` from
+    // the display text, so only the symbol changes.
+    let resolvedSymbolName = bookSymbolName(for: candidate, context: context) ?? symbolName
     let matchRange = completionMatchRange(in: primaryText, query: query)
     let accessibilityLabel = completionAccessibilityLabel(
         contextLabel: contextLabel,
@@ -586,7 +590,7 @@ public func completionRowContent(
 
     return CompletionRowContent(
         category: category,
-        symbolName: symbolName,
+        symbolName: resolvedSymbolName,
         contextLabel: contextLabel,
         primaryText: primaryText,
         primaryMatchRange: matchRange,
@@ -595,6 +599,26 @@ public func completionRowContent(
         accessibilityLabel: accessibilityLabel,
         accessibilityHint: accessibilityHint
     )
+}
+
+/// The `book` override for reading-task rows in the task pickers, or
+/// nil when the row renders as before. Only `task_kind == "ref"` rows in
+/// the `^` (active_task), `:` (task_link), `+` (task_parent and scoped
+/// task), `&` (task_dependency), and `!` (task_complete) contexts change;
+/// an older `bob` omits `task_kind` and every other context is untouched.
+private func bookSymbolName(
+    for candidate: CaptureCompletionCandidate,
+    context: CaptureCompletionContext?
+) -> String? {
+    guard candidate.taskKind == "ref" else {
+        return nil
+    }
+    switch context {
+    case .activeTask, .taskLink, .task, .taskParent, .taskDependency, .taskComplete:
+        return "book"
+    default:
+        return nil
+    }
 }
 
 /// The red `after/cap` badge for a create row that would push the plan

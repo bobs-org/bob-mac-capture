@@ -176,6 +176,87 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.primaryMatchRange, 4..<8)
     }
 
+    func testRefTaskKindDrawsTheBookSymbolInEveryTaskPicker() {
+        let contexts = [
+            "active_task", "task_link", "task", "task_parent",
+            "task_dependency", "task_complete",
+        ]
+        for context in contexts {
+            let candidate = CaptureCompletionCandidate(
+                replacement: "sase:ref-first-essay",
+                route: "sase",
+                blockID: "ref-first-essay",
+                statusSymbol: "*",
+                statusName: "Next",
+                text: "First Essay",
+                taskKind: "ref"
+            )
+
+            let content = completionRowContent(for: candidate, context: context, query: "")
+
+            XCTAssertEqual(content.symbolName, "book", "context \(context)")
+            XCTAssertEqual(content.primaryText, "First Essay", "context \(context)")
+        }
+    }
+
+    func testRefTaskKindLeavesNonTaskPickersAlone() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "sase",
+            route: "sase",
+            label: "sase.md",
+            kind: "project",
+            taskKind: "ref"
+        )
+
+        let content = completionRowContent(for: candidate, context: "route", query: "")
+
+        XCTAssertEqual(content.symbolName, "signpost.right")
+    }
+
+    func testOrdinaryTasksKeepTheirPickerSymbols() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "sase:deep-fix",
+            route: "sase",
+            blockID: "deep-fix",
+            statusSymbol: "*",
+            statusName: "Next",
+            text: "Fix deep bug"
+        )
+
+        XCTAssertEqual(
+            completionRowContent(for: candidate, context: "task", query: "").symbolName,
+            "link"
+        )
+        XCTAssertEqual(
+            completionRowContent(for: candidate, context: "active_task", query: "").symbolName,
+            "bookmark"
+        )
+    }
+
+    func testTaskKindDecodesAdditivelyFromBobJSON() throws {
+        let candidate = try JSONDecoder().decode(
+            CaptureCompletionCandidate.self,
+            from: Data("""
+            {"replacement":"sase:ref-x","route":"sase","block_id":"ref-x",
+             "status_symbol":"*","status_name":"Next","text":"X",
+             "task_kind":"ref"}
+            """.utf8)
+        )
+
+        XCTAssertEqual(candidate.taskKind, "ref")
+    }
+
+    func testTaskKindDefaultsToNilForOlderBob() throws {
+        let candidate = try JSONDecoder().decode(
+            CaptureCompletionCandidate.self,
+            from: Data("""
+            {"replacement":"sase:deep-fix","text":"Fix deep bug"}
+            """.utf8)
+        )
+
+        XCTAssertNil(candidate.taskKind)
+    }
+
     func testPomodoroNameSelectableRowShowsNameTimeAndCurrentDuplicateBadges() {
         let candidate = CaptureCompletionCandidate(
             replacement: "memory",

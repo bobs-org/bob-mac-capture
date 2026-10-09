@@ -4460,6 +4460,10 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let recurring: Bool
     public let alreadySelected: Bool
     public let today: TaskCompleteToday?
+    // Additive reading-task marker from Bob's task scanners: `"ref"` on
+    // candidates whose line is a `#task #ref` reading task. Omitted
+    // otherwise, so older Bob decodes as nil and rows render as before.
+    public let taskKind: String?
 
     public var id: String {
         [
@@ -4532,7 +4536,8 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         hidden: Bool = false,
         recurring: Bool = false,
         alreadySelected: Bool = false,
-        today: TaskCompleteToday? = nil
+        today: TaskCompleteToday? = nil,
+        taskKind: String? = nil
     ) {
         self.replacement = replacement
         self.route = route
@@ -4583,6 +4588,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.recurring = recurring
         self.alreadySelected = alreadySelected
         self.today = today
+        self.taskKind = taskKind
     }
 
     public init(from decoder: Decoder) throws {
@@ -4636,6 +4642,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         recurring = try container.decodeIfPresent(Bool.self, forKey: .recurring) ?? false
         alreadySelected = try container.decodeIfPresent(Bool.self, forKey: .alreadySelected) ?? false
         today = try container.decodeIfPresent(TaskCompleteToday.self, forKey: .today)
+        taskKind = try container.decodeIfPresent(String.self, forKey: .taskKind)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -4688,6 +4695,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case recurring
         case alreadySelected = "already_selected"
         case today
+        case taskKind = "task_kind"
     }
 }
 

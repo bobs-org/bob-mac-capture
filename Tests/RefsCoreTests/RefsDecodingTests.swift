@@ -116,9 +116,79 @@ final class RefsDecodingTests: XCTestCase {
         XCTAssertEqual(response.schemaVersion, 2)
         XCTAssertEqual(response.todayTasks.count, 4)
         XCTAssertEqual(response.todayTasks[0].path, "ref/chat/omnigent_review_notes.md")
+        XCTAssertEqual(response.todayTasks[0].blockID, "ref")
         XCTAssertEqual(response.todayTasks[0].entryName, "BLOG")
         XCTAssertEqual(response.todayTasks[3].path, "sase.md")
+        XCTAssertEqual(response.todayTasks[3].blockID, "ref")
         XCTAssertEqual(response.todayTasks[3].entryName, "GTD")
+    }
+
+    func testPlanTaskWithoutBlockIDDecodesAsNil() throws {
+        let task = try JSONDecoder().decode(
+            RefsPlanTodayTask.self,
+            from: Data("""
+            {"path":"sase.md","entry_name":"GTD"}
+            """.utf8)
+        )
+
+        XCTAssertEqual(task.path, "sase.md")
+        XCTAssertNil(task.blockID)
+        XCTAssertEqual(task.entryName, "GTD")
+    }
+
+    func testV2RowsDecodeTheirLocatedTask() throws {
+        let response = try JSONDecoder().decode(
+            RefsListResponse.self,
+            from: fixtureData("refs-list-v2.json")
+        )
+        let byPath = Dictionary(uniqueKeysWithValues: response.refs.map { ($0.path, $0) })
+
+        let live = try XCTUnwrap(byPath["ref/chat/first_essay.md"]?.task)
+        XCTAssertEqual(live.path, "sase.md")
+        XCTAssertEqual(live.blockID, "ref-first-essay")
+        XCTAssertEqual(live.link, "[[sase#^ref-first-essay]]")
+        XCTAssertEqual(live.mark, "*")
+        XCTAssertFalse(live.archived)
+
+        let archived = try XCTUnwrap(byPath["ref/papers/finished_paper.md"]?.task)
+        XCTAssertEqual(archived.path, "done/sase_done.md")
+        XCTAssertEqual(archived.blockID, "ref-finished-paper")
+        XCTAssertTrue(archived.archived)
+
+        let frozen = try XCTUnwrap(byPath["ref/chat/frozen_tracker.md"]?.task)
+        XCTAssertEqual(frozen.path, "ref/chat/frozen_tracker.md")
+        XCTAssertEqual(frozen.blockID, "ref")
+        XCTAssertFalse(frozen.archived)
+    }
+
+    func testRowWithoutTaskKeyDecodesAsNilForOlderBob() throws {
+        let record = try JSONDecoder().decode(
+            RefRecord.self,
+            from: Data("""
+            {"path":"ref/chat/x.md","link":"[[ref/chat/x]]","title":"X"}
+            """.utf8)
+        )
+
+        XCTAssertNil(record.task)
+    }
+
+    func testTaskRoundTripsThroughTheSnapshotCache() throws {
+        let response = try JSONDecoder().decode(
+            RefsListResponse.self,
+            from: fixtureData("refs-list-v2.json")
+        )
+        let snapshot = RefsSnapshot(
+            fetchedAt: Date(timeIntervalSince1970: 1_760_000_000),
+            records: response.refs
+        )
+
+        let data = try RefsStoreCodecs.encoder().encode(snapshot)
+        let roundTripped = try RefsStoreCodecs.decoder().decode(
+            RefsSnapshot.self,
+            from: data
+        )
+
+        XCTAssertEqual(roundTripped, snapshot)
     }
 
     func decodeGoldenList() throws -> RefsListResponse {

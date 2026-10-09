@@ -42,6 +42,52 @@ public struct RefsListResponse: Decodable, Equatable, Sendable, SchemaVersioned 
     }
 }
 
+/// One located reading task from `bob ref list`: where the reference's
+/// single ordinary task lives. `path` is the task's residence (a root
+/// area/project/inbox note, or a `done/` archive); `blockID` is its
+/// trailing block ID (`ref-<slug>`, or `ref` for a frozen v1 tracker);
+/// `mark` is the checkbox mark; `archived` is true inside `done/`.
+/// Absent (`null`) when the note has no task, so an older `bob` still
+/// decodes. Encodes with the same keys so the snapshot cache round-trips.
+public struct RefTask: Codable, Equatable, Sendable {
+    public let path: String
+    public let blockID: String?
+    public let link: String?
+    public let mark: String?
+    public let archived: Bool
+
+    public init(
+        path: String,
+        blockID: String? = nil,
+        link: String? = nil,
+        mark: String? = nil,
+        archived: Bool = false
+    ) {
+        self.path = path
+        self.blockID = blockID
+        self.link = link
+        self.mark = mark
+        self.archived = archived
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path
+        case blockID = "block_id"
+        case link
+        case mark
+        case archived
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = try container.decode(String.self, forKey: .path)
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
+        link = try container.decodeIfPresent(String.self, forKey: .link)
+        mark = try container.decodeIfPresent(String.self, forKey: .mark)
+        archived = try container.decodeIfPresent(Bool.self, forKey: .archived) ?? false
+    }
+}
+
 /// One `bob ref list` row. Only `path`, `link`, and `title` are required;
 /// everything else tolerates absence so older `bob` output still decodes.
 /// Encodes with the same snake_case keys so the snapshot cache round-trips.
@@ -55,6 +101,7 @@ public struct RefRecord: Codable, Equatable, Sendable {
     public let readingState: String?
     public let blocked: Bool
     public let parent: String?
+    public let task: RefTask?
     public let author: String?
     public let published: String?
     public let added: String?
@@ -80,6 +127,7 @@ public struct RefRecord: Codable, Equatable, Sendable {
         readingState: String? = nil,
         blocked: Bool = false,
         parent: String? = nil,
+        task: RefTask? = nil,
         author: String? = nil,
         published: String? = nil,
         added: String? = nil,
@@ -104,6 +152,7 @@ public struct RefRecord: Codable, Equatable, Sendable {
         self.readingState = readingState
         self.blocked = blocked
         self.parent = parent
+        self.task = task
         self.author = author
         self.published = published
         self.added = added
@@ -130,6 +179,7 @@ public struct RefRecord: Codable, Equatable, Sendable {
         case readingState = "reading_state"
         case blocked
         case parent
+        case task
         case author
         case published
         case added
@@ -194,6 +244,7 @@ public struct RefRecord: Codable, Equatable, Sendable {
         readingState = try container.decodeIfPresent(String.self, forKey: .readingState)
         blocked = try container.decodeIfPresent(Bool.self, forKey: .blocked) ?? false
         parent = try container.decodeIfPresent(String.self, forKey: .parent)
+        task = try container.decodeIfPresent(RefTask.self, forKey: .task)
         author = try container.decodeIfPresent(String.self, forKey: .author)
         published = try container.decodeIfPresent(String.self, forKey: .published)
         added = try container.decodeIfPresent(String.self, forKey: .added)
@@ -225,6 +276,7 @@ public struct RefRecord: Codable, Equatable, Sendable {
         try container.encodeIfPresent(readingState, forKey: .readingState)
         try container.encode(blocked, forKey: .blocked)
         try container.encodeIfPresent(parent, forKey: .parent)
+        try container.encodeIfPresent(task, forKey: .task)
         try container.encodeIfPresent(author, forKey: .author)
         try container.encodeIfPresent(published, forKey: .published)
         try container.encodeIfPresent(added, forKey: .added)
@@ -286,21 +338,31 @@ public struct RefsPlanResponse: Decodable, Equatable, Sendable, SchemaVersioned 
     }
 }
 
-/// One `today_tasks[]` entry: the note `path` it links, the Pomodoro
-/// `entry_name`, and the task `status_symbol`. All other keys are ignored.
+/// One `today_tasks[]` entry: the note `path` it links, the task
+/// `block_id`, the Pomodoro `entry_name`, and the task `status_symbol`.
+/// All other keys are ignored. `block_id` is absent on older `bob`
+/// output and decodes as nil.
 public struct RefsPlanTodayTask: Codable, Equatable, Sendable {
     public let path: String
+    public let blockID: String?
     public let entryName: String
     public let statusSymbol: String?
 
-    public init(path: String, entryName: String = "", statusSymbol: String? = nil) {
+    public init(
+        path: String,
+        blockID: String? = nil,
+        entryName: String = "",
+        statusSymbol: String? = nil
+    ) {
         self.path = path
+        self.blockID = blockID
         self.entryName = entryName
         self.statusSymbol = statusSymbol
     }
 
     private enum CodingKeys: String, CodingKey {
         case path
+        case blockID = "block_id"
         case entryName = "entry_name"
         case statusSymbol = "status_symbol"
     }
@@ -308,6 +370,7 @@ public struct RefsPlanTodayTask: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         path = try container.decode(String.self, forKey: .path)
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
         entryName = try container.decodeIfPresent(String.self, forKey: .entryName) ?? ""
         statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol)
     }

@@ -222,9 +222,9 @@ final class RefsLibraryTests: XCTestCase {
         // The Today lane runs beside the snapshot lane, so wait for the lane
         // this test asserts instead of reading it mid-flight.
         await waitUntil(timeout: 15) {
-            context.library.signals.today.entries.count == 4
+            context.library.signals.today.taskEntries.count == 4
         }
-        XCTAssertEqual(context.library.signals.today.entries.count, 4)
+        XCTAssertEqual(context.library.signals.today.taskEntries.count, 4)
 
         let schema3 = try fixtureURL("refs-plan-schema3.json").path
         context.library.setFetcher(try planClient(
@@ -236,7 +236,7 @@ final class RefsLibraryTests: XCTestCase {
             let record = (try? String(contentsOf: recordURL)) ?? ""
             return record.components(separatedBy: "argv=plan -f json").count == 3
         }
-        XCTAssertEqual(context.library.signals.today.entries.count, 4)
+        XCTAssertEqual(context.library.signals.today.taskEntries.count, 4)
     }
 
     func testRecordOpenAndResetHistory() async throws {
@@ -298,7 +298,7 @@ final class RefsLibraryTests: XCTestCase {
         // Both lanes record argv lines; wait for Today too so a late plan
         // call cannot land between the baseline count and the quiet check.
         await waitUntil(timeout: 15) {
-            context.library.signals.today.entries.count == 4
+            context.library.signals.today.taskEntries.count == 4
         }
         // Settle the `-g` lane before the baseline. It starts after the
         // snapshot publishes, so a late git argv line otherwise lands inside

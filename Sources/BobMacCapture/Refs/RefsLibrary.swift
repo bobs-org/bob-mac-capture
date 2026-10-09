@@ -635,9 +635,17 @@ public final class RefsLibrary: ObservableObject {
 
     private func startWatcher() {
         let root = vaultRoot()
+        // Reading tasks live in root area/project/inbox notes and archive
+        // into `done/`, so root-note edits must refresh like `ref/` and
+        // `lib/` moves do. The stream is recursive, so the vault root
+        // covers root `*.md` files and `done/`; the explicit entries keep
+        // refreshing when the root itself is unavailable but a subdir is
+        // not, and document what the panel depends on.
         let paths = [
+            root.path,
             root.appendingPathComponent("ref").path,
             root.appendingPathComponent("lib").path,
+            root.appendingPathComponent("done").path,
         ]
         let watcher = VaultTargetWatcher(paths: paths, latency: 0.5) { [weak self] in
             Task { await self?.handleWatcherChange() }

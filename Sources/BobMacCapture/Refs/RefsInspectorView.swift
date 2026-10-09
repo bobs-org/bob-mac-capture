@@ -192,7 +192,7 @@ struct RefsInspectorView: View {
     }
 
     private func todayName(for item: RefItem) -> String? {
-        signals.today.entries[item.id]?.pomodoroName
+        signals.today.entry(for: item)?.pomodoroName
     }
 
     private func byline(for item: RefItem) -> some View {
@@ -273,6 +273,9 @@ struct RefsInspectorView: View {
             }
             factRow(label: "Opened", value: openedText(for: item))
             factRow(label: "Notes", value: notesText(for: item))
+            if item.task != nil {
+                readingTaskRow(for: item)
+            }
             if let inspector, !inspector.showFailed, inspector.openTaskCount > 0 {
                 factRow(
                     label: "Tasks",
@@ -304,6 +307,40 @@ struct RefsInspectorView: View {
                 .font(.callout)
                 .gridColumnAlignment(.leading)
         }
+    }
+
+    /// The located reading task: the book symbol, the real parent
+    /// route, and the lane label (`sase · Next`), or the archive file
+    /// when the task already archived (`Archived · done/sase_done`).
+    /// Rows from an older `bob` carry no task and omit the row.
+    private func readingTaskRow(for item: RefItem) -> some View {
+        GridRow {
+            Text("Reading task")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: RefsVisualTokens.factLabelWidth, alignment: .trailing)
+                .gridColumnAlignment(.trailing)
+            HStack(spacing: 4) {
+                Image(systemName: "book")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Text(readingTaskText(for: item))
+                    .font(.callout)
+            }
+            .gridColumnAlignment(.leading)
+        }
+        .accessibilityLabel("Reading task, \(readingTaskText(for: item))")
+    }
+
+    private func readingTaskText(for item: RefItem) -> String {
+        guard let task = item.task else {
+            return ""
+        }
+        if task.archived {
+            return "Archived · \(task.path)"
+        }
+        let parent = item.parentLabel ?? task.path
+        return "\(parent) · \(RefsCaption.stateLabel(item))"
     }
 
     private func addedText(for item: RefItem) -> String {

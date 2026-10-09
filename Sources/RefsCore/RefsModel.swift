@@ -265,6 +265,7 @@ public struct RefItem: Identifiable, Equatable, Sendable {
     public let isBlocked: Bool
     public let pdfPath: String
     public let parentLabel: String?
+    public let task: RefTask?
     public let author: String?
     public let published: String?
     public let added: RefDay?
@@ -291,6 +292,7 @@ public struct RefItem: Identifiable, Equatable, Sendable {
         isBlocked: Bool,
         pdfPath: String,
         parentLabel: String? = nil,
+        task: RefTask? = nil,
         author: String? = nil,
         published: String? = nil,
         added: RefDay? = nil,
@@ -317,6 +319,7 @@ public struct RefItem: Identifiable, Equatable, Sendable {
         self.isBlocked = isBlocked
         self.pdfPath = pdfPath
         self.parentLabel = parentLabel
+        self.task = task
         self.author = author
         self.published = published
         self.added = added
@@ -377,7 +380,8 @@ extension RefItem {
             state: RefState(status: record.status, readingState: record.readingState),
             isBlocked: record.blocked,
             pdfPath: pdf,
-            parentLabel: Self.parentLabel(from: record.parent),
+            parentLabel: Self.parentLabel(from: record),
+            task: record.task,
             author: record.author,
             published: record.published,
             added: added,
@@ -413,16 +417,31 @@ extension RefItem {
         return String(last.dropLast(4))
     }
 
-    static func parentLabel(from parent: String?) -> String? {
-        guard var label = parent else {
+    static func parentLabel(from record: RefRecord) -> String? {
+        guard var label = record.parent else {
             return nil
         }
         label = label.replacingOccurrences(of: "[[", with: "")
         label = label.replacingOccurrences(of: "]]", with: "")
-        if label.hasSuffix("_ref") {
-            label = String(label.dropLast(4))
+        // A v2 row's parent is already the real residence route, so it
+        // keeps its full name. Only frozen v1 rows keep the legacy
+        // `_ref`-stripping heuristic (`obsidian_ref` reads as `obsidian`).
+        if !isV2Task(record.task, for: record.path) {
+            if label.hasSuffix("_ref") {
+                label = String(label.dropLast(4))
+            }
         }
         return label
+    }
+
+    /// Whether a located task is a v2 reading task: its residence is a
+    /// different file than the ref note itself. Frozen v1 trackers live
+    /// inside their own note (`task.path == record.path`, block `ref`).
+    public static func isV2Task(_ task: RefTask?, for recordPath: String) -> Bool {
+        guard let task else {
+            return false
+        }
+        return task.path != recordPath
     }
 
     /// The folded display title used to find collisions: case, diacritics,
@@ -463,6 +482,7 @@ public enum RefsCatalog {
                     isBlocked: item.isBlocked,
                     pdfPath: item.pdfPath,
                     parentLabel: item.parentLabel,
+                    task: item.task,
                     author: item.author,
                     published: item.published,
                     added: item.added,
