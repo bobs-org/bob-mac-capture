@@ -311,7 +311,7 @@ final class RefsPanelModelTests: XCTestCase {
     // MARK: - Harness
 
     @MainActor
-    private final class Harness {
+    fileprivate final class Harness {
         let library: RefsLibrary
         let model: RefsPanelModel
         let opener: FakeOpener
