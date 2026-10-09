@@ -55,10 +55,8 @@ public enum RefsCaption {
             return addedPhrase(item, signals: signals)
         case .reading, .next, .recentlyOpened:
             if let opened = RefsRanker.lastOpened(item, signals: signals) {
-                return "opened \(relativeCompact(
-                    opened, now: signals.now,
-                    calendar: signals.calendar
-                ))"
+                let when = relativeCompact(opened, now: signals.now, calendar: signals.calendar)
+                return "opened \(when)"
             }
             return addedPhrase(item, signals: signals)
         case .today, .library:
@@ -74,10 +72,8 @@ public enum RefsCaption {
     /// Search mode: the last-activity phrase.
     static func lastActivityPhrase(_ item: RefItem, signals: RefsSignals) -> String {
         if let opened = RefsRanker.lastOpened(item, signals: signals) {
-            return "opened \(relativeCompact(
-                opened, now: signals.now,
-                calendar: signals.calendar
-            ))"
+            let when = relativeCompact(opened, now: signals.now, calendar: signals.calendar)
+            return "opened \(when)"
         }
         if item.state == .read, let finished = item.finished {
             return "read \(absoluteDay(finished, now: signals.now, calendar: signals.calendar))"
@@ -272,10 +268,10 @@ public enum RefsExplanation {
             return "Just added · never opened"
         case .reading:
             if let opened = RefsRanker.lastOpened(item, signals: signals) {
-                return "Reading · opened \(RefsCaption.relativeLong(
-                    opened, now: signals.now,
-                    calendar: signals.calendar
-                ))"
+                let when = RefsCaption.relativeLong(
+                    opened, now: signals.now, calendar: signals.calendar
+                )
+                return "Reading · opened \(when)"
             }
             return "Reading · never opened"
         case .next:
@@ -293,10 +289,10 @@ public enum RefsExplanation {
             return "Ready"
         case .recentlyOpened:
             if let opened = RefsRanker.lastOpened(item, signals: signals) {
-                return "Opened \(RefsCaption.relativeLong(
-                    opened, now: signals.now,
-                    calendar: signals.calendar
-                ))"
+                let when = RefsCaption.relativeLong(
+                    opened, now: signals.now, calendar: signals.calendar
+                )
+                return "Opened \(when)"
             }
             return "Opened"
         case .library, nil:
