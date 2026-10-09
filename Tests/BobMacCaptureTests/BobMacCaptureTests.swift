@@ -3805,7 +3805,7 @@ final class BobMacCaptureTests: XCTestCase {
                 "restartApp", "quit",
             ]
         )
-        XCTAssertEqual(menu.items.map(\.keyEquivalent), ["", "r", ",", "", "", "", "q"])
+        XCTAssertEqual(menu.items.map(\.keyEquivalent), ["", "o", ",", "", "", "", "q"])
     }
 
     @MainActor

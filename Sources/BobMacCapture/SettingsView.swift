@@ -28,7 +28,7 @@ struct SettingsView: View {
 
             Section("References") {
                 Toggle(
-                    "Open Bob Refs with Control-Shift-Command-R",
+                    "Open Bob Refs with Control-Shift-Command-O",
                     isOn: $settings.refsHotkeyEnabled
                 )
                 Picker(

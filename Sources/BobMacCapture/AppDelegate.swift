@@ -273,9 +273,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let refsItem = NSMenuItem(
             title: "Bob Refs…",
             action: #selector(openRefsPanel),
-            keyEquivalent: "r"
+            keyEquivalent: "o"
         )
-        // Display only: the global Control-Shift-Command-R hotkey toggles
+        // Display only: the global Control-Shift-Command-O hotkey toggles
         // the panel when the menu is closed; this equivalent labels the row.
         refsItem.keyEquivalentModifierMask = [.command, .control, .shift]
         menu.addItem(refsItem)

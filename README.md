@@ -284,7 +284,7 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
   "Updating, Reinstalling, and Rollback" below for automatic install restart and the
   manual Restart item.
 - Production hotkey (the default): Control-Shift-Command-I.
-- Development/rollback hotkey: Control-Shift-Command-O, selectable in Settings.
+- Development/rollback hotkey: Control-Shift-Command-R, selectable in Settings.
 - The hotkey path uses a pre-warmed non-activating `NSPanel`; subprocess work is kept
   off that path.
 - A fresh popup is a compact, Spotlight-like bar — a one-line editor plus persistent
@@ -1243,7 +1243,7 @@ announced 600 ms after typing stops, never on every keystroke.
 
 ### Opening Bob Refs
 
-- From anywhere on the Mac, Control-Shift-Command-R toggles the panel.
+- From anywhere on the Mac, Control-Shift-Command-O toggles the panel.
   Settings › References can turn this binding off.
 - While Highlights is frontmost, Command-O opens Bob Refs instead of
   Highlights' Open… dialog. Settings can switch the takeover to
@@ -1785,7 +1785,7 @@ press by its `EventHotKeyID` under the shared `'BOBC'` signature: capture (id 1)
 refs (id 2), and refs Highlights-Open (id 3). Each action registers independently,
 so registering or unregistering one never disturbs the others, and a failed
 registration leaves every other registration intact. Pressing the production
-hotkey behaves exactly as before. The refs bindings — Control-Shift-Command-R
+hotkey behaves exactly as before. The refs bindings — Control-Shift-Command-O
 globally, Command-O or Control-O while Highlights is frontmost — route through
 `BobPanelCoordinator.toggleRefs()`: the global key whenever its setting is on,
 the takeover key only while Highlights (or the Settings override app) is
@@ -1850,7 +1850,7 @@ To roll back deliberately, keep the previous release's commit or tag and rerun
 because reinstalling the old build is the rollback.
 
 To roll back the Hammerspoon cutover specifically, first turn off **Use production
-Control-Shift-Command-I** in Settings so the app returns to Control-Shift-Command-O,
+Control-Shift-Command-I** in Settings so the app returns to Control-Shift-Command-R,
 then restore the pre-cutover Hammerspoon files documented in the chezmoi repository.
 Do not restore the old binding while the app still owns the production shortcut.
 
