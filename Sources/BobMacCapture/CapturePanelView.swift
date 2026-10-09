@@ -2441,17 +2441,6 @@ struct PreviewPane: View {
         // dimmed, and Start is disabled until a task number is typed.
         let isPending = model.closePendingText != nil
         let showsBadges = start.taskRows.contains { $0.index != nil }
-        // Restarts and swaps keep the start pink but answer the play glyph
-        // with their own: a restart re-runs the clock, a swap exchanges it.
-        let startIconName: String
-        switch start.variant {
-        case .restart:
-            startIconName = "arrow.clockwise.circle.fill"
-        case .swap:
-            startIconName = "arrow.left.arrow.right.circle.fill"
-        case .start, .idleStart:
-            startIconName = "play.circle.fill"
-        }
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if total > 1 {
@@ -2459,7 +2448,7 @@ struct PreviewPane: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Image(systemName: startIconName)
+                Image(systemName: startIconName(for: start.variant))
                     .foregroundStyle(sessionTint)
                     .accessibilityHidden(true)
                 Text(start.title)
@@ -2633,6 +2622,23 @@ struct PreviewPane: View {
             isPending ? "\(start.accessibilitySummary), \(model.closePendingText ?? "")"
                 : start.accessibilitySummary
         )
+    }
+
+    /// The start-card glyph. Restarts and swaps keep the start pink but
+    /// answer the play glyph with their own: a restart re-runs the clock, a
+    /// swap exchanges it. A plain function, not a `@ViewBuilder` switch,
+    /// because result builders reject statement-only `switch` branches.
+    private func startIconName(
+        for variant: CapturePomodoroStartPresentation.Variant
+    ) -> String {
+        switch variant {
+        case .restart:
+            return "arrow.clockwise.circle.fill"
+        case .swap:
+            return "arrow.left.arrow.right.circle.fill"
+        case .start, .idleStart:
+            return "play.circle.fill"
+        }
     }
 
     /// Renders the start-card teaching-hint tokens: example tokens share the
