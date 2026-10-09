@@ -473,9 +473,9 @@ final class RefsPanelDesignTests: XCTestCase {
             model: model,
             animatePresentation: false,
             previewMode: true,
-            previewWidth: width
+            previewWidth: width,
+            reduceTransparencyOverride: reduceTransparency ? true : nil
         )
-        .environment(\.accessibilityReduceTransparency, reduceTransparency)
         .frame(width: width)
         for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
             try RenderFixtureWriter.write(

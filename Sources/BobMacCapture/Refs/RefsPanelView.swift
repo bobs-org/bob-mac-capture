@@ -18,6 +18,9 @@ public struct RefsPanelView: View {
     /// cannot negotiate a height while the snapshot sizes to content,
     /// which overlaps the footer.
     var previewWidth: CGFloat?
+    /// Design tests force the Reduce Transparency base, whose
+    /// environment key is read-only and cannot be injected.
+    var reduceTransparencyOverride: Bool? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -28,12 +31,14 @@ public struct RefsPanelView: View {
         model: RefsPanelModel,
         animatePresentation: Bool = true,
         previewMode: Bool = false,
-        previewWidth: CGFloat? = nil
+        previewWidth: CGFloat? = nil,
+        reduceTransparencyOverride: Bool? = nil
     ) {
         self.model = model
         self.animatePresentation = animatePresentation
         self.previewMode = previewMode
         self.previewWidth = previewWidth
+        self.reduceTransparencyOverride = reduceTransparencyOverride
     }
 
     public var body: some View {
@@ -54,7 +59,7 @@ public struct RefsPanelView: View {
         .background {
             // Under Reduce Transparency the glass goes opaque: paint the
             // window background beneath the content (§6).
-            if reduceTransparency {
+            if reduceTransparencyOverride ?? reduceTransparency {
                 Color(nsColor: .windowBackgroundColor)
                     .clipShape(RoundedRectangle(
                         cornerRadius: RefsVisualTokens.glassRadius
