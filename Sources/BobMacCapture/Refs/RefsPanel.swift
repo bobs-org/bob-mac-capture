@@ -46,6 +46,7 @@ public final class RefsPanelController: NSObject {
         model.panelDismisser = { [weak self] in self?.hide() }
         model.panelPresenter = { [weak self] in self?.show() }
         model.actionsPresenter = { [weak self] in self?.showActionsMenu() }
+        model.panelIsVisible = { [weak self] in self?.isVisible == true }
     }
 
     deinit {
@@ -106,9 +107,11 @@ public final class RefsPanelController: NSObject {
     }
 
     /// Hides at once, with no fade-out. Key status returns to the
-    /// frontmost app on its own.
+    /// frontmost app on its own. The model clears a seen scan notice
+    /// here, so a finished scan's footer text does not linger.
     public func hide() {
         panel?.orderOut(nil)
+        model.panelDidHide()
     }
 
     /// Pops the ⌘K actions menu below the selected row, or at the
@@ -130,6 +133,10 @@ public final class RefsPanelController: NSObject {
         }
         let flat = sections.flatMap { $0 }
         let menu = NSMenu()
+        // The menu manages its own enabled state: while a scan runs,
+        // the scan item is disabled instead of starting a second scan.
+        menu.autoenablesItems = false
+        let scanDisabled = model.isScanning
         for (index, section) in sections.enumerated() {
             if index > 0 {
                 menu.addItem(NSMenuItem.separator())
@@ -143,6 +150,9 @@ public final class RefsPanelController: NSObject {
                 item.keyEquivalentModifierMask = action.keyEquivalentModifierMask
                 item.target = self
                 item.tag = flat.firstIndex(of: action) ?? 0
+                if action == .scanLibrary, scanDisabled {
+                    item.isEnabled = false
+                }
                 menu.addItem(item)
             }
         }

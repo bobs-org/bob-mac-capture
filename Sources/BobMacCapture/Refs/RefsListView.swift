@@ -2,10 +2,21 @@ import RefsCore
 import SwiftUI
 
 /// A 26 pt pinned section header: the uppercase title plus the count.
+/// A Just scanned header adds a trailing relative time ("just now",
+/// "4m ago"), refreshed each minute.
 @available(macOS 26.0, *)
 struct RefsSectionHeader: View {
     let kind: RefsSectionKind
     let count: Int
+    /// When the scan finished, for the `.justScanned` trailing time.
+    /// Nil for every other section.
+    let at: Date?
+
+    init(kind: RefsSectionKind, count: Int, at: Date? = nil) {
+        self.kind = kind
+        self.count = count
+        self.at = at
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -17,14 +28,30 @@ struct RefsSectionHeader: View {
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.tertiary)
             Spacer(minLength: 0)
+            if kind == .justScanned, let at {
+                TimelineView(.everyMinute) { context in
+                    Text(RefsCaption.relativeCompact(at, now: context.date))
+                        .font(.caption2)
+                        .monospacedDigit()
+                        .foregroundStyle(.tertiary)
+                }
+            }
         }
         .padding(.horizontal, 14)
         .frame(height: RefsVisualTokens.sectionHeaderHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.regularMaterial)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(kind.title), \(count) references")
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(.isHeader)
+    }
+
+    private var accessibilityLabel: String {
+        if kind == .justScanned, let at {
+            let when = RefsCaption.relativeCompact(at, now: Date())
+            return "Just scanned, \(count) references, \(when)"
+        }
+        return "\(kind.title), \(count) references"
     }
 }
 
@@ -49,7 +76,11 @@ struct RefsListView: View {
                         }
                     } header: {
                         if let kind = section.kind {
-                            RefsSectionHeader(kind: kind, count: section.ids.count)
+                            RefsSectionHeader(
+                                kind: kind,
+                                count: section.ids.count,
+                                at: headerScanDate(for: kind)
+                            )
                         }
                     }
                 }
@@ -73,7 +104,11 @@ struct RefsListView: View {
                                     }
                                 } header: {
                                     if let kind = section.kind {
-                                        RefsSectionHeader(kind: kind, count: section.ids.count)
+                                        RefsSectionHeader(
+                                            kind: kind,
+                                            count: section.ids.count,
+                                            at: headerScanDate(for: kind)
+                                        )
                                     }
                                 }
                             }
@@ -100,6 +135,13 @@ struct RefsListView: View {
                 }
             }
         }
+    }
+
+    private func headerScanDate(for kind: RefsSectionKind) -> Date? {
+        guard kind == .justScanned else {
+            return nil
+        }
+        return model.signals.scan?.at
     }
 
     private func row(for id: String) -> some View {

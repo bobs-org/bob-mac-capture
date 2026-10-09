@@ -655,6 +655,8 @@ public final class RefsPanelModel: ObservableObject {
             _ = openSelected(.defaultApp)
         case .refreshLibrary:
             perform(.refresh)
+        case .scanLibrary:
+            _ = perform(.scan)
         }
     }
 

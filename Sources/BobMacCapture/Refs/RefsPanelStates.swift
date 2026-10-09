@@ -73,10 +73,21 @@ struct RefsEmptyStateView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+            Text(scanHint)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(message)
+        .accessibilityLabel("\(message). \(scanHint)")
+    }
+
+    private var scanHint: String {
+        if model.isScanning {
+            return "Scanning for new references…"
+        }
+        return "Not in your library yet? ⌘S scans for new references"
     }
 
     private var message: String {

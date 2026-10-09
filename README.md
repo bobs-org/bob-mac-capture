@@ -995,7 +995,10 @@ every PDF-backed reference note, with kind and reading state on every row.
 Return opens the original PDF in Highlights and changes nothing in the vault —
 opening never mutates reading state, task lanes, or review state. The panel is
 a thin client of `bob`: it filters, ranks, sections, and presents what `bob`
-returns, and never parses frontmatter or note bodies.
+returns, never parses frontmatter or note bodies, and never writes the vault
+itself. Pressing ⌘S asks `bob` to run its own writer — the same
+`bob ref scan -w` the 15-minute cron runs — and then presents the versioned
+JSON report `bob` returns.
 
 ### Data
 
@@ -1006,6 +1009,11 @@ returns, and never parses frontmatter or note bodies.
   ignored. Any other schema version is rejected like any other refresh
   failure.
 - Today: `bob plan -f json` (schema version 2).
+- Scan: `bob ref scan -w -f json` (schema version 1) names every created and
+  updated note, the intake moves, and per-PDF failures or a coded hard
+  failure. The app decodes every field except `schema_version` loosely,
+  ignores unknown fields, and rejects any other schema version like any
+  other scan failure.
 - The snapshot (including git-added dates) and the last Today value persist
   in `refs-snapshot.json` under `~/Library/Application Support/`
   `org.bobs.bob-mac-capture/`, so a cold launch paints immediately. The
@@ -1039,11 +1047,21 @@ in place and never reorders (⌘R re-ranks from the new data once the
 refresh completes, keeping the selection when it still exists), an
 open error re-shows the panel with the query, selection,
 and pending open intact, and Return on a vanished row shows "No longer
-in your library" instead of opening whatever slid into its index.
+in your library" instead of opening whatever slid into its index. A ⌘S scan
+runs on its own `refs-scan` lane with a 300 s timeout and never cancels
+another lane's work, and no other lane cancels it. Watcher changes are
+deferred while a scan runs — they record that one happened and refresh
+once, after the scan. Every completion runs a post-scan refresh that
+starts after `bob` exited (a snapshot pass plus Today), even after a
+failure, because intake may have moved files; the scan notice publishes
+only after that pass, so new rows are already listed when the panel
+re-ranks.
 
 ### Sorting
 
-An empty query shows browse sections in order — Today (ledger order),
+An empty query shows browse sections in order — Just scanned (this scan's
+created references, in `bob`'s order, uncapped, while the scan mark is at
+most 15 minutes old), Today (ledger order),
 Just added (ready/next, unopened, added within 3 days, capped at 5),
 Reading, Next (blocked rows last), Ready by added desc (blocked rows
 last), Recently opened (read/dropped/unknown opened within 14 days,
@@ -1103,8 +1121,11 @@ Layout, top to bottom: the 52 pt search bar (magnifier, 20 pt field,
 scope token, "`N open · M`" or "`k of M`" count, refresh spinner),
 the banner when one is up, the content well (list beside the
 inspector on `.regularMaterial` at radius 12 with a hairline
-stroke), and the 30 pt footer (key hints plus "Updated …" /
-"Updating…" / "Update failed · ⌘R to retry"). The list column takes
+stroke), and the 30 pt footer (key hints including "⌘S Scan", plus the library
+status: "Scanning library…" with a spinner while a scan runs, "Update
+failed · ⌘R to retry" when a refresh failed, the scan outcome — "Added
+N references", "No new references", or "Scan failed · ⌘S to retry" —
+"Updating…", or "Updated …"). The list column takes
 `round(width × 0.52)` of the panel width and the inspector shows at
 760 pt and above. Rows are 44 pt and two lines: the unopened dot,
 the kind tile, the rich title (code spans styled, matches in the
@@ -1123,8 +1144,18 @@ rows omitted, the why-here line, and the vault PDF path; see
 orange callout reading "↵ opens the note instead". States: 8
 skeleton rows on first launch, a centered callout card with Retry
 (⌘R) and Copy Diagnostic when no cache exists and the refresh
-failed, a centered "No references match" empty state, and dimmed
-unavailable rows that never open whatever slid into their index.
+failed, a centered "No references match" empty state with a quiet second line
+("Not in your library yet? ⌘S scans for new references", or "Scanning
+for new references…" while a scan runs), and dimmed
+unavailable rows that never open whatever slid into their index. A scan
+that finishes while the panel is visible re-ranks once like ⌘R, puts
+the Just scanned section first with its first row selected, and
+announces the outcome to VoiceOver; a scan that finishes while the
+panel is hidden posts a macOS notification instead ("Added N
+references", or the failure), and clicking it shows Bob Refs with the
+section on top. Problem scans raise a banner: a warning with Copy
+Diagnostic for per-PDF failures, an error with Scan Again and Copy
+Diagnostic for hard failures.
 
 | Key | Bob Refs panel |
 | --- | -------------- |
@@ -1137,6 +1168,7 @@ unavailable rows that never open whatever slid into their index.
 | Option-Up/Option-Down | First row of the previous/next section (browse only) |
 | Command-1 … Command-5 | Scope All, Chats, Papers, Articles, Docs |
 | Command-R | Refresh library, Today, and git dates now; re-rank |
+| Command-S | Scan for new references now (`bob ref scan -w` in the background); a second ⌘S while one runs does nothing |
 | Command-K | Actions menu for the selected row |
 | Backspace on an empty query | Remove the scope token |
 | Esc, Ctrl-[ | Banner, then query, then scope, then close |
@@ -1215,7 +1247,8 @@ center when the row frame is unknown): Open in Highlights (↵), Open
 Note (⌘↵), Reveal in Finder (⌥↵), Copy Wiki Link (bob's `link`,
 verbatim), Copy PDF Path, Open Source URL (only with `urls`), Open
 Narration (only with `audio`, in the default app), Open in Default
-App, and Refresh Library (⌘R). A copy toasts the footer for 1.5 s
+App, Refresh Library (⌘R), and Scan for New References (⌘S, last;
+disabled while a scan runs). A copy toasts the footer for 1.5 s
 ("Copied wiki link").
 
 ### Privacy
@@ -1230,6 +1263,9 @@ intrinsics cache (`intrinsics.json`) with thumbnails
 settings persist a small set of `UserDefaults` keys (the ⌃⇧⌘R
 binding flag, the Highlights-frontmost open key, and the Highlights
 override path). Signposts carry event names only, never note text.
+Scan notifications may show reference titles, as capture notifications
+already show task text; the Just scanned mark itself lives in memory
+only and is never written to disk.
 
 ### Troubleshooting
 
@@ -1242,6 +1278,16 @@ override path). Signposts carry event names only, never note text.
 - To reset open history (recently-opened rows and frecency), use
   Reset Open History… in Settings › References behind its
   confirmation dialog.
+- "Bob couldn't scan your library": the error banner names `bob`'s
+  message and hint with Scan Again and Copy Diagnostic. A dirty vault
+  ("refusing to modify dirty vault files") clears once the named notes
+  are committed; `scan_busy` means another scan held the writer lock
+  past the wait — wait for it to finish, then scan again; "This bob
+  can't report scans yet" means the `bob` on this Mac predates the JSON
+  report, so update it and press ⌘S again; a timeout ("ran longer than
+  5 minutes") suggests running `bob ref scan -w` in Terminal to see
+  where it stalls. Quitting mid-scan stops it — `bob`'s note writes are
+  atomic per file, and the next scan or cron run finishes the job.
 
 ## Keyboard
 

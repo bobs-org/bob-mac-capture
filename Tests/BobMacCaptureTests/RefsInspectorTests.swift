@@ -264,6 +264,24 @@ final class RefsInspectorLoaderTests: XCTestCase {
         XCTAssertTrue(paperSections[1].contains(.openNarration(paperURL!)))
     }
 
+    func testActionsMenuEndsWithScanAfterRefresh() {
+        let fixtures = makeFixtures()
+        let sections = RefsActionsMenu.sections(
+            for: fixtures.chat,
+            audioURL: nil
+        )
+        XCTAssertEqual(
+            sections.last,
+            [.openDefaultApp, .refreshLibrary, .scanLibrary]
+        )
+        XCTAssertEqual(RefsAction.scanLibrary.title, "Scan for New References")
+        XCTAssertEqual(RefsAction.scanLibrary.keyEquivalent, "s")
+        XCTAssertEqual(
+            RefsAction.scanLibrary.keyEquivalentModifierMask,
+            .command
+        )
+    }
+
     func testCopyWritesPasteboardStringsAndToasts() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

@@ -39,6 +39,7 @@ public enum RefsKeyRouter {
         static let four: UInt16 = 21
         static let five: UInt16 = 23
         static let r: UInt16 = 15
+        static let s: UInt16 = 1
         static let j: UInt16 = 38
         static let k: UInt16 = 40
         static let n: UInt16 = 45
@@ -145,6 +146,8 @@ public enum RefsKeyRouter {
             return flags == .command ? .setScope(.docs) : nil
         case KeyCode.r:
             return flags == .command ? .refresh : nil
+        case KeyCode.s:
+            return flags == .command ? .scan : nil
         case KeyCode.delete:
             // Only unmodified Backspace on an empty query removes the
             // scope token; `perform` re-checks the scope, so a non-All

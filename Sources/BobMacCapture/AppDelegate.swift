@@ -16,9 +16,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // building it here made `AppDelegate()` unconstructible under `swift test`, aborting the whole
     // xctest process. Every real touch still happens at or after `applicationWillFinishLaunching`,
     // so the delegate is assigned before any authorization request exactly as before.
-    lazy var notificationService = NotificationService(showCapture: { [weak self] in
-        self?.showCapturePanel()
-    })
+    lazy var notificationService = NotificationService(
+        showCapture: { [weak self] in
+            self?.showCapturePanel()
+        },
+        showRefs: { [weak self] in
+            self?.panelCoordinator?.showRefs()
+        }
+    )
 
     var settingsPresentation = SettingsPresentation()
     var relauncher = AppRelauncher()
@@ -478,6 +483,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             highlights: HighlightsLocator(overridePath: Self.storedHighlightsAppPath)
         )
         model.settingsPresenter = { [weak self] in self?.openSettings() }
+        // Hidden-panel scan outcomes notify through the coordinator's
+        // showRefs, so a visible Capture draft is retained on click.
+        model.scanNotifier = { [weak self] outcome in
+            self?.notificationService.notifyRefsScan(outcome)
+        }
         let controller = RefsPanelController(model: model)
         refsLibrary = library
         refsPanelModel = model

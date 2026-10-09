@@ -15,6 +15,7 @@ final class RefsKeyRouterTests: XCTestCase {
         static let five: UInt16 = 23
         static let a: UInt16 = 0
         static let r: UInt16 = 15
+        static let s: UInt16 = 1
         static let j: UInt16 = 38
         static let k: UInt16 = 40
         static let n: UInt16 = 45
@@ -126,6 +127,14 @@ final class RefsKeyRouterTests: XCTestCase {
     func testRefresh() {
         XCTAssertEqual(route(KeyCode.r, .command), .refresh)
         XCTAssertNil(route(KeyCode.r))
+    }
+
+    func testCommandSMapsToScanAndOtherModifiersPassThrough() {
+        XCTAssertEqual(route(KeyCode.s, .command), .scan)
+        XCTAssertNil(route(KeyCode.s))
+        XCTAssertNil(route(KeyCode.s, [.command, .shift]))
+        XCTAssertNil(route(KeyCode.s, [.command, .option]))
+        XCTAssertNil(route(KeyCode.s, .control))
     }
 
     func testDeleteBackwardOnEmptyRemovesScope() {

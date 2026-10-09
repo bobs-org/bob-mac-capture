@@ -34,6 +34,14 @@ final class RefsPanelDesignTests: XCTestCase {
         try renderLoadFailed(now: now)
         try renderSkeleton(now: now)
         try renderBanner(model: model, now: now)
+        try renderScanRunning(model: model, now: now)
+        try renderScanAdded(model: model, now: now)
+        try renderScanAddedSearch(model: model, now: now)
+        try renderScanNothingNew(model: model, now: now)
+        try renderScanPartial(model: model, now: now)
+        try renderScanFailed(model: model, now: now)
+        try renderNoMatchesScanHint(model: model, now: now)
+        try renderScanAddedNarrow(model: model, now: now)
         try renderNarrowBrowse(model: model, now: now)
         try renderInspectorChat(model: model, now: now)
         try renderInspectorPaper(model: model, now: now)
@@ -210,6 +218,331 @@ final class RefsPanelDesignTests: XCTestCase {
         )
         XCTAssertNotNil(model.banner)
         try write(model: model, name: "refs-banner-880", width: 880)
+    }
+
+    /// The running scan: the footer spinner with a fixed elapsed
+    /// time. The elapsed comes from a live startedAt, so this render
+    /// asserts nothing about the text — review the PNG for it.
+    private func renderScanRunning(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeFixture(now: now)
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: "ref/chat/today_report.md",
+            banner: nil,
+            refreshState: .idle,
+            scanState: .scanning(startedAt: Date().addingTimeInterval(-7))
+        )
+        XCTAssertTrue(model.isScanning)
+        try write(model: model, name: "refs-scan-running-880", width: 880)
+    }
+
+    /// Three scanned rows on top in a Just scanned section, the first
+    /// row selected, a code-span title, and the added footer.
+    private func renderScanAdded(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeScanFixture(now: now)
+        let outcome = RefsScanOutcome(
+            response: RefsScanResponse(
+                ok: true,
+                notes: [
+                    RefsScanNote(
+                        action: "create",
+                        path: "ref/chat/scan_alpha.md",
+                        title: "Scan Brings `harness` Home"
+                    ),
+                    RefsScanNote(
+                        action: "create",
+                        path: "ref/papers/scan_beta.md",
+                        title: "Scan Beta Findings"
+                    ),
+                    RefsScanNote(
+                        action: "create",
+                        path: "ref/chat/scan_gamma.md",
+                        title: "Scan Gamma Notes"
+                    ),
+                ]
+            ),
+            finishedAt: now
+        )
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: "ref/chat/scan_alpha.md",
+            banner: nil,
+            refreshState: .idle,
+            scanNotice: outcome
+        )
+        XCTAssertEqual(
+            model.listing.orderedIDs.first,
+            "ref/chat/scan_alpha.md"
+        )
+        XCTAssertEqual(model.listing.sections.first?.kind, .justScanned)
+        try write(model: model, name: "refs-scan-added-880", width: 880)
+    }
+
+    private func renderScanAddedSearch(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeScanFixture(now: now)
+        let outcome = RefsScanOutcome(
+            response: RefsScanResponse(
+                ok: true,
+                notes: [
+                    RefsScanNote(
+                        action: "create",
+                        path: "ref/chat/scan_alpha.md",
+                        title: "Scan Brings `harness` Home"
+                    ),
+                ]
+            ),
+            finishedAt: now
+        )
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "scan",
+            scope: .all,
+            selectedID: "ref/chat/scan_alpha.md",
+            banner: nil,
+            refreshState: .idle,
+            scanNotice: outcome
+        )
+        guard case .search = model.listing.mode else {
+            XCTFail("expected search mode")
+            return
+        }
+        try write(model: model, name: "refs-scan-added-search-880", width: 880)
+    }
+
+    private func renderScanNothingNew(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeFixture(now: now)
+        let outcome = RefsScanOutcome(
+            response: RefsScanResponse(
+                ok: true,
+                notes: [
+                    RefsScanNote(
+                        action: "update",
+                        path: "ref/papers/harness_buy.md",
+                        title: "What Does a Harness Buy You?"
+                    ),
+                    RefsScanNote(
+                        action: "update",
+                        path: "ref/chat/morning_notes.md",
+                        title: "Morning Notes on Retrieval"
+                    ),
+                ]
+            ),
+            finishedAt: now
+        )
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: "ref/chat/today_report.md",
+            banner: nil,
+            refreshState: .idle,
+            scanNotice: outcome
+        )
+        XCTAssertEqual(
+            RefsScanPresentation.footerText(outcome, searchMode: false),
+            "No new references · 2 notes synced"
+        )
+        try write(model: model, name: "refs-scan-nothing-new-880", width: 880)
+    }
+
+    private func renderScanPartial(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeFixture(now: now)
+        let outcome = RefsScanOutcome(
+            response: RefsScanResponse(
+                ok: false,
+                notes: [RefsScanNote(
+                    action: "create",
+                    path: "ref/chat/scan_alpha.md",
+                    title: "Scan Alpha Report"
+                )],
+                failures: [
+                    RefsScanFailure(
+                        pdf: "lib/papers/blank_scan.pdf",
+                        stage: "plan",
+                        message: "no extractable text on pages 1-3"
+                    ),
+                    RefsScanFailure(
+                        pdf: "lib/chat/noisy_report.pdf",
+                        stage: "write",
+                        message: "reference note changed during sync; rerun"
+                    ),
+                ]
+            ),
+            finishedAt: now
+        )
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: "ref/chat/today_report.md",
+            banner: RefsBanner(
+                kind: .warning,
+                message: RefsScanPresentation.bannerMessage(outcome) ?? "",
+                actions: [.copyDiagnostic]
+            ),
+            refreshState: .idle,
+            scanNotice: outcome
+        )
+        XCTAssertNotNil(model.banner)
+        try write(model: model, name: "refs-scan-partial-880", width: 880)
+    }
+
+    private func renderScanFailed(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeFixture(now: now)
+        let outcome = RefsScanOutcome(
+            problem: RefsScanProblem(
+                code: "dirty_targets",
+                message: "refusing to modify dirty vault files",
+                hint: "commit, stash, or clean those paths, then scan again",
+                paths: [
+                    "ref/chat/omni_report.md",
+                    "ref/papers/attention_review.md",
+                    "ref/chat/standup_notes.md",
+                    "ref/papers/harness_notes.md",
+                ]
+            ),
+            finishedAt: now
+        )
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: "ref/chat/today_report.md",
+            banner: RefsBanner(
+                kind: .error,
+                message: RefsScanPresentation.bannerMessage(outcome) ?? "",
+                actions: [.scanAgain, .copyDiagnostic]
+            ),
+            refreshState: .idle,
+            scanNotice: outcome
+        )
+        XCTAssertNotNil(model.banner)
+        try write(model: model, name: "refs-scan-failed-880", width: 880)
+    }
+
+    private func renderNoMatchesScanHint(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeFixture(now: now)
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "zzz-no-match",
+            scope: .all,
+            selectedID: nil,
+            banner: nil,
+            refreshState: .idle
+        )
+        XCTAssertTrue(model.listing.orderedIDs.isEmpty)
+        try write(model: model, name: "refs-no-matches-scan-hint-880", width: 880)
+    }
+
+    /// List-only width: the footer hints and scan status share one
+    /// line without colliding or clipping.
+    private func renderScanAddedNarrow(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeScanFixture(now: now)
+        let outcome = RefsScanOutcome(
+            response: RefsScanResponse(
+                ok: true,
+                notes: [
+                    RefsScanNote(
+                        action: "create",
+                        path: "ref/chat/scan_alpha.md",
+                        title: "Scan Brings `harness` Home"
+                    ),
+                    RefsScanNote(
+                        action: "create",
+                        path: "ref/papers/scan_beta.md",
+                        title: "Scan Beta Findings"
+                    ),
+                    RefsScanNote(
+                        action: "create",
+                        path: "ref/chat/scan_gamma.md",
+                        title: "Scan Gamma Notes"
+                    ),
+                ]
+            ),
+            finishedAt: now
+        )
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: "ref/chat/scan_alpha.md",
+            banner: nil,
+            refreshState: .idle,
+            scanNotice: outcome
+        )
+        XCTAssertFalse(RefsVisualTokens.showsInspector(width: 700))
+        try write(model: model, name: "refs-scan-added-700", width: 700)
+    }
+
+    /// The browse fixture plus three scanned rows under a Just scanned
+    /// mark stamped just now, so the section renders first.
+    private func makeScanFixture(now: Date) -> Fixture {
+        let base = makeFixture(now: now)
+        let scanned = [
+            RefItem(
+                id: "ref/chat/scan_alpha.md",
+                link: "[[ref/chat/scan_alpha]]",
+                rawTitle: "Scan Brings `harness` Home",
+                stem: "scan_alpha",
+                kind: .chat,
+                state: .ready,
+                isBlocked: false,
+                pdfPath: "lib/chat/scan_alpha.pdf",
+                parentLabel: "sase",
+                added: day(now, offset: 0),
+                addedSource: "created",
+                isAgentReport: true
+            ),
+            RefItem(
+                id: "ref/papers/scan_beta.md",
+                link: "[[ref/papers/scan_beta]]",
+                rawTitle: "Scan Beta Findings",
+                stem: "scan_beta",
+                kind: .paper,
+                state: .ready,
+                isBlocked: false,
+                pdfPath: "lib/papers/scan_beta.pdf",
+                author: "Ada Lovelace",
+                added: day(now, offset: 0),
+                addedSource: "created"
+            ),
+            RefItem(
+                id: "ref/chat/scan_gamma.md",
+                link: "[[ref/chat/scan_gamma]]",
+                rawTitle: "Scan Gamma Notes",
+                stem: "scan_gamma",
+                kind: .chat,
+                state: .ready,
+                isBlocked: false,
+                pdfPath: "lib/chat/scan_gamma.pdf",
+                parentLabel: "sase",
+                added: day(now, offset: 0),
+                addedSource: "created",
+                isAgentReport: true
+            ),
+        ]
+        var signals = base.signals
+        signals.scan = RefsScanMark(
+            ids: [
+                "ref/chat/scan_alpha.md",
+                "ref/papers/scan_beta.md",
+                "ref/chat/scan_gamma.md",
+            ],
+            at: now
+        )
+        return Fixture(items: base.items + scanned, signals: signals)
     }
 
     private func renderNarrowBrowse(model: RefsPanelModel, now: Date) throws {

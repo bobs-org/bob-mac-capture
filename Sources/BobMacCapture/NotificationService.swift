@@ -1,5 +1,6 @@
 import AppKit
 import CaptureCore
+import RefsCore
 import UserNotifications
 
 struct NotificationAuthorizationDisplay: Equatable {
@@ -40,6 +41,8 @@ final class NotificationService: NSObject, ObservableObject {
     nonisolated static let captureCategoryIdentifier = "org.bobs.bob-mac-capture.capture"
     nonisolated static let captureBatchCategoryIdentifier = "org.bobs.bob-mac-capture.capture-batch"
     nonisolated static let installRestartCategoryIdentifier = "org.bobs.bob-mac-capture.install-restart"
+    nonisolated static let refsScanCategoryIdentifier = "org.bobs.bob-mac-capture.refs-scan"
+    nonisolated static let refsScanShowActionIdentifier = "org.bobs.bob-mac-capture.refs-scan.show"
     nonisolated static let targetPathKey = "targetPath"
     nonisolated static let targetPathsKey = "targetPaths"
     nonisolated static let foregroundPresentationOptions: UNNotificationPresentationOptions = [
@@ -51,15 +54,18 @@ final class NotificationService: NSObject, ObservableObject {
     private let center: UNUserNotificationCenter
     private let opener: (URL) -> Void
     private let showCapture: () -> Void
+    private let showRefs: () -> Void
 
     init(
         center: UNUserNotificationCenter = .current(),
         opener: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) },
-        showCapture: @escaping () -> Void = {}
+        showCapture: @escaping () -> Void = {},
+        showRefs: @escaping () -> Void = {}
     ) {
         self.center = center
         self.opener = opener
         self.showCapture = showCapture
+        self.showRefs = showRefs
         super.init()
         // The delegate must be assigned before any authorization request so a foreground
         // notification delivered during the same launch is never silently suppressed.
@@ -113,6 +119,19 @@ final class NotificationService: NSObject, ObservableObject {
     func notifyInstallComplete() {
         Task {
             try? await add(Self.installCompleteContent())
+        }
+    }
+
+    /// Posts the hidden-panel scan outcome: added titles, a partial
+    /// failure, or a hard failure. A quiet outcome (nothing new while
+    /// hidden) posts nothing, and missing or denied permission stays
+    /// silent like every other notify path.
+    func notifyRefsScan(_ outcome: RefsScanOutcome) {
+        guard let content = Self.refsScanContent(outcome) else {
+            return
+        }
+        Task {
+            try? await add(content)
         }
     }
 
@@ -264,10 +283,46 @@ final class NotificationService: NSObject, ObservableObject {
     }
 
     nonisolated static func captureCategories() -> Set<UNNotificationCategory> {
-        [captureCategory(), captureBatchCategory(), installRestartCategory()]
+        [
+            captureCategory(),
+            captureBatchCategory(),
+            installRestartCategory(),
+            refsScanCategory(),
+        ]
+    }
+
+    /// The hidden-panel scan content from the §8 strings: nil when the
+    /// outcome is quiet (succeeded with nothing created).
+    nonisolated static func refsScanContent(
+        _ outcome: RefsScanOutcome
+    ) -> UNMutableNotificationContent? {
+        guard let presentation = RefsScanPresentation.notification(outcome) else {
+            return nil
+        }
+        let content = UNMutableNotificationContent()
+        content.title = presentation.title
+        content.body = presentation.body
+        content.sound = .default
+        content.categoryIdentifier = refsScanCategoryIdentifier
+        return content
+    }
+
+    nonisolated static func refsScanCategory() -> UNNotificationCategory {
+        let show = UNNotificationAction(
+            identifier: refsScanShowActionIdentifier,
+            title: "Show in Bob Refs",
+            options: [.foreground]
+        )
+        return UNNotificationCategory(
+            identifier: refsScanCategoryIdentifier,
+            actions: [show],
+            intentIdentifiers: [],
+            options: []
+        )
     }
 
     // Body click and Capture on the install-restart category show the capture panel.
+    // The default click and the Show action on a refs-scan notification show Bob Refs.
     // Capture notifications keep their existing default-click / Open Note / Open Notes
     // Obsidian routing. Dismissal and mismatched category/action combinations are no-ops.
     // Takes plain values instead of a live UNNotificationResponse, which the SDK gives
@@ -279,6 +334,15 @@ final class NotificationService: NSObject, ObservableObject {
     ) -> NotificationRoute {
         if actionIdentifier == UNNotificationDismissActionIdentifier {
             return .none
+        }
+        if categoryIdentifier == refsScanCategoryIdentifier {
+            guard
+                actionIdentifier == UNNotificationDefaultActionIdentifier
+                    || actionIdentifier == refsScanShowActionIdentifier
+            else {
+                return .none
+            }
+            return .showRefs
         }
         if categoryIdentifier == installRestartCategoryIdentifier {
             guard
@@ -299,13 +363,16 @@ final class NotificationService: NSObject, ObservableObject {
     nonisolated static func execute(
         _ route: NotificationRoute,
         opener: (URL) -> Void,
-        showCapture: () -> Void
+        showCapture: () -> Void,
+        showRefs: () -> Void = {}
     ) {
         switch route {
         case .none:
             return
         case .showCapture:
             showCapture()
+        case .showRefs:
+            showRefs()
         case .openURLs(let urls):
             for url in urls {
                 opener(url)
@@ -707,6 +774,7 @@ final class NotificationService: NSObject, ObservableObject {
 enum NotificationRoute: Equatable {
     case none
     case showCapture
+    case showRefs
     case openURLs([URL])
 }
 
@@ -745,7 +813,8 @@ extension NotificationService: UNUserNotificationCenterDelegate {
                     userInfo: userInfo
                 ),
                 opener: self.opener,
-                showCapture: self.showCapture
+                showCapture: self.showCapture,
+                showRefs: self.showRefs
             )
         }
         completionHandler()

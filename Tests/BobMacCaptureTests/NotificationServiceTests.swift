@@ -4,6 +4,7 @@ import UserNotifications
 import XCTest
 
 @testable import BobMacCapture
+@testable import RefsCore
 
 // These tests exercise only the pure, static surfaces of NotificationService.
 // UNUserNotificationCenter/UNNotification/UNNotificationResponse have no public
@@ -806,6 +807,7 @@ final class NotificationServiceTests: XCTestCase {
                 NotificationService.captureCategoryIdentifier,
                 NotificationService.captureBatchCategoryIdentifier,
                 NotificationService.installRestartCategoryIdentifier,
+                NotificationService.refsScanCategoryIdentifier,
             ]
         )
     }
@@ -992,6 +994,171 @@ final class NotificationServiceTests: XCTestCase {
 
         XCTAssertTrue(opened.isEmpty)
         XCTAssertEqual(showCaptureCount, 0)
+    }
+
+    // MARK: - Refs scan notifications (hidden panel only)
+
+    private func makeScanNote(title: String?, path: String) -> RefsScanNote {
+        RefsScanNote(action: "create", path: path, title: title)
+    }
+
+    private func makeScanOutcome(
+        ok: Bool = true,
+        created: [RefsScanNote] = [],
+        failures: [RefsScanFailure] = [],
+        error: RefsScanProblem? = nil
+    ) -> RefsScanOutcome {
+        RefsScanOutcome(
+            response: RefsScanResponse(
+                ok: ok,
+                notes: created,
+                failures: failures,
+                error: error
+            ),
+            finishedAt: Date()
+        )
+    }
+
+    func testRefsScanAddedContentSingularPluralAndOverflow() {
+        let single = makeScanOutcome(created: [
+            makeScanNote(title: "Omni Report", path: "ref/chat/omni_report.md"),
+        ])
+        let singleContent = NotificationService.refsScanContent(single)
+        XCTAssertEqual(singleContent?.title, "Added 1 reference")
+        XCTAssertEqual(singleContent?.body, "Omni Report")
+        XCTAssertEqual(
+            singleContent?.categoryIdentifier,
+            NotificationService.refsScanCategoryIdentifier
+        )
+
+        let three = makeScanOutcome(created: [
+            makeScanNote(title: "Alpha", path: "ref/chat/alpha.md"),
+            makeScanNote(title: "Beta", path: "ref/chat/beta.md"),
+            makeScanNote(title: "Gamma", path: "ref/chat/gamma.md"),
+        ])
+        let threeContent = NotificationService.refsScanContent(three)
+        XCTAssertEqual(threeContent?.title, "Added 3 references")
+        XCTAssertEqual(threeContent?.body, "Alpha · Beta · Gamma")
+
+        let five = makeScanOutcome(created: [
+            makeScanNote(title: "One", path: "ref/chat/one.md"),
+            makeScanNote(title: "Two", path: "ref/chat/two.md"),
+            makeScanNote(title: "Three", path: "ref/chat/three.md"),
+            makeScanNote(title: "Four", path: "ref/chat/four.md"),
+            makeScanNote(title: "Five", path: "ref/chat/five.md"),
+        ])
+        let fiveContent = NotificationService.refsScanContent(five)
+        XCTAssertEqual(fiveContent?.title, "Added 5 references")
+        XCTAssertEqual(fiveContent?.body, "One · Two · Three · +2 more")
+    }
+
+    func testRefsScanPartialFailedAndQuietContent() {
+        let partial = makeScanOutcome(
+            ok: false,
+            created: [
+                makeScanNote(title: "Alpha", path: "ref/chat/alpha.md"),
+                makeScanNote(title: "Beta", path: "ref/chat/beta.md"),
+            ],
+            failures: [RefsScanFailure(
+                pdf: "lib/papers/blank.pdf",
+                stage: "plan",
+                message: "no extractable text"
+            )]
+        )
+        let partialContent = NotificationService.refsScanContent(partial)
+        XCTAssertEqual(
+            partialContent?.title,
+            "Added 2 references · 1 PDF failed"
+        )
+        XCTAssertEqual(
+            partialContent?.body,
+            "lib/papers/blank.pdf — no extractable text"
+        )
+
+        let failed = makeScanOutcome(
+            ok: false,
+            error: RefsScanProblem(
+                code: "dirty_targets",
+                message: "refusing to modify dirty vault files",
+                hint: "commit, stash, or clean those paths, then scan again",
+                paths: ["ref/chat/memo.md"]
+            )
+        )
+        let failedContent = NotificationService.refsScanContent(failed)
+        XCTAssertEqual(failedContent?.title, "Bob Refs scan failed")
+        XCTAssertEqual(
+            failedContent?.body,
+            "refusing to modify dirty vault files"
+        )
+
+        let quiet = makeScanOutcome(created: [])
+        XCTAssertNil(NotificationService.refsScanContent(quiet))
+    }
+
+    func testRefsScanCategoryRegistersForegroundShowAction() {
+        let category = NotificationService.refsScanCategory()
+        XCTAssertEqual(
+            category.identifier,
+            NotificationService.refsScanCategoryIdentifier
+        )
+        XCTAssertEqual(
+            category.actions.map(\.identifier),
+            [NotificationService.refsScanShowActionIdentifier]
+        )
+        XCTAssertEqual(category.actions[0].title, "Show in Bob Refs")
+        XCTAssertTrue(category.actions[0].options.contains(.foreground))
+    }
+
+    func testRefsScanRoutesBodyClickAndShowToShowRefs() {
+        XCTAssertEqual(
+            NotificationService.route(
+                forActionIdentifier: UNNotificationDefaultActionIdentifier,
+                categoryIdentifier: NotificationService.refsScanCategoryIdentifier,
+                userInfo: [:]
+            ),
+            .showRefs
+        )
+        XCTAssertEqual(
+            NotificationService.route(
+                forActionIdentifier: NotificationService.refsScanShowActionIdentifier,
+                categoryIdentifier: NotificationService.refsScanCategoryIdentifier,
+                userInfo: [:]
+            ),
+            .showRefs
+        )
+        XCTAssertEqual(
+            NotificationService.route(
+                forActionIdentifier: UNNotificationDismissActionIdentifier,
+                categoryIdentifier: NotificationService.refsScanCategoryIdentifier,
+                userInfo: [:]
+            ),
+            .none
+        )
+        XCTAssertEqual(
+            NotificationService.route(
+                forActionIdentifier: NotificationService.captureActionIdentifier,
+                categoryIdentifier: NotificationService.refsScanCategoryIdentifier,
+                userInfo: [:]
+            ),
+            .none
+        )
+    }
+
+    func testExecuteShowRefsInvokesRefsCallbackOnly() {
+        var opened: [URL] = []
+        var showCaptureCount = 0
+        var showRefsCount = 0
+
+        NotificationService.execute(
+            .showRefs,
+            opener: { opened.append($0) },
+            showCapture: { showCaptureCount += 1 },
+            showRefs: { showRefsCount += 1 }
+        )
+
+        XCTAssertEqual(showRefsCount, 1)
+        XCTAssertEqual(showCaptureCount, 0)
+        XCTAssertTrue(opened.isEmpty)
     }
 
     func testTargetURLsOpenOnDefaultClickSingularPluralAndLegacyMetadata() {
