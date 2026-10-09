@@ -1505,6 +1505,79 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
     }
 }
 
+/// One note-free `=x0` reset from Bob's additive `pomodoro_reset` result:
+/// the current Pomodoro returned to the front of the future queue with its
+/// session ledger cleared. Reset and `pomodoro_close` are mutually exclusive.
+/// Older Bob binaries omit the key entirely; decode as nil.
+public struct PomodoroResetSummary: Codable, Equatable, Sendable {
+    public let raw: String
+    public let dayRelative: String
+    public let pomodoroName: String?
+    public let previousPomodoroLine: Int
+    public let pomodoroLine: Int
+    public let previousEntryLine: String
+    public let entryLine: String
+    public let previousTimeRange: String
+    public let timeRange: String?
+    public let createdPomodoro: Bool
+    public let moved: Bool
+
+    public init(
+        raw: String,
+        dayRelative: String,
+        pomodoroName: String? = nil,
+        previousPomodoroLine: Int = 0,
+        pomodoroLine: Int = 0,
+        previousEntryLine: String = "",
+        entryLine: String = "",
+        previousTimeRange: String = "",
+        timeRange: String? = nil,
+        createdPomodoro: Bool = false,
+        moved: Bool = false
+    ) {
+        self.raw = raw
+        self.dayRelative = dayRelative
+        self.pomodoroName = pomodoroName
+        self.previousPomodoroLine = previousPomodoroLine
+        self.pomodoroLine = pomodoroLine
+        self.previousEntryLine = previousEntryLine
+        self.entryLine = entryLine
+        self.previousTimeRange = previousTimeRange
+        self.timeRange = timeRange
+        self.createdPomodoro = createdPomodoro
+        self.moved = moved
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        raw = try container.decodeIfPresent(String.self, forKey: .raw) ?? ""
+        dayRelative = try container.decodeIfPresent(String.self, forKey: .dayRelative) ?? ""
+        pomodoroName = try container.decodeIfPresent(String.self, forKey: .pomodoroName)
+        previousPomodoroLine = try container.decodeIfPresent(Int.self, forKey: .previousPomodoroLine) ?? 0
+        pomodoroLine = try container.decodeIfPresent(Int.self, forKey: .pomodoroLine) ?? 0
+        previousEntryLine = try container.decodeIfPresent(String.self, forKey: .previousEntryLine) ?? ""
+        entryLine = try container.decodeIfPresent(String.self, forKey: .entryLine) ?? ""
+        previousTimeRange = try container.decodeIfPresent(String.self, forKey: .previousTimeRange) ?? ""
+        timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange)
+        createdPomodoro = try container.decodeIfPresent(Bool.self, forKey: .createdPomodoro) ?? false
+        moved = try container.decodeIfPresent(Bool.self, forKey: .moved) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case raw
+        case dayRelative = "day_relative"
+        case pomodoroName = "pomodoro_name"
+        case previousPomodoroLine = "previous_pomodoro_line"
+        case pomodoroLine = "pomodoro_line"
+        case previousEntryLine = "previous_entry_line"
+        case entryLine = "entry_line"
+        case previousTimeRange = "previous_time_range"
+        case timeRange = "time_range"
+        case createdPomodoro = "created_pomodoro"
+        case moved
+    }
+}
+
 public struct CaptureRewriteResponse: Codable, Equatable {
     public let ok: Bool
     public let schemaVersion: Int
@@ -2109,6 +2182,9 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     // Additive session-close result for `=x` and task-link closes. Older Bob
     // binaries omit it entirely; decode as nil.
     public let pomodoroClose: PomodoroCloseSummary?
+    // Additive note-free `=x0` reset result. Mutually exclusive with
+    // `pomodoroClose`. Older Bob binaries omit it entirely; decode as nil.
+    public let pomodoroReset: PomodoroResetSummary?
     // Additive dependency summary for captures that add prerequisites:
     // dependent identity and text, added/already-present counts,
     // prerequisite summaries, open prerequisite count, and resulting
@@ -2193,6 +2269,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         pomodoroAdjust: PomodoroAdjustSummary? = nil,
         pomodoroShift: PomodoroShiftSummary? = nil,
         pomodoroClose: PomodoroCloseSummary? = nil,
+        pomodoroReset: PomodoroResetSummary? = nil,
         dependencyUpdate: DependencyUpdateSummary? = nil,
         taskComplete: CaptureTaskComplete? = nil,
         projectNote: CaptureProjectNoteSummary? = nil,
@@ -2252,6 +2329,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.pomodoroAdjust = pomodoroAdjust
         self.pomodoroShift = pomodoroShift
         self.pomodoroClose = pomodoroClose
+        self.pomodoroReset = pomodoroReset
         self.dependencyUpdate = dependencyUpdate
         self.taskComplete = taskComplete
         self.projectNote = projectNote
@@ -2331,6 +2409,10 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         pomodoroClose = try container.decodeIfPresent(
             PomodoroCloseSummary.self,
             forKey: .pomodoroClose
+        )
+        pomodoroReset = try container.decodeIfPresent(
+            PomodoroResetSummary.self,
+            forKey: .pomodoroReset
         )
         dependencyUpdate = try container.decodeIfPresent(
             DependencyUpdateSummary.self,
@@ -2417,6 +2499,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case pomodoroAdjust = "pomodoro_adjust"
         case pomodoroShift = "pomodoro_shift"
         case pomodoroClose = "pomodoro_close"
+        case pomodoroReset = "pomodoro_reset"
         case dependencyUpdate = "dependency_update"
         case taskComplete = "task_complete"
         case projectNote = "project_note"

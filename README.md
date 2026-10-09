@@ -1416,7 +1416,7 @@ draft. A whole-item `=x` closes
 the running Pomodoro; `@route:block-id=x` links an existing task first, and
 `<text> @route:block-id=x` creates a task inside that session before closing it.
 Appending task numbers chooses each Task Link's outcome: `=x2` keeps only 2 in
-progress, `=x!2` completes 2, `=x1!2` does both, and `=x0` defers all (single-quote
+progress, `=x!2` completes 2, `=x1!2` does both, and a note-free `=x0` resets the session to first future while a note-bearing `=x0` defers all (single-quote
 the argument in zsh, since `=` and `!` expand). The same suffix works on link
 forms. Work Log bullets log while closing: type `=x`, then `⌃J` for a `- ` bullet,
 then either `1 wired the lexer` to add `wired the lexer` under link 1, or just

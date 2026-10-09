@@ -629,7 +629,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             append(" drops \(dropIndex) · ", .neutral)
             append("=x", .pomodoroStart)
             append("0", .pomodoroCloseInProgress)
-            append(" defers all · ", .neutral)
+            append(" defers all (note-free resets instead) · ", .neutral)
             append("=x", .pomodoroStart)
             append(" ", .neutral)
             append("2", .pomodoroCloseLog)
@@ -648,7 +648,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         append(" drops it · ", .neutral)
         append("=x", .pomodoroStart)
         append("0", .pomodoroCloseInProgress)
-        append(" defers it · ", .neutral)
+        append(" defers it (note-free resets instead) · ", .neutral)
         append("=x", .pomodoroStart)
         append(" wrote the tests logs work to it", .neutral)
         return tokens

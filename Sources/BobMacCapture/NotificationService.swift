@@ -379,6 +379,14 @@ final class NotificationService: NSObject, ObservableObject {
                     targetPaths: targetPaths
                 )
             }
+            if let reset = CapturePomodoroResetPresentation(capture: capture) {
+                return CaptureNotificationPresentation(
+                    title: reset.notificationTitle,
+                    subtitle: displayLabel(for: capture),
+                    body: reset.notificationBody,
+                    targetPaths: targetPaths
+                )
+            }
             if let close = CapturePomodoroClosePresentation(capture: capture) {
                 return CaptureNotificationPresentation(
                     title: close.notificationTitle,
@@ -461,7 +469,7 @@ final class NotificationService: NSObject, ObservableObject {
         let lines = nonemptyCaptures.enumerated().map { index, capture in
             let scheduled = capture.scheduled.map { " scheduled \($0)" } ?? ""
             let suffix = "\(scheduled)\(startedSuffix(for: capture))"
-                + "\(adjustedSuffix(for: capture))\(shiftedSuffix(for: capture))\(closedSuffix(for: capture))"
+                + "\(adjustedSuffix(for: capture))\(shiftedSuffix(for: capture))\(resetSuffix(for: capture))\(closedSuffix(for: capture))"
             return "\(index + 1). \(friendlyKindLabel(capture.kind)) -> \(capture.routeLabel): "
                 + "\(batchLineText(capture))\(suffix)"
         }
@@ -496,7 +504,7 @@ final class NotificationService: NSObject, ObservableObject {
                 ? ""
                 : " \u{2192} \(displayLabel(for: capture))"
             let suffix = "\(scheduled)\(startedSuffix(for: capture))"
-                + "\(adjustedSuffix(for: capture))\(shiftedSuffix(for: capture))\(closedSuffix(for: capture))"
+                + "\(adjustedSuffix(for: capture))\(shiftedSuffix(for: capture))\(resetSuffix(for: capture))\(closedSuffix(for: capture))"
             return "\(index + 1). \(batchLineText(capture))\(override)\(suffix)"
         }
         return CaptureNotificationPresentation(
@@ -508,6 +516,9 @@ final class NotificationService: NSObject, ObservableObject {
     }
 
     nonisolated private static func singleCaptureBody(_ capture: CaptureCommandSuccess) -> String {
+        if let reset = CapturePomodoroResetPresentation(capture: capture) {
+            return reset.notificationBody
+        }
         if let close = CapturePomodoroClosePresentation(capture: capture) {
             return close.notificationBody
         }
@@ -540,6 +551,11 @@ final class NotificationService: NSObject, ObservableObject {
 
     nonisolated private static func closedSuffix(for capture: CaptureCommandSuccess) -> String {
         CapturePomodoroClosePresentation(capture: capture)
+            .map(\.batchSuffix) ?? ""
+    }
+
+    nonisolated private static func resetSuffix(for capture: CaptureCommandSuccess) -> String {
+        CapturePomodoroResetPresentation(capture: capture)
             .map(\.batchSuffix) ?? ""
     }
 
@@ -652,6 +668,9 @@ final class NotificationService: NSObject, ObservableObject {
     }
 
     nonisolated private static func dayFileChanged(for capture: CaptureCommandSuccess) -> Bool {
+        if CapturePomodoroResetPresentation(capture: capture) != nil {
+            return true
+        }
         if CapturePomodoroClosePresentation(capture: capture) != nil {
             return true
         }

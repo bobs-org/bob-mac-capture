@@ -521,6 +521,16 @@ final class CapturePanelModel: ObservableObject {
         return CapturePomodoroClosePresentation(capture: previewResult)
     }
 
+    /// The live preview's reset presentation for a single plain, linked-task,
+    /// or new-task note-free `=x0` reset. Bob's additive summary is the sole
+    /// source of reset effects; mutually exclusive with the close above.
+    var resetPresentation: CapturePomodoroResetPresentation? {
+        guard previewResults.count == 1, let previewResult else {
+            return nil
+        }
+        return CapturePomodoroResetPresentation(capture: previewResult)
+    }
+
     /// The live preview's adjustment presentation for a single `pomodoro_adjust`
     /// item — the same single-item gate as the toggle presentation.
     var adjustPresentation: CapturePomodoroAdjustPresentation? {
@@ -556,7 +566,8 @@ final class CapturePanelModel: ObservableObject {
     /// clear. It never varies with `dryRun` — it always names what Return will
     /// do next.
     var primaryActionTitle: String {
-        closePresentation.map { _ in "Close" }
+        resetPresentation.map { _ in "Reset" }
+            ?? closePresentation.map { _ in "Close" }
             ?? sessionStartPresentation.map { _ in "Start" }
             ?? togglePresentation?.primaryActionTitle
             ?? linkPresentation?.primaryActionTitle
@@ -4539,6 +4550,8 @@ final class CapturePanelModel: ObservableObject {
                 statusText = presentation.voiceOverAnnouncement
             } else if let presentation = Self.soleTaskCompletePresentation(for: captures) {
                 statusText = presentation.statusText
+            } else if let presentation = Self.soleResetPresentation(for: captures) {
+                statusText = presentation.statusText
             } else if let presentation = Self.soleClosePresentation(for: captures) {
                 statusText = presentation.statusText
             } else if let presentation = Self.soleSessionStartPresentation(for: captures) {
@@ -4600,7 +4613,9 @@ final class CapturePanelModel: ObservableObject {
             previewGlobalDestination = success.globalDestination
             errorMessage = nil
             errorCode = nil
-            if let presentation = Self.soleClosePresentation(for: captures) {
+            if let presentation = Self.soleResetPresentation(for: captures) {
+                statusText = presentation.statusText
+            } else if let presentation = Self.soleClosePresentation(for: captures) {
                 statusText = presentation.statusText
             } else if let presentation = Self.soleSessionStartPresentation(for: captures) {
                 statusText = presentation.statusText
@@ -4682,6 +4697,15 @@ final class CapturePanelModel: ObservableObject {
             return nil
         }
         return CapturePomodoroClosePresentation(capture: captures[0])
+    }
+
+    private static func soleResetPresentation(
+        for captures: [CaptureCommandSuccess]
+    ) -> CapturePomodoroResetPresentation? {
+        guard captures.count == 1 else {
+            return nil
+        }
+        return CapturePomodoroResetPresentation(capture: captures[0])
     }
 
     /// A batch's session-start presentation, only when it is exactly one
@@ -4969,6 +4993,8 @@ final class CapturePanelModel: ObservableObject {
                             self?.statusText = link.statusText
                         } else if let complete = Self.soleTaskCompletePresentation(for: captures) {
                             self?.statusText = complete.statusText
+                        } else if let reset = Self.soleResetPresentation(for: captures) {
+                            self?.statusText = reset.statusText
                         } else if let close = Self.soleClosePresentation(for: captures) {
                             self?.statusText = close.statusText
                         } else if let start = Self.soleSessionStartPresentation(for: captures) {
@@ -5441,6 +5467,9 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private static func captureWroteDayFile(_ capture: CaptureCommandSuccess) -> Bool {
+        if CapturePomodoroResetPresentation(capture: capture) != nil {
+            return true
+        }
         if CapturePomodoroClosePresentation(capture: capture) != nil {
             return true
         }

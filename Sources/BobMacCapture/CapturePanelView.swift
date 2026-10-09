@@ -1869,6 +1869,8 @@ struct PreviewPane: View {
                 total: total,
                 isLocalOverride: isLocalOverride
             )
+        } else if let reset = CapturePomodoroResetPresentation(capture: success) {
+            resetPreviewItem(reset, success: success, index: index, total: total)
         } else if let close = CapturePomodoroClosePresentation(capture: success) {
             closePreviewItem(close, success: success, index: index, total: total)
         } else if CapturePomodoroStartPresentation.isSessionStart(success),
@@ -1909,6 +1911,63 @@ struct PreviewPane: View {
                 taskBlocks: taskBlocks
             )
         }
+    }
+
+    @ViewBuilder
+    private func resetPreviewItem(
+        _ reset: CapturePomodoroResetPresentation,
+        success: CaptureCommandSuccess,
+        index: Int,
+        total: Int
+    ) -> some View {
+        // The reset card renders Bob's resolved `pomodoro_reset` object
+        // exactly as the presentation words it: no Swift-side clock or ledger
+        // math, no completed/started-task counts, no early/overrun badge.
+        let sessionTint = CaptureEditorPalette.color(for: .pomodoroStart)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if total > 1 {
+                    Text("\(index + 1)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "arrow.counterclockwise.circle.fill")
+                    .foregroundStyle(sessionTint)
+                    .accessibilityHidden(true)
+                Text(reset.title)
+                    .fontWeight(.semibold)
+                Spacer(minLength: 4)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(reset.destinationText)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .textSelection(.enabled)
+            }
+            if let moved = reset.movedText {
+                Text(moved)
+                    .foregroundStyle(.secondary)
+            }
+            if let viaText = reset.viaText {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: reset.variant == .newTask ? "plus.circle" : "link")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(viaText)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                }
+            }
+            Text(reset.entryLine)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .textSelection(.enabled)
+            Text("Now the first future Pomodoro with its contents kept")
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(reset.accessibilitySummary)
     }
 
     @ViewBuilder
@@ -3176,11 +3235,13 @@ struct PreviewPane: View {
             .map { ", \($0.accessibilitySummary)" } ?? ""
         let shiftSummary = CapturePomodoroShiftPresentation(capture: success)
             .map { ", \($0.accessibilitySummary)" } ?? ""
+        let resetSummary = CapturePomodoroResetPresentation(capture: success)
+            .map { ", \($0.accessibilitySummary)" } ?? ""
         let closeSummary = CapturePomodoroClosePresentation(capture: success)
             .map { ", \($0.accessibilitySummary)" } ?? ""
         let projectNoteSummary = CaptureProjectNotePresentation(capture: success)
             .map { ", \($0.previewAccessibilitySummary)" } ?? ""
-        let summary = "\(position)\(success.kind), \(destination)\(override)\(startSummary)\(adjustSummary)\(shiftSummary)\(closeSummary)\(projectNoteSummary)"
+        let summary = "\(position)\(success.kind), \(destination)\(override)\(startSummary)\(adjustSummary)\(shiftSummary)\(resetSummary)\(closeSummary)\(projectNoteSummary)"
         guard includeBlockLines else {
             return summary
         }
