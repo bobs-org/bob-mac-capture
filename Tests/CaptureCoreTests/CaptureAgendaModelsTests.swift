@@ -5,6 +5,7 @@ import XCTest
 final class CaptureAgendaModelsTests: XCTestCase {
     private static let agendaFixtures = [
         "agenda-current.json",
+        "agenda-current-12.json",
         "agenda-empty.json",
         "agenda-heavy.json",
         "agenda-multiple-timed.json",

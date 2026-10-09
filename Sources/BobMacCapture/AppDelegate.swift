@@ -32,6 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var hotKeyRegistry: HotKeyRegistry?
     private var panelController: CapturePanelController?
     private var panelModel: CapturePanelModel?
+    private var agendaStore: CaptureAgendaStore?
+    private var agendaCancellables: Set<AnyCancellable> = []
     private var vaultWatcher: VaultTargetWatcher?
     private let targetsCache = CaptureTargetsCache()
     private var processClient: BobProcessClient?
@@ -83,8 +85,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         model.notificationService = notificationService
         panelModel = model
+        let agendaStore = CaptureAgendaStore(
+            processClient: processClient,
+            vaultRootPath: Self.vaultRootURL(bobDirectory: settings.bobDirectory).path
+        )
+        self.agendaStore = agendaStore
+        model.agendaStore = agendaStore
         panelController = CapturePanelController(model: model)
         panelController?.prewarm()
+        // Prefetch after prewarm so the first hotkey after login already
+        // has agenda data without slowing the show path.
+        agendaStore.refresh(reason: .launch)
         // A capture-landed pulse per successful submit, plus a Today
         // refresh with the snapshot marked stale so the next Refs open
         // re-reads it. A dedicated set: the stash-capacity observer guards
@@ -114,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         registerHotKey()
         configureRefsStack()
         configureVaultWatcher()
+        observeBobSettings()
         refreshTargetsWhenPossible()
         settings.signingDiagnostic = BundleSigningInspector.currentBundleState().diagnosticText
         CaptureSignpost.event("launch-complete")
@@ -545,10 +557,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// A capture success refreshes Today now and marks the snapshot
-    /// stale, so the next Refs open re-reads it.
+    /// stale, so the next Refs open re-reads it. The agenda refreshes
+    /// too, before the next show, so the new ledger state is cached.
     func handleCaptureSuccess() {
         refsLibrary?.refreshToday(reason: .captureSuccess)
         refsLibrary?.markStale()
+        agendaStore?.refresh(reason: .submit)
     }
 
     /// Recheck Bob's Refs half: re-pointing the fetcher happens in
@@ -562,13 +576,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func configureVaultWatcher() {
         vaultWatcher?.invalidate()
         let vaultPath = Self.vaultRootURL(bobDirectory: settings.bobDirectory).path
+        agendaStore?.vaultRootPath = vaultPath
 
         vaultWatcher = VaultTargetWatcher(path: vaultPath) { [weak self] in
             Task { @MainActor in
                 self?.refreshTargetsWhenPossible()
-                if self?.panelController?.isVisible == true {
-                    self?.panelModel?.refreshCurrentPomodoroTaskLinkCount()
-                }
+            }
+        } onBatch: { [weak self] batch in
+            Task { @MainActor in
+                self?.agendaStore?.vaultDidChange(batch)
             }
         } onFailure: { [weak self] message in
             Task { @MainActor in
@@ -632,9 +648,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsPresentation.present()
     }
 
+    /// Resets the agenda store when the bob executable or vault root
+    /// setting changes, so a new executable retries `--tasks` and a new
+    /// vault never shows the old vault's agenda.
+    func observeBobSettings() {
+        settings.$bobDirectory
+            .dropFirst()
+            .removeDuplicates()
+            .combineLatest(
+                settings.$bobExecutableOverride.dropFirst().removeDuplicates()
+            )
+            .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
+            .sink { [weak self] _, _ in
+                self?.agendaStore?.reset()
+            }
+            .store(in: &agendaCancellables)
+    }
+
     @objc private func recheckBob() {
         configureProcessClient()
         panelModel?.processClient = processClient
+        agendaStore?.processClient = processClient
+        agendaStore?.reset()
         registerHotKey()
         configureVaultWatcher()
         // Recheck re-points the Refs fetcher (via configureProcessClient)

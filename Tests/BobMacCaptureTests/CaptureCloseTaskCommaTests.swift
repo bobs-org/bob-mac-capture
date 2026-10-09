@@ -304,26 +304,42 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
         }
     }
 
+    // The count now flows through the agenda store: the helper wires a
+    // store with a pinned today (the agenda fixtures are dated
+    // 2026-08-28) and refreshes it, exactly as the panel show path does.
     private func refreshModel(
-        fixture: String? = nil,
-        fails: Bool = false
+        agendaFixture: String? = nil,
+        agendaFails: Bool = false,
+        unsupported: Bool = false,
+        pomodorosFixture: String? = nil
     ) throws -> CapturePanelModel {
         var environment = [
             "HOME": "/tmp",
             "PATH": "/usr/bin:/bin",
         ]
-        if let fixture {
-            environment["FAKE_BOB_POMODOROS_FIXTURE"] = fixture
+        if let agendaFixture {
+            environment["FAKE_BOB_AGENDA_FIXTURE"] = agendaFixture
         }
-        if fails {
-            environment["FAKE_BOB_POMODOROS_FAIL"] = "1"
+        if agendaFails {
+            environment["FAKE_BOB_AGENDA_FAIL"] = "1"
         }
-        let model = CapturePanelModel()
-        model.processClient = BobProcessClient(
-            executablePath: try fakeBobPath(),
-            environment: environment
+        if unsupported {
+            environment["FAKE_BOB_AGENDA_UNSUPPORTED"] = "1"
+        }
+        if let pomodorosFixture {
+            environment["FAKE_BOB_POMODOROS_FIXTURE"] = pomodorosFixture
+        }
+        let store = CaptureAgendaStore(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: environment
+            ),
+            vaultRootPath: "/tmp",
+            today: { "2026-08-28" }
         )
-        model.refreshCurrentPomodoroTaskLinkCount()
+        let model = CapturePanelModel()
+        model.agendaStore = store
+        store.refresh(reason: .show)
         return model
     }
 
@@ -336,7 +352,7 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
 
     func testRefreshLeavesAssistDisarmedForLargeCount() async throws {
         let model = try refreshModel(
-            fixture: "pomodoros-current-12.json"
+            agendaFixture: "agenda-current-12.json"
         )
         await waitUntil { model.currentPomodoroTaskLinkCount == 12 }
         XCTAssertEqual(model.currentPomodoroTaskLinkCount, 12)
@@ -344,40 +360,47 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
     }
 
     func testRefreshLeavesAssistDisarmedForLegacyResponse() async throws {
+        // An old bob without `--tasks` falls back to the plain lane, so
+        // the legacy plain fixture still drives the count through it.
         let model = try refreshModel(
-            fixture: "pomodoros-legacy-no-count.json"
+            unsupported: true,
+            pomodorosFixture: "pomodoros-legacy-no-count.json"
         )
         try? await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertNil(model.currentPomodoroTaskLinkCount)
         XCTAssertFalse(model.closeTaskCommaArmed)
     }
 
     func testRefreshLeavesAssistDisarmedWhenNoneRunning() async throws {
         let model = try refreshModel(
-            fixture: "pomodoros-none-running.json"
+            agendaFixture: "agenda-nothing-running.json"
         )
         try? await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertNil(model.currentPomodoroTaskLinkCount)
         XCTAssertFalse(model.closeTaskCommaArmed)
     }
 
     func testRefreshFailureLeavesAssistDisarmed() async throws {
-        let model = try refreshModel(fails: true)
+        let model = try refreshModel(agendaFails: true)
         try? await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertNil(model.currentPomodoroTaskLinkCount)
         XCTAssertFalse(model.closeTaskCommaArmed)
     }
 
     func testFailingRefreshAfterSuccessClearsCount() async throws {
         let model = try refreshModel()
         await waitUntil { model.closeTaskCommaArmed }
-        model.processClient = BobProcessClient(
+        model.agendaStore?.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
             environment: [
                 "HOME": "/tmp",
                 "PATH": "/usr/bin:/bin",
-                "FAKE_BOB_POMODOROS_FAIL": "1",
+                "FAKE_BOB_AGENDA_FAIL": "1",
             ]
         )
-        model.refreshCurrentPomodoroTaskLinkCount()
+        model.agendaStore?.refresh(reason: .show)
         await waitUntil { !model.closeTaskCommaArmed }
+        XCTAssertNil(model.currentPomodoroTaskLinkCount)
         XCTAssertFalse(model.closeTaskCommaArmed)
     }
 
@@ -728,21 +751,39 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
 
     // MARK: - Count and assist-parse lifecycle
 
-    private func delayedClient(fixture: String? = nil, delaySeconds: String) throws -> BobProcessClient {
+    private func delayedClient(
+        agendaFixture: String? = nil,
+        delaySeconds: String
+    ) throws -> BobProcessClient {
         var environment = ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         environment["FAKE_BOB_DELAY_SECONDS"] = delaySeconds
-        if let fixture {
-            environment["FAKE_BOB_POMODOROS_FIXTURE"] = fixture
+        if let agendaFixture {
+            environment["FAKE_BOB_AGENDA_FIXTURE"] = agendaFixture
         }
         return BobProcessClient(executablePath: try fakeBobPath(), environment: environment)
     }
 
-    func testOldCountNeverPublishesAfterNilClient() async throws {
+    private func storeWithModel(
+        processClient: BobProcessClient?
+    ) -> (CapturePanelModel, CaptureAgendaStore) {
+        let store = CaptureAgendaStore(
+            processClient: processClient,
+            vaultRootPath: "/tmp",
+            today: { "2026-08-28" }
+        )
         let model = CapturePanelModel()
-        // setProcessClient already starts a delayed refresh; clearing must
-        // invalidate it so the late success cannot re-arm the assist.
-        model.setProcessClient(try delayedClient(delaySeconds: "1"))
-        model.setProcessClient(nil)
+        model.agendaStore = store
+        return (model, store)
+    }
+
+    func testOldCountNeverPublishesAfterNilClient() async throws {
+        let (model, store) = storeWithModel(
+            processClient: try delayedClient(delaySeconds: "1")
+        )
+        // Clearing the client must invalidate the delayed refresh so the
+        // late success cannot re-arm the assist.
+        store.refresh(reason: .show)
+        store.processClient = nil
         XCTAssertNil(model.currentPomodoroTaskLinkCount)
         // The delayed old request finishes here; it must not re-arm.
         try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -751,18 +792,21 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
     }
 
     func testOldCountNeverPublishesAfterReplacement() async throws {
-        let model = CapturePanelModel()
-        model.setProcessClient(try delayedClient(delaySeconds: "2"))
+        let (model, store) = storeWithModel(
+            processClient: try delayedClient(delaySeconds: "2")
+        )
+        store.refresh(reason: .show)
         let replacement = BobProcessClient(
             executablePath: try fakeBobPath(),
             environment: [
                 "HOME": "/tmp",
                 "PATH": "/usr/bin:/bin",
-                "FAKE_BOB_POMODOROS_FIXTURE": "pomodoros-current-12.json",
+                "FAKE_BOB_AGENDA_FIXTURE": "agenda-current-12.json",
             ]
         )
-        model.setProcessClient(replacement)
+        store.processClient = replacement
         // The replacement fetch keeps a visible panel fresh.
+        store.refresh(reason: .show)
         await waitUntil { model.currentPomodoroTaskLinkCount == 12 }
         XCTAssertEqual(model.currentPomodoroTaskLinkCount, 12)
         // The delayed old count (3) finishes here and must not overwrite 12.
@@ -785,9 +829,19 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
         model.setProcessClient(replacement)
-        // The delayed old parse finishes here; it must not publish a snapshot.
-        // The replacement count refresh (default 3-link fixture) re-arms, so a
-        // nil edit proves the snapshot stayed nil rather than disarm.
+        // The count now flows through the store: attach it and refresh
+        // with the replacement client (default 3-link agenda fixture), so
+        // the assist re-arms while the old parse is still in flight.
+        let store = CaptureAgendaStore(
+            processClient: replacement,
+            vaultRootPath: "/tmp",
+            today: { "2026-08-28" }
+        )
+        model.agendaStore = store
+        store.refresh(reason: .show)
+        // The delayed old parse finishes here; it must not publish a
+        // snapshot. A nil edit while armed proves the snapshot stayed nil
+        // rather than disarm.
         await waitUntil { model.closeTaskCommaArmed }
         try? await Task.sleep(nanoseconds: 1_500_000_000)
         XCTAssertNil(

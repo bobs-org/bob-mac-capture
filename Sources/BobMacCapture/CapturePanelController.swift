@@ -259,7 +259,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     func show() {
         let token = CaptureSignpost.begin("panel-order")
         model.prepareForPresentation()
-        model.refreshCurrentPomodoroTaskLinkCount()
+        // Stale-while-revalidate: the cached agenda paints first, then one
+        // background refresh checks it. This replaces the old per-show
+        // `capture-pomodoros` spawn, so a show costs at most one agenda
+        // fetch however it is entered.
+        model.agendaStore?.refresh(reason: .show)
         let panel = makePanelIfNeeded()
         replayLatestContentMetricsForPresentation()
         panel.makeKeyAndOrderFront(nil)

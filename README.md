@@ -328,9 +328,19 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
   right after a task number in a close list inserts the separator itself
   (`=x1` + `2` → `=x1,2`). Backspace immediately after an auto-inserted
   `,<digit>` removes both characters together (`=x1,2` → `=x1`); a manually
-  typed or pasted comma stays native. The app runs `bob capture-pomodoros --format json`
-  whenever the panel is shown, by any entry point, and on vault changes
-  while it is visible, and reads the current entry's `task_link_count`. The assist runs only when the running
+  typed or pasted comma stays native. The in-memory agenda store runs
+  `bob capture-pomodoros --format json --tasks` on one shared lane: a
+  prefetch at launch, filtered vault events (visible `.md` notes and the
+  Tasks filter, never `.git/` or attachments), every panel show as
+  stale-while-revalidate, after each successful submit, on wake, unlock,
+  day change, and clock change, and fresh after Recheck Bob or a bob
+  executable or directory change. One refresh is in flight at a time with
+  at most one follow-up, byte-identical output publishes nothing, and a
+  snapshot whose date is not today is never shown. An older bob without
+  `--tasks` hides the agenda and serves the count from plain
+  `capture-pomodoros` until Recheck Bob or an executable change. The
+  close-comma count follows the store: it is nil when the snapshot is
+  not today's or the latest refresh failed. The assist runs only when the running
   Pomodoro has fewer than 10 numbered Task Links; an older bob without the
   field disables it. Replacing or clearing the Bob client invalidates
   in-flight counts and assist parses so a stale count never re-arms the

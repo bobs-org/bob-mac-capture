@@ -244,11 +244,23 @@ final class CapturePanelModel: ObservableObject {
     /// the selection, undo, or `editorTextDidChange`.
     var pickerMarkerHighlight: CaptureRange?
 
-    /// Numbered Task Link count of the running Pomodoro, from
-    /// `capture-pomodoros`. Nil while unknown, when no session runs, or
-    /// when bob predates `task_link_count`. The close-comma assist turns
-    /// off while nil.
+    /// Numbered Task Link count of the running Pomodoro, derived from
+    /// the agenda store's snapshot (or its plain-lane fallback on an old
+    /// bob). Nil while unknown, when no session runs, when the snapshot
+    /// is not today's, or when the latest refresh failed. The close-comma
+    /// assist turns off while nil.
     private(set) var currentPomodoroTaskLinkCount: Int?
+
+    /// The agenda store that owns this count. The model subscribes to its
+    /// count publisher; the store refreshes on launch, show, submit, and
+    /// filtered vault events instead of the old per-show spawn.
+    var agendaStore: CaptureAgendaStore? {
+        didSet {
+            subscribeToAgendaStore()
+        }
+    }
+
+    private var agendaCancellable: AnyCancellable?
 
     /// True while the close-comma assist may fire: the running Pomodoro
     /// has a known count below the single-digit limit.
@@ -267,11 +279,6 @@ final class CapturePanelModel: ObservableObject {
     /// draft that key produces. The view-supplied caret can lag one edit
     /// behind, so the caret must not gate the request.
     private var closeListAssistParsePending = false
-
-    /// Guards overlapping `capture-pomodoros` refreshes sharing the
-    /// `pomodoros` lane: only the latest generation writes, on success
-    /// and on failure.
-    private var pomodoroCountGeneration: UInt64 = 0
 
     /// Guards in-flight close-list assist parses across client replacement:
     /// only parses belonging to the active client publish their snapshot.
@@ -668,13 +675,30 @@ final class CapturePanelModel: ObservableObject {
         return "Capture"
     }
 
+    /// Follows the agenda store's count publisher. The store nils the
+    /// count on failure, a non-today snapshot, and client replacement,
+    /// so the model only forwards it.
+    private func subscribeToAgendaStore() {
+        agendaCancellable = nil
+        guard let agendaStore else {
+            return
+        }
+        agendaCancellable = agendaStore.$currentTaskLinkCount.sink { [weak self] count in
+            guard let self else {
+                return
+            }
+            self.currentPomodoroTaskLinkCount = count
+        }
+    }
+
     func setProcessClient(_ processClient: BobProcessClient?) {
         let changed = self.processClient !== processClient
         self.processClient = processClient
         if changed {
             // An old count or assist parse must never re-arm the assist
             // after Bob becomes unavailable or the executable/vault changes.
-            pomodoroCountGeneration &+= 1
+            // The agenda store owns recounting; it clears and repopulates
+            // the count through the subscription above.
             closeAssistParseGeneration &+= 1
             currentPomodoroTaskLinkCount = nil
             closeListParseSnapshot = nil
@@ -696,48 +720,8 @@ final class CapturePanelModel: ObservableObject {
                 invalidateRewrite()
             }
         } else {
-            if changed {
-                // A replacement client fetches its own count so an
-                // already-visible panel does not stay stale until an
-                // unrelated vault change. Silent: failures just disarm.
-                refreshCurrentPomodoroTaskLinkCount()
-            }
             if hasDraft {
                 editorTextDidChange()
-            }
-        }
-    }
-
-    /// Prefetch the running Pomodoro's numbered Task Link count. Silent
-    /// typing aid: failures clear the count so the assist turns off, and
-    /// nothing surfaces in the status or error UI.
-    func refreshCurrentPomodoroTaskLinkCount() {
-        guard let processClient else {
-            return
-        }
-        pomodoroCountGeneration &+= 1
-        let generation = pomodoroCountGeneration
-        Task { [weak self, processClient] in
-            do {
-                let response = try await processClient.capturePomodoros()
-                await MainActor.run {
-                    guard self?.pomodoroCountGeneration == generation,
-                          self?.processClient === processClient
-                    else {
-                        return
-                    }
-                    self?.currentPomodoroTaskLinkCount =
-                        response.currentTaskLinkCount
-                }
-            } catch {
-                await MainActor.run {
-                    guard self?.pomodoroCountGeneration == generation,
-                          self?.processClient === processClient
-                    else {
-                        return
-                    }
-                    self?.currentPomodoroTaskLinkCount = nil
-                }
             }
         }
     }
