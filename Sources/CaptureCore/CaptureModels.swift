@@ -359,7 +359,7 @@ public struct PomodoroCloseSpec: Codable, Equatable, Sendable {
     }
 }
 
-public struct CaptureSpan: Codable, Equatable {
+public struct CaptureSpan: Codable, Equatable, Sendable {
     public let start: Int
     public let end: Int
     public let kind: String
@@ -4377,5 +4377,85 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
         case allowedDescription = "allowed_description"
         case suggestions
         case used
+    }
+}
+
+/// Versioned `bob capture-pomodoros --format json` response. Only the
+/// current entry's numbered Task Link count matters to the editor; every
+/// other field decodes tolerantly so an older bob without
+/// `task_link_count` still decodes with a nil count.
+public struct CapturePomodorosResponse: Codable, Equatable {
+    public let ok: Bool
+    public let schemaVersion: Int
+    public let pomodoros: [CapturePomodoroEntry]
+
+    public init(
+        ok: Bool,
+        schemaVersion: Int = 1,
+        pomodoros: [CapturePomodoroEntry] = []
+    ) {
+        self.ok = ok
+        self.schemaVersion = schemaVersion
+        self.pomodoros = pomodoros
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decode(Bool.self, forKey: .ok)
+        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        pomodoros = try container.decodeIfPresent(
+            [CapturePomodoroEntry].self,
+            forKey: .pomodoros
+        ) ?? []
+    }
+
+    /// The `isCurrent` entry's `taskLinkCount`, or nil when there is no
+    /// current entry or the field is absent (older bob).
+    public var currentTaskLinkCount: Int? {
+        pomodoros.first(where: { $0.isCurrent })?.taskLinkCount
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ok
+        case schemaVersion = "schema_version"
+        case pomodoros
+    }
+}
+
+/// Minimal `capture-pomodoros` entry: only the fields the close-comma
+/// assist needs. `taskLinkCount` is the size of the numbered Task Link
+/// lineup a plain `=x` close indexes; it is an integer only on the
+/// `isCurrent` entry and null elsewhere. Older bob binaries omit the key.
+public struct CapturePomodoroEntry: Codable, Equatable {
+    public let line: Int
+    public let name: String?
+    public let isCurrent: Bool
+    public let taskLinkCount: Int?
+
+    public init(
+        line: Int = 0,
+        name: String? = nil,
+        isCurrent: Bool = false,
+        taskLinkCount: Int? = nil
+    ) {
+        self.line = line
+        self.name = name
+        self.isCurrent = isCurrent
+        self.taskLinkCount = taskLinkCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        isCurrent = try container.decodeIfPresent(Bool.self, forKey: .isCurrent) ?? false
+        taskLinkCount = try container.decodeIfPresent(Int.self, forKey: .taskLinkCount)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case line
+        case name
+        case isCurrent = "is_current"
+        case taskLinkCount = "task_link_count"
     }
 }

@@ -48,6 +48,7 @@ enum CaptureKeyCommand: Equatable {
     case cycleTaskLinkSuggestionForward
     case cycleTaskLinkSuggestionBackward
     case continuePickerOperator(String)
+    case insertCloseTaskNumber(String)
 }
 
 struct CaptureKeyRoutingContext: Equatable {
@@ -66,6 +67,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var pickerChipVisible = false
     var pickerOperatorContinuationKeys: [String] = []
     var taskIDPromptCyclesSuggestions = false
+    var closeTaskCommaArmed = false
 }
 
 struct CaptureKeyCommandRouter {
@@ -191,6 +193,21 @@ struct CaptureKeyCommandRouter {
         case KeyCode.p:
             return context.completionVisible && modifiers.contains(.control) ? .previousCompletion : nil
         default:
+            // Close-list auto-comma: a digit typed in the main editor
+            // right after a close task number. Checks `characters`, not
+            // key codes, so numeric-keypad and Shift-digit layouts count;
+            // only Command/Control/Option veto. Stash, prompt, and picker
+            // branches above already own their digits.
+            if context.closeTaskCommaArmed,
+               modifiers.intersection([.command, .control, .option]).isEmpty,
+               let characters = event.characters,
+               characters.unicodeScalars.count == 1,
+               let scalar = characters.unicodeScalars.first,
+               scalar.value >= 0x31,
+               scalar.value <= 0x39
+            {
+                return .insertCloseTaskNumber(characters)
+            }
             return nil
         }
     }

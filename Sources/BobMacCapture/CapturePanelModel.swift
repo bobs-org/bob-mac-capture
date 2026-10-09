@@ -244,6 +244,34 @@ final class CapturePanelModel: ObservableObject {
     /// the selection, undo, or `editorTextDidChange`.
     var pickerMarkerHighlight: CaptureRange?
 
+    /// Numbered Task Link count of the running Pomodoro, from
+    /// `capture-pomodoros`. Nil while unknown, when no session runs, or
+    /// when bob predates `task_link_count`. The close-comma assist turns
+    /// off while nil.
+    private(set) var currentPomodoroTaskLinkCount: Int?
+
+    /// True while the close-comma assist may fire: the running Pomodoro
+    /// has a known count below the single-digit limit.
+    var closeTaskCommaArmed: Bool {
+        CaptureCloseTaskCommaAssist.isArmed(
+            taskLinkCount: currentPomodoroTaskLinkCount
+        )
+    }
+
+    /// Latest `capture-parse` close-list spans, stored only while they
+    /// describe exactly the visible draft.
+    private var closeListParseSnapshot: CaptureParseSnapshot?
+
+    func setCurrentPomodoroTaskLinkCountForTests(_ count: Int?) {
+        currentPomodoroTaskLinkCount = count
+    }
+
+    func setCloseListParseSnapshotForTests(
+        _ snapshot: CaptureParseSnapshot?
+    ) {
+        closeListParseSnapshot = snapshot
+    }
+
     init(
         processClient: BobProcessClient? = nil,
         debounceNanoseconds: UInt64 = 50_000_000,
@@ -587,12 +615,52 @@ final class CapturePanelModel: ObservableObject {
             previewGlobalDestination = nil
             completionResponse = nil
             completionDraftSnapshot = nil
+            currentPomodoroTaskLinkCount = nil
+            closeListParseSnapshot = nil
             clearPickerState()
             invalidateAnalysis()
             invalidateRewrite()
         } else if hasDraft {
             editorTextDidChange()
         }
+    }
+
+    /// Prefetch the running Pomodoro's numbered Task Link count. Silent
+    /// typing aid: failures clear the count so the assist turns off, and
+    /// nothing surfaces in the status or error UI.
+    func refreshCurrentPomodoroTaskLinkCount() {
+        guard let processClient else {
+            return
+        }
+        Task { [weak self, processClient] in
+            do {
+                let response = try await processClient.capturePomodoros()
+                await MainActor.run {
+                    self?.currentPomodoroTaskLinkCount =
+                        response.currentTaskLinkCount
+                }
+            } catch {
+                await MainActor.run {
+                    self?.currentPomodoroTaskLinkCount = nil
+                }
+            }
+        }
+    }
+
+    /// Forwards one typed digit to the pure close-comma helper with the
+    /// latest snapshot and count. Nil means type the digit natively.
+    func closeTaskCommaEdit(
+        typed: String,
+        text: String,
+        selectedRange: NSRange
+    ) -> CaptureCloseTaskCommaEdit? {
+        CaptureCloseTaskCommaAssist.edit(
+            typed: typed,
+            text: text,
+            selectedRange: selectedRange,
+            snapshot: closeListParseSnapshot,
+            taskLinkCount: currentPomodoroTaskLinkCount
+        )
     }
 
     func updateTargetCacheSnapshot(_ snapshot: CaptureTargetsSnapshot) {
@@ -645,11 +713,62 @@ final class CapturePanelModel: ObservableObject {
         {
             startCaptureRewrite(draft: draft, cursorUTF8Offset: insertionOffset)
         }
+        if closeTaskCommaArmed,
+           let insertionOffset,
+           Self.isCloseTaskCommaAssistTrigger(
+               in: draft,
+               cursorUTF8Offset: insertionOffset
+           )
+        {
+            startCloseListAssistParse(draft: draft)
+        }
         scheduleAnalysis(
             cursorUTF8Offset: insertionOffset,
             requestCompletion: insertionOffset != nil,
             trigger: .edit
         )
+    }
+
+    /// True when the caret sits right after an ASCII `1`–`9` byte, so an
+    /// immediate assist parse is worth one subprocess spawn.
+    private nonisolated static func isCloseTaskCommaAssistTrigger(
+        in draft: String,
+        cursorUTF8Offset: Int
+    ) -> Bool {
+        guard cursorUTF8Offset > 0,
+              cursorUTF8Offset <= draft.utf8.count
+        else {
+            return false
+        }
+        let bytes = Array(draft.utf8)
+        let previous = bytes[cursorUTF8Offset - 1]
+        return previous >= 0x31 && previous <= 0x39
+    }
+
+    /// Immediate un-debounced parse feeding the close-comma snapshot.
+    /// Stored only while the draft is still current; errors are swallowed.
+    private func startCloseListAssistParse(draft: String) {
+        guard let processClient else {
+            return
+        }
+        Task { [weak self, processClient] in
+            do {
+                let parse = try await processClient.captureParse(
+                    draft,
+                    lane: "close-task-comma"
+                )
+                await MainActor.run {
+                    guard self?.plainDraft == draft else {
+                        return
+                    }
+                    self?.closeListParseSnapshot = CaptureParseSnapshot(
+                        draft: draft,
+                        spans: parse.spans
+                    )
+                }
+            } catch {
+            }
+        }
     }
 
     func editorSelectionDidChange() {
@@ -1040,6 +1159,7 @@ final class CapturePanelModel: ObservableObject {
         parseDiagnostics = []
         completionResponse = nil
         completionDraftSnapshot = nil
+        closeListParseSnapshot = nil
         clearPickerState()
         clearInlinePrompts()
         previewState = .idle
@@ -4744,6 +4864,7 @@ final class CapturePanelModel: ObservableObject {
         cursorUTF8Offset: Int? = nil,
         suppressSelectionCallbacks: Bool = false
     ) {
+        closeListParseSnapshot = nil
         isApplyingProgrammaticDraft = true
         attributedDraft = AttributedString(text)
         restoreSelection(
@@ -5086,6 +5207,12 @@ final class CapturePanelModel: ObservableObject {
 
     private func applyParse(_ parse: CaptureParseResponse, draft: String) {
         parseDiagnostics = parse.diagnostics
+        if plainDraft == draft {
+            closeListParseSnapshot = CaptureParseSnapshot(
+                draft: draft,
+                spans: parse.spans
+            )
+        }
         applyHighlighting(parse: parse, draft: draft)
 
         if let diagnostic = parse.diagnostics.first(where: { $0.severity != "info" }) {

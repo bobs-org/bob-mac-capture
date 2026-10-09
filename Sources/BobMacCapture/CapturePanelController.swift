@@ -568,6 +568,32 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
+    /// Close-list auto-comma: insert `,` before a digit typed right after
+    /// a close task number. Returns `false` without changing state whenever
+    /// the model declines, so the key event falls through to AppKit and the
+    /// digit types natively. Goes through `NSTextView` to keep undo, IME,
+    /// and accessibility native.
+    static func insertCloseTaskNumberInEditableTextView(
+        _ digit: String,
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder),
+              !textView.hasMarkedText(),
+              let edit = model.closeTaskCommaEdit(
+                typed: digit,
+                text: textView.string,
+                selectedRange: textView.selectedRange()
+              )
+        else {
+            return false
+        }
+
+        textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
+        textView.setSelectedRange(edit.resultingSelection)
+        return true
+    }
+
     /// Plain Tab's full ordered editor-assist chain: snippet expansion first, then
     /// continuation-bullet indentation. Returns `false` without changing state when both
     /// decline, so the key event falls through to AppKit's normal focus traversal.
@@ -1201,6 +1227,12 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .continuePickerOperator(let key):
             model.continuePickerOperator(key)
             return true
+        case .insertCloseTaskNumber(let digit):
+            return Self.insertCloseTaskNumberInEditableTextView(
+                digit,
+                firstResponder: panel?.firstResponder,
+                model: model
+            )
         }
     }
 
@@ -1240,7 +1272,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     pickerFilterIsEmpty: self.model.pickerFilterIsEmpty,
                     pickerChipVisible: self.model.pickerChipVisible,
                     pickerOperatorContinuationKeys: self.model.pickerOperatorContinuationKeys,
-                    taskIDPromptCyclesSuggestions: self.model.taskIDPromptCyclesSuggestions
+                    taskIDPromptCyclesSuggestions: self.model.taskIDPromptCyclesSuggestions,
+                    closeTaskCommaArmed: self.model.closeTaskCommaArmed
                 )
             ) else {
                 return event

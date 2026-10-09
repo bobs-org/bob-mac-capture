@@ -40,11 +40,23 @@ public final class BobProcessClient: @unchecked Sendable {
         JSONDecoder()
     }
 
-    public func captureParse(_ draft: String) async throws -> CaptureParseResponse {
+    public func captureParse(
+        _ draft: String,
+        lane: String = "parse"
+    ) async throws -> CaptureParseResponse {
         let response: CaptureParseResponse = try await decode(
             arguments: ["capture-parse", "--format", "json", "--", draft],
             expectedSchema: 1,
-            lane: "parse"
+            lane: lane
+        )
+        return response
+    }
+
+    public func capturePomodoros() async throws -> CapturePomodorosResponse {
+        let response: CapturePomodorosResponse = try await decode(
+            arguments: ["capture-pomodoros", "--format", "json"],
+            expectedSchema: 1,
+            lane: "pomodoros"
         )
         return response
     }
@@ -784,3 +796,4 @@ extension CaptureParseResponse: SchemaVersioned {}
 extension CaptureRewriteResponse: SchemaVersioned {}
 extension CaptureTargetsResponse: SchemaVersioned {}
 extension CaptureCompletionResponse: SchemaVersioned {}
+extension CapturePomodorosResponse: SchemaVersioned {}
