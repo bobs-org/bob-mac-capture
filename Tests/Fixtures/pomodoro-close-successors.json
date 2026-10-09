@@ -1,0 +1,203 @@
+{
+ "ok": true,
+ "dry_run": false,
+ "routed": false,
+ "route": null,
+ "route_label": "",
+ "relative_target": "20261005.md",
+ "target": "/tmp/bob-mac-capture-successors/vault/20261005.md",
+ "text": "=x!1",
+ "task_line": "- [x] (**0920-0930** [t:: 10m]) \u2014 BOB",
+ "kind": "pomodoro_close",
+ "created": "2026-10-05",
+ "scheduled": null,
+ "placement": "closed",
+ "day_file": "/tmp/bob-mac-capture-successors/vault/20261005.md",
+ "pomodoro_name": "BOB",
+ "pomodoro_close": {
+  "raw": "=x!1",
+  "in_progress": null,
+  "complete": [
+   1
+  ],
+  "task_links": [
+   {
+    "index": 1,
+    "ledger_line": 3,
+    "block_link": "[[sase#^fix-apollo]]",
+    "block_id": "fix-apollo",
+    "marker": "plain",
+    "outcome": "complete",
+    "source": "listed"
+   }
+  ],
+  "pomodoro_line": 2,
+  "pomodoro_name": "BOB",
+  "day_relative": "20261005.md",
+  "entry_line": "- [x] (**0920-0930** [t:: 10m]) \u2014 BOB",
+  "planned": {
+   "start": "0920",
+   "end": "0950",
+   "duration_minutes": 30,
+   "time_range": "0920-0950"
+  },
+  "closed": {
+   "start": "0920",
+   "end": "0930",
+   "duration_minutes": 10,
+   "time_range": "0920-0930"
+  },
+  "closed_at": "0930",
+  "remaining_minutes": 20,
+  "decremented_minutes": 20,
+  "tasks": [
+   {
+    "role": "embedded",
+    "block_link": "[[sase#^fix-apollo]]",
+    "ledger_line": 3,
+    "index": 1,
+    "resolved": true,
+    "relative_target": "sase.md",
+    "block_id": "fix-apollo",
+    "text": "Fix apollo machine",
+    "previous_status_symbol": " ",
+    "previous_status_name": "Ready",
+    "status_symbol": "x",
+    "status_name": "Done",
+    "status_changed": true,
+    "carried": false,
+    "work_log": [],
+    "work_log_created": false,
+    "warning": null
+   }
+  ],
+  "carried": [],
+  "notes": [],
+  "next_pomodoro": {
+   "line": 4,
+   "name": "BOB",
+   "time_range": null,
+   "created": true
+  },
+  "unblocked": [
+   {
+    "note_path": "sase.md",
+    "block_id": "relaunch-failed-agents",
+    "line": 2,
+    "text": "Re-launch failed agents",
+    "previous_status_symbol": "?",
+    "previous_status_name": "Blocked",
+    "status_symbol": "*",
+    "status_name": "Next",
+    "inbox": false,
+    "unblocked_by": [
+     {
+      "note_path": "sase.md",
+      "block_id": "fix-apollo",
+      "text": "Fix apollo machine"
+     }
+    ],
+    "link": {
+     "day_file": "20261005.md",
+     "entry_name": "BOB",
+     "entry_line": 4,
+     "entry_created": true,
+     "next_up": true,
+     "line": 5,
+     "block_link": "[[sase#^relaunch-failed-agents]]",
+     "block_id_created": false
+    }
+   }
+  ],
+  "still_blocked": [],
+  "unblocked_check": "checked"
+ },
+ "plan_budget": {
+  "status": "ok",
+  "themes": {
+   "count": 2,
+   "cap": 3,
+   "over": false,
+   "before": 2
+  },
+  "links": {
+   "count": 1,
+   "cap": 10,
+   "over": false,
+   "before": 1
+  }
+ },
+ "pomodoro_blocks": [
+  {
+   "relative_target": "20261005.md",
+   "line": 2,
+   "name": "BOB",
+   "time_range": "0920-0930",
+   "status": "completed",
+   "created": false,
+   "roles": [
+    "closed"
+   ],
+   "lines": [
+    {
+     "text": "- [x] (**0920-0930** [t:: 10m]) \u2014 BOB",
+     "depth": 0,
+     "change": "changed",
+     "before": "- [ ] (**0920-0950**) \u2014 BOB"
+    },
+    {
+     "text": "  - ~~[[sase#^fix-apollo]]~~",
+     "depth": 1,
+     "change": "changed",
+     "before": "  - [[sase#^fix-apollo]]"
+    }
+   ]
+  },
+  {
+   "relative_target": "20261005.md",
+   "line": 4,
+   "name": "BOB",
+   "status": "queued",
+   "created": true,
+   "roles": [
+    "next"
+   ],
+   "lines": [
+    {
+     "text": "- [ ] () \u2014 BOB",
+     "depth": 0,
+     "change": "added"
+    },
+    {
+     "text": "\t- [[sase#^relaunch-failed-agents]]",
+     "depth": 1,
+     "change": "added",
+     "reason": "unblocked"
+    }
+   ]
+  }
+ ],
+ "task_blocks": [
+  {
+   "relative_target": "sase.md",
+   "route": "sase",
+   "line": 2,
+   "block_id": "relaunch-failed-agents",
+   "text": "Re-launch failed agents",
+   "status_symbol": "*",
+   "status_name": "Next",
+   "created": false,
+   "roles": [
+    "unblocked"
+   ],
+   "lines": [
+    {
+     "text": "- [*] #task Re-launch failed agents [dependsOn:: fix-apollo] [id:: relaunch-agents] ^relaunch-failed-agents",
+     "depth": 0,
+     "change": "changed",
+     "before": "- [?] #task Re-launch failed agents [dependsOn:: fix-apollo] [id:: relaunch-agents] ^relaunch-failed-agents"
+    }
+   ]
+  }
+ ]
+}

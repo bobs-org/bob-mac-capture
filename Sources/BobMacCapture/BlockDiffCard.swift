@@ -201,7 +201,20 @@ struct BlockDiffCard: View {
 
     @ViewBuilder
     private func rowContent(_ row: CaptureBlockDiffRow) -> some View {
-        if row.change == .removed {
+        if row.isUnblocked {
+            // A surviving successor link: the verbatim line plus a small
+            // trailing badge naming what it is, with hover and VoiceOver
+            // text to match the card's accessibility summary.
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                diffText(row)
+                Image(systemName: "lock.open.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Unblocked successor")
+            }
+            .help("Unblocked successor")
+            .textSelection(.enabled)
+        } else if row.change == .removed {
             // A removed line reads uniformly: struck, secondary, dimmed.
             Text(row.content)
                 .font(.system(.callout, design: .monospaced))
@@ -210,31 +223,35 @@ struct BlockDiffCard: View {
                 .opacity(0.55)
                 .textSelection(.enabled)
         } else {
-            // One text view per row, built the way the close card builds its
-            // hint: verbatim bytes with display-only tinting, wrapping as a
-            // unit so continuation lines keep the hanging indent.
-            Text(
-                row.tokens.map { token in
-                    var part = AttributedString(token.text)
-                    part.foregroundColor = tokenColor(for: token)
-                    if token.role == .timeRange || token.role == .name {
-                        part.inlinePresentationIntent = .stronglyEmphasized
-                    }
-                    if headlineEmphasis, row.isHeadline, token.role == .text {
-                        part.inlinePresentationIntent = .stronglyEmphasized
-                    }
-                    if token.struck {
-                        part.strikethroughStyle = .single
-                    }
-                    if token.role == .code {
-                        part.backgroundColor = Color.secondary.opacity(0.12)
-                    }
-                    return part
-                }.reduce(AttributedString()) { $0 + $1 }
-            )
-            .font(.system(.callout, design: .monospaced))
-            .textSelection(.enabled)
+            diffText(row)
         }
+    }
+
+    private func diffText(_ row: CaptureBlockDiffRow) -> some View {
+        // One text view per row, built the way the close card builds its
+        // hint: verbatim bytes with display-only tinting, wrapping as a
+        // unit so continuation lines keep the hanging indent.
+        Text(
+            row.tokens.map { token in
+                var part = AttributedString(token.text)
+                part.foregroundColor = tokenColor(for: token)
+                if token.role == .timeRange || token.role == .name {
+                    part.inlinePresentationIntent = .stronglyEmphasized
+                }
+                if headlineEmphasis, row.isHeadline, token.role == .text {
+                    part.inlinePresentationIntent = .stronglyEmphasized
+                }
+                if token.struck {
+                    part.strikethroughStyle = .single
+                }
+                if token.role == .code {
+                    part.backgroundColor = Color.secondary.opacity(0.12)
+                }
+                return part
+            }.reduce(AttributedString()) { $0 + $1 }
+        )
+        .font(.system(.callout, design: .monospaced))
+        .textSelection(.enabled)
     }
 
     private func tokenColor(for token: CapturePomodoroLineToken) -> Color {

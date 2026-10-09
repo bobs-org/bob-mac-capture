@@ -21,6 +21,16 @@ import XCTest
 //     <blank line>!sase:two'
 //   $BOB capture -b $VAULT -f json --dry-run -- '!sase:ptask'       # task-complete-strike-completed.json
 //   $BOB capture -b $VAULT -f json --dry-run -- '!sase:cx'         # task-complete-refusal.json (ok:false)
+//
+// Successor fixtures come from a second sandbox vault (same env, day file
+// `$VAULT/20261005.md`) whose `sase.md` holds `fix-apollo` (planned in FIX)
+// with dependents `relaunch-failed-agents`, `review-beads`, `book-flights`
+// (no block ID, so one is minted), `badges` (also blocked on `other-live`),
+// and `renew-domain` (`[scheduled:: 2026-10-13]`); plus unplanned `lonely`
+// with dependent `loner`, and planned `bigbang` with six dependents:
+//   $BOB capture -b $VAULT -f json --dry-run -- '!sase:fix-apollo'  # task-complete-successors.json
+//   $BOB capture -b $VAULT -f json --dry-run -- '!sase:lonely'      # task-complete-not-planned.json
+//   $BOB capture -b $VAULT -f json --dry-run -- '!sase:bigbang'     # task-complete-breaker.json
 final class CaptureTaskCompletePresentationTests: XCTestCase {
     func testInitReturnsNilForANonCompleteCapture() throws {
         let success = try decodeCaptureSuccess(
@@ -328,6 +338,82 @@ final class CaptureTaskCompletePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.unblockedRows[0].locatorText, "travel.md ^waiter")
         XCTAssertTrue(presentation.notificationBody.contains("unblocked Waiter"))
         XCTAssertTrue(presentation.previewAccessibilitySummary.contains("unblocks"))
+    }
+
+    func testSuccessorsFixtureLinksMintedAndStillBlocked() throws {
+        let success = try decodeFixture("task-complete-successors.json")
+        let presentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: success))
+
+        XCTAssertEqual(presentation.unblockedRows.count, 3)
+        let linked = presentation.unblockedRows[0]
+        XCTAssertEqual(linked.kind, .linked)
+        XCTAssertEqual(linked.transitionText, "[?] → [*]  Re-launch all failed agents")
+        XCTAssertEqual(linked.locatorText, "sase.md ^relaunch-failed-agents")
+        // Real bob reports FIX itself as next up on this ledger.
+        XCTAssertEqual(linked.destinationText, "→ FIX · next up")
+        XCTAssertNil(linked.captionText)
+        // The successor without a block ID gets one minted.
+        let minted = presentation.unblockedRows[2]
+        XCTAssertEqual(minted.kind, .linked)
+        XCTAssertEqual(minted.captionText, "added ^book-flights")
+        XCTAssertEqual(minted.destinationText, "→ FIX · next up")
+
+        XCTAssertEqual(presentation.stillBlockedRows.count, 2)
+        XCTAssertEqual(
+            presentation.stillBlockedRows[0].captionText,
+            "stays Blocked · waits on 1 more"
+        )
+        XCTAssertEqual(
+            presentation.stillBlockedRows[1].captionText,
+            "stays Blocked · until Oct 13"
+        )
+
+        // Several linked into one entry: one extra notification line.
+        XCTAssertTrue(
+            presentation.notificationBody.contains(
+                "🔓 3 linked → FIX (next up): Re-launch all failed agents, Review memory beads, +1"
+            )
+        )
+        XCTAssertTrue(
+            presentation.previewAccessibilitySummary.contains("→ FIX")
+        )
+        XCTAssertTrue(
+            presentation.previewAccessibilitySummary.contains("stays Blocked · until Oct 13")
+        )
+
+        let dry = try decodeDryRunFixture("task-complete-successors.json")
+        let dryPresentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: dry))
+        XCTAssertEqual(dryPresentation.unblockedRows.count, 3)
+        XCTAssertEqual(dryPresentation.stillBlockedRows.count, 2)
+    }
+
+    func testNotPlannedFixtureKeepsOldNotificationBody() throws {
+        let success = try decodeFixture("task-complete-not-planned.json")
+        let presentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: success))
+
+        XCTAssertEqual(presentation.unblockedRows.count, 1)
+        let row = presentation.unblockedRows[0]
+        XCTAssertEqual(row.kind, .recovered)
+        XCTAssertNil(row.destinationText)
+        XCTAssertEqual(row.captionText, "Ready · not planned today")
+        XCTAssertEqual(presentation.stillBlockedRows.count, 0)
+        // With only recovered rows the body keeps today's form.
+        XCTAssertTrue(presentation.notificationBody.contains("unblocked Loner task"))
+        XCTAssertFalse(presentation.notificationBody.contains("🔓"))
+    }
+
+    func testBreakerFixtureReportsNoLinks() throws {
+        let success = try decodeFixture("task-complete-breaker.json")
+        let presentation = try XCTUnwrap(CaptureTaskCompletePresentation(capture: success))
+
+        XCTAssertEqual(presentation.unblockedRows.count, 6)
+        XCTAssertTrue(presentation.unblockedRows.allSatisfy { $0.kind == .recovered })
+        XCTAssertTrue(
+            presentation.unblockedRows.allSatisfy { $0.captionText == "Ready · not linked · more than 5" }
+        )
+        XCTAssertTrue(
+            presentation.notificationBody.contains("🔓 6 unblocked · not linked (more than 5)")
+        )
     }
 
     func testAlreadyDoneReadsNothingToChange() throws {

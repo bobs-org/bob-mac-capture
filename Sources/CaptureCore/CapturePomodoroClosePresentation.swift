@@ -141,6 +141,13 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         public let accessibilityLabel: String
     }
 
+    /// One dependent the close unblocked, built by the shared successor
+    /// row builder so the close card words the same JSON the same way as
+    /// the `!` card.
+    public typealias UnblockedRow = SuccessorUnblockedRow
+    /// One open dependent the close left blocked.
+    public typealias StillBlockedRow = SuccessorStillBlockedRow
+
     /// At most this many task rows render in the card before a "+N more" line.
     public static let maxVisibleTaskRows = 6
 
@@ -168,6 +175,11 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     public let taskRows: [TaskRow]
     public let visibleTaskRows: [TaskRow]
     public let overflowTaskCount: Int
+    /// Dependents this close unblocked, in Bob's report order: linked rows
+    /// carry a destination capsule, recovered rows a reason caption.
+    public let unblockedRows: [UnblockedRow]
+    /// Open dependents this close left blocked.
+    public let stillBlockedRows: [StillBlockedRow]
     /// The teaching hint, present when no selection was typed and at least
     /// one row is numbered. Nil once a selection is typed or with no lineup.
     public let teachingHint: TeachingHint?
@@ -350,12 +362,44 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         primaryActionTitle = "Close"
         notificationTitle = "Closed \(pomodoroName)"
 
+        unblockedRows = SuccessorRows.unblockedRows(
+            from: summary.unblocked,
+            transition: { item in
+                let from = CaptureTogglePresentation.marker(for: item.previousStatusSymbol)
+                let to = CaptureTogglePresentation.marker(for: item.statusSymbol)
+                if item.text.isEmpty {
+                    return "\(from) → \(to)"
+                }
+                return "\(from) → \(to)  \(item.text)"
+            },
+            locator: { item in
+                if item.blockID.isEmpty {
+                    return item.notePath
+                }
+                return "\(item.notePath) ^\(item.blockID)"
+            }
+        )
+        stillBlockedRows = SuccessorRows.stillBlockedRows(
+            from: summary.stillBlocked,
+            locator: { item in
+                if item.blockID.isEmpty {
+                    return item.notePath
+                }
+                return "\(item.notePath) ^\(item.blockID)"
+            }
+        )
+
         var bodyLines = [
             "\(pomodoroName) \(sessionText) · \(timingText)",
             "\(taskRows.count) task\(taskRows.count == 1 ? "" : "s")\(completedFragment) · \(workLogCount) Work Log \(workLogNoun)",
         ]
         if let nextText {
             bodyLines.append(nextText)
+        }
+        // One extra notification line when anything was linked or the
+        // breaker fired; with only recovered rows the body is unchanged.
+        if let successorLine = SuccessorRows.notificationLine(unblocked: summary.unblocked) {
+            bodyLines.append(successorLine)
         }
         notificationBody = bodyLines.joined(separator: "\n")
         batchSuffix = " (closed \(pomodoroName))"
@@ -365,6 +409,19 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             summaryParts.append(viaText)
         }
         summaryParts.append(contentsOf: taskRows.map(\.accessibilityLabel))
+        for row in unblockedRows {
+            var detail = "unblocks \(row.transitionText) \(row.locatorText)"
+            if let destination = row.destinationText {
+                detail += " \(destination)"
+            }
+            if let caption = row.captionText {
+                detail += " · \(caption)"
+            }
+            summaryParts.append(detail)
+        }
+        for row in stillBlockedRows {
+            summaryParts.append("still blocked \(row.text) \(row.locatorText) · \(row.captionText)")
+        }
         summaryParts.append(contentsOf: taskRows.flatMap(\.typedWorkLogPreviews))
         summaryParts.append(contentsOf: taskRows.flatMap { $0.typedWorkLogDetails.flatMap { $0 } })
         summaryParts.append(contentsOf: taskRows.flatMap(\.workLogPreviews))

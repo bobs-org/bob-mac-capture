@@ -1,0 +1,100 @@
+{
+ "ok": true,
+ "dry_run": false,
+ "routed": true,
+ "route": null,
+ "route_label": "sase.md",
+ "relative_target": "sase.md",
+ "target": "/tmp/bob-mac-capture-successors/vault/sase.md",
+ "text": "",
+ "task_line": "- [x] #task Lonely chore [id:: lonely]  [completion:: 2026-10-05] ^lonely",
+ "kind": "task_complete",
+ "created": "2026-10-05",
+ "scheduled": null,
+ "placement": "completed",
+ "block_id": "lonely",
+ "previous_task_line": "- [ ] #task Lonely chore [id:: lonely] ^lonely",
+ "status_symbol": "x",
+ "status_name": "Done",
+ "previous_status_symbol": " ",
+ "previous_status_name": "Ready",
+ "status_changed": true,
+ "task_complete": {
+  "raw": "!sase:lonely",
+  "note": "sase",
+  "note_path": "sase.md",
+  "block_id": "lonely",
+  "action": "completed",
+  "completion_date": "2026-10-05",
+  "text": "Lonely chore",
+  "subtasks": [],
+  "subtasks_left_open": [],
+  "unblocked": [
+   {
+    "note_path": "sase.md",
+    "block_id": "loner",
+    "line": 8,
+    "text": "Loner task",
+    "previous_status_symbol": "?",
+    "previous_status_name": "Blocked",
+    "status_symbol": " ",
+    "status_name": "Ready",
+    "inbox": false,
+    "unblocked_by": [
+     {
+      "note_path": "sase.md",
+      "block_id": "lonely",
+      "text": "Lonely chore"
+     }
+    ],
+    "not_linked": "not_planned_today"
+   }
+  ],
+  "still_blocked": [],
+  "unblocked_check": "checked"
+ },
+ "task_blocks": [
+  {
+   "relative_target": "sase.md",
+   "route": "sase",
+   "line": 7,
+   "block_id": "lonely",
+   "text": "Lonely chore",
+   "status_symbol": "x",
+   "status_name": "Done",
+   "created": false,
+   "roles": [
+    "completed"
+   ],
+   "lines": [
+    {
+     "text": "- [x] #task Lonely chore [id:: lonely]  [completion:: 2026-10-05] ^lonely",
+     "depth": 0,
+     "change": "changed",
+     "before": "- [ ] #task Lonely chore [id:: lonely] ^lonely"
+    }
+   ]
+  },
+  {
+   "relative_target": "sase.md",
+   "route": "sase",
+   "line": 8,
+   "block_id": "loner",
+   "text": "Loner task",
+   "status_symbol": " ",
+   "status_name": "Ready",
+   "created": false,
+   "roles": [
+    "unblocked"
+   ],
+   "lines": [
+    {
+     "text": "- [ ] #task Loner task [dependsOn:: lonely] [id:: loner] ^loner",
+     "depth": 0,
+     "change": "changed",
+     "before": "- [?] #task Loner task [dependsOn:: lonely] [id:: loner] ^loner"
+    }
+   ]
+  }
+ ]
+}

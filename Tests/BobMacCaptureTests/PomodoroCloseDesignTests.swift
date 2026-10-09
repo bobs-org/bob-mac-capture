@@ -5,37 +5,38 @@ import XCTest
 
 @testable import BobMacCapture
 
-/// Rendered-image review for the whole-item `!note:block-id` completion card:
-/// one PNG per task-complete fixture at full and minimum panel widths, in both
-/// appearances. `BOB_MAC_CAPTURE_RENDER_DIR` points at a writable directory;
-/// when set, writes the PNGs at scale 2. Inspect the PNGs with an image
-/// reader and iterate on spacing, contrast, strikethrough, and fact-row
-/// alignment. Follows `TaskBlockDesignTests`.
-final class TaskCompleteDesignTests: XCTestCase {
+/// Rendered-image review for the Pomodoro close card with successor links:
+/// one PNG per close-successors fixture at full and minimum panel widths, in
+/// both appearances. `BOB_MAC_CAPTURE_RENDER_DIR` points at a writable
+/// directory; when set, writes the PNGs at scale 2. Inspect the PNGs with an
+/// image reader and iterate on the Unblocked section, destination capsules,
+/// and badge alignment. Follows `TaskCompleteDesignTests`.
+///
+/// Fixtures (`Tests/Fixtures/pomodoro-close-successors.json`,
+/// `pomodoro-close-carried.json`) are real `bob capture --dry-run -f json`
+/// responses from bob-cli master with the successor-link capture phases,
+/// against sandbox vaults (see `Tests/Fixtures/fake-bob` routes `=x!1` and
+/// `=x!2` for the true drafts).
+final class PomodoroCloseDesignTests: XCTestCase {
     @MainActor
-    func testRenderTaskCompleteStatesToPNG() throws {
+    func testRenderCloseSuccessorStatesToPNG() throws {
         guard let renderDir = ProcessInfo.processInfo.environment["BOB_MAC_CAPTURE_RENDER_DIR"],
               !renderDir.isEmpty
         else {
-            throw XCTSkip("Set BOB_MAC_CAPTURE_RENDER_DIR to render the completion card review images.")
+            throw XCTSkip("Set BOB_MAC_CAPTURE_RENDER_DIR to render the close card review images.")
         }
         let directory = URL(fileURLWithPath: renderDir, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         let fixtures = [
-            "task-complete-strike.json",
-            "task-complete-subtasks.json",
-            "task-complete-unblocked.json",
-            "task-complete-already-done.json",
-            "task-complete-successors.json",
-            "task-complete-not-planned.json",
-            "task-complete-breaker.json",
+            "pomodoro-close-successors.json",
+            "pomodoro-close-carried.json",
         ]
         for fixture in fixtures {
-            let success = try completeFixture(fixture)
+            let success = try closeFixture(fixture)
             XCTAssertNotNil(
-                CaptureTaskCompletePresentation(capture: success),
-                "\(fixture) should carry a task_complete preview"
+                CapturePomodoroClosePresentation(capture: success),
+                "\(fixture) should carry a pomodoro_close preview"
             )
             let name = fixture.replacingOccurrences(of: ".json", with: "")
             for width in [760, 620] as [CGFloat] {
@@ -56,8 +57,9 @@ final class TaskCompleteDesignTests: XCTestCase {
                         XCTFail("Could not render \(name) (\(appearance.rawValue))")
                         continue
                     }
+                    let style = appearance == .darkAqua ? "dark" : "light"
                     let url = directory.appendingPathComponent(
-                        "task-complete-\(name)-\(Int(width))-\(appearance == .darkAqua ? "dark" : "light").png"
+                        "close-\(name)-\(Int(width))-\(style).png"
                     )
                     try Self.pngData(for: image).write(to: url)
                 }
@@ -65,7 +67,7 @@ final class TaskCompleteDesignTests: XCTestCase {
         }
     }
 
-    private func completeFixture(_ name: String) throws -> CaptureCommandSuccess {
+    private func closeFixture(_ name: String) throws -> CaptureCommandSuccess {
         let fixtures = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -74,7 +76,7 @@ final class TaskCompleteDesignTests: XCTestCase {
         let response = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
         guard case .success(let success) = response else {
             XCTFail("expected a successful Bob response in \(name)")
-            throw NSError(domain: "TaskCompleteDesignTests", code: 1)
+            throw NSError(domain: "PomodoroCloseDesignTests", code: 1)
         }
         return success
     }
@@ -84,7 +86,7 @@ final class TaskCompleteDesignTests: XCTestCase {
               let bitmap = NSBitmapImageRep(data: tiff),
               let data = bitmap.representation(using: .png, properties: [:])
         else {
-            throw NSError(domain: "TaskCompleteDesignTests", code: 2)
+            throw NSError(domain: "PomodoroCloseDesignTests", code: 2)
         }
         return data
     }

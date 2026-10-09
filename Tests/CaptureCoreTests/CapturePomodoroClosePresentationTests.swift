@@ -1720,6 +1720,59 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         return try decodeSuccess(raw)
     }
 
+    func testSuccessorsCloseLinksIntoCreatedContinuation() throws {
+        let success = try decodeFixture("pomodoro-close-successors.json")
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+
+        XCTAssertEqual(presentation.unblockedRows.count, 1)
+        let row = presentation.unblockedRows[0]
+        XCTAssertEqual(row.kind, .linked)
+        XCTAssertEqual(row.transitionText, "[?] → [*]  Re-launch failed agents")
+        XCTAssertEqual(row.locatorText, "sase.md ^relaunch-failed-agents")
+        XCTAssertEqual(row.destinationText, "→ new BOB · next up")
+        XCTAssertNil(row.captionText)
+        XCTAssertEqual(presentation.stillBlockedRows.count, 0)
+
+        // One linked successor adds one notification line after `next:`.
+        XCTAssertTrue(
+            presentation.notificationBody.contains(
+                "🔓 Next in new BOB session (next up): Re-launch failed agents"
+            )
+        )
+        XCTAssertTrue(
+            presentation.accessibilitySummary.contains(
+                "unblocks [?] → [*]  Re-launch failed agents sase.md ^relaunch-failed-agents → new BOB · next up"
+            )
+        )
+    }
+
+    func testCarriedCloseAppendsSuccessorAfterCarriedLinks() throws {
+        let success = try decodeFixture("pomodoro-close-carried.json")
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+
+        XCTAssertEqual(presentation.unblockedRows.count, 1)
+        XCTAssertEqual(presentation.unblockedRows[0].kind, .linked)
+        XCTAssertEqual(
+            presentation.unblockedRows[0].destinationText,
+            "→ new BOB · next up"
+        )
+        XCTAssertTrue(
+            presentation.notificationBody.contains(
+                "🔓 Next in new BOB session (next up): Re-launch failed agents"
+            )
+        )
+    }
+
+    func testCloseWithoutSuccessorsHasNoUnblockedRows() throws {
+        let success = try decodeFixture("pomodoro-close-worked.json")
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+
+        XCTAssertEqual(presentation.unblockedRows.count, 0)
+        XCTAssertEqual(presentation.stillBlockedRows.count, 0)
+        XCTAssertFalse(presentation.notificationBody.contains("🔓"))
+        XCTAssertFalse(presentation.accessibilitySummary.contains("unblocks"))
+    }
+
     private func decodeFixture(_ name: String) throws -> CaptureCommandSuccess {
         try decodeSuccess(fixtureText(name))
     }

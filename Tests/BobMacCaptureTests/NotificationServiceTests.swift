@@ -1244,6 +1244,36 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertTrue(content.body.contains("2 completed tasks"))
     }
 
+    func testTaskCompleteSuccessorsAddsNoticeLineAndOpensDailyNote() throws {
+        let success = try closeSuccessFixture("task-complete-successors.json")
+        let content = NotificationService.successContent(captures: [success])
+
+        XCTAssertTrue(
+            content.body.contains(
+                "🔓 3 linked → FIX (next up): Re-launch all failed agents, Review memory beads, +1"
+            )
+        )
+        XCTAssertEqual(
+            content.userInfo[NotificationService.targetPathsKey] as? [String],
+            [
+                "/tmp/bob-mac-capture-successors/vault/sase.md",
+                "/tmp/bob-mac-capture-successors/vault/20261005.md",
+            ]
+        )
+    }
+
+    func testTaskCompleteRecoveredOnlyOmitsDailyNote() throws {
+        let success = try closeSuccessFixture("task-complete-not-planned.json")
+        let content = NotificationService.successContent(captures: [success])
+
+        XCTAssertTrue(content.body.contains("unblocked Loner task"))
+        XCTAssertFalse(content.body.contains("🔓"))
+        XCTAssertEqual(
+            content.userInfo[NotificationService.targetPathsKey] as? [String],
+            ["/tmp/bob-mac-capture-successors/vault/sase.md"]
+        )
+    }
+
     private func capture(
         kind: String,
         routeLabel: String,

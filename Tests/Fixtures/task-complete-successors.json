@@ -1,0 +1,342 @@
+{
+ "ok": true,
+ "dry_run": false,
+ "routed": true,
+ "route": null,
+ "route_label": "sase.md",
+ "relative_target": "sase.md",
+ "target": "/tmp/bob-mac-capture-successors/vault/sase.md",
+ "text": "",
+ "task_line": "- [x] #task Fix apollo machine [id:: fix-apollo]  [completion:: 2026-10-05] ^fix-apollo",
+ "kind": "task_complete",
+ "created": "2026-10-05",
+ "scheduled": null,
+ "placement": "completed",
+ "block_id": "fix-apollo",
+ "day_file": "/tmp/bob-mac-capture-successors/vault/20261005.md",
+ "previous_task_line": "- [ ] #task Fix apollo machine [id:: fix-apollo] ^fix-apollo",
+ "status_symbol": "x",
+ "status_name": "Done",
+ "previous_status_symbol": " ",
+ "previous_status_name": "Ready",
+ "status_changed": true,
+ "task_complete": {
+  "raw": "!sase:fix-apollo",
+  "note": "sase",
+  "note_path": "sase.md",
+  "block_id": "fix-apollo",
+  "action": "completed",
+  "completion_date": "2026-10-05",
+  "text": "Fix apollo machine",
+  "subtasks": [],
+  "subtasks_left_open": [],
+  "ledger": {
+   "day_file": "20261005.md",
+   "struck": 1,
+   "struck_in": [
+    {
+     "line": 4,
+     "name": "FIX",
+     "status": "queued"
+    }
+   ],
+   "moved": [
+    {
+     "from": {
+      "line": 4,
+      "name": "FIX",
+      "status": "queued"
+     },
+     "to": {
+      "line": 2,
+      "name": "CAPTURE",
+      "status": "running"
+     }
+    }
+   ],
+   "deduplicated": 0,
+   "dropped": [],
+   "removed_placeholders": []
+  },
+  "unblocked": [
+   {
+    "note_path": "sase.md",
+    "block_id": "relaunch-failed-agents",
+    "line": 2,
+    "text": "Re-launch all failed agents",
+    "previous_status_symbol": "?",
+    "previous_status_name": "Blocked",
+    "status_symbol": "*",
+    "status_name": "Next",
+    "inbox": false,
+    "unblocked_by": [
+     {
+      "note_path": "sase.md",
+      "block_id": "fix-apollo",
+      "text": "Fix apollo machine"
+     }
+    ],
+    "link": {
+     "day_file": "20261005.md",
+     "entry_name": "FIX",
+     "entry_line": 4,
+     "entry_created": false,
+     "next_up": true,
+     "line": 6,
+     "block_link": "[[sase#^relaunch-failed-agents]]",
+     "block_id_created": false
+    }
+   },
+   {
+    "note_path": "sase.md",
+    "block_id": "review-beads",
+    "line": 3,
+    "text": "Review memory beads",
+    "previous_status_symbol": "?",
+    "previous_status_name": "Blocked",
+    "status_symbol": "*",
+    "status_name": "Next",
+    "inbox": false,
+    "unblocked_by": [
+     {
+      "note_path": "sase.md",
+      "block_id": "fix-apollo",
+      "text": "Fix apollo machine"
+     }
+    ],
+    "link": {
+     "day_file": "20261005.md",
+     "entry_name": "FIX",
+     "entry_line": 4,
+     "entry_created": false,
+     "next_up": true,
+     "line": 7,
+     "block_link": "[[sase#^review-beads]]",
+     "block_id_created": false
+    }
+   },
+   {
+    "note_path": "sase.md",
+    "block_id": "book-flights",
+    "line": 4,
+    "text": "Book flights",
+    "previous_status_symbol": "?",
+    "previous_status_name": "Blocked",
+    "status_symbol": "*",
+    "status_name": "Next",
+    "inbox": false,
+    "unblocked_by": [
+     {
+      "note_path": "sase.md",
+      "block_id": "fix-apollo",
+      "text": "Fix apollo machine"
+     }
+    ],
+    "link": {
+     "day_file": "20261005.md",
+     "entry_name": "FIX",
+     "entry_line": 4,
+     "entry_created": false,
+     "next_up": true,
+     "line": 8,
+     "block_link": "[[sase#^book-flights]]",
+     "block_id_created": true
+    }
+   }
+  ],
+  "still_blocked": [
+   {
+    "note_path": "sase.md",
+    "block_id": "badges",
+    "line": 5,
+    "text": "Add sase badges",
+    "status_symbol": "?",
+    "status_name": "Blocked",
+    "reason": "waits_on",
+    "waits_on": 1
+   },
+   {
+    "note_path": "sase.md",
+    "block_id": "renew-domain",
+    "line": 6,
+    "text": "Renew domain",
+    "status_symbol": "?",
+    "status_name": "Blocked",
+    "reason": "scheduled",
+    "waits_on": 0,
+    "scheduled": "2026-10-13"
+   }
+  ],
+  "unblocked_check": "checked"
+ },
+ "plan_budget": {
+  "status": "ok",
+  "themes": {
+   "count": 2,
+   "cap": 3,
+   "over": false,
+   "before": 2
+  },
+  "links": {
+   "count": 5,
+   "cap": 10,
+   "over": false,
+   "before": 3
+  }
+ },
+ "pomodoro_blocks": [
+  {
+   "relative_target": "20261005.md",
+   "line": 2,
+   "name": "CAPTURE",
+   "time_range": "0920-0950",
+   "status": "running",
+   "created": false,
+   "roles": [
+    "changed"
+   ],
+   "lines": [
+    {
+     "text": "- [ ] (**0920-0950**) \u2014 CAPTURE",
+     "depth": 0,
+     "change": "unchanged"
+    },
+    {
+     "text": "  - [[other#^other-keep]]",
+     "depth": 1,
+     "change": "unchanged"
+    },
+    {
+     "text": "  - ~~[[sase#^fix-apollo]]~~",
+     "depth": 1,
+     "change": "added"
+    }
+   ]
+  },
+  {
+   "relative_target": "20261005.md",
+   "line": 5,
+   "name": "FIX",
+   "status": "queued",
+   "created": false,
+   "roles": [
+    "changed"
+   ],
+   "lines": [
+    {
+     "text": "- [ ] () \u2014 FIX",
+     "depth": 0,
+     "change": "unchanged"
+    },
+    {
+     "text": "  - [[sase#^relaunch-failed-agents]]",
+     "depth": 1,
+     "change": "changed",
+     "before": "  - [[sase#^fix-apollo]]"
+    },
+    {
+     "text": "  - [[sase#^review-beads]]",
+     "depth": 1,
+     "change": "added",
+     "reason": "unblocked"
+    },
+    {
+     "text": "  - [[sase#^book-flights]]",
+     "depth": 1,
+     "change": "added",
+     "reason": "unblocked"
+    },
+    {
+     "text": "  - [[sase#^bigbang]]",
+     "depth": 1,
+     "change": "unchanged"
+    }
+   ]
+  }
+ ],
+ "task_blocks": [
+  {
+   "relative_target": "sase.md",
+   "route": "sase",
+   "line": 1,
+   "block_id": "fix-apollo",
+   "text": "Fix apollo machine",
+   "status_symbol": "x",
+   "status_name": "Done",
+   "created": false,
+   "roles": [
+    "completed"
+   ],
+   "lines": [
+    {
+     "text": "- [x] #task Fix apollo machine [id:: fix-apollo]  [completion:: 2026-10-05] ^fix-apollo",
+     "depth": 0,
+     "change": "changed",
+     "before": "- [ ] #task Fix apollo machine [id:: fix-apollo] ^fix-apollo"
+    }
+   ]
+  },
+  {
+   "relative_target": "sase.md",
+   "route": "sase",
+   "line": 2,
+   "block_id": "relaunch-failed-agents",
+   "text": "Re-launch all failed agents",
+   "status_symbol": "*",
+   "status_name": "Next",
+   "created": false,
+   "roles": [
+    "unblocked"
+   ],
+   "lines": [
+    {
+     "text": "- [*] #task Re-launch all failed agents [dependsOn:: fix-apollo] [id:: relaunch-agents] ^relaunch-failed-agents",
+     "depth": 0,
+     "change": "changed",
+     "before": "- [?] #task Re-launch all failed agents [dependsOn:: fix-apollo] [id:: relaunch-agents] ^relaunch-failed-agents"
+    }
+   ]
+  },
+  {
+   "relative_target": "sase.md",
+   "route": "sase",
+   "line": 3,
+   "block_id": "review-beads",
+   "text": "Review memory beads",
+   "status_symbol": "*",
+   "status_name": "Next",
+   "created": false,
+   "roles": [
+    "unblocked"
+   ],
+   "lines": [
+    {
+     "text": "- [*] #task Review memory beads [dependsOn:: fix-apollo] [id:: review-beads] ^review-beads",
+     "depth": 0,
+     "change": "changed",
+     "before": "- [?] #task Review memory beads [dependsOn:: fix-apollo] [id:: review-beads] ^review-beads"
+    }
+   ]
+  },
+  {
+   "relative_target": "sase.md",
+   "route": "sase",
+   "line": 4,
+   "block_id": "book-flights",
+   "text": "Book flights",
+   "status_symbol": "*",
+   "status_name": "Next",
+   "created": true,
+   "roles": [
+    "unblocked"
+   ],
+   "lines": [
+    {
+     "text": "- [*] #task Book flights [dependsOn:: fix-apollo] [id:: book-flights] ^book-flights",
+     "depth": 0,
+     "change": "added"
+    }
+   ]
+  }
+ ]
+}

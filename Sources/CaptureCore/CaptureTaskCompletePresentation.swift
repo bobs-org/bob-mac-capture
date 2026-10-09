@@ -39,21 +39,13 @@ public struct CaptureTaskCompletePresentation: Equatable, Sendable {
         }
     }
 
-    /// One dependent the completion unblocked.
-    public struct UnblockedRow: Equatable, Sendable {
-        /// `"[?] → [ ]  Book flights"`.
-        public let transitionText: String
-        /// `"travel.md ^book-flights"`.
-        public let locatorText: String
-        /// The dependent's plain text, for notification bodies.
-        public let text: String
-
-        public init(transitionText: String, locatorText: String, text: String) {
-            self.transitionText = transitionText
-            self.locatorText = locatorText
-            self.text = text
-        }
-    }
+    /// One dependent the completion unblocked: linked (with a
+    /// destination capsule and an optional minted-ID caption) or recovered
+    /// (with a reason caption). Shared with the close card's Unblocked
+    /// section so both cards word the same JSON the same way.
+    public typealias UnblockedRow = SuccessorUnblockedRow
+    /// One open dependent the completion left blocked.
+    public typealias StillBlockedRow = SuccessorStillBlockedRow
 
     public let isDryRun: Bool
     public let isAlreadyDone: Bool
@@ -72,6 +64,7 @@ public struct CaptureTaskCompletePresentation: Equatable, Sendable {
     /// (or the task was already done).
     public let ledgerText: String?
     public let unblockedRows: [UnblockedRow]
+    public let stillBlockedRows: [StillBlockedRow]
     public let chips: [String]
     /// Always `"Complete"`: it names what pressing Return will do next,
     /// not what a preview already computed.
@@ -142,23 +135,26 @@ public struct CaptureTaskCompletePresentation: Equatable, Sendable {
             )
         }
 
-        unblockedRows = summary.unblocked.map { item in
-            let from = CaptureTogglePresentation.marker(for: item.previousStatusSymbol)
-            let to = CaptureTogglePresentation.marker(for: item.statusSymbol)
-            let locator = Self.locator(notePath: item.notePath, blockID: item.blockID)
-            if item.text.isEmpty {
-                return UnblockedRow(
-                    transitionText: "\(from) → \(to)",
-                    locatorText: locator,
-                    text: ""
-                )
+        unblockedRows = SuccessorRows.unblockedRows(
+            from: summary.unblocked,
+            transition: { item in
+                let from = CaptureTogglePresentation.marker(for: item.previousStatusSymbol)
+                let to = CaptureTogglePresentation.marker(for: item.statusSymbol)
+                if item.text.isEmpty {
+                    return "\(from) → \(to)"
+                }
+                return "\(from) → \(to)  \(item.text)"
+            },
+            locator: { item in
+                Self.locator(notePath: item.notePath, blockID: item.blockID)
             }
-            return UnblockedRow(
-                transitionText: "\(from) → \(to)  \(item.text)",
-                locatorText: locator,
-                text: item.text
-            )
-        }
+        )
+        stillBlockedRows = SuccessorRows.stillBlockedRows(
+            from: summary.stillBlocked,
+            locator: { item in
+                Self.locator(notePath: item.notePath, blockID: item.blockID)
+            }
+        )
 
         if isAlreadyDone {
             ledgerText = nil
@@ -196,9 +192,16 @@ public struct CaptureTaskCompletePresentation: Equatable, Sendable {
         }
         let notePath = summary.notePath.isEmpty ? routeLabel : summary.notePath
         var body = notePath
-        let unblockedNames = summary.unblocked.map(\.text).filter { !$0.isEmpty }
-        if !unblockedNames.isEmpty {
-            body += " · unblocked \(unblockedNames.joined(separator: ", "))"
+        // One extra notification line when anything was linked or the
+        // breaker fired; with only recovered rows the body keeps today's
+        // `· unblocked A, B` form.
+        if let line = SuccessorRows.notificationLine(unblocked: summary.unblocked) {
+            body += "\n\(line)"
+        } else {
+            let unblockedNames = summary.unblocked.map(\.text).filter { !$0.isEmpty }
+            if !unblockedNames.isEmpty {
+                body += " · unblocked \(unblockedNames.joined(separator: ", "))"
+            }
         }
         if isAlreadyDone {
             body += " · nothing to change"
@@ -216,7 +219,17 @@ public struct CaptureTaskCompletePresentation: Equatable, Sendable {
             parts.append(ledgerText)
         }
         for row in unblockedRows {
-            parts.append("unblocks \(row.transitionText) \(row.locatorText)")
+            var detail = "unblocks \(row.transitionText) \(row.locatorText)"
+            if let destination = row.destinationText {
+                detail += " \(destination)"
+            }
+            if let caption = row.captionText {
+                detail += " · \(caption)"
+            }
+            parts.append(detail)
+        }
+        for row in stillBlockedRows {
+            parts.append("still blocked \(row.text) \(row.locatorText) · \(row.captionText)")
         }
         previewAccessibilitySummary = parts.joined(separator: ", ")
     }

@@ -15,6 +15,9 @@ public struct CaptureBlockDiffRow: Equatable, Sendable {
     /// True for a non-empty depth-0 row.
     public let isHeadline: Bool
     public let tokens: [CapturePomodoroLineToken]
+    /// True for an added line Bob marked `reason == "unblocked"`: a
+    /// surviving successor link. Renders a trailing badge.
+    public let isUnblocked: Bool
 
     public init(
         content: String,
@@ -22,7 +25,8 @@ public struct CaptureBlockDiffRow: Equatable, Sendable {
         change: CapturePomodoroBlockChange,
         beforeContent: String? = nil,
         isHeadline: Bool,
-        tokens: [CapturePomodoroLineToken]
+        tokens: [CapturePomodoroLineToken],
+        isUnblocked: Bool = false
     ) {
         self.content = content
         self.depth = depth
@@ -30,5 +34,6 @@ public struct CaptureBlockDiffRow: Equatable, Sendable {
         self.beforeContent = beforeContent
         self.isHeadline = isHeadline
         self.tokens = tokens
+        self.isUnblocked = isUnblocked
     }
 }

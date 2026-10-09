@@ -748,7 +748,11 @@ final class NotificationService: NSObject, ObservableObject {
             return toggle.dayFileChanged
         }
         if CaptureTaskCompletePresentation(capture: capture) != nil {
-            return capture.taskComplete?.ledger != nil
+            // Bob sets the top-level `day_file` whenever the gesture
+            // changed the day file, and a linked successor always changes
+            // it — even when the predecessor had no ledger entry of its own.
+            guard let complete = capture.taskComplete else { return false }
+            return complete.ledger != nil || complete.unblocked.contains { $0.link != nil }
         }
         if let link = CapturePomodoroLinkPresentation(capture: capture) {
             return link.dayFileChanged

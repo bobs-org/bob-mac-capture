@@ -96,7 +96,8 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
                 tokens: CapturePomodoroLineTokens.tokenizeTaskRow(
                     content,
                     isHeadline: isHeadline
-                )
+                ),
+                isUnblocked: line.change == .added && line.reason == "unblocked"
             )
         }
 

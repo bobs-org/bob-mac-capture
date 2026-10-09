@@ -2157,6 +2157,89 @@ struct PreviewPane: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
+            if !close.unblockedRows.isEmpty || !close.stillBlockedRows.isEmpty {
+                // The Unblocked section under the task rows, with the same
+                // row views as the `!` card: destination capsules and
+                // minted-ID captions on linked rows, reason captions on
+                // recovered rows, muted rows for what stays blocked.
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "lock.open.fill")
+                            .foregroundStyle(.green)
+                            .accessibilityHidden(true)
+                        Text("Unblocked")
+                            .fontWeight(.semibold)
+                            .textSelection(.enabled)
+                    }
+                    ForEach(Array(close.unblockedRows.enumerated()), id: \.offset) { _, row in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Image(systemName: "lock.open.fill")
+                                    .foregroundStyle(row.kind == .linked ? .green : .secondary)
+                                    .accessibilityHidden(true)
+                                Text(row.transitionText)
+                                    .font(.system(.callout, design: .monospaced))
+                                    .textSelection(.enabled)
+                                Spacer(minLength: 4)
+                                if let destination = row.destinationText {
+                                    Text(destination)
+                                        .font(.caption)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.green)
+                                        .padding(.horizontal, 7)
+                                        .padding(.vertical, 3)
+                                        .background(.quaternary, in: Capsule())
+                                }
+                                if row.isInbox {
+                                    Text("inbox")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, 7)
+                                        .padding(.vertical, 3)
+                                        .background(.quaternary, in: Capsule())
+                                }
+                                Text(row.locatorText)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .textSelection(.enabled)
+                            }
+                            if let caption = row.captionText {
+                                Text(caption)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
+                    ForEach(Array(close.stillBlockedRows.enumerated()), id: \.offset) { _, row in
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Image(systemName: "lock.fill")
+                                    .foregroundStyle(.tertiary)
+                                    .accessibilityHidden(true)
+                                Text(row.text)
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                                Spacer(minLength: 4)
+                                Text(row.locatorText)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .textSelection(.enabled)
+                            }
+                            Text(row.captionText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             // The teaching hint (before a selection is typed), the outcome
             // summary (after), or the pending notice (while a list dangles):
             // one caption row under the task rows.
@@ -3015,19 +3098,73 @@ struct PreviewPane: View {
             }
 
             ForEach(Array(complete.unblockedRows.enumerated()), id: \.offset) { _, row in
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Image(systemName: "lock.open.fill")
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                    Text(row.transitionText)
-                        .font(.system(.callout, design: .monospaced))
-                        .textSelection(.enabled)
-                    Spacer(minLength: 4)
-                    Text(row.locatorText)
+                // Linked rows wear the Next tint with a trailing destination
+                // capsule; recovered rows stay secondary with a reason
+                // caption. The locator truncates first at narrow widths.
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "lock.open.fill")
+                            .foregroundStyle(row.kind == .linked ? .green : .secondary)
+                            .accessibilityHidden(true)
+                        Text(row.transitionText)
+                            .font(.system(.callout, design: .monospaced))
+                            .textSelection(.enabled)
+                        Spacer(minLength: 4)
+                        if let destination = row.destinationText {
+                            Text(destination)
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(.green)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(.quaternary, in: Capsule())
+                        }
+                        if row.isInbox {
+                            Text("inbox")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(.quaternary, in: Capsule())
+                        }
+                        Text(row.locatorText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .textSelection(.enabled)
+                    }
+                    if let caption = row.captionText {
+                        Text(caption)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+
+            ForEach(Array(complete.stillBlockedRows.enumerated()), id: \.offset) { _, row in
+                // Still-blocked rows stay muted: tertiary lock, plain text,
+                // and a `stays …` caption.
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Image(systemName: "lock.fill")
+                            .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
+                        Text(row.text)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                        Spacer(minLength: 4)
+                        Text(row.locatorText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .textSelection(.enabled)
+                    }
+                    Text(row.captionText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
                         .textSelection(.enabled)
                 }
             }

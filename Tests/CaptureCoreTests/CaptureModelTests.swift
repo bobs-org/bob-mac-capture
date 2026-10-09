@@ -2753,6 +2753,171 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(emptyLedger.dropped, [])
     }
 
+    func testSuccessorJSONDecodesTolerantly() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/bob/sase.md",
+            "text":"","task_line":"- [x] #task Fix apollo ^fix-apollo",
+            "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fix-apollo",
+            "task_complete":{"raw":"!sase:fix-apollo","note":"sase","note_path":"sase.md",
+            "block_id":"fix-apollo","action":"completed","text":"Fix apollo",
+            "subtasks":[],"subtasks_left_open":[],
+            "unblocked":[{"note_path":"sase.md","block_id":"book-flights","line":8,
+            "text":"Book flights","previous_status_symbol":"?","previous_status_name":"Blocked",
+            "status_symbol":"*","status_name":"Next","inbox":false,
+            "unblocked_by":[{"note_path":"sase.md","block_id":"fix-apollo","text":"Fix apollo"}],
+            "link":{"day_file":"20261005.md","entry_name":"FIX","entry_line":4,
+            "entry_created":false,"next_up":true,"line":8,
+            "block_link":"[[sase#^book-flights]]","block_id_created":true}}],
+            "still_blocked":[{"note_path":"sase.md","block_id":"renew-domain","line":9,
+            "text":"Renew domain","status_symbol":"?","status_name":"Blocked",
+            "reason":"scheduled","waits_on":0,"scheduled":"2026-10-13"}],
+            "unblocked_check":"checked"}}
+            """
+        )
+        let summary = try XCTUnwrap(success.taskComplete)
+        XCTAssertEqual(summary.unblocked.count, 1)
+        let row = summary.unblocked[0]
+        XCTAssertFalse(row.inbox)
+        XCTAssertEqual(row.unblockedBy.count, 1)
+        XCTAssertEqual(row.unblockedBy[0].blockID, "fix-apollo")
+        let link = try XCTUnwrap(row.link)
+        XCTAssertEqual(link.entryName, "FIX")
+        XCTAssertTrue(link.nextUp)
+        XCTAssertTrue(link.blockIDCreated)
+        XCTAssertNil(row.notLinked)
+        XCTAssertEqual(summary.stillBlocked.count, 1)
+        XCTAssertEqual(summary.stillBlocked[0].reason, "scheduled")
+        XCTAssertEqual(summary.stillBlocked[0].scheduled, "2026-10-13")
+        XCTAssertEqual(summary.unblockedCheck, "checked")
+
+        // Every new nested value decodes on its own: malformed fields
+        // degrade to empty instead of failing the capture or dropping the
+        // completion card.
+        let degraded = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/bob/sase.md",
+            "text":"","task_line":"- [x] #task Fix apollo ^fix-apollo",
+            "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fix-apollo",
+            "task_complete":{"raw":"!sase:fix-apollo","note":"sase","note_path":"sase.md",
+            "block_id":"fix-apollo","action":"completed","text":"Fix apollo",
+            "subtasks":[],"subtasks_left_open":[],
+            "unblocked":[{"note_path":"sase.md","block_id":"book-flights","line":8,
+            "text":"Book flights","previous_status_symbol":"?","previous_status_name":"Blocked",
+            "status_symbol":"*","status_name":"Next","inbox":"yes",
+            "unblocked_by":"nobody",
+            "link":"nowhere","not_linked":42}],
+            "still_blocked":"nothing","unblocked_check":7}}
+            """
+        )
+        let degradedSummary = try XCTUnwrap(degraded.taskComplete)
+        XCTAssertEqual(degradedSummary.unblocked.count, 1)
+        XCTAssertFalse(degradedSummary.unblocked[0].inbox)
+        XCTAssertEqual(degradedSummary.unblocked[0].unblockedBy, [])
+        XCTAssertNil(degradedSummary.unblocked[0].link)
+        XCTAssertNil(degradedSummary.unblocked[0].notLinked)
+        XCTAssertEqual(degradedSummary.stillBlocked, [])
+        XCTAssertNil(degradedSummary.unblockedCheck)
+
+        // Older Bob omits every successor key.
+        let old = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/bob/sase.md",
+            "text":"","task_line":"- [x] #task Fix apollo ^fix-apollo",
+            "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fix-apollo",
+            "task_complete":{"raw":"!sase:fix-apollo","note":"sase","note_path":"sase.md",
+            "block_id":"fix-apollo","action":"completed","text":"Fix apollo",
+            "subtasks":[],"subtasks_left_open":[]}}
+            """
+        )
+        let oldSummary = try XCTUnwrap(old.taskComplete)
+        XCTAssertEqual(oldSummary.unblocked, [])
+        XCTAssertEqual(oldSummary.stillBlocked, [])
+        XCTAssertNil(oldSummary.unblockedCheck)
+    }
+
+    func testCloseSuccessorJSONDecodesTolerantly() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"2026/20261005.md",
+            "relative_target":"2026/20261005.md","target":"/tmp/bob/2026/20261005.md",
+            "text":"","task_line":"","kind":"pomodoro_close","created":"2026-10-05",
+            "placement":"closed",
+            "pomodoro_close":{"raw":"=x!1","complete":[1],"complete_all":false,
+            "task_links":[],"pomodoro_line":5,"day_relative":"2026/20261005.md",
+            "entry_line":"- [ ] (**0920-0950**) — BOB",
+            "planned":{"start":"09:20","end":"09:50","duration_minutes":30,"time_range":"0920-0950"},
+            "closed":{"start":"09:20","end":"09:30","duration_minutes":10,"time_range":"0920-0930"},
+            "closed_at":"09:30","remaining_minutes":20,"decremented_minutes":10,
+            "tasks":[],"carried":[],"notes":[],
+            "unblocked":[{"note_path":"sase.md","block_id":"relaunch","line":2,
+            "text":"Re-launch","previous_status_symbol":"?","previous_status_name":"Blocked",
+            "status_symbol":"*","status_name":"Next","inbox":true,
+            "unblocked_by":[],"not_linked":null,
+            "link":{"day_file":"20261005.md","entry_name":"BOB","entry_line":4,
+            "entry_created":true,"next_up":true,"line":5,
+            "block_link":"[[sase#^relaunch]]","block_id_created":false}}],
+            "still_blocked":[],"unblocked_check":"checked"}}
+            """
+        )
+        let close = try XCTUnwrap(success.pomodoroClose)
+        XCTAssertEqual(close.unblocked.count, 1)
+        XCTAssertTrue(close.unblocked[0].inbox)
+        XCTAssertEqual(close.unblocked[0].link?.entryCreated, true)
+        XCTAssertEqual(close.stillBlocked, [])
+        XCTAssertEqual(close.unblockedCheck, "checked")
+
+        // Malformed successor values degrade to empty without failing the
+        // whole capture decode (the close summary itself uses plain `try`).
+        let degraded = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"2026/20261005.md",
+            "relative_target":"2026/20261005.md","target":"/tmp/bob/2026/20261005.md",
+            "text":"","task_line":"","kind":"pomodoro_close","created":"2026-10-05",
+            "placement":"closed",
+            "pomodoro_close":{"raw":"=x!1",
+            "unblocked":42,"still_blocked":42,"unblocked_check":[]}}
+            """
+        )
+        let degradedClose = try XCTUnwrap(degraded.pomodoroClose)
+        XCTAssertEqual(degradedClose.unblocked, [])
+        XCTAssertEqual(degradedClose.stillBlocked, [])
+        XCTAssertNil(degradedClose.unblockedCheck)
+    }
+
+    func testBlockLineReasonDecodesTolerantly() throws {
+        let line = try JSONDecoder().decode(
+            CapturePomodoroBlockLine.self,
+            from: Data(
+                """
+                {"text":"\\t- [[sase#^relaunch]]","depth":1,"change":"added","reason":"unblocked"}
+                """.utf8
+            )
+        )
+        XCTAssertEqual(line.reason, "unblocked")
+        let malformed = try JSONDecoder().decode(
+            CapturePomodoroBlockLine.self,
+            from: Data(
+                """
+                {"text":"x","depth":0,"change":"added","reason":7}
+                """.utf8
+            )
+        )
+        XCTAssertNil(malformed.reason)
+        let old = try JSONDecoder().decode(
+            CapturePomodoroBlockLine.self,
+            from: Data(
+                """
+                {"text":"x","depth":0,"change":"added"}
+                """.utf8
+            )
+        )
+        XCTAssertNil(old.reason)
+    }
+
     // MARK: - Pomodoro blocks
 
     private func decodeBlockFixture(_ name: String) throws -> CaptureCommandSuccess {

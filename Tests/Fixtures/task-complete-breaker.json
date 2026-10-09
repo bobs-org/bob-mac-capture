@@ -1,0 +1,401 @@
+{
+ "ok": true,
+ "dry_run": false,
+ "routed": true,
+ "route": null,
+ "route_label": "sase.md",
+ "relative_target": "sase.md",
+ "target": "/tmp/bob-mac-capture-successors/vault/sase.md",
+ "text": "",
+ "task_line": "- [x] #task Big bang [id:: bigbang]  [completion:: 2026-10-05] ^bigbang",
+ "kind": "task_complete",
+ "created": "2026-10-05",
+ "scheduled": null,
+ "placement": "completed",
+ "block_id": "bigbang",
+ "day_file": "/tmp/bob-mac-capture-successors/vault/20261005.md",
+ "previous_task_line": "- [ ] #task Big bang [id:: bigbang] ^bigbang",
+ "status_symbol": "x",
+ "status_name": "Done",
+ "previous_status_symbol": " ",
+ "previous_status_name": "Ready",
+ "status_changed": true,
+ "task_complete": {
+  "raw": "!sase:bigbang",
+  "note": "sase",
+  "note_path": "sase.md",
+  "block_id": "bigbang",
+  "action": "completed",
+  "completion_date": "2026-10-05",
+  "text": "Big bang",
+  "subtasks": [],
+  "subtasks_left_open": [],
+  "ledger": {
+   "day_file": "20261005.md",
+   "struck": 1,
+   "struck_in": [
+    {
+     "line": 4,
+     "name": "FIX",
+     "status": "queued"
+    }
+   ],
+   "moved": [
+    {
+     "from": {
+      "line": 4,
+      "name": "FIX",
+      "status": "queued"
+     },
+     "to": {
+      "line": 2,
+      "name": "CAPTURE",
+      "status": "running"
+     }
+    }
+   ],
+   "deduplicated": 0,
+   "dropped": [],
+   "removed_placeholders": []
+  },
+  "unblocked": [
+   {
+    "note_path": "sase.md",
+    "block_id": "bang-one",
+    "line": 10,
+    "text": "Bang one",
+    "previous_status_symbol": "?",
+    "previous_status_name": "Blocked",
+    "status_symbol": " ",
+    "status_name": "Ready",
+    "inbox": false,
+    "unblocked_by": [
+     {
+      "note_path": "sase.md",
+      "block_id": "bigbang",
+      "text": "Big bang"
+     }
+    ],
+    "not_linked": "breaker"
+   },
+   {
+    "note_path": "sase.md",
+    "block_id": "bang-two",
+    "line": 11,
+    "text": "Bang two",
+    "previous_status_symbol": "?",
+    "previous_status_name": "Blocked",
+    "status_symbol": " ",
+    "status_name": "Ready",
+    "inbox": false,
+    "unblocked_by": [
+     {
+      "note_path": "sase.md",
+      "block_id": "bigbang",
+      "text": "Big bang"
+     }
+    ],
+    "not_linked": "breaker"
+   },
+   {
+    "note_path": "sase.md",
+    "block_id": "bang-three",
+    "line": 12,
+    "text": "Bang three",
+    "previous_status_symbol": "?",
+    "previous_status_name": "Blocked",
+    "status_symbol": " ",
+    "status_name": "Ready",
+    "inbox": false,
+    "unblocked_by": [
+     {
+      "note_path": "sase.md",
+      "block_id": "bigbang",
+      "text": "Big bang"
+     }
+    ],
+    "not_linked": "breaker"
+   },
+   {
+    "note_path": "sase.md",
+    "block_id": "bang-four",
+    "line": 13,
+    "text": "Bang four",
+    "previous_status_symbol": "?",
+    "previous_status_name": "Blocked",
+    "status_symbol": " ",
+    "status_name": "Ready",
+    "inbox": false,
+    "unblocked_by": [
+     {
+      "note_path": "sase.md",
+      "block_id": "bigbang",
+      "text": "Big bang"
+     }
+    ],
+    "not_linked": "breaker"
+   },
+   {
+    "note_path": "sase.md",
+    "block_id": "bang-five",
+    "line": 14,
+    "text": "Bang five",
+    "previous_status_symbol": "?",
+    "previous_status_name": "Blocked",
+    "status_symbol": " ",
+    "status_name": "Ready",
+    "inbox": false,
+    "unblocked_by": [
+     {
+      "note_path": "sase.md",
+      "block_id": "bigbang",
+      "text": "Big bang"
+     }
+    ],
+    "not_linked": "breaker"
+   },
+   {
+    "note_path": "sase.md",
+    "block_id": "bang-six",
+    "line": 15,
+    "text": "Bang six",
+    "previous_status_symbol": "?",
+    "previous_status_name": "Blocked",
+    "status_symbol": " ",
+    "status_name": "Ready",
+    "inbox": false,
+    "unblocked_by": [
+     {
+      "note_path": "sase.md",
+      "block_id": "bigbang",
+      "text": "Big bang"
+     }
+    ],
+    "not_linked": "breaker"
+   }
+  ],
+  "still_blocked": [],
+  "unblocked_check": "checked"
+ },
+ "plan_budget": {
+  "status": "ok",
+  "themes": {
+   "count": 2,
+   "cap": 3,
+   "over": false,
+   "before": 2
+  },
+  "links": {
+   "count": 2,
+   "cap": 10,
+   "over": false,
+   "before": 3
+  }
+ },
+ "pomodoro_blocks": [
+  {
+   "relative_target": "20261005.md",
+   "line": 2,
+   "name": "CAPTURE",
+   "time_range": "0920-0950",
+   "status": "running",
+   "created": false,
+   "roles": [
+    "changed"
+   ],
+   "lines": [
+    {
+     "text": "- [ ] (**0920-0950**) \u2014 CAPTURE",
+     "depth": 0,
+     "change": "unchanged"
+    },
+    {
+     "text": "  - [[other#^other-keep]]",
+     "depth": 1,
+     "change": "unchanged"
+    },
+    {
+     "text": "  - ~~[[sase#^bigbang]]~~",
+     "depth": 1,
+     "change": "added"
+    }
+   ]
+  },
+  {
+   "relative_target": "20261005.md",
+   "line": 5,
+   "name": "FIX",
+   "status": "queued",
+   "created": false,
+   "roles": [
+    "changed"
+   ],
+   "lines": [
+    {
+     "text": "- [ ] () \u2014 FIX",
+     "depth": 0,
+     "change": "unchanged"
+    },
+    {
+     "text": "  - [[sase#^fix-apollo]]",
+     "depth": 1,
+     "change": "unchanged"
+    },
+    {
+     "text": "  - [[sase#^bigbang]]",
+     "depth": 1,
+     "change": "removed"
+    }
+   ]
+  }
+ ],
+ "task_blocks": [
+  {
+   "relative_target": "sase.md",
+   "route": "sase",
+   "line": 9,
+   "block_id": "bigbang",
+   "text": "Big bang",
+   "status_symbol": "x",
+   "status_name": "Done",
+   "created": false,
+   "roles": [
+    "completed"
+   ],
+   "lines": [
+    {
+     "text": "- [x] #task Big bang [id:: bigbang]  [completion:: 2026-10-05] ^bigbang",
+     "depth": 0,
+     "change": "changed",
+     "before": "- [ ] #task Big bang [id:: bigbang] ^bigbang"
+    }
+   ]
+  },
+  {
+   "relative_target": "sase.md",
+   "route": "sase",
+   "line": 10,
+   "block_id": "bang-one",
+   "text": "Bang one",
+   "status_symbol": " ",
+   "status_name": "Ready",
+   "created": false,
+   "roles": [
+    "unblocked"
+   ],
+   "lines": [
+    {
+     "text": "- [ ] #task Bang one [dependsOn:: bigbang] [id:: bang-one] ^bang-one",
+     "depth": 0,
+     "change": "changed",
+     "before": "- [?] #task Bang one [dependsOn:: bigbang] [id:: bang-one] ^bang-one"
+    }
+   ]
+  },
+  {
+   "relative_target": "sase.md",
+   "route": "sase",
+   "line": 11,
+   "block_id": "bang-two",
+   "text": "Bang two",
+   "status_symbol": " ",
+   "status_name": "Ready",
+   "created": false,
+   "roles": [
+    "unblocked"
+   ],
+   "lines": [
+    {
+     "text": "- [ ] #task Bang two [dependsOn:: bigbang] [id:: bang-two] ^bang-two",
+     "depth": 0,
+     "change": "changed",
+     "before": "- [?] #task Bang two [dependsOn:: bigbang] [id:: bang-two] ^bang-two"
+    }
+   ]
+  },
+  {
+   "relative_target": "sase.md",
+   "route": "sase",
+   "line": 12,
+   "block_id": "bang-three",
+   "text": "Bang three",
+   "status_symbol": " ",
+   "status_name": "Ready",
+   "created": false,
+   "roles": [
+    "unblocked"
+   ],
+   "lines": [
+    {
+     "text": "- [ ] #task Bang three [dependsOn:: bigbang] [id:: bang-three] ^bang-three",
+     "depth": 0,
+     "change": "changed",
+     "before": "- [?] #task Bang three [dependsOn:: bigbang] [id:: bang-three] ^bang-three"
+    }
+   ]
+  },
+  {
+   "relative_target": "sase.md",
+   "route": "sase",
+   "line": 13,
+   "block_id": "bang-four",
+   "text": "Bang four",
+   "status_symbol": " ",
+   "status_name": "Ready",
+   "created": false,
+   "roles": [
+    "unblocked"
+   ],
+   "lines": [
+    {
+     "text": "- [ ] #task Bang four [dependsOn:: bigbang] [id:: bang-four] ^bang-four",
+     "depth": 0,
+     "change": "changed",
+     "before": "- [?] #task Bang four [dependsOn:: bigbang] [id:: bang-four] ^bang-four"
+    }
+   ]
+  },
+  {
+   "relative_target": "sase.md",
+   "route": "sase",
+   "line": 14,
+   "block_id": "bang-five",
+   "text": "Bang five",
+   "status_symbol": " ",
+   "status_name": "Ready",
+   "created": false,
+   "roles": [
+    "unblocked"
+   ],
+   "lines": [
+    {
+     "text": "- [ ] #task Bang five [dependsOn:: bigbang] [id:: bang-five] ^bang-five",
+     "depth": 0,
+     "change": "changed",
+     "before": "- [?] #task Bang five [dependsOn:: bigbang] [id:: bang-five] ^bang-five"
+    }
+   ]
+  },
+  {
+   "relative_target": "sase.md",
+   "route": "sase",
+   "line": 15,
+   "block_id": "bang-six",
+   "text": "Bang six",
+   "status_symbol": " ",
+   "status_name": "Ready",
+   "created": false,
+   "roles": [
+    "unblocked"
+   ],
+   "lines": [
+    {
+     "text": "- [ ] #task Bang six [dependsOn:: bigbang] [id:: bang-six] ^bang-six",
+     "depth": 0,
+     "change": "changed",
+     "before": "- [?] #task Bang six [dependsOn:: bigbang] [id:: bang-six] ^bang-six"
+    }
+   ]
+  }
+ ]
+}

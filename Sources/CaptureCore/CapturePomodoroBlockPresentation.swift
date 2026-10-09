@@ -59,7 +59,8 @@ public struct CapturePomodoroBlockPresentation: Equatable, Sendable {
                 change: line.change,
                 beforeContent: line.before.map(Self.stripped),
                 isHeadline: isHeadline,
-                tokens: CapturePomodoroLineTokens.tokenize(content, isHeadline: isHeadline)
+                tokens: CapturePomodoroLineTokens.tokenize(content, isHeadline: isHeadline),
+                isUnblocked: line.change == .added && line.reason == "unblocked"
             )
         }
 
@@ -70,6 +71,9 @@ public struct CapturePomodoroBlockPresentation: Equatable, Sendable {
         let spokenRows = rows.map { row -> String in
             switch row.change {
             case .added:
+                if row.isUnblocked {
+                    return "added \(row.content), unblocked successor"
+                }
                 return "added \(row.content)"
             case .removed:
                 return "removed \(row.content)"

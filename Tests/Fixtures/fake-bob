@@ -3340,6 +3340,15 @@ JSON
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-worked.json"
     elif [[ "${draft}" == "=x1!2" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-complete.json"
+    elif [[ "${draft}" == "=x!1" ]]; then
+      # A close that links one successor into a created continuation with
+      # `next_up` (real `bob` output; only the dry-run flag varies).
+      sed "s/\"dry_run\": *false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-successors.json"
+    elif [[ "${draft}" == "=x!2" ]]; then
+      # A close that appends one successor after the carried lines in a
+      # created continuation (real `bob` output; only the dry-run flag
+      # varies).
+      sed "s/\"dry_run\": *false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-carried.json"
     elif [[ "${draft}" == "=*" ]]; then
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-select-alias-park.json"
     elif [[ "${draft}" == "=*1" ]]; then
@@ -4545,6 +4554,19 @@ JSON
       # Unblocked dependent (real `bob` output; only the dry-run flag
       # varies).
       sed "s/\"dry_run\": *false/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-complete-unblocked.json"
+    elif [[ "${draft}" == "!sase:fix-apollo" ]]; then
+      # Three linked successors (one with a minted block ID) plus two
+      # still-blocked rows (real `bob` output; only the dry-run flag
+      # varies).
+      sed "s/\"dry_run\": *false/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-complete-successors.json"
+    elif [[ "${draft}" == "!sase:lonely" ]]; then
+      # Recovered-only successor: the predecessor was never planned today
+      # (real `bob` output; only the dry-run flag varies).
+      sed "s/\"dry_run\": *false/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-complete-not-planned.json"
+    elif [[ "${draft}" == "!sase:bigbang" ]]; then
+      # Six successors at once: the breaker links none (real `bob` output;
+      # only the dry-run flag varies).
+      sed "s/\"dry_run\": *false/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-complete-breaker.json"
     elif [[ "${draft}" == "!sase:fin" ]]; then
       # Already done no-op (real `bob` output; only the dry-run flag
       # varies).

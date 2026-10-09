@@ -216,6 +216,27 @@ final class CapturePomodoroBlockPresentationTests: XCTestCase {
         )
     }
 
+    func testUnblockedSuccessorLineMarksRowAndVoiceOver() throws {
+        let success = try blockFixture("pomodoro-close-successors.json")
+        let created = try XCTUnwrap(success.pomodoroBlocks.first { $0.created })
+        let presented = CapturePomodoroBlockPresentation(block: created, dryRun: true)
+
+        let badge = try XCTUnwrap(
+            presented.rows.first { $0.content.contains("[[sase#^relaunch-failed-agents]]") }
+        )
+        XCTAssertEqual(badge.change, .added)
+        XCTAssertTrue(badge.isUnblocked)
+        XCTAssertTrue(
+            presented.accessibilitySummary.contains(
+                "added - [[sase#^relaunch-failed-agents]], unblocked successor"
+            )
+        )
+        // Every other row carries no badge.
+        for row in presented.rows where !row.content.contains("[[sase#^relaunch-failed-agents]]") {
+            XCTAssertFalse(row.isUnblocked, "unexpected badge on \(row.content)")
+        }
+    }
+
     func testAccessibilityFallsBackToUnnamed() throws {
         let presented = CapturePomodoroBlockPresentation(
             block: CapturePomodoroBlock(

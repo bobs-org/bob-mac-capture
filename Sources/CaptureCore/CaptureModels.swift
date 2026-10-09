@@ -924,17 +924,23 @@ public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
     public let depth: Int
     public let change: CapturePomodoroBlockChange
     public let before: String?
+    /// `"unblocked"` on added lines that are surviving successor links
+    /// (`docs/task-dependencies.md` §12.5). Older Bob omits it; a malformed
+    /// value decodes as nil so one bad line cannot wipe every block.
+    public let reason: String?
 
     public init(
         text: String,
         depth: Int = 0,
         change: CapturePomodoroBlockChange = .unchanged,
-        before: String? = nil
+        before: String? = nil,
+        reason: String? = nil
     ) {
         self.text = text
         self.depth = depth
         self.change = change
         self.before = before
+        self.reason = reason
     }
 
     public init(from decoder: Decoder) throws {
@@ -947,6 +953,7 @@ public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
                 forKey: .change
             ) ?? .unchanged
         before = try container.decodeIfPresent(String.self, forKey: .before)
+        reason = (try? container.decodeIfPresent(String.self, forKey: .reason)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -954,6 +961,7 @@ public struct CapturePomodoroBlockLine: Codable, Equatable, Sendable {
         case depth
         case change
         case before
+        case reason
     }
 }
 
@@ -1373,6 +1381,9 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
     public let carried: [PomodoroCloseCarriedItem]
     public let notes: [String]
     public let nextPomodoro: PomodoroCloseNext?
+    public let unblocked: [TaskCompleteUnblocked]
+    public let stillBlocked: [TaskCompleteStillBlocked]
+    public let unblockedCheck: String?
 
     public init(
         raw: String,
@@ -1406,7 +1417,10 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         taskLinks: [PomodoroCloseTaskLink] = [],
         carried: [PomodoroCloseCarriedItem] = [],
         notes: [String] = [],
-        nextPomodoro: PomodoroCloseNext? = nil
+        nextPomodoro: PomodoroCloseNext? = nil,
+        unblocked: [TaskCompleteUnblocked] = [],
+        stillBlocked: [TaskCompleteStillBlocked] = [],
+        unblockedCheck: String? = nil
     ) {
         self.raw = raw
         self.inProgress = inProgress
@@ -1430,6 +1444,9 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         self.carried = carried
         self.notes = notes
         self.nextPomodoro = nextPomodoro
+        self.unblocked = unblocked
+        self.stillBlocked = stillBlocked
+        self.unblockedCheck = unblockedCheck
     }
 
     public init(from decoder: Decoder) throws {
@@ -1477,6 +1494,21 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
             PomodoroCloseNext.self,
             forKey: .nextPomodoro
         )
+        // The close summary itself decodes with a plain `try`, so every new
+        // successor value decodes on its own: a malformed field degrades to
+        // empty instead of failing the whole capture decode.
+        unblocked = (try? container.decodeIfPresent(
+            [TaskCompleteUnblocked].self,
+            forKey: .unblocked
+        )) ?? []
+        stillBlocked = (try? container.decodeIfPresent(
+            [TaskCompleteStillBlocked].self,
+            forKey: .stillBlocked
+        )) ?? []
+        unblockedCheck = (try? container.decodeIfPresent(
+            String.self,
+            forKey: .unblockedCheck
+        )) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1502,6 +1534,9 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
         case carried
         case notes
         case nextPomodoro = "next_pomodoro"
+        case unblocked
+        case stillBlocked = "still_blocked"
+        case unblockedCheck = "unblocked_check"
     }
 }
 
@@ -2986,7 +3021,100 @@ public struct TaskCompleteLedger: Codable, Equatable, Sendable {
     }
 }
 
-/// One dependent recovered by a `task_complete` item.
+/// One predecessor behind an unblocked row: the closed task whose
+/// completion helped unblock the dependent. Every field decodes
+/// tolerantly so one malformed cause never drops its row.
+public struct TaskCompleteUnblockedCause: Codable, Equatable, Sendable {
+    public let notePath: String
+    public let blockID: String
+    public let text: String
+
+    public init(notePath: String = "", blockID: String = "", text: String = "") {
+        self.notePath = notePath
+        self.blockID = blockID
+        self.text = text
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        notePath = (try? container.decodeIfPresent(String.self, forKey: .notePath)) ?? ""
+        blockID = (try? container.decodeIfPresent(String.self, forKey: .blockID)) ?? ""
+        text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case notePath = "note_path"
+        case blockID = "block_id"
+        case text
+    }
+}
+
+/// Placement of one linked successor: the day-file bullet this gesture
+/// inserted (`docs/task-dependencies.md` §12.5). Lines are 1-based in the
+/// day text after the gesture. Every field decodes tolerantly so a
+/// malformed link degrades its row to recovered instead of dropping it.
+public struct TaskCompleteSuccessorLink: Codable, Equatable, Sendable {
+    public let dayFile: String
+    public let entryName: String
+    public let entryLine: Int
+    public let entryCreated: Bool
+    public let nextUp: Bool
+    public let line: Int
+    public let blockLink: String
+    public let blockIDCreated: Bool
+
+    public init(
+        dayFile: String = "",
+        entryName: String = "",
+        entryLine: Int = 0,
+        entryCreated: Bool = false,
+        nextUp: Bool = false,
+        line: Int = 0,
+        blockLink: String = "",
+        blockIDCreated: Bool = false
+    ) {
+        self.dayFile = dayFile
+        self.entryName = entryName
+        self.entryLine = entryLine
+        self.entryCreated = entryCreated
+        self.nextUp = nextUp
+        self.line = line
+        self.blockLink = blockLink
+        self.blockIDCreated = blockIDCreated
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        dayFile = (try? container.decodeIfPresent(String.self, forKey: .dayFile)) ?? ""
+        entryName = (try? container.decodeIfPresent(String.self, forKey: .entryName)) ?? ""
+        entryLine = (try? container.decodeIfPresent(Int.self, forKey: .entryLine)) ?? 0
+        entryCreated = (try? container.decodeIfPresent(Bool.self, forKey: .entryCreated)) ?? false
+        nextUp = (try? container.decodeIfPresent(Bool.self, forKey: .nextUp)) ?? false
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+        blockLink = (try? container.decodeIfPresent(String.self, forKey: .blockLink)) ?? ""
+        blockIDCreated = (try? container.decodeIfPresent(
+            Bool.self,
+            forKey: .blockIDCreated
+        )) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case dayFile = "day_file"
+        case entryName = "entry_name"
+        case entryLine = "entry_line"
+        case entryCreated = "entry_created"
+        case nextUp = "next_up"
+        case line
+        case blockLink = "block_link"
+        case blockIDCreated = "block_id_created"
+    }
+}
+
+/// One dependent unblocked by a `task_complete` item: linked into its
+/// predecessor's slot (`link` non-nil), or recovered with the reason it
+/// was not linked (`notLinked`). The successor-link fields are additive
+/// under schema version 1; each decodes individually and tolerantly so a
+/// malformed field degrades the row instead of failing the capture.
 public struct TaskCompleteUnblocked: Codable, Equatable, Sendable {
     public let notePath: String
     public let blockID: String
@@ -2996,6 +3124,10 @@ public struct TaskCompleteUnblocked: Codable, Equatable, Sendable {
     public let previousStatusName: String
     public let statusSymbol: String
     public let statusName: String
+    public let inbox: Bool
+    public let unblockedBy: [TaskCompleteUnblockedCause]
+    public let link: TaskCompleteSuccessorLink?
+    public let notLinked: String?
 
     public init(
         notePath: String = "",
@@ -3005,7 +3137,11 @@ public struct TaskCompleteUnblocked: Codable, Equatable, Sendable {
         previousStatusSymbol: String = "",
         previousStatusName: String = "",
         statusSymbol: String = "",
-        statusName: String = ""
+        statusName: String = "",
+        inbox: Bool = false,
+        unblockedBy: [TaskCompleteUnblockedCause] = [],
+        link: TaskCompleteSuccessorLink? = nil,
+        notLinked: String? = nil
     ) {
         self.notePath = notePath
         self.blockID = blockID
@@ -3015,18 +3151,38 @@ public struct TaskCompleteUnblocked: Codable, Equatable, Sendable {
         self.previousStatusName = previousStatusName
         self.statusSymbol = statusSymbol
         self.statusName = statusName
+        self.inbox = inbox
+        self.unblockedBy = unblockedBy
+        self.link = link
+        self.notLinked = notLinked
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        notePath = try container.decodeIfPresent(String.self, forKey: .notePath) ?? ""
-        blockID = try container.decodeIfPresent(String.self, forKey: .blockID) ?? ""
-        line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
-        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
-        previousStatusSymbol = try container.decodeIfPresent(String.self, forKey: .previousStatusSymbol) ?? ""
-        previousStatusName = try container.decodeIfPresent(String.self, forKey: .previousStatusName) ?? ""
-        statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol) ?? ""
-        statusName = try container.decodeIfPresent(String.self, forKey: .statusName) ?? ""
+        notePath = (try? container.decodeIfPresent(String.self, forKey: .notePath)) ?? ""
+        blockID = (try? container.decodeIfPresent(String.self, forKey: .blockID)) ?? ""
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+        text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? ""
+        previousStatusSymbol = (try? container.decodeIfPresent(
+            String.self,
+            forKey: .previousStatusSymbol
+        )) ?? ""
+        previousStatusName = (try? container.decodeIfPresent(
+            String.self,
+            forKey: .previousStatusName
+        )) ?? ""
+        statusSymbol = (try? container.decodeIfPresent(String.self, forKey: .statusSymbol)) ?? ""
+        statusName = (try? container.decodeIfPresent(String.self, forKey: .statusName)) ?? ""
+        inbox = (try? container.decodeIfPresent(Bool.self, forKey: .inbox)) ?? false
+        unblockedBy = (try? container.decodeIfPresent(
+            [TaskCompleteUnblockedCause].self,
+            forKey: .unblockedBy
+        )) ?? []
+        link = (try? container.decodeIfPresent(
+            TaskCompleteSuccessorLink.self,
+            forKey: .link
+        )) ?? nil
+        notLinked = (try? container.decodeIfPresent(String.self, forKey: .notLinked)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -3038,6 +3194,73 @@ public struct TaskCompleteUnblocked: Codable, Equatable, Sendable {
         case previousStatusName = "previous_status_name"
         case statusSymbol = "status_symbol"
         case statusName = "status_name"
+        case inbox
+        case unblockedBy = "unblocked_by"
+        case link
+        case notLinked = "not_linked"
+    }
+}
+
+/// One open dependent of the completed tasks that stays blocked: it
+/// still waits on other prerequisites (`waits_on`) or on a future
+/// `scheduled` date. Every field decodes tolerantly so one malformed
+/// row never drops its siblings.
+public struct TaskCompleteStillBlocked: Codable, Equatable, Sendable {
+    public let notePath: String
+    public let blockID: String
+    public let line: Int
+    public let text: String
+    public let statusSymbol: String
+    public let statusName: String
+    public let reason: String
+    public let waitsOn: Int
+    public let scheduled: String?
+
+    public init(
+        notePath: String = "",
+        blockID: String = "",
+        line: Int = 0,
+        text: String = "",
+        statusSymbol: String = "",
+        statusName: String = "",
+        reason: String = "",
+        waitsOn: Int = 0,
+        scheduled: String? = nil
+    ) {
+        self.notePath = notePath
+        self.blockID = blockID
+        self.line = line
+        self.text = text
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
+        self.reason = reason
+        self.waitsOn = waitsOn
+        self.scheduled = scheduled
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        notePath = (try? container.decodeIfPresent(String.self, forKey: .notePath)) ?? ""
+        blockID = (try? container.decodeIfPresent(String.self, forKey: .blockID)) ?? ""
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+        text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? ""
+        statusSymbol = (try? container.decodeIfPresent(String.self, forKey: .statusSymbol)) ?? ""
+        statusName = (try? container.decodeIfPresent(String.self, forKey: .statusName)) ?? ""
+        reason = (try? container.decodeIfPresent(String.self, forKey: .reason)) ?? ""
+        waitsOn = (try? container.decodeIfPresent(Int.self, forKey: .waitsOn)) ?? 0
+        scheduled = (try? container.decodeIfPresent(String.self, forKey: .scheduled)) ?? nil
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case notePath = "note_path"
+        case blockID = "block_id"
+        case line
+        case text
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
+        case reason
+        case waitsOn = "waits_on"
+        case scheduled
     }
 }
 
@@ -3063,6 +3286,8 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
     public let subtasksLeftOpen: [TaskCompleteLeftOpen]
     public let ledger: TaskCompleteLedger?
     public let unblocked: [TaskCompleteUnblocked]
+    public let stillBlocked: [TaskCompleteStillBlocked]
+    public let unblockedCheck: String?
 
     public init(
         raw: String = "",
@@ -3075,7 +3300,9 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
         subtasks: [TaskCompleteSubtask] = [],
         subtasksLeftOpen: [TaskCompleteLeftOpen] = [],
         ledger: TaskCompleteLedger? = nil,
-        unblocked: [TaskCompleteUnblocked] = []
+        unblocked: [TaskCompleteUnblocked] = [],
+        stillBlocked: [TaskCompleteStillBlocked] = [],
+        unblockedCheck: String? = nil
     ) {
         self.raw = raw
         self.note = note
@@ -3088,6 +3315,8 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
         self.subtasksLeftOpen = subtasksLeftOpen
         self.ledger = ledger
         self.unblocked = unblocked
+        self.stillBlocked = stillBlocked
+        self.unblockedCheck = unblockedCheck
     }
 
     public init(from decoder: Decoder) throws {
@@ -3108,10 +3337,22 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
             forKey: .subtasksLeftOpen
         ) ?? []
         ledger = try container.decodeIfPresent(TaskCompleteLedger.self, forKey: .ledger)
-        unblocked = try container.decodeIfPresent(
+        // Each successor array decodes on its own: one malformed row must
+        // never drop the whole completion card (the outer `taskComplete`
+        // decode already tolerates a malformed object, but a malformed
+        // element would otherwise wipe every sibling row).
+        unblocked = (try? container.decodeIfPresent(
             [TaskCompleteUnblocked].self,
             forKey: .unblocked
-        ) ?? []
+        )) ?? []
+        stillBlocked = (try? container.decodeIfPresent(
+            [TaskCompleteStillBlocked].self,
+            forKey: .stillBlocked
+        )) ?? []
+        unblockedCheck = (try? container.decodeIfPresent(
+            String.self,
+            forKey: .unblockedCheck
+        )) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -3126,6 +3367,8 @@ public struct CaptureTaskComplete: Codable, Equatable, Sendable {
         case subtasksLeftOpen = "subtasks_left_open"
         case ledger
         case unblocked
+        case stillBlocked = "still_blocked"
+        case unblockedCheck = "unblocked_check"
     }
 }
 

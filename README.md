@@ -896,7 +896,9 @@ updated CLI (decoders stay backward compatible for every older payload).
   a diff gutter (`+` green for added lines, `•` accent for changed lines with the old
   text on hover, `−` red for removed lines), indent guides per depth, and the verbatim
   lines Bob will write — tinted like the editor (pink time range, wikilink colors,
-  checkbox colors) with no truncation. Standard items whose verbatim lines the blocks
+  checkbox colors) with no truncation. An added line Bob marks as a surviving
+  successor link carries a trailing `lock.open.fill` badge (`Unblocked successor`
+  on hover and to VoiceOver). Standard items whose verbatim lines the blocks
   already cover omit the duplicated stack, and the blocks dim to 0.6 together with the
   close card while a close-list selection dangles. An older Bob that omits
   `pomodoro_blocks` previews exactly as before. `PomodoroBlockDesignTests` renders the
@@ -961,14 +963,22 @@ Link in CAPTURE`, with ` (completed)` for completed entries,
 `Moves/Moved its Task Link SASE → CAPTURE, struck`,
 `Task Link already in PLAN; drops/dropped the SASE copy`,
 `removes/removed empty SASE`), and one row per unblocked dependent — with
-`list.bullet.indent`, `timer`, and `lock.open.fill` fact rows under
+`list.bullet.indent`, `timer`, and `lock.open.fill`/`lock.fill` fact rows under
 a green `checkmark.circle.fill` seal (`Already done — nothing to change` in gray for
-the idempotent no-op). An older Bob without `text`, `struck_in`, or `dropped` keeps
+the idempotent no-op). A dependent Bob linked into the predecessor's slot renders
+with the Next tint, a trailing destination capsule (`→ FIX`,
+`→ new BOB · next up`), an `added ^id` caption when Bob minted its block ID, and an
+`inbox` capsule when it lives in an inbox file; a recovered dependent renders
+secondary with a reason caption (`Ready · not planned today`); a dependent that
+stays blocked renders muted with `lock.fill` and a `stays Blocked · …` caption.
+An older Bob without `text`, `struck_in`, or `dropped` keeps
 the count-based ledger wording and the local task-line text. The footer action is
 **Complete** and every fact joins the VoiceOver summary. Notifications read
 `Completed: <task>` (`Completed N tasks` for an all-completion batch) with
-`sase.md · unblocked <name>` bodies, and Open Note(s)
-includes the daily note whenever the ledger changed. An older Bob without
+`sase.md · unblocked <name>` bodies, plus one extra line when anything was linked
+(`🔓 Next in FIX: <task>`, `🔓 3 linked → FIX: …`, `🔓 3 linked · FIX, SASE`) or the
+breaker fired. Open Note(s)
+includes the daily note whenever the ledger changed or any successor was linked. An older Bob without
 `task_complete` decodes as no completion preview and keeps the standard card; upgrade
 Bob before using `!`.
 
@@ -1494,8 +1504,11 @@ start card numbers every queued row, strikes and dims dropped rows in place with
 a `Dropped 2` summary, and teaches `Type ~2 to drop task 2` until a drop is typed.
 The
 dedicated close preview shows Bob's session timing, task transitions, Work Log entries
-with their details, and next session. The footer says **Close**, and the notification summarizes the same
-returned close. Missing or ambiguous running sessions surface Bob's error in the
+with their details, and next session. A close that unblocked dependents gains an
+**Unblocked** section under the task rows with the same row views as the `!` card
+(destination capsules, minted-ID and reason captions, muted still-blocked rows).
+The footer says **Close**, and the notification summarizes the same
+returned close plus the one successor line when anything was linked. Missing or ambiguous running sessions surface Bob's error in the
 preview. A list left dangling on `,`/`!`/`~` is an editing state, not an error: the
 card stays live on what is typed so far with **Close** disabled until a task
 number follows; a dangling Work Log bullet (`=x` plus `- 1`) previews the rest
