@@ -91,11 +91,14 @@ final class RefsLibraryTests: XCTestCase {
 
         context.library.refresh(reason: .manual)
         await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
-
-        let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=ref list -R all -A -f json -g"))
-        // The `-g` lane merges after the snapshot publishes, so wait for
-        // the backfilled date instead of reading it mid-flight.
+        // The `-g` lane starts after the snapshot publishes, so wait for
+        // its invocation before asserting on the record.
+        await waitUntil(timeout: 15) {
+            ((try? String(contentsOf: recordURL)) ?? "")
+                .contains("argv=ref list -R all -A -f json -g")
+        }
+        // The lane merges after the snapshot publishes, so wait for the
+        // backfilled date instead of reading it mid-flight.
         await waitUntil(timeout: 15) {
             context.library.items.first {
                 $0.id == "ref/blogs/small_opened.md"
