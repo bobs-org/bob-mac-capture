@@ -73,13 +73,13 @@ public struct RefsPanelView: View {
                 let width = geometry.size.width
                 if RefsVisualTokens.showsInspector(width: width) {
                     HStack(spacing: 0) {
-                        RefsListView(model: model)
+                        RefsListView(model: model, previewMode: previewMode)
                             .frame(width: RefsVisualTokens.listWidth(panelWidth: width))
                         inspectorDivider
                         inspector
                     }
                 } else {
-                    RefsListView(model: model)
+                    RefsListView(model: model, previewMode: previewMode)
                 }
             }
         }
@@ -96,7 +96,11 @@ public struct RefsPanelView: View {
         if let selected = model.selectedID,
            let content = model.rowContent(for: selected)
         {
-            RefsInspectorView(content: content, signals: model.signals)
+            RefsInspectorView(
+                content: content,
+                signals: model.signals,
+                previewMode: previewMode
+            )
         } else {
             Text("Select a reference")
                 .font(.callout)

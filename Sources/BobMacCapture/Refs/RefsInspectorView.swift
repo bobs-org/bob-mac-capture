@@ -8,28 +8,40 @@ import SwiftUI
 struct RefsInspectorView: View {
     let content: RefsRowContent
     let signals: RefsSignals
+    /// Design fixtures lay the column out statically: `ImageRenderer`
+    /// snapshots `ScrollView` content blank, so the live scroll view
+    /// never appears in a fixture.
+    var previewMode = false
 
     var body: some View {
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: RefsVisualTokens.inspectorSpacing) {
-                if let item = content.item {
-                    hero(for: item)
-                    byline(for: item)
-                    facts(for: item)
-                    if content.isMissingPDF {
-                        missingCallout(for: item)
-                    }
-                    footer(for: item)
-                } else {
-                    Text(content.caption)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel(content.caption)
-                }
+        if previewMode {
+            column
+        } else {
+            ScrollView(.vertical) {
+                column
             }
-            .padding(RefsVisualTokens.inspectorPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var column: some View {
+        VStack(alignment: .leading, spacing: RefsVisualTokens.inspectorSpacing) {
+            if let item = content.item {
+                hero(for: item)
+                byline(for: item)
+                facts(for: item)
+                if content.isMissingPDF {
+                    missingCallout(for: item)
+                }
+                footer(for: item)
+            } else {
+                Text(content.caption)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(content.caption)
+            }
+        }
+        .padding(RefsVisualTokens.inspectorPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func hero(for item: RefItem) -> some View {

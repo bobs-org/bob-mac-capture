@@ -34,44 +34,66 @@ struct RefsSectionHeader: View {
 @available(macOS 26.0, *)
 struct RefsListView: View {
     @ObservedObject var model: RefsPanelModel
+    /// Design fixtures lay the same rows out in a static stack:
+    /// `ImageRenderer` snapshots `ScrollView` content blank, so the
+    /// live scroll view never appears in a fixture.
+    var previewMode = false
 
     var body: some View {
-        ScrollViewReader { proxy in
-            GeometryReader { geometry in
-                ScrollView(.vertical) {
-                    LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                        ForEach(model.listing.sections, id: \.sectionID) { section in
-                            Section {
-                                ForEach(section.ids, id: \.self) { id in
-                                    row(for: id)
-                                        .id(id)
-                                }
-                            } header: {
-                                if let kind = section.kind {
-                                    RefsSectionHeader(kind: kind, count: section.ids.count)
+        if previewMode {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(model.listing.sections, id: \.sectionID) { section in
+                    Section {
+                        ForEach(section.ids, id: \.self) { id in
+                            row(for: id)
+                        }
+                    } header: {
+                        if let kind = section.kind {
+                            RefsSectionHeader(kind: kind, count: section.ids.count)
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, RefsVisualTokens.listVerticalPadding)
+            .accessibilityLabel("References")
+        } else {
+            ScrollViewReader { proxy in
+                GeometryReader { geometry in
+                    ScrollView(.vertical) {
+                        LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                            ForEach(model.listing.sections, id: \.sectionID) { section in
+                                Section {
+                                    ForEach(section.ids, id: \.self) { id in
+                                        row(for: id)
+                                            .id(id)
+                                    }
+                                } header: {
+                                    if let kind = section.kind {
+                                        RefsSectionHeader(kind: kind, count: section.ids.count)
+                                    }
                                 }
                             }
                         }
+                        .padding(.vertical, RefsVisualTokens.listVerticalPadding)
                     }
-                    .padding(.vertical, RefsVisualTokens.listVerticalPadding)
-                }
-                .onChange(of: model.selectedID) { _, selected in
-                    if let selected {
-                        proxy.scrollTo(selected)
+                    .onChange(of: model.selectedID) { _, selected in
+                        if let selected {
+                            proxy.scrollTo(selected)
+                        }
                     }
-                }
-                .onChange(of: model.listing.orderedIDs) { _, _ in
-                    if let selected = model.selectedID {
-                        proxy.scrollTo(selected)
+                    .onChange(of: model.listing.orderedIDs) { _, _ in
+                        if let selected = model.selectedID {
+                            proxy.scrollTo(selected)
+                        }
                     }
+                    .onAppear {
+                        reportBudget(height: geometry.size.height)
+                    }
+                    .onChange(of: geometry.size.height) { _, height in
+                        reportBudget(height: height)
+                    }
+                    .accessibilityLabel("References")
                 }
-                .onAppear {
-                    reportBudget(height: geometry.size.height)
-                }
-                .onChange(of: geometry.size.height) { _, height in
-                    reportBudget(height: height)
-                }
-                .accessibilityLabel("References")
             }
         }
     }

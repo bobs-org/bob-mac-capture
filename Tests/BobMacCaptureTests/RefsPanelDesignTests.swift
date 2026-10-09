@@ -266,8 +266,11 @@ final class RefsPanelDesignTests: XCTestCase {
             ))
             all.append((
                 "refs-piece-inspector",
-                AnyView(RefsInspectorView(content: content, signals: fixture.signals)
-                    .frame(width: 414, height: 560))
+                AnyView(RefsInspectorView(
+                    content: content,
+                    signals: fixture.signals,
+                    previewMode: true
+                ).frame(width: 414))
             ))
         }
         for (name, view) in all {
@@ -278,12 +281,15 @@ final class RefsPanelDesignTests: XCTestCase {
     }
 
     private func write(model: RefsPanelModel, name: String, width: CGFloat) throws {
+        // Width only: the static preview list sizes to its content so
+        // every section shows, while the live panel keeps its fixed
+        // window height.
         let view = RefsPanelView(
             model: model,
             animatePresentation: false,
             previewMode: true
         )
-        .frame(width: width, height: 560)
+        .frame(width: width)
         for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
             try RenderFixtureWriter.write(
                 view,
