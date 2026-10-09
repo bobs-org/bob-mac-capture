@@ -108,8 +108,8 @@ final class VaultTargetWatcher {
             }
             let watcher = Unmanaged<VaultTargetWatcher>.fromOpaque(info).takeUnretainedValue()
             watcher.scheduleRefresh(
-                paths: Self.eventPaths(eventPaths, count: eventCount),
-                flags: Self.eventFlags(eventFlags, count: eventCount)
+                paths: VaultTargetWatcher.eventPaths(eventPaths, count: eventCount),
+                flags: VaultTargetWatcher.eventFlags(eventFlags, count: eventCount)
             )
         }
 
