@@ -52,6 +52,8 @@ struct RefsBannerView: View {
             return "Choose Highlights…"
         case .copyDiagnostic:
             return "Copy Diagnostic"
+        case .scanAgain:
+            return "Scan Again"
         }
     }
 }

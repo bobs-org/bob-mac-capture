@@ -4568,6 +4568,8 @@ JSON
           exit "${FAKE_BOB_REFS_GIT_EXIT}"
         fi
         list_fixture="refs-list-git.json"
+      elif [[ -n "${FAKE_BOB_REFS_LIST_AFTER_SCAN_FIXTURE:-}" && -n "${FAKE_BOB_SCAN_MARKER_DIR:-}" && -f "${FAKE_BOB_SCAN_MARKER_DIR}/scan-done" ]]; then
+        list_fixture="${FAKE_BOB_REFS_LIST_AFTER_SCAN_FIXTURE}"
       else
         list_fixture="${FAKE_BOB_REFS_LIST_FIXTURE:-refs-list.json}"
       fi
@@ -4589,6 +4591,10 @@ JSON
       # (for example refs-scan-partial.json) or an absolute path, and
       # FAKE_BOB_REFS_SCAN_EXIT sets the exit status (1 for the partial
       # and hard-failure envelopes, which still carry valid JSON).
+      if [[ -n "${FAKE_BOB_SCAN_MARKER_DIR:-}" ]]; then
+        mkdir -p "${FAKE_BOB_SCAN_MARKER_DIR}"
+        touch "${FAKE_BOB_SCAN_MARKER_DIR}/scan-done"
+      fi
       scan_fixture="${FAKE_BOB_REFS_SCAN_FIXTURE:-refs-scan-created.json}"
       if [[ "${scan_fixture}" == */* ]]; then
         cat "${scan_fixture}"

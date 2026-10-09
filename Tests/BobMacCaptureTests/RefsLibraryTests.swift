@@ -324,6 +324,303 @@ final class RefsLibraryTests: XCTestCase {
         }
     }
 
+    func testScanRunsOneScanArgv() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: [
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+        ])
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished = context.library.scanState {
+                return true
+            }
+            return false
+        }
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(
+            record.components(separatedBy: "argv=ref scan -w -f json").count - 1,
+            1
+        )
+        guard case .finished(let outcome) = context.library.scanState else {
+            XCTFail("expected finished")
+            return
+        }
+        XCTAssertEqual(outcome.kind, .succeeded)
+        XCTAssertEqual(outcome.created.count, 2)
+    }
+
+    func testSecondScanMidFlightReturnsFalse() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: [
+            "FAKE_BOB_DELAY_SECONDS": "2",
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+        ])
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+
+        XCTAssertTrue(context.library.scan())
+        XCTAssertFalse(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished = context.library.scanState {
+                return true
+            }
+            return false
+        }
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(
+            record.components(separatedBy: "argv=ref scan -w -f json").count - 1,
+            1
+        )
+    }
+
+    func testFinishedAfterPostScanListWithNewRows() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let markerDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: markerDir,
+            withIntermediateDirectories: true
+        )
+        let context = try makeContext(environment: [
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+            "FAKE_BOB_SCAN_MARKER_DIR": markerDir.path,
+            "FAKE_BOB_REFS_LIST_AFTER_SCAN_FIXTURE": "refs-list-after-scan.json",
+        ])
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished = context.library.scanState {
+                return true
+            }
+            return false
+        }
+        XCTAssertTrue(context.library.items.contains {
+            $0.id == "ref/chat/omni_report.md"
+        })
+        XCTAssertTrue(context.library.items.contains {
+            $0.id == "ref/papers/harness_notes.md"
+        })
+        let record = try String(contentsOf: recordURL)
+        guard let scanRange = record.range(of: "argv=ref scan -w -f json"),
+            let listRange = record.range(of: "argv=ref list -R all -A -f json")
+        else {
+            XCTFail("expected scan and post-scan list in record")
+            return
+        }
+        XCTAssertTrue(scanRange.lowerBound < listRange.lowerBound)
+    }
+
+    func testWatcherDeferredDuringScanThenOnePostScanPass() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: [
+            "FAKE_BOB_DELAY_SECONDS": "2",
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+            "FAKE_BOB_REFS_LIST_FIXTURE": "refs-list-git.json",
+        ])
+        _ = try seedSnapshot(context: context, fixture: "refs-list-git.json")
+
+        XCTAssertTrue(context.library.scan())
+        context.library.handleWatcherChange()
+        context.library.handleWatcherChange()
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        let midRecord = (try? String(contentsOf: recordURL)) ?? ""
+        XCTAssertFalse(midRecord.contains("argv=ref list"))
+        await waitUntil(timeout: 15) {
+            if case .finished = context.library.scanState {
+                return true
+            }
+            return false
+        }
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(
+            record.components(separatedBy: "argv=ref list -R all -A -f json").count - 1,
+            1
+        )
+    }
+
+    func testScanMarkSetClearedAndKept() async throws {
+        let context = try makeContext()
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished = context.library.scanState {
+                return true
+            }
+            return false
+        }
+        XCTAssertEqual(
+            context.library.signals.scan?.ids,
+            ["ref/chat/omni_report.md", "ref/papers/harness_notes.md"]
+        )
+
+        let nothingURL = try fixtureURL("refs-scan-nothing.json").path
+        context.library.setFetcher(try scanClient(environment: [
+            "FAKE_BOB_REFS_SCAN_FIXTURE": nothingURL,
+        ]))
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished(let outcome) = context.library.scanState,
+                outcome.created.isEmpty,
+                outcome.kind == .succeeded
+            {
+                return true
+            }
+            return false
+        }
+        XCTAssertNil(context.library.signals.scan)
+
+        context.library.setFetcher(try scanClient(environment: [:]))
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished(let outcome) = context.library.scanState,
+                outcome.kind == .succeeded,
+                !outcome.created.isEmpty
+            {
+                return true
+            }
+            return false
+        }
+        let markBeforeFailure = context.library.signals.scan
+        XCTAssertNotNil(markBeforeFailure)
+
+        let dirtyURL = try fixtureURL("refs-scan-dirty.json").path
+        context.library.setFetcher(try scanClient(environment: [
+            "FAKE_BOB_REFS_SCAN_FIXTURE": dirtyURL,
+            "FAKE_BOB_REFS_SCAN_EXIT": "1",
+        ]))
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished(let outcome) = context.library.scanState,
+                outcome.kind == .failed
+            {
+                return true
+            }
+            return false
+        }
+        XCTAssertEqual(context.library.signals.scan, markBeforeFailure)
+    }
+
+    func testPartialOutcomeHasCreatedAndFailures() async throws {
+        let partialURL = try fixtureURL("refs-scan-partial.json").path
+        let context = try makeContext(environment: [
+            "FAKE_BOB_REFS_SCAN_FIXTURE": partialURL,
+            "FAKE_BOB_REFS_SCAN_EXIT": "1",
+        ])
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished(let outcome) = context.library.scanState,
+                outcome.kind == .partial
+            {
+                return true
+            }
+            return false
+        }
+        guard case .finished(let outcome) = context.library.scanState else {
+            XCTFail("expected finished")
+            return
+        }
+        XCTAssertEqual(outcome.created.map(\.path), ["ref/chat/fresh_report.md"])
+        XCTAssertEqual(outcome.failures.count, 2)
+        XCTAssertNil(outcome.problem)
+    }
+
+    func testDirtyOutcomeIsFailedWithCodeAndPaths() async throws {
+        let dirtyURL = try fixtureURL("refs-scan-dirty.json").path
+        let context = try makeContext(environment: [
+            "FAKE_BOB_REFS_SCAN_FIXTURE": dirtyURL,
+            "FAKE_BOB_REFS_SCAN_EXIT": "1",
+        ])
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished(let outcome) = context.library.scanState,
+                outcome.kind == .failed
+            {
+                return true
+            }
+            return false
+        }
+        guard case .finished(let outcome) = context.library.scanState else {
+            XCTFail("expected finished")
+            return
+        }
+        XCTAssertEqual(outcome.problem?.code, "dirty_targets")
+        XCTAssertEqual(outcome.problem?.paths.count, 4)
+    }
+
+    func testExitTwoEmptyGivesBobTooOld() async throws {
+        let context = try makeContext(environment: ["FAKE_BOB_EXIT": "2"])
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished(let outcome) = context.library.scanState,
+                outcome.kind == .failed
+            {
+                return true
+            }
+            return false
+        }
+        guard case .finished(let outcome) = context.library.scanState else {
+            XCTFail("expected finished")
+            return
+        }
+        XCTAssertEqual(outcome.problem?.code, "bob_too_old")
+    }
+
+    func testTimedOutGivesTimedOutProblem() async throws {
+        let context = try makeContext()
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+        context.library.setFetcher(TimedOutRefsFetcher())
+
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished(let outcome) = context.library.scanState,
+                outcome.kind == .failed
+            {
+                return true
+            }
+            return false
+        }
+        guard case .finished(let outcome) = context.library.scanState else {
+            XCTFail("expected finished")
+            return
+        }
+        XCTAssertEqual(outcome.problem?.code, "timed_out")
+    }
+
+    func testNoFetcherGivesBobUnavailableAtOnce() async throws {
+        let context = try makeContext()
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+        context.library.setFetcher(nil)
+
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 5) {
+            if case .finished(let outcome) = context.library.scanState,
+                outcome.kind == .failed
+            {
+                return true
+            }
+            return false
+        }
+        guard case .finished(let outcome) = context.library.scanState else {
+            XCTFail("expected finished")
+            return
+        }
+        XCTAssertEqual(outcome.problem?.code, "bob_unavailable")
+    }
+
     // MARK: - Helpers
 
     private struct Context {
@@ -393,6 +690,10 @@ final class RefsLibraryTests: XCTestCase {
         var merged = environment
         merged["FAKE_BOB_RECORD_PATH"] = recordURL.path
         return BobRefsFetcher(client: try bobClient(environment: merged))
+    }
+
+    private func scanClient(environment: [String: String]) throws -> BobRefsFetcher {
+        BobRefsFetcher(client: try bobClient(environment: environment))
     }
 
     private func bobClient(environment: [String: String]) throws -> BobProcessClient {
@@ -472,5 +773,23 @@ struct FakeSpotlight: RefsSpotlightProviding, Sendable {
             }
         }
         return result
+    }
+}
+
+final class TimedOutRefsFetcher: RefsFetching, @unchecked Sendable {
+    func list(gitDates: Bool) async throws -> RefsListResponse {
+        RefsListResponse(schemaVersion: 1)
+    }
+
+    func plan() async throws -> RefsPlanResponse {
+        RefsPlanResponse(schemaVersion: 2)
+    }
+
+    func show(path: String) async throws -> RefsShowResponse {
+        RefsShowResponse(schemaVersion: 1, refs: [])
+    }
+
+    func scan() async throws -> RefsScanResponse {
+        throw BobClientError.timedOut(command: ["bob", "ref", "scan"], seconds: 300)
     }
 }

@@ -1,4 +1,5 @@
 import AppKit
+import CaptureCore
 import Combine
 import CoreServices
 import Foundation
@@ -16,6 +17,16 @@ public enum RefsRefreshReason: String, Sendable {
     case captureSuccess
     case timer
     case recheck
+    case scan
+}
+
+/// The scan lane state the panel model reads: idle, a scan in flight,
+/// or the last outcome. The outcome publishes only after the post-scan
+/// snapshot pass completes, so new rows are already in `items`.
+public enum RefsScanState: Equatable, Sendable {
+    case idle
+    case scanning(startedAt: Date)
+    case finished(RefsScanOutcome)
 }
 
 /// The snapshot refresh state the panel footer reads: idle, a refresh in
@@ -113,6 +124,8 @@ public final class RefsLibrary: ObservableObject {
     @Published public private(set) var lastSuccessAt: Date?
     /// Whether any snapshot — cached or refreshed — has loaded.
     @Published public private(set) var hasSnapshot: Bool = false
+    /// The scan lane state: idle, scanning, or the last outcome.
+    @Published public private(set) var scanState: RefsScanState = .idle
 
     /// Seconds between background Today refreshes.
     public static let todayRefreshInterval: TimeInterval = 600
@@ -135,6 +148,9 @@ public final class RefsLibrary: ObservableObject {
     private var todayFollowUp = false
     private var gitTask: Task<Void, Never>?
     private var gitFollowUp = false
+    private var scanTask: Task<Void, Never>?
+    private var scanInFlight = false
+    private var deferredWatcherRefresh = false
 
     private var watcher: VaultTargetWatcher?
     private var todayTimer: Timer?
@@ -244,6 +260,44 @@ public final class RefsLibrary: ObservableObject {
             return
         }
         todayTask = Task { [weak self] in await self?.runTodayPass(reason: reason) }
+    }
+
+    /// Runs `bob ref scan -w -f json` on its own `refs-scan` lane.
+    /// Returns false when a scan is already running and starts nothing.
+    /// The outcome publishes as `scanState` only after the post-scan
+    /// snapshot pass completes, so new rows are already in `items`.
+    /// A scan never cancels another lane, and no other lane cancels it.
+    @discardableResult
+    public func scan() -> Bool {
+        guard scanTask == nil, !scanInFlight else {
+            return false
+        }
+        scanState = .scanning(startedAt: now())
+        scanInFlight = true
+        deferredWatcherRefresh = false
+        scanTask = Task { [weak self] in await self?.runScanPass() }
+        return true
+    }
+
+    /// The watcher seam: the watcher callback calls this, so tests can
+    /// drive it. While a scan runs, a watcher change only records that
+    /// one happened; it does not refresh. The post-scan refresh covers
+    /// every deferred change in one pass.
+    func handleWatcherChange() {
+        if scanInFlight {
+            deferredWatcherRefresh = true
+        } else {
+            refresh(reason: .watcher)
+        }
+    }
+
+    /// Installs a scan state for design tests and previews, skipping
+    /// every process.
+    func installScanStateForPreviews(_ state: RefsScanState) {
+        scanState = state
+        scanInFlight = false
+        deferredWatcherRefresh = false
+        scanTask = nil
     }
 
     /// Records a Highlights or default-app open. Note opens, reveals,
@@ -482,6 +536,98 @@ public final class RefsLibrary: ObservableObject {
         }
     }
 
+    private func runScanPass() async {
+        let token = CaptureSignpost.begin("refs-scan")
+        defer {
+            CaptureSignpost.end(token)
+            scanTask = nil
+        }
+        let outcome: RefsScanOutcome
+        if let fetcher {
+            do {
+                let response = try await fetcher.scan()
+                let finishedAt = now()
+                outcome = RefsScanOutcome(response: response, finishedAt: finishedAt)
+            } catch {
+                let finishedAt = now()
+                outcome = RefsScanOutcome(
+                    problem: Self.scanProblem(for: error),
+                    finishedAt: finishedAt
+                )
+            }
+        } else {
+            outcome = RefsScanOutcome(
+                problem: RefsScanProblem(
+                    code: "bob_unavailable",
+                    message: "Bob is not available.",
+                    hint: "Check Settings › Diagnostics, then use Recheck Bob."
+                ),
+                finishedAt: now()
+            )
+        }
+        scanInFlight = false
+        deferredWatcherRefresh = false
+        await runPostScanRefresh()
+        var signals = signals
+        switch outcome.kind {
+        case .succeeded, .partial:
+            if outcome.created.isEmpty {
+                signals.scan = nil
+            } else {
+                signals.scan = RefsScanMark(
+                    ids: outcome.created.map(\.path),
+                    at: outcome.finishedAt
+                )
+            }
+        case .failed:
+            break
+        }
+        signals.now = now()
+        self.signals = signals
+        scanState = .finished(outcome)
+    }
+
+    private func runPostScanRefresh() async {
+        while let current = snapshotTask {
+            await current.value
+            if snapshotTask == nil {
+                break
+            }
+        }
+        refresh(reason: .scan)
+        while let current = snapshotTask {
+            await current.value
+            if snapshotTask == nil {
+                break
+            }
+        }
+    }
+
+    nonisolated static func scanProblem(for error: Error) -> RefsScanProblem {
+        if let clientError = error as? BobClientError {
+            if case .timedOut = clientError {
+                return RefsScanProblem(
+                    code: "timed_out",
+                    message: "The scan ran longer than 5 minutes and was stopped.",
+                    hint: "Run `bob ref scan -w` in Terminal to see where it stalls."
+                )
+            }
+            if case .processFailed(_, let exitStatus, _) = clientError,
+                exitStatus == 2
+            {
+                return RefsScanProblem(
+                    code: "bob_too_old",
+                    message: "This bob can't report scans to Bob Refs yet.",
+                    hint: "Update bob on this Mac, then press ⌘S again."
+                )
+            }
+        }
+        return RefsScanProblem(
+            code: "transport",
+            message: boundedMessage(for: error)
+        )
+    }
+
     private func publishOpenSignals() {
         signals.opens = RefsOpenStats(events: openEvents, now: now())
         signals.now = now()
@@ -494,7 +640,7 @@ public final class RefsLibrary: ObservableObject {
             root.appendingPathComponent("lib").path,
         ]
         let watcher = VaultTargetWatcher(paths: paths, latency: 0.5) { [weak self] in
-            Task { await self?.refresh(reason: .watcher) }
+            Task { await self?.handleWatcherChange() }
         } onFailure: { [weak self] message in
             Task { await self?.watcherFailed(message) }
         }

@@ -3,6 +3,7 @@ import CaptureCore
 import Combine
 import Foundation
 import RefsCore
+import SwiftUI
 
 /// Where an open dispatches: Highlights, the reference note in Obsidian,
 /// the PDF revealed in Finder, or the PDF in its default app. Only
@@ -25,6 +26,7 @@ public enum RefsCommand: Equatable, Sendable {
     case select(id: String)
     case activate(id: String)
     case showActions
+    case scan
     /// Swallows the key without acting (Shift-Tab while the panel is up).
     case consume
 }
@@ -43,6 +45,7 @@ public struct RefsBanner: Equatable, Sendable {
         case openInDefaultApp
         case chooseHighlights
         case copyDiagnostic
+        case scanAgain
     }
 
     public var kind: Kind
@@ -202,6 +205,9 @@ public final class RefsPanelModel: ObservableObject {
     @Published public var visibleRowBudget: Int = 10
     /// A transient copy confirmation the footer shows for 1.5 s.
     @Published public private(set) var toast: String?
+    /// The last scan outcome the footer reads, or nil when no scan has
+    /// finished since the last explicit clear or hide-after-seen.
+    @Published public private(set) var scanNotice: RefsScanOutcome?
     /// The inspector's hydrated content, published per selected id.
     public let inspectorLoader: RefsInspectorLoader
 
@@ -215,6 +221,14 @@ public final class RefsPanelModel: ObservableObject {
     /// Presents the ⌘K actions menu for the selected row. The panel
     /// controller sets this; it pops the menu over the panel.
     public var actionsPresenter: () -> Void = {}
+    /// Whether the panel is currently visible. The controller sets this;
+    /// the scan completion path reads it to decide between a live
+    /// re-rank and a hidden notification.
+    public var panelIsVisible: () -> Bool = { false }
+    /// Called with the outcome when a scan finishes while the panel is
+    /// hidden, unless it succeeded with nothing created. AppDelegate
+    /// sets this to post the hidden-panel notification.
+    public var scanNotifier: (RefsScanOutcome) -> Void = { _ in }
 
     private let library: RefsLibrary
     private let opener: RefsOpening
@@ -231,6 +245,9 @@ public final class RefsPanelModel: ObservableObject {
     private var knownItems: [String: RefItem] = [:]
     private var lastDiagnostic = ""
     private var toastTask: Task<Void, Never>?
+    private var selectionAtScanStart: String?
+    private var pendingScanBanner: RefsBanner?
+    private var scanNoticeSeen = false
 
     public init(
         library: RefsLibrary,
@@ -262,6 +279,34 @@ public final class RefsPanelModel: ObservableObject {
         }
         itemsSubscription.store(in: &subscriptions)
         signalsSubscription.store(in: &subscriptions)
+        library.$scanState.sink { [weak self] _ in
+            Task { await self?.scanStateDidChange() }
+        }.store(in: &subscriptions)
+    }
+
+    /// Whether a scan is running on the library lane.
+    public var isScanning: Bool {
+        if case .scanning = library.scanState {
+            return true
+        }
+        return false
+    }
+
+    /// When the running scan started, or nil when idle.
+    public var scanStartedAt: Date? {
+        if case .scanning(let startedAt) = library.scanState {
+            return startedAt
+        }
+        return nil
+    }
+
+    /// Called by the controller from `hide()`, after `orderOut`.
+    /// Clears the scan notice once it has been seen.
+    public func panelDidHide() {
+        if scanNoticeSeen {
+            scanNotice = nil
+            scanNoticeSeen = false
+        }
     }
 
     /// The Today Pomodoro name for an id, or nil when the row is not
@@ -279,7 +324,10 @@ public final class RefsPanelModel: ObservableObject {
     }
 
     /// Resets for presentation: a blank query, All scope, a fresh listing,
-    /// and the first row selected.
+    /// and the first row selected. A pending scan banner installs here,
+    /// and an unseen scan notice is marked seen. The fresh listing
+    /// includes Just scanned through `signals.scan`, so its first row
+    /// selects that section's first row.
     public func prepareForPresentation() {
         presentationCount += 1
         selectedRowRect = nil
@@ -288,6 +336,13 @@ public final class RefsPanelModel: ObservableObject {
         banner = nil
         pendingOpen = nil
         rerankSelectingFirst()
+        if let pending = pendingScanBanner {
+            banner = pending
+            pendingScanBanner = nil
+        }
+        if scanNotice != nil, !scanNoticeSeen {
+            scanNoticeSeen = true
+        }
     }
 
     /// Re-ranks on every query edit, selects the first row, and dismisses
@@ -372,9 +427,28 @@ public final class RefsPanelModel: ObservableObject {
             }
             actionsPresenter()
             return true
+        case .scan:
+            if isScanning {
+                return true
+            }
+            if let current = banner, Self.isScanBanner(current) {
+                banner = nil
+            }
+            scanNotice = nil
+            scanNoticeSeen = false
+            selectionAtScanStart = selectedID
+            _ = library.scan()
+            return true
         case .consume:
             return true
         }
+    }
+
+    private static func isScanBanner(_ banner: RefsBanner) -> Bool {
+        if banner.actions.contains(.scanAgain) {
+            return true
+        }
+        return banner.kind == .warning && banner.actions == [.copyDiagnostic]
     }
 
     /// The snapshot refresh state the footer reads.
@@ -483,6 +557,8 @@ public final class RefsPanelModel: ObservableObject {
             } else if case .failed(let message, _) = library.refreshState {
                 pasteboard.copy(message)
             }
+        case .scanAgain:
+            _ = perform(.scan)
         }
     }
 
@@ -496,6 +572,8 @@ public final class RefsPanelModel: ObservableObject {
         selectedID: String?,
         banner: RefsBanner?,
         refreshState: RefsRefreshState,
+        scanState: RefsScanState = .idle,
+        scanNotice: RefsScanOutcome? = nil,
         inspector: [String: RefsInspectorContent]? = nil,
         thumbnails: [String: NSImage]? = nil
     ) {
@@ -504,9 +582,12 @@ public final class RefsPanelModel: ObservableObject {
             signals: signals,
             refreshState: refreshState
         )
+        library.installScanStateForPreviews(scanState)
         self.query = query
         self.scope = scope
         self.banner = banner
+        self.scanNotice = scanNotice
+        scanNoticeSeen = scanNotice != nil
         knownItems = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
         listing = RefsRanker.listing(items, query: query, scope: scope, signals: signals)
         unavailableIDs = []
@@ -671,6 +752,92 @@ public final class RefsPanelModel: ObservableObject {
             freshListingKeepingSelection()
         } else if next.orderedIDs.isEmpty {
             selectedID = nil
+        }
+    }
+
+    private func scanStateDidChange() {
+        guard case .finished(let outcome) = library.scanState else {
+            return
+        }
+        scanNotice = outcome
+        if panelIsVisible() {
+            if outcome.kind != .failed {
+                buildFreshListingForScan(outcome)
+            }
+            switch outcome.kind {
+            case .succeeded:
+                break
+            case .partial:
+                banner = RefsBanner(
+                    kind: .warning,
+                    message: RefsScanPresentation.bannerMessage(outcome) ?? "",
+                    actions: [.copyDiagnostic]
+                )
+                lastDiagnostic = outcome.diagnostic
+            case .failed:
+                banner = RefsBanner(
+                    kind: .error,
+                    message: RefsScanPresentation.bannerMessage(outcome) ?? "",
+                    actions: [.scanAgain, .copyDiagnostic]
+                )
+                lastDiagnostic = outcome.diagnostic
+            }
+            AccessibilityNotification.Announcement(
+                RefsScanPresentation.announcement(outcome)
+            ).post()
+            scanNoticeSeen = true
+        } else {
+            switch outcome.kind {
+            case .succeeded:
+                pendingScanBanner = nil
+            case .partial:
+                pendingScanBanner = RefsBanner(
+                    kind: .warning,
+                    message: RefsScanPresentation.bannerMessage(outcome) ?? "",
+                    actions: [.copyDiagnostic]
+                )
+                lastDiagnostic = outcome.diagnostic
+            case .failed:
+                pendingScanBanner = RefsBanner(
+                    kind: .error,
+                    message: RefsScanPresentation.bannerMessage(outcome) ?? "",
+                    actions: [.scanAgain, .copyDiagnostic]
+                )
+                lastDiagnostic = outcome.diagnostic
+            }
+            if outcome.kind != .succeeded || !outcome.created.isEmpty {
+                scanNotifier(outcome)
+            }
+            scanNoticeSeen = false
+        }
+    }
+
+    private func buildFreshListingForScan(_ outcome: RefsScanOutcome) {
+        pendingRefreshRerank = false
+        if case .search = listing.mode {
+            freshListingKeepingSelection()
+            return
+        }
+        pruneKnownItems()
+        let fresh = RefsRanker.listing(
+            library.items,
+            query: query,
+            scope: scope,
+            signals: library.signals
+        )
+        listing = fresh
+        unavailableIDs = []
+        if selectedID == selectionAtScanStart, !outcome.created.isEmpty {
+            let createdIDs = outcome.created.map(\.path)
+            if let first = createdIDs.first(where: { fresh.orderedIDs.contains($0) }) {
+                selectedID = first
+                return
+            }
+        }
+        if let keep = selectedID, fresh.orderedIDs.contains(keep) {
+            selectedID = keep
+        } else {
+            selectedID = RefsSelectionPolicy.initial(in: fresh)
         }
     }
 

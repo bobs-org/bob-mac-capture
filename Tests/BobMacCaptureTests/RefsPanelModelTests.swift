@@ -506,6 +506,256 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertTrue(harness.model.perform(.refresh))
     }
 
+    func testScanConsumedWhileRunning() async throws {
+        let harness = try makeHarness(environment: [
+            "FAKE_BOB_DELAY_SECONDS": "2",
+        ])
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        harness.model.panelIsVisible = { true }
+
+        XCTAssertTrue(harness.model.perform(.scan))
+        XCTAssertTrue(harness.model.isScanning)
+        XCTAssertTrue(harness.model.perform(.scan))
+        XCTAssertTrue(harness.model.isScanning)
+        await harness.waitForScan()
+        XCTAssertNotNil(harness.model.scanNotice)
+    }
+
+    func testVisibleBrowseSelectsFirstCreated() async throws {
+        let markerDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: markerDir,
+            withIntermediateDirectories: true
+        )
+        let harness = try makeHarness(environment: [
+            "FAKE_BOB_SCAN_MARKER_DIR": markerDir.path,
+            "FAKE_BOB_REFS_LIST_AFTER_SCAN_FIXTURE": "refs-list-after-scan.json",
+        ])
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        harness.model.panelIsVisible = { true }
+
+        XCTAssertTrue(harness.model.perform(.scan))
+        await harness.waitForScan()
+        guard let notice = harness.model.scanNotice else {
+            XCTFail("expected scan notice")
+            return
+        }
+        XCTAssertEqual(notice.kind, .succeeded)
+        XCTAssertFalse(notice.created.isEmpty)
+        let firstSection = harness.model.listing.sections.first
+        XCTAssertEqual(firstSection?.kind, .justScanned)
+        XCTAssertEqual(
+            harness.model.selectedID,
+            "ref/chat/omni_report.md"
+        )
+        XCTAssertTrue(harness.model.listing.orderedIDs.contains(
+            "ref/papers/harness_notes.md"
+        ))
+    }
+
+    func testVisibleSelectionMovedKeepsUserSelection() async throws {
+        let markerDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: markerDir,
+            withIntermediateDirectories: true
+        )
+        let harness = try makeHarness(environment: [
+            "FAKE_BOB_SCAN_MARKER_DIR": markerDir.path,
+            "FAKE_BOB_REFS_LIST_AFTER_SCAN_FIXTURE": "refs-list-after-scan.json",
+        ])
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        harness.model.panelIsVisible = { true }
+
+        XCTAssertTrue(harness.model.perform(.scan))
+        XCTAssertTrue(harness.model.perform(.select(id: "ref/papers/small_ready.md")))
+        await harness.waitForScan()
+        XCTAssertEqual(harness.model.selectedID, "ref/papers/small_ready.md")
+    }
+
+    func testVisibleSearchKeepsQueryAndSelection() async throws {
+        let markerDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: markerDir,
+            withIntermediateDirectories: true
+        )
+        let harness = try makeHarness(environment: [
+            "FAKE_BOB_SCAN_MARKER_DIR": markerDir.path,
+            "FAKE_BOB_REFS_LIST_AFTER_SCAN_FIXTURE": "refs-list-after-scan.json",
+        ])
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        harness.model.panelIsVisible = { true }
+        harness.model.query = "reading"
+        harness.model.queryDidChange()
+        let selectedBefore = harness.model.selectedID
+
+        XCTAssertTrue(harness.model.perform(.scan))
+        await harness.waitForScan()
+        XCTAssertEqual(harness.model.query, "reading")
+        XCTAssertEqual(harness.model.selectedID, selectedBefore)
+        guard let notice = harness.model.scanNotice else {
+            XCTFail("expected notice")
+            return
+        }
+        let footer = RefsScanPresentation.footerText(notice, searchMode: true)
+        XCTAssertTrue(footer.contains(" · esc shows them"))
+    }
+
+    func testHiddenNotifierAndPrepareShowsPending() async throws {
+        let markerDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: markerDir,
+            withIntermediateDirectories: true
+        )
+        let harness = try makeHarness(environment: [
+            "FAKE_BOB_SCAN_MARKER_DIR": markerDir.path,
+            "FAKE_BOB_REFS_LIST_AFTER_SCAN_FIXTURE": "refs-list-after-scan.json",
+        ])
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        harness.model.panelIsVisible = { false }
+        var notified: [RefsScanOutcome] = []
+        harness.model.scanNotifier = { notified.append($0) }
+
+        XCTAssertTrue(harness.model.perform(.scan))
+        await harness.waitForScan()
+        XCTAssertEqual(notified.count, 1)
+        XCTAssertNil(harness.model.banner)
+        harness.model.prepareForPresentation()
+        XCTAssertEqual(
+            harness.model.selectedID,
+            "ref/chat/omni_report.md"
+        )
+        XCTAssertEqual(harness.model.listing.sections.first?.kind, .justScanned)
+    }
+
+    func testHiddenNothingNewDoesNotNotify() async throws {
+        let nothingURL = try harnessFixtureURL("refs-scan-nothing.json").path
+        let harness = try makeHarness(environment: [
+            "FAKE_BOB_REFS_SCAN_FIXTURE": nothingURL,
+        ])
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        harness.model.panelIsVisible = { false }
+        var notified = 0
+        harness.model.scanNotifier = { _ in notified += 1 }
+
+        XCTAssertTrue(harness.model.perform(.scan))
+        await harness.waitForScan()
+        XCTAssertEqual(notified, 0)
+    }
+
+    func testNoticeClearsOnHideAfterSeen() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        harness.model.panelIsVisible = { true }
+
+        XCTAssertTrue(harness.model.perform(.scan))
+        await harness.waitForScan()
+        XCTAssertNotNil(harness.model.scanNotice)
+        harness.model.panelDidHide()
+        XCTAssertNil(harness.model.scanNotice)
+    }
+
+    func testPartialAndFailedBanners() async throws {
+        let partialURL = try harnessFixtureURL("refs-scan-partial.json").path
+        let partial = try makeHarness(environment: [
+            "FAKE_BOB_REFS_SCAN_FIXTURE": partialURL,
+            "FAKE_BOB_REFS_SCAN_EXIT": "1",
+        ])
+        await partial.waitForSnapshot()
+        partial.model.prepareForPresentation()
+        partial.model.panelIsVisible = { true }
+
+        XCTAssertTrue(partial.model.perform(.scan))
+        await partial.waitForScan()
+        XCTAssertEqual(partial.model.banner?.kind, .warning)
+        XCTAssertEqual(partial.model.banner?.actions, [.copyDiagnostic])
+        XCTAssertTrue(partial.model.banner?.message.contains("couldn't be scanned") ?? false)
+        partial.model.performBannerAction(.copyDiagnostic)
+        XCTAssertFalse(partial.pasteboard.strings.isEmpty)
+        XCTAssertTrue(partial.pasteboard.strings[0].contains("bob ref scan"))
+
+        let dirtyURL = try harnessFixtureURL("refs-scan-dirty.json").path
+        let failed = try makeHarness(environment: [
+            "FAKE_BOB_REFS_SCAN_FIXTURE": dirtyURL,
+            "FAKE_BOB_REFS_SCAN_EXIT": "1",
+        ])
+        await failed.waitForSnapshot()
+        failed.model.prepareForPresentation()
+        failed.model.panelIsVisible = { true }
+
+        XCTAssertTrue(failed.model.perform(.scan))
+        await failed.waitForScan()
+        XCTAssertEqual(failed.model.banner?.kind, .error)
+        XCTAssertEqual(failed.model.banner?.actions, [.scanAgain, .copyDiagnostic])
+        XCTAssertTrue(failed.model.banner?.message.contains("couldn't scan") ?? false)
+    }
+
+    func testScanAgainStartsScanAndEscDismissesFirst() async throws {
+        let dirtyURL = try harnessFixtureURL("refs-scan-dirty.json").path
+        let harness = try makeHarness(environment: [
+            "FAKE_BOB_REFS_SCAN_FIXTURE": dirtyURL,
+            "FAKE_BOB_REFS_SCAN_EXIT": "1",
+        ])
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        harness.model.panelIsVisible = { true }
+
+        XCTAssertTrue(harness.model.perform(.scan))
+        await harness.waitForScan()
+        XCTAssertNotNil(harness.model.banner)
+        XCTAssertTrue(harness.model.perform(.escape))
+        XCTAssertNil(harness.model.banner)
+        harness.model.performBannerAction(.scanAgain)
+        await harness.waitForScanStart()
+        XCTAssertTrue(harness.model.isScanning)
+        await harness.waitForScan()
+    }
+
+    func testHiddenPartialAndFailedNotify() async throws {
+        let partialURL = try harnessFixtureURL("refs-scan-partial.json").path
+        let partial = try makeHarness(environment: [
+            "FAKE_BOB_REFS_SCAN_FIXTURE": partialURL,
+            "FAKE_BOB_REFS_SCAN_EXIT": "1",
+        ])
+        await partial.waitForSnapshot()
+        partial.model.prepareForPresentation()
+        partial.model.panelIsVisible = { false }
+        var partialNotified = 0
+        partial.model.scanNotifier = { _ in partialNotified += 1 }
+        XCTAssertTrue(partial.model.perform(.scan))
+        await partial.waitForScan()
+        XCTAssertEqual(partialNotified, 1)
+        partial.model.prepareForPresentation()
+        XCTAssertEqual(partial.model.banner?.kind, .warning)
+
+        let dirtyURL = try harnessFixtureURL("refs-scan-dirty.json").path
+        let failed = try makeHarness(environment: [
+            "FAKE_BOB_REFS_SCAN_FIXTURE": dirtyURL,
+            "FAKE_BOB_REFS_SCAN_EXIT": "1",
+        ])
+        await failed.waitForSnapshot()
+        failed.model.prepareForPresentation()
+        failed.model.panelIsVisible = { false }
+        var failedNotified = 0
+        failed.model.scanNotifier = { _ in failedNotified += 1 }
+        XCTAssertTrue(failed.model.perform(.scan))
+        await failed.waitForScan()
+        XCTAssertEqual(failedNotified, 1)
+        failed.model.prepareForPresentation()
+        XCTAssertEqual(failed.model.banner?.kind, .error)
+        XCTAssertEqual(failed.model.banner?.actions, [.scanAgain, .copyDiagnostic])
+    }
+
     // MARK: - Harness
 
     @MainActor
@@ -573,6 +823,28 @@ final class RefsPanelModelTests: XCTestCase {
                 try? await Task.sleep(nanoseconds: 20_000_000)
             }
             XCTFail("model condition not met before timeout")
+        }
+
+        func waitForScan() async {
+            let deadline = Date().addingTimeInterval(15)
+            while Date() < deadline {
+                if model.scanNotice != nil, !model.isScanning {
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 20_000_000)
+            }
+            XCTFail("scan did not finish before timeout")
+        }
+
+        func waitForScanStart() async {
+            let deadline = Date().addingTimeInterval(5)
+            while Date() < deadline {
+                if model.isScanning {
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 20_000_000)
+            }
+            XCTFail("scan did not start before timeout")
         }
     }
 
@@ -724,6 +996,23 @@ private extension RefsPanelModelTests.Harness {
             ]))
         )
     }
+}
+
+private func harnessFixtureURL(_ name: String) throws -> URL {
+    let source = URL(fileURLWithPath: #filePath)
+    let packageRoot = source
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+    let direct = packageRoot.appendingPathComponent("Tests/Fixtures/\(name)")
+    guard FileManager.default.fileExists(atPath: direct.path) else {
+        throw NSError(
+            domain: "RefsPanelModelTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "missing fixture \(name)"]
+        )
+    }
+    return direct
 }
 
 /// Today's date as `YYYY-MM-DD`, the `added` form `bob` emits.
