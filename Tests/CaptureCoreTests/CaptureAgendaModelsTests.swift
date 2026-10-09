@@ -194,6 +194,21 @@ final class CaptureAgendaModelsTests: XCTestCase {
         XCTAssertEqual(entry.notes[0].depth, 1)
     }
 
+    func testWarningsSlugAndSelectableDecode() throws {
+        let current = try decodeFixture("agenda-current.json")
+        XCTAssertTrue(current.warnings.isEmpty)
+        XCTAssertEqual(current.pomodoros[0].slug, "fix")
+        XCTAssertTrue(current.pomodoros[0].selectable)
+        let unnamed = current.pomodoros[3]
+        XCTAssertNil(unnamed.name)
+        XCTAssertEqual(unnamed.slug, "")
+        XCTAssertFalse(unnamed.selectable)
+
+        let missingNote = try decodeFixture("agenda-no-daily-note.json")
+        XCTAssertFalse(missingNote.warnings.isEmpty)
+        XCTAssertTrue(missingNote.pomodoros.isEmpty)
+    }
+
     func testLegacyPayloadWithoutTasksFieldsDecodesWithEmptyItems() throws {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

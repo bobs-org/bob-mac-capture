@@ -16,19 +16,22 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
     public let date: String?
     public let completedSummary: CaptureAgendaCompletedSummary
     public let pomodoros: [CaptureAgendaPomodoro]
+    public let warnings: [String]
 
     public init(
         ok: Bool = false,
         schemaVersion: Int = 1,
         date: String? = nil,
         completedSummary: CaptureAgendaCompletedSummary = CaptureAgendaCompletedSummary(),
-        pomodoros: [CaptureAgendaPomodoro] = []
+        pomodoros: [CaptureAgendaPomodoro] = [],
+        warnings: [String] = []
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
         self.date = date
         self.completedSummary = completedSummary
         self.pomodoros = pomodoros
+        self.warnings = warnings
     }
 
     public init(from decoder: Decoder) throws {
@@ -44,6 +47,7 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
             [CaptureAgendaPomodoro].self,
             forKey: .pomodoros
         ) ?? []
+        warnings = try container.decodeIfPresent([String].self, forKey: .warnings) ?? []
     }
 
     /// The `isCurrent` entry's `taskLinkCount`, or nil when there is no
@@ -59,6 +63,7 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         case date
         case completedSummary = "completed_summary"
         case pomodoros
+        case warnings
     }
 }
 
@@ -98,6 +103,8 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
     public let retiredLinkCount: Int
     public let notes: [CaptureAgendaLine]
     public let items: [CaptureAgendaItem]
+    public let slug: String?
+    public let selectable: Bool
 
     public init(
         line: Int = 0,
@@ -109,7 +116,9 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         endsAt: String? = nil,
         retiredLinkCount: Int = 0,
         notes: [CaptureAgendaLine] = [],
-        items: [CaptureAgendaItem] = []
+        items: [CaptureAgendaItem] = [],
+        slug: String? = nil,
+        selectable: Bool = false
     ) {
         self.line = line
         self.name = name
@@ -121,6 +130,8 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         self.retiredLinkCount = retiredLinkCount
         self.notes = notes
         self.items = items
+        self.slug = slug
+        self.selectable = selectable
     }
 
     public init(from decoder: Decoder) throws {
@@ -137,6 +148,8 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         retiredLinkCount = try container.decodeIfPresent(Int.self, forKey: .retiredLinkCount) ?? 0
         notes = try container.decodeIfPresent([CaptureAgendaLine].self, forKey: .notes) ?? []
         items = try container.decodeIfPresent([CaptureAgendaItem].self, forKey: .items) ?? []
+        slug = try container.decodeIfPresent(String.self, forKey: .slug)
+        selectable = try container.decodeIfPresent(Bool.self, forKey: .selectable) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -150,6 +163,8 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         case retiredLinkCount = "retired_link_count"
         case notes
         case items
+        case slug
+        case selectable
     }
 }
 
