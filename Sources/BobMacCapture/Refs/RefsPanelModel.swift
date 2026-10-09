@@ -220,14 +220,15 @@ public final class RefsPanelModel: ObservableObject {
         self.opener = opener
         self.highlights = highlights
         self.pasteboard = pasteboard
-        listing = RefsRanker.listing(
+        let initialListing = RefsRanker.listing(
             library.items,
             query: "",
             scope: .all,
             signals: library.signals
         )
-        selectedID = RefsSelectionPolicy.initial(in: listing)
-        inspectorLoader = RefsInspectorLoader(library: self.library)
+        listing = initialListing
+        selectedID = RefsSelectionPolicy.initial(in: initialListing)
+        inspectorLoader = RefsInspectorLoader(library: library)
         inspectorLoader.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }.store(in: &subscriptions)
