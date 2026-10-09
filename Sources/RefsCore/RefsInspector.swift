@@ -1,3 +1,4 @@
+import CaptureCore
 import Foundation
 
 /// The `bob ref show <path> -f json -c` envelope (schema version 1) the
