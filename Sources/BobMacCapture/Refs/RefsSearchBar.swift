@@ -130,11 +130,7 @@ struct RefsSearchBar: View {
         Text(countText)
             .font(.callout.monospacedDigit())
             .foregroundStyle(.secondary)
-            .accessibilityLabel(
-                announcer.text.isEmpty
-                    ? "\(model.listing.totalCount) references" : announcer.text
-            )
-            .accessibilityLiveRegion(.polite)
+            .accessibilityLabel("\(model.listing.totalCount) references")
             .onChange(of: model.query) { _, _ in
                 announcer.schedule(
                     shown: model.listing.orderedIDs.count,
@@ -157,11 +153,11 @@ struct RefsSearchBar: View {
     }
 }
 
-/// Debounces result-count announcements: the text updates 600 ms after
+/// Debounces result-count announcements through the same post helper
+/// capture's picker uses: the announcement goes out 600 ms after
 /// typing stops, so counts are never announced on every keystroke.
 @MainActor
 private final class RefsCountAnnouncer: ObservableObject {
-    @Published var text = ""
     private var generation = 0
 
     func schedule(shown: Int, total: Int) {
@@ -172,7 +168,9 @@ private final class RefsCountAnnouncer: ObservableObject {
             guard let self, current == self.generation else {
                 return
             }
-            self.text = "\(shown) of \(total) references"
+            AccessibilityNotification.Announcement(
+                "\(shown) of \(total) references"
+            ).post()
         }
     }
 }
