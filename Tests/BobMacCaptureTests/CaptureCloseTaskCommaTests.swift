@@ -397,8 +397,11 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
     func testKeyDrivenAssistParseServesCommaEdit() async throws {
         let model = try keyDrivenModel()
         model.setCurrentPomodoroTaskLinkCountForTests(3)
-        model.requestCloseListAssistParse()
+        // The digit lands through the editor binding, which never clears
+        // the pending request; the plainDraft setter does, so request after
+        // assigning the draft to reach editorTextDidChange with it pending.
         model.plainDraft = "=x1"
+        model.requestCloseListAssistParse()
         model.editorTextDidChange(cursorUTF8Offset: "=x1".utf8.count)
         await waitUntil {
             model.closeTaskCommaEdit(
@@ -432,8 +435,10 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
 
     func testAssistParseDoesNotRunWhileDisarmed() async throws {
         let model = try keyDrivenModel()
-        model.requestCloseListAssistParse()
+        // Same binding-order note as above: request after the draft so the
+        // pending flag survives to editorTextDidChange, where disarm blocks.
         model.plainDraft = "=x1"
+        model.requestCloseListAssistParse()
         model.editorTextDidChange(cursorUTF8Offset: "=x1".utf8.count)
         try? await Task.sleep(nanoseconds: 500_000_000)
         XCTAssertNil(
