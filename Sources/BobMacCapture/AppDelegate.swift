@@ -566,6 +566,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         vaultWatcher = VaultTargetWatcher(path: vaultPath) { [weak self] in
             Task { @MainActor in
                 self?.refreshTargetsWhenPossible()
+                if self?.panelController?.isVisible == true {
+                    self?.panelModel?.refreshCurrentPomodoroTaskLinkCount()
+                }
             }
         } onFailure: { [weak self] message in
             Task { @MainActor in

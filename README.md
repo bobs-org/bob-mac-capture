@@ -324,6 +324,16 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
   `pomodoro_close_drop` renders muted gray. The Work Log index span
   `pomodoro_close_log_index` renders cyan, sharing the tint of the typed entry
   line it lands on in the close card; it is not a completion span kind.
+  The editor also auto-inserts `,` between close task numbers: typing `1`–`9`
+  right after a task number in a close list inserts the separator itself
+  (`=x1` + `2` → `=x1,2`). The app runs `bob capture-pomodoros --format json`
+  whenever the panel is shown, by any entry point, and on vault changes
+  while it is visible, and reads the current entry's `task_link_count`. The assist runs only when the running
+  Pomodoro has fewer than 10 numbered Task Links; an older bob without the
+  field disables it. The decision uses bob's `capture-parse` close-list spans,
+  so the app still never recognizes close syntax itself. Known limitation: a
+  batch that links several new tasks before its `=x` can push a 9-link session
+  past 10.
   Global destination spans (`global_route`, `global_sub_bullet_route`, and
   `global_sub_bullet_block_id`) reuse the existing destination and block-ID colors, so
   the editor and the completion list never disagree about what color represents what
@@ -1305,6 +1315,7 @@ only and is never written to disk.
 | Ctrl-Shift-K | Move the caret to the previous physical line, keeping the current column when that line is long enough and clamping to its end when it is not; stops on the first line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
 | Command-V | Insert the clipboard's plain text, discarding source formatting; when an empty bullet row receives a Markdown bullet list, consume the first pasted marker and align the list to that row | Same paste edit, and close completion | Native text-field paste | Native text-field paste |
 | Backspace | Remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace | Native text-field Backspace |
+| 1–9 | Right after a task number in a close task list (`=x`, `=*`, `=!`, and their `*`/`!`/`~` groups, including link closes), insert `,` before the digit (`=x1` + `2` → `=x1,2`) when the running Pomodoro has fewer than 10 numbered Task Links; otherwise the digit types normally | Native text-field behavior | Native text-field behavior | Native text-field behavior |
 | + | Insert `+` | While route completion is visible, directly after the route being completed: accept the selected route, keep the `+`, and open task completion | Native text-field behavior | Native text-field behavior |
 | Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion | In link mode cycle suggestions; in the `@route+` prompt consume the key | Consume the key; do not expand, indent, or capture |
 | Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion | In link mode cycle suggestions backward; in the `@route+` prompt consume the key | Consume the key; do not outdent or capture |

@@ -103,6 +103,29 @@ case "${command}" in
     draft="${*: -1}"
     if [[ "${draft}" == "=x" ]]; then
       cat "${fixtures_dir}/pomodoro-close-parse-session.json"
+    elif [[ "${draft}" == "=x1" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "=x1",
+  "body": "=x1",
+  "mode": "pomodoro_close",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": [],
+  "spans": [
+    { "start": 0, "end": 2, "kind": "pomodoro_close" },
+    { "start": 2, "end": 3, "kind": "pomodoro_close_in_progress" }
+  ],
+  "diagnostics": [],
+  "pomodoro_close": {
+    "raw": "=x1",
+    "in_progress": [1]
+  }
+}
+JSON
     elif [[ "${draft}" == "=x1,3!2" ]]; then
       cat "${fixtures_dir}/pomodoro-close-parse-select.json"
     elif [[ "${draft}" == "=x1," ]]; then
@@ -1528,6 +1551,23 @@ JSON
       printf ',"text":'
       json_string "${draft}"
       printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+    fi
+    ;;
+  capture-pomodoros)
+    # `bob capture-pomodoros --format json` for the close-comma assist.
+    # FAKE_BOB_POMODOROS_FIXTURE names a fixture in this directory (for
+    # example pomodoros-current-12.json) or an absolute path, and
+    # FAKE_BOB_POMODOROS_FAIL=1 fails the call so tests can prove a
+    # failure clears the count and disarms the assist.
+    if [[ "${FAKE_BOB_POMODOROS_FAIL:-}" == "1" ]]; then
+      printf 'fake capture-pomodoros failed\n' >&2
+      exit 1
+    fi
+    pomodoros_fixture="${FAKE_BOB_POMODOROS_FIXTURE:-pomodoros-current-3.json}"
+    if [[ "${pomodoros_fixture}" == */* ]]; then
+      cat "${pomodoros_fixture}"
+    else
+      cat "${fixtures_dir}/${pomodoros_fixture}"
     fi
     ;;
   capture-targets)
