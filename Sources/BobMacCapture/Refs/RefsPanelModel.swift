@@ -1,4 +1,5 @@
 import AppKit
+import CaptureCore
 import Combine
 import Foundation
 import RefsCore
@@ -134,7 +135,9 @@ public struct WorkspaceRefsOpener: RefsOpening, Sendable {
     }
 
     public func openWithDefaultApp(_ url: URL, completion: @escaping (Error?) -> Void) {
-        NSWorkspace.shared.open(url) { _, error in
+        var configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.open(url, configuration: configuration) { _, error in
             completion(error)
         }
     }

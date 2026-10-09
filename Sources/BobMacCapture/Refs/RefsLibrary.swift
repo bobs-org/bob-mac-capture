@@ -74,24 +74,21 @@ public struct SpotlightRefsSignals: RefsSpotlightProviding, Sendable {
 
     static func facts(for url: URL) -> RefsSpotlightFacts {
         var result = RefsSpotlightFacts()
-        guard let item = MDItemCreateWithURL(kCFAllocatorDefault, url as CFURL)?
-            .takeRetainedValue()
-        else {
+        guard let item = MDItemCreateWithURL(kCFAllocatorDefault, url as CFURL) else {
             return result
         }
-        if let lastUsed = MDItemCopyAttribute(item, kMDItemLastUsedDate)?
-            .takeRetainedValue() as? Date
-        {
+        if let lastUsed = MDItemCopyAttribute(item, kMDItemLastUsedDate) as? Date {
             result.lastUsed = lastUsed
         }
-        if let pages = MDItemCopyAttribute(item, kMDItemNumberOfPages)?
-            .takeRetainedValue() as? NSNumber
-        {
+        if let pages = MDItemCopyAttribute(item, kMDItemNumberOfPages) as? NSNumber {
             result.pageCount = pages.intValue
         }
         return result
     }
 }
+
+/// Bound on refresh failure text so a backend dump cannot fill the callout.
+private let refsMaxErrorMessageLength = 200
 
 /// The Refs library refresh service: the cached snapshot, the git-date
 /// backfill pass, Today, the Spotlight sweep, missing-PDF checks, and the
@@ -114,8 +111,6 @@ public final class RefsLibrary: ObservableObject {
 
     /// Seconds between background Today refreshes.
     public static let todayRefreshInterval: TimeInterval = 600
-    /// Error text is bounded so a backend dump cannot fill the callout.
-    public static let maxErrorMessageLength = 200
 
     private var fetcher: RefsFetching?
     private let snapshotStore: RefsSnapshotStore
@@ -454,11 +449,12 @@ public final class RefsLibrary: ObservableObject {
         return !path.split(separator: "/").contains("..")
     }
 
-    static func boundedMessage(for error: Error, limit: Int = maxErrorMessageLength) -> String {
+    /// Bounds failure text so a backend dump cannot fill the callout card.
+    nonisolated static func boundedMessage(for error: Error) -> String {
         let text = String(describing: error)
-        guard text.count > limit else {
+        guard text.count > refsMaxErrorMessageLength else {
             return text
         }
-        return String(text.prefix(limit)) + "…"
+        return String(text.prefix(refsMaxErrorMessageLength)) + "…"
     }
 }
