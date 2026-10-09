@@ -300,6 +300,14 @@ final class RefsLibraryTests: XCTestCase {
         await waitUntil(timeout: 15) {
             context.library.signals.today.entries.count == 4
         }
+        // Settle the `-g` lane before the baseline. It starts after the
+        // snapshot publishes, so a late git argv line otherwise lands inside
+        // the quiet window and the counts disagree (4 vs 3).
+        await waitUntil(timeout: 15) {
+            context.library.items.contains {
+                $0.id == "ref/blogs/small_opened.md" && $0.added != nil
+            }
+        }
         let staleRecord = try String(contentsOf: recordURL)
         let count = staleRecord.components(separatedBy: "argv=").count
 
