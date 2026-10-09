@@ -1,14 +1,17 @@
 import AppKit
 import ServiceManagement
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var notificationService: NotificationService
     @ObservedObject var canceledDraftStash: CanceledDraftStash
+    var onResetOpenHistory: (() -> Void)? = nil
     @State private var launchStatus = LaunchAtLoginController().state()
     @State private var testNotificationStatus = ""
     @State private var isConfirmingStashClear = false
+    @State private var isConfirmingRefsReset = false
 
     var body: some View {
         Form {
@@ -21,6 +24,35 @@ struct SettingsView: View {
             Section("Hotkey") {
                 Toggle("Use production Control-Shift-Command-I", isOn: $settings.useProductionHotkey)
                 LabeledContent("Active binding", value: settings.hotKeyConfiguration.displayName)
+            }
+
+            Section("References") {
+                Toggle(
+                    "Open Bob Refs with Control-Shift-Command-R",
+                    isOn: $settings.refsHotkeyEnabled
+                )
+                Picker(
+                    "In Highlights, open Bob Refs with",
+                    selection: $settings.refsHighlightsOpenKey
+                ) {
+                    Text("Off").tag(RefsHighlightsOpenKey.off)
+                    Text("Command-O").tag(RefsHighlightsOpenKey.cmdO)
+                    Text("Control-O").tag(RefsHighlightsOpenKey.ctrlO)
+                }
+                LabeledContent("Highlights app", value: highlightsAppDescription)
+                HStack {
+                    Button("Choose…") {
+                        chooseHighlightsApp()
+                    }
+                    Button("Use Default") {
+                        settings.refsHighlightsAppPath = ""
+                    }
+                }
+                Button("Reset Open History…", role: .destructive) {
+                    isConfirmingRefsReset = true
+                }
+                .disabled(onResetOpenHistory == nil)
+                .accessibilityHint("Clears recently-opened rows and frecency.")
             }
 
             Section("Canceled Draft Stash") {
@@ -123,9 +155,51 @@ struct SettingsView: View {
         } message: {
             Text("This removes retained canceled drafts.")
         }
+        .confirmationDialog(
+            "Reset Bob Refs open history?",
+            isPresented: $isConfirmingRefsReset
+        ) {
+            Button("Reset History", role: .destructive) {
+                onResetOpenHistory?()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This clears recently-opened rows and frecency.")
+        }
         .task {
             await notificationService.refreshAuthorizationStatus()
         }
+    }
+
+    /// The resolved Highlights app's name, version, and path, or
+    /// "Not found" when neither the override path nor the bundle id
+    /// resolves.
+    private var highlightsAppDescription: String {
+        let path = settings.refsHighlightsAppPath
+        let locator = HighlightsLocator(overridePath: { path })
+        guard let url = locator.highlightsAppURL() else {
+            return "Not found"
+        }
+        let bundle = Bundle(url: url)
+        let name = (bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+            ?? (bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String)
+            ?? url.deletingPathExtension().lastPathComponent
+        let versionKey = "CFBundleShortVersionString"
+        let version = (bundle?.object(forInfoDictionaryKey: versionKey) as? String)
+            .map { " \($0)" } ?? ""
+        return "\(name)\(version)\n\(url.path)"
+    }
+
+    private func chooseHighlightsApp() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+        settings.refsHighlightsAppPath = url.path
     }
 
     private var stashCapacityLabel: String {

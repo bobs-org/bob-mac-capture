@@ -15,6 +15,18 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(useProductionHotkey, forKey: Keys.useProductionHotkey) }
     }
 
+    @Published var refsHotkeyEnabled: Bool {
+        didSet { defaults.set(refsHotkeyEnabled, forKey: Keys.refsHotkeyEnabled) }
+    }
+
+    @Published var refsHighlightsOpenKey: RefsHighlightsOpenKey {
+        didSet { defaults.set(refsHighlightsOpenKey.rawValue, forKey: Keys.refsHighlightsOpenKey) }
+    }
+
+    @Published var refsHighlightsAppPath: String {
+        didSet { defaults.set(refsHighlightsAppPath, forKey: Keys.refsHighlightsAppPath) }
+    }
+
     @Published var canceledDraftStashCapacity: Int {
         didSet {
             let clamped = Self.clampedCanceledDraftStashCapacity(canceledDraftStashCapacity)
@@ -57,6 +69,19 @@ final class AppSettings: ObservableObject {
         useProductionHotkey = defaults.object(forKey: Keys.useProductionHotkey) == nil
             ? true
             : defaults.bool(forKey: Keys.useProductionHotkey)
+        refsHotkeyEnabled = defaults.object(forKey: Keys.refsHotkeyEnabled) == nil
+            ? true
+            : defaults.bool(forKey: Keys.refsHotkeyEnabled)
+        if let raw = defaults.string(forKey: Keys.refsHighlightsOpenKey),
+            let key = RefsHighlightsOpenKey(rawValue: raw)
+        {
+            refsHighlightsOpenKey = key
+        } else {
+            // The `highlights_open_key` epic decision defaults the
+            // Highlights-frontmost takeover to Command-O.
+            refsHighlightsOpenKey = .cmdO
+        }
+        refsHighlightsAppPath = defaults.string(forKey: Keys.refsHighlightsAppPath) ?? ""
         canceledDraftStashCapacity = Self.loadCanceledDraftStashCapacity(from: defaults)
     }
 
@@ -95,5 +120,8 @@ private enum Keys {
     static let bobExecutableOverride = "bobExecutableOverride"
     static let bobDirectory = "bobDirectory"
     static let useProductionHotkey = "useProductionHotkey"
+    static let refsHotkeyEnabled = "refsHotkeyEnabled"
+    static let refsHighlightsOpenKey = "refsHighlightsOpenKey"
+    static let refsHighlightsAppPath = "refsHighlightsAppPath"
     static let canceledDraftStashCapacity = "canceledDraftStashCapacity"
 }

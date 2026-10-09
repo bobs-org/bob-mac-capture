@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import CaptureCore
+import RefsCore
 import SwiftUI
 
 @MainActor
@@ -33,6 +34,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsCancellables: Set<AnyCancellable> = []
     private var statusItemController: StatusItemController?
     private var statusItemCancellables: Set<AnyCancellable> = []
+    private var refsLibrary: RefsLibrary?
+    private var refsPanelModel: RefsPanelModel?
+    private var refsPanelController: RefsPanelController?
+    private var panelCoordinator: BobPanelCoordinator?
+    private var highlightsTakeover: HighlightsTakeover?
+    private var refsCancellables: Set<AnyCancellable> = []
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         // No nib supplies a main menu under the explicit `BobMacCaptureMain` entry point,
@@ -48,7 +55,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             BobSettingsScene(
                 settings: settings,
                 notificationService: notificationService,
-                canceledDraftStash: canceledDraftStash
+                canceledDraftStash: canceledDraftStash,
+                onResetOpenHistory: { [weak self] in self?.refsLibrary?.resetOpenHistory() }
             )
         }
 
@@ -72,12 +80,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelModel = model
         panelController = CapturePanelController(model: model)
         panelController?.prewarm()
-        // A capture-landed pulse per successful submit. A dedicated set: the
-        // stash-capacity observer guards on `settingsCancellables` being empty.
+        // A capture-landed pulse per successful submit, plus a Today
+        // refresh with the snapshot marked stale so the next Refs open
+        // re-reads it. A dedicated set: the stash-capacity observer guards
+        // on `settingsCancellables` being empty.
         model.$successAnnouncementTick
             .dropFirst()
             .sink { [weak self] _ in
                 self?.statusItemController?.playCaptureLandedPulse()
+                self?.refsLibrary?.refreshToday()
+                self?.refsLibrary?.markStale()
             }
             .store(in: &statusItemCancellables)
 
@@ -89,12 +101,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.showCapturePanel()
                 }
             case .refs, .refsHighlightsOpen:
-                // Wired by refs-entry-points; the registry owns the ids now
-                // so later phases only register and route.
-                break
+                CaptureSignpost.event("refs-hotkey-received")
+                Task { @MainActor in
+                    self?.panelCoordinator?.toggleRefs()
+                }
             }
         }
         registerHotKey()
+        configureRefsStack()
         configureVaultWatcher()
         refreshTargetsWhenPossible()
         settings.signingDiagnostic = BundleSigningInspector.currentBundleState().diagnosticText
@@ -112,6 +126,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // nothing to flush here. A terminate-only save would drop drafts on force
         // quit, crash, logout SIGKILL, or a just install that replaces the bundle.
         hotKeyRegistry?.invalidate()
+        highlightsTakeover?.stop()
+        refsLibrary?.stop()
         vaultWatcher?.invalidate()
         processClient?.cancelActiveProcess()
     }
@@ -250,6 +266,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 keyEquivalent: ""
             )
         )
+        let refsItem = NSMenuItem(
+            title: "Bob Refs…",
+            action: #selector(openRefsPanel),
+            keyEquivalent: "r"
+        )
+        // Display only: the global Control-Shift-Command-R hotkey toggles
+        // the panel when the menu is closed; this equivalent labels the row.
+        refsItem.keyEquivalentModifierMask = [.command, .control, .shift]
+        menu.addItem(refsItem)
         menu.addItem(
             NSMenuItem(
                 title: "Settings",
@@ -292,11 +317,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settings.resolvedBobPath = resolved
             settings.diagnosticStatus = "Ready"
             panelModel?.setProcessClient(processClient)
+            if let processClient {
+                refsLibrary?.setFetcher(BobRefsFetcher(client: processClient))
+            }
         } catch {
             processClient = nil
             settings.resolvedBobPath = "Not resolved"
             settings.diagnosticStatus = String(describing: error)
             panelModel?.setProcessClient(nil)
+            refsLibrary?.setFetcher(nil)
         }
         updateStatusItemAppearance()
     }
@@ -316,6 +345,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settings.diagnosticStatus = "Hotkey registered: \(settings.hotKeyConfiguration.displayName)"
         } catch {
             settings.diagnosticStatus = "Hotkey conflict: \(error)"
+        }
+        registerRefsHotKey()
+    }
+
+    /// Registers the global Refs hotkey when its setting is on. Success
+    /// extends the launch status line so Diagnostics shows both bindings;
+    /// a failure is reported as a Refs conflict. Capture's hotkey stays
+    /// re-registered only at launch and on Recheck Bob, as before.
+    private func registerRefsHotKey() {
+        guard let hotKeyRegistry else {
+            return
+        }
+        let registered = RefsHotkeyRegistration.sync(
+            registry: hotKeyRegistry,
+            enabled: settings.refsHotkeyEnabled
+        ) { [weak self] message in
+            self?.settings.diagnosticStatus = message
+        }
+        guard registered else {
+            return
+        }
+        if hotKeyRegistry.isRegistered(.capture) {
+            settings.diagnosticStatus =
+                "Hotkey registered: \(settings.hotKeyConfiguration.displayName); "
+                + "Refs hotkey registered: \(HotKeyConfiguration.refs.displayName)"
+        } else {
+            settings.diagnosticStatus =
+                "Refs hotkey registered: \(HotKeyConfiguration.refs.displayName)"
         }
     }
 
@@ -337,13 +394,132 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// The vault root: the Settings override, or `~/bob` when it is
+    /// empty. Capture and Refs share this helper so both watchers and
+    /// both fetchers point at the same vault.
+    static func vaultRootURL(bobDirectory: String) -> URL {
+        if bobDirectory.isEmpty {
+            return FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("bob")
+        }
+        return URL(fileURLWithPath: bobDirectory)
+    }
+
+    /// The bundle id of the Settings override Highlights app, or nil when
+    /// no override is set or it is not an app bundle. The takeover matches
+    /// the override app's id so a moved copy still takes over.
+    static func highlightsOverrideBundleID(path: String) -> String? {
+        guard !path.isEmpty else {
+            return nil
+        }
+        return Bundle(url: URL(fileURLWithPath: path))?.bundleIdentifier
+    }
+
+    /// Builds the Refs stack after Capture's panel: the stores, the fetcher
+    /// sharing the existing process client, the library, the panel model
+    /// and controller, the one-panel coordinator, and the Highlights
+    /// takeover. Launch never blocks — the library refreshes in the
+    /// background — and stays healthy when `bob` is absent: a nil fetcher
+    /// paints the cached snapshot with a "Bob is not available" footer.
+    private func configureRefsStack() {
+        let snapshotStore: RefsSnapshotStore
+        let openLogStore: RefsOpenLogStore
+        do {
+            snapshotStore = RefsSnapshotStore(
+                fileURL: try RefsSnapshotStore.defaultFileURL(),
+                onError: { [weak self] message in
+                    Task { @MainActor in
+                        self?.settings.diagnosticStatus = message
+                    }
+                }
+            )
+            openLogStore = RefsOpenLogStore(
+                fileURL: try RefsOpenLogStore.defaultFileURL(),
+                onError: { [weak self] message in
+                    Task { @MainActor in
+                        self?.settings.diagnosticStatus = message
+                    }
+                }
+            )
+        } catch {
+            settings.diagnosticStatus = "Bob Refs unavailable: \(error)"
+            return
+        }
+        guard let hotKeyRegistry else {
+            settings.diagnosticStatus = "Bob Refs unavailable: no hotkey registry"
+            return
+        }
+
+        let settings = settings
+        let fetcher: RefsFetching? = processClient.map {
+            BobRefsFetcher(client: $0)
+        }
+        let library = RefsLibrary(
+            fetcher: fetcher,
+            snapshotStore: snapshotStore,
+            openLogStore: openLogStore,
+            vaultRoot: { Self.vaultRootURL(bobDirectory: settings.bobDirectory) },
+            fileExists: { FileManager.default.fileExists(atPath: $0.path) },
+            spotlight: SpotlightRefsSignals(),
+            now: { Date() }
+        )
+        let model = RefsPanelModel(
+            library: library,
+            opener: WorkspaceRefsOpener(),
+            highlights: HighlightsLocator(overridePath: { settings.refsHighlightsAppPath })
+        )
+        model.settingsPresenter = { [weak self] in self?.openSettings() }
+        let controller = RefsPanelController(model: model)
+        refsLibrary = library
+        refsPanelModel = model
+        refsPanelController = controller
+        controller.prewarm()
+        library.start()
+
+        panelCoordinator = BobPanelCoordinator(
+            isCaptureVisible: { [weak self] in self?.panelController?.isVisible == true },
+            isRefsVisible: { [weak self] in self?.refsPanelController?.isVisible == true },
+            closeCaptureRetainingDraft: { [weak self] in self?.panelModel?.closeRetainingDraft() },
+            showCapture: { [weak self] in self?.panelController?.show() },
+            showRefs: { [weak self] in self?.refsPanelController?.show() },
+            hideRefs: { [weak self] in self?.refsPanelController?.hide() }
+        )
+
+        let takeover = HighlightsTakeover(
+            notificationCenter: NSWorkspace.shared.notificationCenter,
+            registry: hotKeyRegistry,
+            frontmostBundleID: { NSWorkspace.shared.frontmostApplication?.bundleIdentifier },
+            openKey: { settings.refsHighlightsOpenKey },
+            overrideBundleID: {
+                Self.highlightsOverrideBundleID(path: settings.refsHighlightsAppPath)
+            },
+            onError: { [weak self] message in self?.settings.diagnosticStatus = message }
+        )
+        highlightsTakeover = takeover
+        takeover.start()
+
+        observeRefsSettings()
+        registerRefsHotKey()
+    }
+
+    /// Re-registers the Refs hotkeys live when the References settings
+    /// change. Capture's hotkey is untouched here: it re-registers only at
+    /// launch and on Recheck Bob, as before.
+    private func observeRefsSettings() {
+        settings.$refsHotkeyEnabled
+            .sink { [weak self] _ in self?.registerRefsHotKey() }
+            .store(in: &refsCancellables)
+        settings.$refsHighlightsOpenKey
+            .sink { [weak self] _ in self?.highlightsTakeover?.sync() }
+            .store(in: &refsCancellables)
+        settings.$refsHighlightsAppPath
+            .sink { [weak self] _ in self?.highlightsTakeover?.sync() }
+            .store(in: &refsCancellables)
+    }
+
     private func configureVaultWatcher() {
         vaultWatcher?.invalidate()
-        let vaultPath = settings.bobDirectory.isEmpty
-            ? FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("bob")
-                .path
-            : settings.bobDirectory
+        let vaultPath = Self.vaultRootURL(bobDirectory: settings.bobDirectory).path
 
         vaultWatcher = VaultTargetWatcher(path: vaultPath) { [weak self] in
             Task { @MainActor in
@@ -364,7 +540,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showCapturePanel() {
-        panelController?.show()
+        // Through the coordinator so showing Capture hides a visible Refs
+        // panel: only one Bob panel is ever on screen.
+        if let panelCoordinator {
+            panelCoordinator.showCapture()
+        } else {
+            panelController?.show()
+        }
         // One refresh updates both the shared cache and the panel snapshot. Starting
         // the model refresh as well would launch two `capture-targets` processes in
         // the same cancellation lane every time the panel opens.
@@ -397,6 +579,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showCapturePanel()
     }
 
+    @objc private func openRefsPanel() {
+        panelCoordinator?.toggleRefs()
+    }
+
     @objc func openSettings() {
         settingsPresentation.present()
     }
@@ -406,6 +592,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelModel?.processClient = processClient
         registerHotKey()
         configureVaultWatcher()
+        // Recheck re-points the Refs fetcher (via configureProcessClient)
+        // and restarts its watcher for the current vault root.
+        refsLibrary?.restartWatcher()
     }
 
     @objc private func restartApp() {
@@ -452,13 +641,15 @@ private struct BobSettingsScene: Scene {
     let settings: AppSettings
     let notificationService: NotificationService
     let canceledDraftStash: CanceledDraftStash
+    let onResetOpenHistory: (() -> Void)?
 
     var body: some Scene {
         Settings {
             SettingsView(
                 settings: settings,
                 notificationService: notificationService,
-                canceledDraftStash: canceledDraftStash
+                canceledDraftStash: canceledDraftStash,
+                onResetOpenHistory: onResetOpenHistory
             )
         }
     }

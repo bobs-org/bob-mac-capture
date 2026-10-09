@@ -1121,6 +1121,34 @@ Return while IME-composing passes through to the text system.
 Printable keys fall through to the search field. Result counts are
 announced 600 ms after typing stops, never on every keystroke.
 
+### Opening Bob Refs
+
+- From anywhere on the Mac, Control-Shift-Command-R toggles the panel.
+  Settings › References can turn this binding off.
+- While Highlights is frontmost, Command-O opens Bob Refs instead of
+  Highlights' Open… dialog. Settings can switch the takeover to
+  Control-O or turn it Off. The takeover registers only while
+  Highlights — or the override app picked in Settings — is frontmost,
+  so Command-O and Control-O keep working everywhere else, and
+  Highlights' File › Open… still opens its own dialog. The panel never
+  activates, so Highlights stays frontmost and the same key closes the
+  panel again.
+- The menu-bar item offers Bob Refs… directly below Capture, with the
+  same shortcut shown for display.
+- Only one Bob panel is ever visible: opening Refs while Capture is
+  open retains the capture draft first (`BobPanelCoordinator`), and
+  opening Capture hides Refs.
+- Every successful capture refreshes Today and marks the snapshot
+  stale, so the next open re-reads it. Recheck Bob re-points the Refs
+  fetcher and restarts its watcher alongside the capture ones.
+- Settings › References also shows the resolved Highlights app (name,
+  version, and path, or "Not found"), with Choose… (limited to `.app`)
+  and Use Default, plus Reset Open History… behind a confirmation
+  dialog.
+- Diagnostics: a failed global or takeover registration reports
+  "Refs hotkey conflict: …"; free the shortcut and use Recheck Bob.
+  Toggling the References settings re-registers immediately.
+
 ## Keyboard
 
 | Key | In the editor | While completion is visible | While Add block ID is open | While Name Pomodoro is open |
@@ -1530,13 +1558,16 @@ refs (id 2), and refs Highlights-Open (id 3). Each action registers independentl
 so registering or unregistering one never disturbs the others, and a failed
 registration leaves every other registration intact. Pressing the production
 hotkey behaves exactly as before. The refs bindings — Control-Shift-Command-R
-globally, Command-O or Control-O while Highlights is frontmost — are reserved by
-the registry but stay no-ops until the Bob Refs panel wires them.
+globally, Command-O or Control-O while Highlights is frontmost — route through
+`BobPanelCoordinator.toggleRefs()`: the global key whenever its setting is on,
+the takeover key only while Highlights (or the Settings override app) is
+frontmost.
 
 If `RegisterEventHotKey` fails — most often because another app already owns the
 configured shortcut — the app does not silently do nothing. Settings' Diagnostics
 section reports "Hotkey conflict" with the underlying Carbon status, and the same event
-is recorded in Recent Activity. Use "Recheck Bob" from the menu-bar item after freeing
+is recorded in Recent Activity. A failed Refs binding reports "Refs hotkey
+conflict: …" the same way. Use "Recheck Bob" from the menu-bar item after freeing
 the shortcut, or use Settings to switch between the production and rollback bindings.
 New installs default to Control-Shift-Command-I; turn off **Use production
 Control-Shift-Command-I** only when restoring the retired Hammerspoon capture workflow.

@@ -139,7 +139,7 @@ final class StatusItemGlyphTests: XCTestCase {
             to: menu
         )
 
-        XCTAssertEqual(menu.items.count, 8)
+        XCTAssertEqual(menu.items.count, 9)
         XCTAssertEqual(menu.items[0].title, "bob Not Resolved — Open Settings…")
         XCTAssertEqual(menu.items[0].action.map(NSStringFromSelector), "openSettings")
         XCTAssertNotNil(menu.items[0].image)
@@ -147,7 +147,7 @@ final class StatusItemGlyphTests: XCTestCase {
         XCTAssertEqual(
             menu.items.dropFirst(2).map(\.title),
             [
-                "Capture", "Settings", "Recheck Bob", "",
+                "Capture", "Bob Refs…", "Settings", "Recheck Bob", "",
                 "Restart Bob Mac Capture", "Quit Bob Mac Capture",
             ]
         )

@@ -250,6 +250,12 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         _ = makePanelIfNeeded()
     }
 
+    /// Whether the capture panel is currently visible. The panel
+    /// coordinator reads this to retain the draft before showing Refs.
+    var isVisible: Bool {
+        panel?.isVisible == true
+    }
+
     func show() {
         let token = CaptureSignpost.begin("panel-order")
         model.prepareForPresentation()
