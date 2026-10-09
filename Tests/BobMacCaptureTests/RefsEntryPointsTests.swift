@@ -421,7 +421,7 @@ final class RefsEntryPointsTests: XCTestCase {
         delegate.handleCaptureSuccess()
 
         XCTAssertNil(library.lastSuccessAt)
-        await waitForEntryPoints { entryPointsPlanCount(recordURL) > plansBefore }
+        await waitForEntryPoints { self.entryPointsPlanCount(recordURL) > plansBefore }
     }
 
     // MARK: - Hotkey registration

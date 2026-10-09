@@ -259,7 +259,9 @@ final class RefsPanelModelTests: XCTestCase {
             "FAKE_BOB_RECORD_PATH": recordURL.path,
         ])
         await harness.waitForSnapshot()
-        await harness.waitForModel { $0.library.signals.today.entries.count == 4 }
+        await harness.waitForModel { _ in
+            harness.library.signals.today.entries.count == 4
+        }
         // Settle the `-g` lane before the baseline, so no late git-date
         // call can land between the counts below.
         await harness.waitForModel { _ in
@@ -286,8 +288,8 @@ final class RefsPanelModelTests: XCTestCase {
 
     func testCopyDiagnosticOnLoadFailedCopiesRefreshFailure() async throws {
         let harness = try makeHarness(environment: ["FAKE_BOB_EXIT": "1"])
-        await harness.waitForModel { model in
-            if case .failed = model.library.refreshState {
+        await harness.waitForModel { _ in
+            if case .failed = harness.library.refreshState {
                 return true
             }
             return false

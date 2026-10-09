@@ -214,6 +214,10 @@ public final class RefsPanelModel: ObservableObject {
     /// Set by ⌘R (and Retry) so the next completed refresh builds a fresh
     /// listing instead of a content-only update.
     private var pendingRefreshRerank = false
+    /// Every item ever published, by id, so a freshly vanished row still
+    /// draws its last known title. Current publications win on conflict;
+    /// every fresh listing prunes rows the library no longer has.
+    private var knownItems: [String: RefItem] = [:]
     private var lastDiagnostic = ""
     private var toastTask: Task<Void, Never>?
 
@@ -485,6 +489,7 @@ public final class RefsPanelModel: ObservableObject {
         self.query = query
         self.scope = scope
         self.banner = banner
+        knownItems = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
         listing = RefsRanker.listing(items, query: query, scope: scope, signals: signals)
         unavailableIDs = []
         self.selectedID = selectedID
@@ -592,6 +597,7 @@ public final class RefsPanelModel: ObservableObject {
 
     private func rerankSelectingFirst() {
         pendingRefreshRerank = false
+        pruneKnownItems()
         listing = RefsRanker.listing(
             library.items,
             query: query,
@@ -606,6 +612,7 @@ public final class RefsPanelModel: ObservableObject {
     /// when it still exists, for a completed ⌘R or Retry.
     private func freshListingKeepingSelection() {
         pendingRefreshRerank = false
+        pruneKnownItems()
         let keep = selectedID
         listing = RefsRanker.listing(
             library.items,
@@ -621,12 +628,20 @@ public final class RefsPanelModel: ObservableObject {
         }
     }
 
+    /// Drops last-known items the library no longer has: a fresh listing
+    /// drops vanished rows, so their titles go with them.
+    private func pruneKnownItems() {
+        knownItems = Dictionary(uniqueKeysWithValues: library.items.map { ($0.id, $0) })
+    }
+
     private func libraryDidPublish() {
+        for item in library.items {
+            knownItems[item.id] = item
+        }
         let available = Set(library.items.map(\.id))
-        let known = Dictionary(uniqueKeysWithValues: library.items.map { ($0.id, $0) })
         let (next, unavailable) = listing.refreshingContent(
             availableIDs: available,
-            lastKnownItems: known
+            lastKnownItems: knownItems
         )
         listing = next
         // Vanished rows leave the frozen listing, so intersecting with it
