@@ -1,4 +1,4 @@
-/// Registers the global Bob Refs hotkey (Control-Shift-Command-R) when
+/// Registers the global Bob Refs hotkey (Control-Shift-Command-O) when
 /// its setting is on, and unregisters it when off. Registering replaces
 /// only the Refs key: a failure leaves every other registration intact
 /// and is reported, never thrown.

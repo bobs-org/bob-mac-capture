@@ -168,12 +168,15 @@ final class HotKeyRegistryTests: XCTestCase {
     func testRefsAndHighlightsPresets() {
         XCTAssertEqual(
             HotKeyConfiguration.refs.keyCode,
-            UInt32(kVK_ANSI_R)
+            UInt32(kVK_ANSI_O)
         )
         XCTAssertEqual(
             HotKeyConfiguration.refs.modifiers,
             UInt32(cmdKey | controlKey | shiftKey)
         )
+        XCTAssertEqual(HotKeyConfiguration.refs.displayName, "Control-Shift-Command-O")
+        XCTAssertEqual(HotKeyConfiguration.development.displayName, "Control-Shift-Command-R")
+        XCTAssertEqual(HotKeyConfiguration.production.displayName, "Control-Shift-Command-I")
         XCTAssertEqual(
             HotKeyConfiguration.highlightsCommandO.keyCode,
             UInt32(kVK_ANSI_O)
@@ -189,6 +192,29 @@ final class HotKeyRegistryTests: XCTestCase {
         XCTAssertEqual(
             HotKeyConfiguration.highlightsControlO.modifiers,
             UInt32(controlKey)
+        )
+    }
+
+    func testCapturePresetsDoNotCollideWithRefs() {
+        for capture in [HotKeyConfiguration.production, HotKeyConfiguration.development] {
+            let claimsRefsChord =
+                capture.keyCode == HotKeyConfiguration.refs.keyCode
+                && capture.modifiers == HotKeyConfiguration.refs.modifiers
+            XCTAssertFalse(
+                claimsRefsChord,
+                "\(capture.displayName) must not claim the Refs chord"
+            )
+        }
+    }
+
+    func testDevelopmentPresetMovedToR() {
+        XCTAssertEqual(
+            HotKeyConfiguration.development.keyCode,
+            UInt32(kVK_ANSI_R)
+        )
+        XCTAssertEqual(
+            HotKeyConfiguration.development.modifiers,
+            UInt32(cmdKey | controlKey | shiftKey)
         )
     }
 }

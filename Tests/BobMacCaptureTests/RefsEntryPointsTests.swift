@@ -304,7 +304,7 @@ final class RefsEntryPointsTests: XCTestCase {
         )
         let refs = menu.items[1]
         XCTAssertEqual(refs.action.map(NSStringFromSelector), "openRefsPanel")
-        XCTAssertEqual(refs.keyEquivalent, "r")
+        XCTAssertEqual(refs.keyEquivalent, "o")
         XCTAssertTrue(refs.keyEquivalentModifierMask.contains(.command))
         XCTAssertTrue(refs.keyEquivalentModifierMask.contains(.control))
         XCTAssertTrue(refs.keyEquivalentModifierMask.contains(.shift))
@@ -445,6 +445,52 @@ final class RefsEntryPointsTests: XCTestCase {
             }
         )
         XCTAssertFalse(registry.isRegistered(.refs))
+        XCTAssertTrue(errors.isEmpty)
+    }
+
+    func testRefsHotkeySyncRegistersIntendedOChord() {
+        let registrar = EntryPointsFakeRegistrar()
+        let registry = HotKeyRegistry(registrar: registrar) { _ in }
+        var errors: [String] = []
+
+        XCTAssertTrue(
+            RefsHotkeyRegistration.sync(registry: registry, enabled: true) {
+                errors.append($0)
+            }
+        )
+        XCTAssertEqual(registrar.configuration(for: .refs), .refs)
+        XCTAssertEqual(
+            registrar.configuration(for: .refs)?.keyCode,
+            HotKeyConfiguration.refs.keyCode
+        )
+        XCTAssertEqual(
+            registrar.configuration(for: .refs)?.modifiers,
+            HotKeyConfiguration.refs.modifiers
+        )
+        XCTAssertEqual(registrar.configuration(for: .refs)?.keyCode, UInt32(kVK_ANSI_O))
+        XCTAssertTrue(errors.isEmpty)
+    }
+
+    func testCaptureModeChangesKeepRefsOnO() throws {
+        let registrar = EntryPointsFakeRegistrar()
+        let registry = HotKeyRegistry(registrar: registrar) { _ in }
+        var errors: [String] = []
+
+        for capture in [HotKeyConfiguration.production, HotKeyConfiguration.development] {
+            try registry.register(.capture, configuration: capture)
+            XCTAssertTrue(
+                RefsHotkeyRegistration.sync(registry: registry, enabled: true) {
+                    errors.append($0)
+                }
+            )
+            XCTAssertEqual(registrar.configuration(for: .refs), .refs)
+            let captureClaimsRefsChord =
+                registrar.configuration(for: .capture)?.keyCode
+                    == registrar.configuration(for: .refs)?.keyCode
+                && registrar.configuration(for: .capture)?.modifiers
+                    == registrar.configuration(for: .refs)?.modifiers
+            XCTAssertFalse(captureClaimsRefsChord)
+        }
         XCTAssertTrue(errors.isEmpty)
     }
 

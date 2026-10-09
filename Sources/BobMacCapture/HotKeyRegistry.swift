@@ -7,9 +7,9 @@ struct HotKeyConfiguration: Equatable {
     let displayName: String
 
     static let development = HotKeyConfiguration(
-        keyCode: UInt32(kVK_ANSI_O),
+        keyCode: UInt32(kVK_ANSI_R),
         modifiers: UInt32(cmdKey | controlKey | shiftKey),
-        displayName: "Control-Shift-Command-O"
+        displayName: "Control-Shift-Command-R"
     )
 
     static let production = HotKeyConfiguration(
@@ -19,9 +19,9 @@ struct HotKeyConfiguration: Equatable {
     )
 
     static let refs = HotKeyConfiguration(
-        keyCode: UInt32(kVK_ANSI_R),
+        keyCode: UInt32(kVK_ANSI_O),
         modifiers: UInt32(cmdKey | controlKey | shiftKey),
-        displayName: "Control-Shift-Command-R"
+        displayName: "Control-Shift-Command-O"
     )
 
     static let highlightsCommandO = HotKeyConfiguration(
