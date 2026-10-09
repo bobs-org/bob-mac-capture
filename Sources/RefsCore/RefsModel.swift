@@ -349,7 +349,7 @@ extension RefItem {
         if let raw = record.added {
             added = RefDay(parsing: raw)
             addedSource = record.addedSource
-            addedIsApproximate = false
+            addedIsApproximate = record.addedSource == "git"
         } else if let gitRaw = gitAddedDates[record.path] {
             added = RefDay(parsing: gitRaw)
             addedSource = "git"

@@ -298,7 +298,8 @@ public struct RefsOpenLogStore: Sendable {
 }
 
 /// Read model over the open log: last-opened dates, open counts, and the
-/// frecency decay `Σ 0.5^(ageDays / 14)` the ranker weights.
+/// frecency decay `Σ 0.5^(ageDays / frecencyHalfLifeDays)` the ranker
+/// weights.
 public struct RefsOpenStats: Equatable, Sendable {
     private let lastOpenedByPath: [String: Date]
     private let countByPath: [String: Int]
@@ -317,7 +318,9 @@ public struct RefsOpenStats: Equatable, Sendable {
                 lastOpened[event.path] = event.at
             }
             let ageDays = max(0, now.timeIntervalSince(event.at) / 86_400)
-            frecency[event.path, default: 0] += pow(0.5, ageDays / 14)
+            frecency[event.path, default: 0] += pow(
+                0.5, ageDays / RefsRankingConstants.frecencyHalfLifeDays
+            )
         }
         lastOpenedByPath = lastOpened
         countByPath = counts

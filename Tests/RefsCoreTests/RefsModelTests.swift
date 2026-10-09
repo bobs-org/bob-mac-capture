@@ -173,6 +173,21 @@ final class RefsModelTests: XCTestCase {
         XCTAssertTrue(datelessItem.addedIsApproximate)
     }
 
+    func testGitAddedInPlainListIsApproximate() {
+        let record = RefRecord(
+            path: "ref/chat/g.md",
+            link: "[[ref/chat/g]]",
+            title: "G",
+            added: "2026-09-02",
+            addedSource: "git",
+            sourcePDF: "lib/chat/g.pdf"
+        )
+        let item = RefItem.make(from: record, gitAddedDates: [:])!
+        XCTAssertEqual(item.added, RefDay(year: 2026, month: 9, day: 2))
+        XCTAssertEqual(item.addedSource, "git")
+        XCTAssertTrue(item.addedIsApproximate)
+    }
+
     func testGitFinishedIsIgnored() {
         let record = RefRecord(
             path: "ref/chat/x.md",
@@ -278,7 +293,8 @@ final class RefsModelTests: XCTestCase {
         return RefsCatalog.items(
             from: RefsSnapshot(
                 fetchedAt: Date(timeIntervalSince1970: 1),
-                records: response.refs
+                records: response.refs,
+                gitAddedDates: ["ref/chat/git_added_note.md": "2026-09-02"]
             )
         )
     }

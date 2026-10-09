@@ -82,6 +82,16 @@ final class RefsDecodingTests: XCTestCase {
         XCTAssertEqual(record.snapshotSyncedAt, "2026-10-08T13:30:11Z")
     }
 
+    func testGoldenGitRowIsDatelessInPlainList() throws {
+        let response = try decodeGoldenList()
+        let byPath = Dictionary(uniqueKeysWithValues: response.refs.map { ($0.path, $0) })
+        // Live `bob` never emits a git date in the plain list; it
+        // arrives through the `-g` merge path (`gitAddedDates`).
+        let git = try XCTUnwrap(byPath["ref/chat/git_added_note.md"])
+        XCTAssertNil(git.added)
+        XCTAssertNil(git.addedSource)
+    }
+
     func testCacheRoundTripPreservesRecords() throws {
         let response = try decodeGoldenList()
         let snapshot = RefsSnapshot(

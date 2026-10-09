@@ -99,8 +99,15 @@ final class RefsRankingTests: XCTestCase {
             RefsListResponse.self,
             from: fixtureData("refs-list-golden.json")
         )
+        // The golden `git_added_note` row carries no `added` date in the
+        // plain list (live `bob` never emits one); its date arrives
+        // through the `-g` merge path, exercised here.
         return RefsCatalog.items(
-            from: RefsSnapshot(fetchedAt: Self.fixedNow, records: response.refs)
+            from: RefsSnapshot(
+                fetchedAt: Self.fixedNow,
+                records: response.refs,
+                gitAddedDates: ["ref/chat/git_added_note.md": "2026-09-02"]
+            )
         )
     }
 
@@ -161,9 +168,19 @@ final class RefsRankingTests: XCTestCase {
             "ref/chat/next_migration.md",
             "ref/docs/next_blocked_runbook.md",
         ])
-        XCTAssertEqual(sections[.ready]?[0], "ref/blogs/morning_roundup.md")
-        XCTAssertEqual(sections[.ready]?.last, "ref/blogs/ready_blocked_post.md")
-        XCTAssertEqual(sections[.ready]?.count, 9)
+        // Ready sorts by added desc (§3), blocked rows last, id
+        // tie-break — never by last opened.
+        XCTAssertEqual(sections[.ready], [
+            "ref/blogs/morning_roundup.md",
+            "ref/chat/just_added_standup.md",
+            "ref/papers/just_added_survey.md",
+            "ref/slides/talk_deck.md",
+            "ref/papers/harness_engineering.md",
+            "ref/chat/git_added_note.md",
+            "ref/papers/ready_survey.md",
+            "ref/chat/nulltype_note.md",
+            "ref/blogs/ready_blocked_post.md",
+        ])
         XCTAssertEqual(sections[.recentlyOpened], [
             "ref/blogs/harness_engineering.md",
             "ref/chat/omnigent_launch_review.md",
@@ -371,9 +388,12 @@ final class RefsRankingTests: XCTestCase {
         XCTAssertEqual(one.orderedIDs, ["A"])
         XCTAssertEqual(one.matches["A"]?.tier, .word)
 
+        // A 2-character token that prefixes a title word is T1; a
+        // mid-word contiguous substring is T2.
         let two = searchListing(items, query: "om", signals: signals)
         XCTAssertEqual(two.orderedIDs, ["A", "C"])
-        XCTAssertTrue(two.matches.values.allSatisfy { $0.tier == .fuzzy })
+        XCTAssertEqual(two.matches["A"]?.tier, .word)
+        XCTAssertEqual(two.matches["C"]?.tier, .fuzzy)
 
         let three = searchListing(items, query: "omn", signals: signals)
         XCTAssertEqual(three.orderedIDs, ["A", "C"])
@@ -478,6 +498,37 @@ final class RefsRankingTests: XCTestCase {
         XCTAssertEqual(
             RefsCaption.caption(for: missing, in: .next, signals: signals),
             "Chat · added Sep 11 · PDF missing"
+        )
+    }
+
+    func testWeekdayRangeEndsAtSixDays() {
+        // fixedNow is 2026-10-08T12:00:00Z; the UTC calendar matches
+        // makeSignals. Oct 1 is exactly 7 days before Oct 8: it shows
+        // the month and day, never the weekday name of today.
+        let seven = makeItem(id: "s", title: "Seven days old", added: "2026-10-01")
+        let six = makeItem(id: "x", title: "Six days old", added: "2026-10-02")
+        let signals = makeSignals()
+        XCTAssertEqual(
+            RefsCaption.caption(for: seven, in: .ready, signals: signals),
+            "Chat · added Oct 1"
+        )
+        XCTAssertEqual(
+            RefsCaption.caption(for: six, in: .ready, signals: signals),
+            "Chat · added Friday"
+        )
+    }
+
+    func testGoldenGitRowCarriesApproximateCaption() throws {
+        let items = try goldenItems()
+        let byID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+        let git = try XCTUnwrap(byID["ref/chat/git_added_note.md"])
+        XCTAssertEqual(git.added, RefDay(year: 2026, month: 9, day: 2))
+        XCTAssertEqual(git.addedSource, "git")
+        XCTAssertTrue(git.addedIsApproximate)
+        XCTAssertTrue(
+            RefsCaption.caption(
+                for: git, in: .ready, signals: try goldenSignals()
+            ).contains("≈ Sep 2")
         )
     }
 
@@ -635,25 +686,137 @@ final class RefsRankingTests: XCTestCase {
     // MARK: Stability and selection
 
     func testRefreshingContentKeepsOrderAndReportsUnavailable() throws {
+        let items = try goldenItems()
         let listing = RefsRanker.listing(
-            try goldenItems(), query: "", scope: .all,
+            items, query: "", scope: .all,
             signals: try goldenSignals()
         )
+        let byID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
 
         let gone: Set<String> = [
             "ref/chat/omnigent_review_notes.md",
             "ref/papers/old_finished.md",
         ]
         let available = Set(listing.orderedIDs).subtracting(gone)
-        let (refreshed, unavailable) = listing.refreshingContent(availableIDs: available)
+        let vanishedIndex = listing.orderedIDs.firstIndex(
+            of: "ref/chat/omnigent_review_notes.md"
+        )
+        let (refreshed, unavailable) = listing.refreshingContent(
+            availableIDs: available,
+            lastKnownItems: byID
+        )
 
         XCTAssertEqual(unavailable, gone)
-        XCTAssertEqual(refreshed.orderedIDs, listing.orderedIDs.filter { available.contains($0) })
+        XCTAssertEqual(refreshed.unavailableIDs, gone)
+        // Vanished ids keep their index and sections, marked unavailable.
+        XCTAssertEqual(refreshed.orderedIDs, listing.orderedIDs)
+        XCTAssertEqual(
+            refreshed.orderedIDs.firstIndex(
+                of: "ref/chat/omnigent_review_notes.md"
+            ),
+            vanishedIndex
+        )
+        XCTAssertEqual(refreshed.sections, listing.sections)
         XCTAssertEqual(refreshed.mode, listing.mode)
-        // The Today section loses a row but keeps its order; no header
-        // stands alone on an emptied section.
-        XCTAssertTrue(refreshed.sections.allSatisfy { !$0.ids.isEmpty })
+        XCTAssertEqual(
+            refreshed.unavailableItems["ref/chat/omnigent_review_notes.md"]?.title.text,
+            "Field notes on the new Omnigent"
+        )
         XCTAssertEqual(refreshed.totalCount, listing.totalCount)
+    }
+
+    func testFreshListingDropsUnavailable() throws {
+        let items = try goldenItems()
+        let signals = try goldenSignals()
+        let listing = RefsRanker.listing(
+            items, query: "", scope: .all, signals: signals
+        )
+        let gone: Set<String> = ["ref/chat/omnigent_review_notes.md"]
+        let available = Set(listing.orderedIDs).subtracting(gone)
+        let (refreshed, _) = listing.refreshingContent(
+            availableIDs: available
+        )
+        XCTAssertTrue(refreshed.unavailableIDs.contains(
+            "ref/chat/omnigent_review_notes.md"
+        ))
+
+        // A fresh listing (query or scope edit, ⌘R, next open) drops them.
+        let fresh = RefsRanker.listing(
+            items.filter { available.contains($0.id) },
+            query: "", scope: .all, signals: signals
+        )
+        XCTAssertFalse(fresh.orderedIDs.contains(
+            "ref/chat/omnigent_review_notes.md"
+        ))
+        XCTAssertTrue(fresh.unavailableIDs.isEmpty)
+    }
+
+    func testLocalDaysKeepJustAddedAcrossMidnightUTC() {
+        var newYork = Calendar(identifier: .gregorian)
+        newYork.timeZone = TimeZone(identifier: "America/New_York")!
+        // 21:00 local on Oct 8 is already Oct 9 in UTC.
+        let localEvening = newYork.date(
+            from: DateComponents(
+                year: 2026, month: 10, day: 8, hour: 21
+            )
+        )!
+        let utc = Calendar(identifier: .gregorian)
+        var utcCalendar = utc
+        utcCalendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let utcDay = RefsDates.ordinal(localEvening)
+        let localDay = RefsDates.ordinal(
+            localEvening, calendar: newYork
+        )
+        XCTAssertEqual(utcDay - localDay, 1)
+
+        let item = makeItem(
+            id: "fresh", title: "Fresh arrival", state: .ready,
+            added: "2026-10-08"
+        )
+        // At the window edge: 3 local days ago is still Just added;
+        // in UTC it is already 4 days ago and would fall out.
+        let edge = makeItem(
+            id: "edge", title: "Edge arrival", state: .ready,
+            added: "2026-10-05"
+        )
+        var signals = makeSignals(now: localEvening)
+        signals.calendar = newYork
+        let listing = RefsRanker.listing(
+            [item, edge], query: "", scope: .all, signals: signals
+        )
+        let sections = Dictionary(
+            uniqueKeysWithValues: listing.sections.map { ($0.kind, $0.ids) }
+        )
+        XCTAssertEqual(sections[.justAdded], ["fresh", "edge"])
+
+        let breakdown = RefsRanker.scoreBreakdown(
+            item: item, qualities: [1], firstStartsAtZero: true,
+            wholeWord: true, signals: signals, exactMean: false
+        )
+        XCTAssertEqual(
+            breakdown.r,
+            RefsRankingConstants.recencyWeight
+                * pow(0.5, 0 / RefsRankingConstants.recencyHalfLifeDays),
+            accuracy: 1e-9
+        )
+    }
+
+    func testPreparedItemsAreCachedPerSnapshot() throws {
+        RefsPreparedCache.resetForTests()
+        let items = try goldenItems()
+        let signals = try goldenSignals()
+        _ = RefsRanker.listing(items, query: "harness", scope: .all, signals: signals)
+        XCTAssertEqual(RefsPreparedCache.buildCount, 1)
+        _ = RefsRanker.listing(items, query: "omnigent", scope: .all, signals: signals)
+        XCTAssertEqual(
+            RefsPreparedCache.buildCount, 1,
+            "two listings over the same snapshot reuse prepared items"
+        )
+        var changed = signals
+        changed.outlineHeadings = ["ref/chat/x.md": ["New heading"]]
+        _ = RefsRanker.listing(items, query: "harness", scope: .all, signals: changed)
+        XCTAssertEqual(RefsPreparedCache.buildCount, 2)
+        RefsPreparedCache.resetForTests()
     }
 
     func testSelectionPolicy() throws {

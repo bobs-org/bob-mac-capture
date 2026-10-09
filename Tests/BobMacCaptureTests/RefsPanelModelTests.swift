@@ -65,9 +65,13 @@ final class RefsPanelModelTests: XCTestCase {
         await harness.waitForModel { model in
             model.unavailableIDs.contains("ref/papers/small_ready.md")
         }
-        XCTAssertEqual(
-            harness.model.listing.orderedIDs,
-            before.filter { $0 != "ref/papers/small_ready.md" }
+        // A vanished id keeps its index in the frozen listing, marked
+        // unavailable (§5.5); a fresh listing drops it.
+        XCTAssertEqual(harness.model.listing.orderedIDs, before)
+        XCTAssertTrue(
+            harness.model.listing.unavailableIDs.contains(
+                "ref/papers/small_ready.md"
+            )
         )
         XCTAssertEqual(harness.model.selectedID, "ref/papers/small_ready.md")
 

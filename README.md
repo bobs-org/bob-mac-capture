@@ -1038,37 +1038,45 @@ library" instead of opening whatever slid into its index.
 
 An empty query shows browse sections in order — Today (ledger order),
 Just added (ready/next, unopened, added within 3 days, capped at 5),
-Reading, Next (blocked rows last), Ready (blocked rows last), Recently
-opened (read/dropped/unknown opened within 14 days, capped at 5), then
-the Library by last activity. Each item appears in the first section
-that admits it; over-cap rows fall through; empty sections are omitted;
-the final tie-break everywhere is the note path. A typed query collapses
-the sections into one ranked list with tiers that never cross: T0 exact
-(title/stem equality or a pasted arXiv id, DOI, or URL), T1 title/stem
-word prefix, T2 fuzzy (`q >= 0.55`, two characters need a contiguous
+Reading, Next (blocked rows last), Ready by added desc (blocked rows
+last), Recently opened (read/dropped/unknown opened within 14 days,
+capped at 5), then the Library by last activity. Day counts use the
+panel calendar, so Just added, Recently opened, recency, and Library
+activity never shift by a day in US evenings. Each item appears in the
+first section that admits it; over-cap rows fall through; empty sections
+are omitted; the final tie-break everywhere is the note path. A typed
+query collapses the sections into one ranked list with tiers that never
+cross: T0 exact (title/stem equality or a pasted arXiv id, DOI, or URL),
+T1 title/stem word prefix (any length; a 2-character prefix counts),
+T2 fuzzy (`q >= 0.55`; two characters need a contiguous non-word
 substring, one character needs a word prefix), T3 author/area/kind/outline
 heading. Within a tier, `score = m + P + W + L + F + R`: mean token
 quality, prefix bonus 0.15, whole-word bonus 0.10, lane prior (Today
 0.20, reading 0.15, next 0.12, ready 0.08, blocked −0.02, dropped −0.20,
-read/unknown 0), frecency weight 0.25, and added-date recency weight
-0.10; ties break on shorter title, newer added, then path. One tuning
-note: the plan specified the dropped prior as −0.10, but at −0.10 a
-dropped title-prefix match (prefix bonus +0.15) outscored a Ready
-non-prefix word match, failing the "sinks the dropped row" golden
-expectation, so the constant is −0.20. While the panel is open, late
-data refreshes row content in place and never reorders; a vanished row
+read/unknown 0), frecency weight 0.25 (half-life
+`frecencyHalfLifeDays`), and added-date recency weight 0.10; ties break
+on shorter title, newer added, then path. One tuning note: the plan
+specified the dropped prior as −0.10, but at −0.10 a dropped
+title-prefix match (prefix bonus +0.15) outscored a Ready non-prefix
+word match, failing the "sinks the dropped row" golden expectation, so
+the constant is −0.20. While the panel is open, late data refreshes row
+content in place and never reorders; a vanished row keeps its index and
 dims as unavailable instead of opening whatever slid into its index.
 
 ### Tuning
 
 `swift run refs-rank [--plan plan.json] [--opens open-log.json]
-[--scope chats] [--now 2026-10-08T09:00:00] [query...] < ref-list.json`
-ranks a `bob ref list` snapshot with the same ranker the panel uses,
-for tuning against live output on this Mac or athena. Browse mode
-prints the sections; search mode prints
-`rank  tier  score (m P W L F R)  state  kind  title`, each followed by
-its why-here line. The target is never bundled: `Scripts/bundle.sh`
-copies only the `BobMacCapture` product.
+[--scope chats] [--now 2026-10-08T09:00:00] [--tz America/New_York]
+[query...] < ref-list.json` ranks a `bob ref list` snapshot with the
+same ranker the panel uses, for tuning against live output on this Mac
+or athena. `--now` accepts a full ISO 8601 time with an offset or a
+local date-time without one, interpreted in `--tz` (default: the current
+time zone); that calendar ranks the snapshot. Browse mode prints the
+sections; search mode prints
+`rank  tier  score (m P W L F R)  state  kind  title` with padded columns
+(rank 4, tier 9, state 8, kind 7), each followed by its why-here line.
+The target is never bundled: `Scripts/bundle.sh` copies only the
+`BobMacCapture` product.
 
 ### The panel
 

@@ -55,7 +55,10 @@ public enum RefsCaption {
             return addedPhrase(item, signals: signals)
         case .reading, .next, .recentlyOpened:
             if let opened = RefsRanker.lastOpened(item, signals: signals) {
-                return "opened \(relativeCompact(opened, now: signals.now))"
+                return "opened \(relativeCompact(
+                    opened, now: signals.now,
+                    calendar: signals.calendar
+                ))"
             }
             return addedPhrase(item, signals: signals)
         case .today, .library:
@@ -71,7 +74,10 @@ public enum RefsCaption {
     /// Search mode: the last-activity phrase.
     static func lastActivityPhrase(_ item: RefItem, signals: RefsSignals) -> String {
         if let opened = RefsRanker.lastOpened(item, signals: signals) {
-            return "opened \(relativeCompact(opened, now: signals.now))"
+            return "opened \(relativeCompact(
+                opened, now: signals.now,
+                calendar: signals.calendar
+            ))"
         }
         if item.state == .read, let finished = item.finished {
             return "read \(absoluteDay(finished, now: signals.now, calendar: signals.calendar))"
@@ -88,7 +94,9 @@ public enum RefsCaption {
     }
 
     /// Compact relative time for captions: "2h ago".
-    public static func relativeCompact(_ date: Date, now: Date) -> String {
+    public static func relativeCompact(
+        _ date: Date, now: Date, calendar: Calendar = .current
+    ) -> String {
         let seconds = max(0, now.timeIntervalSince(date))
         if seconds < 60 {
             return "just now"
@@ -102,15 +110,15 @@ public enum RefsCaption {
         if seconds < 14 * 86_400 {
             return "\(Int(seconds / 86_400))d ago"
         }
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
         let day = dayComponents(date, calendar: calendar)
         let today = dayComponents(now, calendar: calendar)
         return absoluteDay(day, today: today, calendar: calendar)
     }
 
     /// Long relative time for why-here lines: "2 hours ago".
-    public static func relativeLong(_ date: Date, now: Date) -> String {
+    public static func relativeLong(
+        _ date: Date, now: Date, calendar: Calendar = .current
+    ) -> String {
         let seconds = max(0, now.timeIntervalSince(date))
         if seconds < 60 {
             return "just now"
@@ -127,8 +135,6 @@ public enum RefsCaption {
             let days = Int(seconds / 86_400)
             return days == 1 ? "1 day ago" : "\(days) days ago"
         }
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
         return absoluteDay(
             dayComponents(date, calendar: calendar),
             today: dayComponents(now, calendar: calendar),
@@ -149,8 +155,9 @@ public enum RefsCaption {
         )
     }
 
-    /// "today", "yesterday", the weekday for the last 6 days, "Oct 7"
-    /// within the year, and "Oct 7, 2025" otherwise.
+    /// "today", "yesterday", the weekday for 2–6 days ago, "Oct 7"
+    /// within the year, and "Oct 7, 2025" otherwise. A date exactly 7
+    /// days old shows the month and day, never today's weekday name.
     public static func absoluteDay(_ day: RefDay, now: Date, calendar: Calendar) -> String {
         absoluteDay(
             DayParts(year: day.year, month: day.month, day: day.day),
@@ -168,7 +175,7 @@ public enum RefsCaption {
         if diff == 1 {
             return "yesterday"
         }
-        if (2...7).contains(diff) {
+        if (2...6).contains(diff) {
             let components = DateComponents(year: day.year, month: day.month, day: day.day)
             if let date = calendar.date(from: components) {
                 let weekday = calendar.component(.weekday, from: date)
@@ -265,7 +272,10 @@ public enum RefsExplanation {
             return "Just added · never opened"
         case .reading:
             if let opened = RefsRanker.lastOpened(item, signals: signals) {
-                return "Reading · opened \(RefsCaption.relativeLong(opened, now: signals.now))"
+                return "Reading · opened \(RefsCaption.relativeLong(
+                    opened, now: signals.now,
+                    calendar: signals.calendar
+                ))"
             }
             return "Reading · never opened"
         case .next:
@@ -283,7 +293,10 @@ public enum RefsExplanation {
             return "Ready"
         case .recentlyOpened:
             if let opened = RefsRanker.lastOpened(item, signals: signals) {
-                return "Opened \(RefsCaption.relativeLong(opened, now: signals.now))"
+                return "Opened \(RefsCaption.relativeLong(
+                    opened, now: signals.now,
+                    calendar: signals.calendar
+                ))"
             }
             return "Opened"
         case .library, nil:

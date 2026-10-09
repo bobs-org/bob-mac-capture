@@ -237,6 +237,16 @@ public struct RefsListing: Equatable, Sendable {
     public let totalCount: Int
     /// Rows in the reading, next, or ready state (blocked included).
     public let openCount: Int
+    /// Frozen ids that vanished from the latest snapshot. They keep
+    /// their index in `orderedIDs` and their sections, rendered dimmed.
+    /// INTERFACE CHANGE for refs-model-fixes: read this set (and
+    /// `unavailableItems` for the last known titles) instead of tracking
+    /// vanished ids in the panel model.
+    public let unavailableIDs: Set<String>
+    /// Last known content for `unavailableIDs`, so an unavailable row
+    /// can still draw its title. Keyed by id; empty when the caller did
+    /// not pass last-known items.
+    public let unavailableItems: [String: RefItem]
 
     public init(
         mode: Mode,
@@ -245,7 +255,9 @@ public struct RefsListing: Equatable, Sendable {
         orderedIDs: [String],
         matches: [String: RefsMatch],
         totalCount: Int,
-        openCount: Int
+        openCount: Int,
+        unavailableIDs: Set<String> = [],
+        unavailableItems: [String: RefItem] = [:]
     ) {
         self.mode = mode
         self.scope = scope
@@ -254,34 +266,37 @@ public struct RefsListing: Equatable, Sendable {
         self.matches = matches
         self.totalCount = totalCount
         self.openCount = openCount
+        self.unavailableIDs = unavailableIDs
+        self.unavailableItems = unavailableItems
     }
 
     /// A content-only refresh of a frozen listing: late data changes row
-    /// content in place but never reorders. Keeps the order, drops empty
-    /// sections, and reports ids that are gone from the new snapshot.
+    /// content in place but never reorders. Vanished ids keep their index
+    /// and sections, marked unavailable with their last known content.
     /// A gone id is shown as unavailable — dimmed, never opening whatever
-    /// row slid into its index.
-    public func refreshingContent(availableIDs: Set<String>) -> (
-        listing: RefsListing, unavailable: Set<String>
-    ) {
-        let kept = orderedIDs.filter { availableIDs.contains($0) }
-        let sections = sections.map { section in
-            RefsSection(
-                kind: section.kind,
-                ids: section.ids.filter { availableIDs.contains($0) }
-            )
-        }.filter { !$0.ids.isEmpty }
-        let matches = matches.filter { availableIDs.contains($0.key) }
+    /// row slid into its index. A fresh listing (query or scope edit, ⌘R,
+    /// next open) drops them.
+    public func refreshingContent(
+        availableIDs: Set<String>,
+        lastKnownItems: [String: RefItem] = [:]
+    ) -> (listing: RefsListing, unavailable: Set<String>) {
         let unavailable = Set(orderedIDs).subtracting(availableIDs)
+            .union(unavailableIDs.subtracting(availableIDs))
+        var mergedUnavailableItems = unavailableItems
+        for (id, item) in lastKnownItems where unavailable.contains(id) {
+            mergedUnavailableItems[id] = item
+        }
         return (
             RefsListing(
                 mode: mode,
                 scope: scope,
                 sections: sections,
-                orderedIDs: kept,
+                orderedIDs: orderedIDs,
                 matches: matches,
                 totalCount: totalCount,
-                openCount: openCount
+                openCount: openCount,
+                unavailableIDs: unavailable,
+                unavailableItems: mergedUnavailableItems
             ),
             unavailable
         )
@@ -435,6 +450,22 @@ enum RefsDates {
     static func ordinal(_ date: Date) -> Int {
         Int(floor(date.timeIntervalSince1970 / 86_400))
     }
+
+    /// Local day ordinal for an instant in `calendar`: the civil
+    /// year/month/day in that calendar's time zone, on the Unix-day
+    /// scale so it compares directly with `unixOrdinal(RefDay)`.
+    static func ordinal(_ date: Date, calendar: Calendar) -> Int {
+        let parts = calendar.dateComponents(
+            [.year, .month, .day], from: date
+        )
+        guard let year = parts.year, let month = parts.month,
+            let day = parts.day
+        else {
+            return ordinal(date)
+        }
+        return ordinal(year: year, month: month, day: day)
+            - ordinal(year: 1970, month: 1, day: 1)
+    }
 }
 
 // MARK: - Ranker
@@ -534,7 +565,9 @@ public enum RefsRanker {
     // MARK: Browse
 
     static func browseSections(_ scoped: [RefItem], signals: RefsSignals) -> [RefsSection] {
-        let todayOrdinal = RefsDates.ordinal(signals.now)
+        let todayOrdinal = RefsDates.ordinal(
+            signals.now, calendar: signals.calendar
+        )
         var placed: Set<String> = []
         var sections: [RefsSection] = []
 
@@ -593,10 +626,9 @@ public enum RefsRanker {
             sections.append(RefsSection(kind: .next, ids: nextIDs))
         }
 
-        // Ready, blocked rows last.
-        let readyIDs = browseLane(
-            scoped, placed: placed, signals: signals,
-            states: [.ready], blockedLast: true, todayOrdinal: todayOrdinal
+        // Ready (§3): added desc, blocked rows last, id tie-break.
+        let readyIDs = readyLane(
+            scoped, placed: placed, states: [.ready]
         ).map(\.id)
         placed.formUnion(readyIDs)
         if !readyIDs.isEmpty {
@@ -609,7 +641,10 @@ public enum RefsRanker {
             .filter {
                 ($0.state == .read || $0.state == .dropped || $0.state == .unknown)
                     && lastOpened($0, signals: signals).map {
-                        todayOrdinal - RefsDates.ordinal($0)
+                        todayOrdinal
+                            - RefsDates.ordinal(
+                                $0, calendar: signals.calendar
+                            )
                             <= RefsRankingConstants.recentlyOpenedWindowDays
                     } ?? false
             }
@@ -633,13 +668,14 @@ public enum RefsRanker {
 
     /// One state lane in browse mode: last opened desc (nil last),
     /// then added desc, then id. Blocked rows sort last when asked.
+    /// `todayOrdinal` is unused and kept only for call-site stability.
     static func browseLane(
         _ scoped: [RefItem],
         placed: Set<String>,
         signals: RefsSignals,
         states: Set<RefState>,
         blockedLast: Bool,
-        todayOrdinal: Int
+        todayOrdinal: Int = 0
     ) -> [RefItem] {
         scoped
             .filter { !placed.contains($0.id) && states.contains($0.state) }
@@ -649,6 +685,23 @@ public enum RefsRanker {
                 }
                 if let compared = compareOpenedDesc($0, $1, signals: signals) {
                     return compared
+                }
+                return compareAddedDesc($0, $1) ?? ($0.id < $1.id)
+            }
+    }
+
+    /// The Ready lane (§3): added desc, blocked rows last, id tie-break.
+    /// Next and Reading keep last-opened-then-added; Ready does not.
+    static func readyLane(
+        _ scoped: [RefItem],
+        placed: Set<String>,
+        states: Set<RefState>
+    ) -> [RefItem] {
+        scoped
+            .filter { !placed.contains($0.id) && states.contains($0.state) }
+            .sorted {
+                if $0.isBlocked != $1.isBlocked {
+                    return !$0.isBlocked
                 }
                 return compareAddedDesc($0, $1) ?? ($0.id < $1.id)
             }
@@ -689,7 +742,7 @@ public enum RefsRanker {
     }
 
     /// Last activity: `max(added, last-opened day, finished)` on the
-    /// Unix-day scale, nil last.
+    /// Unix-day scale, nil last. Opened days use `signals.calendar`.
     static func activityOrdinal(_ item: RefItem, signals: RefsSignals) -> Int? {
         var best: Int?
         if let added = item.added {
@@ -699,7 +752,10 @@ public enum RefsRanker {
             best = max(best ?? Int.min, RefsDates.unixOrdinal(finished))
         }
         if let opened = lastOpened(item, signals: signals) {
-            best = max(best ?? Int.min, RefsDates.ordinal(opened))
+            best = max(
+                best ?? Int.min,
+                RefsDates.ordinal(opened, calendar: signals.calendar)
+            )
         }
         return best
     }
@@ -738,9 +794,11 @@ public enum RefsRanker {
         rawQuery: String,
         signals: RefsSignals
     ) -> [RankedRow] {
-        // Precompute the per-item searchable text once per item set, so
-        // ranking stays far under a frame for library-sized sets.
-        let prepared = scoped.map { RefsPreparedItem(item: $0) }
+        // Prepared items come from a per-snapshot cache, so repeated
+        // listings over the same snapshot never rebuild mid-keystroke.
+        let prepared = RefsPreparedCache.prepared(
+            for: scoped, signals: signals
+        )
         let selfScores = Dictionary(
             uniqueKeysWithValues: tokens.map { ($0, selfScore($0)) }
         )
@@ -928,7 +986,8 @@ public enum RefsRanker {
             }
             let daysSince = max(
                 0,
-                RefsDates.ordinal(signals.now) - RefsDates.unixOrdinal(added)
+                RefsDates.ordinal(signals.now, calendar: signals.calendar)
+                    - RefsDates.unixOrdinal(added)
             )
             return RefsRankingConstants.recencyWeight
                 * pow(0.5, Double(daysSince) / RefsRankingConstants.recencyHalfLifeDays)
@@ -1242,10 +1301,71 @@ enum RefsFuzzyScore {
     }
 }
 
+/// Small single-entry cache for prepared items, keyed by snapshot
+/// identity plus the inputs that change the prepared fields. The
+/// prepared text depends on each item's id, title, and stem; the key
+/// also folds in the inspector's outline headings, which change what
+/// secondary matches a listing can produce. Rebuilds only when the
+/// snapshot or those inputs change.
+enum RefsPreparedCache {
+    private static let lock = NSLock()
+    private static var lastKey: String?
+    private static var lastPrepared: [RefsPreparedItem] = []
+    /// Test hook: how many times the cache rebuilt. Tests reset it.
+    static var buildCount = 0
+
+    static func prepared(
+        for items: [RefItem], signals: RefsSignals
+    ) -> [RefsPreparedItem] {
+        let key = cacheKey(items: items, signals: signals)
+        lock.lock()
+        if let lastKey, lastKey == key {
+            let cached = lastPrepared
+            lock.unlock()
+            return cached
+        }
+        lock.unlock()
+        let built = items.map { RefsPreparedItem(item: $0) }
+        lock.lock()
+        lastKey = key
+        lastPrepared = built
+        buildCount += 1
+        lock.unlock()
+        return built
+    }
+
+    static func resetForTests() {
+        lock.lock()
+        lastKey = nil
+        lastPrepared = []
+        buildCount = 0
+        lock.unlock()
+    }
+
+    static func cacheKey(
+        items: [RefItem], signals: RefsSignals
+    ) -> String {
+        var parts: [String] = []
+        parts.reserveCapacity(items.count * 3 + signals.outlineHeadings.count)
+        for item in items {
+            parts.append(item.id)
+            parts.append(item.rawTitle)
+            parts.append(item.stem)
+        }
+        for id in signals.outlineHeadings.keys.sorted() {
+            parts.append(id)
+            parts.append((signals.outlineHeadings[id] ?? []).joined(
+                separator: "\n"
+            ))
+        }
+        return parts.joined(separator: "\u{1F}")
+    }
+}
+
 /// One item's searchable text, precomputed once per item set: folded
-/// titles and stems with their words and alignment tables. Cached by
-/// the caller per snapshot so ranking never rebuilds mid-keystroke
-/// state.
+/// titles and stems with their words and alignment tables. Cached per
+/// snapshot by `RefsPreparedCache` so ranking never rebuilds
+/// mid-keystroke state.
 struct RefsPreparedItem {
     let item: RefItem
     let foldedTitle: String
@@ -1310,11 +1430,12 @@ struct RefsPreparedItem {
     }
 
     /// Word or fuzzy match of one token against one prepared field. A
-    /// one-character token matches as a word prefix only; two
-    /// characters need a contiguous substring; three or more use the
-    /// fuzzy subsequence at `q >= fuzzyFloor`. Quality rides the
-    /// score-only alignment; the full alignment runs only for fuzzy
-    /// winners that need highlight positions.
+    /// one-character token matches as a word prefix only; a
+    /// two-character token that prefixes a word is a word (T1) hit,
+    /// otherwise it needs a contiguous substring (T2); three or more
+    /// use the fuzzy subsequence at `q >= fuzzyFloor`. Quality rides
+    /// the score-only alignment; the full alignment runs only for
+    /// fuzzy winners that need highlight positions.
     func matchField(
         _ token: String,
         tokenFolded: [Character],
@@ -1346,6 +1467,13 @@ struct RefsPreparedItem {
             )
         }
         if token.count == 2 {
+            if let start = wordStart {
+                return RefsTokenHit(
+                    tier: .word, quality: fuzzyQuality ?? 1,
+                    place: place(wordPositions(token, start: start)),
+                    startsAtZero: start == 0, isWholeWord: wordWhole
+                )
+            }
             guard let start = substringStart(tokenFolded, in: field.folded) else {
                 return nil
             }
