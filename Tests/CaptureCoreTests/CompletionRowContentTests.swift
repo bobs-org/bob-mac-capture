@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 
 @testable import CaptureCore
@@ -441,7 +442,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.accessibilityHint, "Names this Pomodoro, then selects it.")
     }
 
-    func testPomodoroStartNameRunningRowWarnsToCloseFirst() {
+    func testPomodoroStartNameRunningRowTeachesOverrideRestart() {
         let candidate = CaptureCompletionCandidate(
             replacement: "bugs",
             taskRef: "7:63a70f13",
@@ -467,8 +468,184 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.badges, ["Running"])
         XCTAssertEqual(
             content.accessibilityHint,
-            "Already running. Close it first with =x, or write =x =#name."
+            "Already running. Restart it with ==, or close it first with =x."
         )
+    }
+
+    func testPomodoroStartNameRunningRowUnderKeepsOverrideTeachesSwap() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "capture",
+            taskRef: "5:0acd7866",
+            statusSymbol: " ",
+            childCount: 2,
+            name: "CAPTURE",
+            requiresName: false,
+            line: 5,
+            state: "open",
+            timeRange: "0920-0945",
+            placeholder: false,
+            isCurrent: true,
+            matchCount: 1
+        )
+        let override = CaptureCompleteOverride(
+            keepsLedger: true,
+            running: CaptureCompleteOverrideRunning(
+                pomodoroName: "CAPTURE",
+                line: 5,
+                timeRange: "0920-0945"
+            )
+        )
+
+        let content = completionRowContent(
+            for: candidate,
+            context: "pomodoro_start_name",
+            query: "",
+            override: override
+        )
+
+        XCTAssertEqual(content.secondaryText, "Running 0920–0945")
+        XCTAssertEqual(content.badges, ["Running"])
+        XCTAssertEqual(
+            content.accessibilityHint,
+            "Already running — == restarts it; pick another Pomodoro to swap in"
+        )
+    }
+
+    func testPomodoroStartNameRunningRowUnderFreshOverrideRestarts() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "capture",
+            taskRef: "5:0acd7866",
+            statusSymbol: " ",
+            childCount: 2,
+            name: "CAPTURE",
+            requiresName: false,
+            line: 5,
+            state: "open",
+            timeRange: "0920-0945",
+            placeholder: false,
+            isCurrent: true,
+            matchCount: 1
+        )
+        let override = CaptureCompleteOverride(
+            keepsLedger: false,
+            running: CaptureCompleteOverrideRunning(
+                pomodoroName: "CAPTURE",
+                line: 5,
+                timeRange: "0920-0945"
+            )
+        )
+
+        let content = completionRowContent(
+            for: candidate,
+            context: "pomodoro_start_name",
+            query: "",
+            override: override
+        )
+
+        XCTAssertEqual(content.secondaryText, "Running 0920–0945")
+        XCTAssertEqual(content.accessibilityHint, "Restarts it now")
+    }
+
+    func testPomodoroStartNameOpenRowUnderKeepsOverrideTakesOverLedger() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "bugs",
+            taskRef: "9:49ff9cb6",
+            statusSymbol: " ",
+            childCount: 1,
+            name: "BUGS",
+            requiresName: false,
+            line: 9,
+            state: "open",
+            timeRange: nil,
+            placeholder: true,
+            isCurrent: false,
+            matchCount: 1,
+            nextUp: true
+        )
+        let override = CaptureCompleteOverride(
+            keepsLedger: true,
+            running: CaptureCompleteOverrideRunning(
+                pomodoroName: "CAPTURE",
+                line: 5,
+                timeRange: "0920-0945"
+            )
+        )
+
+        let content = completionRowContent(
+            for: candidate,
+            context: "pomodoro_start_name",
+            query: "bu",
+            override: override
+        )
+
+        XCTAssertEqual(content.secondaryText, "Takes over 0920–0945")
+        XCTAssertEqual(content.badges, ["Next", "1 link"])
+        XCTAssertEqual(content.accessibilityHint, "Starts this Pomodoro now.")
+    }
+
+    func testPomodoroStartNameOpenRowUnderFreshOverrideKeepsDiscoveryText() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "sase",
+            taskRef: "8:872a7840",
+            statusSymbol: " ",
+            childCount: 0,
+            name: "SASE",
+            requiresName: false,
+            line: 8,
+            state: "open",
+            timeRange: nil,
+            placeholder: true,
+            isCurrent: false,
+            matchCount: 1,
+            nextUp: true
+        )
+        let override = CaptureCompleteOverride(
+            keepsLedger: false,
+            running: CaptureCompleteOverrideRunning(
+                pomodoroName: "CAPTURE",
+                line: 5,
+                timeRange: "0920-0945"
+            )
+        )
+
+        let content = completionRowContent(
+            for: candidate,
+            context: "pomodoro_start_name",
+            query: "",
+            override: override
+        )
+
+        XCTAssertEqual(content.secondaryText, "Next up")
+        XCTAssertEqual(content.badges, ["Next", "Empty"])
+    }
+
+    func testPomodoroStartNameOpenRowWithoutRunningKeepsDiscoveryText() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "sase",
+            taskRef: "3:872a7840",
+            statusSymbol: " ",
+            childCount: 0,
+            name: "SASE",
+            requiresName: false,
+            line: 3,
+            state: "open",
+            timeRange: nil,
+            placeholder: true,
+            isCurrent: false,
+            matchCount: 1,
+            nextUp: true
+        )
+        let override = CaptureCompleteOverride(keepsLedger: true, running: nil)
+
+        let content = completionRowContent(
+            for: candidate,
+            context: "pomodoro_start_name",
+            query: "",
+            override: override
+        )
+
+        XCTAssertEqual(content.secondaryText, "Next up")
+        XCTAssertEqual(content.accessibilityHint, "Starts this Pomodoro now.")
     }
 
     func testPomodoroBlockIDContextUsesItsOwnLabel() {
@@ -880,5 +1057,52 @@ final class CompletionRowContentTests: XCTestCase {
     func testMiddleTruncatedPathHandlesDegenerateTinyBudget() {
         XCTAssertEqual(middleTruncatedPath("abcdefghij", maxLength: 1), "\u{2026}")
         XCTAssertEqual(middleTruncatedPath("abcdefghij", maxLength: 0), "abcdefghij")
+    }
+
+    func testOverrideCompleteFixtureDecodesKeepsLedgerAndRunning() throws {
+        let response = try decodeCompletionFixture("pomodoro-start-override-complete.json")
+
+        XCTAssertEqual(response.context, "pomodoro_start_name")
+        let override = try XCTUnwrap(response.overrideInfo)
+        XCTAssertTrue(override.keepsLedger)
+        let running = try XCTUnwrap(override.running)
+        XCTAssertEqual(running.pomodoroName, "CAPTURE")
+        XCTAssertEqual(running.line, 5)
+        XCTAssertEqual(running.timeRange, "0920-0945")
+        XCTAssertEqual(response.candidates.count, 4)
+    }
+
+    func testOverrideCompleteFreshFixtureDecodesFreshLedger() throws {
+        let response = try decodeCompletionFixture("pomodoro-start-override-complete-fresh.json")
+
+        let override = try XCTUnwrap(response.overrideInfo)
+        XCTAssertFalse(override.keepsLedger)
+        XCTAssertEqual(override.running?.pomodoroName, "CAPTURE")
+        XCTAssertEqual(override.running?.timeRange, "0920-0945")
+    }
+
+    func testOverrideCompleteIdleFixtureOmitsRunning() throws {
+        let response = try decodeCompletionFixture("pomodoro-start-override-complete-idle.json")
+
+        let override = try XCTUnwrap(response.overrideInfo)
+        XCTAssertTrue(override.keepsLedger)
+        XCTAssertNil(override.running)
+        XCTAssertEqual(response.candidates.count, 2)
+    }
+
+    func testPlainStartNameFixtureCarriesNoOverride() throws {
+        let response = try decodeCompletionFixture("pomodoro-start-named-complete-running.json")
+
+        XCTAssertEqual(response.context, "pomodoro_start_name")
+        XCTAssertNil(response.overrideInfo)
+    }
+
+    private func decodeCompletionFixture(_ name: String) throws -> CaptureCompletionResponse {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let text = try String(contentsOf: fixtures.appendingPathComponent(name), encoding: .utf8)
+        return try JSONDecoder().decode(CaptureCompletionResponse.self, from: Data(text.utf8))
     }
 }

@@ -2997,6 +2997,99 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(model.completionVisible)
     }
 
+    func testOverridePickerKeepsStatusAndTakeoverRows() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "==#"
+        model.editorTextDidChange(cursorUTF8Offset: 3)
+        await waitUntil { model.completionResponse?.context == "pomodoro_start_name" }
+
+        // An incomplete `==#` is a state, not an error: the calm picker
+        // status names the running session the pick would displace, with
+        // the list kept open.
+        XCTAssertEqual(model.previewState, .idle)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(
+            model.statusText,
+            "Pick a Pomodoro to take over CAPTURE's 0920–0945"
+        )
+        XCTAssertTrue(model.completionVisible)
+        let candidates = try XCTUnwrap(model.completionResponse?.candidates)
+        XCTAssertEqual(candidates.first?.replacement, "sase")
+        XCTAssertEqual(candidates.last?.replacement, "capture")
+        XCTAssertEqual(
+            model.rowContent(for: candidates[0]).secondaryText,
+            "Takes over 0920–0945"
+        )
+        let running = try XCTUnwrap(candidates.last)
+        XCTAssertEqual(
+            model.rowContent(for: running).secondaryText,
+            "Running 0920–0945"
+        )
+        XCTAssertEqual(
+            model.rowContent(for: running).accessibilityHint,
+            "Already running — == restarts it; pick another Pomodoro to swap in"
+        )
+    }
+
+    func testOverridePickerFreshStatusNamesFirstFuture() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "==3#"
+        model.editorTextDidChange(cursorUTF8Offset: 4)
+        await waitUntil { model.completionResponse?.context == "pomodoro_start_name" }
+
+        XCTAssertEqual(model.previewState, .idle)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(
+            model.statusText,
+            "Pick a Pomodoro to start now · CAPTURE returns to first future"
+        )
+        XCTAssertTrue(model.completionVisible)
+        let candidates = try XCTUnwrap(model.completionResponse?.candidates)
+        let running = try XCTUnwrap(candidates.last)
+        XCTAssertEqual(
+            model.rowContent(for: running).accessibilityHint,
+            "Restarts it now"
+        )
+    }
+
+    func testOverridePickerIdleKeepsCalmStatus() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_OVERRIDE_IDLE": "1",
+            ]
+        )
+        model.plainDraft = "==#"
+        model.editorTextDidChange(cursorUTF8Offset: 3)
+        await waitUntil { model.completionResponse?.context == "pomodoro_start_name" }
+
+        // Nothing is running, so the override names no session: the
+        // existing calm status stands and open rows keep discovery text.
+        XCTAssertEqual(model.previewState, .idle)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(
+            model.statusText,
+            "Pick a Pomodoro to start, or type a new name"
+        )
+        XCTAssertTrue(model.completionVisible)
+        let candidates = try XCTUnwrap(model.completionResponse?.candidates)
+        XCTAssertEqual(
+            model.rowContent(for: candidates[0]).secondaryText,
+            "Next up"
+        )
+    }
+
     func testNamedStartLivePreviewShowsStartCardWithStartFooter() async throws {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(

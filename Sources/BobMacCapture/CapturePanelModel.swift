@@ -1825,6 +1825,16 @@ final class CapturePanelModel: ObservableObject {
         completionResponse = completion.candidates.isEmpty ? nil : completion
         completionDraftSnapshot = completion.candidates.isEmpty ? nil : draft
         selectedCompletionIndex = 0
+        // A `pomodoro_start_name` list that opened on the quiet incomplete
+        // picker (`==#`, `==3#`, `=#`) still shows that calm status line:
+        // refresh it from Bob's override object once completion arrives, so
+        // a `==` pick names the running session it displaces. Any other
+        // status (a live preview, a prompt) is left alone.
+        if completion.context == "pomodoro_start_name",
+           statusText == CapturePickerNeed.pomodoroStart.statusText
+        {
+            statusText = pomodoroStartPickerStatus(override: completion.overrideInfo)
+        }
         applyCompletionWarnings(completion.warnings)
     }
 
@@ -4016,7 +4026,8 @@ final class CapturePanelModel: ObservableObject {
         completionRowContent(
             for: candidate,
             context: completionResponse?.context,
-            query: completionQueryText()
+            query: completionQueryText(),
+            override: completionResponse?.overrideInfo
         )
     }
 

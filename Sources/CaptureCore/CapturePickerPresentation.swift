@@ -527,6 +527,36 @@ public enum CapturePickerNeed: Equatable, Sendable {
     }
 }
 
+/// The status line for a `pomodoro_start_name` completion list: under a
+/// `==` token Bob's top-level `override` object names the running session
+/// the pick would displace, so the line says what the pick does with it —
+/// a ledger-keeping `==#` takes over its range, a fresh `==<X>#` starts now
+/// and returns it to first future. With no running session (idle) or no
+/// override object (a plain `=#`, or an older Bob), the existing text
+/// stands. Every string is built from Bob's JSON; Swift never parses the
+/// draft or the ledger itself.
+public func pomodoroStartPickerStatus(override: CaptureCompleteOverride?) -> String {
+    let plain = CapturePickerNeed.pomodoroStart.statusText
+    guard let running = override?.running else {
+        return plain
+    }
+    let range = running.timeRange.flatMap { $0.isEmpty ? nil : $0 } ?? ""
+    let name = running.pomodoroName.flatMap { $0.isEmpty ? nil : $0 }
+    if override?.keepsLedger == true, !range.isEmpty {
+        if let name {
+            return "Pick a Pomodoro to take over \(name)'s \(enDashRange(range))"
+        }
+        return "Pick a Pomodoro to take over \(enDashRange(range))"
+    }
+    if override?.keepsLedger == false, !range.isEmpty {
+        if let name {
+            return "Pick a Pomodoro to start now \u{00B7} \(name) returns to first future"
+        }
+        return "Pick a Pomodoro to start now \u{00B7} the running session returns to first future"
+    }
+    return plain
+}
+
 /// Task status derived from the candidate's status symbol: `/` is In
 /// Progress, `*` is Next, space is Todo, `?` is Blocked, `x`/`X` is Done,
 /// `-` is Canceled, and anything else keeps its status name (or symbol) for

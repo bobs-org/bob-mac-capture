@@ -429,3 +429,69 @@ final class CapturePickerPresentationTests: XCTestCase {
         XCTAssertEqual(CapturePickerSource.activeTask.blockIDScope, .note)
     }
 }
+
+final class PomodoroStartPickerStatusTests: XCTestCase {
+    func testKeepsLedgerNamesRunningSessionAndRange() {
+        let override = CaptureCompleteOverride(
+            keepsLedger: true,
+            running: CaptureCompleteOverrideRunning(
+                pomodoroName: "CAPTURE",
+                line: 5,
+                timeRange: "0920-0945"
+            )
+        )
+
+        XCTAssertEqual(
+            pomodoroStartPickerStatus(override: override),
+            "Pick a Pomodoro to take over CAPTURE's 0920–0945"
+        )
+    }
+
+    func testFreshLedgerReturnsRunningSessionToFirstFuture() {
+        let override = CaptureCompleteOverride(
+            keepsLedger: false,
+            running: CaptureCompleteOverrideRunning(
+                pomodoroName: "CAPTURE",
+                line: 5,
+                timeRange: "0920-0945"
+            )
+        )
+
+        XCTAssertEqual(
+            pomodoroStartPickerStatus(override: override),
+            "Pick a Pomodoro to start now · CAPTURE returns to first future"
+        )
+    }
+
+    func testIdleKeepsExistingStatus() {
+        XCTAssertEqual(
+            pomodoroStartPickerStatus(
+                override: CaptureCompleteOverride(keepsLedger: true, running: nil)
+            ),
+            "Pick a Pomodoro to start, or type a new name"
+        )
+    }
+
+    func testAbsentOverrideKeepsExistingStatus() {
+        XCTAssertEqual(
+            pomodoroStartPickerStatus(override: nil),
+            "Pick a Pomodoro to start, or type a new name"
+        )
+    }
+
+    func testUnnamedRunningSessionOmitsName() {
+        let override = CaptureCompleteOverride(
+            keepsLedger: true,
+            running: CaptureCompleteOverrideRunning(
+                pomodoroName: nil,
+                line: 5,
+                timeRange: "0920-0945"
+            )
+        )
+
+        XCTAssertEqual(
+            pomodoroStartPickerStatus(override: override),
+            "Pick a Pomodoro to take over 0920–0945"
+        )
+    }
+}

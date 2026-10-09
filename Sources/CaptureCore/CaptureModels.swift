@@ -4012,6 +4012,62 @@ public struct CaptureTargetSection: Codable, Equatable, Identifiable {
     }
 }
 
+/// The running session a `==` name field would override, from Bob's
+/// additive top-level `override` object on a `pomodoro_start_name`
+/// completion. `pomodoroName` is absent for an unnamed running session;
+/// `line` is the 1-based day-file line and `timeRange` the ledger span the
+/// swap keeps (`0920-0945`). Older Bob omits the whole object.
+public struct CaptureCompleteOverrideRunning: Codable, Equatable, Sendable {
+    public let pomodoroName: String?
+    public let line: Int?
+    public let timeRange: String?
+
+    public init(pomodoroName: String? = nil, line: Int? = nil, timeRange: String? = nil) {
+        self.pomodoroName = pomodoroName
+        self.line = line
+        self.timeRange = timeRange
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        pomodoroName = try container.decodeIfPresent(String.self, forKey: .pomodoroName)
+        line = try container.decodeIfPresent(Int.self, forKey: .line)
+        timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pomodoroName = "pomodoro_name"
+        case line
+        case timeRange = "time_range"
+    }
+}
+
+/// Additive override context for a `==` name field on a
+/// `pomodoro_start_name` completion: `keepsLedger` is true when the `<X>`
+/// suffix is empty (a swap takes over the running ledger byte-for-byte);
+/// `running` is present only when exactly one timed session runs. Plain
+/// `=` name fields never carry this object, so missing decodes as nil.
+public struct CaptureCompleteOverride: Codable, Equatable, Sendable {
+    public let keepsLedger: Bool
+    public let running: CaptureCompleteOverrideRunning?
+
+    public init(keepsLedger: Bool, running: CaptureCompleteOverrideRunning? = nil) {
+        self.keepsLedger = keepsLedger
+        self.running = running
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        keepsLedger = try container.decodeIfPresent(Bool.self, forKey: .keepsLedger) ?? false
+        running = try container.decodeIfPresent(CaptureCompleteOverrideRunning.self, forKey: .running)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case keepsLedger = "keeps_ledger"
+        case running
+    }
+}
+
 public struct CaptureCompletionResponse: Codable, Equatable {
     public let ok: Bool
     public let schemaVersion: Int
@@ -4020,6 +4076,10 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     public let context: String?
     public let candidates: [CaptureCompletionCandidate]
     public let warnings: [String]
+    /// Additive top-level `override` object, present exactly when the name
+    /// field belongs to a `==` token. Older Bob omits it; then the rows
+    /// and picker status read as a plain `=` start.
+    public let overrideInfo: CaptureCompleteOverride?
     /// Additive top-level `block_id` object, present exactly when the context
     /// is `pomodoro_block_id` or `task_block_id`. Older Bob binaries omit it;
     /// the Block ID picker treats that as Link intent without New ID rows.
@@ -4049,7 +4109,8 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         blockID: CaptureBlockIDField? = nil,
         query: String? = nil,
         owner: DependencyOwner? = nil,
-        picker: CapturePickerDescriptor? = nil
+        picker: CapturePickerDescriptor? = nil,
+        overrideInfo: CaptureCompleteOverride? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -4062,6 +4123,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         self.query = query
         self.owner = owner
         self.picker = picker
+        self.overrideInfo = overrideInfo
     }
 
     public init(from decoder: Decoder) throws {
@@ -4077,6 +4139,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         query = try container.decodeIfPresent(String.self, forKey: .query)
         owner = try container.decodeIfPresent(DependencyOwner.self, forKey: .owner)
         picker = try container.decodeIfPresent(CapturePickerDescriptor.self, forKey: .picker)
+        overrideInfo = try container.decodeIfPresent(CaptureCompleteOverride.self, forKey: .overrideInfo)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -4091,6 +4154,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         case query
         case owner
         case picker
+        case overrideInfo = "override"
     }
 
 }

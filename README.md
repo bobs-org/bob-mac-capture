@@ -746,7 +746,18 @@ updated CLI (decoders stay backward compatible for every older payload).
   calm `Pick a Pomodoro to start, or type a new name` status instead of a
   doomed dry run; a caret on the `=<X>` suffix itself requests nothing. The
   list narrows as you type while the live preview already shows the resolved
-  session, and Return starts it. An older Bob that reports no
+  session, and Return starts it. Under a `==` token Bob adds its additive
+  top-level `override` object (`keeps_ledger` plus the running session) and
+  the list reads as a swap picker: the status becomes
+  `Pick a Pomodoro to take over CAPTURE's 0920–0945` (or
+  `Pick a Pomodoro to start now · CAPTURE returns to first future` with a
+  fresh `==<X>#` timing), open rows read `Takes over 0920–0945`, and the
+  running row keeps `Running 0920–0945` while teaching
+  `Already running — == restarts it; pick another Pomodoro to swap in`
+  (`Restarts it now` with fresh timing). With nothing running the existing
+  status and discovery rows stand. Under a plain `=#` the running row now
+  teaches `Already running. Restart it with ==, or close it first with =x.`
+  An older Bob that reports no
   `pomodoro_start_name` context offers no rows there; the panel simply shows
   no completion until Bob is upgraded.
 - Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through

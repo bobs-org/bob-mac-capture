@@ -225,10 +225,14 @@ public struct CompletionRowContent: Equatable, Sendable {
 /// Builds the presentation content for one completion candidate. `query` is the in-progress
 /// text between the completion replacement's start and the cursor; pass an empty string when
 /// there is none (an empty-query result list still renders, just without match emphasis).
+/// `override` is Bob's top-level `override` object for a `==` name field (nil for a plain
+/// `=` field or an older Bob): under `==#` open rows read as a ledger takeover and the
+/// running row teaches the restart instead of the close.
 public func completionRowContent(
     for candidate: CaptureCompletionCandidate,
     context rawContext: String?,
-    query: String
+    query: String,
+    override: CaptureCompleteOverride? = nil
 ) -> CompletionRowContent {
     let context = CaptureCompletionContext(rawContext: rawContext)
 
@@ -416,12 +420,15 @@ public func completionRowContent(
             primaryText = startNameDisplayName(for: candidate)
             secondaryText = "Running \(enDashRange(timeRange))"
             badges = ["Running"]
-            accessibilityHint = "Already running. Close it first with =x, or write =x =#name."
+            accessibilityHint = startNameRunningHint(override: override)
         } else {
             category = .pomodoroStart
             symbolName = "play.circle"
             primaryText = startNameDisplayName(for: candidate)
-            secondaryText = candidate.nextUp ? "Next up" : "Planned"
+            secondaryText = startNameOpenSecondary(
+                nextUp: candidate.nextUp,
+                override: override
+            )
             if candidate.nextUp {
                 badges.append("Next")
             }
@@ -609,6 +616,39 @@ private func startNameLinkBadge(childCount: Int?) -> String {
         return "Empty"
     }
     return count == 1 ? "1 link" : "\(count) links"
+}
+
+/// The secondary text for a `pomodoro_start_name` open row: under a
+/// ledger-keeping `==#`, the row reads as a takeover of the running
+/// ledger (`Takes over 0920–0945`); otherwise it keeps the `Next up` /
+/// `Planned` discovery text. A keeps-ledger response with no running
+/// session (idle) has no ledger to take over, so it also keeps the
+/// discovery text.
+private func startNameOpenSecondary(
+    nextUp: Bool,
+    override: CaptureCompleteOverride?
+) -> String {
+    if override?.keepsLedger == true,
+       let range = override?.running?.timeRange, !range.isEmpty
+    {
+        return "Takes over \(enDashRange(range))"
+    }
+    return nextUp ? "Next up" : "Planned"
+}
+
+/// The accessibility hint for a `pomodoro_start_name` running row: under
+/// `==#` the row teaches the swap (`==` restarts the running session, any
+/// other pick swaps in), under `==<X>#` it restarts, and under a plain
+/// `=#` (or an older Bob with no override object) it teaches `==` before
+/// the close spellings.
+private func startNameRunningHint(override: CaptureCompleteOverride?) -> String {
+    if override?.running != nil {
+        if override?.keepsLedger == true {
+            return "Already running \u{2014} == restarts it; pick another Pomodoro to swap in"
+        }
+        return "Restarts it now"
+    }
+    return "Already running. Restart it with ==, or close it first with =x."
 }
 
 /// The display name for a `pomodoro_start_name` start, new, again, or running

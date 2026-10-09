@@ -230,6 +230,10 @@ JSON
       # Incomplete override name (real `bob capture-parse` output):
       # `pomodoro_name` need with the partial override spec.
       cat "${fixtures_dir}/pomodoro-start-override-parse-incomplete.json"
+    elif [[ "${draft}" == "==3#" ]]; then
+      # Counted incomplete override name (real `bob capture-parse`
+      # output): the same need with a fresh-timing partial spec.
+      cat "${fixtures_dir}/pomodoro-start-override-parse-fresh-incomplete.json"
     elif [[ "${draft}" == "^bob:ready=x" ]]; then
       cat "${fixtures_dir}/pomodoro-close-parse-link.json"
     elif [[ "${draft}" == *"[[AI"* ]]; then
@@ -3107,6 +3111,20 @@ JSON
       else
         sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete.json"
       fi
+    elif [[ "${draft}" == "==#" ]]; then
+      # Override name-picker rows for the worked-example ledger (real
+      # `bob capture-complete` output; only the cursor varies).
+      # `FAKE_BOB_OVERRIDE_IDLE=1` serves the idle variant: nothing is
+      # running, so the override carries no running session.
+      if [[ "${FAKE_BOB_OVERRIDE_IDLE:-0}" == "1" ]]; then
+        sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-override-complete-idle.json"
+      else
+        sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-override-complete.json"
+      fi
+    elif [[ "${draft}" == "==3#" ]]; then
+      # Fresh-timing override rows (real `bob capture-complete` output;
+      # only the cursor varies).
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-override-complete-fresh.json"
     elif [[ "${draft}" == "=3#" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-counted.json"
     elif [[ "${draft}" == "=#rev" ]]; then
