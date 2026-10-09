@@ -89,5 +89,14 @@ let package = Package(
                 .swiftLanguageMode(.v5)
             ]
         ),
+        // Tuning CLI for the ranker. It is never bundled; Scripts/bundle.sh
+        // copies only the BobMacCapture product.
+        .executableTarget(
+            name: "refs-rank",
+            dependencies: ["RefsCore"],
+            swiftSettings: [
+                .swiftLanguageMode(.v5)
+            ]
+        ),
     ] + macCaptureTargets
 )
