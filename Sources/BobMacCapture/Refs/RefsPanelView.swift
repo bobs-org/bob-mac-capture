@@ -14,6 +14,10 @@ public struct RefsPanelView: View {
     /// Design tests draw the query as text so `ImageRenderer` never
     /// hosts an `NSViewRepresentable`.
     var previewMode = false
+    /// Design tests fix the layout width explicitly: a `GeometryReader`
+    /// cannot negotiate a height while the snapshot sizes to content,
+    /// which overlaps the footer.
+    var previewWidth: CGFloat?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
@@ -21,11 +25,13 @@ public struct RefsPanelView: View {
     public init(
         model: RefsPanelModel,
         animatePresentation: Bool = true,
-        previewMode: Bool = false
+        previewMode: Bool = false,
+        previewWidth: CGFloat? = nil
     ) {
         self.model = model
         self.animatePresentation = animatePresentation
         self.previewMode = previewMode
+        self.previewWidth = previewWidth
     }
 
     public var body: some View {
@@ -68,20 +74,26 @@ public struct RefsPanelView: View {
             }
         } else if model.listing.orderedIDs.isEmpty {
             RefsEmptyStateView(model: model)
+        } else if let previewWidth {
+            columns(width: previewWidth)
         } else {
             GeometryReader { geometry in
-                let width = geometry.size.width
-                if RefsVisualTokens.showsInspector(width: width) {
-                    HStack(spacing: 0) {
-                        RefsListView(model: model, previewMode: previewMode)
-                            .frame(width: RefsVisualTokens.listWidth(panelWidth: width))
-                        inspectorDivider
-                        inspector
-                    }
-                } else {
-                    RefsListView(model: model, previewMode: previewMode)
-                }
+                columns(width: geometry.size.width)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func columns(width: CGFloat) -> some View {
+        if RefsVisualTokens.showsInspector(width: width) {
+            HStack(spacing: 0) {
+                RefsListView(model: model, previewMode: previewMode)
+                    .frame(width: RefsVisualTokens.listWidth(panelWidth: width))
+                inspectorDivider
+                inspector
+            }
+        } else {
+            RefsListView(model: model, previewMode: previewMode)
         }
     }
 

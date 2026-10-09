@@ -283,11 +283,14 @@ final class RefsPanelDesignTests: XCTestCase {
     private func write(model: RefsPanelModel, name: String, width: CGFloat) throws {
         // Width only: the static preview list sizes to its content so
         // every section shows, while the live panel keeps its fixed
-        // window height.
+        // window height. The width rides along explicitly because a
+        // GeometryReader cannot negotiate a height while the snapshot
+        // sizes to content.
         let view = RefsPanelView(
             model: model,
             animatePresentation: false,
-            previewMode: true
+            previewMode: true,
+            previewWidth: width
         )
         .frame(width: width)
         for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
