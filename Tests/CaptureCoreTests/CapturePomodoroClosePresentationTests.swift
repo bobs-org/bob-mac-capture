@@ -547,7 +547,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         let hint = try XCTUnwrap(presentation.teachingHint)
         XCTAssertEqual(
             hint.text,
-            "=* parks all · =! completes all · add numbers to narrow scope (e.g. =*1 or =!1) · =x1,2 keeps only these in progress · =x*2 parks 2 (not carried) · =x!2 completes 2 · =x~2 drops 2 · =x0 defers all · =x 2 wrote the tests logs work to 2"
+            "=* parks all · =! completes all · add numbers to narrow scope (e.g. =*1 or =!1) · =x1,2 keeps only these in progress · =x*2 parks 2 (not carried) · =x!2 completes 2 · =x~2 drops 2 · =x0 defers all (note-free resets instead) · =x 2 wrote the tests logs work to 2"
         )
         // Short syntax leads with structured colors: `=` pink, `*` teal,
         // `!` green; prose stays secondary.
@@ -581,7 +581,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         let tokens = CapturePomodoroClosePresentation.hintTokens(numberedRows: 1)
         XCTAssertEqual(
             tokens.map(\.text).joined(),
-            "=* parks all · =! completes all · add a number to narrow scope (e.g. =*1 or =!1) · =x~1 drops it · =x0 defers it · =x wrote the tests logs work to it"
+            "=* parks all · =! completes all · add a number to narrow scope (e.g. =*1 or =!1) · =x~1 drops it · =x0 defers it (note-free resets instead) · =x wrote the tests logs work to it"
         )
     }
 
