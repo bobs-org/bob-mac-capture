@@ -155,6 +155,11 @@ final class RefsLibraryTests: XCTestCase {
 
         context.library.refresh(reason: .manual)
         await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
+        // The Today lane runs beside the snapshot lane, so wait for the lane
+        // this test asserts instead of reading it mid-flight.
+        await waitUntil(timeout: 15) {
+            context.library.signals.today.entries.count == 4
+        }
         XCTAssertEqual(context.library.signals.today.entries.count, 4)
 
         let schema3 = try fixtureURL("refs-plan-schema3.json").path
@@ -226,6 +231,11 @@ final class RefsLibraryTests: XCTestCase {
 
         context.library.refreshIfStale()
         await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
+        // Both lanes record argv lines; wait for Today too so a late plan
+        // call cannot land between the baseline count and the quiet check.
+        await waitUntil(timeout: 15) {
+            context.library.signals.today.entries.count == 4
+        }
         let staleRecord = try String(contentsOf: recordURL)
         let count = staleRecord.components(separatedBy: "argv=").count
 

@@ -421,7 +421,11 @@ public final class RefsPanelModel: ObservableObject {
         let available = Set(library.items.map(\.id))
         let (next, unavailable) = listing.refreshingContent(availableIDs: available)
         listing = next
-        unavailableIDs = unavailable.union(unavailableIDs.intersection(next.orderedIDs))
+        // Vanished rows leave the frozen listing, so intersecting with it
+        // would drop the flag on the very next publish (every pass publishes
+        // items and signals separately). Keep flags for every id that is
+        // still missing from the library instead.
+        unavailableIDs = unavailable.union(unavailableIDs.subtracting(available))
         if next.orderedIDs.isEmpty {
             selectedID = nil
         }
@@ -433,9 +437,11 @@ public final class RefsPanelModel: ObservableObject {
     }
 
     private func openSelected(_ target: RefsOpenTarget) -> Bool {
-        guard let id = selectedID, listing.orderedIDs.contains(id) else {
+        guard let id = selectedID else {
             return false
         }
+        // A vanished selected id is no longer in the listing, so this check
+        // must come before the listing membership guard.
         if unavailableIDs.contains(id) {
             banner = RefsBanner(
                 kind: .warning,
@@ -443,6 +449,9 @@ public final class RefsPanelModel: ObservableObject {
                 actions: []
             )
             return true
+        }
+        guard listing.orderedIDs.contains(id) else {
+            return false
         }
         guard let item = library.items.first(where: { $0.id == id }) else {
             return false
