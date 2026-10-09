@@ -56,6 +56,29 @@ public protocol RefsPDFIntrinsicsProviding: Sendable {
     func intrinsics(for pdfURL: URL, id: String) async -> RefsPDFIntrinsics
 }
 
+/// The two sides of an intrinsics load race: the first `finish`
+/// wins and resumes the continuation exactly once, so a timeout
+/// never waits for the abandoned read.
+private final class TimeoutRace: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+    private let continuation: CheckedContinuation<RefsPDFIntrinsics, Never>
+
+    init(_ continuation: CheckedContinuation<RefsPDFIntrinsics, Never>) {
+        self.continuation = continuation
+    }
+
+    func finish(with value: RefsPDFIntrinsics) {
+        lock.withLock {
+            guard !done else {
+                return
+            }
+            done = true
+            continuation.resume(returning: value)
+        }
+    }
+}
+
 /// Reads PDF intrinsics with PDFKit: the page count, the outline (top
 /// level, descending once when the root has a single child with
 /// children), a page-1 thumbnail at 2x for 112 x 145 pt using the
@@ -152,27 +175,24 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
         }
     }
 
-    /// Races the PDFKit read against the 3 s timeout. The read runs
-    /// in a detached task — never on the actor, and never a child of
-    /// the race group — so a timeout returns "Preview unavailable"
-    /// without waiting for the read, without queueing later loads
-    /// behind it, and while the abandoned read finishes on its own.
+    /// Races the PDFKit read against the 3 s timeout. Both sides run
+    /// in detached tasks and the first to finish resumes the
+    /// continuation, so a timeout returns "Preview unavailable" after
+    /// 3 s without waiting for the read, without queueing later loads
+    /// behind it, and while the abandoned read finishes on its own. A
+    /// task group cannot do this: leaving its scope waits for every
+    /// child, including one still awaiting the abandoned read.
     private func loadWithTimeout(url: URL) async -> RefsPDFIntrinsics {
-        let reader = self.reader
-        let read = Task.detached(priority: .utility) {
-            await reader(url)
-        }
-        return await withTaskGroup(of: RefsPDFIntrinsics.self) { group in
-            group.addTask {
+        await withCheckedContinuation { continuation in
+            let race = TimeoutRace(continuation)
+            let reader = self.reader
+            Task.detached(priority: .utility) {
+                await race.finish(with: reader(url))
+            }
+            Task.detached(priority: .utility) {
                 try? await Task.sleep(nanoseconds: Self.loadTimeoutNanoseconds)
-                return RefsPDFIntrinsics(failed: true)
+                race.finish(with: RefsPDFIntrinsics(failed: true))
             }
-            group.addTask {
-                await read.value
-            }
-            let first = await group.next() ?? RefsPDFIntrinsics(failed: true)
-            group.cancelAll()
-            return first
         }
     }
 
