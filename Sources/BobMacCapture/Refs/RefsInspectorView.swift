@@ -258,7 +258,13 @@ struct RefsInspectorView: View {
 
     private func facts(for item: RefItem) -> some View {
         Grid(alignment: .leading, verticalSpacing: 6) {
-            factRow(label: "Added", value: addedText(for: item))
+            // Absence stays absence: a fact row with no value is
+            // omitted, never printed as "Unknown" or "0 open". The
+            // Added value carries no label repeat: the row's label
+            // already says Added.
+            if item.added != nil {
+                factRow(label: "Added", value: addedText(for: item))
+            }
             if item.finished != nil {
                 factRow(label: "Finished", value: finishedText(for: item))
             }
@@ -267,7 +273,7 @@ struct RefsInspectorView: View {
             }
             factRow(label: "Opened", value: openedText(for: item))
             factRow(label: "Notes", value: notesText(for: item))
-            if let inspector, !inspector.showFailed {
+            if let inspector, !inspector.showFailed, inspector.openTaskCount > 0 {
                 factRow(
                     label: "Tasks",
                     value: "\(inspector.openTaskCount) open"
@@ -302,15 +308,12 @@ struct RefsInspectorView: View {
 
     private func addedText(for item: RefItem) -> String {
         guard let added = item.added else {
-            return "Unknown date"
+            return ""
         }
         let day = RefsCaption.absoluteMonthDay(
             added, now: signals.now, calendar: signals.calendar
         )
-        var text = "Added \(day)"
-        if item.addedIsApproximate {
-            text = text.replacingOccurrences(of: "Added ", with: "Added ≈ ")
-        }
+        var text = item.addedIsApproximate ? "≈ \(day)" : day
         if let source = item.addedSource, !source.isEmpty, source != "git" {
             text += " (\(source))"
         }
@@ -458,7 +461,7 @@ struct RefsInspectorView: View {
     private func missingCallout(for item: RefItem) -> some View {
         Label(
             "The PDF this note points to is missing: \(item.pdfPath). "
-                + "Return opens the note instead.",
+                + "↵ opens the note instead.",
             systemImage: "exclamationmark.triangle.fill"
         )
         .font(.callout)

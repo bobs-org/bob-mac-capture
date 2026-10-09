@@ -12,11 +12,17 @@ struct RefsKindTile: View {
 
     var body: some View {
         let tint = RefsVisualTokens.tint(for: kind)
-        ZStack {
-            RoundedRectangle(cornerRadius: size * 0.25)
+        // The named radii: the 44 pt hero tile takes heroTileRadius,
+        // every other size the kind tile radius.
+        let radius =
+            size == RefsVisualTokens.heroTileSize
+            ? RefsVisualTokens.heroTileRadius
+            : RefsVisualTokens.kindTileRadius
+        return ZStack {
+            RoundedRectangle(cornerRadius: radius)
                 .fill(tint.opacity(0.16))
                 .overlay(
-                    RoundedRectangle(cornerRadius: size * 0.25)
+                    RoundedRectangle(cornerRadius: radius)
                         .strokeBorder(
                             tint.opacity(contrast == .increased ? 0.5 : 0.28),
                             lineWidth: 0.5
@@ -115,10 +121,14 @@ struct RefsRowView: View {
     var body: some View {
         HStack(spacing: 10) {
             gutter
+            // The tile and glyph stay out of the VoiceOver tree: the
+            // row label below already names the kind and state once.
             if let item = content.item {
                 RefsKindTile(kind: item.kind)
+                    .accessibilityHidden(true)
             } else {
                 RefsKindTile(kind: .other(raw: nil))
+                    .accessibilityHidden(true)
             }
             textColumn
             Spacer(minLength: 8)
@@ -139,6 +149,7 @@ struct RefsRowView: View {
                     .foregroundStyle(.secondary)
             }
             RefsStateGlyph(content: content)
+                .accessibilityHidden(true)
         }
         .padding(.leading, 8)
         .padding(.trailing, 12)
@@ -167,12 +178,23 @@ struct RefsRowView: View {
     private var textColumn: some View {
         VStack(alignment: .leading, spacing: 2) {
             titleLine
-            Text(content.caption)
+            Text(captionLine)
                 .font(.system(size: 11.5).monospacedDigit())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
+    }
+
+    /// The caption with the matched stem or secondary part in the
+    /// accent color (§8). The ranges come from the model, as
+    /// `Character` offsets into the caption text.
+    private var captionLine: AttributedString {
+        CapturePickerRichText.displayText(
+            content.caption,
+            segments: [],
+            matches: content.captionMatch.map { [$0] } ?? []
+        )
     }
 
     private var titleLine: some View {
@@ -224,10 +246,11 @@ struct RefsRowView: View {
             item.title.text,
             item.kind.label,
             RefsCaption.stateLabel(item),
-            content.caption,
+            content.caption.replacingOccurrences(of: " pp", with: " pages"),
         ]
-        if pomodoroName != nil {
-            parts.append("in Today Pomodoro")
+        if let pomodoroName {
+            let name = pomodoroName.isEmpty ? "TODAY" : pomodoroName
+            parts.append("Today in \(name) Pomodoro")
         }
         if content.isUnopened {
             parts.append("never opened")

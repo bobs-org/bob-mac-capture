@@ -264,7 +264,7 @@ public final class RefsLibrary: ObservableObject {
     /// The absolute PDF URL, or nil when the stored path is unsafe: only
     /// vault-relative paths without a `..` component resolve.
     public func pdfURL(for item: RefItem) -> URL? {
-        guard Self.isSafePDFPath(item.pdfPath) else {
+        guard RefItem.isSafePDFPath(item.pdfPath) else {
             return nil
         }
         return vaultRoot().appendingPathComponent(item.pdfPath)
@@ -280,7 +280,7 @@ public final class RefsLibrary: ObservableObject {
     public func audioURL(for item: RefItem) -> URL? {
         guard let audio = item.audioPath,
               !audio.isEmpty,
-              Self.isSafePDFPath(audio)
+              RefItem.isSafePDFPath(audio)
         else {
             return nil
         }
@@ -548,13 +548,6 @@ public final class RefsLibrary: ObservableObject {
         }
         let facts = await spotlight.sweep(requests)
         return (missing, facts)
-    }
-
-    static func isSafePDFPath(_ path: String) -> Bool {
-        guard !path.hasPrefix("/") else {
-            return false
-        }
-        return !path.split(separator: "/").contains("..")
     }
 
     /// Bounds failure text so a backend dump cannot fill the callout card.

@@ -1013,9 +1013,8 @@ returns, and never parses frontmatter or note bodies.
   next to it. Both files are mode 0600 in a 0700 directory.
 - `RefsCore` (the `Sources/RefsCore` target, Foundation plus CaptureCore
   only) owns the decoding, the `RefItem`/`RefKind`/`RefState`/`RefScope`
-  model, the `BobRefsFetcher` over `BobProcessClient`, and the stores.
-  Later phases add ranking, the library service, the panel, and the entry
-  points on top of these types without renaming them.
+  model, the ranking, captions, and inspector extraction, the
+  `BobRefsFetcher` over `BobProcessClient`, and the stores.
 
 ### Updates
 
@@ -1036,9 +1035,9 @@ footer reads as "Update failed · ⌘R to retry". Only Highlights and
 default-app opens append to the open log. `RefsPanelModel` holds the
 query, scope, frozen listing, and id-based selection: typed text reaches
 the model on every keystroke, late library data refreshes row content
-in place and never reorders (⌘R and Retry re-rank from the new data
-once the refresh completes, keeping the selection when it still
-exists), an open error re-shows the panel with the query, selection,
+in place and never reorders (⌘R re-ranks from the new data once the
+refresh completes, keeping the selection when it still exists), an
+open error re-shows the panel with the query, selection,
 and pending open intact, and Return on a vanished row shows "No longer
 in your library" instead of opening whatever slid into its index.
 
@@ -1067,9 +1066,7 @@ on shorter title, newer added, then path. One tuning note: the plan
 specified the dropped prior as −0.10, but at −0.10 a dropped
 title-prefix match (prefix bonus +0.15) outscored a Ready non-prefix
 word match, failing the "sinks the dropped row" golden expectation, so
-the constant is −0.20. While the panel is open, late data refreshes row
-content in place and never reorders; a vanished row keeps its index and
-dims as unavailable instead of opening whatever slid into its index.
+the constant is −0.20.
 
 ### Tuning
 
@@ -1093,30 +1090,41 @@ The target is never bundled: `Scripts/bundle.sh` copies only the
 760 pt wide is list-only). The SwiftUI content sits in an
 `NSGlassEffectView` (corner radius 20); the SwiftUI root itself
 carries no glass modifier so the `ImageRenderer` design fixtures
-stay reviewable. It prewarms at launch, recomputes its
-frame on every show, fades in over 0.12 s (fade only under Reduce
-Motion), hides at once with no fade-out, and hides when it resigns
-key, like Spotlight. Highlights stays frontmost throughout: the
-panel never calls `NSApp.activate`. The height is fixed while the
-panel is visible; filtering never resizes it.
+stay reviewable. Under Reduce Transparency an opaque window
+background paints beneath the content. It prewarms at launch,
+recomputes its frame on every show, fades in over 0.12 s while the
+content scales from 0.98 to 1.0 on every show (fade only under
+Reduce Motion), hides at once with no fade-out, and hides when it
+resigns key, like Spotlight. Highlights stays frontmost throughout:
+the panel never calls `NSApp.activate`. The height is fixed while
+the panel is visible; filtering never resizes it.
 
 Layout, top to bottom: the 52 pt search bar (magnifier, 20 pt field,
 scope token, "`N open · M`" or "`k of M`" count, refresh spinner),
-the banner when one is up, the list beside the inspector, and
-the 30 pt footer (key hints plus "Updated …" / "Updating…" /
-"Update failed · ⌘R to retry"). Rows are 44 pt and two lines: the
-unopened dot, the kind tile, the rich title (code spans styled,
-matches in the accent color) with its caption, and the Today pill,
+the banner when one is up, the content well (list beside the
+inspector on `.regularMaterial` at radius 12 with a hairline
+stroke), and the 30 pt footer (key hints plus "Updated …" /
+"Updating…" / "Update failed · ⌘R to retry"). The list column takes
+`round(width × 0.52)` of the panel width and the inspector shows at
+760 pt and above. Rows are 44 pt and two lines: the unopened dot,
+the kind tile, the rich title (code spans styled, matches in the
+accent color) with its caption (a stem-only or secondary match
+renders its part in the accent color, and a matched author the
+caption already shows is not repeated), and the Today pill,
 annotation and narration marks, and the state glyph. Section headers
-are 26 pt and pinned. The inspector fills instantly from the list
-item (hero, kind/state/Today chips, title, byline, an
-Added/Finished/Pages/Opened/Notes/Narration facts grid, the why-here
-line, and the vault PDF path; see "Inspector" below for the hydrated
-column); a missing PDF shows an orange callout instead. States: 8
+are 26 pt and pinned. VoiceOver reads each row as one element —
+"Title, Paper, Ready, added today, 22 pages, Today in BLOG
+Pomodoro, never opened" — with the kind said once and the selected
+row carrying `.isSelected`. The inspector fills instantly from the
+list item (hero, kind/state/Today chips, title, byline, an
+Added/Finished/Pages/Opened/Notes/Narration facts grid with absent
+rows omitted, the why-here line, and the vault PDF path; see
+"Inspector" below for the hydrated column); a missing PDF shows an
+orange callout reading "↵ opens the note instead". States: 8
 skeleton rows on first launch, a centered callout card with Retry
-and Copy Diagnostic when no cache exists and the refresh failed, a
-centered "No references match" empty state, and dimmed unavailable
-rows that never open whatever slid into their index.
+(⌘R) and Copy Diagnostic when no cache exists and the refresh
+failed, a centered "No references match" empty state, and dimmed
+unavailable rows that never open whatever slid into their index.
 
 | Key | Bob Refs panel |
 | --- | -------------- |
@@ -1179,8 +1187,9 @@ file path, size, and mtime in memory (64) and under
 one thumbnail PNG each). What each kind shows:
 
 - Papers, articles, and docs show a 112 × 145 pt page-1 thumbnail
-  (fixed space is reserved while it loads, so nothing jumps), the
-  Abstract excerpt, and the outline.
+  (fixed space is reserved while it loads, so nothing jumps) and the
+  outline. Papers also show the Abstract excerpt; articles and docs
+  show no excerpt.
 - Chats keep the kind tile and lead with the outline plus the
   Bottom-line excerpt: the first paragraph (or up to 3 bullets) under
   Bottom line, TL;DR, Summary, Executive summary, or Key findings.
@@ -1201,12 +1210,38 @@ inspector stays and adds a dim "Notes unavailable". Page counts and
 outline headings feed back into the ranking signals, so rows gain
 `N pp` and search can match headings.
 
-The ⌘K actions menu pops over the panel for the selected row: Open
-in Highlights, Open Note, Reveal in Finder, Copy Wiki Link (bob's
-`link`, verbatim), Copy PDF Path, Open Source URL (only with
-`urls`), Open Narration (only with `audio`, in the default app),
-Open in Default App, and Refresh Library. A copy toasts the footer
-for 1.5 s ("Copied wiki link").
+The ⌘K actions menu pops up below the selected row (at the list's
+center when the row frame is unknown): Open in Highlights (↵), Open
+Note (⌘↵), Reveal in Finder (⌥↵), Copy Wiki Link (bob's `link`,
+verbatim), Copy PDF Path, Open Source URL (only with `urls`), Open
+Narration (only with `audio`, in the default app), Open in Default
+App, and Refresh Library (⌘R). A copy toasts the footer for 1.5 s
+("Copied wiki link").
+
+### Privacy
+
+Refs files live outside the vault, every file mode 0600 in 0700
+directories: the snapshot cache and open log
+(`refs-snapshot.json`, `refs-open-log.json`) under
+`~/Library/Application Support/org.bobs.bob-mac-capture/`, and the
+intrinsics cache (`intrinsics.json`) with thumbnails
+(`thumbs/<sha256>.png`) under
+`~/Library/Caches/org.bobs.bob-mac-capture/refs/`. The References
+settings persist a small set of `UserDefaults` keys (the ⌃⇧⌘R
+binding flag, the Highlights-frontmost open key, and the Highlights
+override path). Signposts carry event names only, never note text.
+
+### Troubleshooting
+
+- "Bob couldn't load your references": the centered card's bounded
+  error names the cause; Retry (⌘R) re-reads the snapshot and Copy
+  Diagnostic copies the message for a bug report.
+- "Highlights isn't installed where Bob Refs can find it": use Open
+  in Default App, or Choose Highlights… to point at the app in
+  Settings › References.
+- To reset open history (recently-opened rows and frecency), use
+  Reset Open History… in Settings › References behind its
+  confirmation dialog.
 
 ## Keyboard
 

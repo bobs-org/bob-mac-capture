@@ -17,7 +17,7 @@ import XCTest
 /// occlusion.
 @MainActor
 final class RefsPanelDesignTests: XCTestCase {
-    func testRefsPanelStatesToPNG() throws {
+    func testRefsPanelStatesToPNG() async throws {
         let now = fixedNow()
         let library = makeLibrary(now: now)
         let model = RefsPanelModel(
@@ -38,7 +38,9 @@ final class RefsPanelDesignTests: XCTestCase {
         try renderInspectorChat(model: model, now: now)
         try renderInspectorPaper(model: model, now: now)
         try renderInspectorEncrypted(model: model, now: now)
-        try renderPieces(model: model, now: now)
+        try await renderUnavailable(model: model, now: now)
+        try renderStemMatch(model: model, now: now)
+        try renderReduceTransparency(model: model, now: now)
     }
 
     // MARK: - Renders
@@ -362,65 +364,106 @@ final class RefsPanelDesignTests: XCTestCase {
         return image
     }
 
-    /// Standalone piece renders: each panel piece alone in a fixed
-    /// frame, both appearances, for close review of baselines, the
-    /// glyph column, pills, and code spans.
-    private func renderPieces(model: RefsPanelModel, now: Date) throws {
+    /// A vanished row keeps its index and dims at 0.45 opacity with
+    /// the "No longer in your library" caption, and the inspector
+    /// shows its title plus that message (§5.5).
+    private func renderUnavailable(model: RefsPanelModel, now: Date) async throws {
+        let fixture = makeFixture(now: now)
+        let vanished = "ref/chat/morning_notes.md"
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: vanished,
+            banner: nil,
+            refreshState: .idle
+        )
+        model.previewLibrary.installSnapshotForPreviews(
+            items: fixture.items.filter { $0.id != vanished },
+            signals: fixture.signals,
+            refreshState: .idle
+        )
+        let deadline = Date().addingTimeInterval(5)
+        while !model.unavailableIDs.contains(vanished), Date() < deadline {
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        XCTAssertTrue(model.unavailableIDs.contains(vanished))
+        XCTAssertEqual(
+            model.rowContent(for: vanished)?.caption,
+            "No longer in your library"
+        )
+        try write(model: model, name: "refs-unavailable-880", width: 880)
+    }
+
+    /// A stem-only search match: the caption carries the stem with its
+    /// ranges in the accent color, and the title stays unmarked.
+    private func renderStemMatch(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeFixture(now: now)
+        let stemOnly = RefItem(
+            id: "ref/chat/weekly_links.md",
+            link: "[[ref/chat/weekly_links]]",
+            rawTitle: "Weekly links roundup",
+            stem: "scaffolding_notes",
+            kind: .chat,
+            state: .ready,
+            isBlocked: false,
+            pdfPath: "lib/chat/weekly_links.pdf",
+            parentLabel: "sase",
+            added: day(now, offset: 0),
+            addedSource: "created",
+            isAgentReport: true
+        )
+        model.installForPreviews(
+            items: [stemOnly],
+            signals: fixture.signals,
+            query: "scaffold",
+            scope: .all,
+            selectedID: stemOnly.id,
+            banner: nil,
+            refreshState: .idle
+        )
+        guard case .search = model.listing.mode else {
+            XCTFail("expected search mode")
+            return
+        }
+        let match = model.listing.matches[stemOnly.id]
+        XCTAssertNotNil(match)
+        XCTAssertTrue(match?.titleRanges.isEmpty ?? false)
+        XCTAssertFalse(match?.stemRanges.isEmpty ?? true)
+        let content = try XCTUnwrap(model.rowContent(for: stemOnly.id))
+        XCTAssertTrue(content.caption.hasSuffix("scaffolding_notes"))
+        XCTAssertNotNil(content.captionMatch)
+        try write(model: model, name: "refs-search-stem-880", width: 880)
+    }
+
+    /// The browse state under Reduce Transparency: an opaque window
+    /// background sits beneath the content (§6).
+    private func renderReduceTransparency(model: RefsPanelModel, now: Date) throws {
         let fixture = makeFixture(now: now)
         model.installForPreviews(
             items: fixture.items,
             signals: fixture.signals,
-            query: "omni",
+            query: "",
             scope: .all,
             selectedID: "ref/chat/today_report.md",
             banner: nil,
             refreshState: .idle
         )
-        let pieces: [(String, AnyView)] = [
-            ("refs-piece-searchbar", AnyView(
-                RefsSearchBar(model: model, previewMode: true)
-            )),
-            ("refs-piece-footer", AnyView(RefsFooter(model: model))),
-            ("refs-piece-empty", AnyView(
-                RefsEmptyStateView(model: model).frame(width: 880, height: 300)
-            )),
-            ("refs-piece-skeleton", AnyView(RefsSkeletonList().frame(width: 880))),
-            ("refs-piece-banner", AnyView(
-                RefsBannerView(
-                    model: model,
-                    banner: RefsBanner(kind: .error, message: "Boom.", actions: [.retry])
-                ).frame(width: 880)
-            )),
-        ]
-        var all = pieces
-        if let content = model.rowContent(for: "ref/chat/today_report.md") {
-            all.append((
-                "refs-piece-row",
-                AnyView(RefsRowView(
-                    content: content,
-                    isSelected: true,
-                    pomodoroName: "BLOG",
-                    onSelect: {},
-                    onActivate: {}
-                ).frame(width: 458))
-            ))
-            all.append((
-                "refs-piece-inspector",
-                AnyView(RefsInspectorView(
-                    content: content,
-                    signals: fixture.signals,
-                    previewMode: true
-                ).frame(width: 414))
-            ))
-        }
-        for (name, view) in all {
-            for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
-                try RenderFixtureWriter.write(view, name: name, width: 880, appearance: appearance)
-            }
-        }
+        try write(
+            model: model,
+            name: "refs-reduce-transparency-880",
+            width: 880,
+            reduceTransparency: true
+        )
     }
 
-    private func write(model: RefsPanelModel, name: String, width: CGFloat) throws {
+    private func write(
+        model: RefsPanelModel,
+        name: String,
+        width: CGFloat,
+        reduceTransparency: Bool = false
+    ) throws {
         // Width only: the static preview list sizes to its content so
         // every section shows, while the live panel keeps its fixed
         // window height. The width rides along explicitly because a
@@ -432,6 +475,7 @@ final class RefsPanelDesignTests: XCTestCase {
             previewMode: true,
             previewWidth: width
         )
+        .environment(\.accessibilityReduceTransparency, reduceTransparency)
         .frame(width: width)
         for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
             try RenderFixtureWriter.write(

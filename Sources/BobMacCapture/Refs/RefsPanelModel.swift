@@ -39,7 +39,6 @@ public struct RefsBanner: Equatable, Sendable {
     }
 
     public enum Action: Equatable, Hashable, Sendable {
-        case retry
         case tryAgain
         case openInDefaultApp
         case chooseHighlights
@@ -64,6 +63,10 @@ public struct RefsRowContent: Equatable, Sendable {
     public var item: RefItem?
     public var title: String
     public var caption: String
+    /// The `Character` range of the matched stem or secondary part
+    /// inside `caption`, when search mode appended one. The row renders
+    /// it in the accent color.
+    public var captionMatch: Range<Int>?
     public var whyHere: String
     public var match: RefsMatch?
     public var section: RefsSectionKind?
@@ -75,6 +78,7 @@ public struct RefsRowContent: Equatable, Sendable {
         item: RefItem?,
         title: String,
         caption: String,
+        captionMatch: Range<Int>? = nil,
         whyHere: String,
         match: RefsMatch?,
         section: RefsSectionKind?,
@@ -85,6 +89,7 @@ public struct RefsRowContent: Equatable, Sendable {
         self.item = item
         self.title = title
         self.caption = caption
+        self.captionMatch = captionMatch
         self.whyHere = whyHere
         self.match = match
         self.section = section
@@ -186,6 +191,13 @@ public final class RefsPanelModel: ObservableObject {
     @Published public private(set) var selectedID: String?
     @Published public private(set) var unavailableIDs: Set<String> = []
     @Published public private(set) var banner: RefsBanner?
+    /// Counts presentations: `prepareForPresentation` bumps it, so the
+    /// panel view replays its scale-in on every show, not once per process.
+    @Published public private(set) var presentationCount = 0
+    /// The selected row's frame in the panel root's SwiftUI coordinate
+    /// space, kept live by the list. The ⌘K menu pops below it, or at
+    /// the list's center when it is unknown.
+    @Published public var selectedRowRect: CGRect? = nil
     /// The visible row count from the list geometry; pages move by one less.
     @Published public var visibleRowBudget: Int = 10
     /// A transient copy confirmation the footer shows for 1.5 s.
@@ -209,7 +221,6 @@ public final class RefsPanelModel: ObservableObject {
     private let highlights: RefsHighlightsLocating
     private let pasteboard: RefsPasteboardWriting
     private var subscriptions = Set<AnyCancellable>()
-    private var presented = false
     private var pendingOpen: (id: String, target: RefsOpenTarget)?
     /// Set by ⌘R (and Retry) so the next completed refresh builds a fresh
     /// listing instead of a content-only update.
@@ -270,7 +281,8 @@ public final class RefsPanelModel: ObservableObject {
     /// Resets for presentation: a blank query, All scope, a fresh listing,
     /// and the first row selected.
     public func prepareForPresentation() {
-        presented = true
+        presentationCount += 1
+        selectedRowRect = nil
         query = ""
         scope = .all
         banner = nil
@@ -399,6 +411,13 @@ public final class RefsPanelModel: ObservableObject {
         library.signals
     }
 
+    /// The library, for design previews that reshape the snapshot
+    /// after installing canned state (an unavailable-row render drops
+    /// an id through this, so the frozen listing keeps it dimmed).
+    var previewLibrary: RefsLibrary {
+        library
+    }
+
     /// The list and inspector content for one frozen row, or nil when the
     /// id is not in the listing.
     public func rowContent(for id: String) -> RefsRowContent? {
@@ -421,10 +440,14 @@ public final class RefsPanelModel: ObservableObject {
                 isUnavailable: true
             )
         }
+        let captioned = RefsCaption.captionWithMatch(
+            for: item, in: section, signals: signals, match: match
+        )
         return RefsRowContent(
             item: item,
             title: item.title.text,
-            caption: RefsCaption.caption(for: item, in: section, signals: signals, match: match),
+            caption: captioned.text,
+            captionMatch: captioned.matchRange,
             whyHere: RefsExplanation.whyHere(item, listing: listing, signals: signals),
             match: match,
             section: section,
@@ -437,10 +460,6 @@ public final class RefsPanelModel: ObservableObject {
     /// Runs one banner action.
     public func performBannerAction(_ action: RefsBanner.Action) {
         switch action {
-        case .retry:
-            banner = nil
-            pendingRefreshRerank = true
-            library.refresh(reason: .manual)
         case .tryAgain:
             guard let pending = pendingOpen else {
                 return
@@ -480,7 +499,6 @@ public final class RefsPanelModel: ObservableObject {
         inspector: [String: RefsInspectorContent]? = nil,
         thumbnails: [String: NSImage]? = nil
     ) {
-        presented = true
         library.installSnapshotForPreviews(
             items: items,
             signals: signals,
@@ -657,7 +675,6 @@ public final class RefsPanelModel: ObservableObject {
     }
 
     private func hidePanel() {
-        presented = false
         panelDismisser()
     }
 

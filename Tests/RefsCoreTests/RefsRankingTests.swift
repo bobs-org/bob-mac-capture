@@ -552,8 +552,45 @@ final class RefsRankingTests: XCTestCase {
         let authorMatch = authorListing.matches["t"]
         XCTAssertEqual(
             RefsCaption.caption(for: authorRow, in: nil, signals: signals, match: authorMatch),
-            "Paper · Yangze Liu · added Aug 1 · Yangze Liu"
+            "Paper · Yangze Liu · added Aug 1"
         )
+    }
+
+    func testSearchCaptionsExposeMatchRanges() {
+        let stemOnly = makeItem(id: "s", title: "Weekly links roundup", stem: "omnigent_notes")
+        let signals = makeSignals()
+        let listing = searchListing([stemOnly], query: "omnigent", signals: signals)
+        let match = listing.matches["s"]
+        let (text, range) = RefsCaption.captionWithMatch(
+            for: stemOnly, in: nil, signals: signals, match: match
+        )
+        XCTAssertEqual(text, "Chat · added Aug 1 · omnigent_notes")
+        guard let found = range else {
+            XCTFail("stem-only caption carries no match range")
+            return
+        }
+        let hit = text[text.index(text.startIndex, offsetBy: found.lowerBound)..<text.index(
+            text.startIndex, offsetBy: found.upperBound
+        )]
+        XCTAssertEqual(String(hit), "omnigent")
+
+        let authorRow = makeItem(
+            id: "t", title: "Attention Budgets for Long Contexts",
+            kind: .paper, author: "Yangze Liu"
+        )
+        let authorListing = searchListing([authorRow], query: "liu", signals: signals)
+        let (_, authorRange) = RefsCaption.captionWithMatch(
+            for: authorRow, in: nil, signals: signals,
+            match: authorListing.matches["t"]
+        )
+        XCTAssertNil(authorRange)
+
+        let plain = makeItem(id: "p", title: "Deep Dive", added: "2026-09-20")
+        let (browseText, browseRange) = RefsCaption.captionWithMatch(
+            for: plain, in: .reading, signals: signals, match: nil
+        )
+        XCTAssertEqual(browseText, "Chat · added Sep 20")
+        XCTAssertNil(browseRange)
     }
 
     func testWhyHereBrowseForms() {

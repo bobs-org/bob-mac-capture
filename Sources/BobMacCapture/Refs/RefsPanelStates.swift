@@ -44,8 +44,6 @@ struct RefsBannerView: View {
 
     private func actionLabel(for action: RefsBanner.Action) -> String {
         switch action {
-        case .retry:
-            return "Retry"
         case .tryAgain:
             return "Try Again"
         case .openInDefaultApp:

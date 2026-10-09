@@ -39,20 +39,28 @@ public enum RefsAction: Equatable, Sendable {
         }
     }
 
+    /// The shortcut hint the menu shows, mirroring the panel keys:
+    /// the opens carry ↵, ⌘↵, and ⌥↵, and Refresh carries ⌘R.
     public var keyEquivalent: String {
         switch self {
+        case .openHighlights, .openNote, .reveal:
+            return "\r"
         case .refreshLibrary:
             return "r"
-        default:
+        case .copyWikiLink, .copyPDFPath, .openSourceURL, .openNarration,
+            .openDefaultApp:
             return ""
         }
     }
 
     public var keyEquivalentModifierMask: NSEvent.ModifierFlags {
         switch self {
-        case .refreshLibrary:
+        case .openNote, .refreshLibrary:
             return .command
-        default:
+        case .reveal:
+            return .option
+        case .openHighlights, .copyWikiLink, .copyPDFPath, .openSourceURL,
+            .openNarration, .openDefaultApp:
             return []
         }
     }

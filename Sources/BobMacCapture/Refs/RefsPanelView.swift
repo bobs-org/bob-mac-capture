@@ -20,6 +20,8 @@ public struct RefsPanelView: View {
     var previewWidth: CGFloat?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var appeared = false
 
     public init(
@@ -45,20 +47,58 @@ public struct RefsPanelView: View {
             if let banner = model.banner {
                 RefsBannerView(model: model, banner: banner)
             }
-            content
+            well
             RefsFooter(model: model)
         }
         .padding(RefsVisualTokens.outerPadding)
-        .scaleEffect(appeared || !animatePresentation ? 1 : 0.98)
-        .onAppear {
-            guard animatePresentation, !reduceMotion else {
-                appeared = true
-                return
-            }
-            withAnimation(.easeOut(duration: 0.12)) {
-                appeared = true
+        .background {
+            // Under Reduce Transparency the glass goes opaque: paint the
+            // window background beneath the content (§6).
+            if reduceTransparency {
+                Color(nsColor: .windowBackgroundColor)
+                    .clipShape(RoundedRectangle(
+                        cornerRadius: RefsVisualTokens.glassRadius
+                    ))
             }
         }
+        .scaleEffect(appeared ? 1 : 0.98)
+        .onAppear {
+            animateIn()
+        }
+        .onChange(of: model.presentationCount) { _, _ in
+            animateIn()
+        }
+        .coordinateSpace(name: "refsPanel")
+    }
+
+    /// Replays the show scale-in. It runs on appear and on every
+    /// presentation the model counts — not once per process — and
+    /// degrades to an instant paint under Reduce Motion (the AppKit
+    /// fade still runs).
+    private func animateIn() {
+        guard animatePresentation, !reduceMotion else {
+            appeared = true
+            return
+        }
+        appeared = false
+        withAnimation(.easeOut(duration: 0.12)) {
+            appeared = true
+        }
+    }
+
+    /// The content well (§7): the list and inspector on
+    /// `.regularMaterial` at r=12, concentric with the glass, with a
+    /// 0.5 pt stroke.
+    private var well: some View {
+        content
+            .background(
+                .regularMaterial,
+                in: RoundedRectangle(cornerRadius: RefsVisualTokens.wellRadius)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: RefsVisualTokens.wellRadius)
+                    .stroke(.primary.opacity(0.08), lineWidth: 0.5)
+            )
     }
 
     @ViewBuilder
@@ -75,20 +115,26 @@ public struct RefsPanelView: View {
         } else if model.listing.orderedIDs.isEmpty {
             RefsEmptyStateView(model: model)
         } else if let previewWidth {
-            columns(width: previewWidth)
+            columns(panelWidth: previewWidth)
         } else {
             GeometryReader { geometry in
-                columns(width: geometry.size.width)
+                // The geometry width is post-padding: add the outer
+                // padding back so the inspector cutoff and the list
+                // width measure the panel width (§6).
+                columns(
+                    panelWidth: geometry.size.width
+                        + RefsVisualTokens.outerPadding * 2
+                )
             }
         }
     }
 
     @ViewBuilder
-    private func columns(width: CGFloat) -> some View {
-        if RefsVisualTokens.showsInspector(width: width) {
+    private func columns(panelWidth: CGFloat) -> some View {
+        if RefsVisualTokens.showsInspector(width: panelWidth) {
             HStack(spacing: 0) {
                 RefsListView(model: model, previewMode: previewMode)
-                    .frame(width: RefsVisualTokens.listWidth(panelWidth: width))
+                    .frame(width: RefsVisualTokens.listWidth(panelWidth: panelWidth))
                 inspectorDivider
                 inspector
             }
@@ -99,7 +145,7 @@ public struct RefsPanelView: View {
 
     private var inspectorDivider: some View {
         Rectangle()
-            .fill(.primary.opacity(0.10))
+            .fill(.primary.opacity(contrast == .increased ? 0.25 : 0.10))
             .frame(width: 0.5)
     }
 

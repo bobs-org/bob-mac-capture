@@ -63,6 +63,87 @@ final class RefsInspectorLoaderTests: XCTestCase {
         )
     }
 
+    func testSummaryExcerptIsKindGated() async throws {
+        let fixtures = makeFixtures()
+        fixtures.intrinsics.result = RefsPDFIntrinsics(
+            pageCount: 22,
+            outlineHeadings: ["Method", "Results"],
+            leadText: "Bottom line\nShips today.\n\nAbstract\nWe study harness reuse.",
+            wordEstimate: 22 * 230,
+            thumbnailPNG: nil
+        )
+        let article = RefItem(
+            id: "ref/articles/gated_no_excerpt.md",
+            link: "[[ref/articles/gated_no_excerpt]]",
+            rawTitle: "Gated Excerpt",
+            stem: "gated_no_excerpt",
+            kind: .article,
+            state: .ready,
+            isBlocked: false,
+            pdfPath: "lib/articles/gated_no_excerpt.pdf",
+            author: "Yangze Liu"
+        )
+        fixtures.library.installSnapshotForPreviews(
+            items: [fixtures.chat, fixtures.paper, article],
+            signals: RefsSignals(),
+            refreshState: .idle
+        )
+        let loader = RefsInspectorLoader(
+            library: fixtures.library,
+            intrinsics: fixtures.intrinsics
+        )
+
+        loader.request(fixtures.chat)
+        await waitForContent(loader, id: fixtures.chat.id)
+        XCTAssertEqual(
+            try XCTUnwrap(loader.content(for: fixtures.chat.id)?.summary?.label),
+            "SUMMARY"
+        )
+
+        loader.request(fixtures.paper)
+        await waitForContent(loader, id: fixtures.paper.id)
+        XCTAssertEqual(
+            try XCTUnwrap(loader.content(for: fixtures.paper.id)?.summary?.label),
+            "ABSTRACT"
+        )
+
+        loader.request(article)
+        await waitForContent(loader, id: article.id)
+        XCTAssertNil(loader.content(for: article.id)?.summary)
+    }
+
+    func testInspectorContentStaysBounded() async throws {
+        let fixtures = makeFixtures()
+        fixtures.fetcher.showError = RefsTestError.boom
+        fixtures.fetcher.showDelayNanoseconds = 10_000_000
+        let loader = RefsInspectorLoader(
+            library: fixtures.library,
+            intrinsics: fixtures.intrinsics
+        )
+        for index in 0..<(RefsInspectorLoader.showCacheCapacity + 3) {
+            let item = RefItem(
+                id: "ref/chat/row-\(index).md",
+                link: "[[ref/chat/row-\(index)]]",
+                rawTitle: "Row \(index)",
+                stem: "row_\(index)",
+                kind: .chat,
+                state: .ready,
+                isBlocked: false,
+                pdfPath: "lib/chat/row_\(index).pdf"
+            )
+            loader.request(item)
+            try await Task.sleep(nanoseconds: 150_000_000)
+        }
+        XCTAssertLessThanOrEqual(
+            loader.content.count,
+            RefsInspectorLoader.showCacheCapacity
+        )
+        XCTAssertLessThanOrEqual(
+            loader.thumbnails.count,
+            RefsInspectorLoader.showCacheCapacity
+        )
+    }
+
     func testShowFailureKeepsBasicContent() async throws {
         let fixtures = makeFixtures()
         fixtures.fetcher.showError = RefsTestError.boom
@@ -81,6 +162,79 @@ final class RefsInspectorLoaderTests: XCTestCase {
         // when `ref show` fails.
         XCTAssertEqual(content.pageCount, 22)
         XCTAssertEqual(content.outline, ["Method", "Results"])
+    }
+
+    func testSlowIntrinsicsReadTimesOutNearThreeSeconds() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let slow = await RefsPDFIntrinsicsLoader(
+            cacheDirectory: root,
+            reader: { @Sendable _ in
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                return RefsPDFIntrinsics(pageCount: 9)
+            }
+        )
+        let missing = root.appendingPathComponent("no-such.pdf")
+        let start = Date()
+        let timedOut = await slow.intrinsics(for: missing, id: "slow")
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertTrue(timedOut.failed)
+        XCTAssertNil(timedOut.pageCount)
+        XCTAssertGreaterThanOrEqual(elapsed, 2.5)
+        XCTAssertLessThan(elapsed, 9)
+
+        // The abandoned read never queues later loads behind it: a
+        // fresh loader answers at once.
+        let fast = await RefsPDFIntrinsicsLoader(
+            cacheDirectory: root,
+            reader: { @Sendable _ in RefsPDFIntrinsics(pageCount: 3) }
+        )
+        let restart = Date()
+        let second = await fast.intrinsics(for: missing, id: "fast")
+        XCTAssertEqual(second.pageCount, 3)
+        XCTAssertLessThan(Date().timeIntervalSince(restart), 2)
+    }
+
+    func testIntrinsicsCacheLocksFilesDown() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let loader = await RefsPDFIntrinsicsLoader(
+            cacheDirectory: root,
+            reader: { @Sendable _ in RefsPDFIntrinsics(
+                pageCount: 5,
+                thumbnailPNG: Data([0x89, 0x50, 0x4E, 0x47])
+            ) }
+        )
+        try FileManager.default.createDirectory(
+            at: root, withIntermediateDirectories: true
+        )
+        let pdf = root.appendingPathComponent("note.pdf")
+        FileManager.default.createFile(
+            atPath: pdf.path, contents: Data("fake".utf8)
+        )
+        let loaded = await loader.intrinsics(for: pdf, id: "mode-check")
+        XCTAssertEqual(loaded.pageCount, 5)
+
+        func permissions(of url: URL) throws -> Int {
+            let attributes = try FileManager.default.attributesOfItem(
+                atPath: url.path
+            )
+            return (attributes[.posixPermissions] as? NSNumber)?.intValue ?? 0
+        }
+        XCTAssertEqual(try permissions(of: root), 0o700)
+        XCTAssertEqual(
+            try permissions(of: root.appendingPathComponent("thumbs")), 0o700
+        )
+        XCTAssertEqual(
+            try permissions(of: root.appendingPathComponent("intrinsics.json")),
+            0o600
+        )
+        let thumbs = try FileManager.default.contentsOfDirectory(
+            at: root.appendingPathComponent("thumbs"),
+            includingPropertiesForKeys: nil
+        )
+        XCTAssertEqual(thumbs.count, 1)
+        XCTAssertEqual(try permissions(of: thumbs[0]), 0o600)
     }
 
     func testActionsMenuVariesWithURLsAndAudio() throws {

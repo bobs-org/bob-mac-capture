@@ -395,7 +395,10 @@ extension RefItem {
         )
     }
 
-    static func isSafePDFPath(_ path: String) -> Bool {
+    /// Whether a stored PDF path resolves inside the vault: relative
+    /// and without a `..` component. `RefsLibrary` reuses this instead
+    /// of keeping its own copy.
+    public static func isSafePDFPath(_ path: String) -> Bool {
         guard !path.hasPrefix("/") else {
             return false
         }

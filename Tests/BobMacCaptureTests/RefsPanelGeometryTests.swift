@@ -99,4 +99,44 @@ final class RefsPanelGeometryTests: XCTestCase {
         XCTAssertEqual(RefsVisualTokens.rowHeight, 44)
         XCTAssertEqual(RefsVisualTokens.footerHeight, 30)
     }
+
+    func testActionsAnchorSitsBelowSelectedRow() {
+        // A selected row at panel-root (8, 100, 442 × 44): the menu
+        // pops below its leading text. The hosting view fills the
+        // content view, so the y-down row edge flips by the height.
+        let hosting = NSRect(x: 0, y: 0, width: 880, height: 560)
+        let point = RefsPanelController.actionsAnchor(
+            rowRect: CGRect(x: 8, y: 100, width: 442, height: 44),
+            hostingFrame: hosting,
+            contentSize: hosting.size,
+            panelWidth: 880
+        )
+        XCTAssertEqual(point.x, 20)
+        XCTAssertEqual(point.y, 560 - 144)
+    }
+
+    func testActionsAnchorFallsBackToListCenter() {
+        let hosting = NSRect(x: 0, y: 0, width: 880, height: 560)
+        for rowRect: CGRect? in [nil, .zero] {
+            let point = RefsPanelController.actionsAnchor(
+                rowRect: rowRect,
+                hostingFrame: hosting,
+                contentSize: hosting.size,
+                panelWidth: 880
+            )
+            XCTAssertEqual(point.x, 8 + round(880 * 0.52) / 2)
+            XCTAssertEqual(point.y, 280)
+        }
+    }
+
+    func testActionsMenuShowsOpenShortcutHints() {
+        XCTAssertEqual(RefsAction.openHighlights.keyEquivalent, "\r")
+        XCTAssertEqual(RefsAction.openHighlights.keyEquivalentModifierMask, [])
+        XCTAssertEqual(RefsAction.openNote.keyEquivalent, "\r")
+        XCTAssertEqual(RefsAction.openNote.keyEquivalentModifierMask, .command)
+        XCTAssertEqual(RefsAction.reveal.keyEquivalent, "\r")
+        XCTAssertEqual(RefsAction.reveal.keyEquivalentModifierMask, .option)
+        XCTAssertEqual(RefsAction.refreshLibrary.keyEquivalent, "r")
+        XCTAssertEqual(RefsAction.refreshLibrary.keyEquivalentModifierMask, .command)
+    }
 }

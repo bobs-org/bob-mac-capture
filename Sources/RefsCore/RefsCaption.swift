@@ -8,40 +8,90 @@ public enum RefsCaption {
     /// articles, docs), a date phrase naming the date that explains the
     /// row's position, `N pp` when the page count is known, and — in
     /// search mode — the matched stem or secondary field. Parts join
-    /// with `·`; a missing PDF gains "PDF missing".
+    /// with `·`; a missing PDF gains "PDF missing". A matched author
+    /// the caption already shows is not repeated.
     public static func caption(
         for item: RefItem,
         in section: RefsSectionKind?,
         signals: RefsSignals,
         match: RefsMatch? = nil
     ) -> String {
-        var parts: [String] = [item.kind.label]
+        captionWithMatch(for: item, in: section, signals: signals, match: match).text
+    }
+
+    /// The caption plus the character range of its matched stem or
+    /// secondary part, when search mode appended one. The row renders
+    /// that range in the accent color. Ranges are `Character` offsets
+    /// into the returned text.
+    public static func captionWithMatch(
+        for item: RefItem,
+        in section: RefsSectionKind?,
+        signals: RefsSignals,
+        match: RefsMatch? = nil
+    ) -> (text: String, matchRange: Range<Int>?) {
+        // Each part carries the highlight ranges inside its own text,
+        // when it is the matched stem or secondary field.
+        var parts: [(text: String, ranges: [Range<Int>])] = [(item.kind.label, [])]
         switch item.kind {
         case .paper, .article, .doc:
             if let author = item.author, !author.isEmpty {
-                parts.append(author)
+                parts.append((author, []))
             }
         case .chat, .book, .slides, .other:
             break
         }
         let phrase = datePhrase(for: item, in: section, signals: signals)
         if !phrase.isEmpty {
-            parts.append(phrase)
+            parts.append((phrase, []))
         }
         if let pages = signals.pageCounts[item.id] {
-            parts.append("\(pages) pp")
+            parts.append(("\(pages) pp", []))
         }
         if section == nil {
             if let secondary = match?.secondary {
-                parts.append(secondary.text)
+                if !repeatsShownAuthor(secondary, item: item) {
+                    parts.append((secondary.text, secondary.ranges))
+                }
             } else if let stemRanges = match?.stemRanges, !stemRanges.isEmpty {
-                parts.append(item.stem)
+                parts.append((item.stem, stemRanges))
             }
         }
         if signals.missingPDFs.contains(item.id) {
-            parts.append("PDF missing")
+            parts.append(("PDF missing", []))
         }
-        return parts.joined(separator: " · ")
+        var text = ""
+        var matchRange: Range<Int>? = nil
+        for (index, part) in parts.enumerated() {
+            if index > 0 {
+                text += " · "
+            }
+            let start = text.count
+            text += part.text
+            if matchRange == nil, !part.ranges.isEmpty {
+                let lower = part.ranges.map(\.lowerBound).min() ?? 0
+                let upper = part.ranges.map(\.upperBound).max() ?? 0
+                matchRange = (start + lower)..<(start + upper)
+            }
+        }
+        return (text, matchRange)
+    }
+
+    /// Whether a secondary hit repeats the author the caption already
+    /// shows, so the row must not append it again.
+    private static func repeatsShownAuthor(_ secondary: RefsSecondaryMatch, item: RefItem) -> Bool {
+        guard secondary.field == .author,
+              let author = item.author,
+              !author.isEmpty,
+              secondary.text == author
+        else {
+            return false
+        }
+        switch item.kind {
+        case .paper, .article, .doc:
+            return true
+        case .chat, .book, .slides, .other:
+            return false
+        }
     }
 
     /// The date phrase for a row: the date that explains its position.

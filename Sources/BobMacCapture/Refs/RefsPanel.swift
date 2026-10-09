@@ -37,7 +37,7 @@ public final class RefsPanelController: NSObject {
     private var panel: RefsPanel?
     private var localMonitor: Any?
     /// While true, a resign-key does not hide the panel. The ⌘K
-    /// actions menu sets this while it tracks (a later phase).
+    /// actions menu sets this while it tracks.
     var suspendHideOnResign = false
 
     public init(model: RefsPanelModel) {
@@ -111,19 +111,12 @@ public final class RefsPanelController: NSObject {
         panel?.orderOut(nil)
     }
 
-    /// Toggles the panel.
-    public func toggle() {
-        if isVisible {
-            hide()
-        } else {
-            show()
-        }
-    }
-
-    /// Pops the ⌘K actions menu for the selected row: below the mouse
-    /// when it sits over the panel (usually the row itself), else at
-    /// the list's center. The resign-key hide suspends while the menu
-    /// tracks, so picking an action never dismisses the panel first.
+    /// Pops the ⌘K actions menu below the selected row, or at the
+    /// list's center when the row frame is unknown. The resign-key hide
+    /// suspends while the menu tracks, so picking an action never
+    /// dismisses the panel first. Toggling lives in
+    /// `BobPanelCoordinator.toggleRefs`, which also closes a visible
+    /// panel from the global hotkey and the takeover key.
     public func showActionsMenu() {
         guard let panel,
               let contentView = panel.contentView,
@@ -156,7 +149,17 @@ public final class RefsPanelController: NSObject {
         actionsMenuActions = flat
         suspendHideOnResign = true
         defer { suspendHideOnResign = false }
-        menu.popUp(positioning: nil, at: actionsAnchor(in: contentView), in: contentView)
+        menu.popUp(
+            positioning: nil,
+            at: Self.actionsAnchor(
+                rowRect: model.selectedRowRect,
+                hostingFrame: (contentView as? NSGlassEffectView)?.contentView?.frame
+                    ?? contentView.bounds,
+                contentSize: contentView.bounds.size,
+                panelWidth: contentView.bounds.width
+            ),
+            in: contentView
+        )
     }
 
     private var actionsMenuActions: [RefsAction] = []
@@ -168,24 +171,29 @@ public final class RefsPanelController: NSObject {
         model.performAction(actionsMenuActions[sender.tag])
     }
 
-    private func actionsAnchor(in contentView: NSView) -> NSPoint {
-        guard let panel else {
+    /// The ⌘K anchor in the content view's coordinates: just below
+    /// the selected row's leading text, from the row frame the list
+    /// keeps live in panel-root SwiftUI coordinates (y-down, relative
+    /// to the hosting view). The hosting view is flipped, so its
+    /// y-down point maps into the unflipped content view by height.
+    /// When the row frame is unknown, the list column's center.
+    static func actionsAnchor(
+        rowRect: CGRect?,
+        hostingFrame: NSRect,
+        contentSize: NSSize,
+        panelWidth: CGFloat
+    ) -> NSPoint {
+        if let rowRect, !rowRect.isNull, rowRect != .zero {
             return NSPoint(
-                x: contentView.bounds.midX,
-                y: contentView.bounds.midY
+                x: hostingFrame.minX + rowRect.minX + 12,
+                y: hostingFrame.minY + hostingFrame.height - rowRect.maxY
             )
         }
-        let mouse = contentView.convert(
-            panel.mouseLocationOutsideOfEventStream,
-            from: nil
+        let listWidth = RefsVisualTokens.listWidth(panelWidth: panelWidth)
+        return NSPoint(
+            x: RefsVisualTokens.outerPadding + listWidth / 2,
+            y: contentSize.height / 2
         )
-        if contentView.bounds.contains(mouse) {
-            return mouse
-        }
-        let listWidth = RefsVisualTokens.listWidth(
-            panelWidth: contentView.bounds.width
-        )
-        return NSPoint(x: listWidth / 2, y: contentView.bounds.midY)
     }
 
     /// The panel configuration, static so geometry tests assert it
@@ -267,7 +275,6 @@ public final class RefsPanelController: NSObject {
                 .deviceIndependentFlagsMask
             ),
             context: RefsKeyContext(
-                bannerVisible: model.banner != nil,
                 queryIsEmpty: model.query.isEmpty,
                 scopeIsAll: model.scope == .all,
                 markedTextPresent: markedTextInFilterField(),

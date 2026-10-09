@@ -25,6 +25,21 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertNil(harness.model.banner)
     }
 
+    func testPrepareCountsEveryPresentation() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+
+        XCTAssertEqual(harness.model.presentationCount, 0)
+        harness.model.prepareForPresentation()
+        harness.model.selectedRowRect = CGRect(x: 1, y: 2, width: 3, height: 4)
+        XCTAssertEqual(harness.model.presentationCount, 1)
+        harness.model.prepareForPresentation()
+        XCTAssertEqual(harness.model.presentationCount, 2)
+        // A fresh presentation clears the previous show's row anchor so
+        // the ⌘K menu cannot pop at a stale frame before layout lands.
+        XCTAssertNil(harness.model.selectedRowRect)
+    }
+
     func testQueryEditRanksAndSelectsFirst() async throws {
         let harness = try makeHarness()
         await harness.waitForSnapshot()
@@ -374,7 +389,7 @@ final class RefsPanelModelTests: XCTestCase {
             query: "re",
             scope: .chats,
             selectedID: harness.model.selectedID,
-            banner: RefsBanner(kind: .error, message: "boom", actions: [.retry]),
+            banner: RefsBanner(kind: .error, message: "boom", actions: [.tryAgain]),
             refreshState: .idle
         )
 

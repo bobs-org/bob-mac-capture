@@ -63,8 +63,11 @@ public protocol RefsPDFIntrinsicsProviding: Sendable {
 /// to 5 pages scaled by the page count. Results cache by
 /// (path, fileSize, mtime) in memory (LRU of 64) and on disk
 /// (`intrinsics.json` capped at 1000 entries plus a
-/// `thumbs/<sha256>.png` per thumbnail). A locked document reports
-/// encrypted; a load over 3 s reports failed and is cancelled.
+/// `thumbs/<sha256>.png` per thumbnail), all mode 0600 in 0700
+/// directories like the other Refs stores. A locked document reports
+/// encrypted; a load over 3 s reports failed without waiting for the
+/// abandoned read, which finishes off the actor. Failures never
+/// cache, so a later selection retries.
 public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
     /// Lead-text cap in characters.
     public static let leadTextCap = 12_000
@@ -93,10 +96,14 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
     }
 
     private let cacheDirectory: URL
+    private let reader: @Sendable (URL) async -> RefsPDFIntrinsics
     private var memory: [Key: RefsPDFIntrinsics] = [:]
     private var memoryOrder: [Key] = []
 
-    public init(cacheDirectory: URL? = nil) {
+    public init(
+        cacheDirectory: URL? = nil,
+        reader: (@Sendable (URL) async -> RefsPDFIntrinsics)? = nil
+    ) {
         if let cacheDirectory {
             self.cacheDirectory = cacheDirectory
         } else {
@@ -107,6 +114,7 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
             self.cacheDirectory = (base ?? FileManager.default.temporaryDirectory)
                 .appendingPathComponent("org.bobs.bob-mac-capture/refs")
         }
+        self.reader = reader ?? Self.readIntrinsics
     }
 
     public func intrinsics(for pdfURL: URL, id: String) async -> RefsPDFIntrinsics {
@@ -126,8 +134,12 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
             return cached
         }
         let loaded = await loadWithTimeout(url: pdfURL)
-        remember(key: key, value: loaded)
-        writeDisk(key: key, value: loaded)
+        // A failure never caches: the timeout abandons its read, and a
+        // later selection retries instead of pinning the miss.
+        if !loaded.failed {
+            remember(key: key, value: loaded)
+            writeDisk(key: key, value: loaded)
+        }
         return loaded
     }
 
@@ -140,12 +152,23 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
         }
     }
 
+    /// Races the PDFKit read against the 3 s timeout. The read runs
+    /// in a detached task — never on the actor, and never a child of
+    /// the race group — so a timeout returns "Preview unavailable"
+    /// without waiting for the read, without queueing later loads
+    /// behind it, and while the abandoned read finishes on its own.
     private func loadWithTimeout(url: URL) async -> RefsPDFIntrinsics {
-        await withTaskGroup(of: RefsPDFIntrinsics.self) { group in
-            group.addTask { await self.readIntrinsics(url: url) }
+        let reader = self.reader
+        let read = Task.detached(priority: .utility) {
+            await reader(url)
+        }
+        return await withTaskGroup(of: RefsPDFIntrinsics.self) { group in
             group.addTask {
                 try? await Task.sleep(nanoseconds: Self.loadTimeoutNanoseconds)
                 return RefsPDFIntrinsics(failed: true)
+            }
+            group.addTask {
+                await read.value
             }
             let first = await group.next() ?? RefsPDFIntrinsics(failed: true)
             group.cancelAll()
@@ -153,7 +176,7 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
         }
     }
 
-    private func readIntrinsics(url: URL) async -> RefsPDFIntrinsics {
+    private nonisolated static func readIntrinsics(url: URL) async -> RefsPDFIntrinsics {
         guard let document = PDFDocument(url: url) else {
             return RefsPDFIntrinsics(failed: true)
         }
@@ -275,21 +298,44 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
         )
     }
 
+    /// The cache directory and its `thumbs` child, both mode 0700
+    /// like the other Refs stores. Best effort.
+    private func ensureCacheDirectories() {
+        for directory in [cacheDirectory, cacheDirectory.appendingPathComponent("thumbs")] {
+            try? FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o700],
+                ofItemAtPath: directory.path
+            )
+        }
+    }
+
+    /// Locks a cache file to mode 0600. Best effort.
+    private func protect(_ url: URL) {
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: url.path
+        )
+    }
+
     private func writeDisk(key: Key, value: RefsPDFIntrinsics) {
         guard !value.failed, !value.isEncrypted else {
             return
         }
-        try? FileManager.default.createDirectory(
-            at: cacheDirectory.appendingPathComponent("thumbs"),
-            withIntermediateDirectories: true
-        )
+        ensureCacheDirectories()
         var entries = (try? Data(contentsOf: diskFile())).flatMap {
             try? JSONDecoder().decode([String: DiskEntry].self, from: $0)
         } ?? [:]
         var savedThumbSHA: String?
         if let png = value.thumbnailPNG {
             let sha = thumbSHA(key: key)
-            try? png.write(to: thumbFile(sha: sha), options: .atomic)
+            let url = thumbFile(sha: sha)
+            try? png.write(to: url, options: .atomic)
+            protect(url)
             savedThumbSHA = sha
         }
         entries[diskKey(key)] = DiskEntry(
@@ -302,13 +348,20 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
         )
         while entries.count > Self.diskCapacity {
             let oldest = entries.min { $0.value.savedAt < $1.value.savedAt }?.key
-            guard let oldest else {
+            guard let oldest,
+                  let removed = entries.removeValue(forKey: oldest)
+            else {
                 break
             }
-            entries.removeValue(forKey: oldest)
+            // An evicted entry takes its thumbnail with it, so the
+            // thumbs directory cannot grow without bound.
+            if let sha = removed.thumbSHA {
+                try? FileManager.default.removeItem(at: thumbFile(sha: sha))
+            }
         }
         if let data = try? JSONEncoder().encode(entries) {
             try? data.write(to: diskFile(), options: .atomic)
+            protect(diskFile())
         }
     }
 
@@ -375,6 +428,9 @@ public final class RefsInspectorLoader: ObservableObject {
     private let intrinsics: RefsPDFIntrinsicsProviding
     private var current: Task<Void, Never>?
     private var showCache: [(key: String, row: RefsShowRow)] = []
+    /// Insertion order of the published content, so it stays bounded
+    /// by the same LRU capacity as the show cache.
+    private var contentOrder: [String] = []
 
     public init(
         library: RefsLibrary,
@@ -448,11 +504,14 @@ public final class RefsInspectorLoader: ObservableObject {
                     words: intrinsicsValue.wordEstimate
                 )
             }
+            // The summary excerpt is kind-gated (§10): chats get the
+            // Bottom-line excerpt, papers the Abstract excerpt, and
+            // every other kind no excerpt at all.
             if item.kind == .chat {
                 built.summary = RefsSummaryExtractor.bottomLine(
                     fromLeadText: intrinsicsValue.leadText
                 )
-            } else {
+            } else if item.kind == .paper {
                 built.summary = RefsSummaryExtractor.abstract(
                     fromLeadText: intrinsicsValue.leadText
                 )
@@ -471,7 +530,7 @@ public final class RefsInspectorLoader: ObservableObject {
         } else {
             built.showFailed = true
         }
-        content[item.id] = built
+        rememberContent(id: item.id, value: built)
         var pageCounts: [String: Int] = [:]
         if let pages = built.pageCount {
             pageCounts[item.id] = pages
@@ -490,6 +549,20 @@ public final class RefsInspectorLoader: ObservableObject {
             return nil
         }
         return await intrinsics.intrinsics(for: pdfURL, id: item.id)
+    }
+
+    /// Stores one row's hydrated content, evicting the oldest rows
+    /// past the show-cache capacity from both the content and the
+    /// thumbnail dictionaries.
+    private func rememberContent(id: String, value: RefsInspectorContent) {
+        content[id] = value
+        contentOrder.removeAll { $0 == id }
+        contentOrder.append(id)
+        while contentOrder.count > Self.showCacheCapacity {
+            let evicted = contentOrder.removeFirst()
+            content.removeValue(forKey: evicted)
+            thumbnails.removeValue(forKey: evicted)
+        }
     }
 
     private func cachedShowRow(for item: RefItem) async -> RefsShowRow? {

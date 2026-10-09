@@ -106,6 +106,11 @@ struct RefsListView: View {
         guard let content = model.rowContent(for: id) else {
             return AnyView(EmptyView())
         }
+        // The selected row keeps its frame live in the panel-root
+        // coordinate space, so the ⌘K menu pops below it. Deselected
+        // rows report nil, which never clears the current rect: the
+        // next selection overwrites it, and a fresh presentation
+        // clears it.
         return AnyView(
             RefsRowView(
                 content: content,
@@ -118,6 +123,14 @@ struct RefsListView: View {
                     model.perform(.activate(id: id))
                 }
             )
+            .onGeometryChange(for: CGRect?.self) { proxy in
+                model.selectedID == id
+                    ? proxy.frame(in: .named("refsPanel")) : nil
+            } action: { rect in
+                if let rect {
+                    model.selectedRowRect = rect
+                }
+            }
         )
     }
 

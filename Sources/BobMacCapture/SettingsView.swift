@@ -35,9 +35,12 @@ struct SettingsView: View {
                     "In Highlights, open Bob Refs with",
                     selection: $settings.refsHighlightsOpenKey
                 ) {
-                    Text("Off").tag(RefsHighlightsOpenKey.off)
-                    Text("Command-O").tag(RefsHighlightsOpenKey.cmdO)
-                    Text("Control-O").tag(RefsHighlightsOpenKey.ctrlO)
+                    Text(RefsHighlightsOpenKey.off.displayName)
+                        .tag(RefsHighlightsOpenKey.off)
+                    Text(RefsHighlightsOpenKey.cmdO.displayName)
+                        .tag(RefsHighlightsOpenKey.cmdO)
+                    Text(RefsHighlightsOpenKey.ctrlO.displayName)
+                        .tag(RefsHighlightsOpenKey.ctrlO)
                 }
                 LabeledContent("Highlights app", value: highlightsAppDescription)
                 HStack {

@@ -1,26 +1,24 @@
 import AppKit
 import Foundation
 
-/// What the panel knows about the key event's context: whether a banner
-/// is up, whether the query is empty, whether the scope is All, whether
-/// the field editor holds marked (IME-composing) text, and whether the
-/// listing is in browse mode. Printable keys always fall through to the
-/// search field.
+/// What the panel knows about the key event's context: whether the
+/// query is empty, whether the scope is All, whether the field editor
+/// holds marked (IME-composing) text, and whether the listing is in
+/// browse mode. A banner in flight needs no router flag: the model's
+/// Esc ladder dismisses the banner first. Printable keys always fall
+/// through to the search field.
 public struct RefsKeyContext: Equatable, Sendable {
-    public var bannerVisible: Bool
     public var queryIsEmpty: Bool
     public var scopeIsAll: Bool
     public var markedTextPresent: Bool
     public var listModeIsBrowse: Bool
 
     public init(
-        bannerVisible: Bool = false,
         queryIsEmpty: Bool = true,
         scopeIsAll: Bool = true,
         markedTextPresent: Bool = false,
         listModeIsBrowse: Bool = true
     ) {
-        self.bannerVisible = bannerVisible
         self.queryIsEmpty = queryIsEmpty
         self.scopeIsAll = scopeIsAll
         self.markedTextPresent = markedTextPresent
