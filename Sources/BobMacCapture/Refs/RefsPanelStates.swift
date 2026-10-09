@@ -24,8 +24,12 @@ struct RefsBannerView: View {
                             Button(actionLabel(for: action)) {
                                 model.performBannerAction(action)
                             }
-                            .buttonStyle(.borderless)
+                            // Plain, not link or borderless: those two
+                            // button styles snapshot as blank boxes in
+                            // ImageRenderer, while plain renders its text.
+                            .buttonStyle(.plain)
                             .font(.callout.weight(.semibold))
+                            .foregroundStyle(.accentColor)
                         }
                     }
                 }
