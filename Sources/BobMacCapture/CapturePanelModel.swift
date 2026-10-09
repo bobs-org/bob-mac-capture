@@ -613,8 +613,9 @@ final class CapturePanelModel: ObservableObject {
 
     /// The footer's primary action verb. Single close, start, toggle, link,
     /// adjust, and shift previews name their action so Return's meaning is
-    /// clear. It never varies with `dryRun` — it always names what Return will
-    /// do next.
+    /// clear. A `==` override start names its own verb (`Restart` / `Swap`)
+    /// via its presentation. It never varies with `dryRun` — it always names
+    /// what Return will do next.
     var primaryActionTitle: String {
         if resetPresentation != nil {
             return "Reset"
@@ -622,8 +623,8 @@ final class CapturePanelModel: ObservableObject {
         if closePresentation != nil {
             return "Close"
         }
-        if sessionStartPresentation != nil {
-            return "Start"
+        if let start = sessionStartPresentation {
+            return start.primaryActionTitle
         }
         if let title = togglePresentation?.primaryActionTitle {
             return title

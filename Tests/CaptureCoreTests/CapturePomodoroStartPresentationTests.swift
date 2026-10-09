@@ -246,6 +246,10 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
             "pomodoro-start-drop.json",
             "pomodoro-start-drop-empty.json",
             "pomodoro-start-drop-named.json",
+            "pomodoro-start-override-restart.json",
+            "pomodoro-start-override-swap-kept.json",
+            "pomodoro-start-override-swap-fresh-created.json",
+            "pomodoro-start-override-idle.json",
         ] {
             let success = try decodeFixture(name)
             XCTAssertNotNil(
@@ -660,6 +664,170 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         )
         XCTAssertEqual(chain.items.map(\.mode), ["pomodoro_close", "pomodoro_start"])
         XCTAssertEqual(chain.items.last?.pomodoroStart?.drop, [2])
+    }
+
+    func testOverrideRestartFixtureRewordsCardFooterAndNotification() throws {
+        let success = try decodeFixture("pomodoro-start-override-restart.json")
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+
+        XCTAssertTrue(presentation.isDryRun)
+        XCTAssertTrue(CapturePomodoroStartPresentation.isSessionStart(success))
+        XCTAssertEqual(presentation.variant, .restart)
+        XCTAssertEqual(presentation.title, "Restart CAPTURE")
+        XCTAssertEqual(
+            presentation.statusText,
+            "Would restart CAPTURE 0920-0945 → 0935-1000 (25m) at line 5"
+        )
+        XCTAssertEqual(presentation.restartWasText, "was 0920–0945")
+        XCTAssertNil(presentation.demotedText)
+        XCTAssertFalse(presentation.takesOverLedger)
+        XCTAssertNil(presentation.takesOverBadgeText)
+        XCTAssertNil(presentation.idleCaption)
+        XCTAssertEqual(presentation.primaryActionTitle, "Restart")
+        XCTAssertEqual(presentation.notificationTitle, "Restarted CAPTURE")
+        XCTAssertEqual(presentation.notificationBody, "0935–1000 (25m) · 2 queued")
+        XCTAssertEqual(presentation.batchSuffix, " (restarted CAPTURE 0935-1000)")
+    }
+
+    func testOverrideRestartCommitUsesRestartedVerb() throws {
+        let summary = try XCTUnwrap(decodeFixture("pomodoro-start-override-restart.json").pomodoroStart)
+        let committed = CapturePomodoroStartPresentation(
+            summary: summary,
+            dryRun: false,
+            relativeTarget: "2026/20261009.md",
+            captureText: "=="
+        )
+
+        XCTAssertEqual(committed.variant, .restart)
+        XCTAssertEqual(committed.title, "Restarted CAPTURE")
+        XCTAssertEqual(
+            committed.statusText,
+            "Restarted CAPTURE 0920-0945 → 0935-1000 (25m) at line 5"
+        )
+        XCTAssertEqual(committed.primaryActionTitle, "Restart")
+    }
+
+    func testOverrideSwapKeptFixtureTakesOverLedger() throws {
+        let success = try decodeFixture("pomodoro-start-override-swap-kept.json")
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+
+        XCTAssertEqual(presentation.variant, .swap)
+        XCTAssertTrue(presentation.takesOverLedger)
+        XCTAssertEqual(presentation.takesOverBadgeText, "Takes over")
+        XCTAssertEqual(presentation.title, "Swap in BUGS")
+        XCTAssertEqual(
+            presentation.statusText,
+            "Would swap in BUGS 0920-0945 (takes over CAPTURE) at line 5"
+        )
+        XCTAssertEqual(presentation.demotedText, "CAPTURE → first future · keeps 2 Task Links")
+        XCTAssertNil(presentation.restartWasText)
+        XCTAssertNil(presentation.idleCaption)
+        XCTAssertEqual(presentation.primaryActionTitle, "Swap")
+        XCTAssertEqual(presentation.notificationTitle, "Swapped in BUGS")
+        XCTAssertEqual(presentation.notificationBody, "0920–0945 · CAPTURE back to first future")
+        XCTAssertEqual(presentation.batchSuffix, " (swapped in BUGS 0920-0945)")
+    }
+
+    func testOverrideSwapFreshCreatedFixtureShowsNewBadge() throws {
+        let success = try decodeFixture("pomodoro-start-override-swap-fresh-created.json")
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+
+        XCTAssertEqual(presentation.variant, .swap)
+        XCTAssertFalse(presentation.takesOverLedger)
+        XCTAssertNil(presentation.takesOverBadgeText)
+        XCTAssertEqual(presentation.createdBadgeText, "New")
+        XCTAssertEqual(presentation.title, "Swap in PLAN")
+        XCTAssertEqual(
+            presentation.statusText,
+            "Would swap in PLAN 0935-0950 (15m) (created) at line 5"
+        )
+        XCTAssertEqual(presentation.demotedText, "CAPTURE → first future · keeps 2 Task Links")
+        XCTAssertEqual(presentation.notificationTitle, "Swapped in PLAN")
+        XCTAssertEqual(presentation.notificationBody, "0935–0950 · CAPTURE back to first future")
+        XCTAssertEqual(presentation.batchSuffix, " (swapped in PLAN 0935-0950)")
+        XCTAssertEqual(presentation.primaryActionTitle, "Swap")
+    }
+
+    func testOverrideIdleFixtureStartsLikePlainStartWithCaption() throws {
+        let success = try decodeFixture("pomodoro-start-override-idle.json")
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+
+        XCTAssertEqual(presentation.variant, .idleStart)
+        XCTAssertEqual(presentation.title, "Start BUGS")
+        XCTAssertEqual(
+            presentation.statusText,
+            "Would start BUGS 0935-1000 (25m) at line 3"
+        )
+        XCTAssertEqual(presentation.idleCaption, "Nothing was running — starts like =")
+        XCTAssertNil(presentation.restartWasText)
+        XCTAssertNil(presentation.demotedText)
+        XCTAssertEqual(presentation.primaryActionTitle, "Start")
+        XCTAssertEqual(presentation.notificationTitle, "Started BUGS")
+        XCTAssertEqual(presentation.notificationBody, "0935-1000 (25m) · Nothing queued")
+        XCTAssertTrue(
+            presentation.accessibilitySummary.contains("Nothing was running — starts like =")
+        )
+    }
+
+    func testOlderBobWithoutOverrideDecodesAsPlainStart() throws {
+        let success = try decodeCaptureSuccess(sessionStartJSON(dryRun: true, name: "CAPTURE", tasks: "[]"))
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+
+        XCTAssertNil(success.pomodoroStart?.overrideOutcome)
+        XCTAssertEqual(presentation.variant, .start)
+        XCTAssertFalse(presentation.takesOverLedger)
+        XCTAssertNil(presentation.takesOverBadgeText)
+        XCTAssertNil(presentation.idleCaption)
+        XCTAssertNil(presentation.restartWasText)
+        XCTAssertNil(presentation.demotedText)
+        XCTAssertEqual(presentation.title, "Start CAPTURE")
+        XCTAssertEqual(presentation.primaryActionTitle, "Start")
+    }
+
+    func testUnknownOverrideActionDecodesAsPlainStart() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"",
+             "relative_target":"2026/20261009.md","target":"/tmp/bob/2026/20261009.md",
+             "text":"==","task_line":"- [ ] (**0935-1000** [t:: 25m]) — CAPTURE",
+             "kind":"pomodoro_start","created":"2026-10-09","scheduled":null,
+             "placement":"started",
+             "pomodoro_start":{"start":"0935","end":"1000","duration_minutes":25,
+              "offset_units":0,"pomodoro_name":"CAPTURE","pomodoro_line":5,
+              "created_pomodoro":false,"time_range":"(**0935-1000** [t:: 25m])",
+              "tasks":[],
+              "override":{"action":"teleport","ledger":"fresh"}}}
+            """
+        )
+
+        XCTAssertNil(success.pomodoroStart?.overrideOutcome)
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+        XCTAssertEqual(presentation.variant, .start)
+        XCTAssertEqual(presentation.title, "Start CAPTURE")
+    }
+
+    func testOverrideParseFixturesCarrySpecFlag() throws {
+        let swap = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-start-override-parse.json").utf8)
+        )
+        XCTAssertEqual(swap.mode, "pomodoro_start")
+        XCTAssertEqual(swap.pomodoroStart?.isOverride, true)
+
+        let restart = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-start-override-parse-restart.json").utf8)
+        )
+        XCTAssertEqual(restart.mode, "pomodoro_start")
+        XCTAssertEqual(restart.pomodoroStart?.isOverride, true)
+
+        let incomplete = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("pomodoro-start-override-parse-incomplete.json").utf8)
+        )
+        XCTAssertEqual(incomplete.mode, "incomplete")
+        XCTAssertEqual(incomplete.needs, ["pomodoro_name"])
+        XCTAssertEqual(incomplete.pomodoroStart?.isOverride, true)
     }
 
     private func sessionStartJSON(dryRun: Bool, name: String?, tasks: String) -> String {

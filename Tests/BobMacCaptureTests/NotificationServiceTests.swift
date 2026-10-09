@@ -166,6 +166,144 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertTrue(content.body.contains("1 start"))
     }
 
+    func testOverrideRestartSuccessUsesRestartTitleAndQueuedBody() {
+        let content = NotificationService.successContent(captures: [
+            capture(
+                kind: "pomodoro_start",
+                routeLabel: "",
+                target: "/tmp/bob/2026/20261009.md",
+                text: "==",
+                pomodoroStart: PomodoroStartSummary(
+                    start: "0935",
+                    end: "1000",
+                    durationMinutes: 25,
+                    offsetUnits: 0,
+                    pomodoroName: "CAPTURE",
+                    pomodoroLine: 5,
+                    createdPomodoro: false,
+                    timeRange: "(**0935-1000** [t:: 25m])",
+                    tasks: [
+                        PomodoroStartTask(
+                            blockLink: "[[bob#^capture-stop]]",
+                            ledgerLine: 6,
+                            resolved: true,
+                            relativeTarget: "bob.md",
+                            blockID: "capture-stop",
+                            text: "Stop capture from the panel",
+                            statusSymbol: "/",
+                            statusName: "In Progress",
+                            index: 1
+                        ),
+                    ],
+                    overrideOutcome: PomodoroStartOverride(
+                        action: "restart",
+                        ledger: "fresh",
+                        previous: PomodoroStartPrevious(
+                            pomodoroName: "CAPTURE",
+                            pomodoroLine: 5,
+                            start: "0920",
+                            end: "0945",
+                            durationMinutes: 25,
+                            timeRange: "0920-0945"
+                        )
+                    )
+                ),
+                relativeTarget: "2026/20261009.md",
+                dayFile: "/tmp/bob/2026/20261009.md"
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "Restarted CAPTURE")
+        XCTAssertEqual(content.subtitle, "2026/20261009.md")
+        XCTAssertEqual(content.body, "0935–1000 (25m) · 1 queued")
+    }
+
+    func testOverrideSwapSuccessUsesSwappedTitleAndDemotedBody() {
+        let content = NotificationService.successContent(captures: [
+            capture(
+                kind: "pomodoro_start",
+                routeLabel: "",
+                target: "/tmp/bob/2026/20261009.md",
+                text: "==#bugs",
+                pomodoroStart: PomodoroStartSummary(
+                    start: "0920",
+                    end: "0945",
+                    durationMinutes: 25,
+                    offsetUnits: 0,
+                    pomodoroName: "BUGS",
+                    pomodoroLine: 5,
+                    createdPomodoro: false,
+                    timeRange: "(**0920-0945** [t:: 25m])",
+                    tasks: [],
+                    overrideOutcome: PomodoroStartOverride(
+                        action: "swap",
+                        ledger: "kept",
+                        previous: PomodoroStartPrevious(
+                            pomodoroName: "CAPTURE",
+                            pomodoroLine: 5,
+                            start: "0920",
+                            end: "0945",
+                            durationMinutes: 25,
+                            timeRange: "0920-0945"
+                        ),
+                        demoted: PomodoroStartDemoted(
+                            pomodoroName: "CAPTURE",
+                            pomodoroLine: 7,
+                            entryLine: "- [ ] () — CAPTURE",
+                            taskLinks: 2,
+                            hasNotes: false
+                        )
+                    )
+                ),
+                relativeTarget: "2026/20261009.md",
+                dayFile: "/tmp/bob/2026/20261009.md"
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "Swapped in BUGS")
+        XCTAssertEqual(content.subtitle, "2026/20261009.md")
+        XCTAssertEqual(content.body, "0920–0945 · CAPTURE back to first future")
+    }
+
+    func testOverrideBatchLinesUseRestartAndSwapSuffixes() {
+        let content = NotificationService.successContent(captures: [
+            capture(kind: "task", routeLabel: "cash.md", target: "/tmp/bob/cash.md", text: "Call bank"),
+            capture(
+                kind: "pomodoro_start",
+                routeLabel: "",
+                target: "/tmp/bob/2026/20261009.md",
+                text: "==",
+                pomodoroStart: PomodoroStartSummary(
+                    start: "0935",
+                    end: "1000",
+                    durationMinutes: 25,
+                    offsetUnits: 0,
+                    pomodoroName: "CAPTURE",
+                    pomodoroLine: 5,
+                    createdPomodoro: false,
+                    timeRange: "(**0935-1000** [t:: 25m])",
+                    tasks: [],
+                    overrideOutcome: PomodoroStartOverride(
+                        action: "restart",
+                        ledger: "fresh",
+                        previous: PomodoroStartPrevious(
+                            pomodoroName: "CAPTURE",
+                            pomodoroLine: 5,
+                            start: "0920",
+                            end: "0945",
+                            durationMinutes: 25,
+                            timeRange: "0920-0945"
+                        )
+                    )
+                ),
+                relativeTarget: "2026/20261009.md"
+            ),
+        ])
+
+        XCTAssertEqual(content.title, "2 items captured")
+        XCTAssertTrue(content.body.contains(" (restarted CAPTURE 0935-1000)"))
+    }
+
     func testSinglePomodoroAdjustSuccessContentAppendsBeforeAfterDetail() {
         let content = NotificationService.successContent(captures: [
             capture(

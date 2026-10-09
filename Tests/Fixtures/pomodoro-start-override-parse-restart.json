@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"==","body":"==","mode":"pomodoro_start","route":null,"section":null,"block_id":null,"needs":[],"spans":[{"start":0,"end":2,"kind":"pomodoro_start"}],"diagnostics":[],"pomodoro_start":{"raw":"","duration_units":5,"offset_units":0,"override":true}}

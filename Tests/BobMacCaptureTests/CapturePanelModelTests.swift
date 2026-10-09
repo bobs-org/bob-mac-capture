@@ -2701,6 +2701,105 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture --format json -- \(draft)"))
     }
 
+    func testOverrideRestartPresentationUsesBobSummaryAndOffersRestartFooterAction() throws {
+        let restart = try startSuccessFixture("pomodoro-start-override-restart.json")
+        let model = CapturePanelModel()
+        model.previewResult = restart
+        model.previewResults = [restart]
+
+        XCTAssertEqual(model.sessionStartPresentation?.variant, .restart)
+        XCTAssertEqual(model.sessionStartPresentation?.title, "Restart CAPTURE")
+        XCTAssertEqual(
+            model.sessionStartPresentation?.statusText,
+            "Would restart CAPTURE 0920-0945 → 0935-1000 (25m) at line 5"
+        )
+        XCTAssertEqual(model.primaryActionTitle, "Restart")
+    }
+
+    func testOverrideSwapPresentationOffersSwapFooterAction() throws {
+        let swap = try startSuccessFixture("pomodoro-start-override-swap-kept.json")
+        let model = CapturePanelModel()
+        model.previewResult = swap
+        model.previewResults = [swap]
+
+        XCTAssertEqual(model.sessionStartPresentation?.variant, .swap)
+        XCTAssertEqual(model.sessionStartPresentation?.title, "Swap in BUGS")
+        XCTAssertEqual(model.primaryActionTitle, "Swap")
+    }
+
+    func testOverrideIdlePresentationOffersStartFooterAction() throws {
+        let idle = try startSuccessFixture("pomodoro-start-override-idle.json")
+        let model = CapturePanelModel()
+        model.previewResult = idle
+        model.previewResults = [idle]
+
+        XCTAssertEqual(model.sessionStartPresentation?.variant, .idleStart)
+        XCTAssertEqual(model.sessionStartPresentation?.title, "Start BUGS")
+        XCTAssertEqual(model.primaryActionTitle, "Start")
+    }
+
+    func testOverrideRestartLivePreviewAndSubmitUseRestartArgvFooterAndStatus() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "=="
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.sessionStartPresentation?.title, "Restart CAPTURE")
+        XCTAssertEqual(model.primaryActionTitle, "Restart")
+        XCTAssertEqual(
+            model.statusText,
+            "Would restart CAPTURE 0920-0945 → 0935-1000 (25m) at line 5"
+        )
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(
+            model.statusText,
+            "Restarted CAPTURE 0920-0945 → 0935-1000 (25m) at line 5"
+        )
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"))
+        XCTAssertTrue(record.contains("argv=capture --format json -- \(draft)"))
+    }
+
+    func testOverrideSwapLivePreviewUsesSwapFooterAndStatus() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let draft = "==#bugs"
+
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.sessionStartPresentation?.title, "Swap in BUGS")
+        XCTAssertEqual(model.primaryActionTitle, "Swap")
+        XCTAssertEqual(
+            model.statusText,
+            "Would swap in BUGS 0920-0945 (takes over CAPTURE) at line 5"
+        )
+    }
+
     func testLivePreviewWithStartSwitchDraftKeepsBothItemsAndCaptureAction() async throws {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(

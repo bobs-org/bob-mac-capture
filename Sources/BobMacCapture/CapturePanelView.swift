@@ -2441,6 +2441,17 @@ struct PreviewPane: View {
         // dimmed, and Start is disabled until a task number is typed.
         let isPending = model.closePendingText != nil
         let showsBadges = start.taskRows.contains { $0.index != nil }
+        // Restarts and swaps keep the start pink but answer the play glyph
+        // with their own: a restart re-runs the clock, a swap exchanges it.
+        let startIconName: String
+        switch start.variant {
+        case .restart:
+            startIconName = "arrow.clockwise.circle.fill"
+        case .swap:
+            startIconName = "arrow.left.arrow.right.circle.fill"
+        case .start, .idleStart:
+            startIconName = "play.circle.fill"
+        }
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if total > 1 {
@@ -2448,15 +2459,26 @@ struct PreviewPane: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                Image(systemName: "play.circle.fill")
+                Image(systemName: startIconName)
                     .foregroundStyle(sessionTint)
                     .accessibilityHidden(true)
                 Text(start.title)
                     .fontWeight(.semibold)
                 // A created session carries a small pink New/Created capsule
-                // next to the title so the fresh entry reads at a glance.
+                // next to the title so the fresh entry reads at a glance; a
+                // kept-ledger swap adds a Takes over capsule the same way.
                 if let badge = start.createdBadgeText {
                     Text(badge)
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.pink)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(.pink.opacity(0.15), in: Capsule())
+                        .accessibilityHidden(true)
+                }
+                if let takesOver = start.takesOverBadgeText {
+                    Text(takesOver)
                         .font(.caption2)
                         .fontWeight(.semibold)
                         .foregroundStyle(.pink)
@@ -2477,6 +2499,38 @@ struct PreviewPane: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .textSelection(.enabled)
+            }
+
+            // Override captions under the destination: the pre-image range a
+            // restart leaves behind, the session a swap returns to first
+            // future, or the idle note when `==` started like `=`.
+            if let was = start.restartWasText {
+                Text(was)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            if let demoted = start.demotedText {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "arrow.uturn.down")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(demoted)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+            if let idle = start.idleCaption {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "play.circle")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(idle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
             }
 
             // The teaching hint (before a drop is typed), the drop summary

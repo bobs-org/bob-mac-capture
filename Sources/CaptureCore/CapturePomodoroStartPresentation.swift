@@ -16,7 +16,24 @@ import Foundation
 /// carry no `tasks` array and keep their existing row/suffix rendering; the start card,
 /// `Start` footer action, and start notification apply to whole-item `=`/`=<X>` starts
 /// (`kind == "pomodoro_start"` — see `isSessionStart`).
+///
+/// A `==` override keeps the same kind and card: the presentation only rewords it.
+/// `variant` drives the title (`Restart CAPTURE` / `Restarted CAPTURE`,
+/// `Swap in BUGS` / `Swapped in BUGS`), the status line, the `Takes over` badge
+/// for kept-ledger swaps, the idle caption when nothing was running, the
+/// `Restart` / `Swap` footer action, and the notification title/body, so the
+/// SwiftUI layer never branches on override JSON fields.
 public struct CapturePomodoroStartPresentation: Equatable, Sendable {
+    /// Which session story this card tells: a plain `=` start, a `==<X>`
+    /// restart of the running session, a `==[<X>]#name` swap, or an idle
+    /// `==` that behaved exactly like its `=` twin. Decoded once from
+    /// `pomodoro_start.override`; an older Bob without it is a plain start.
+    public enum Variant: Equatable, Sendable {
+        case start
+        case restart
+        case swap
+        case idleStart
+    }
     /// The leading glyph for a queued-task row. Resolved rows map the task's
     /// current status symbol; unresolved rows always warn. Dropped rows leave
     /// today entirely and render the close card's `minus.circle` glyph.
@@ -157,9 +174,28 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
     /// `"Dropped 2, 4"` once a drop is typed, plus `" · nothing left
     /// queued"` when no kept rows remain. Nil before that.
     public let dropSummary: String?
-    /// `" (started CAPTURE 0940-1005)"`, appended to batch lines for starts.
+    /// `" (started CAPTURE 0940-1005)"`, appended to batch lines for starts
+    /// (` (restarted CAPTURE 0935-1000)` for restarts,
+    /// ` (swapped in BUGS 0920-0945)` for swaps).
     public let batchSuffix: String
     public let primaryActionTitle: String
+    /// The session story this card tells (see `Variant`).
+    public let variant: Variant
+    /// True for a swap that took over the running ledger byte-for-byte.
+    public let takesOverLedger: Bool
+    /// `"Takes over"` on a kept-ledger swap, nil otherwise. Rendered as a
+    /// small pink capsule next to the title, alongside New/Created.
+    public let takesOverBadgeText: String?
+    /// `"Nothing was running — starts like ="` when an idle `==` behaved
+    /// like its `=` twin, nil otherwise.
+    public let idleCaption: String?
+    /// `"was 0920–0945"` (the pre-image range) on a restart, nil otherwise.
+    /// Rendered as a dim caption under the title.
+    public let restartWasText: String?
+    /// `"CAPTURE → first future · keeps 2 Task Links"` (plus
+    /// `" and its notes"`) on a swap, nil otherwise. Rendered as the
+    /// demoted row under the title.
+    public let demotedText: String?
 
     public init?(capture: CaptureCommandSuccess) {
         guard let summary = capture.pomodoroStart else {
@@ -189,18 +225,67 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         createdPomodoro = summary.createdPomodoro
         timeRange = summary.timeRange
 
+        let override = summary.overrideOutcome
+        switch override?.action {
+        case "restart":
+            variant = .restart
+        case "swap":
+            variant = .swap
+        case "start":
+            variant = .idleStart
+        default:
+            variant = .start
+        }
+        takesOverLedger = override?.ledger == "kept" && variant == .swap
+        takesOverBadgeText = takesOverLedger ? "Takes over" : nil
+        idleCaption = variant == .idleStart ? "Nothing was running — starts like =" : nil
+        let previousRange = override?.previous?.timeRange ?? ""
+        if variant == .restart, !previousRange.isEmpty {
+            restartWasText = "was \(enDashRange(previousRange))"
+        } else {
+            restartWasText = nil
+        }
+        if variant == .swap, let demoted = override?.demoted {
+            let demotedName = demotedNameText(demoted.pomodoroName)
+            let links = demoted.taskLinks == 1
+                ? "keeps 1 Task Link"
+                : "keeps \(demoted.taskLinks) Task Links"
+            let notes = demoted.hasNotes ? " and its notes" : ""
+            demotedText = "\(demotedName) → first future · \(links)\(notes)"
+        } else {
+            demotedText = nil
+        }
+
         let dropList = summary.drop
         let hasDrop = !dropList.isEmpty
         let dropNumbers = dropList.map(String.init).joined(separator: ", ")
 
-        title = "\(dryRun ? "Start" : "Started") \(pomodoroName)"
-        let verb = dryRun ? "Would start" : "Started"
-        let created = summary.createdPomodoro ? " (created)" : ""
-        let dropSuffix = hasDrop ? (dryRun ? " · drops \(dropNumbers)" : " · dropped \(dropNumbers)") : ""
-        statusText =
-            "\(verb) \(pomodoroName) \(start)-\(end) (\(durationMinutes)m)\(created) at line \(pomodoroLine)\(dropSuffix)"
         sessionText = "\(start)-\(end) (\(durationMinutes)m)"
         destinationText = "\(relativeTarget) · line \(pomodoroLine)"
+
+        let created = summary.createdPomodoro ? " (created)" : ""
+        let dropSuffix = hasDrop ? (dryRun ? " · drops \(dropNumbers)" : " · dropped \(dropNumbers)") : ""
+        switch variant {
+        case .restart:
+            title = "\(dryRun ? "Restart" : "Restarted") \(pomodoroName)"
+            statusText =
+                "\(dryRun ? "Would restart" : "Restarted") \(pomodoroName) \(previousRange) → \(start)-\(end) (\(durationMinutes)m)\(created) at line \(pomodoroLine)\(dropSuffix)"
+        case .swap:
+            title = "\(dryRun ? "Swap in" : "Swapped in") \(pomodoroName)"
+            if takesOverLedger {
+                let previousName = demotedNameText(override?.previous?.pomodoroName)
+                statusText =
+                    "\(dryRun ? "Would swap in" : "Swapped in") \(pomodoroName) \(previousRange) (takes over \(previousName))\(created) at line \(pomodoroLine)\(dropSuffix)"
+            } else {
+                statusText =
+                    "\(dryRun ? "Would swap in" : "Swapped in") \(pomodoroName) \(start)-\(end) (\(durationMinutes)m)\(created) at line \(pomodoroLine)\(dropSuffix)"
+            }
+        case .start, .idleStart:
+            title = "\(dryRun ? "Start" : "Started") \(pomodoroName)"
+            let verb = dryRun ? "Would start" : "Started"
+            statusText =
+                "\(verb) \(pomodoroName) \(start)-\(end) (\(durationMinutes)m)\(created) at line \(pomodoroLine)\(dropSuffix)"
+        }
 
         // The start card only renders for whole-item starts. A `#` in the
         // capture text means a named `=<X>#name` start.
@@ -250,11 +335,31 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
             )
         }
 
-        let createdPhrase = summary.createdPomodoro ? ", created new entry" : ", uses existing entry"
-        var spoken =
-            "Starts \(pomodoroName), \(start) to \(end), \(durationMinutes) minutes, line \(pomodoroLine)\(createdPhrase)"
-        if summary.createdPomodoro {
-            spoken += ", new session"
+        var spoken: String
+        switch variant {
+        case .restart:
+            let was = override?.previous.map { "was \($0.start) to \($0.end)" }
+            spoken =
+                "Restarts \(pomodoroName), \(start) to \(end), \(durationMinutes) minutes, line \(pomodoroLine)"
+            if let was {
+                spoken += ", \(was)"
+            }
+        case .swap:
+            let previousName = demotedNameText(override?.previous?.pomodoroName)
+            let taken = previousRange.isEmpty ? "" : ", takes over \(previousRange) from \(previousName)"
+            let demotedName = demotedNameText(override?.demoted?.pomodoroName)
+            spoken =
+                "Swaps in \(pomodoroName)\(taken), \(demotedName) returns to first future, line \(pomodoroLine)"
+            if summary.createdPomodoro {
+                spoken += ", created new entry"
+            }
+        case .start, .idleStart:
+            let createdPhrase = summary.createdPomodoro ? ", created new entry" : ", uses existing entry"
+            spoken =
+                "Starts \(pomodoroName), \(start) to \(end), \(durationMinutes) minutes, line \(pomodoroLine)\(createdPhrase)"
+            if summary.createdPomodoro {
+                spoken += ", new session"
+            }
         }
         if let tasks = summary.tasks {
             spoken += tasks.isEmpty
@@ -262,6 +367,9 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
                 : ", \(tasks.count) queued task\(tasks.count == 1 ? "" : "s")"
         }
         spoken += taskRows.compactMap { $0.index == nil ? nil : ", \($0.accessibilityLabel)" }.joined()
+        if let idleCaption {
+            spoken += ". \(idleCaption)"
+        }
         if let teachingHint {
             spoken += ". \(teachingHint.text)"
         }
@@ -271,18 +379,50 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         accessibilitySummary = spoken
         notificationDetail = statusText
 
-        notificationTitle = "Started \(pomodoroName)"
         let notificationDropSuffix = hasDrop ? " · dropped \(dropNumbers)" : ""
-        if summary.createdPomodoro {
-            notificationBody = "\(enDashRange(sessionText)) · New session\(notificationDropSuffix)"
-        } else if let tasks = summary.tasks, !tasks.isEmpty {
+        switch variant {
+        case .restart:
+            notificationTitle = "Restarted \(pomodoroName)"
+            if let tasks = summary.tasks, !tasks.isEmpty {
+                notificationBody =
+                    "\(enDashRange(sessionText)) · \(tasks.count) queued\(notificationDropSuffix)"
+            } else {
+                notificationBody = "\(enDashRange(sessionText)) · Nothing queued\(notificationDropSuffix)"
+            }
+        case .swap:
+            notificationTitle = "Swapped in \(pomodoroName)"
+            let takenRange = takesOverLedger ? previousRange : "\(start)-\(end)"
+            let demotedName = demotedNameText(override?.demoted?.pomodoroName)
             notificationBody =
-                "\(sessionText) · \(tasks.count) queued task\(tasks.count == 1 ? "" : "s")\(notificationDropSuffix)"
-        } else {
-            notificationBody = "\(sessionText) · Nothing queued\(notificationDropSuffix)"
+                "\(enDashRange(takenRange)) · \(demotedName) back to first future\(notificationDropSuffix)"
+        case .start, .idleStart:
+            notificationTitle = "Started \(pomodoroName)"
+            if summary.createdPomodoro {
+                notificationBody = "\(enDashRange(sessionText)) · New session\(notificationDropSuffix)"
+            } else if let tasks = summary.tasks, !tasks.isEmpty {
+                notificationBody =
+                    "\(sessionText) · \(tasks.count) queued task\(tasks.count == 1 ? "" : "s")\(notificationDropSuffix)"
+            } else {
+                notificationBody = "\(sessionText) · Nothing queued\(notificationDropSuffix)"
+            }
         }
-        batchSuffix = " (started \(pomodoroName) \(start)-\(end))"
-        primaryActionTitle = "Start"
+        switch variant {
+        case .restart:
+            batchSuffix = " (restarted \(pomodoroName) \(start)-\(end))"
+        case .swap:
+            let takenRange = takesOverLedger ? previousRange : "\(start)-\(end)"
+            batchSuffix = " (swapped in \(pomodoroName) \(takenRange))"
+        case .start, .idleStart:
+            batchSuffix = " (started \(pomodoroName) \(start)-\(end))"
+        }
+        switch variant {
+        case .restart:
+            primaryActionTitle = "Restart"
+        case .swap:
+            primaryActionTitle = "Swap"
+        case .start, .idleStart:
+            primaryActionTitle = "Start"
+        }
     }
 
     /// Kept (`tasks`) and dropped (`dropped`) rows merged in lineup order:
@@ -418,4 +558,13 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
             accessibilityLabel: accessibilityLabel
         )
     }
+}
+
+/// Display name for an override previous/demoted session: Bob's canonical
+/// name, falling back to `"session"` when the session was unnamed.
+private func demotedNameText(_ name: String?) -> String {
+    guard let name, !name.isEmpty else {
+        return "session"
+    }
+    return name
 }

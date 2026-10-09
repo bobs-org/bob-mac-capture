@@ -219,6 +219,17 @@ JSON
       cat "${fixtures_dir}/pomodoro-start-named-parse-chain.json"
     elif [[ "${draft}" == "=x =#de" ]]; then
       cat "${fixtures_dir}/pomodoro-start-named-parse-chain-query.json"
+    elif [[ "${draft}" == "==" ]]; then
+      # Bare restart (real `bob capture-parse` output): `pomodoro_start`
+      # mode with the additive `override` spec flag.
+      cat "${fixtures_dir}/pomodoro-start-override-parse-restart.json"
+    elif [[ "${draft}" == "==#bugs" ]]; then
+      # Named override swap (real `bob capture-parse` output).
+      cat "${fixtures_dir}/pomodoro-start-override-parse.json"
+    elif [[ "${draft}" == "==#" ]]; then
+      # Incomplete override name (real `bob capture-parse` output):
+      # `pomodoro_name` need with the partial override spec.
+      cat "${fixtures_dir}/pomodoro-start-override-parse-incomplete.json"
     elif [[ "${draft}" == "^bob:ready=x" ]]; then
       cat "${fixtures_dir}/pomodoro-close-parse-link.json"
     elif [[ "${draft}" == *"[[AI"* ]]; then
@@ -3385,6 +3396,18 @@ JSON
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-drop-empty.json"
     elif [[ "${draft}" == "=#capture~2" ]]; then
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-drop-named.json"
+    elif [[ "${draft}" == "==" ]]; then
+      # Override restart (real `bob capture --dry-run` output on the
+      # worked-example ledger; only the dry-run flag varies).
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-override-restart.json"
+    elif [[ "${draft}" == "==#bugs" ]]; then
+      # Override swap with a kept ledger (real `bob capture --dry-run`
+      # output; only the dry-run flag varies).
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-override-swap-kept.json"
+    elif [[ "${draft}" == "==3#plan" ]]; then
+      # Override swap with a fresh ledger onto a created ("again") session
+      # (real `bob capture --dry-run` output; only the dry-run flag varies).
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-override-swap-fresh-created.json"
     elif [[ "${draft}" == "=-2" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-timed.json"
     elif [[ "${draft}" == "=3" ]]; then
