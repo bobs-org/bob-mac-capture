@@ -111,8 +111,12 @@ public struct RefsPanelView: View {
             RefsInspectorView(
                 content: content,
                 signals: model.signals,
+                inspector: model.inspectorContent(for: selected),
+                thumbnail: model.inspectorThumbnail(for: selected),
                 previewMode: previewMode
             )
+            .onAppear { model.inspectorRequested() }
+            .onChange(of: selected) { _, _ in model.inspectorRequested() }
         } else {
             Text("Select a reference")
                 .font(.callout)

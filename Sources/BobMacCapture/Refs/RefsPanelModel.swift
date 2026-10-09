@@ -188,27 +188,38 @@ public final class RefsPanelModel: ObservableObject {
     @Published public private(set) var banner: RefsBanner?
     /// The visible row count from the list geometry; pages move by one less.
     @Published public var visibleRowBudget: Int = 10
+    /// A transient copy confirmation the footer shows for 1.5 s.
+    @Published public private(set) var toast: String?
+    /// The inspector's hydrated content, published per selected id.
+    public let inspectorLoader: RefsInspectorLoader
 
     public var panelDismisser: () -> Void = {}
     public var panelPresenter: () -> Void = {}
     public var settingsPresenter: () -> Void = {}
+    /// Presents the ⌘K actions menu for the selected row. The panel
+    /// controller sets this; it pops the menu over the panel.
+    public var actionsPresenter: () -> Void = {}
 
     private let library: RefsLibrary
     private let opener: RefsOpening
     private let highlights: RefsHighlightsLocating
+    private let pasteboard: RefsPasteboardWriting
     private var subscriptions = Set<AnyCancellable>()
     private var presented = false
     private var pendingOpen: (id: String, target: RefsOpenTarget)?
     private var lastDiagnostic = ""
+    private var toastTask: Task<Void, Never>?
 
     public init(
         library: RefsLibrary,
         opener: RefsOpening,
-        highlights: RefsHighlightsLocating
+        highlights: RefsHighlightsLocating,
+        pasteboard: RefsPasteboardWriting = SystemRefsPasteboard()
     ) {
         self.library = library
         self.opener = opener
         self.highlights = highlights
+        self.pasteboard = pasteboard
         listing = RefsRanker.listing(
             library.items,
             query: "",
@@ -216,6 +227,10 @@ public final class RefsPanelModel: ObservableObject {
             signals: library.signals
         )
         selectedID = RefsSelectionPolicy.initial(in: listing)
+        inspectorLoader = RefsInspectorLoader(library: self.library)
+        inspectorLoader.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }.store(in: &subscriptions)
         let itemsSubscription = library.$items.sink { [weak self] _ in
             Task { await self?.libraryDidPublish() }
         }
@@ -319,8 +334,11 @@ public final class RefsPanelModel: ObservableObject {
             selectedID = id
             return openSelected(.highlights)
         case .showActions:
-            // A no-op until `refs-inspector` adds the actions menu.
-            return false
+            guard selectedID != nil, selectedItem != nil else {
+                return false
+            }
+            actionsPresenter()
+            return true
         case .consume:
             return true
         }
@@ -427,7 +445,9 @@ public final class RefsPanelModel: ObservableObject {
         scope: RefScope,
         selectedID: String?,
         banner: RefsBanner?,
-        refreshState: RefsRefreshState
+        refreshState: RefsRefreshState,
+        inspector: [String: RefsInspectorContent]? = nil,
+        thumbnails: [String: NSImage]? = nil
     ) {
         presented = true
         library.installSnapshotForPreviews(
@@ -441,6 +461,106 @@ public final class RefsPanelModel: ObservableObject {
         listing = RefsRanker.listing(items, query: query, scope: scope, signals: signals)
         unavailableIDs = []
         self.selectedID = selectedID
+        if let inspector {
+            inspectorLoader.installContentForPreviews(
+                inspector,
+                thumbnails: thumbnails ?? [:]
+            )
+        } else {
+            inspectorLoader.reset()
+        }
+    }
+
+    /// Requests inspector hydration for the selected row. The loader
+    /// debounces rapid movement and cancels the previous load.
+    public func inspectorRequested() {
+        guard let item = selectedItem else {
+            inspectorLoader.cancel()
+            return
+        }
+        inspectorLoader.request(item)
+    }
+
+    /// The hydrated inspector content for an id, or nil while it loads.
+    public func inspectorContent(for id: String) -> RefsInspectorContent? {
+        inspectorLoader.content(for: id)
+    }
+
+    /// The inspector thumbnail for an id, or nil while it loads.
+    public func inspectorThumbnail(for id: String) -> NSImage? {
+        inspectorLoader.thumbnail(for: id)
+    }
+
+    /// The ⌘K menu sections for the selected row, or empty when nothing
+    /// is selected.
+    public func actionsSections() -> [[RefsAction]] {
+        guard let item = selectedItem else {
+            return []
+        }
+        return RefsActionsMenu.sections(
+            for: item,
+            audioURL: library.audioURL(for: item)
+        )
+    }
+
+    /// Runs one ⌘K menu action for the selected row.
+    public func performAction(_ action: RefsAction) {
+        switch action {
+        case .openHighlights:
+            _ = openSelected(.highlights)
+        case .openNote:
+            _ = openSelected(.note)
+        case .reveal:
+            _ = openSelected(.reveal)
+        case .copyWikiLink:
+            copyWikiLink()
+        case .copyPDFPath:
+            copyPDFPath()
+        case .openSourceURL(let url):
+            _ = NSWorkspace.shared.open(url)
+        case .openNarration(let url):
+            _ = NSWorkspace.shared.open(url)
+        case .openDefaultApp:
+            _ = openSelected(.defaultApp)
+        case .refreshLibrary:
+            perform(.refresh)
+        }
+    }
+
+    /// Copies bob's `link` field verbatim and toasts for 1.5 s.
+    public func copyWikiLink() {
+        guard let item = selectedItem else {
+            return
+        }
+        pasteboard.copy(item.link)
+        showToast("Copied wiki link")
+    }
+
+    /// Copies the absolute PDF path and toasts for 1.5 s.
+    public func copyPDFPath() {
+        guard let item = selectedItem,
+              let pdf = library.pdfURL(for: item)
+        else {
+            return
+        }
+        pasteboard.copy(pdf.path)
+        showToast("Copied PDF path")
+    }
+
+    private func showToast(_ message: String) {
+        toastTask?.cancel()
+        toast = message
+        toastTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            guard !Task.isCancelled else {
+                return
+            }
+            await self?.clearToast()
+        }
+    }
+
+    private func clearToast() {
+        toast = nil
     }
 
     private func rerankSelectingFirst() {

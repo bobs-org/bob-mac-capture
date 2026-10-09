@@ -1086,16 +1086,17 @@ panel is visible; filtering never resizes it.
 
 Layout, top to bottom: the 52 pt search bar (magnifier, 20 pt field,
 scope token, "`N open · M`" or "`k of M`" count, refresh spinner),
-the banner when one is up, the list beside the basic inspector, and
+the banner when one is up, the list beside the inspector, and
 the 30 pt footer (key hints plus "Updated …" / "Updating…" /
 "Update failed · ⌘R to retry"). Rows are 44 pt and two lines: the
 unopened dot, the kind tile, the rich title (code spans styled,
 matches in the accent color) with its caption, and the Today pill,
 annotation and narration marks, and the state glyph. Section headers
-are 26 pt and pinned. The basic inspector shows the hero tile,
-kind/state/Today chips, title, byline, an Added/Finished/Pages/
-Opened/Notes/Narration facts grid, the why-here line, and the vault
-PDF path; a missing PDF shows an orange callout instead. States: 8
+are 26 pt and pinned. The inspector fills instantly from the list
+item (hero, kind/state/Today chips, title, byline, an
+Added/Finished/Pages/Opened/Notes/Narration facts grid, the why-here
+line, and the vault PDF path; see "Inspector" below for the hydrated
+column); a missing PDF shows an orange callout instead. States: 8
 skeleton rows on first launch, a centered callout card with Retry
 and Copy Diagnostic when no cache exists and the refresh failed, a
 centered "No references match" empty state, and dimmed unavailable
@@ -1112,7 +1113,7 @@ rows that never open whatever slid into their index.
 | Option-Up/Option-Down | First row of the previous/next section (browse only) |
 | Command-1 … Command-5 | Scope All, Chats, Papers, Articles, Docs |
 | Command-R | Refresh library, Today, and git dates now; re-rank |
-| Command-K | Actions menu (a later phase; currently a no-op) |
+| Command-K | Actions menu for the selected row |
 | Backspace on an empty query | Remove the scope token |
 | Esc, Ctrl-[ | Banner, then query, then scope, then close |
 | Shift-Tab | Consumed (no-op) |
@@ -1148,6 +1149,47 @@ announced 600 ms after typing stops, never on every keystroke.
 - Diagnostics: a failed global or takeover registration reports
   "Refs hotkey conflict: …"; free the shortcut and use Recheck Bob.
   Toggling the References settings re-registers immediately.
+
+### Inspector
+
+The inspector fills instantly from the list item, then upgrades
+lazily: after the selection settles for 120 ms it loads the PDF's
+intrinsics and `bob ref show <note path> -f json -c` concurrently,
+canceling the previous load on every move. `ref show` results keep an
+LRU of 32 keyed by note path and snapshot time; intrinsics cache by
+file path, size, and mtime in memory (64) and under
+`~/Library/Caches/org.bobs.bob-mac-capture/refs/` (1,000 entries plus
+one thumbnail PNG each). What each kind shows:
+
+- Papers, articles, and docs show a 112 × 145 pt page-1 thumbnail
+  (fixed space is reserved while it loads, so nothing jumps), the
+  Abstract excerpt, and the outline.
+- Chats keep the kind tile and lead with the outline plus the
+  Bottom-line excerpt: the first paragraph (or up to 3 bullets) under
+  Bottom line, TL;DR, Summary, Executive summary, or Key findings.
+- Every hydrated row adds reading time to Pages
+  ("22 · ≈ 70 min · 3 Pomodoros", 230 words per minute, Pomodoros of
+  25 minutes), Tasks ("2 open") from `ref show`, the top-level
+  outline headings (up to 6), and up to 3 commented highlights with
+  their page labels, quotes, and comments ("+N more" beyond that).
+- Chats name consolidated reports and researcher drafts in the
+  byline from the stem (`__final`, `__x`).
+
+Honesty rules: absence stays absence (facts omit their row); a
+publication date is not a file date; a highlight count is not
+progress; git dates carry "≈"; reading time is an estimate. A locked
+PDF reads "Preview unavailable: encrypted"; any other PDF failure
+reads "Preview unavailable". When `ref show` fails the basic
+inspector stays and adds a dim "Notes unavailable". Page counts and
+outline headings feed back into the ranking signals, so rows gain
+`N pp` and search can match headings.
+
+The ⌘K actions menu pops over the panel for the selected row: Open
+in Highlights, Open Note, Reveal in Finder, Copy Wiki Link (bob's
+`link`, verbatim), Copy PDF Path, Open Source URL (only with
+`urls`), Open Narration (only with `audio`, in the default app),
+Open in Default App, and Refresh Library. A copy toasts the footer
+for 1.5 s ("Copied wiki link").
 
 ## Keyboard
 

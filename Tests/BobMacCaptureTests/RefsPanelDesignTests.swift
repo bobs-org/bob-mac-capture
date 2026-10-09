@@ -35,6 +35,9 @@ final class RefsPanelDesignTests: XCTestCase {
         try renderSkeleton(now: now)
         try renderBanner(model: model, now: now)
         try renderNarrowBrowse(model: model, now: now)
+        try renderInspectorChat(model: model, now: now)
+        try renderInspectorPaper(model: model, now: now)
+        try renderInspectorEncrypted(model: model, now: now)
         try renderPieces(model: model, now: now)
     }
 
@@ -220,6 +223,143 @@ final class RefsPanelDesignTests: XCTestCase {
         )
         XCTAssertFalse(RefsVisualTokens.showsInspector(width: 700))
         try write(model: model, name: "refs-browse-700", width: 700)
+    }
+
+    /// The full inspector for a chat: the tile hero, the Bottom-line
+    /// bullets, the outline (the main visual for chats), and commented
+    /// highlights.
+    private func renderInspectorChat(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeFixture(now: now)
+        let id = "ref/chat/today_report.md"
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: id,
+            banner: nil,
+            refreshState: .idle,
+            inspector: [id: RefsInspectorContent(
+                summary: RefsSummary(
+                    label: "SUMMARY",
+                    bullets: [
+                        "Retrieval quality beats index size here.",
+                        "Prefetch while the child runs.",
+                        "Cap the snapshot payload.",
+                    ]
+                ),
+                outline: ["Review question", "Evidence", "Risks", "Decision"],
+                notes: [
+                    RefsShowAnnotation(
+                        pageLabel: "3",
+                        kind: "highlight",
+                        quote: "The pipeline drains while the child runs.",
+                        comment: "Key insight for the fetcher."
+                    ),
+                    RefsShowAnnotation(
+                        pageLabel: "5",
+                        kind: "highlight",
+                        quote: "A weak fuzzy match never beats a title word.",
+                        comment: "Keep the tier invariant."
+                    ),
+                ],
+                remainingNoteCount: 1,
+                openTaskCount: 2,
+                readingTime: RefsReadingTime(minutes: 70, pomodoros: 3),
+                pageCount: 11
+            )]
+        )
+        XCTAssertNotNil(model.inspectorContent(for: id))
+        try write(model: model, name: "refs-inspector-chat-880", width: 880)
+    }
+
+    /// The full inspector for a paper: the thumbnail stand-in, the
+    /// abstract, and the notes.
+    private func renderInspectorPaper(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeFixture(now: now)
+        let id = "ref/papers/harness_buy.md"
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: id,
+            banner: nil,
+            refreshState: .idle,
+            inspector: [id: RefsInspectorContent(
+                summary: RefsSummary(
+                    label: "ABSTRACT",
+                    paragraph: "We study harness reuse across three agent "
+                        + "workloads and find that shared scaffolding pays "
+                        + "for itself within a week."
+                ),
+                outline: ["Introduction", "Method", "Results"],
+                notes: [RefsShowAnnotation(
+                    pageLabel: "7",
+                    kind: "highlight",
+                    quote: "Shared scaffolding pays for itself within a week.",
+                    comment: "Cite this in the rollout note."
+                )],
+                openTaskCount: 1,
+                readingTime: RefsReadingTime(minutes: 17, pomodoros: 1),
+                pageCount: 22
+            )],
+            thumbnails: [id: standInThumbnail()]
+        )
+        XCTAssertNotNil(model.inspectorThumbnail(for: id))
+        try write(model: model, name: "refs-inspector-paper-880", width: 880)
+    }
+
+    /// The encrypted inspector: the thumbnail slot carries the
+    /// unavailability message while the note content still fills in.
+    private func renderInspectorEncrypted(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeFixture(now: now)
+        let id = "ref/papers/old_finished.md"
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: id,
+            banner: nil,
+            refreshState: .idle,
+            inspector: [id: RefsInspectorContent(
+                notes: [RefsShowAnnotation(
+                    pageLabel: "2",
+                    kind: "highlight",
+                    quote: "Machines take me by surprise with great frequency.",
+                    comment: "Still true seventy years later."
+                )],
+                previewMessage: "Preview unavailable: encrypted"
+            )]
+        )
+        XCTAssertEqual(
+            model.inspectorContent(for: id)?.previewMessage,
+            "Preview unavailable: encrypted"
+        )
+        try write(model: model, name: "refs-inspector-encrypted-880", width: 880)
+    }
+
+    /// A solid thumbnail stand-in: `ImageRenderer` never hosts PDFKit,
+    /// so the paper render draws this instead of a real page image.
+    private func standInThumbnail() -> NSImage {
+        let size = NSSize(width: 224, height: 290)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        NSColor.systemTeal.withAlphaComponent(0.25).setFill()
+        NSRect(origin: .zero, size: size).fill()
+        NSColor.tertiaryLabelColor.setFill()
+        for index in 0..<8 {
+            let bar = NSRect(
+                x: 20,
+                y: 30 + index * 28,
+                width: 184 - index * 12,
+                height: 10
+            )
+            NSBezierPath(roundedRect: bar, xRadius: 5, yRadius: 5).fill()
+        }
+        image.unlockFocus()
+        return image
     }
 
     /// Standalone piece renders: each panel piece alone in a fixed

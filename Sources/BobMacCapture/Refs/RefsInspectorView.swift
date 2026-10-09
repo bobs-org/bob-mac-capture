@@ -1,13 +1,19 @@
+import AppKit
 import RefsCore
 import SwiftUI
 
-/// The basic inspector column (§10): it fills instantly from the list
-/// item. A later phase upgrades it with thumbnails, summaries, and
-/// notes; the layout reserves nothing that would jump when that lands.
+/// The full inspector column (§10): it fills instantly from the list
+/// item and upgrades lazily as the loader hydrates summaries,
+/// outlines, notes, and thumbnails. Papers, articles, and docs show a
+/// fixed 112 x 145 pt thumbnail slot (reserved even while loading, so
+/// nothing jumps); chats keep the kind tile and lead with the
+/// outline. Absence stays absence: missing facts omit their row.
 @available(macOS 26.0, *)
 struct RefsInspectorView: View {
     let content: RefsRowContent
     let signals: RefsSignals
+    var inspector: RefsInspectorContent? = nil
+    var thumbnail: NSImage? = nil
     /// Design fixtures lay the column out statically: `ImageRenderer`
     /// snapshots `ScrollView` content blank, so the live scroll view
     /// never appears in a fixture.
@@ -29,6 +35,9 @@ struct RefsInspectorView: View {
                 hero(for: item)
                 byline(for: item)
                 facts(for: item)
+                summarySection
+                contentsSection
+                notesSection
                 if content.isMissingPDF {
                     missingCallout(for: item)
                 }
@@ -46,8 +55,12 @@ struct RefsInspectorView: View {
 
     private func hero(for item: RefItem) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            RefsKindTile(kind: item.kind, size: RefsVisualTokens.heroTileSize)
-                .accessibilityHidden(true)
+            if showsThumbnailSlot(for: item) {
+                thumbnailSlot
+            } else {
+                RefsKindTile(kind: item.kind, size: RefsVisualTokens.heroTileSize)
+                    .accessibilityHidden(true)
+            }
             VStack(alignment: .leading, spacing: 8) {
                 chips(for: item)
                 Text(
@@ -63,6 +76,76 @@ struct RefsInspectorView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(item.title.text), \(item.kind.label)")
+    }
+
+    /// Papers, articles, and docs show the page-1 thumbnail; every
+    /// other kind keeps the tile.
+    private func showsThumbnailSlot(for item: RefKind) -> Bool {
+        item == .paper || item == .article || item == .doc
+    }
+
+    private func showsThumbnailSlot(for item: RefItem) -> Bool {
+        showsThumbnailSlot(for: item.kind)
+    }
+
+    private var thumbnailSlot: some View {
+        Group {
+            if let thumbnail {
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(
+                        width: RefsVisualTokens.thumbnailWidth,
+                        height: RefsVisualTokens.thumbnailHeight
+                    )
+                    .clipShape(RoundedRectangle(
+                        cornerRadius: RefsVisualTokens.thumbnailRadius
+                    ))
+                    .overlay(
+                        RoundedRectangle(
+                            cornerRadius: RefsVisualTokens.thumbnailRadius
+                        )
+                        .stroke(.primary.opacity(0.08), lineWidth: 0.5)
+                    )
+                    .shadow(radius: 3)
+                    .accessibilityHidden(true)
+            } else if let message = inspector?.previewMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .frame(
+                        width: RefsVisualTokens.thumbnailWidth,
+                        height: RefsVisualTokens.thumbnailHeight
+                    )
+                    .background(
+                        .secondary.opacity(0.08),
+                        in: RoundedRectangle(
+                            cornerRadius: RefsVisualTokens.thumbnailRadius
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(
+                            cornerRadius: RefsVisualTokens.thumbnailRadius
+                        )
+                        .stroke(.primary.opacity(0.08), lineWidth: 0.5)
+                    )
+            } else {
+                RoundedRectangle(cornerRadius: RefsVisualTokens.thumbnailRadius)
+                    .fill(.secondary.opacity(0.08))
+                    .frame(
+                        width: RefsVisualTokens.thumbnailWidth,
+                        height: RefsVisualTokens.thumbnailHeight
+                    )
+                    .overlay(
+                        RoundedRectangle(
+                            cornerRadius: RefsVisualTokens.thumbnailRadius
+                        )
+                        .stroke(.primary.opacity(0.08), lineWidth: 0.5)
+                    )
+                    .accessibilityHidden(true)
+            }
+        }
     }
 
     private func chips(for item: RefItem) -> some View {
@@ -110,10 +193,12 @@ struct RefsInspectorView: View {
 
     private func bylineText(for item: RefItem) -> String {
         if item.kind == .chat {
+            var parts = ["Agent report"]
             if let parent = item.parentLabel, !parent.isEmpty {
-                return "Agent report · \(parent)"
+                parts.append(parent)
             }
-            return "Agent report"
+            parts.append(contentsOf: reportSuffix(for: item.stem))
+            return parts.joined(separator: " · ")
         }
         var parts: [String] = []
         if let author = item.author, !author.isEmpty {
@@ -133,6 +218,23 @@ struct RefsInspectorView: View {
         return parts.joined(separator: " · ")
     }
 
+    /// Chats add "Consolidated report" for a stem ending in `__final`,
+    /// or "Researcher draft (`x`)" for any other `__x` suffix.
+    private func reportSuffix(for stem: String) -> [String] {
+        let parts = stem.split(separator: "_", omittingEmptySubsequences: false)
+        guard parts.count >= 2, parts[parts.count - 2].isEmpty else {
+            return []
+        }
+        let suffix = String(parts.last ?? "")
+        guard !suffix.isEmpty else {
+            return []
+        }
+        if suffix == "final" {
+            return ["Consolidated report"]
+        }
+        return ["Researcher draft (\(suffix))"]
+    }
+
     private func sourceHost(for item: RefItem) -> String? {
         guard let first = item.urls.first,
               let host = URL(string: first)?.host,
@@ -149,16 +251,29 @@ struct RefsInspectorView: View {
             if item.finished != nil {
                 factRow(label: "Finished", value: finishedText(for: item))
             }
-            if let pages = signals.pageCounts[item.id] {
-                factRow(label: "Pages", value: "\(pages)")
+            if let pages = inspector?.pageCount ?? signals.pageCounts[item.id] {
+                factRow(label: "Pages", value: pagesText(pages))
             }
             factRow(label: "Opened", value: openedText(for: item))
             factRow(label: "Notes", value: notesText(for: item))
+            if let inspector, !inspector.showFailed {
+                factRow(
+                    label: "Tasks",
+                    value: "\(inspector.openTaskCount) open"
+                )
+            }
             if item.audioPath != nil {
                 factRow(label: "Narration", value: "Available")
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func pagesText(_ pages: Int) -> String {
+        guard let readingTime = inspector?.readingTime else {
+            return "\(pages)"
+        }
+        return "\(pages) · \(readingTime.formatted)"
     }
 
     private func factRow(label: String, value: String) -> some View {
@@ -226,6 +341,106 @@ struct RefsInspectorView: View {
             return "None"
         }
         return parts.joined(separator: " · ")
+    }
+
+    @ViewBuilder
+    private var summarySection: some View {
+        if let summary = inspector?.summary {
+            VStack(alignment: .leading, spacing: 6) {
+                sectionLabel(summary.label)
+                if let paragraph = summary.paragraph {
+                    Text(paragraph)
+                        .font(.callout)
+                }
+                ForEach(summary.bullets.indices, id: \.self) { index in
+                    Text("•  \(summary.bullets[index])")
+                        .font(.callout)
+                }
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    @ViewBuilder
+    private var contentsSection: some View {
+        if let outline = inspector?.outline, !outline.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                sectionLabel("CONTENTS")
+                ForEach(outline, id: \.self) { heading in
+                    Label {
+                        Text(heading)
+                            .font(.callout)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    } icon: {
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    @ViewBuilder
+    private var notesSection: some View {
+        if let inspector {
+            if !inspector.notes.isEmpty || inspector.remainingNoteCount > 0 {
+                VStack(alignment: .leading, spacing: 8) {
+                    sectionLabel("YOUR NOTES")
+                    ForEach(inspector.notes.indices, id: \.self) { index in
+                        noteView(inspector.notes[index])
+                    }
+                    if inspector.remainingNoteCount > 0 {
+                        Text(
+                            "+\(inspector.remainingNoteCount) more · ⌘↵ opens the note"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                    }
+                }
+            } else if inspector.showFailed {
+                Text("Notes unavailable")
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+                    .accessibilityLabel("Notes unavailable")
+            }
+        }
+    }
+
+    private func noteView(_ note: RefsShowAnnotation) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let pageLabel = note.pageLabel, !pageLabel.isEmpty {
+                Text("Page \(pageLabel)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let quote = note.quote, !quote.isEmpty {
+                HStack(spacing: 8) {
+                    Rectangle()
+                        .fill(.yellow)
+                        .frame(width: 2)
+                    Text(quote)
+                        .font(.callout)
+                        .italic()
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                }
+                .accessibilityElement(children: .combine)
+            }
+            if let comment = note.comment, !comment.isEmpty {
+                Text(comment)
+                    .font(.callout)
+            }
+        }
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .accessibilityAddTraits(.isHeader)
     }
 
     private func missingCallout(for item: RefItem) -> some View {

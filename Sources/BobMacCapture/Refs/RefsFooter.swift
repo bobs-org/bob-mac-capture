@@ -23,11 +23,17 @@ struct RefsFooter: View {
     }
 
     private var hints: some View {
-        Text(hintsText)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .truncationMode(.tail)
+        Group {
+            if let toast = model.toast {
+                Text(toast)
+            } else {
+                Text(hintsText)
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .truncationMode(.tail)
     }
 
     private var hintsText: String {
@@ -40,7 +46,7 @@ struct RefsFooter: View {
             }
             return "↵ Open note"
         }()
-        return "\(openHint)  ⌘↵ Note  ⌥↵ Reveal  ⌘1–5 Scope  esc Close"
+        return "\(openHint)  ⌘↵ Note  ⌥↵ Reveal  ⌘K Actions  ⌘1–5 Scope  esc Close"
     }
 
     private var status: some View {

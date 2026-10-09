@@ -90,6 +90,11 @@ public struct SpotlightRefsSignals: RefsSpotlightProviding, Sendable {
 /// Bound on refresh failure text so a backend dump cannot fill the callout.
 private let refsMaxErrorMessageLength = 200
 
+/// Why the inspector's detail load failed before it reached `bob`.
+public enum RefsLibraryError: Error, Sendable {
+    case unavailable
+}
+
 /// The Refs library refresh service: the cached snapshot, the git-date
 /// backfill pass, Today, the Spotlight sweep, missing-PDF checks, and the
 /// open log. The app filters, ranks, and presents what this service
@@ -260,6 +265,49 @@ public final class RefsLibrary: ObservableObject {
     /// The absolute note URL for Obsidian opens and Finder reveals.
     public func noteURL(for item: RefItem) -> URL {
         vaultRoot().appendingPathComponent(item.id)
+    }
+
+    /// The absolute narration-audio URL, or nil when the stored path is
+    /// unsafe or absent.
+    public func audioURL(for item: RefItem) -> URL? {
+        guard let audio = item.audioPath,
+              !audio.isEmpty,
+              Self.isSafePDFPath(audio)
+        else {
+            return nil
+        }
+        return vaultRoot().appendingPathComponent(audio)
+    }
+
+    /// When the current snapshot was fetched: the inspector's `ref show`
+    /// cache keys on (id, fetch time).
+    public var snapshotFetchedAt: Date? {
+        snapshot?.fetchedAt
+    }
+
+    /// Hydrates one note's annotations and tasks for the inspector on
+    /// the `refs-show` lane. Throws when no fetcher is set.
+    public func showDetail(path: String) async throws -> RefsShowResponse {
+        guard let fetcher else {
+            throw RefsLibraryError.unavailable
+        }
+        return try await fetcher.show(path: path)
+    }
+
+    /// Merges inspector-discovered facts into the signals: intrinsics
+    /// page counts and outline headings. Publishing here refreshes row
+    /// content in place; it never re-ranks.
+    public func applyInspectorSignals(
+        pageCounts: [String: Int],
+        outlineHeadings: [String: [String]]
+    ) {
+        for (id, pages) in pageCounts {
+            signals.pageCounts[id] = pages
+        }
+        for (id, headings) in outlineHeadings {
+            signals.outlineHeadings[id] = headings
+        }
+        signals.now = now()
     }
 
     /// Installs canned state for design tests and previews, skipping

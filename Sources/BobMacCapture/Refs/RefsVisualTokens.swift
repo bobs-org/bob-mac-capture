@@ -42,6 +42,9 @@ enum RefsVisualTokens {
     static let inspectorSpacing: CGFloat = 14
     static let heroTileSize: CGFloat = 44
     static let heroTileRadius: CGFloat = 11
+    static let thumbnailWidth: CGFloat = 112
+    static let thumbnailHeight: CGFloat = 145
+    static let thumbnailRadius: CGFloat = 6
     static let kindTileSize: CGFloat = 28
     static let kindTileRadius: CGFloat = 7
     static let factLabelWidth: CGFloat = 84

@@ -45,6 +45,7 @@ public final class RefsPanelController: NSObject {
         super.init()
         model.panelDismisser = { [weak self] in self?.hide() }
         model.panelPresenter = { [weak self] in self?.show() }
+        model.actionsPresenter = { [weak self] in self?.showActionsMenu() }
     }
 
     deinit {
@@ -101,6 +102,74 @@ public final class RefsPanelController: NSObject {
         } else {
             show()
         }
+    }
+
+    /// Pops the ⌘K actions menu for the selected row: below the mouse
+    /// when it sits over the panel (usually the row itself), else at
+    /// the list's center. The resign-key hide suspends while the menu
+    /// tracks, so picking an action never dismisses the panel first.
+    public func showActionsMenu() {
+        guard let panel,
+              let contentView = panel.contentView,
+              model.selectedItem != nil
+        else {
+            return
+        }
+        let sections = model.actionsSections()
+        guard !sections.isEmpty else {
+            return
+        }
+        let flat = sections.flatMap { $0 }
+        let menu = NSMenu()
+        for (index, section) in sections.enumerated() {
+            if index > 0 {
+                menu.addItem(NSMenuItem.separator())
+            }
+            for action in section {
+                let item = NSMenuItem(
+                    title: action.title,
+                    action: #selector(fireActionsMenu(_:)),
+                    keyEquivalent: action.keyEquivalent
+                )
+                item.keyEquivalentModifierMask = action.keyEquivalentModifierMask
+                item.target = self
+                item.tag = flat.firstIndex(of: action) ?? 0
+                menu.addItem(item)
+            }
+        }
+        actionsMenuActions = flat
+        suspendHideOnResign = true
+        defer { suspendHideOnResign = false }
+        menu.popUp(positioning: nil, at: actionsAnchor(in: contentView), in: contentView)
+    }
+
+    private var actionsMenuActions: [RefsAction] = []
+
+    @objc private func fireActionsMenu(_ sender: NSMenuItem) {
+        guard actionsMenuActions.indices.contains(sender.tag) else {
+            return
+        }
+        model.performAction(actionsMenuActions[sender.tag])
+    }
+
+    private func actionsAnchor(in contentView: NSView) -> NSPoint {
+        guard let panel else {
+            return NSPoint(
+                x: contentView.bounds.midX,
+                y: contentView.bounds.midY
+            )
+        }
+        let mouse = contentView.convert(
+            panel.mouseLocationOutsideOfEventStream,
+            from: nil
+        )
+        if contentView.bounds.contains(mouse) {
+            return mouse
+        }
+        let listWidth = RefsVisualTokens.listWidth(
+            panelWidth: contentView.bounds.width
+        )
+        return NSPoint(x: listWidth / 2, y: contentView.bounds.midY)
     }
 
     /// The panel configuration, static so geometry tests assert it
