@@ -405,6 +405,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return URL(fileURLWithPath: bobDirectory)
     }
 
+    /// The live Settings override path for Highlights, read straight from
+    /// defaults: AppSettings persists every change, so this is always
+    /// current. A plain defaults read keeps the Sendable locator closure
+    /// off MainActor state.
+    nonisolated static func storedHighlightsAppPath() -> String {
+        UserDefaults.standard.string(forKey: AppSettings.refsHighlightsAppPathKey) ?? ""
+    }
+
     /// The bundle id of the Settings override Highlights app, or nil when
     /// no override is set or it is not an app bundle. The takeover matches
     /// the override app's id so a moved copy still takes over.
@@ -466,7 +474,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let model = RefsPanelModel(
             library: library,
             opener: WorkspaceRefsOpener(),
-            highlights: HighlightsLocator(overridePath: { settings.refsHighlightsAppPath })
+            highlights: HighlightsLocator(overridePath: Self.storedHighlightsAppPath)
         )
         model.settingsPresenter = { [weak self] in self?.openSettings() }
         let controller = RefsPanelController(model: model)
@@ -480,8 +488,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             isCaptureVisible: { [weak self] in self?.panelController?.isVisible == true },
             isRefsVisible: { [weak self] in self?.refsPanelController?.isVisible == true },
             closeCaptureRetainingDraft: { [weak self] in self?.panelModel?.closeRetainingDraft() },
-            showCapture: { [weak self] in self?.panelController?.show() },
-            showRefs: { [weak self] in self?.refsPanelController?.show() },
+            presentCapture: { [weak self] in self?.panelController?.show() },
+            presentRefs: { [weak self] in self?.refsPanelController?.show() },
             hideRefs: { [weak self] in self?.refsPanelController?.hide() }
         )
 

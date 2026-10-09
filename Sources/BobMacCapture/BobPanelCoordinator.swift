@@ -8,23 +8,23 @@ final class BobPanelCoordinator {
     private let isCaptureVisible: () -> Bool
     private let isRefsVisible: () -> Bool
     private let closeCaptureRetainingDraft: () -> Void
-    private let showCapture: () -> Void
-    private let showRefs: () -> Void
+    private let presentCapture: () -> Void
+    private let presentRefs: () -> Void
     private let hideRefs: () -> Void
 
     init(
         isCaptureVisible: @escaping () -> Bool,
         isRefsVisible: @escaping () -> Bool,
         closeCaptureRetainingDraft: @escaping () -> Void,
-        showCapture: @escaping () -> Void,
-        showRefs: @escaping () -> Void,
+        presentCapture: @escaping () -> Void,
+        presentRefs: @escaping () -> Void,
         hideRefs: @escaping () -> Void
     ) {
         self.isCaptureVisible = isCaptureVisible
         self.isRefsVisible = isRefsVisible
         self.closeCaptureRetainingDraft = closeCaptureRetainingDraft
-        self.showCapture = showCapture
-        self.showRefs = showRefs
+        self.presentCapture = presentCapture
+        self.presentRefs = presentRefs
         self.hideRefs = hideRefs
     }
 
@@ -33,7 +33,7 @@ final class BobPanelCoordinator {
         if isRefsVisible() {
             hideRefs()
         }
-        showCapture()
+        presentCapture()
     }
 
     /// Shows Refs, retaining the capture draft first when Capture
@@ -42,7 +42,7 @@ final class BobPanelCoordinator {
         if isCaptureVisible() {
             closeCaptureRetainingDraft()
         }
-        showRefs()
+        presentRefs()
     }
 
     /// Toggles Refs: hides it when visible, shows it (retaining a

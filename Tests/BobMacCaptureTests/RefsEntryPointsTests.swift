@@ -370,8 +370,8 @@ final class RefsEntryPointsTests: XCTestCase {
                 capture.closeRetainingDraft()
                 log.events.append("close-retain")
             },
-            showCapture: { log.events.append("show-capture") },
-            showRefs: { log.events.append("show-refs") },
+            presentCapture: { log.events.append("show-capture") },
+            presentRefs: { log.events.append("show-refs") },
             hideRefs: { log.events.append("hide-refs") }
         )
     }

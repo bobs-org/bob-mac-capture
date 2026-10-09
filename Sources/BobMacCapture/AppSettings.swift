@@ -3,6 +3,10 @@ import Foundation
 
 @MainActor
 final class AppSettings: ObservableObject {
+    /// Defaults key for the Highlights override path, shared with the
+    /// Sendable locator read in AppDelegate.
+    static let refsHighlightsAppPathKey = "refsHighlightsAppPath"
+
     @Published var bobExecutableOverride: String {
         didSet { defaults.set(bobExecutableOverride, forKey: Keys.bobExecutableOverride) }
     }
@@ -122,6 +126,6 @@ private enum Keys {
     static let useProductionHotkey = "useProductionHotkey"
     static let refsHotkeyEnabled = "refsHotkeyEnabled"
     static let refsHighlightsOpenKey = "refsHighlightsOpenKey"
-    static let refsHighlightsAppPath = "refsHighlightsAppPath"
+    static let refsHighlightsAppPath = AppSettings.refsHighlightsAppPathKey
     static let canceledDraftStashCapacity = "canceledDraftStashCapacity"
 }
