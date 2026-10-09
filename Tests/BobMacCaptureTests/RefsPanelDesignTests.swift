@@ -36,6 +36,7 @@ final class RefsPanelDesignTests: XCTestCase {
         try renderBanner(model: model, now: now)
         try renderNarrowBrowse(model: model, now: now)
         try renderPieces(model: model, now: now)
+        try renderShellBisect(model: model, now: now)
     }
 
     // MARK: - Renders
@@ -230,7 +231,7 @@ final class RefsPanelDesignTests: XCTestCase {
             items: fixture.items,
             signals: fixture.signals,
             query: "omni",
-            scope: .articles,
+            scope: .all,
             selectedID: "ref/chat/today_report.md",
             banner: nil,
             refreshState: .idle
@@ -273,6 +274,74 @@ final class RefsPanelDesignTests: XCTestCase {
             for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
                 try RenderFixtureWriter.write(view, name: name, width: 880, appearance: appearance)
             }
+        }
+    }
+
+    /// Temporary shell-bisect renders (removed before close): the
+    /// search bar plus footer with and without the glass root, with
+    /// and without the list content, to localize the blank shell.
+    private func renderShellBisect(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeFixture(now: now)
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: "ref/chat/today_report.md",
+            banner: nil,
+            refreshState: .idle
+        )
+        let combos: [(String, AnyView)] = [
+            ("refs-dbg-glass-no-content", AnyView(
+                ZStack {
+                    VStack(spacing: 0) {
+                        RefsSearchBar(model: model, previewMode: true)
+                        RefsFooter(model: model)
+                    }
+                    .padding(8)
+                }
+                .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                .frame(width: 880, height: 560)
+            )),
+            ("refs-dbg-noglass-no-content", AnyView(
+                ZStack {
+                    VStack(spacing: 0) {
+                        RefsSearchBar(model: model, previewMode: true)
+                        RefsFooter(model: model)
+                    }
+                    .padding(8)
+                }
+                .frame(width: 880, height: 560)
+            )),
+            ("refs-dbg-glass-empty-content", AnyView(
+                ZStack {
+                    VStack(spacing: 0) {
+                        RefsSearchBar(model: model, previewMode: true)
+                        RefsEmptyStateView(model: model)
+                        RefsFooter(model: model)
+                    }
+                    .padding(8)
+                }
+                .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                .frame(width: 880, height: 560)
+            )),
+            ("refs-dbg-glass-list-content", AnyView(
+                ZStack {
+                    VStack(spacing: 0) {
+                        RefsSearchBar(model: model, previewMode: true)
+                        RefsListView(model: model)
+                        RefsFooter(model: model)
+                    }
+                    .padding(8)
+                }
+                .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                .frame(width: 880, height: 560)
+            )),
+        ]
+        for (name, view) in combos {
+            try RenderFixtureWriter.write(
+                view, name: name, width: 880, appearance: .aqua
+            )
         }
     }
 

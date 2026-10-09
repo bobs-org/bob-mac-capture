@@ -24,7 +24,7 @@ struct RefsBannerView: View {
                             Button(actionLabel(for: action)) {
                                 model.performBannerAction(action)
                             }
-                            .buttonStyle(.link)
+                            .buttonStyle(.borderless)
                             .font(.callout.weight(.semibold))
                         }
                     }
