@@ -417,17 +417,18 @@ struct RefsInspectorView: View {
                     .foregroundStyle(.secondary)
             }
             if let quote = note.quote, !quote.isEmpty {
-                HStack(spacing: 8) {
-                    Rectangle()
-                        .fill(.yellow)
-                        .frame(width: 2)
-                    Text(quote)
-                        .font(.callout)
-                        .italic()
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                }
-                .accessibilityElement(children: .combine)
+                Text(quote)
+                    .font(.callout)
+                    .italic()
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .padding(.leading, 10)
+                    .overlay(alignment: .leading) {
+                        Rectangle()
+                            .fill(.yellow)
+                            .frame(width: 2)
+                    }
+                    .accessibilityElement(children: .combine)
             }
             if let comment = note.comment, !comment.isEmpty {
                 Text(comment)
