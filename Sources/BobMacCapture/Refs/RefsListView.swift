@@ -60,7 +60,11 @@ struct RefsListView: View {
             ScrollViewReader { proxy in
                 GeometryReader { geometry in
                     ScrollView(.vertical) {
-                        LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                        LazyVStack(
+                            alignment: .leading,
+                            spacing: 0,
+                            pinnedViews: [.sectionHeaders]
+                        ) {
                             ForEach(model.listing.sections, id: \.sectionID) { section in
                                 Section {
                                     ForEach(section.ids, id: \.self) { id in
