@@ -122,7 +122,10 @@ final class RefsStoresTests: XCTestCase {
     }
 
     func testOpenLogAppendsLoadsAndResets() {
-        let store = RefsOpenLogStore(fileURL: openLogURL)
+        let store = RefsOpenLogStore(
+            fileURL: openLogURL,
+            now: { Date(timeIntervalSince1970: 200) }
+        )
         let first = RefsOpenEvent(path: "ref/chat/x.md", at: Date(timeIntervalSince1970: 100))
         let second = RefsOpenEvent(path: "ref/chat/y.md", at: Date(timeIntervalSince1970: 200))
 
