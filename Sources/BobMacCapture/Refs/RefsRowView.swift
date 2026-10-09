@@ -8,7 +8,7 @@ struct RefsKindTile: View {
     let kind: RefKind
     var size: CGFloat = RefsVisualTokens.kindTileSize
 
-    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         let tint = RefsVisualTokens.tint(for: kind)
@@ -18,7 +18,7 @@ struct RefsKindTile: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: size * 0.25)
                         .strokeBorder(
-                            tint.opacity(increaseContrast ? 0.5 : 0.28),
+                            tint.opacity(contrast == .increased ? 0.5 : 0.28),
                             lineWidth: 0.5
                         )
                 )
@@ -109,7 +109,7 @@ struct RefsRowView: View {
     let onSelect: () -> Void
     let onActivate: () -> Void
 
-    @Environment(\.accessibilityIncreaseContrast) private var increaseContrast
+    @Environment(\.colorSchemeContrast) private var contrast
     @State private var hovering = false
 
     var body: some View {
@@ -204,12 +204,13 @@ struct RefsRowView: View {
     }
 
     private var background: some View {
-        RoundedRectangle(cornerRadius: 8)
+        let increased = contrast == .increased
+        return RoundedRectangle(cornerRadius: 8)
             .fill(
                 isSelected
-                    ? Color.accentColor.opacity(increaseContrast ? 0.30 : 0.16)
+                    ? Color.accentColor.opacity(increased ? 0.30 : 0.16)
                     : hovering
-                        ? Color.primary.opacity(increaseContrast ? 0.12 : 0.06)
+                        ? Color.primary.opacity(increased ? 0.12 : 0.06)
                         : Color.clear
             )
             .padding(.horizontal, 6)
