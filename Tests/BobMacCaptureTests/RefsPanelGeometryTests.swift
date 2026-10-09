@@ -6,6 +6,7 @@ import XCTest
 /// Geometry and window-configuration tests: the §6 panel contract
 /// (borderless non-activating glass, floating level, collection
 /// behavior) plus the pure size, threshold, and position math.
+@MainActor
 final class RefsPanelGeometryTests: XCTestCase {
     func testPanelStyleMaskIsBorderlessNonactivating() {
         let panel = RefsPanelController.makePanel()
@@ -36,7 +37,7 @@ final class RefsPanelGeometryTests: XCTestCase {
     func testPanelChromeFlags() {
         let panel = RefsPanelController.makePanel()
         XCTAssertFalse(panel.isOpaque)
-        XCTAssertTrue(panel.backgroundColor?.isEqual(.clear) ?? false)
+        XCTAssertTrue(panel.backgroundColor?.isEqual(NSColor.clear) ?? false)
         XCTAssertTrue(panel.hasShadow)
         XCTAssertFalse(panel.hidesOnDeactivate)
         XCTAssertFalse(panel.isReleasedWhenClosed)
