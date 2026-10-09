@@ -414,6 +414,9 @@ final class RefsPanelModelTests: XCTestCase {
         )
         model.panelDismisser = { [weak harness] in harness?.dismissed += 1 }
         model.panelPresenter = { [weak harness] in harness?.presented += 1 }
+        // Kick off the snapshot refresh every test waits for: nothing in the
+        // model triggers one on its own.
+        library.refresh(reason: .manual)
         return harness
     }
 

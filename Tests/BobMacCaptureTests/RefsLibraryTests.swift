@@ -78,7 +78,9 @@ final class RefsLibraryTests: XCTestCase {
 
         context.library.refresh(reason: .manual)
         await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
-        XCTAssertEqual(context.library.items.count, 43)
+        // 44 golden rows minus the title-less row skipped at decode and the
+        // row without a usable PDF dropped by the catalog.
+        XCTAssertEqual(context.library.items.count, 42)
     }
 
     func testGitPassRunsOnlyWhenNeededAndMerges() async throws {
@@ -132,15 +134,17 @@ final class RefsLibraryTests: XCTestCase {
         context.library.refresh(reason: .manual)
         context.library.refresh(reason: .manual)
 
-        // Three triggers, two snapshot passes (the run plus one
-        // follow-up), each with a plain and a git list call.
+        // Three triggers, two snapshot passes (the run plus one follow-up).
+        // The first pass runs the plain and the git list calls; the follow-up
+        // reuses the just-backfilled git dates and skips its git pass, which
+        // only runs when needed.
         await waitUntil(timeout: 40) {
             let record = (try? String(contentsOf: recordURL)) ?? ""
-            return record.components(separatedBy: "argv=ref list").count == 5
+            return record.components(separatedBy: "argv=ref list").count == 4
         }
         try? await Task.sleep(nanoseconds: 4_000_000_000)
         let record = try String(contentsOf: recordURL)
-        XCTAssertEqual(record.components(separatedBy: "argv=ref list").count, 5)
+        XCTAssertEqual(record.components(separatedBy: "argv=ref list").count, 4)
         XCTAssertEqual(record.components(separatedBy: "argv=plan -f json").count, 3)
     }
 
