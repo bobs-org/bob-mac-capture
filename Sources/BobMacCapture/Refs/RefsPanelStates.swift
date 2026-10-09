@@ -28,7 +28,7 @@ struct RefsBannerView: View {
                             // ImageRenderer, while plain renders its text.
                             .buttonStyle(.plain)
                             .font(.callout.weight(.semibold))
-                            .foregroundStyle(.accentColor)
+                            .foregroundColor(.accentColor)
                         }
                     }
                 }
