@@ -483,4 +483,319 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
         )
         XCTAssertTrue(declined.closeListAssistParsePendingForTests)
     }
+
+    // MARK: - Provenance-aware Backspace
+
+    private func assistedView(
+        model: CapturePanelModel,
+        text: String,
+        caret: Int,
+        snapshot: CaptureParseSnapshot,
+        count: Int? = 3
+    ) -> NSTextView {
+        model.setCurrentPomodoroTaskLinkCountForTests(count)
+        model.setCloseListParseSnapshotForTests(snapshot)
+        let view = NSTextView()
+        view.isEditable = true
+        view.string = text
+        view.setSelectedRange(NSRange(location: caret, length: 0))
+        return view
+    }
+
+    private func insert(
+        _ digit: String,
+        view: NSTextView,
+        model: CapturePanelModel
+    ) -> Bool {
+        CapturePanelController.insertCloseTaskNumberInEditableTextView(
+            digit,
+            firstResponder: view,
+            model: model
+        )
+    }
+
+    private func backspace(view: NSTextView, model: CapturePanelModel) -> Bool {
+        CapturePanelController.deleteCloseTaskCommaInEditableTextView(
+            firstResponder: view,
+            model: model
+        )
+    }
+
+    func testBackspaceRemovesAssistedPair() {
+        let model = CapturePanelModel()
+        let view = assistedView(model: model, text: "=x1", caret: 3, snapshot: closeSnapshot())
+        XCTAssertTrue(insert("2", view: view, model: model))
+        XCTAssertEqual(view.string, "=x1,2")
+        XCTAssertEqual(view.selectedRange(), NSRange(location: 5, length: 0))
+        XCTAssertTrue(backspace(view: view, model: model))
+        XCTAssertEqual(view.string, "=x1")
+        XCTAssertEqual(view.selectedRange(), NSRange(location: 3, length: 0))
+        XCTAssertTrue(model.closeCommaProvenanceForTests().entries.isEmpty)
+    }
+
+    func testBackspaceRepeatedPairsDeleteInnermostFirst() {
+        let model = CapturePanelModel()
+        let first = assistedView(model: model, text: "=x1", caret: 3, snapshot: closeSnapshot())
+        XCTAssertTrue(insert("2", view: first, model: model))
+        XCTAssertEqual(first.string, "=x1,2")
+        // Fresh spans authorize the next digit at the new end.
+        model.setCloseListParseSnapshotForTests(
+            CaptureParseSnapshot(
+                draft: "=x1,2",
+                spans: [
+                    CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
+                    CaptureSpan(start: 2, end: 5, kind: "pomodoro_close_in_progress"),
+                ]
+            )
+        )
+        first.setSelectedRange(NSRange(location: 5, length: 0))
+        XCTAssertTrue(insert("3", view: first, model: model))
+        XCTAssertEqual(first.string, "=x1,2,3")
+        XCTAssertEqual(first.selectedRange(), NSRange(location: 7, length: 0))
+        XCTAssertTrue(backspace(view: first, model: model))
+        XCTAssertEqual(first.string, "=x1,2")
+        XCTAssertEqual(first.selectedRange(), NSRange(location: 5, length: 0))
+        XCTAssertTrue(backspace(view: first, model: model))
+        XCTAssertEqual(first.string, "=x1")
+        XCTAssertEqual(first.selectedRange(), NSRange(location: 3, length: 0))
+    }
+
+    func testBackspaceMiddlePairBeforeBang() {
+        let model = CapturePanelModel()
+        let snapshot = CaptureParseSnapshot(
+            draft: "=x1!3",
+            spans: [
+                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
+                CaptureSpan(start: 2, end: 3, kind: "pomodoro_close_in_progress"),
+                CaptureSpan(start: 3, end: 5, kind: "pomodoro_close_complete"),
+            ]
+        )
+        let view = assistedView(model: model, text: "=x1!3", caret: 3, snapshot: snapshot)
+        XCTAssertTrue(insert("2", view: view, model: model))
+        XCTAssertEqual(view.string, "=x1,2!3")
+        XCTAssertEqual(view.selectedRange(), NSRange(location: 5, length: 0))
+        XCTAssertTrue(backspace(view: view, model: model))
+        XCTAssertEqual(view.string, "=x1!3")
+        XCTAssertEqual(view.selectedRange(), NSRange(location: 3, length: 0))
+    }
+
+    func testBackspaceUnicodePrefix() {
+        let model = CapturePanelModel()
+        let draft = "🎉=x1"
+        let nsLength = (draft as NSString).length
+        let snapshot = CaptureParseSnapshot(
+            draft: draft,
+            spans: [
+                CaptureSpan(start: 0, end: 6, kind: "pomodoro_close"),
+                CaptureSpan(start: 6, end: 7, kind: "pomodoro_close_in_progress"),
+            ]
+        )
+        let view = assistedView(model: model, text: draft, caret: nsLength, snapshot: snapshot)
+        XCTAssertTrue(insert("2", view: view, model: model))
+        XCTAssertEqual(view.string, "🎉=x1,2")
+        XCTAssertTrue(backspace(view: view, model: model))
+        XCTAssertEqual(view.string, draft)
+    }
+
+    func testBackspaceDeclinesForManualComma() {
+        let model = CapturePanelModel()
+        model.setCurrentPomodoroTaskLinkCountForTests(3)
+        let view = NSTextView()
+        view.isEditable = true
+        view.string = "=x1,2"
+        view.setSelectedRange(NSRange(location: 5, length: 0))
+        XCTAssertFalse(backspace(view: view, model: model))
+        XCTAssertEqual(view.string, "=x1,2")
+    }
+
+    func testBackspaceDeclinesForNoncollapsedSelection() {
+        let model = CapturePanelModel()
+        let view = assistedView(model: model, text: "=x1", caret: 3, snapshot: closeSnapshot())
+        XCTAssertTrue(insert("2", view: view, model: model))
+        view.setSelectedRange(NSRange(location: 4, length: 1))
+        XCTAssertFalse(backspace(view: view, model: model))
+        XCTAssertEqual(view.string, "=x1,2")
+    }
+
+    func testBackspaceDeclinesWhileComposing() {
+        let model = CapturePanelModel()
+        let view = assistedView(model: model, text: "=x1", caret: 3, snapshot: closeSnapshot())
+        XCTAssertTrue(insert("2", view: view, model: model))
+        view.setSelectedRange(NSRange(location: 5, length: 0))
+        view.setMarkedText(
+            "x",
+            selectedRange: NSRange(location: 0, length: 1),
+            replacementRange: NSRange(location: 5, length: 0)
+        )
+        XCTAssertFalse(backspace(view: view, model: model))
+        view.unmarkText()
+    }
+
+    func testBackspaceLeavesEmptyBulletDeletionIntact() {
+        let model = CapturePanelModel()
+        let view = NSTextView()
+        view.isEditable = true
+        view.string = "Parent\n- \nChild"
+        view.setSelectedRange(NSRange(location: 9, length: 0))
+        // No provenance, so the comma helper declines and the bullet helper owns it.
+        XCTAssertFalse(backspace(view: view, model: model))
+        XCTAssertTrue(
+            CapturePanelController.deleteEmptyBulletRowInEditableTextView(
+                firstResponder: view,
+                model: model
+            )
+        )
+    }
+
+    func testProvenanceSurvivesEditBeforePair() {
+        let model = CapturePanelModel()
+        let view = assistedView(model: model, text: "=x1", caret: 3, snapshot: closeSnapshot())
+        XCTAssertTrue(insert("2", view: view, model: model))
+        // Ordinary typing before the pair shifts it; Backspace still finds it.
+        model.attributedDraft = AttributedString("A=x1,2")
+        model.editorTextDidChange(cursorUTF8Offset: "A=x1,2".utf8.count)
+        let shifted = NSTextView()
+        shifted.isEditable = true
+        shifted.string = "A=x1,2"
+        shifted.setSelectedRange(NSRange(location: 6, length: 0))
+        XCTAssertTrue(backspace(view: shifted, model: model))
+        XCTAssertEqual(shifted.string, "A=x1")
+    }
+
+    func testProvenanceInvalidatedWhenPairReplaced() {
+        let model = CapturePanelModel()
+        let view = assistedView(model: model, text: "=x1", caret: 3, snapshot: closeSnapshot())
+        XCTAssertTrue(insert("2", view: view, model: model))
+        model.attributedDraft = AttributedString("=x1;2")
+        model.editorTextDidChange(cursorUTF8Offset: "=x1;2".utf8.count)
+        let edited = NSTextView()
+        edited.isEditable = true
+        edited.string = "=x1;2"
+        edited.setSelectedRange(NSRange(location: 5, length: 0))
+        XCTAssertFalse(backspace(view: edited, model: model))
+    }
+
+    func testProvenanceClearedOnProgrammaticReset() {
+        let model = CapturePanelModel()
+        let view = assistedView(model: model, text: "=x1", caret: 3, snapshot: closeSnapshot())
+        XCTAssertTrue(insert("2", view: view, model: model))
+        model.plainDraft = "=x1,2"
+        let reset = NSTextView()
+        reset.isEditable = true
+        reset.string = "=x1,2"
+        reset.setSelectedRange(NSRange(location: 5, length: 0))
+        XCTAssertFalse(backspace(view: reset, model: model))
+    }
+
+    func testUndoDoesNotResurrectStaleProvenance() {
+        let model = CapturePanelModel()
+        let view = assistedView(model: model, text: "=x1", caret: 3, snapshot: closeSnapshot())
+        XCTAssertTrue(insert("2", view: view, model: model))
+        XCTAssertTrue(backspace(view: view, model: model))
+        XCTAssertEqual(view.string, "=x1")
+        // Native undo restores the text without provenance; a second
+        // Backspace must stay native instead of deleting a stale pair.
+        model.attributedDraft = AttributedString("=x1,2")
+        model.editorTextDidChange(cursorUTF8Offset: "=x1,2".utf8.count)
+        let undone = NSTextView()
+        undone.isEditable = true
+        undone.string = "=x1,2"
+        undone.setSelectedRange(NSRange(location: 5, length: 0))
+        XCTAssertFalse(backspace(view: undone, model: model))
+        XCTAssertEqual(undone.string, "=x1,2")
+    }
+
+    func testRouterKeepsModalBackspaceRouting() {
+        let router = CaptureKeyCommandRouter()
+        let delete = keyEvent(keyCode: 51)
+        XCTAssertEqual(
+            router.command(for: delete, context: CaptureKeyRoutingContext()),
+            .deleteBackward
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 51, modifiers: .shift),
+                context: CaptureKeyRoutingContext()
+            )
+        )
+        // Picker, stash, and prompt digits never reach the editor helper.
+        let pickerDelete = router.command(
+            for: delete,
+            context: CaptureKeyRoutingContext(pickerVisible: true, pickerFilterIsEmpty: true)
+        )
+        XCTAssertNotEqual(pickerDelete, .deleteBackward)
+    }
+
+    // MARK: - Count and assist-parse lifecycle
+
+    private func delayedClient(fixture: String? = nil, delaySeconds: String) throws -> BobProcessClient {
+        var environment = ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        environment["FAKE_BOB_DELAY_SECONDS"] = delaySeconds
+        if let fixture {
+            environment["FAKE_BOB_POMODOROS_FIXTURE"] = fixture
+        }
+        return BobProcessClient(executablePath: try fakeBobPath(), environment: environment)
+    }
+
+    func testOldCountNeverPublishesAfterNilClient() async throws {
+        let model = CapturePanelModel()
+        // setProcessClient already starts a delayed refresh; clearing must
+        // invalidate it so the late success cannot re-arm the assist.
+        model.setProcessClient(try delayedClient(delaySeconds: "1"))
+        model.setProcessClient(nil)
+        XCTAssertNil(model.currentPomodoroTaskLinkCount)
+        // The delayed old request finishes here; it must not re-arm.
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        XCTAssertNil(model.currentPomodoroTaskLinkCount)
+        XCTAssertFalse(model.closeTaskCommaArmed)
+    }
+
+    func testOldCountNeverPublishesAfterReplacement() async throws {
+        let model = CapturePanelModel()
+        model.setProcessClient(try delayedClient(delaySeconds: "2"))
+        let replacement = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_POMODOROS_FIXTURE": "pomodoros-current-12.json",
+            ]
+        )
+        model.setProcessClient(replacement)
+        // The replacement fetch keeps a visible panel fresh.
+        await waitUntil { model.currentPomodoroTaskLinkCount == 12 }
+        XCTAssertEqual(model.currentPomodoroTaskLinkCount, 12)
+        // The delayed old count (3) finishes here and must not overwrite 12.
+        try? await Task.sleep(nanoseconds: 2_500_000_000)
+        XCTAssertEqual(model.currentPomodoroTaskLinkCount, 12)
+    }
+
+    func testOldAssistParseNeverPublishesAfterReplacement() async throws {
+        // Long debounce isolates the immediate assist parse, like keyDrivenModel.
+        let model = CapturePanelModel(debounceNanoseconds: 9_000_000_000)
+        model.setProcessClient(try delayedClient(delaySeconds: "1"))
+        model.setCurrentPomodoroTaskLinkCountForTests(3)
+        // Same binding order as testKeyDrivenAssistParseServesCommaEdit:
+        // assign the draft before requesting so the pending flag survives.
+        model.plainDraft = "=x1"
+        model.requestCloseListAssistParse()
+        model.editorTextDidChange(cursorUTF8Offset: "=x1".utf8.count)
+        let replacement = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.setProcessClient(replacement)
+        // The delayed old parse finishes here; it must not publish a snapshot.
+        // The replacement count refresh (default 3-link fixture) re-arms, so a
+        // nil edit proves the snapshot stayed nil rather than disarm.
+        await waitUntil { model.closeTaskCommaArmed }
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        XCTAssertNil(
+            model.closeTaskCommaEdit(
+                typed: "2",
+                text: "=x1",
+                selectedRange: NSRange(location: 3, length: 0)
+            )
+        )
+    }
 }

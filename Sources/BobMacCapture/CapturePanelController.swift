@@ -591,8 +591,52 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return false
         }
 
+        let commaLocation = edit.replacementRange.location
         textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
         textView.setSelectedRange(edit.resultingSelection)
+        model.recordCloseTaskCommaInsertion(
+            commaLocation: commaLocation,
+            digit: digit,
+            resultingText: textView.string
+        )
+        return true
+    }
+
+    /// Backspace for an assist-generated `,<digit>` pair: with an editable
+    /// text view, no marked text, and a collapsed caret immediately after an
+    /// intact recorded pair, deletes both characters as one native edit and
+    /// consumes its provenance. Returns `false` otherwise so empty-bullet
+    /// deletion and then AppKit own the key.
+    static func deleteCloseTaskCommaInEditableTextView(
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder),
+              !textView.hasMarkedText()
+        else {
+            return false
+        }
+        let selection = textView.selectedRange()
+        guard selection.length == 0 else {
+            return false
+        }
+        let text = textView.string
+        guard let deletionRange = model.closeTaskCommaBackspaceDeletionRange(
+            caretLocation: selection.location,
+            text: text
+        ) else {
+            return false
+        }
+        model.dismissCompletion()
+        guard model.consumeCloseTaskCommaBackspace(
+            caretLocation: selection.location,
+            text: text
+        ) != nil else {
+            return false
+        }
+        textView.insertText("", replacementRange: deletionRange)
+        textView.setSelectedRange(NSRange(location: deletionRange.location, length: 0))
+        textView.scrollRangeToVisible(NSRange(location: deletionRange.location, length: 0))
         return true
     }
 
@@ -1107,6 +1151,12 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .moveToPreviousLineKeepingColumn:
             return moveVertically(.previous, firstResponder: panel?.firstResponder)
         case .deleteBackward:
+            if Self.deleteCloseTaskCommaInEditableTextView(
+                firstResponder: panel?.firstResponder,
+                model: model
+            ) {
+                return true
+            }
             return Self.deleteEmptyBulletRowInEditableTextView(
                 firstResponder: panel?.firstResponder,
                 model: model

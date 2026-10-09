@@ -273,6 +273,18 @@ final class CapturePanelModel: ObservableObject {
     /// and on failure.
     private var pomodoroCountGeneration: UInt64 = 0
 
+    /// Guards in-flight close-list assist parses across client replacement:
+    /// only parses belonging to the active client publish their snapshot.
+    private var closeAssistParseGeneration: UInt64 = 0
+
+    /// Provenance for auto-comma insertions the controller actually applied.
+    /// Each entry is a `,<digit>` pair in UTF-16 coordinates; Backspace
+    /// removes only an intact recorded pair, never an inferred comma-digit
+    /// substring. Ordinary edits reconcile via prefix/suffix diff so
+    /// unaffected pairs survive shifts; wholesale replacement clears it.
+    private var closeCommaProvenance = CaptureCloseTaskCommaProvenance()
+    private var lastProvenanceDraft = ""
+
     func setCurrentPomodoroTaskLinkCountForTests(_ count: Int?) {
         currentPomodoroTaskLinkCount = count
     }
@@ -285,6 +297,15 @@ final class CapturePanelModel: ObservableObject {
 
     var closeListAssistParsePendingForTests: Bool {
         closeListAssistParsePending
+    }
+
+    func closeCommaProvenanceForTests() -> CaptureCloseTaskCommaProvenance {
+        closeCommaProvenance
+    }
+
+    func setCloseCommaProvenanceForTests(_ provenance: CaptureCloseTaskCommaProvenance) {
+        closeCommaProvenance = provenance
+        lastProvenanceDraft = plainDraft
     }
 
     /// Requests an immediate close-list assist parse of whatever draft
@@ -648,23 +669,42 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func setProcessClient(_ processClient: BobProcessClient?) {
+        let changed = self.processClient !== processClient
         self.processClient = processClient
-        if processClient == nil {
-            statusText = "Bob is not resolved"
-            previewState = .idle
-            previewResult = nil
-            previewResults = []
-            previewGlobalDestination = nil
-            completionResponse = nil
-            completionDraftSnapshot = nil
+        if changed {
+            // An old count or assist parse must never re-arm the assist
+            // after Bob becomes unavailable or the executable/vault changes.
+            pomodoroCountGeneration &+= 1
+            closeAssistParseGeneration &+= 1
             currentPomodoroTaskLinkCount = nil
             closeListParseSnapshot = nil
             closeListAssistParsePending = false
-            clearPickerState()
-            invalidateAnalysis()
-            invalidateRewrite()
-        } else if hasDraft {
-            editorTextDidChange()
+            closeCommaProvenance.clear()
+            lastProvenanceDraft = plainDraft
+        }
+        if processClient == nil {
+            if changed {
+                statusText = "Bob is not resolved"
+                previewState = .idle
+                previewResult = nil
+                previewResults = []
+                previewGlobalDestination = nil
+                completionResponse = nil
+                completionDraftSnapshot = nil
+                clearPickerState()
+                invalidateAnalysis()
+                invalidateRewrite()
+            }
+        } else {
+            if changed {
+                // A replacement client fetches its own count so an
+                // already-visible panel does not stay stale until an
+                // unrelated vault change. Silent: failures just disarm.
+                refreshCurrentPomodoroTaskLinkCount()
+            }
+            if hasDraft {
+                editorTextDidChange()
+            }
         }
     }
 
@@ -681,7 +721,9 @@ final class CapturePanelModel: ObservableObject {
             do {
                 let response = try await processClient.capturePomodoros()
                 await MainActor.run {
-                    guard self?.pomodoroCountGeneration == generation else {
+                    guard self?.pomodoroCountGeneration == generation,
+                          self?.processClient === processClient
+                    else {
                         return
                     }
                     self?.currentPomodoroTaskLinkCount =
@@ -689,7 +731,9 @@ final class CapturePanelModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    guard self?.pomodoroCountGeneration == generation else {
+                    guard self?.pomodoroCountGeneration == generation,
+                          self?.processClient === processClient
+                    else {
                         return
                     }
                     self?.currentPomodoroTaskLinkCount = nil
@@ -714,6 +758,43 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
+    /// Records an auto-comma pair the controller just applied via native
+    /// `insertText`. Only the accepted insertion is recorded; Bob's spans
+    /// already authorized it, so Swift never re-derives close grammar here.
+    func recordCloseTaskCommaInsertion(commaLocation: Int, digit: String, resultingText: String) {
+        closeCommaProvenance.record(commaLocation: commaLocation, digit: digit)
+        lastProvenanceDraft = resultingText
+    }
+
+    /// Returns the native deletion range when the collapsed caret sits
+    /// immediately after an intact recorded `,<digit>` pair, else nil.
+    func closeTaskCommaBackspaceDeletionRange(caretLocation: Int, text: String) -> NSRange? {
+        closeCommaProvenance.deletionRange(caretLocation: caretLocation, text: text)
+    }
+
+    /// Removes the recorded pair under the caret and shifts later pairs.
+    /// Returns the deleted range, or nil when Backspace stays native.
+    /// The caller applies the deletion through native `insertText` so
+    /// undo/redo stays with the text system.
+    @discardableResult
+    func consumeCloseTaskCommaBackspace(caretLocation: Int, text: String) -> NSRange? {
+        guard let range = closeCommaProvenance.consume(caretLocation: caretLocation, text: text) else {
+            return nil
+        }
+        let nsText = text as NSString
+        let newText = nsText.replacingCharacters(in: range, with: "")
+        lastProvenanceDraft = newText
+        return range
+    }
+
+    /// Reconciles ordinary text edits so pairs before/after the edit
+    /// survive with shifted offsets. Called for every observed draft
+    /// change outside wholesale programmatic replacement.
+    func reconcileCloseCommaProvenance(oldText: String, newText: String) {
+        closeCommaProvenance.reconcile(oldText: oldText, newText: newText)
+        lastProvenanceDraft = newText
+    }
+
     func updateTargetCacheSnapshot(_ snapshot: CaptureTargetsSnapshot) {
         targetCacheSnapshot = snapshot
         if let error = snapshot.errorDescription {
@@ -727,6 +808,10 @@ final class CapturePanelModel: ObservableObject {
         }
 
         let draft = plainDraft
+        if draft != lastProvenanceDraft {
+            closeCommaProvenance.reconcile(oldText: lastProvenanceDraft, newText: draft)
+            lastProvenanceDraft = draft
+        }
         if let prompt = taskIDPrompt, prompt.draftSnapshot != draft {
             cancelTaskIDPrompt(clearCompletion: true)
         }
@@ -783,6 +868,8 @@ final class CapturePanelModel: ObservableObject {
         guard let processClient else {
             return
         }
+        closeAssistParseGeneration &+= 1
+        let generation = closeAssistParseGeneration
         Task { [weak self, processClient] in
             do {
                 let parse = try await processClient.captureParse(
@@ -790,7 +877,10 @@ final class CapturePanelModel: ObservableObject {
                     lane: "close-task-comma"
                 )
                 await MainActor.run {
-                    guard self?.plainDraft == draft else {
+                    guard self?.closeAssistParseGeneration == generation,
+                          self?.processClient === processClient,
+                          self?.plainDraft == draft
+                    else {
                         return
                     }
                     self?.closeListParseSnapshot = CaptureParseSnapshot(
@@ -1193,6 +1283,8 @@ final class CapturePanelModel: ObservableObject {
         completionDraftSnapshot = nil
         closeListParseSnapshot = nil
         closeListAssistParsePending = false
+        closeCommaProvenance.clear()
+        lastProvenanceDraft = plainDraft
         clearPickerState()
         clearInlinePrompts()
         previewState = .idle
@@ -4910,6 +5002,8 @@ final class CapturePanelModel: ObservableObject {
     ) {
         closeListParseSnapshot = nil
         closeListAssistParsePending = false
+        closeCommaProvenance.clear()
+        lastProvenanceDraft = text
         isApplyingProgrammaticDraft = true
         attributedDraft = AttributedString(text)
         restoreSelection(
