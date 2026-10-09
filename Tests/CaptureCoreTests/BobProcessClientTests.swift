@@ -1811,6 +1811,135 @@ final class BobProcessClientTests: XCTestCase {
         }
     }
 
+    func testCaptureAgendaRecordsArgvAndDecodesSnapshot() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        let fetch = try await client.captureAgenda()
+
+        guard case .changed(let snapshot, let bytes) = fetch else {
+            XCTFail("Expected changed fetch")
+            return
+        }
+        XCTAssertFalse(bytes.isEmpty)
+        XCTAssertEqual(snapshot.date, "2026-08-28")
+        XCTAssertEqual(snapshot.pomodoros.map(\.role), [.current, .next, .later, .later])
+        XCTAssertEqual(snapshot.currentTaskLinkCount, 3)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-pomodoros --format json --tasks"))
+    }
+
+    func testCaptureAgendaIdenticalBytesReturnsUnchanged() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_AGENDA_FIXTURE": "agenda-heavy.json",
+            ]
+        )
+
+        let first = try await client.captureAgenda()
+        guard case .changed(let snapshot, let bytes) = first else {
+            XCTFail("Expected changed fetch")
+            return
+        }
+        XCTAssertEqual(snapshot.pomodoros.count, 25)
+
+        let second = try await client.captureAgenda(previous: bytes)
+        XCTAssertEqual(second, .unchanged)
+
+        let third = try await client.captureAgenda(previous: Data("stale".utf8))
+        guard case .changed(let again, _) = third else {
+            XCTFail("Expected changed fetch for stale bytes")
+            return
+        }
+        XCTAssertEqual(again, snapshot)
+    }
+
+    func testCaptureAgendaWithoutTasksFlagServesLegacyPayload() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_POMODOROS_FIXTURE": "pomodoros-current-3.json",
+            ]
+        )
+
+        let response = try await client.capturePomodoros()
+        XCTAssertEqual(response.currentTaskLinkCount, 3)
+    }
+
+    func testCaptureAgendaUnsupportedOptionMapsOldBob() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_AGENDA_UNSUPPORTED": "1",
+            ]
+        )
+
+        do {
+            _ = try await client.captureAgenda()
+            XCTFail("Expected unsupportedOption")
+        } catch BobClientError.unsupportedOption(let option) {
+            XCTAssertEqual(option, "--tasks")
+        } catch {
+            XCTFail("Expected unsupportedOption, got \(error)")
+        }
+    }
+
+    func testCaptureAgendaFailureThrowsProcessFailed() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_AGENDA_FAIL": "1",
+            ]
+        )
+
+        do {
+            _ = try await client.captureAgenda()
+            XCTFail("Expected processFailed")
+        } catch BobClientError.processFailed(_, let exitStatus, _) {
+            XCTAssertEqual(exitStatus, 1)
+        } catch {
+            XCTFail("Expected processFailed, got \(error)")
+        }
+    }
+
+    func testCaptureAgendaSchemaMismatchThrows() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": #"{"ok":true,"schema_version":2,"pomodoros":[]}"#,
+            ]
+        )
+
+        do {
+            _ = try await client.captureAgenda()
+            XCTFail("Expected schemaMismatch")
+        } catch BobClientError.schemaMismatch(_, let expected, let actual) {
+            XCTAssertEqual(expected, 1)
+            XCTAssertEqual(actual, 2)
+        } catch {
+            XCTFail("Expected schemaMismatch, got \(error)")
+        }
+    }
+
     func testDecodeReportTimeoutPropagates() async throws {
         let client = BobProcessClient(
             executablePath: try fakeBobPath(),

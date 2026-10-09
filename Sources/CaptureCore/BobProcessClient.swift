@@ -61,6 +61,73 @@ public final class BobProcessClient: @unchecked Sendable {
         return response
     }
 
+    /// Today's agenda from `bob capture-pomodoros --tasks --format json`.
+    /// Byte-identical stdout is a no-op: when `previous` matches the fresh
+    /// output bytes, nothing is decoded and `.unchanged` is returned. An
+    /// older bob without `--tasks` fails with clap's unexpected-argument
+    /// error, which maps to `BobClientError.unsupportedOption`.
+    public func captureAgenda(previous: Data? = nil) async throws -> CaptureAgendaFetch {
+        let arguments = ["capture-pomodoros", "--format", "json", "--tasks"]
+        let result = try await run(arguments: arguments, lane: "agenda")
+        let command = [executablePath] + arguments
+        let stderr = boundedProcessText(result.stderr)
+
+        if result.exitStatus != 0 {
+            if Self.isUnsupportedOptionFailure(stderr: stderr, option: "--tasks") {
+                throw BobClientError.unsupportedOption("--tasks")
+            }
+            throw BobClientError.processFailed(
+                command: command,
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            )
+        }
+
+        let bytes = Data(result.stdout.utf8)
+        if let previous, previous == bytes {
+            return .unchanged
+        }
+
+        let trimmedStdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedStdout.isEmpty else {
+            throw BobClientError.emptyStdout(
+                command: command,
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            )
+        }
+
+        do {
+            let snapshot = try decoder.decode(
+                CaptureAgendaSnapshot.self,
+                from: Data(trimmedStdout.utf8)
+            )
+            guard snapshot.schemaVersion == 1 else {
+                throw BobClientError.schemaMismatch(
+                    command: command,
+                    expected: 1,
+                    actual: snapshot.schemaVersion
+                )
+            }
+            return .changed(snapshot: snapshot, bytes: bytes)
+        } catch let error as BobClientError {
+            throw error
+        } catch {
+            throw BobClientError.malformedJSON(
+                command: command,
+                exitStatus: result.exitStatus,
+                stderr: stderr,
+                reason: error.localizedDescription
+            )
+        }
+    }
+
+    /// Clap reports an unknown flag as `error: unexpected argument
+    /// '<flag>' found` on stderr: that is an old bob, not a broken vault.
+    static func isUnsupportedOptionFailure(stderr: String, option: String) -> Bool {
+        stderr.contains("unexpected argument") && stderr.contains(option)
+    }
+
     public func captureRewrite(
         _ draft: String,
         cursor: Int
@@ -797,3 +864,4 @@ extension CaptureRewriteResponse: SchemaVersioned {}
 extension CaptureTargetsResponse: SchemaVersioned {}
 extension CaptureCompletionResponse: SchemaVersioned {}
 extension CapturePomodorosResponse: SchemaVersioned {}
+extension CaptureAgendaSnapshot: SchemaVersioned {}

@@ -1573,7 +1573,28 @@ JSON
     # FAKE_BOB_POMODOROS_FIXTURE names a fixture in this directory (for
     # example pomodoros-current-12.json) or an absolute path, and
     # FAKE_BOB_POMODOROS_FAIL=1 fails the call so tests can prove a
-    # failure clears the count and disarms the assist.
+    # failure clears the count and disarms the assist. With `--tasks`,
+    # FAKE_BOB_AGENDA_FIXTURE names an agenda fixture in this directory
+    # (default agenda-current.json), FAKE_BOB_AGENDA_UNSUPPORTED=1 prints
+    # clap's unexpected-argument failure (an old bob without `--tasks`),
+    # and FAKE_BOB_AGENDA_FAIL=1 exits 1.
+    if [[ " $* " == *" --tasks "* ]]; then
+      if [[ "${FAKE_BOB_AGENDA_UNSUPPORTED:-}" == "1" ]]; then
+        printf "error: unexpected argument '--tasks' found\n\nUsage: bob capture-pomodoros [OPTIONS]\n\nFor more information, try '--help'.\n" >&2
+        exit 2
+      fi
+      if [[ "${FAKE_BOB_AGENDA_FAIL:-}" == "1" ]]; then
+        printf 'fake capture-pomodoros --tasks failed\n' >&2
+        exit 1
+      fi
+      agenda_fixture="${FAKE_BOB_AGENDA_FIXTURE:-agenda-current.json}"
+      if [[ "${agenda_fixture}" == */* ]]; then
+        cat "${agenda_fixture}"
+      else
+        cat "${fixtures_dir}/${agenda_fixture}"
+      fi
+      exit 0
+    fi
     if [[ "${FAKE_BOB_POMODOROS_FAIL:-}" == "1" ]]; then
       printf 'fake capture-pomodoros failed\n' >&2
       exit 1

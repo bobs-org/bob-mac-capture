@@ -9,6 +9,7 @@ public enum BobClientError: Error, Equatable, CustomStringConvertible {
     case schemaMismatch(command: [String], expected: Int, actual: Int)
     case processFailed(command: [String], exitStatus: Int32, stderr: String)
     case timedOut(command: [String], seconds: TimeInterval)
+    case unsupportedOption(String)
 
     public var description: String {
         switch self {
@@ -28,6 +29,8 @@ public enum BobClientError: Error, Equatable, CustomStringConvertible {
             return "bob command failed (exit \(exitStatus)): \(commandLine(command)). \(stderr)"
         case .timedOut(let command, let seconds):
             return "bob command timed out after \(Int(seconds))s and was terminated: \(commandLine(command))"
+        case .unsupportedOption(let option):
+            return "installed bob is too old: it does not support \(option)"
         }
     }
 
