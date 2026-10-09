@@ -497,6 +497,16 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
         RefsPlanResponse(schemaVersion: 2)
     }
 
+    var scanResult: RefsScanResponse = RefsScanResponse(schemaVersion: 1)
+    var scanError: Error?
+
+    func scan() async throws -> RefsScanResponse {
+        if let scanError {
+            throw scanError
+        }
+        return scanResult
+    }
+
     func show(path: String) async throws -> RefsShowResponse {
         lock.withLock { showPaths.append(path) }
         try await Task.sleep(nanoseconds: showDelayNanoseconds)

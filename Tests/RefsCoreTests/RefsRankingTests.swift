@@ -947,4 +947,167 @@ final class RefsRankingTests: XCTestCase {
         // under 1 s. The guard targets pathological blowups, not frame time.
         XCTAssertLessThan(elapsed, 10.0, "10,000 synthetic items rank in under 10 s")
     }
+
+    // MARK: Just scanned
+
+    func testJustScannedComesFirstInMarkOrder() {
+        let items = [
+            makeItem(id: "ref/chat/alpha.md", title: "Alpha", state: .ready),
+            makeItem(id: "ref/chat/beta.md", title: "Beta", state: .ready),
+            makeItem(id: "ref/chat/gamma.md", title: "Gamma", state: .ready),
+        ]
+        var signals = makeSignals()
+        signals.scan = RefsScanMark(
+            ids: ["ref/chat/beta.md", "ref/chat/alpha.md"],
+            at: Self.fixedNow
+        )
+
+        let listing = RefsRanker.listing(items, query: "", scope: .all, signals: signals)
+
+        XCTAssertEqual(listing.sections.first?.kind, .justScanned)
+        XCTAssertEqual(
+            listing.sections.first?.ids,
+            ["ref/chat/beta.md", "ref/chat/alpha.md"]
+        )
+        XCTAssertEqual(
+            listing.orderedIDs,
+            listing.sections.flatMap(\.ids),
+            "every item appears once, in section order"
+        )
+    }
+
+    func testJustScannedWindowEdge() {
+        let items = [
+            makeItem(id: "ref/chat/alpha.md", title: "Alpha", state: .ready),
+        ]
+        let window = Double(RefsRankingConstants.justScannedWindowMinutes) * 60
+
+        var fresh = makeSignals()
+        fresh.scan = RefsScanMark(
+            ids: ["ref/chat/alpha.md"],
+            at: Self.fixedNow.addingTimeInterval(-window)
+        )
+        let freshListing = RefsRanker.listing(items, query: "", scope: .all, signals: fresh)
+        XCTAssertEqual(freshListing.sections.first?.kind, .justScanned)
+
+        var stale = makeSignals()
+        stale.scan = RefsScanMark(
+            ids: ["ref/chat/alpha.md"],
+            at: Self.fixedNow.addingTimeInterval(-window - 1)
+        )
+        let staleListing = RefsRanker.listing(items, query: "", scope: .all, signals: stale)
+        XCTAssertFalse(staleListing.sections.map(\.kind).contains(.justScanned))
+    }
+
+    func testJustScannedScopeFilter() {
+        let items = [
+            makeItem(id: "ref/chat/alpha.md", title: "Alpha", state: .ready),
+            makeItem(
+                id: "ref/papers/beta.md", title: "Beta", kind: .paper, state: .ready
+            ),
+        ]
+        var signals = makeSignals()
+        signals.scan = RefsScanMark(
+            ids: ["ref/chat/alpha.md", "ref/papers/beta.md"],
+            at: Self.fixedNow
+        )
+
+        let listing = RefsRanker.listing(items, query: "", scope: .chats, signals: signals)
+
+        XCTAssertEqual(listing.sections.first?.kind, .justScanned)
+        XCTAssertEqual(listing.sections.first?.ids, ["ref/chat/alpha.md"])
+    }
+
+    func testJustScannedSkipsMissingIDs() {
+        let items = [
+            makeItem(id: "ref/chat/alpha.md", title: "Alpha", state: .ready),
+        ]
+        var signals = makeSignals()
+        signals.scan = RefsScanMark(
+            ids: ["ref/chat/gone.md", "ref/chat/alpha.md"],
+            at: Self.fixedNow
+        )
+
+        let listing = RefsRanker.listing(items, query: "", scope: .all, signals: signals)
+
+        XCTAssertEqual(listing.sections.first?.kind, .justScanned)
+        XCTAssertEqual(listing.sections.first?.ids, ["ref/chat/alpha.md"])
+    }
+
+    func testJustScannedTakesTodayRowOnce() {
+        let items = [
+            makeItem(id: "ref/chat/alpha.md", title: "Alpha", state: .ready),
+        ]
+        var signals = makeSignals(today: [("ref/chat/alpha.md", "Morning")])
+        signals.scan = RefsScanMark(ids: ["ref/chat/alpha.md"], at: Self.fixedNow)
+
+        let listing = RefsRanker.listing(items, query: "", scope: .all, signals: signals)
+        let sections = Dictionary(
+            uniqueKeysWithValues: listing.sections.map { ($0.kind, $0.ids) }
+        )
+
+        XCTAssertEqual(sections[.justScanned], ["ref/chat/alpha.md"])
+        XCTAssertNil(sections[.today])
+        XCTAssertEqual(listing.orderedIDs, ["ref/chat/alpha.md"])
+    }
+
+    func testNilOrEmptyMarkAddsNoSection() throws {
+        let listing = RefsRanker.listing(
+            try goldenItems(), query: "", scope: .all,
+            signals: try goldenSignals()
+        )
+        XCTAssertFalse(listing.sections.map(\.kind).contains(.justScanned))
+
+        var empty = try goldenSignals()
+        empty.scan = RefsScanMark(ids: [], at: Self.fixedNow)
+        let emptyListing = RefsRanker.listing(
+            try goldenItems(), query: "", scope: .all, signals: empty
+        )
+        XCTAssertFalse(emptyListing.sections.map(\.kind).contains(.justScanned))
+    }
+
+    func testSearchModeIgnoresTheScanMark() {
+        let items = [
+            makeItem(id: "ref/chat/alpha.md", title: "Alpha Harness", state: .ready),
+        ]
+        var signals = makeSignals()
+        signals.scan = RefsScanMark(ids: ["ref/chat/alpha.md"], at: Self.fixedNow)
+
+        let listing = RefsRanker.listing(
+            items, query: "harness", scope: .all, signals: signals
+        )
+
+        XCTAssertEqual(listing.sections.count, 1)
+        XCTAssertNil(listing.sections.first?.kind)
+        XCTAssertEqual(listing.orderedIDs, ["ref/chat/alpha.md"])
+    }
+
+    func testJustScannedCaptionAndWhyHere() {
+        let item = makeItem(
+            id: "ref/chat/alpha.md", title: "Alpha", state: .ready, added: "2026-10-08"
+        )
+        var signals = makeSignals()
+        signals.scan = RefsScanMark(ids: ["ref/chat/alpha.md"], at: Self.fixedNow)
+        let listing = RefsRanker.listing([item], query: "", scope: .all, signals: signals)
+
+        XCTAssertEqual(
+            RefsCaption.datePhrase(for: item, in: .justScanned, signals: signals),
+            RefsCaption.datePhrase(for: item, in: .justAdded, signals: signals)
+        )
+        XCTAssertEqual(
+            RefsExplanation.whyHere(item, listing: listing, signals: signals),
+            "Added by your scan · just now"
+        )
+
+        var older = signals
+        older.scan = RefsScanMark(
+            ids: ["ref/chat/alpha.md"],
+            at: Self.fixedNow.addingTimeInterval(-4 * 60)
+        )
+        let olderListing = RefsRanker.listing([item], query: "", scope: .all, signals: older)
+        XCTAssertEqual(
+            RefsExplanation.whyHere(item, listing: olderListing, signals: older),
+            "Added by your scan · 4 minutes ago"
+        )
+    }
 }

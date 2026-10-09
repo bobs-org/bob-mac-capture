@@ -9,6 +9,9 @@ public enum RefsRankingConstants {
     public static let justAddedWindowDays = 3
     /// The Just added section never shows more than this many rows.
     public static let justAddedCap = 5
+    /// A scan's created references stay in Just scanned for this many
+    /// minutes after the scan finished.
+    public static let justScannedWindowMinutes = 15
     /// A read/dropped/unknown row counts as recently opened within this many days.
     public static let recentlyOpenedWindowDays = 14
     /// The Recently opened section never shows more than this many rows.
@@ -58,6 +61,8 @@ public struct RefsSignals: Sendable {
     public var missingPDFs: Set<String>
     /// Cached inspector outline headings by note path.
     public var outlineHeadings: [String: [String]]
+    /// The latest scan's created references, set only by the library.
+    public var scan: RefsScanMark?
     public var now: Date
     public var calendar: Calendar
 
@@ -68,6 +73,7 @@ public struct RefsSignals: Sendable {
         pageCounts: [String: Int] = [:],
         missingPDFs: Set<String> = [],
         outlineHeadings: [String: [String]] = [:],
+        scan: RefsScanMark? = nil,
         now: Date = Date(),
         calendar: Calendar = .current
     ) {
@@ -77,13 +83,28 @@ public struct RefsSignals: Sendable {
         self.pageCounts = pageCounts
         self.missingPDFs = missingPDFs
         self.outlineHeadings = outlineHeadings
+        self.scan = scan
         self.now = now
         self.calendar = calendar
     }
 }
 
+/// The library's mark of what its latest scan created: the created note
+/// paths (item ids) in bob's order, and when the scan finished. The mark
+/// lives in memory only; nothing new is written to disk.
+public struct RefsScanMark: Equatable, Sendable {
+    public let ids: [String]
+    public let at: Date
+
+    public init(ids: [String], at: Date) {
+        self.ids = ids
+        self.at = at
+    }
+}
+
 /// One browse section, in panel order.
 public enum RefsSectionKind: Equatable, CaseIterable, Sendable {
+    case justScanned
     case today
     case justAdded
     case reading
@@ -96,6 +117,8 @@ public enum RefsSectionKind: Equatable, CaseIterable, Sendable {
     /// owns that chip, so the section is "Just added".
     public var title: String {
         switch self {
+        case .justScanned:
+            return "Just scanned"
         case .today:
             return "Today"
         case .justAdded:
@@ -579,8 +602,21 @@ public enum RefsRanker {
             sections.append(RefsSection(kind: kind, ids: ids))
         }
 
-        // Today, in ledger order.
+        // Just scanned: this scan's created references, in bob's order,
+        // while the mark is fresh. No cap; a scanned row never also
+        // shows in Today, Just added, or Ready.
+        if let mark = signals.scan,
+            signals.now.timeIntervalSince(mark.at)
+                <= Double(RefsRankingConstants.justScannedWindowMinutes) * 60
+        {
+            let scopedIDs = Set(scoped.map(\.id))
+            take(.justScanned, ids: mark.ids.filter { scopedIDs.contains($0) })
+        }
+
+        // Today, in ledger order. Already-placed Just scanned rows
+        // stay only in Just scanned: every item appears once.
         let todayIDs = scoped
+            .filter { !placed.contains($0.id) }
             .filter { signals.today.entries[$0.id] != nil }
             .sorted {
                 let a = signals.today.entries[$0.id]?.order ?? Int.max

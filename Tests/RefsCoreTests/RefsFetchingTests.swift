@@ -121,6 +121,66 @@ final class RefsFetchingTests: XCTestCase {
         XCTAssertEqual(plan.todayTasks.count, 4)
     }
 
+    func testScanRunsTheScanArgv() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let fetcher = BobRefsFetcher(client: try client(
+            environment: ["FAKE_BOB_RECORD_PATH": recordURL.path]
+        ))
+
+        let response = try await fetcher.scan()
+
+        XCTAssertEqual(response.notes.count, 3)
+        XCTAssertEqual(response.notes.filter { $0.action == "create" }.count, 2)
+        XCTAssertEqual(BobRefsFetcher.scanTimeout, 300)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=ref scan -w -f json"))
+    }
+
+    func testScanLaneDoesNotCancelItself() async throws {
+        // The scan lane never cancels a running scan: two overlapping
+        // scans both succeed because they never replace each other.
+        let fetcher = BobRefsFetcher(client: try client(environment: [
+            "FAKE_BOB_DELAY_SECONDS": "2",
+        ]))
+
+        async let first = fetcher.scan()
+        async let second = fetcher.scan()
+        let (one, two) = try await (first, second)
+
+        XCTAssertEqual(one.notes.count, 3)
+        XCTAssertEqual(two.notes.count, 3)
+    }
+
+    func testScanRejectsSchemaMismatch() async throws {
+        let fetcher = BobRefsFetcher(client: try client(environment: [
+            "FAKE_BOB_REFS_SCAN_FIXTURE": "refs-scan-schema2.json",
+        ]))
+
+        do {
+            _ = try await fetcher.scan()
+            XCTFail("expected a schema mismatch")
+        } catch let error as BobClientError {
+            guard case .schemaMismatch(_, let expected, let actual) = error else {
+                return XCTFail("expected schemaMismatch, got \(error)")
+            }
+            XCTAssertEqual(expected, 1)
+            XCTAssertEqual(actual, 2)
+        }
+    }
+
+    func testScanReturnsPartialReportOnExitOne() async throws {
+        let fetcher = BobRefsFetcher(client: try client(environment: [
+            "FAKE_BOB_REFS_SCAN_FIXTURE": "refs-scan-partial.json",
+            "FAKE_BOB_REFS_SCAN_EXIT": "1",
+        ]))
+
+        let response = try await fetcher.scan()
+
+        XCTAssertFalse(response.ok)
+        XCTAssertEqual(response.failures.count, 2)
+    }
+
     private func client(environment: [String: String]) throws -> BobProcessClient {
         BobProcessClient(
             executablePath: try fakeBobPath(),

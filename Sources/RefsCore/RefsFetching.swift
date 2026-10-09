@@ -9,9 +9,14 @@ public protocol RefsFetching: Sendable {
     func list(gitDates: Bool) async throws -> RefsListResponse
     func plan() async throws -> RefsPlanResponse
     func show(path: String) async throws -> RefsShowResponse
+    func scan() async throws -> RefsScanResponse
 }
 
 public final class BobRefsFetcher: RefsFetching, @unchecked Sendable {
+    /// A scan takes seconds: the hook can wait out SSH timeouts and a
+    /// 347-PDF scan takes about 8 s, so the scan lane allows 5 minutes.
+    public static let scanTimeout: TimeInterval = 300
+
     private let client: BobProcessClient
 
     public init(client: BobProcessClient) {
@@ -43,6 +48,16 @@ public final class BobRefsFetcher: RefsFetching, @unchecked Sendable {
             arguments: ["ref", "show", path, "-f", "json", "-c"],
             expectedSchema: 1,
             lane: "refs-show"
+        )
+    }
+
+    public func scan() async throws -> RefsScanResponse {
+        try await client.decodeReport(
+            arguments: ["ref", "scan", "-w", "-f", "json"],
+            expectedSchema: 1,
+            lane: "refs-scan",
+            cancelsPreviousInLane: false,
+            timeout: Self.scanTimeout
         )
     }
 }

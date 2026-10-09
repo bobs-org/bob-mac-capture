@@ -3,6 +3,17 @@ import XCTest
 
 @testable import CaptureCore
 
+/// Minimal versioned envelope for the `decodeReport` tests.
+private struct DecodeReportStub: Decodable, SchemaVersioned {
+    var schemaVersion: Int
+    var name: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case name
+    }
+}
+
 final class BobProcessClientTests: XCTestCase {
     func testCaptureParseRunsDirectArgvAndDecodesJSON() async throws {
         let recordURL = FileManager.default.temporaryDirectory
@@ -1646,6 +1657,180 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(plusTwo.mode, "pomodoro_adjust")
         XCTAssertEqual(plusTwo.needs, [])
         XCTAssertEqual(plusTwo.pomodoroAdjust?.units, 2)
+    }
+
+    // MARK: decodeReport
+
+    func testDecodeReportReturnsValueOnExitZero() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": #"{"schema_version":1,"name":"scan"}"#,
+            ]
+        )
+
+        let report: DecodeReportStub = try await client.decodeReport(
+            arguments: ["ref", "scan", "-w", "-f", "json"],
+            expectedSchema: 1
+        )
+
+        XCTAssertEqual(report.name, "scan")
+    }
+
+    func testDecodeReportReturnsReportOnNonZeroExit() async throws {
+        // A non-zero exit whose stdout holds a valid envelope is a
+        // report, not a transport failure.
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": #"{"schema_version":1,"name":"partial"}"#,
+                "FAKE_BOB_EXIT": "1",
+            ]
+        )
+
+        let report: DecodeReportStub = try await client.decodeReport(
+            arguments: ["ref", "scan", "-w", "-f", "json"],
+            expectedSchema: 1
+        )
+
+        XCTAssertEqual(report.name, "partial")
+    }
+
+    func testDecodeReportNonJSONWithNonZeroExitThrowsProcessFailed() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": "not json",
+                "FAKE_BOB_STDERR": "scan exploded",
+                "FAKE_BOB_EXIT": "1",
+            ]
+        )
+
+        do {
+            let _: DecodeReportStub = try await client.decodeReport(
+                arguments: ["ref", "scan", "-w", "-f", "json"],
+                expectedSchema: 1
+            )
+            XCTFail("Expected processFailed")
+        } catch BobClientError.processFailed(_, let exitStatus, let stderr) {
+            XCTAssertEqual(exitStatus, 1)
+            XCTAssertTrue(stderr.contains("scan exploded"))
+        }
+    }
+
+    func testDecodeReportEmptyStdoutWithExitTwoThrowsProcessFailed() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": "",
+                "FAKE_BOB_STDERR": "usage error",
+                "FAKE_BOB_EXIT": "2",
+            ]
+        )
+
+        do {
+            let _: DecodeReportStub = try await client.decodeReport(
+                arguments: ["ref", "scan", "-w", "-f", "json"],
+                expectedSchema: 1
+            )
+            XCTFail("Expected processFailed")
+        } catch BobClientError.processFailed(_, let exitStatus, _) {
+            XCTAssertEqual(exitStatus, 2)
+        }
+    }
+
+    func testDecodeReportEmptyStdoutWithZeroExitThrowsEmptyStdout() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": " ",
+            ]
+        )
+
+        do {
+            let _: DecodeReportStub = try await client.decodeReport(
+                arguments: ["ref", "scan", "-w", "-f", "json"],
+                expectedSchema: 1
+            )
+            XCTFail("Expected emptyStdout")
+        } catch BobClientError.emptyStdout(_, let exitStatus, _) {
+            XCTAssertEqual(exitStatus, 0)
+        }
+    }
+
+    func testDecodeReportGarbageWithZeroExitThrowsMalformedJSON() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": "{",
+            ]
+        )
+
+        do {
+            let _: DecodeReportStub = try await client.decodeReport(
+                arguments: ["ref", "scan", "-w", "-f", "json"],
+                expectedSchema: 1
+            )
+            XCTFail("Expected malformedJSON")
+        } catch BobClientError.malformedJSON(_, let exitStatus, _, _) {
+            XCTAssertEqual(exitStatus, 0)
+        }
+    }
+
+    func testDecodeReportSchemaMismatchThrows() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": #"{"schema_version":2,"name":"future"}"#,
+            ]
+        )
+
+        do {
+            let _: DecodeReportStub = try await client.decodeReport(
+                arguments: ["ref", "scan", "-w", "-f", "json"],
+                expectedSchema: 1
+            )
+            XCTFail("Expected schemaMismatch")
+        } catch BobClientError.schemaMismatch(_, let expected, let actual) {
+            XCTAssertEqual(expected, 1)
+            XCTAssertEqual(actual, 2)
+        }
+    }
+
+    func testDecodeReportTimeoutPropagates() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_DELAY_SECONDS": "5",
+            ]
+        )
+
+        do {
+            let _: DecodeReportStub = try await client.decodeReport(
+                arguments: ["ref", "scan", "-w", "-f", "json"],
+                expectedSchema: 1,
+                timeout: 0.3
+            )
+            XCTFail("Expected timedOut")
+        } catch BobClientError.timedOut(_, let seconds) {
+            XCTAssertEqual(seconds, 0.3)
+        }
     }
 
     private func fakeBobPath() throws -> String {

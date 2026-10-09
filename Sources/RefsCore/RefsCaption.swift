@@ -101,7 +101,7 @@ public enum RefsCaption {
         signals: RefsSignals
     ) -> String {
         switch section {
-        case .justAdded, .ready:
+        case .justScanned, .justAdded, .ready:
             return addedPhrase(item, signals: signals)
         case .reading, .next, .recentlyOpened:
             if let opened = RefsRanker.lastOpened(item, signals: signals) {
@@ -303,6 +303,14 @@ public enum RefsExplanation {
         }
         let section = listing.sections.first { $0.ids.contains(item.id) }.flatMap { $0.kind }
         switch section {
+        case .justScanned:
+            if let at = signals.scan?.at {
+                let when = RefsCaption.relativeLong(
+                    at, now: signals.now, calendar: signals.calendar
+                )
+                return "Added by your scan · \(when)"
+            }
+            return "Added by your scan"
         case .today:
             if let name = signals.today.entries[item.id]?.pomodoroName, !name.isEmpty {
                 return "In Today · \(name) Pomodoro"

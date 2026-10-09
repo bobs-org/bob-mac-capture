@@ -433,6 +433,82 @@ public final class BobProcessClient: @unchecked Sendable {
         }
     }
 
+    /// Report decode for `bob` subcommands whose stdout carries a valid
+    /// envelope even on a non-zero exit (`bob ref scan -f json` reports
+    /// per-PDF and hard failures that way). Unlike `decode`, the exit
+    /// status is consulted only after stdout fails to decode:
+    ///
+    /// 1. Trimmed stdout decodes as `T`: the schema is checked
+    ///    (`schemaMismatch` on a mismatch) and the value is returned
+    ///    whatever the exit status.
+    /// 2. Non-empty stdout does not decode: a non-zero exit throws
+    ///    `processFailed` with bounded stderr; exit 0 throws
+    ///    `malformedJSON`.
+    /// 3. Empty stdout: a non-zero exit throws `processFailed`; exit 0
+    ///    throws `emptyStdout`.
+    ///
+    /// Timeouts and launch errors propagate unchanged.
+    public func decodeReport<T: Decodable & SchemaVersioned>(
+        arguments: [String],
+        expectedSchema: Int,
+        environmentOverrides: [String: String] = [:],
+        lane: String = "default",
+        cancelsPreviousInLane: Bool = true,
+        timeout: TimeInterval = BobProcessClient.defaultTimeout
+    ) async throws -> T {
+        let result = try await run(
+            arguments: arguments,
+            environmentOverrides: environmentOverrides,
+            lane: lane,
+            cancelsPreviousInLane: cancelsPreviousInLane,
+            timeout: timeout
+        )
+        let stderr = boundedProcessText(result.stderr)
+        let trimmedStdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        do {
+            let value = try decoder.decode(T.self, from: Data(trimmedStdout.utf8))
+            guard value.schemaVersion == expectedSchema else {
+                throw BobClientError.schemaMismatch(
+                    command: result.command,
+                    expected: expectedSchema,
+                    actual: value.schemaVersion
+                )
+            }
+            return value
+        } catch let error as BobClientError {
+            throw error
+        } catch {
+            if !trimmedStdout.isEmpty {
+                if result.exitStatus != 0 {
+                    throw BobClientError.processFailed(
+                        command: result.command,
+                        exitStatus: result.exitStatus,
+                        stderr: stderr
+                    )
+                }
+                throw BobClientError.malformedJSON(
+                    command: result.command,
+                    exitStatus: result.exitStatus,
+                    stderr: stderr,
+                    reason: error.localizedDescription
+                )
+            }
+            if result.exitStatus != 0 {
+                throw BobClientError.processFailed(
+                    command: result.command,
+                    exitStatus: result.exitStatus,
+                    stderr: stderr
+                )
+            }
+            throw BobClientError.emptyStdout(
+                command: result.command,
+                exitStatus: result.exitStatus,
+                stderr: stderr
+            )
+        }
+    }
+
     // `bob capture` has no schema_version and reports `ok: false` failures with a
     // non-zero exit but a fully valid JSON body, so it cannot use `decode(_:expectedSchema:)`:
     // that path treats any non-zero exit as a transport failure before looking at stdout,
