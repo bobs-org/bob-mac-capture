@@ -566,15 +566,34 @@ final class CapturePanelModel: ObservableObject {
     /// clear. It never varies with `dryRun` — it always names what Return will
     /// do next.
     var primaryActionTitle: String {
-        resetPresentation.map { _ in "Reset" }
-            ?? closePresentation.map { _ in "Close" }
-            ?? sessionStartPresentation.map { _ in "Start" }
-            ?? togglePresentation?.primaryActionTitle
-            ?? linkPresentation?.primaryActionTitle
-            ?? taskCompletePresentation?.primaryActionTitle
-            ?? refPresentation?.primaryActionTitle
-            ?? shiftPresentation.map { _ in "Shift" }
-            ?? adjustPresentation.map { _ in "Adjust" } ?? "Capture"
+        if resetPresentation != nil {
+            return "Reset"
+        }
+        if closePresentation != nil {
+            return "Close"
+        }
+        if sessionStartPresentation != nil {
+            return "Start"
+        }
+        if let title = togglePresentation?.primaryActionTitle {
+            return title
+        }
+        if let title = linkPresentation?.primaryActionTitle {
+            return title
+        }
+        if let title = taskCompletePresentation?.primaryActionTitle {
+            return title
+        }
+        if let title = refPresentation?.primaryActionTitle {
+            return title
+        }
+        if shiftPresentation != nil {
+            return "Shift"
+        }
+        if adjustPresentation != nil {
+            return "Adjust"
+        }
+        return "Capture"
     }
 
     func setProcessClient(_ processClient: BobProcessClient?) {
