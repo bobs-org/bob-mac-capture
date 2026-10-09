@@ -35,6 +35,7 @@ final class RefsPanelDesignTests: XCTestCase {
         try renderSkeleton(now: now)
         try renderBanner(model: model, now: now)
         try renderNarrowBrowse(model: model, now: now)
+        try renderPieces(model: model, now: now)
     }
 
     // MARK: - Renders
@@ -219,6 +220,56 @@ final class RefsPanelDesignTests: XCTestCase {
         )
         XCTAssertFalse(RefsVisualTokens.showsInspector(width: 700))
         try write(model: model, name: "refs-browse-700", width: 700)
+    }
+
+    /// Standalone piece renders to localize the blank shell views:
+    /// each piece alone in a fixed frame, both appearances.
+    private func renderPieces(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeFixture(now: now)
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "omni",
+            scope: .articles,
+            selectedID: "ref/chat/today_report.md",
+            banner: nil,
+            refreshState: .idle
+        )
+        let pieces: [(String, AnyView)] = [
+            ("refs-piece-searchbar", AnyView(RefsSearchBar(model: model, previewMode: true))),
+            ("refs-piece-footer", AnyView(RefsFooter(model: model))),
+            ("refs-piece-empty", AnyView(RefsEmptyStateView(model: model).frame(width: 880, height: 300))),
+            ("refs-piece-skeleton", AnyView(RefsSkeletonList().frame(width: 880))),
+            ("refs-piece-banner", AnyView(
+                RefsBannerView(
+                    model: model,
+                    banner: RefsBanner(kind: .error, message: "Boom.", actions: [.retry])
+                ).frame(width: 880)
+            )),
+        ]
+        var all = pieces
+        if let content = model.rowContent(for: "ref/chat/today_report.md") {
+            all.append((
+                "refs-piece-row",
+                AnyView(RefsRowView(
+                    content: content,
+                    isSelected: true,
+                    pomodoroName: "BLOG",
+                    onSelect: {},
+                    onActivate: {}
+                ).frame(width: 458))
+            ))
+            all.append((
+                "refs-piece-inspector",
+                AnyView(RefsInspectorView(content: content, signals: fixture.signals)
+                    .frame(width: 414, height: 560))
+            ))
+        }
+        for (name, view) in all {
+            for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
+                try RenderFixtureWriter.write(view, name: name, width: 880, appearance: appearance)
+            }
+        }
     }
 
     private func write(model: RefsPanelModel, name: String, width: CGFloat) throws {
