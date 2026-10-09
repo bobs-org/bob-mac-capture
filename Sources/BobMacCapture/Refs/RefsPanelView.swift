@@ -15,7 +15,6 @@ public struct RefsPanelView: View {
     /// hosts an `NSViewRepresentable`.
     var previewMode = false
 
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
 
@@ -30,22 +29,20 @@ public struct RefsPanelView: View {
     }
 
     public var body: some View {
-        ZStack {
-            if reduceTransparency {
-                RoundedRectangle(cornerRadius: RefsVisualTokens.glassRadius)
-                    .fill(Color(nsColor: .windowBackgroundColor))
+        // No glass modifier here: the live panel's glass comes from the
+        // hosting `NSGlassEffectView`, because `.glassEffect` blanks
+        // `ImageRenderer` snapshots and the design tests must stay
+        // reviewable. The render fixtures show this content on an
+        // opaque base instead.
+        VStack(spacing: 0) {
+            RefsSearchBar(model: model, previewMode: previewMode)
+            if let banner = model.banner {
+                RefsBannerView(model: model, banner: banner)
             }
-            VStack(spacing: 0) {
-                RefsSearchBar(model: model, previewMode: previewMode)
-                if let banner = model.banner {
-                    RefsBannerView(model: model, banner: banner)
-                }
-                content
-                RefsFooter(model: model)
-            }
-            .padding(RefsVisualTokens.outerPadding)
+            content
+            RefsFooter(model: model)
         }
-        .glassEffect(.regular, in: .rect(cornerRadius: RefsVisualTokens.glassRadius))
+        .padding(RefsVisualTokens.outerPadding)
         .scaleEffect(appeared || !animatePresentation ? 1 : 0.98)
         .onAppear {
             guard animatePresentation, !reduceMotion else {

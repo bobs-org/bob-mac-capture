@@ -148,7 +148,10 @@ public final class RefsPanelController: NSObject {
         panel = created
         let hostingView = NSHostingView(rootView: RefsPanelView(model: model))
         hostingView.sizingOptions = []
-        created.contentView = hostingView
+        let glass = NSGlassEffectView()
+        glass.cornerRadius = RefsVisualTokens.glassRadius
+        glass.contentView = hostingView
+        created.contentView = glass
         created.contentView?.layoutSubtreeIfNeeded()
         return created
     }

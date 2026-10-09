@@ -1074,7 +1074,10 @@ copies only the `BobMacCapture` product.
 
 `RefsPanelController` owns a borderless non-activating glass panel
 (`RefsPanel`, 880 × 560 pt clamped to the screen, inspector below
-760 pt wide is list-only). It prewarms at launch, recomputes its
+760 pt wide is list-only). The SwiftUI content sits in an
+`NSGlassEffectView` (corner radius 20); the SwiftUI root itself
+carries no glass modifier so the `ImageRenderer` design fixtures
+stay reviewable. It prewarms at launch, recomputes its
 frame on every show, fades in over 0.12 s (fade only under Reduce
 Motion), hides at once with no fade-out, and hides when it resigns
 key, like Spotlight. Highlights stays frontmost throughout: the
