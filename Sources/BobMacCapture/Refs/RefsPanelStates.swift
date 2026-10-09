@@ -19,7 +19,7 @@ struct RefsBannerView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if !banner.actions.isEmpty {
                     HStack(spacing: 8) {
-                        ForEach(banner.actions.indices, id: \.self) { index in
+                        ForEach(0..<banner.actions.count, id: \.self) { index in
                             let action = banner.actions[index]
                             Button(actionLabel(for: action)) {
                                 model.performBannerAction(action)
