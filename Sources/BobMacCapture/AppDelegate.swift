@@ -24,7 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var relauncher = AppRelauncher()
 
     private var statusItem: NSStatusItem?
-    private var hotKeyRegistry: HotKeyRegistry?
+    var hotKeyRegistry: HotKeyRegistry?
     private var panelController: CapturePanelController?
     private var panelModel: CapturePanelModel?
     private var vaultWatcher: VaultTargetWatcher?
@@ -34,11 +34,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsCancellables: Set<AnyCancellable> = []
     private var statusItemController: StatusItemController?
     private var statusItemCancellables: Set<AnyCancellable> = []
-    private var refsLibrary: RefsLibrary?
+    var refsLibrary: RefsLibrary?
     private var refsPanelModel: RefsPanelModel?
     private var refsPanelController: RefsPanelController?
     private var panelCoordinator: BobPanelCoordinator?
-    private var highlightsTakeover: HighlightsTakeover?
+    var highlightsTakeover: HighlightsTakeover?
     private var refsCancellables: Set<AnyCancellable> = []
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -88,8 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .dropFirst()
             .sink { [weak self] _ in
                 self?.statusItemController?.playCaptureLandedPulse()
-                self?.refsLibrary?.refreshToday()
-                self?.refsLibrary?.markStale()
+                self?.handleCaptureSuccess()
             }
             .store(in: &statusItemCancellables)
 
@@ -352,14 +351,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Registers the global Refs hotkey when its setting is on. Success
     /// extends the launch status line so Diagnostics shows both bindings;
     /// a failure is reported as a Refs conflict. Capture's hotkey stays
-    /// re-registered only at launch and on Recheck Bob, as before.
-    private func registerRefsHotKey() {
+    /// re-registered only at launch and on Recheck Bob, as before. The
+    /// settings sink passes the value it receives, because `@Published`
+    /// emits before the property itself changes.
+    private func registerRefsHotKey(enabled: Bool? = nil) {
         guard let hotKeyRegistry else {
             return
         }
         let registered = RefsHotkeyRegistration.sync(
             registry: hotKeyRegistry,
-            enabled: settings.refsHotkeyEnabled
+            enabled: enabled ?? settings.refsHotkeyEnabled
         ) { [weak self] message in
             self?.settings.diagnosticStatus = message
         }
@@ -490,8 +491,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             closeCaptureRetainingDraft: { [weak self] in self?.panelModel?.closeRetainingDraft() },
             presentCapture: { [weak self] in self?.panelController?.show() },
             presentRefs: { [weak self] in self?.refsPanelController?.show() },
+            presentRefsPreservingState: { [weak self] in
+                self?.refsPanelController?.represent()
+            },
             hideRefs: { [weak self] in self?.refsPanelController?.hide() }
         )
+        // Open-error re-shows keep the panel state and go through the
+        // coordinator, so a visible Capture draft is retained.
+        model.panelRepresenter = { [weak self] in self?.panelCoordinator?.representRefs() }
 
         let takeover = HighlightsTakeover(
             notificationCenter: NSWorkspace.shared.notificationCenter,
@@ -512,17 +519,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Re-registers the Refs hotkeys live when the References settings
     /// change. Capture's hotkey is untouched here: it re-registers only at
-    /// launch and on Recheck Bob, as before.
-    private func observeRefsSettings() {
+    /// launch and on Recheck Bob, as before. Each sink applies the value
+    /// it receives: `@Published` emits before the property changes, so
+    /// re-reading settings here would always see the old value.
+    func observeRefsSettings() {
         settings.$refsHotkeyEnabled
-            .sink { [weak self] _ in self?.registerRefsHotKey() }
+            .sink { [weak self] enabled in self?.registerRefsHotKey(enabled: enabled) }
             .store(in: &refsCancellables)
         settings.$refsHighlightsOpenKey
-            .sink { [weak self] _ in self?.highlightsTakeover?.sync() }
+            .combineLatest(settings.$refsHighlightsAppPath)
+            .sink { [weak self] key, path in
+                self?.highlightsTakeover?.sync(key: key, appPath: path)
+            }
             .store(in: &refsCancellables)
-        settings.$refsHighlightsAppPath
-            .sink { [weak self] _ in self?.highlightsTakeover?.sync() }
-            .store(in: &refsCancellables)
+    }
+
+    /// A capture success refreshes Today now and marks the snapshot
+    /// stale, so the next Refs open re-reads it.
+    func handleCaptureSuccess() {
+        refsLibrary?.refreshToday(reason: .captureSuccess)
+        refsLibrary?.markStale()
+    }
+
+    /// Recheck Bob's Refs half: re-pointing the fetcher happens in
+    /// `configureProcessClient`, and this restarts the watcher and
+    /// refreshes the snapshot alongside the capture ones.
+    func refreshRefsForRecheck() {
+        refsLibrary?.restartWatcher()
+        refsLibrary?.refresh(reason: .recheck)
     }
 
     private func configureVaultWatcher() {
@@ -601,8 +625,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         registerHotKey()
         configureVaultWatcher()
         // Recheck re-points the Refs fetcher (via configureProcessClient)
-        // and restarts its watcher for the current vault root.
-        refsLibrary?.restartWatcher()
+        // and restarts its watcher for the current vault root, plus a
+        // snapshot refresh.
+        refreshRefsForRecheck()
     }
 
     @objc private func restartApp() {

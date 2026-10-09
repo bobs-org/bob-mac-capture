@@ -133,10 +133,15 @@ public final class RefsLibrary: ObservableObject {
     private var snapshotFollowUp = false
     private var todayTask: Task<Void, Never>?
     private var todayFollowUp = false
+    private var gitTask: Task<Void, Never>?
+    private var gitFollowUp = false
 
     private var watcher: VaultTargetWatcher?
     private var todayTimer: Timer?
     private var wakeObserver: Any?
+    /// The center `NSWorkspace.didWakeNotification` is posted on. It is a
+    /// parameter so tests can post wake on their own center.
+    private let wakeCenter: NotificationCenter
 
     public init(
         fetcher: RefsFetching?,
@@ -145,7 +150,8 @@ public final class RefsLibrary: ObservableObject {
         vaultRoot: @escaping () -> URL,
         fileExists: @escaping (URL) -> Bool,
         spotlight: RefsSpotlightProviding,
-        now: @escaping () -> Date
+        now: @escaping () -> Date,
+        wakeCenter: NotificationCenter = NSWorkspace.shared.notificationCenter
     ) {
         self.fetcher = fetcher
         self.snapshotStore = snapshotStore
@@ -154,6 +160,7 @@ public final class RefsLibrary: ObservableObject {
         self.fileExists = fileExists
         self.spotlight = spotlight
         self.now = now
+        self.wakeCenter = wakeCenter
         signals = RefsSignals(now: now())
     }
 
@@ -188,7 +195,7 @@ public final class RefsLibrary: ObservableObject {
         todayTimer?.invalidate()
         todayTimer = nil
         if let wakeObserver {
-            NotificationCenter.default.removeObserver(wakeObserver)
+            wakeCenter.removeObserver(wakeObserver)
             self.wakeObserver = nil
         }
     }
@@ -211,12 +218,12 @@ public final class RefsLibrary: ObservableObject {
         lastSuccessAt = nil
     }
 
-    /// Refreshes the snapshot (with the git-date pass when needed) and
+    /// Refreshes the snapshot (with the git-date lane when needed) and
     /// Today. Triggers that arrive during a refresh schedule exactly one
     /// follow-up per lane.
     public func refresh(reason: RefsRefreshReason) {
         refreshSnapshot(reason: reason)
-        refreshToday()
+        refreshToday(reason: reason)
     }
 
     /// Refreshes when the snapshot is older than `maxAge`, or when no
@@ -229,13 +236,14 @@ public final class RefsLibrary: ObservableObject {
     }
 
     /// Refreshes Today in the background: every panel open, every
-    /// successful capture, and every 10 minutes.
-    public func refreshToday() {
+    /// successful capture, and every 10 minutes. The reason rides along
+    /// so a trigger during a refresh re-runs the same lane.
+    public func refreshToday(reason: RefsRefreshReason) {
         guard todayTask == nil else {
             todayFollowUp = true
             return
         }
-        todayTask = Task { [weak self] in await self?.runTodayPass() }
+        todayTask = Task { [weak self] in await self?.runTodayPass(reason: reason) }
     }
 
     /// Records a Highlights or default-app open. Note opens, reveals,
@@ -362,17 +370,6 @@ public final class RefsLibrary: ObservableObject {
             )
             let paths = Set(response.refs.map(\.path))
             next.gitAddedDates = next.gitAddedDates.filter { paths.contains($0.key) }
-            if !next.pathsNeedingGitDates.isEmpty {
-                let git = try await fetcher.list(gitDates: true)
-                var needing = Set(next.pathsNeedingGitDates)
-                for record in git.refs {
-                    guard let added = record.added, needing.contains(record.path) else {
-                        continue
-                    }
-                    next.gitAddedDates[record.path] = added
-                    needing.remove(record.path)
-                }
-            }
             let items = RefsCatalog.items(from: next)
             let root = vaultRoot()
             let requests = items.map {
@@ -395,17 +392,78 @@ public final class RefsLibrary: ObservableObject {
             refreshState = .idle
             hasSnapshot = true
             snapshotStore.save(snapshot: next, today: today)
+            // The git-date lane runs after the snapshot publishes, so the
+            // first paint never waits for `-g` and a `-g` failure cannot
+            // take a good snapshot off the screen.
+            refreshGitDates()
         } catch {
             refreshState = .failed(message: Self.boundedMessage(for: error), at: now())
         }
     }
 
-    private func runTodayPass() async {
+    /// Runs the `refs-git` lane when some row still lacks an `added`
+    /// date. Triggers during a run schedule exactly one follow-up, like
+    /// the other lanes.
+    private func refreshGitDates() {
+        guard gitTask == nil else {
+            gitFollowUp = true
+            return
+        }
+        gitTask = Task { [weak self] in await self?.runGitDatePass() }
+    }
+
+    private func runGitDatePass() async {
+        defer {
+            gitTask = nil
+            if gitFollowUp {
+                gitFollowUp = false
+                refreshGitDates()
+            }
+        }
+        guard !Task.isCancelled else {
+            return
+        }
+        guard let fetcher, let current = snapshot else {
+            return
+        }
+        let needing = Set(current.pathsNeedingGitDates)
+        guard !needing.isEmpty else {
+            return
+        }
+        do {
+            let git = try await fetcher.list(gitDates: true)
+            guard var latest = snapshot else {
+                return
+            }
+            let stillNeeding = Set(latest.pathsNeedingGitDates)
+            var merged = latest.gitAddedDates
+            for record in git.refs {
+                guard let added = record.added,
+                      needing.contains(record.path),
+                      stillNeeding.contains(record.path),
+                      record.addedSource == "git"
+                else {
+                    continue
+                }
+                merged[record.path] = added
+            }
+            latest.gitAddedDates = merged
+            snapshot = latest
+            items = RefsCatalog.items(from: latest)
+            snapshotStore.save(snapshot: latest, today: today)
+        } catch {
+            // A `-g` failure keeps the published snapshot and the refresh
+            // state as they are; it is logged and nothing else.
+            NSLog("refs-git lane failed: %@", Self.boundedMessage(for: error))
+        }
+    }
+
+    private func runTodayPass(reason: RefsRefreshReason) async {
         defer {
             todayTask = nil
             if todayFollowUp {
                 todayFollowUp = false
-                refreshToday()
+                refreshToday(reason: reason)
             }
         }
         guard let fetcher else {
@@ -456,7 +514,7 @@ public final class RefsLibrary: ObservableObject {
             withTimeInterval: Self.todayRefreshInterval,
             repeats: true
         ) { [weak self] _ in
-            Task { await self?.refreshToday() }
+            Task { await self?.refreshToday(reason: .timer) }
         }
     }
 
@@ -464,7 +522,9 @@ public final class RefsLibrary: ObservableObject {
         if wakeObserver != nil {
             return
         }
-        wakeObserver = NotificationCenter.default.addObserver(
+        // `didWakeNotification` is posted on the workspace center, not the
+        // default center, so this must observe `wakeCenter`.
+        wakeObserver = wakeCenter.addObserver(
             forName: NSWorkspace.didWakeNotification,
             object: nil,
             queue: .main

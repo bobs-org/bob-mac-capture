@@ -3,6 +3,8 @@ import Carbon
 import XCTest
 
 @testable import BobMacCapture
+@testable import CaptureCore
+@testable import RefsCore
 
 /// Entry-point tests for the refs-entry-points phase: the one-panel
 /// coordinator, the Highlights-frontmost takeover, the References
@@ -308,6 +310,120 @@ final class RefsEntryPointsTests: XCTestCase {
         XCTAssertTrue(refs.keyEquivalentModifierMask.contains(.shift))
     }
 
+    func testRepresentRefsRetainsCaptureDraft() {
+        let capture = CapturePanelModel()
+        capture.plainDraft = "keep me"
+        let log = EventLog()
+        let coordinator = BobPanelCoordinator(
+            isCaptureVisible: { true },
+            isRefsVisible: { false },
+            closeCaptureRetainingDraft: {
+                capture.closeRetainingDraft()
+                log.events.append("close-retain")
+            },
+            presentCapture: { log.events.append("show-capture") },
+            presentRefs: { log.events.append("show-refs") },
+            presentRefsPreservingState: { log.events.append("show-refs-preserving") },
+            hideRefs: { log.events.append("hide-refs") }
+        )
+
+        coordinator.representRefs()
+
+        XCTAssertEqual(log.events, ["close-retain", "show-refs-preserving"])
+        XCTAssertEqual(capture.plainDraft, "keep me")
+    }
+
+    // MARK: - Live settings
+
+    func testTogglingRefsHotkeyEnabledRegistersLive() {
+        let delegate = AppDelegate()
+        let registrar = EntryPointsFakeRegistrar()
+        delegate.hotKeyRegistry = HotKeyRegistry(registrar: registrar) { _ in }
+        let original = delegate.settings.refsHotkeyEnabled
+        delegate.settings.refsHotkeyEnabled = true
+        delegate.observeRefsSettings()
+        defer { delegate.settings.refsHotkeyEnabled = original }
+
+        delegate.settings.refsHotkeyEnabled = false
+        XCTAssertFalse(registrar.liveIDs.contains(HotKeyAction.refs.rawValue))
+
+        delegate.settings.refsHotkeyEnabled = true
+        XCTAssertTrue(registrar.liveIDs.contains(HotKeyAction.refs.rawValue))
+    }
+
+    func testChangingTakeoverKeySwapsRegistrationLive() {
+        let delegate = AppDelegate()
+        let fixture = makeTakeover(
+            frontmost: HighlightsLocator.bundleIdentifier,
+            openKey: .cmdO
+        )
+        let originalKey = delegate.settings.refsHighlightsOpenKey
+        let originalPath = delegate.settings.refsHighlightsAppPath
+        delegate.settings.refsHighlightsOpenKey = .cmdO
+        delegate.settings.refsHighlightsAppPath = ""
+        delegate.highlightsTakeover = fixture.takeover
+        delegate.observeRefsSettings()
+        defer {
+            delegate.settings.refsHighlightsOpenKey = originalKey
+            delegate.settings.refsHighlightsAppPath = originalPath
+        }
+
+        // The subscribe-time emission registers Command-O.
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsOpen),
+            .highlightsCommandO
+        )
+
+        delegate.settings.refsHighlightsOpenKey = .ctrlO
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsOpen),
+            .highlightsControlO
+        )
+
+        delegate.settings.refsHighlightsOpenKey = .off
+        XCTAssertFalse(fixture.isTakeoverRegistered)
+    }
+
+    func testTakeoverUnregistersWhenHighlightsTerminates() async {
+        let fixture = makeTakeover(
+            frontmost: HighlightsLocator.bundleIdentifier,
+            openKey: .cmdO
+        )
+        fixture.takeover.start()
+        XCTAssertTrue(fixture.isTakeoverRegistered)
+
+        // Highlights is gone: the frontmost app moved on and the
+        // workspace posts termination.
+        fixture.frontmost = "com.apple.Safari"
+        fixture.center.post(
+            name: NSWorkspace.didTerminateApplicationNotification,
+            object: nil
+        )
+
+        await fixture.waitUntil { !fixture.isTakeoverRegistered }
+        XCTAssertFalse(fixture.isTakeoverRegistered)
+    }
+
+    func testCaptureSuccessRefreshesTodayAndMarksSnapshotStale() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let library = try makeRefsLibrary(environment: [
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+        ])
+
+        library.refresh(reason: .manual)
+        await waitForEntryPoints { library.lastSuccessAt != nil }
+        await waitForEntryPoints { library.signals.today.entries.count == 4 }
+        let plansBefore = entryPointsPlanCount(recordURL)
+
+        let delegate = AppDelegate()
+        delegate.refsLibrary = library
+        delegate.handleCaptureSuccess()
+
+        XCTAssertNil(library.lastSuccessAt)
+        await waitForEntryPoints { entryPointsPlanCount(recordURL) > plansBefore }
+    }
+
     // MARK: - Hotkey registration
 
     func testRefsHotkeySyncRegistersAndUnregisters() {
@@ -442,6 +558,64 @@ final class RefsEntryPointsTests: XCTestCase {
         // Force the lazy takeover so every test starts from one place.
         _ = fixture.takeover
         return fixture
+    }
+
+    private func makeRefsLibrary(environment: [String: String]) throws -> RefsLibrary {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let vault = root.appendingPathComponent("vault")
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent("ref"),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent("lib"),
+            withIntermediateDirectories: true
+        )
+        let source = URL(fileURLWithPath: #filePath)
+        let packageRoot = source
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let client = BobProcessClient(
+            executablePath: packageRoot
+                .appendingPathComponent("Tests/Fixtures/fake-bob")
+                .path,
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+                .merging(environment) { _, override in override }
+        )
+        return RefsLibrary(
+            fetcher: BobRefsFetcher(client: client),
+            snapshotStore: RefsSnapshotStore(
+                fileURL: root.appendingPathComponent("refs-snapshot.json")
+            ),
+            openLogStore: RefsOpenLogStore(
+                fileURL: root.appendingPathComponent("refs-open-log.json")
+            ),
+            vaultRoot: { vault },
+            fileExists: { _ in true },
+            spotlight: FakeSpotlight(),
+            now: { Date() }
+        )
+    }
+
+    private func waitForEntryPoints(
+        timeout: TimeInterval = 15,
+        _ condition: @MainActor @escaping () -> Bool
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline {
+                XCTFail("Condition not met before timeout")
+                return
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
+    private func entryPointsPlanCount(_ recordURL: URL) -> Int {
+        let record = (try? String(contentsOf: recordURL)) ?? ""
+        return record.components(separatedBy: "argv=plan -f json").count - 1
     }
 }
 

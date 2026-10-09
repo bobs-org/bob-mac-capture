@@ -195,6 +195,10 @@ public final class RefsPanelModel: ObservableObject {
 
     public var panelDismisser: () -> Void = {}
     public var panelPresenter: () -> Void = {}
+    /// Re-shows the panel after an open error without resetting it. The
+    /// panel controller routes this through `BobPanelCoordinator`, so a
+    /// visible Capture draft is retained exactly as on a normal open.
+    public var panelRepresenter: () -> Void = {}
     public var settingsPresenter: () -> Void = {}
     /// Presents the ⌘K actions menu for the selected row. The panel
     /// controller sets this; it pops the menu over the panel.
@@ -207,6 +211,9 @@ public final class RefsPanelModel: ObservableObject {
     private var subscriptions = Set<AnyCancellable>()
     private var presented = false
     private var pendingOpen: (id: String, target: RefsOpenTarget)?
+    /// Set by ⌘R (and Retry) so the next completed refresh builds a fresh
+    /// listing instead of a content-only update.
+    private var pendingRefreshRerank = false
     private var lastDiagnostic = ""
     private var toastTask: Task<Void, Never>?
 
@@ -274,6 +281,13 @@ public final class RefsPanelModel: ObservableObject {
         rerankSelectingFirst()
     }
 
+    /// Sets the query from the search field and re-ranks, in one place so
+    /// the typed text always reaches the model.
+    public func setQuery(_ query: String) {
+        self.query = query
+        queryDidChange()
+    }
+
     /// Runs one command. Returns false only when the command had no row to
     /// act on, so the key router can pass the key through.
     @discardableResult
@@ -319,8 +333,10 @@ public final class RefsPanelModel: ObservableObject {
             rerankSelectingFirst()
             return true
         case .refresh:
+            // The fresh listing lands when the refresh completes (see
+            // `libraryDidPublish`): re-ranking now would pin the old data.
+            pendingRefreshRerank = true
             library.refresh(reason: .manual)
-            rerankSelectingFirst()
             return true
         case .select(let id):
             guard listing.orderedIDs.contains(id) else {
@@ -366,6 +382,13 @@ public final class RefsPanelModel: ObservableObject {
         library.refreshIfStale(maxAge: maxAge)
     }
 
+    /// Background refresh for every panel open: Today refreshes every
+    /// time while the snapshot keeps its 60 s staleness rule.
+    public func refreshForOpen(maxAge: TimeInterval = 60) {
+        library.refreshToday(reason: .panelOpen)
+        refreshIfStale(maxAge: maxAge)
+    }
+
     /// The current library signals (Today, open stats, Spotlight
     /// facts, missing PDFs). The inspector reads these at render time.
     public var signals: RefsSignals {
@@ -384,7 +407,7 @@ public final class RefsPanelModel: ObservableObject {
         guard let item = library.items.first(where: { $0.id == id }) else {
             return RefsRowContent(
                 item: nil,
-                title: id,
+                title: listing.unavailableItems[id]?.title.text ?? id,
                 caption: "No longer in your library",
                 whyHere: "No longer in your library",
                 match: nil,
@@ -412,8 +435,8 @@ public final class RefsPanelModel: ObservableObject {
         switch action {
         case .retry:
             banner = nil
+            pendingRefreshRerank = true
             library.refresh(reason: .manual)
-            rerankSelectingFirst()
         case .tryAgain:
             guard let pending = pendingOpen else {
                 return
@@ -429,11 +452,14 @@ public final class RefsPanelModel: ObservableObject {
         case .chooseHighlights:
             settingsPresenter()
         case .copyDiagnostic:
-            guard !lastDiagnostic.isEmpty else {
-                return
+            // The load-failed card has no open error behind it, so it
+            // copies the refresh failure's bounded message; an open-error
+            // banner copies its own diagnostic first.
+            if !lastDiagnostic.isEmpty {
+                pasteboard.copy(lastDiagnostic)
+            } else if case .failed(let message, _) = library.refreshState {
+                pasteboard.copy(message)
             }
-            NSPasteboard.general.clearContents()
-            _ = NSPasteboard.general.setString(lastDiagnostic, forType: .string)
         }
     }
 
@@ -565,6 +591,7 @@ public final class RefsPanelModel: ObservableObject {
     }
 
     private func rerankSelectingFirst() {
+        pendingRefreshRerank = false
         listing = RefsRanker.listing(
             library.items,
             query: query,
@@ -575,16 +602,41 @@ public final class RefsPanelModel: ObservableObject {
         selectedID = RefsSelectionPolicy.initial(in: listing)
     }
 
+    /// A fresh listing from the latest data that keeps the selected id
+    /// when it still exists, for a completed ⌘R or Retry.
+    private func freshListingKeepingSelection() {
+        pendingRefreshRerank = false
+        let keep = selectedID
+        listing = RefsRanker.listing(
+            library.items,
+            query: query,
+            scope: scope,
+            signals: library.signals
+        )
+        unavailableIDs = []
+        if let keep, listing.orderedIDs.contains(keep) {
+            selectedID = keep
+        } else {
+            selectedID = RefsSelectionPolicy.initial(in: listing)
+        }
+    }
+
     private func libraryDidPublish() {
         let available = Set(library.items.map(\.id))
-        let (next, unavailable) = listing.refreshingContent(availableIDs: available)
+        let known = Dictionary(uniqueKeysWithValues: library.items.map { ($0.id, $0) })
+        let (next, unavailable) = listing.refreshingContent(
+            availableIDs: available,
+            lastKnownItems: known
+        )
         listing = next
         // Vanished rows leave the frozen listing, so intersecting with it
         // would drop the flag on the very next publish (every pass publishes
         // items and signals separately). Keep flags for every id that is
         // still missing from the library instead.
         unavailableIDs = unavailable.union(unavailableIDs.subtracting(available))
-        if next.orderedIDs.isEmpty {
+        if pendingRefreshRerank, library.refreshState != .refreshing {
+            freshListingKeepingSelection()
+        } else if next.orderedIDs.isEmpty {
             selectedID = nil
         }
     }
@@ -714,7 +766,10 @@ public final class RefsPanelModel: ObservableObject {
         if let error {
             lastDiagnostic = RefsLibrary.boundedMessage(for: error)
             pendingOpen = (itemID, .highlights)
-            panelPresenter()
+            // Re-show without resetting: the query, scope, frozen
+            // listing, selection, and pendingOpen all survive, and the
+            // coordinator retains a visible Capture draft.
+            panelRepresenter()
             banner = RefsBanner(
                 kind: .error,
                 message: "Highlights couldn’t open “\(title)”.\n\(lastDiagnostic)",
@@ -731,7 +786,8 @@ public final class RefsPanelModel: ObservableObject {
         if let error {
             lastDiagnostic = RefsLibrary.boundedMessage(for: error)
             pendingOpen = (itemID, .defaultApp)
-            panelPresenter()
+            // Re-show without resetting, as above.
+            panelRepresenter()
             banner = RefsBanner(
                 kind: .error,
                 message: "Couldn’t open “\(title)”.\n\(lastDiagnostic)",

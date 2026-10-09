@@ -4561,6 +4561,12 @@ JSON
     shift || true
     if [[ "${subcommand}" == "list" ]]; then
       if [[ " $* " == *" -g "* ]]; then
+        # FAKE_BOB_REFS_GIT_EXIT fails only the `-g` pass, so tests can
+        # prove a git-date failure keeps the published snapshot.
+        if [[ -n "${FAKE_BOB_REFS_GIT_EXIT:-}" ]]; then
+          printf 'fake git-date pass failed\n' >&2
+          exit "${FAKE_BOB_REFS_GIT_EXIT}"
+        fi
         list_fixture="refs-list-git.json"
       else
         list_fixture="${FAKE_BOB_REFS_LIST_FIXTURE:-refs-list.json}"

@@ -72,7 +72,23 @@ public final class RefsPanelController: NSObject {
         let token = CaptureSignpost.begin("refs-panel-show")
         defer { CaptureSignpost.end(token) }
         model.prepareForPresentation()
-        model.refreshIfStale()
+        model.refreshForOpen()
+        orderFront()
+    }
+
+    /// Re-shows the panel after an open error without resetting it: the
+    /// query, scope, frozen listing, selection, and pending open all
+    /// survive, and the banner set by the model stays up. No refresh
+    /// runs here, so no late data can reorder the frozen rows either.
+    public func represent() {
+        let token = CaptureSignpost.begin("refs-panel-reshow")
+        defer { CaptureSignpost.end(token) }
+        orderFront()
+    }
+
+    /// Orders the panel front with the show animation: recomputed frame,
+    /// 0.12 s fade-in, key monitors, and search-field focus.
+    private func orderFront() {
         let panel = makePanelIfNeeded()
         panel.setFrame(
             RefsVisualTokens.panelFrame(for: Self.visibleFrame()),

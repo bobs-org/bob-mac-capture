@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import XCTest
 
@@ -101,6 +102,29 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertNil(harness.model.banner)
     }
 
+    func testTypingInSearchFieldReachesModel() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+
+        // The field exactly as the search bar wires it: typing must set
+        // the query before the re-rank, or the next update wipes it.
+        let field = RefsSearchBar(model: harness.model).makeFilterField()
+        let coordinator = field.makeCoordinator()
+        coordinator.controlTextDidChange(
+            Notification(
+                name: NSControl.textDidChangeNotification,
+                object: NSTextField(string: "omni")
+            )
+        )
+
+        XCTAssertEqual(harness.model.query, "omni")
+        guard case .search = harness.model.listing.mode else {
+            XCTFail("expected search mode after typing")
+            return
+        }
+    }
+
     func testHighlightsErrorRepresentsWithBannerAndKeepsQuery() async throws {
         let harness = try makeHarness()
         await harness.waitForSnapshot()
@@ -117,12 +141,165 @@ final class RefsPanelModelTests: XCTestCase {
 
         XCTAssertEqual(harness.dismissed, 1)
         await harness.waitForModel { $0.banner != nil }
-        XCTAssertEqual(harness.presented, 1)
+        // The error re-shows through the representer, which keeps the
+        // query, scope, frozen listing, selection, and pending open; the
+        // plain presenter (a full reset) must not run.
+        XCTAssertEqual(harness.represented, 1)
+        XCTAssertEqual(harness.presented, 0)
         XCTAssertEqual(harness.model.query, "reading")
         XCTAssertEqual(harness.model.selectedID, "ref/chat/small_reading.md")
         XCTAssertTrue(harness.model.banner?.message.contains("busy") ?? false)
         XCTAssertEqual(harness.model.banner?.actions, [.tryAgain, .openInDefaultApp])
         XCTAssertEqual(harness.library.signals.opens.count("ref/chat/small_reading.md"), 0)
+
+        // Try Again re-dispatches the surviving pending open.
+        harness.model.performBannerAction(.tryAgain)
+        XCTAssertEqual(harness.opener.highlightsOpens.count, 2)
+    }
+
+    func testDefaultAppErrorRepresentsAndTryAgainRedispatches() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        harness.model.query = "reading"
+        harness.model.queryDidChange()
+        harness.opener.defaultAppError = NSError(
+            domain: "RefsPanelModelTests",
+            code: 2,
+            userInfo: [NSLocalizedDescriptionKey: "copy-me-busy"]
+        )
+        XCTAssertTrue(harness.model.perform(.select(id: "ref/chat/small_reading.md")))
+
+        XCTAssertTrue(harness.model.perform(.open(.defaultApp)))
+
+        XCTAssertEqual(harness.dismissed, 1)
+        await harness.waitForModel { $0.banner != nil }
+        XCTAssertEqual(harness.represented, 1)
+        XCTAssertEqual(harness.presented, 0)
+        XCTAssertEqual(harness.model.query, "reading")
+        XCTAssertEqual(harness.model.selectedID, "ref/chat/small_reading.md")
+        XCTAssertTrue(harness.model.banner?.message.contains("copy-me-busy") ?? false)
+        XCTAssertEqual(harness.model.banner?.actions, [.tryAgain, .copyDiagnostic])
+
+        harness.model.performBannerAction(.tryAgain)
+        XCTAssertEqual(harness.opener.defaultAppOpens.count, 2)
+
+        harness.model.performBannerAction(.copyDiagnostic)
+        XCTAssertEqual(harness.pasteboard.strings.count, 1)
+        XCTAssertTrue(harness.pasteboard.strings[0].contains("copy-me-busy"))
+    }
+
+    func testUnavailableRowKeepsTitleRefusesOpensAndKeepsNavigation() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        let before = harness.model.listing.orderedIDs
+        let vanished = "ref/papers/small_ready.md"
+        XCTAssertTrue(before.contains(vanished))
+        let vanishedIndex = before.firstIndex(of: vanished)!
+
+        XCTAssertTrue(harness.model.perform(.select(id: vanished)))
+        try harness.retireFixtureRow(path: vanished)
+        harness.library.refresh(reason: .manual)
+        await harness.waitForModel { $0.unavailableIDs.contains(vanished) }
+
+        // The vanished id keeps its index with its last known title.
+        XCTAssertEqual(harness.model.listing.orderedIDs, before)
+        let content = try XCTUnwrap(harness.model.rowContent(for: vanished))
+        XCTAssertTrue(content.isUnavailable)
+        XCTAssertEqual(content.title, "Small Ready Paper")
+        XCTAssertEqual(content.caption, "No longer in your library")
+
+        // Every open target refuses with the message and opens nothing.
+        for target in [RefsOpenTarget.highlights, .note, .reveal, .defaultApp] {
+            XCTAssertTrue(harness.model.perform(.open(target)))
+        }
+        XCTAssertTrue(harness.model.perform(.activate(id: vanished)))
+        XCTAssertTrue(harness.opener.highlightsOpens.isEmpty)
+        XCTAssertTrue(harness.opener.noteOpens.isEmpty)
+        XCTAssertTrue(harness.opener.reveals.isEmpty)
+        XCTAssertTrue(harness.opener.defaultAppOpens.isEmpty)
+        XCTAssertEqual(harness.dismissed, 0)
+        XCTAssertTrue(
+            harness.model.banner?.message.contains("no longer in your library") ?? false
+        )
+
+        // Navigation keeps the selection, and down moves to the next row.
+        XCTAssertEqual(harness.model.selectedID, vanished)
+        XCTAssertTrue(harness.model.perform(.move(.next)))
+        XCTAssertEqual(
+            harness.model.selectedID,
+            before[(vanishedIndex + 1) % before.count]
+        )
+    }
+
+    func testRefreshReordersFromNewDataKeepingSelection() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        let kept = "ref/chat/small_reading.md"
+        XCTAssertTrue(harness.model.perform(.select(id: kept)))
+        let bumped = "ref/papers/small_ready.md"
+        let beforeIndex = harness.model.listing.orderedIDs.firstIndex(of: bumped)!
+        XCTAssertGreaterThan(beforeIndex, 0)
+
+        // New data: the paper was added today, so it joins Just added.
+        try harness.serveAddedVariant(path: bumped, added: todayDateString())
+        harness.model.perform(.refresh)
+        await harness.waitForModel { $0.listing.orderedIDs.first == bumped }
+
+        XCTAssertEqual(harness.model.selectedID, kept)
+        XCTAssertTrue(harness.model.unavailableIDs.isEmpty)
+    }
+
+    func testOpenRefreshesTodayWithoutRefreshingSnapshot() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let harness = try makeHarness(environment: [
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+        ])
+        await harness.waitForSnapshot()
+        await harness.waitForModel { $0.library.signals.today.entries.count == 4 }
+        // Settle the `-g` lane before the baseline, so no late git-date
+        // call can land between the counts below.
+        await harness.waitForModel { _ in
+            harness.library.items.contains {
+                $0.id == "ref/blogs/small_opened.md" && $0.added != nil
+            }
+        }
+        let listsBefore = argvCount(recordURL, prefix: "argv=ref list")
+        let plansBefore = argvCount(recordURL, prefix: "argv=plan -f json")
+
+        harness.model.refreshForOpen()
+        await harness.waitForModel { _ in
+            argvCount(recordURL, prefix: "argv=plan -f json") > plansBefore
+        }
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        harness.model.refreshForOpen()
+        await harness.waitForModel { _ in
+            argvCount(recordURL, prefix: "argv=plan -f json") > plansBefore + 1
+        }
+
+        // Two opens ran two Today refreshes and no new snapshot refresh.
+        XCTAssertEqual(argvCount(recordURL, prefix: "argv=ref list"), listsBefore)
+    }
+
+    func testCopyDiagnosticOnLoadFailedCopiesRefreshFailure() async throws {
+        let harness = try makeHarness(environment: ["FAKE_BOB_EXIT": "1"])
+        await harness.waitForModel { model in
+            if case .failed = model.library.refreshState {
+                return true
+            }
+            return false
+        }
+
+        harness.model.performBannerAction(.copyDiagnostic)
+
+        guard case .failed(let message, _) = harness.library.refreshState else {
+            XCTFail("expected a failed refresh")
+            return
+        }
+        XCTAssertEqual(harness.pasteboard.strings, [message])
     }
 
     func testMissingPDFOpensNoteAndRecordsNothing() async throws {
@@ -319,21 +496,25 @@ final class RefsPanelModelTests: XCTestCase {
         let library: RefsLibrary
         let model: RefsPanelModel
         let opener: FakeOpener
+        let pasteboard: FakePasteboard
         let vault: URL
         let highlightsURL: URL?
         nonisolated(unsafe) var dismissed = 0
         nonisolated(unsafe) var presented = 0
+        nonisolated(unsafe) var represented = 0
 
         init(
             library: RefsLibrary,
             model: RefsPanelModel,
             opener: FakeOpener,
+            pasteboard: FakePasteboard,
             vault: URL,
             highlightsURL: URL?
         ) {
             self.library = library
             self.model = model
             self.opener = opener
+            self.pasteboard = pasteboard
             self.vault = vault
             self.highlightsURL = highlightsURL
         }
@@ -380,7 +561,8 @@ final class RefsPanelModelTests: XCTestCase {
 
     private func makeHarness(
         highlightsURL: URL? = URL(fileURLWithPath: "/Applications/Highlights.app"),
-        missing: Set<String> = []
+        missing: Set<String> = [],
+        environment: [String: String] = [:]
     ) throws -> Harness {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -394,7 +576,7 @@ final class RefsPanelModelTests: XCTestCase {
             withIntermediateDirectories: true
         )
         let library = RefsLibrary(
-            fetcher: BobRefsFetcher(client: try bobClient(environment: [:])),
+            fetcher: BobRefsFetcher(client: try bobClient(environment: environment)),
             snapshotStore: RefsSnapshotStore(
                 fileURL: root.appendingPathComponent("refs-snapshot.json")
             ),
@@ -407,17 +589,27 @@ final class RefsPanelModelTests: XCTestCase {
             now: { Date() }
         )
         let opener = FakeOpener()
+        let pasteboard = FakePasteboard()
         let locator = FakeLocator(appURL: highlightsURL)
-        let model = RefsPanelModel(library: library, opener: opener, highlights: locator)
+        let model = RefsPanelModel(
+            library: library,
+            opener: opener,
+            highlights: locator,
+            pasteboard: pasteboard
+        )
         let harness = Harness(
             library: library,
             model: model,
             opener: opener,
+            pasteboard: pasteboard,
             vault: vault,
             highlightsURL: highlightsURL
         )
         model.panelDismisser = { [weak harness] in harness?.dismissed += 1 }
         model.panelPresenter = { [weak harness] in harness?.presented += 1 }
+        // The error re-show path keeps every bit of panel state, like the
+        // real coordinator-backed representer.
+        model.panelRepresenter = { [weak harness] in harness?.represented += 1 }
         // Kick off the snapshot refresh every test waits for: nothing in the
         // model triggers one on its own.
         library.refresh(reason: .manual)
@@ -483,6 +675,52 @@ private extension RefsPanelModelTests.Harness {
                 .merging(environment) { _, override in override }
         )
     }
+
+    /// Serves a `refs-list.json` variant with one row's `added` rewritten,
+    /// so a refresh re-ranks from visibly new data.
+    func serveAddedVariant(path: String, added: String) throws {
+        let source = URL(fileURLWithPath: #filePath)
+        let packageRoot = source
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let data = try Data(
+            contentsOf: packageRoot.appendingPathComponent("Tests/Fixtures/refs-list.json")
+        )
+        var document = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let refs = (document["refs"] as! [[String: Any]]).map { row -> [String: Any] in
+            guard (row["path"] as! String) == path else {
+                return row
+            }
+            var edited = row
+            edited["added"] = added
+            edited["added_source"] = "created"
+            return edited
+        }
+        document["refs"] = refs
+        let variant = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try JSONSerialization.data(withJSONObject: document).write(to: variant)
+        library.setFetcher(
+            BobRefsFetcher(client: try client(environment: [
+                "FAKE_BOB_REFS_LIST_FIXTURE": variant.path,
+            ]))
+        )
+    }
+}
+
+/// Today's date as `YYYY-MM-DD`, the `added` form `bob` emits.
+private func todayDateString() -> String {
+    let formatter = DateFormatter()
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.dateFormat = "yyyy-MM-dd"
+    return formatter.string(from: Date())
+}
+
+/// How many fake-bob invocations start with `prefix` in a record file.
+private func argvCount(_ recordURL: URL, prefix: String) -> Int {
+    let record = (try? String(contentsOf: recordURL)) ?? ""
+    return record.components(separatedBy: prefix).count - 1
 }
 
 final class FakeOpener: RefsOpening, @unchecked Sendable {

@@ -10,6 +10,7 @@ final class BobPanelCoordinator {
     private let closeCaptureRetainingDraft: () -> Void
     private let presentCapture: () -> Void
     private let presentRefs: () -> Void
+    private let presentRefsPreservingState: () -> Void
     private let hideRefs: () -> Void
 
     init(
@@ -18,6 +19,7 @@ final class BobPanelCoordinator {
         closeCaptureRetainingDraft: @escaping () -> Void,
         presentCapture: @escaping () -> Void,
         presentRefs: @escaping () -> Void,
+        presentRefsPreservingState: @escaping () -> Void = {},
         hideRefs: @escaping () -> Void
     ) {
         self.isCaptureVisible = isCaptureVisible
@@ -25,6 +27,7 @@ final class BobPanelCoordinator {
         self.closeCaptureRetainingDraft = closeCaptureRetainingDraft
         self.presentCapture = presentCapture
         self.presentRefs = presentRefs
+        self.presentRefsPreservingState = presentRefsPreservingState
         self.hideRefs = hideRefs
     }
 
@@ -43,6 +46,15 @@ final class BobPanelCoordinator {
             closeCaptureRetainingDraft()
         }
         presentRefs()
+    }
+
+    /// Re-shows Refs after an open error without resetting it, retaining
+    /// a visible Capture draft first exactly as `showRefs` does.
+    func representRefs() {
+        if isCaptureVisible() {
+            closeCaptureRetainingDraft()
+        }
+        presentRefsPreservingState()
     }
 
     /// Toggles Refs: hides it when visible, shows it (retaining a

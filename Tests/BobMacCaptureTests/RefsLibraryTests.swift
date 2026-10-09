@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import XCTest
 
@@ -93,10 +94,16 @@ final class RefsLibraryTests: XCTestCase {
 
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=ref list -R all -A -f json -g"))
+        // The `-g` lane merges after the snapshot publishes, so wait for
+        // the backfilled date instead of reading it mid-flight.
+        await waitUntil(timeout: 15) {
+            context.library.items.first {
+                $0.id == "ref/blogs/small_opened.md"
+            }?.added?.isoString == "2026-09-11"
+        }
         let opened = context.library.items.first {
             $0.id == "ref/blogs/small_opened.md"
         }
-        XCTAssertEqual(opened?.added?.isoString, "2026-09-11")
         XCTAssertEqual(opened?.addedSource, "git")
         XCTAssertTrue(opened?.addedIsApproximate ?? false)
         let created = context.library.items.first {
@@ -104,6 +111,53 @@ final class RefsLibraryTests: XCTestCase {
         }
         XCTAssertEqual(created?.added?.isoString, "2026-10-01")
         XCTAssertFalse(created?.addedIsApproximate ?? true)
+    }
+
+    func testGitPassFailureKeepsSnapshotAndStaysIdle() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: [
+            "FAKE_BOB_REFS_GIT_EXIT": "1",
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+        ])
+
+        context.library.refresh(reason: .manual)
+        await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
+        // Wait until the `-g` lane ran, then let it finish: the snapshot
+        // stays published and the state never flips to failed.
+        await waitUntil(timeout: 15) {
+            ((try? String(contentsOf: recordURL)) ?? "").contains("-g")
+        }
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        XCTAssertEqual(context.library.items.count, 6)
+        XCTAssertTrue(context.library.hasSnapshot)
+        guard case .idle = context.library.refreshState else {
+            XCTFail("a -g failure must not fail the refresh")
+            return
+        }
+    }
+
+    func testWakeNotificationTriggersSnapshotRefresh() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let center = NotificationCenter()
+        let context = try makeContext(
+            environment: ["FAKE_BOB_RECORD_PATH": recordURL.path],
+            wakeCenter: center
+        )
+
+        context.library.start()
+        await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
+        let launches = try String(contentsOf: recordURL)
+            .components(separatedBy: "argv=ref list").count
+
+        center.post(name: NSWorkspace.didWakeNotification, object: nil)
+
+        await waitUntil(timeout: 15) {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return record.components(separatedBy: "argv=ref list").count > launches
+        }
+        context.library.stop()
     }
 
     func testGitPassSkippedWhenEveryRowHasAdded() async throws {
@@ -167,7 +221,7 @@ final class RefsLibraryTests: XCTestCase {
             recordURL: recordURL,
             environment: ["FAKE_BOB_PLAN_FIXTURE": schema3]
         ))
-        context.library.refreshToday()
+        context.library.refreshToday(reason: .manual)
         await waitUntil(timeout: 15) {
             let record = (try? String(contentsOf: recordURL)) ?? ""
             return record.components(separatedBy: "argv=plan -f json").count == 3
@@ -264,7 +318,8 @@ final class RefsLibraryTests: XCTestCase {
     private func makeContext(
         environment: [String: String] = [:],
         fileExists: @escaping (URL) -> Bool = { _ in true },
-        spotlight: RefsSpotlightProviding = FakeSpotlight()
+        spotlight: RefsSpotlightProviding = FakeSpotlight(),
+        wakeCenter: NotificationCenter? = nil
     ) throws -> Context {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -286,7 +341,8 @@ final class RefsLibraryTests: XCTestCase {
             vaultRoot: { vault },
             fileExists: fileExists,
             spotlight: spotlight,
-            now: { Date() }
+            now: { Date() },
+            wakeCenter: wakeCenter ?? NSWorkspace.shared.notificationCenter
         )
         return Context(
             library: library,

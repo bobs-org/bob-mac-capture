@@ -68,6 +68,19 @@ struct RefsSearchBar: View {
     var previewMode = false
     @StateObject private var announcer = RefsCountAnnouncer()
 
+    /// The filter field exactly as the bar wires it: the binding mirrors
+    /// `model.query`, and every keystroke reaches the model before the
+    /// re-rank, so the next `updateNSView` never wipes the field. Exposed
+    /// so tests drive the real wiring.
+    func makeFilterField() -> RefsFilterField {
+        RefsFilterField(
+            text: Binding(
+                get: { model.query },
+                set: { model.query = $0 }
+            )
+        ) { model.setQuery($0) }
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
@@ -80,15 +93,8 @@ struct RefsSearchBar: View {
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                RefsFilterField(
-                    text: Binding(
-                        get: { model.query },
-                        set: { model.query = $0 }
-                    )
-                ) { _ in
-                    model.queryDidChange()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                makeFilterField()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             if model.scope != .all {
                 scopeToken

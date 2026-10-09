@@ -1019,20 +1019,28 @@ returns, and never parses frontmatter or note bodies.
 
 ### Updates
 
-`RefsLibrary` owns the refresh service: the snapshot (plus the `-g`
-backfill only while some row still lacks an `added` date), Today, a
-one-shot Spotlight sweep for last-used dates and page counts, and
-missing-PDF checks. It paints from the cache at launch, watches
-`<vault>/ref` and `<vault>/lib` (0.5 s debounce), refreshes Today every
-10 minutes and after sleep, and re-reads a stale snapshot on every panel
-open. One refresh per lane runs at a time; a trigger during a refresh
-schedules exactly one follow-up. A failed refresh keeps the last good
-list and records `.failed`, which the footer reads as "Update failed ·
-⌘R to retry". Only Highlights and default-app opens append to the open
-log. `RefsPanelModel` holds the query, scope, frozen listing, and
-id-based selection: late library data refreshes row content in place and
-never reorders, and Return on a vanished row shows "No longer in your
-library" instead of opening whatever slid into its index.
+`RefsLibrary` owns the refresh service: the snapshot, the `-g`
+backfill on its own lane, Today, a one-shot Spotlight sweep for
+last-used dates and page counts, and missing-PDF checks. It paints from
+the cache at launch, watches `<vault>/ref` and `<vault>/lib`
+(0.5 s debounce), refreshes Today every 10 minutes, after sleep, after
+every capture, and in the background on every panel open, and re-reads
+a stale snapshot on every panel open. The `-g` lane runs only while
+some row still lacks an `added` date and only after the snapshot
+publishes, so the first paint never waits for it; merging is
+git-sourced dates into dateless rows, and a `-g` failure keeps the
+published list and is only logged. One refresh per lane runs at a time;
+a trigger during a refresh schedules exactly one follow-up. A failed
+refresh keeps the last good list and records `.failed`, which the
+footer reads as "Update failed · ⌘R to retry". Only Highlights and
+default-app opens append to the open log. `RefsPanelModel` holds the
+query, scope, frozen listing, and id-based selection: typed text reaches
+the model on every keystroke, late library data refreshes row content
+in place and never reorders (⌘R and Retry re-rank from the new data
+once the refresh completes, keeping the selection when it still
+exists), an open error re-shows the panel with the query, selection,
+and pending open intact, and Return on a vanished row shows "No longer
+in your library" instead of opening whatever slid into its index.
 
 ### Sorting
 
@@ -1149,7 +1157,8 @@ announced 600 ms after typing stops, never on every keystroke.
   opening Capture hides Refs.
 - Every successful capture refreshes Today and marks the snapshot
   stale, so the next open re-reads it. Recheck Bob re-points the Refs
-  fetcher and restarts its watcher alongside the capture ones.
+  fetcher, restarts its watcher, and refreshes the snapshot alongside
+  the capture ones.
 - Settings › References also shows the resolved Highlights app (name,
   version, and path, or "Not found"), with Choose… (limited to `.app`)
   and Use Default, plus Reset Open History… behind a confirmation

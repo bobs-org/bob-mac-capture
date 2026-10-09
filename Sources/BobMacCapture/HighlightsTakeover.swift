@@ -67,11 +67,25 @@ final class HighlightsTakeover {
     /// unregisters otherwise. A registration failure is reported,
     /// never thrown.
     func sync() {
-        guard let configuration = openKey().configuration else {
+        sync(key: openKey(), overrideAppBundleID: overrideBundleID())
+    }
+
+    /// Re-syncs with an explicit key and override app path, so Settings
+    /// sinks apply the values they receive instead of re-reading state
+    /// that `@Published` has not published yet.
+    func sync(key: RefsHighlightsOpenKey, appPath: String) {
+        sync(
+            key: key,
+            overrideAppBundleID: AppDelegate.highlightsOverrideBundleID(path: appPath)
+        )
+    }
+
+    private func sync(key: RefsHighlightsOpenKey, overrideAppBundleID: String?) {
+        guard let configuration = key.configuration else {
             registry.unregister(.refsHighlightsOpen)
             return
         }
-        let expected = overrideBundleID() ?? HighlightsLocator.bundleIdentifier
+        let expected = overrideAppBundleID ?? HighlightsLocator.bundleIdentifier
         guard frontmostBundleID() == expected else {
             registry.unregister(.refsHighlightsOpen)
             return

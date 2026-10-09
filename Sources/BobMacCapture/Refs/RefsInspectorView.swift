@@ -42,6 +42,17 @@ struct RefsInspectorView: View {
                     missingCallout(for: item)
                 }
                 footer(for: item)
+            } else if content.isUnavailable {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(content.title)
+                        .font(.title3.weight(.semibold))
+                        .lineLimit(4)
+                    Text(content.caption)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(content.title), \(content.caption)")
             } else {
                 Text(content.caption)
                     .font(.callout)
