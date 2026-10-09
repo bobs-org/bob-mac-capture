@@ -236,9 +236,13 @@ final class RefsPanelDesignTests: XCTestCase {
             refreshState: .idle
         )
         let pieces: [(String, AnyView)] = [
-            ("refs-piece-searchbar", AnyView(RefsSearchBar(model: model, previewMode: true))),
+            ("refs-piece-searchbar", AnyView(
+                RefsSearchBar(model: model, previewMode: true)
+            )),
             ("refs-piece-footer", AnyView(RefsFooter(model: model))),
-            ("refs-piece-empty", AnyView(RefsEmptyStateView(model: model).frame(width: 880, height: 300))),
+            ("refs-piece-empty", AnyView(
+                RefsEmptyStateView(model: model).frame(width: 880, height: 300)
+            )),
             ("refs-piece-skeleton", AnyView(RefsSkeletonList().frame(width: 880))),
             ("refs-piece-banner", AnyView(
                 RefsBannerView(
