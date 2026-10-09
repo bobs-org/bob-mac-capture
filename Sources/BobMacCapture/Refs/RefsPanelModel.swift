@@ -38,7 +38,7 @@ public struct RefsBanner: Equatable, Sendable {
         case warning
     }
 
-    public enum Action: Equatable, Sendable {
+    public enum Action: Equatable, Hashable, Sendable {
         case retry
         case tryAgain
         case openInDefaultApp
