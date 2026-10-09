@@ -148,6 +148,13 @@ final class RefsLibraryTests: XCTestCase {
 
         context.library.start()
         await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
+        // Settle the `-g` lane before the baseline, so only the wake
+        // refresh can add a later list call.
+        await waitUntil(timeout: 15) {
+            context.library.items.contains {
+                $0.id == "ref/blogs/small_opened.md" && $0.added != nil
+            }
+        }
         let launches = try String(contentsOf: recordURL)
             .components(separatedBy: "argv=ref list").count
 
