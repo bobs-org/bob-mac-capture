@@ -174,7 +174,7 @@ public enum RefKind: Equatable, Hashable, Sendable {
 }
 
 /// The panel's scope filter: All (⌘1) plus one lane per headed kind.
-public enum RefScope: Int, CaseIterable, Sendable {
+public enum RefScope: Int, Equatable, CaseIterable, Sendable {
     case all = 1
     case chats = 2
     case papers = 3

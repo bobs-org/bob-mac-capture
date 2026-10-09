@@ -7,7 +7,7 @@ import RefsCore
 /// Where an open dispatches: Highlights, the reference note in Obsidian,
 /// the PDF revealed in Finder, or the PDF in its default app. Only
 /// Highlights and default-app opens count as opens.
-public enum RefsOpenTarget: Sendable {
+public enum RefsOpenTarget: Equatable, Sendable {
     case highlights
     case note
     case reveal
@@ -15,7 +15,7 @@ public enum RefsOpenTarget: Sendable {
 }
 
 /// Every panel gesture the key router and the list funnel through.
-public enum RefsCommand: Sendable {
+public enum RefsCommand: Equatable, Sendable {
     case open(RefsOpenTarget)
     case move(RefsMove)
     case setScope(RefScope)
@@ -25,6 +25,8 @@ public enum RefsCommand: Sendable {
     case select(id: String)
     case activate(id: String)
     case showActions
+    /// Swallows the key without acting (Shift-Tab while the panel is up).
+    case consume
 }
 
 /// A banner above the list: orange card, callout text, action buttons. A
@@ -224,6 +226,12 @@ public final class RefsPanelModel: ObservableObject {
         signalsSubscription.store(in: &subscriptions)
     }
 
+    /// The Today Pomodoro name for an id, or nil when the row is not
+    /// in Today. An empty name reads "TODAY" in the pill.
+    public func pomodoroName(for id: String) -> String? {
+        library.signals.today.entries[id]?.pomodoroName
+    }
+
     /// The selected item, or nil when nothing is selected.
     public var selectedItem: RefItem? {
         guard let selectedID else {
@@ -313,7 +321,36 @@ public final class RefsPanelModel: ObservableObject {
         case .showActions:
             // A no-op until `refs-inspector` adds the actions menu.
             return false
+        case .consume:
+            return true
         }
+    }
+
+    /// The snapshot refresh state the footer reads.
+    public var refreshState: RefsRefreshState {
+        library.refreshState
+    }
+
+    /// Whether any snapshot — cached or refreshed — has loaded.
+    public var hasSnapshot: Bool {
+        library.hasSnapshot
+    }
+
+    /// When the last snapshot refresh succeeded.
+    public var lastSuccessAt: Date? {
+        library.lastSuccessAt
+    }
+
+    /// Refreshes when the snapshot is older than `maxAge`. The panel
+    /// controller calls this on every show.
+    public func refreshIfStale(maxAge: TimeInterval = 60) {
+        library.refreshIfStale(maxAge: maxAge)
+    }
+
+    /// The current library signals (Today, open stats, Spotlight
+    /// facts, missing PDFs). The inspector reads these at render time.
+    public var signals: RefsSignals {
+        library.signals
     }
 
     /// The list and inspector content for one frozen row, or nil when the
@@ -437,6 +474,7 @@ public final class RefsPanelModel: ObservableObject {
     }
 
     private func openSelected(_ target: RefsOpenTarget) -> Bool {
+        CaptureSignpost.event("refs-open-dispatch")
         guard let id = selectedID else {
             return false
         }

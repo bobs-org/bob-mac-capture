@@ -83,7 +83,7 @@ public struct RefsSignals: Sendable {
 }
 
 /// One browse section, in panel order.
-public enum RefsSectionKind: CaseIterable, Sendable {
+public enum RefsSectionKind: Equatable, CaseIterable, Sendable {
     case today
     case justAdded
     case reading

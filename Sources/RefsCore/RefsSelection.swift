@@ -3,7 +3,7 @@ import Foundation
 
 /// Selection moves over a frozen listing, wrapping `CapturePickerNavigation`
 /// over `listing.orderedIDs`.
-public enum RefsMove: Sendable {
+public enum RefsMove: Equatable, Sendable {
     case next
     case previous
     case pageUp

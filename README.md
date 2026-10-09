@@ -1070,6 +1070,54 @@ prints the sections; search mode prints
 its why-here line. The target is never bundled: `Scripts/bundle.sh`
 copies only the `BobMacCapture` product.
 
+### The panel
+
+`RefsPanelController` owns a borderless non-activating glass panel
+(`RefsPanel`, 880 × 560 pt clamped to the screen, inspector below
+760 pt wide is list-only). It prewarms at launch, recomputes its
+frame on every show, fades in over 0.12 s (fade only under Reduce
+Motion), hides at once with no fade-out, and hides when it resigns
+key, like Spotlight. Highlights stays frontmost throughout: the
+panel never calls `NSApp.activate`. The height is fixed while the
+panel is visible; filtering never resizes it.
+
+Layout, top to bottom: the 52 pt search bar (magnifier, 20 pt field,
+scope token, "`N open · M`" or "`k of M`" count, refresh spinner),
+the banner when one is up, the list beside the basic inspector, and
+the 30 pt footer (key hints plus "Updated …" / "Updating…" /
+"Update failed · ⌘R to retry"). Rows are 44 pt and two lines: the
+unopened dot, the kind tile, the rich title (code spans styled,
+matches in the accent color) with its caption, and the Today pill,
+annotation and narration marks, and the state glyph. Section headers
+are 26 pt and pinned. The basic inspector shows the hero tile,
+kind/state/Today chips, title, byline, an Added/Finished/Pages/
+Opened/Notes/Narration facts grid, the why-here line, and the vault
+PDF path; a missing PDF shows an orange callout instead. States: 8
+skeleton rows on first launch, a centered callout card with Retry
+and Copy Diagnostic when no cache exists and the refresh failed, a
+centered "No references match" empty state, and dimmed unavailable
+rows that never open whatever slid into their index.
+
+| Key | Bob Refs panel |
+| --- | -------------- |
+| Return, Tab, double-click | Open in Highlights (the note when the PDF is missing) |
+| Command-Return | Open the note in Obsidian |
+| Option-Return | Reveal the PDF in Finder |
+| Up/Down, Ctrl-P/Ctrl-N, Ctrl-K/Ctrl-J | Move (wraps) |
+| Page Up/Page Down | Page by one less than fits |
+| Command-Up/Command-Down, Home/End | First, last |
+| Option-Up/Option-Down | First row of the previous/next section (browse only) |
+| Command-1 … Command-5 | Scope All, Chats, Papers, Articles, Docs |
+| Command-R | Refresh library, Today, and git dates now; re-rank |
+| Command-K | Actions menu (a later phase; currently a no-op) |
+| Backspace on an empty query | Remove the scope token |
+| Esc, Ctrl-[ | Banner, then query, then scope, then close |
+| Shift-Tab | Consumed (no-op) |
+
+Return while IME-composing passes through to the text system.
+Printable keys fall through to the search field. Result counts are
+announced 600 ms after typing stops, never on every keystroke.
+
 ## Keyboard
 
 | Key | In the editor | While completion is visible | While Add block ID is open | While Name Pomodoro is open |
