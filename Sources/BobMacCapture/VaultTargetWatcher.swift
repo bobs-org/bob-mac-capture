@@ -2,7 +2,7 @@ import CoreServices
 import Foundation
 
 final class VaultTargetWatcher {
-    private let path: String
+    private let paths: [String]
     private let latency: TimeInterval
     private let onChange: () -> Void
     private let onFailure: (String) -> Void
@@ -11,15 +11,24 @@ final class VaultTargetWatcher {
     private var pendingRefresh: DispatchWorkItem?
 
     init(
+        paths: [String],
+        latency: TimeInterval = 0.3,
+        onChange: @escaping () -> Void,
+        onFailure: @escaping (String) -> Void
+    ) {
+        self.paths = paths
+        self.latency = latency
+        self.onChange = onChange
+        self.onFailure = onFailure
+    }
+
+    convenience init(
         path: String,
         latency: TimeInterval = 0.3,
         onChange: @escaping () -> Void,
         onFailure: @escaping (String) -> Void
     ) {
-        self.path = path
-        self.latency = latency
-        self.onChange = onChange
-        self.onFailure = onFailure
+        self.init(paths: [path], latency: latency, onChange: onChange, onFailure: onFailure)
     }
 
     deinit {
@@ -27,11 +36,13 @@ final class VaultTargetWatcher {
     }
 
     func start() {
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
-              isDirectory.boolValue
-        else {
-            onFailure("Vault path is not available: \(path)")
+        let watched = paths.filter { path in
+            var isDirectory: ObjCBool = false
+            return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+                && isDirectory.boolValue
+        }
+        guard !watched.isEmpty else {
+            onFailure("Vault path is not available: \(paths.joined(separator: ", "))")
             return
         }
 
@@ -57,12 +68,12 @@ final class VaultTargetWatcher {
             kCFAllocatorDefault,
             callback,
             &context,
-            [path] as CFArray,
+            watched as CFArray,
             FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
             latency,
             flags
         ) else {
-            onFailure("Unable to create a vault watcher for \(path)")
+            onFailure("Unable to create a vault watcher for \(watched.joined(separator: ", "))")
             return
         }
 
@@ -70,7 +81,7 @@ final class VaultTargetWatcher {
         guard FSEventStreamStart(created) else {
             FSEventStreamInvalidate(created)
             FSEventStreamRelease(created)
-            onFailure("Unable to start a vault watcher for \(path)")
+            onFailure("Unable to start a vault watcher for \(watched.joined(separator: ", "))")
             return
         }
 

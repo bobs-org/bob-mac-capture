@@ -1017,6 +1017,23 @@ returns, and never parses frontmatter or note bodies.
   Later phases add ranking, the library service, the panel, and the entry
   points on top of these types without renaming them.
 
+### Updates
+
+`RefsLibrary` owns the refresh service: the snapshot (plus the `-g`
+backfill only while some row still lacks an `added` date), Today, a
+one-shot Spotlight sweep for last-used dates and page counts, and
+missing-PDF checks. It paints from the cache at launch, watches
+`<vault>/ref` and `<vault>/lib` (0.5 s debounce), refreshes Today every
+10 minutes and after sleep, and re-reads a stale snapshot on every panel
+open. One refresh per lane runs at a time; a trigger during a refresh
+schedules exactly one follow-up. A failed refresh keeps the last good
+list and records `.failed`, which the footer reads as "Update failed ·
+⌘R to retry". Only Highlights and default-app opens append to the open
+log. `RefsPanelModel` holds the query, scope, frozen listing, and
+id-based selection: late library data refreshes row content in place and
+never reorders, and Return on a vanished row shows "No longer in your
+library" instead of opening whatever slid into its index.
+
 ### Sorting
 
 An empty query shows browse sections in order — Today (ledger order),
