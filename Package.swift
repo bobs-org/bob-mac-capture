@@ -18,14 +18,14 @@ let macCaptureProducts: [Product] = [
 let macCaptureTargets: [Target] = [
     .executableTarget(
         name: "BobMacCapture",
-        dependencies: ["CaptureCore"],
+        dependencies: ["CaptureCore", "RefsCore"],
         swiftSettings: [
             .swiftLanguageMode(.v5)
         ]
     ),
     .testTarget(
         name: "BobMacCaptureTests",
-        dependencies: ["BobMacCapture", "CaptureCore"],
+        dependencies: ["BobMacCapture", "CaptureCore", "RefsCore"],
         swiftSettings: [
             .swiftLanguageMode(.v5)
         ]
@@ -71,6 +71,20 @@ let package = Package(
         .testTarget(
             name: "CaptureCoreTests",
             dependencies: ["CaptureCore"],
+            swiftSettings: [
+                .swiftLanguageMode(.v5)
+            ]
+        ),
+        .target(
+            name: "RefsCore",
+            dependencies: ["CaptureCore"],
+            swiftSettings: [
+                .swiftLanguageMode(.v5)
+            ]
+        ),
+        .testTarget(
+            name: "RefsCoreTests",
+            dependencies: ["RefsCore", "CaptureCore"],
             swiftSettings: [
                 .swiftLanguageMode(.v5)
             ]

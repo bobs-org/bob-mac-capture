@@ -4552,6 +4552,45 @@ JSON
 JSON
     fi
     ;;
+  ref)
+    # `bob ref list` / `bob ref show` for the Refs panel. The list fixture
+    # defaults to the small 6-row set; the `-g` pass serves the git-filled
+    # variant. FAKE_BOB_REFS_LIST_FIXTURE names a fixture in this directory
+    # (for example refs-list-golden.json) or an absolute path.
+    subcommand="${1:-}"
+    shift || true
+    if [[ "${subcommand}" == "list" ]]; then
+      if [[ " $* " == *" -g "* ]]; then
+        list_fixture="refs-list-git.json"
+      else
+        list_fixture="${FAKE_BOB_REFS_LIST_FIXTURE:-refs-list.json}"
+      fi
+      if [[ "${list_fixture}" == */* ]]; then
+        cat "${list_fixture}"
+      else
+        cat "${fixtures_dir}/${list_fixture}"
+      fi
+    elif [[ "${subcommand}" == "show" ]]; then
+      show_fixture="${FAKE_BOB_REFS_SHOW_FIXTURE:-refs-show.json}"
+      if [[ "${show_fixture}" == */* ]]; then
+        cat "${show_fixture}"
+      else
+        cat "${fixtures_dir}/${show_fixture}"
+      fi
+    else
+      printf 'unknown fake ref command: %s\n' "${subcommand}" >&2
+      exit 64
+    fi
+    ;;
+  plan)
+    # `bob plan -f json` for the Refs Today pass.
+    plan_fixture="${FAKE_BOB_PLAN_FIXTURE:-refs-plan.json}"
+    if [[ "${plan_fixture}" == */* ]]; then
+      cat "${plan_fixture}"
+    else
+      cat "${fixtures_dir}/${plan_fixture}"
+    fi
+    ;;
   *)
     printf 'unknown fake command: %s\n' "${command}" >&2
     exit 64

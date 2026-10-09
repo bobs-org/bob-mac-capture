@@ -375,16 +375,22 @@ public final class BobProcessClient: @unchecked Sendable {
         precondition(arguments.contains("--format"), "live preview must request JSON")
     }
 
-    private func decode<T: Decodable & SchemaVersioned>(
+    /// Shared JSON-envelope decode for `bob` subcommands that report a
+    /// `schema_version`: runs `bob` on `lane`, maps transport failures, and
+    /// rejects an unexpected schema. RefsCore reuses this instead of
+    /// duplicating the error mapping.
+    public func decode<T: Decodable & SchemaVersioned>(
         arguments: [String],
         expectedSchema: Int,
         environmentOverrides: [String: String] = [:],
-        lane: String = "default"
+        lane: String = "default",
+        timeout: TimeInterval = BobProcessClient.defaultTimeout
     ) async throws -> T {
         let result = try await run(
             arguments: arguments,
             environmentOverrides: environmentOverrides,
-            lane: lane
+            lane: lane,
+            timeout: timeout
         )
         let stderr = boundedProcessText(result.stderr)
 

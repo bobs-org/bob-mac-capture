@@ -988,6 +988,35 @@ no target for it. An older Bob without the `ref` object keeps capturing the
 link as an ordinary task with the standard card; upgrade Bob before queueing
 links. Queueing can be turned off per draft with `bob capture -R/--no-ref`.
 
+## Bob Refs
+
+Bob Refs is a quick-open panel for the reference library: one keystroke shows
+every PDF-backed reference note, with kind and reading state on every row.
+Return opens the original PDF in Highlights and changes nothing in the vault —
+opening never mutates reading state, task lanes, or review state. The panel is
+a thin client of `bob`: it filters, ranks, sections, and presents what `bob`
+returns, and never parses frontmatter or note bodies.
+
+### Data
+
+- Snapshot: `bob ref list -R all -A -f json` (schema version 1), plus `-g`
+  when some row still lacks an `added` date. Every optional field decodes
+  with `decodeIfPresent`, so an older `bob` still works — a `bob` without
+  `blocked` decodes every row as not blocked — and unknown fields are
+  ignored. Any other schema version is rejected like any other refresh
+  failure.
+- Today: `bob plan -f json` (schema version 2).
+- The snapshot (including git-added dates) and the last Today value persist
+  in `refs-snapshot.json` under `~/Library/Application Support/`
+  `org.bobs.bob-mac-capture/`, so a cold launch paints immediately. The
+  open history (note paths and timestamps only) lives in `refs-open-log.json`
+  next to it. Both files are mode 0600 in a 0700 directory.
+- `RefsCore` (the `Sources/RefsCore` target, Foundation plus CaptureCore
+  only) owns the decoding, the `RefItem`/`RefKind`/`RefState`/`RefScope`
+  model, the `BobRefsFetcher` over `BobProcessClient`, and the stores.
+  Later phases add ranking, the library service, the panel, and the entry
+  points on top of these types without renaming them.
+
 ## Keyboard
 
 | Key | In the editor | While completion is visible | While Add block ID is open | While Name Pomodoro is open |
