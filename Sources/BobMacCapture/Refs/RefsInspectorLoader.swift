@@ -286,18 +286,18 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
         var entries = (try? Data(contentsOf: diskFile())).flatMap {
             try? JSONDecoder().decode([String: DiskEntry].self, from: $0)
         } ?? [:]
-        var thumbSHA: String?
+        var savedThumbSHA: String?
         if let png = value.thumbnailPNG {
             let sha = thumbSHA(key: key)
             try? png.write(to: thumbFile(sha: sha), options: .atomic)
-            thumbSHA = sha
+            savedThumbSHA = sha
         }
         entries[diskKey(key)] = DiskEntry(
             pageCount: value.pageCount,
             outlineHeadings: value.outlineHeadings,
             leadText: value.leadText,
             wordEstimate: value.wordEstimate,
-            thumbSHA: thumbSHA,
+            thumbSHA: savedThumbSHA,
             savedAt: Date()
         )
         while entries.count > Self.diskCapacity {
@@ -463,7 +463,7 @@ public final class RefsInspectorLoader: ObservableObject {
                 thumbnails[item.id] = image
             }
         }
-        if let row = showValue {
+        if let row = showRow {
             built.notes = row.commentedHighlights
             built.remainingNoteCount = row.remainingCommentCount
             built.openTaskCount = row.openTasks.count
