@@ -17,6 +17,7 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
     public let completedSummary: CaptureAgendaCompletedSummary
     public let pomodoros: [CaptureAgendaPomodoro]
     public let warnings: [String]
+    public let planBudget: CapturePlanBudget?
 
     public init(
         ok: Bool = false,
@@ -24,7 +25,8 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         date: String? = nil,
         completedSummary: CaptureAgendaCompletedSummary = CaptureAgendaCompletedSummary(),
         pomodoros: [CaptureAgendaPomodoro] = [],
-        warnings: [String] = []
+        warnings: [String] = [],
+        planBudget: CapturePlanBudget? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -32,6 +34,7 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         self.completedSummary = completedSummary
         self.pomodoros = pomodoros
         self.warnings = warnings
+        self.planBudget = planBudget
     }
 
     public init(from decoder: Decoder) throws {
@@ -48,6 +51,7 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
             forKey: .pomodoros
         ) ?? []
         warnings = try container.decodeIfPresent([String].self, forKey: .warnings) ?? []
+        planBudget = try container.decodeIfPresent(CapturePlanBudget.self, forKey: .planBudget)
     }
 
     /// The `isCurrent` entry's `taskLinkCount`, or nil when there is no
@@ -64,6 +68,7 @@ public struct CaptureAgendaSnapshot: Decodable, Equatable, Sendable {
         case completedSummary = "completed_summary"
         case pomodoros
         case warnings
+        case planBudget = "plan_budget"
     }
 }
 

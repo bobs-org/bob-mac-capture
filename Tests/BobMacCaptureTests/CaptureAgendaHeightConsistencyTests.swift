@@ -22,6 +22,39 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
                 expanded: []
             )
             try assertConsistent(
+                snapshot: budgetedSnapshot(
+                    "agenda-current.json",
+                    themes: CapturePlanBudgetMeter(count: 3, cap: 3, over: false),
+                    links: CapturePlanBudgetMeter(count: 8, cap: 10, over: false)
+                ),
+                fixture: "agenda-current-budget",
+                contentWidth: width,
+                budget: 2_000,
+                expanded: []
+            )
+            try assertConsistent(
+                snapshot: budgetedSnapshot(
+                    "agenda-heavy.json",
+                    themes: CapturePlanBudgetMeter(count: 4, cap: 3, over: true),
+                    links: CapturePlanBudgetMeter(count: 12, cap: 10, over: true)
+                ),
+                fixture: "agenda-heavy-budget",
+                contentWidth: width,
+                budget: 533,
+                expanded: []
+            )
+            try assertConsistent(
+                snapshot: budgetedSnapshot(
+                    "agenda-empty.json",
+                    themes: CapturePlanBudgetMeter(count: 0, cap: 3, over: false),
+                    links: CapturePlanBudgetMeter(count: 0, cap: 10, over: false)
+                ),
+                fixture: "agenda-empty-budget",
+                contentWidth: width,
+                budget: 2_000,
+                expanded: []
+            )
+            try assertConsistent(
                 fixture: "agenda-heavy.json",
                 contentWidth: width,
                 budget: 533,
@@ -74,13 +107,71 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
         }
     }
 
+    func testSavedBudgetRowStaysFlatAndHasNoExpansionTarget() throws {
+        let snapshot = try budgetedSnapshot(
+            "agenda-current.json",
+            themes: CapturePlanBudgetMeter(count: 3, cap: 3, over: false),
+            links: CapturePlanBudgetMeter(count: 8, cap: 10, over: false)
+        )
+        let presentation = CaptureAgendaPresentation(
+            snapshot: snapshot,
+            today: snapshot.date ?? "",
+            now: nil
+        )
+        let rowsWidth = 724 - 2 * CGFloat(CaptureAgendaLayoutMetrics.panePadding)
+        let plan = CaptureAgendaHeightResolver.resolve(
+            presentation: presentation,
+            budget: 2_000,
+            expanded: [],
+            width: rowsWidth,
+            measurer: CaptureAgendaRowMeasurer()
+        )
+        let budgetIndex = try XCTUnwrap(plan.rows.firstIndex { $0.kind == .planBudget })
+        let blocks = CaptureAgendaSections.make(rows: plan.rows, presentation: presentation)
+        let flatIndices = blocks.compactMap { block -> Int? in
+            guard case let .row(index) = block else {
+                return nil
+            }
+            return index
+        }
+        let groupedIndices = blocks.flatMap { block -> [Int] in
+            guard case let .group(_, indices, _) = block else {
+                return []
+            }
+            return indices
+        }
+        let targets = CaptureAgendaChipMap.targets(
+            presentation: presentation,
+            plan: plan
+        )
+
+        XCTAssertTrue(flatIndices.contains(budgetIndex))
+        XCTAssertFalse(groupedIndices.contains(budgetIndex))
+        XCTAssertNil(targets[budgetIndex])
+    }
+
     private func assertConsistent(
         fixture: String,
         contentWidth: CGFloat,
         budget: Double,
         expanded: Set<CaptureAgendaUnitID>
     ) throws {
-        let snapshot = try agendaSnapshot(fixture)
+        try assertConsistent(
+            snapshot: agendaSnapshot(fixture),
+            fixture: fixture,
+            contentWidth: contentWidth,
+            budget: budget,
+            expanded: expanded
+        )
+    }
+
+    private func assertConsistent(
+        snapshot: CaptureAgendaSnapshot,
+        fixture: String,
+        contentWidth: CGFloat,
+        budget: Double,
+        expanded: Set<CaptureAgendaUnitID>
+    ) throws {
         let presentation = CaptureAgendaPresentation(
             snapshot: snapshot,
             today: snapshot.date ?? "",
@@ -109,6 +200,27 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
             plan.totalHeight,
             accuracy: 2,
             "\(fixture) at \(Int(contentWidth)) pt"
+        )
+    }
+
+    private func budgetedSnapshot(
+        _ name: String,
+        themes: CapturePlanBudgetMeter,
+        links: CapturePlanBudgetMeter
+    ) throws -> CaptureAgendaSnapshot {
+        let snapshot = try agendaSnapshot(name)
+        return CaptureAgendaSnapshot(
+            ok: snapshot.ok,
+            schemaVersion: snapshot.schemaVersion,
+            date: snapshot.date,
+            completedSummary: snapshot.completedSummary,
+            pomodoros: snapshot.pomodoros,
+            warnings: snapshot.warnings,
+            planBudget: CapturePlanBudget(
+                status: "ok",
+                themes: themes,
+                links: links
+            )
         )
     }
 

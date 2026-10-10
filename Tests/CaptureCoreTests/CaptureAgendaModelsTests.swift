@@ -101,10 +101,12 @@ final class CaptureAgendaModelsTests: XCTestCase {
         XCTAssertTrue(empty.pomodoros.isEmpty)
         XCTAssertEqual(empty.completedSummary.count, 0)
         XCTAssertNil(empty.currentTaskLinkCount)
+        XCTAssertNil(empty.planBudget)
 
         let missingNote = try decodeFixture("agenda-no-daily-note.json")
         XCTAssertTrue(missingNote.pomodoros.isEmpty)
         XCTAssertNil(missingNote.currentTaskLinkCount)
+        XCTAssertNil(missingNote.planBudget)
 
         let multiple = try decodeFixture("agenda-multiple-timed.json")
         XCTAssertEqual(multiple.pomodoros.map(\.role), [.open, .open, .next])
@@ -113,6 +115,48 @@ final class CaptureAgendaModelsTests: XCTestCase {
         let heavy = try decodeFixture("agenda-heavy.json")
         XCTAssertEqual(heavy.pomodoros.count, 25)
         XCTAssertTrue(heavy.pomodoros.allSatisfy({ !$0.items.isEmpty }))
+    }
+
+    func testPlanBudgetDecodesCountsCapsAndOverStateAndToleratesAbsence() throws {
+        let json = """
+        {
+          "ok": true,
+          "schema_version": 1,
+          "date": "2026-08-28",
+          "plan_budget": {
+            "status": "ok",
+            "themes": {"count": 3, "cap": 3, "over": false},
+            "links": {"count": 11, "cap": 10, "over": true}
+          }
+        }
+        """.data(using: .utf8) ?? Data()
+        let snapshot = try JSONDecoder().decode(CaptureAgendaSnapshot.self, from: json)
+
+        XCTAssertEqual(snapshot.schemaVersion, 1)
+        XCTAssertEqual(snapshot.planBudget?.themes.count, 3)
+        XCTAssertEqual(snapshot.planBudget?.themes.cap, 3)
+        XCTAssertEqual(snapshot.planBudget?.themes.over, false)
+        XCTAssertEqual(snapshot.planBudget?.links.count, 11)
+        XCTAssertEqual(snapshot.planBudget?.links.cap, 10)
+        XCTAssertEqual(snapshot.planBudget?.links.over, true)
+        XCTAssertNil(snapshot.planBudget?.themes.before)
+
+        let cliSnapshot = try decodeFixture("pomodoro-start-blocks.json")
+        XCTAssertEqual(cliSnapshot.planBudget?.themes.count, 0)
+        XCTAssertEqual(cliSnapshot.planBudget?.themes.cap, 3)
+        XCTAssertEqual(cliSnapshot.planBudget?.links.count, 0)
+        XCTAssertEqual(cliSnapshot.planBudget?.links.cap, 10)
+
+        let absent = try JSONDecoder().decode(
+            CaptureAgendaSnapshot.self,
+            from: Data(#"{"ok":true,"date":"2026-08-28"}"#.utf8)
+        )
+        let null = try JSONDecoder().decode(
+            CaptureAgendaSnapshot.self,
+            from: Data(#"{"ok":true,"date":"2026-08-28","plan_budget":null}"#.utf8)
+        )
+        XCTAssertNil(absent.planBudget)
+        XCTAssertNil(null.planBudget)
     }
 
     func testUnknownEnumValuesDecodeToOther() throws {

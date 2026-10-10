@@ -1,10 +1,9 @@
 import Foundation
 
-/// Pure presentation model for the plan-budget portion of a
-/// `bob capture --format json` success (`plan_budget` present), built once
-/// from `CaptureCommandSuccess` so the SwiftUI layer never branches on
-/// budget JSON fields or recomputes meter math. The preview's only source
-/// of truth is Bob's resolved `plan_budget` object — which comes from
+/// Pure presentation model for a Bob `plan_budget` in a capture preview
+/// or saved idle agenda, built once so the SwiftUI layer never branches
+/// on budget JSON fields or recomputes meter math. A capture preview's
+/// only source of truth is Bob's resolved `plan_budget` object — which comes from
 /// `bob capture --dry-run --no-clip --format json` for live preview and
 /// the same command without `--dry-run`/`--no-clip` for submission — so
 /// there is no Swift-side ledger logic here, only wording.
@@ -46,14 +45,18 @@ public struct CapturePlanBudgetPresentation: Equatable, Sendable {
         )
     }
 
-    public init(budget: CapturePlanBudget, destination: PomodoroLinkEndpoint?) {
+    public init(
+        budget: CapturePlanBudget,
+        destination: PomodoroLinkEndpoint?,
+        includeProposalDetails: Bool = true
+    ) {
         destinationRowText = Self.destinationRowText(for: destination)
         themesCapsuleText = "Themes \(budget.themes.count)/\(budget.themes.cap)"
         themesOverCap = budget.themes.over
         linksCapsuleText = "Links \(budget.links.count)/\(budget.links.cap)"
         linksOverCap = budget.links.over
-        deltaChipText = Self.deltaChipText(for: budget)
-        warningTexts = budget.warnings.map(\.message)
+        deltaChipText = includeProposalDetails ? Self.deltaChipText(for: budget) : nil
+        warningTexts = includeProposalDetails ? budget.warnings.map(\.message) : []
 
         var parts: [String] = []
         if let destinationRowText {

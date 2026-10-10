@@ -87,7 +87,8 @@ final class CaptureAgendaPresentationTests: XCTestCase {
             minutes: 160
         ),
         entries: [CaptureAgendaPomodoro] = [],
-        warnings: [String] = []
+        warnings: [String] = [],
+        planBudget: CapturePlanBudget? = nil
     ) -> CaptureAgendaSnapshot {
         CaptureAgendaSnapshot(
             ok: true,
@@ -95,7 +96,8 @@ final class CaptureAgendaPresentationTests: XCTestCase {
             date: date,
             completedSummary: summary,
             pomodoros: entries,
-            warnings: warnings
+            warnings: warnings,
+            planBudget: planBudget
         )
     }
 
@@ -121,9 +123,20 @@ final class CaptureAgendaPresentationTests: XCTestCase {
             makeEntry(line: 5, items: [makeItem(ledgerLine: 6)]),
         ]))
         XCTAssertEqual(presentation.state, .agenda)
+        XCTAssertNil(presentation.planBudgetRow)
         XCTAssertEqual(presentation.titleRow.text, "Today · Fri 28 Aug")
         XCTAssertEqual(presentation.summaryText, "1 done · 2h 40m")
         XCTAssertEqual(presentation.titleRow.accessoryText, "1 done · 2h 40m")
+    }
+
+    func testLegacyAgendaFixtureKeepsItsCurrentRowsWithoutBudget() throws {
+        let snapshot = try fixture("agenda-current.json")
+        let presentation = present(snapshot)
+
+        XCTAssertNil(snapshot.planBudget)
+        XCTAssertNil(presentation.planBudgetRow)
+        XCTAssertEqual(presentation.state, .agenda)
+        XCTAssertEqual(presentation.groups.count, 4)
     }
 
     func testTitleRowNotesWhenNothingRunning() {
@@ -230,6 +243,7 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         XCTAssertTrue(loading.groups.isEmpty)
         XCTAssertFalse(loading.isStale)
         XCTAssertFalse(loading.hasLiveCountdown)
+        XCTAssertNil(loading.planBudgetRow)
         XCTAssertEqual(loading.titleRow.text, "Today · Fri 28 Aug")
         XCTAssertEqual(loading.stateRow?.text, "Loading today…")
     }
@@ -237,10 +251,16 @@ final class CaptureAgendaPresentationTests: XCTestCase {
     func testDateMismatchShowsLoading() {
         let presentation = present(makeSnapshot(
             date: "2026-08-27",
-            entries: [makeEntry(line: 5, items: [makeItem(ledgerLine: 6)])]
+            entries: [makeEntry(line: 5, items: [makeItem(ledgerLine: 6)])],
+            planBudget: CapturePlanBudget(
+                status: "ok",
+                themes: CapturePlanBudgetMeter(count: 3, cap: 3, over: false),
+                links: CapturePlanBudgetMeter(count: 8, cap: 10, over: false)
+            )
         ))
         XCTAssertEqual(presentation.state, .loading)
         XCTAssertTrue(presentation.groups.isEmpty)
+        XCTAssertNil(presentation.planBudgetRow)
         XCTAssertEqual(presentation.stateRow?.text, "Loading today…")
     }
 
@@ -251,10 +271,90 @@ final class CaptureAgendaPresentationTests: XCTestCase {
 
         let missing = present(makeSnapshot(
             entries: [],
-            warnings: ["Bob daily note does not exist"]
+            warnings: ["Bob daily note does not exist: /vault/2026/20260828.md"]
         ))
         XCTAssertEqual(missing.state, .noDailyNote)
         XCTAssertEqual(missing.stateRow?.text, "No daily note for today yet")
+
+        let missingSection = present(makeSnapshot(
+            entries: [],
+            warnings: ["Bob daily note has no Pomodoros section: /vault/2026/20260828.md"]
+        ))
+        XCTAssertEqual(missingSection.state, .noDailyNote)
+        XCTAssertEqual(missingSection.stateRow?.text, "No daily note for today yet")
+    }
+
+    func testBudgetRowUsesSavedCountsWithoutProposalDetails() {
+        let budget = CapturePlanBudget(
+            status: "ok",
+            themes: CapturePlanBudgetMeter(count: 3, cap: 3, over: false, before: 2),
+            links: CapturePlanBudgetMeter(count: 8, cap: 10, over: false),
+            addedThemes: ["NEW"],
+            warnings: [CapturePlanBudgetWarning(code: "theme_cap", message: "proposal warning")]
+        )
+        let presentation = present(makeSnapshot(entries: [], planBudget: budget))
+        guard let row = presentation.planBudgetRow else {
+            return XCTFail("Expected the saved budget row")
+        }
+
+        XCTAssertEqual(presentation.state, .noOpen)
+        XCTAssertEqual(presentation.stateRow?.text, "No Pomodoros planned · =#NAME starts one")
+        XCTAssertEqual(row.kind, .planBudget)
+        XCTAssertEqual(row.text, "Themes 3/3, Links 8/10")
+        XCTAssertEqual(row.key.text, "Themes 3/3, Links 8/10")
+        XCTAssertEqual(row.accessibilityLabel, "Plan budget: Themes 3/3, Links 8/10")
+        XCTAssertNil(row.planBudget?.destinationRowText)
+        XCTAssertNil(row.planBudget?.deltaChipText)
+        XCTAssertTrue(row.planBudget?.warningTexts.isEmpty == true)
+        XCTAssertEqual(row.planBudget?.themesOverCap, false)
+        XCTAssertEqual(row.planBudget?.linksOverCap, false)
+    }
+
+    func testEmptyLedgerShowsZeroBudgetMeters() {
+        let presentation = present(makeSnapshot(
+            entries: [],
+            planBudget: CapturePlanBudget(
+                status: "ok",
+                themes: CapturePlanBudgetMeter(count: 0, cap: 4, over: false),
+                links: CapturePlanBudgetMeter(count: 0, cap: 7, over: false)
+            )
+        ))
+
+        XCTAssertEqual(presentation.state, .noOpen)
+        XCTAssertEqual(presentation.planBudgetRow?.text, "Themes 0/4, Links 0/7")
+        XCTAssertEqual(presentation.stateRow?.text, "No Pomodoros planned · =#NAME starts one")
+    }
+
+    func testBudgetUnavailableWarningKeepsTheReadableEmptyAgendaState() {
+        let presentation = present(makeSnapshot(
+            entries: [],
+            warnings: ["plan budget unavailable: invalid plan config"]
+        ))
+
+        XCTAssertEqual(presentation.state, .noOpen)
+        XCTAssertEqual(presentation.stateRow?.text, "No Pomodoros planned · =#NAME starts one")
+        XCTAssertNil(presentation.planBudgetRow)
+    }
+
+    func testBudgetRowsRepublishOverStateChangesAndKeyCountsAndCaps() throws {
+        func row(over: Bool, count: Int = 3, cap: Int = 3) throws -> CaptureAgendaRow {
+            let snapshot = makeSnapshot(
+                entries: [],
+                planBudget: CapturePlanBudget(
+                    status: "ok",
+                    themes: CapturePlanBudgetMeter(count: count, cap: cap, over: over),
+                    links: CapturePlanBudgetMeter(count: 8, cap: 10, over: false)
+                )
+            )
+            return try XCTUnwrap(present(snapshot).planBudgetRow)
+        }
+
+        let within = try row(over: false)
+        let over = try row(over: true)
+        XCTAssertEqual(within.key, over.key)
+        XCTAssertNotEqual(within, over)
+        XCTAssertNotEqual(within.key, try row(over: false, count: 2).key)
+        XCTAssertNotEqual(within.key, try row(over: false, cap: 4).key)
     }
 
     // MARK: - Groups and headers

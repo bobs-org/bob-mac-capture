@@ -75,21 +75,27 @@ final class CaptureAgendaFitPlannerTests: XCTestCase {
         )
     }
 
-    private func makePresentation(entries: [CaptureAgendaPomodoro]) -> CaptureAgendaPresentation {
+    private func makePresentation(
+        entries: [CaptureAgendaPomodoro],
+        planBudget: CapturePlanBudget? = nil
+    ) -> CaptureAgendaPresentation {
         let snapshot = CaptureAgendaSnapshot(
             ok: true,
             schemaVersion: 1,
             date: today,
             completedSummary: CaptureAgendaCompletedSummary(),
             pomodoros: entries,
-            warnings: []
+            warnings: [],
+            planBudget: planBudget
         )
         return CaptureAgendaPresentation(snapshot: snapshot, today: today, locale: locale)
     }
 
     /// Three-group agenda: Now and Next each hold one logged task, and
     /// two Later groups hold one logged task each.
-    private func standardPresentation() -> CaptureAgendaPresentation {
+    private func standardPresentation(
+        planBudget: CapturePlanBudget? = nil
+    ) -> CaptureAgendaPresentation {
         makePresentation(entries: [
             makeEntry(
                 line: 3,
@@ -139,7 +145,7 @@ final class CaptureAgendaFitPlannerTests: XCTestCase {
                     ),
                 ]
             ),
-        ])
+        ], planBudget: planBudget)
     }
 
     /// Every rendered row (at every fold level) measures the same.
@@ -152,6 +158,9 @@ final class CaptureAgendaFitPlannerTests: XCTestCase {
             heights[row.key] = height
         }
         add(presentation.titleRow)
+        if let planBudget = presentation.planBudgetRow {
+            add(planBudget)
+        }
         if let warning = presentation.warningRow {
             add(warning)
         }
@@ -431,6 +440,52 @@ final class CaptureAgendaFitPlannerTests: XCTestCase {
         XCTAssertEqual(result.hiddenCount, 0)
     }
 
+    func testEmptyBudgetRowPrecedesThePlannedPomodoroLine() {
+        let presentation = makePresentation(
+            entries: [],
+            planBudget: CapturePlanBudget(
+                status: "ok",
+                themes: CapturePlanBudgetMeter(count: 0, cap: 3, over: false),
+                links: CapturePlanBudgetMeter(count: 0, cap: 10, over: false)
+            )
+        )
+        let result = plan(presentation, budget: 1_000)
+
+        XCTAssertEqual(result.rows.map(\.kind), [.title, .planBudget, .stateLine])
+        XCTAssertEqual(result.hiddenCount, 0)
+    }
+
+    func testBudgetRowStaysOutsideFoldingAndContentCounts() throws {
+        let budget = CapturePlanBudget(
+            status: "ok",
+            themes: CapturePlanBudgetMeter(count: 3, cap: 3, over: false),
+            links: CapturePlanBudgetMeter(count: 8, cap: 10, over: false)
+        )
+        let baseline = standardPresentation()
+        let withBudget = standardPresentation(planBudget: budget)
+        let budgetRow = try XCTUnwrap(withBudget.planBudgetRow)
+        let budgetRowHeight = 27.0
+        var heights = uniformHeights(withBudget)
+        heights[budgetRow.key] = budgetRowHeight
+
+        let baselinePlan = plan(baseline, budget: 1)
+        let budgetPlan = plan(withBudget, heights: heights, budget: 1 + budgetRowHeight)
+
+        XCTAssertEqual(budgetPlan.rows.prefix(2).map(\.kind), [.title, .planBudget])
+        XCTAssertEqual(budgetPlan.rows.filter { $0.kind == .planBudget }.count, 1)
+        XCTAssertEqual(budgetPlan.rows.filter { $0.kind != .planBudget }, baselinePlan.rows)
+        XCTAssertEqual(budgetPlan.groupStates, baselinePlan.groupStates)
+        XCTAssertEqual(budgetPlan.taskStates, baselinePlan.taskStates)
+        XCTAssertEqual(budgetPlan.hiddenCount, baselinePlan.hiddenCount)
+        XCTAssertEqual(budgetPlan.totalHeight, baselinePlan.totalHeight + budgetRowHeight)
+        XCTAssertTrue(budgetPlan.overflows)
+
+        for fitBudget in stride(from: 1.0, through: 500.0, by: 10.0) {
+            let step = plan(withBudget, budget: fitBudget)
+            XCTAssertEqual(step.rows.filter { $0.kind == .planBudget }.count, 1)
+        }
+    }
+
     func testIdenticalInputsPlanIdentically() {
         let presentation = standardPresentation()
         let heights = uniformHeights(presentation)
@@ -463,6 +518,9 @@ final class CaptureAgendaFitPlannerTests: XCTestCase {
             heights[row.key] = 19 + 15 * Double(lines - 1)
         }
         add(presentation.titleRow)
+        if let planBudget = presentation.planBudgetRow {
+            add(planBudget)
+        }
         if let warning = presentation.warningRow {
             add(warning)
         }

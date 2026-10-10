@@ -12,6 +12,7 @@ public enum CaptureAgendaUnitID: Hashable, Equatable, Sendable {
 /// change always re-measures.
 public enum CaptureAgendaRowKind: Hashable, Equatable, Sendable {
     case title
+    case planBudget
     case multiOpenWarning
     case stateLine
     case groupHeader
@@ -73,6 +74,9 @@ public struct CaptureAgendaRow: Equatable, Sendable {
     public let statusGlyph: String?
     public let accessibilityLabel: String?
     public let accessoryAccessibilityLabel: String?
+    /// Typed data for the shared saved-budget capsules. Its visible
+    /// labels are also included in `key.text` for height-cache identity.
+    public let planBudget: CapturePlanBudgetPresentation?
     /// A session-notes chip rendered as its own capsule button next
     /// to the header's normal trailing accessory, never inside it.
     public let notesChip: String?
@@ -87,7 +91,8 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         statusGlyph: String? = nil,
         accessibilityLabel: String? = nil,
         accessoryAccessibilityLabel: String? = nil,
-        notesChip: String? = nil
+        notesChip: String? = nil,
+        planBudget: CapturePlanBudgetPresentation? = nil
     ) {
         self.kind = kind
         self.text = text
@@ -99,6 +104,7 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         self.accessibilityLabel = accessibilityLabel
         self.accessoryAccessibilityLabel = accessoryAccessibilityLabel
         self.notesChip = notesChip
+        self.planBudget = planBudget
         key = CaptureAgendaRowKey(
             kind: kind,
             text: text,
@@ -207,6 +213,9 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     /// True while a current entry carries an end time: the view mounts
     /// its minute-granularity countdown only then.
     public let hasLiveCountdown: Bool
+    /// Bob's saved daily theme and Task Link meters. Present only for a
+    /// same-day snapshot that includes `plan_budget`.
+    public let planBudgetRow: CaptureAgendaRow?
     public let warningRow: CaptureAgendaRow?
     public let groups: [CaptureAgendaGroup]
     public let stateRow: CaptureAgendaRow?
@@ -250,18 +259,20 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         stripFullRow = Self.makeStripRow(names: laterNames)
         guard snapshot.date == today else {
             state = .loading
+            planBudgetRow = nil
             groups = []
             stateRow = Self.makeStateRow(text: "Loading today…")
             return
         }
+        planBudgetRow = snapshot.planBudget.map(Self.makePlanBudgetRow)
         guard !ordered.isEmpty else {
             groups = []
-            if snapshot.warnings.isEmpty {
-                state = .noOpen
-                stateRow = Self.makeStateRow(text: "No Pomodoros planned · =#NAME starts one")
-            } else {
+            if Self.hasMissingDailyNoteWarning(snapshot.warnings) {
                 state = .noDailyNote
                 stateRow = Self.makeStateRow(text: "No daily note for today yet")
+            } else {
+                state = .noOpen
+                stateRow = Self.makeStateRow(text: "No Pomodoros planned · =#NAME starts one")
             }
             return
         }
@@ -319,6 +330,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             summaryText: nil,
             isStale: false,
             hasLiveCountdown: false,
+            planBudgetRow: nil,
             warningRow: nil,
             groups: [],
             stateRow: makeStateRow(text: "Loading today…"),
@@ -332,6 +344,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         summaryText: String?,
         isStale: Bool,
         hasLiveCountdown: Bool,
+        planBudgetRow: CaptureAgendaRow?,
         warningRow: CaptureAgendaRow?,
         groups: [CaptureAgendaGroup],
         stateRow: CaptureAgendaRow?,
@@ -342,6 +355,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         self.summaryText = summaryText
         self.isStale = isStale
         self.hasLiveCountdown = hasLiveCountdown
+        self.planBudgetRow = planBudgetRow
         self.warningRow = warningRow
         self.groups = groups
         self.stateRow = stateRow
@@ -400,6 +414,30 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             lineLimit: 1,
             accessibilityLabel: text
         )
+    }
+
+    static func makePlanBudgetRow(_ budget: CapturePlanBudget) -> CaptureAgendaRow {
+        let presentation = CapturePlanBudgetPresentation(
+            budget: budget,
+            destination: nil,
+            includeProposalDetails: false
+        )
+        let text = "\(presentation.themesCapsuleText), \(presentation.linksCapsuleText)"
+        return CaptureAgendaRow(
+            kind: .planBudget,
+            text: text,
+            depth: 0,
+            lineLimit: 1,
+            accessibilityLabel: "Plan budget: \(text)",
+            planBudget: presentation
+        )
+    }
+
+    private static func hasMissingDailyNoteWarning(_ warnings: [String]) -> Bool {
+        warnings.contains {
+            $0.hasPrefix("Bob daily note does not exist:")
+                || $0.hasPrefix("Bob daily note has no Pomodoros section:")
+        }
     }
 
     /// The Later name strip for the given member names. Names past the

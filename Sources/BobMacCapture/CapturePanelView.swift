@@ -1830,11 +1830,11 @@ struct PreviewPane: View {
         // outer success, not per item. Render it once above the items from
         // Bob's resolved object — no Swift-side ledger math.
         if let budget = CapturePlanBudgetPresentation(capture: success) {
-            planBudgetMeterRow(budget)
+            CapturePlanBudgetMeterRow(budget: budget)
         } else if captures.count == 1, let first = captures.first,
                   let budget = CapturePlanBudgetPresentation(capture: first)
         {
-            planBudgetMeterRow(budget)
+            CapturePlanBudgetMeterRow(budget: budget)
         }
 
         ForEach(Array(captures.enumerated()), id: \.offset) { index, capture in
@@ -1888,56 +1888,6 @@ struct PreviewPane: View {
                 .foregroundStyle(.secondary)
                 .font(.caption)
         }
-    }
-
-    /// The two plan-budget meter capsules (`Themes 3/3`, `Links 8/10`),
-    /// green within the cap and red over it, plus the `+N NAME` delta chip
-    /// whenever the batch grew the themes meter and the orange warning
-    /// captions. Straight from Bob's resolved `plan_budget` object.
-    @ViewBuilder
-    private func planBudgetMeterRow(_ budget: CapturePlanBudgetPresentation) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 6) {
-                Text(budget.themesCapsuleText)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(
-                        (budget.themesOverCap ? Color.red : Color.green).opacity(0.15),
-                        in: Capsule()
-                    )
-                    .foregroundStyle(budget.themesOverCap ? Color.red : Color.green)
-                Text(budget.linksCapsuleText)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(
-                        (budget.linksOverCap ? Color.red : Color.green).opacity(0.15),
-                        in: Capsule()
-                    )
-                    .foregroundStyle(budget.linksOverCap ? Color.red : Color.green)
-                if let delta = budget.deltaChipText {
-                    Text(delta)
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(.quaternary, in: Capsule())
-                        .foregroundStyle(.secondary)
-                }
-            }
-            ForEach(Array(budget.warningTexts.enumerated()), id: \.offset) { _, warning in
-                Text(warning)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .textSelection(.enabled)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Plan budget: \(budget.accessibilitySummary)")
     }
 
     /// The destination row above the preview items (`→ GOALS · next up`,

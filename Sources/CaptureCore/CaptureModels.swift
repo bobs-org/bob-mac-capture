@@ -2045,9 +2045,10 @@ public struct CapturePlanBudgetMeter: Codable, Equatable, Sendable {
     }
 }
 
-/// Top-level `plan_budget` on a `bob capture --format json` success:
-/// present only when the batch changed today's Pomodoros section. It is
-/// not per item. Older Bob omits it entirely and it decodes as nil.
+/// Top-level `plan_budget` on a capture preview/submission or idle agenda
+/// snapshot. Capture previews may include proposal details (`before`, added
+/// themes, warnings); idle agenda budgets report the saved daily counts and
+/// caps. Older Bob omits it entirely and it decodes as nil.
 public struct CapturePlanBudget: Codable, Equatable, Sendable {
     public let status: String
     public let themes: CapturePlanBudgetMeter

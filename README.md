@@ -1426,6 +1426,12 @@ those task titles and details display as a lightbulb. The `=x` and `=`
 numbers match the ones `bob` will use: the current entry shows its `=x` numbers and
 every other open entry shows its `=` lineup number.
 
+The row directly under `Today` shows the saved daily meters (`Themes N/C` and
+`Links N/C`); their caps come from bob's plan config. An older `bob` that omits
+`plan_budget` simply omits this row. A typed capture preview still shows the proposed
+budget for that draft. Plan-config edits appear on the next ordinary agenda refresh,
+including the next panel show.
+
 - Freshness and caching. `bob` owns every fact via
   `bob capture-pomodoros --format json --tasks`; the app caches the last good
   snapshot in memory and revalidates it on launch (prefetch after prewarm), on

@@ -100,6 +100,52 @@ final class CaptureAgendaDesignTests: XCTestCase {
             base: "agenda-current-overdue",
             budget: 2_000
         )
+
+        let withinCap = try budgetedSnapshot(
+            "agenda-current.json",
+            themes: CapturePlanBudgetMeter(count: 3, cap: 3, over: false),
+            links: CapturePlanBudgetMeter(count: 8, cap: 10, over: false)
+        )
+        try render(
+            presentation: CaptureAgendaPresentation(
+                snapshot: withinCap,
+                today: withinCap.date ?? "",
+                locale: Locale(identifier: "en_US_POSIX")
+            ),
+            base: "agenda-current-budget-within",
+            budget: 2_000
+        )
+
+        let overCap = try budgetedSnapshot(
+            "agenda-current.json",
+            themes: CapturePlanBudgetMeter(count: 4, cap: 3, over: true),
+            links: CapturePlanBudgetMeter(count: 11, cap: 10, over: true)
+        )
+        try render(
+            presentation: CaptureAgendaPresentation(
+                snapshot: overCap,
+                today: overCap.date ?? "",
+                locale: Locale(identifier: "en_US_POSIX"),
+                isStale: true
+            ),
+            base: "agenda-current-budget-over-stale",
+            budget: 2_000
+        )
+
+        let empty = try budgetedSnapshot(
+            "agenda-empty.json",
+            themes: CapturePlanBudgetMeter(count: 0, cap: 3, over: false),
+            links: CapturePlanBudgetMeter(count: 0, cap: 10, over: false)
+        )
+        try render(
+            presentation: CaptureAgendaPresentation(
+                snapshot: empty,
+                today: empty.date ?? "",
+                locale: Locale(identifier: "en_US_POSIX")
+            ),
+            base: "agenda-empty-budget",
+            budget: 2_000
+        )
     }
 
     private func render(
@@ -146,6 +192,27 @@ final class CaptureAgendaDesignTests: XCTestCase {
         return try JSONDecoder().decode(
             CaptureAgendaSnapshot.self,
             from: Data(contentsOf: url)
+        )
+    }
+
+    private func budgetedSnapshot(
+        _ name: String,
+        themes: CapturePlanBudgetMeter,
+        links: CapturePlanBudgetMeter
+    ) throws -> CaptureAgendaSnapshot {
+        let snapshot = try agendaSnapshot(name)
+        return CaptureAgendaSnapshot(
+            ok: snapshot.ok,
+            schemaVersion: snapshot.schemaVersion,
+            date: snapshot.date,
+            completedSummary: snapshot.completedSummary,
+            pomodoros: snapshot.pomodoros,
+            warnings: snapshot.warnings,
+            planBudget: CapturePlanBudget(
+                status: "ok",
+                themes: themes,
+                links: links
+            )
         )
     }
 }

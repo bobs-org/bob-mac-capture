@@ -200,6 +200,9 @@ enum CaptureAgendaHeightResolver {
         // pathological vaults.
         var out: [(CaptureAgendaRow, CaptureAgendaRole)] = []
         out.append((presentation.titleRow, .later))
+        if let planBudget = presentation.planBudgetRow {
+            out.append((planBudget, .later))
+        }
         if let warning = presentation.warningRow {
             out.append((warning, .later))
         }

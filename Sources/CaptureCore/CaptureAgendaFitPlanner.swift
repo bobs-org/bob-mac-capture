@@ -22,7 +22,7 @@ public enum CaptureAgendaGroupState: Equatable, Sendable {
 /// The planner's output: everything the agenda view renders, in order,
 /// with no folding logic left for the view.
 public struct CaptureAgendaPlan: Equatable, Sendable {
-    /// Render rows in order: title, warning, group rows, strip.
+    /// Render rows in order: title, saved budget, warning, group rows, strip.
     public let rows: [CaptureAgendaRow]
     public let groupStates: [CaptureAgendaUnitID: CaptureAgendaGroupState]
     public let taskStates: [CaptureAgendaUnitID: CaptureAgendaTaskState]
@@ -349,6 +349,9 @@ public enum CaptureAgendaFitPlanner {
             heights[row.key] ?? CaptureAgendaLayoutMetrics.defaultRowHeight
         }
         var rows = [presentation.titleRow]
+        if let planBudget = presentation.planBudgetRow {
+            rows.append(planBudget)
+        }
         if let warning = presentation.warningRow {
             rows.append(warning)
         }
@@ -359,6 +362,9 @@ public enum CaptureAgendaFitPlanner {
         var taskStates: [CaptureAgendaUnitID: CaptureAgendaTaskState] = [:]
         var stripIDs: [CaptureAgendaUnitID] = []
         var total = height(presentation.titleRow)
+        if let planBudget = presentation.planBudgetRow {
+            total += height(planBudget)
+        }
         if let warning = presentation.warningRow {
             total += height(warning)
         }
@@ -441,7 +447,7 @@ public enum CaptureAgendaFitPlanner {
         var shown = 0
         for row in render.rows {
             switch row.kind {
-            case .title, .multiOpenWarning, .stateLine, .strip:
+            case .title, .planBudget, .multiOpenWarning, .stateLine, .strip:
                 break
             case .groupHeader, .sessionNote, .taskHeadline, .ledgerNote, .childLine, .logHeader,
                  .logEntry, .warning, .duplicate, .struck, .retired, .emptyGroup, .truncation,

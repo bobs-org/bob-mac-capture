@@ -9,8 +9,9 @@ import SwiftUI
 ///
 /// Height contract: every constant comes from
 /// `CaptureAgendaLayoutMetrics`, and inter-row gaps live inside the
-/// row views (headers and the title take 4 pt below, other rows 2 pt,
-/// the strip takes 4 pt above and nothing below). Group containers
+/// row views (headers, the title, and the budget row take 4 pt below;
+/// other rows take 2 pt; the strip takes 4 pt above and nothing below).
+/// Group containers
 /// add half their vertical insets on top and half below, and groups
 /// are separated by exactly `groupSpacing`. The rendered stack is
 /// therefore identical to the planner's total, which
@@ -161,7 +162,7 @@ struct CaptureAgendaRowsView: View {
 }
 
 /// Row-kind structure of a plan's render list: standalone rows (title,
-/// warning, state, strip) stay flat, while a group header or one-row
+/// saved budget, warning, state, strip) stay flat, while a group header or one-row
 /// summary starts a group that owns the rows up to the next header,
 /// one-row summary, or strip. Group metadata (role, insets, card,
 /// accessibility label) comes from matching the opening row against
@@ -184,6 +185,11 @@ enum CaptureAgendaSections {
         var groupSeen = false
         while index < rows.count {
             let row = rows[index]
+            if row.kind == .planBudget {
+                blocks.append(.row(index))
+                index += 1
+                continue
+            }
             if row.kind == .groupHeader || row.kind == .groupOneRow {
                 var owned: [Int] = [index]
                 var cursor = index + 1
@@ -247,6 +253,9 @@ enum CaptureAgendaChipMap {
         for (index, row) in plan.rows.enumerated() {
             if row.kind == .strip {
                 targets[index] = .strip
+                continue
+            }
+            if row.kind == .planBudget {
                 continue
             }
             guard let found = owner(of: row, in: presentation) else {
@@ -388,7 +397,7 @@ struct CaptureAgendaRowView: View {
         switch row.kind {
         case .strip, .truncation, .groupOneRow:
             return true
-        case .title, .multiOpenWarning, .stateLine, .groupHeader,
+        case .title, .planBudget, .multiOpenWarning, .stateLine, .groupHeader,
              .sessionNote, .taskHeadline, .ledgerNote, .childLine,
              .logHeader, .logEntry, .warning, .duplicate, .struck,
              .retired, .emptyGroup:
@@ -414,7 +423,7 @@ struct CaptureAgendaRowView: View {
 
     private var bottomPad: CGFloat {
         switch row.kind {
-        case .title, .groupHeader:
+        case .title, .groupHeader, .planBudget:
             return CGFloat(CaptureAgendaLayoutMetrics.headerBottomSpacing)
         case .stateLine, .strip:
             return 0
@@ -430,6 +439,10 @@ struct CaptureAgendaRowView: View {
         switch row.kind {
         case .title:
             titleView
+        case .planBudget:
+            if let budget = row.planBudget {
+                CapturePlanBudgetMeterRow(budget: budget)
+            }
         case .multiOpenWarning:
             warningLineView
         case .stateLine:
