@@ -249,7 +249,13 @@ public func completionRowContent(
         category = .route
         symbolName = "signpost.right"
         contextLabel = "Destination"
-        primaryText = candidate.route ?? candidate.label ?? candidate.replacement
+        if let alias = candidate.alias, !alias.isEmpty,
+           let route = candidate.route, !route.isEmpty
+        {
+            primaryText = "\(route) · aka \(alias)"
+        } else {
+            primaryText = candidate.route ?? candidate.label ?? candidate.replacement
+        }
         if let label = candidate.label, label != primaryText {
             secondaryText = label
         }

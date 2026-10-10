@@ -33,7 +33,7 @@ final class CaptureRefPanelTests: XCTestCase {
         XCTAssertEqual(presentation.headline, "Save to reading queue")
         XCTAssertEqual(presentation.destinationLabel, "example.com/post")
         XCTAssertEqual(model.primaryActionTitle, "Queue")
-        XCTAssertEqual(model.statusText, "Would queue for clipping → reading queue")
+        XCTAssertEqual(model.statusText, "Would queue example.com/post → mac_inbox")
     }
 
     func testMixedBatchKeepsTodaysFooterTitle() async throws {
@@ -70,7 +70,7 @@ final class CaptureRefPanelTests: XCTestCase {
         await waitUntil { !model.isSubmitting }
 
         XCTAssertTrue(openedURLs.isEmpty)
-        XCTAssertEqual(model.statusText, "Queued for clipping → reading queue")
+        XCTAssertEqual(model.statusText, "Queued example.com/post → mac_inbox")
     }
 
     func testInLibrarySubmitOpensTheNote() async throws {
@@ -96,7 +96,7 @@ final class CaptureRefPanelTests: XCTestCase {
 
         XCTAssertEqual(content.title, "Queued for reading")
         XCTAssertEqual(content.subtitle, "example.com/post")
-        XCTAssertEqual(content.body, "example.com/post → reading queue")
+        XCTAssertEqual(content.body, "example.com/post → mac_inbox")
     }
 
     func testSingleInLibraryRefNotificationContent() throws {

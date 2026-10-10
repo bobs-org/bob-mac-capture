@@ -219,7 +219,27 @@ mutation.
   mode, and the `ref_url` span. An older Bob keeps capturing a bare link as an
   ordinary inbox task; the Mac app decodes the missing `ref` object as no
   reference preview and keeps the standard card, so upgrade Bob before
-  queueing links.
+  queueing links. Filing a link needs a Bob that resolves the canonical
+  parent: the additive `ref.parent` object (`route`, `label`, `kind`,
+  `source`, `alias`) on capture results, `ref_parent` (`token`, `source`)
+  on `capture-parse` `ref` items, and `project_name_aliases` on
+  `capture-targets` entries. A bare URL that will queue under the default
+  parent opens the route list on its own with the header **File under**:
+  cached inbox, area, and project targets with the last-used parent first,
+  then `mac_inbox`; typing filters with aliases included
+  (`bob · aka bob-cli`). Accepting inserts ` @<route>` at the end of the
+  draft; Esc keeps the default (`→ mac_inbox · file it later`) and the list
+  does not reopen until the URL changes. Library hits (`in_library`,
+  `in_intake`, `clipping`, `duplicate`) never open it. The queued preview
+  reads `📖 Queue · example.com/essay → sase` (plus the parent's kind for an
+  explicit `@route`), and the confirmation and notification read
+  `Queued for reading → sase`. The last-used parent is remembered after a
+  successful submit. Route completion everywhere ranks alias matches after
+  prefix route matches. An older Bob that omits `ref.parent`,
+  `ref_parent`, or `project_name_aliases` still previews and captures; the
+  Mac app decodes each as absent, keeps today's wording, never auto-opens
+  File under, and matches routes without aliases, so upgrade Bob before
+  filing links.
 
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.

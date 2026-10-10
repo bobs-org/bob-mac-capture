@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"https://example.com/post @bob-cli","body":"https://example.com/post","mode":"ref","route":"bob-cli","section":null,"block_id":null,"needs":[],"ref_parent":{"token":"bob-cli","source":"explicit"},"spans":[{"start":0,"end":24,"kind":"ref_url"},{"start":25,"end":33,"kind":"route"}],"diagnostics":[]}

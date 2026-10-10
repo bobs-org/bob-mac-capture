@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"https://example.com/post @sase","body":"https://example.com/post","mode":"ref","route":"sase","section":null,"block_id":null,"needs":[],"ref_parent":{"token":"sase","source":"explicit"},"spans":[{"start":0,"end":24,"kind":"ref_url"},{"start":25,"end":30,"kind":"route"}],"diagnostics":[]}

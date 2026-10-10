@@ -42,6 +42,32 @@ public struct CaptureRefPresentation: Equatable, Sendable {
     /// no target. Bob fills `target` only for `in_library` and `in_intake`,
     /// so a queued link opens nothing.
     public let openTargetPath: String?
+    /// The canonical resolved parent route (`"sase"`, `"mac_inbox"`); empty
+    /// when an older Bob omitted `ref.parent`.
+    public let parentRoute: String
+    /// The parent note label (`"sase.md"`); empty when unknown.
+    public let parentLabel: String
+    /// The parent note kind (`"area"`, `"project"`, `"inbox"`); empty when
+    /// unknown.
+    public let parentKind: String
+    /// How the parent was selected (`"explicit"`, `"global"`, `"default"`);
+    /// empty when an older Bob omitted `ref.parent`.
+    public let parentSource: String
+    /// The matched alias when the route came from `project_name_aliases`;
+    /// nil otherwise (including older Bob).
+    public let parentAlias: String?
+    /// `true` when the parent is the default inbox (`mac_inbox` via the
+    /// `default` source).
+    public let isDefaultParent: Bool
+    /// `"📖 Queue · <display> → <route>"` for queued items with a known
+    /// parent; nil for unchanged items and for older-Bob payloads without a
+    /// parent, where the card keeps today's headline wording.
+    public let queueSummary: String?
+    /// `"<label> · <kind>"` when an explicit or global parent names its
+    /// kind (for example `"sase.md · project"`); nil otherwise. The card
+    /// shows it beside the queue summary so an explicit `@route` names the
+    /// destination kind.
+    public let parentCaption: String?
 
     public init?(capture: CaptureCommandSuccess) {
         guard normalizedRefKind(capture.kind) == "ref",
@@ -66,6 +92,13 @@ public struct CaptureRefPresentation: Equatable, Sendable {
         } else {
             destinationLabel = ref.display
         }
+
+        parentRoute = ref.parent?.route ?? ""
+        parentLabel = ref.parent?.label ?? ""
+        parentKind = ref.parent?.kind ?? ""
+        parentSource = ref.parent?.source ?? ""
+        parentAlias = ref.parent?.alias
+        isDefaultParent = parentRoute == "mac_inbox" && (parentSource == "default" || parentSource.isEmpty && ref.parent != nil)
 
         detailText = Self.detailText(ref: ref, isDryRun: capture.dryRun)
 
@@ -94,7 +127,30 @@ public struct CaptureRefPresentation: Equatable, Sendable {
         notificationTitle = notification.title
         notificationBody = notification.body
 
+        if isQueued, !parentRoute.isEmpty {
+            let fileItLater = isDefaultParent ? " · file it later" : ""
+            queueSummary = "📖 Queue · \(ref.display) → \(parentRoute)\(fileItLater)"
+        } else {
+            queueSummary = nil
+        }
+
+        if isQueued,
+           (parentSource == "explicit" || parentSource == "global"),
+           !parentLabel.isEmpty,
+           !parentKind.isEmpty
+        {
+            parentCaption = "\(parentLabel) · \(parentKind)"
+        } else {
+            parentCaption = nil
+        }
+
         var summaryParts = ["\(headline): \(destinationLabel)", detailText]
+        if let queueSummary {
+            summaryParts.append(queueSummary)
+        }
+        if let parentCaption {
+            summaryParts.append(parentCaption)
+        }
         if let fallbackHint {
             summaryParts.append(fallbackHint)
         }
@@ -119,7 +175,11 @@ public struct CaptureRefPresentation: Equatable, Sendable {
     }
 
     /// Mirrors `print_human_ref_item_success`'s detail match in
-    /// `src/native/capture/output.rs`, without color.
+    /// `src/native/capture/output.rs`, without color. Queued `not_found`
+    /// rows name the resolved parent (`reading task lands in <label>`,
+    /// plus `· file it later` for the default inbox) once Bob reports
+    /// `ref.parent`; older-Bob payloads without a parent keep today's
+    /// wording.
     private static func detailText(ref: CaptureRef, isDryRun: Bool) -> String {
         let library = ref.library
         switch library.verdict {
@@ -142,10 +202,18 @@ public struct CaptureRefPresentation: Equatable, Sendable {
         case "unknown":
             return "library check unavailable: \(library.message ?? "unknown error") · the clip still dedupes"
         default:
-            if isDryRun {
-                return "new to your library · clips in the background"
+            guard let parent = ref.parent, !parent.label.isEmpty else {
+                if isDryRun {
+                    return "new to your library · clips in the background"
+                }
+                return "clipping in the background · bob ref jobs"
             }
-            return "clipping in the background · bob ref jobs"
+            let fileItLater = (parent.route == "mac_inbox" && parent.source == "default")
+                ? " · file it later" : ""
+            if isDryRun {
+                return "new to your library · reading task lands in \(parent.label)\(fileItLater)"
+            }
+            return "clipping in the background · reading task lands in \(parent.label)\(fileItLater)"
         }
     }
 
@@ -200,6 +268,12 @@ public struct CaptureRefPresentation: Equatable, Sendable {
         case "unknown":
             return "Library check unavailable: \(library.message ?? "unknown error")"
         default:
+            if let parent = ref.parent, !parent.route.isEmpty {
+                if isDryRun {
+                    return "Would queue \(ref.display) → \(parent.route)"
+                }
+                return "Queued \(ref.display) → \(parent.route)"
+            }
             if isDryRun {
                 return "Would queue for clipping → reading queue"
             }
@@ -230,6 +304,9 @@ public struct CaptureRefPresentation: Equatable, Sendable {
         case "duplicate":
             return ("Duplicate link", ref.display)
         default:
+            if let parent = ref.parent, !parent.route.isEmpty {
+                return ("Queued for reading", "\(ref.display) → \(parent.route)")
+            }
             return ("Queued for reading", "\(ref.display) → reading queue")
         }
     }

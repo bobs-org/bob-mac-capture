@@ -10,6 +10,7 @@ public struct CaptureParseResponse: Codable, Equatable {
     public let section: String?
     public let blockID: String?
     public let needs: [String]
+    public let refParent: CaptureParseRefParent?
     public let spans: [CaptureSpan]
     public let diagnostics: [CaptureDiagnostic]
     public let globalDestination: CaptureGlobalDestination?
@@ -43,6 +44,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         section: String? = nil,
         blockID: String? = nil,
         needs: [String] = [],
+        refParent: CaptureParseRefParent? = nil,
         spans: [CaptureSpan] = [],
         diagnostics: [CaptureDiagnostic] = [],
         globalDestination: CaptureGlobalDestination? = nil,
@@ -63,6 +65,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         self.section = section
         self.blockID = blockID
         self.needs = needs
+        self.refParent = refParent
         self.spans = spans
         self.diagnostics = diagnostics
         self.globalDestination = globalDestination
@@ -89,6 +92,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         section = try container.decodeIfPresent(String.self, forKey: .section)
         blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
         needs = try container.decodeIfPresent([String].self, forKey: .needs) ?? []
+        refParent = (try? container.decodeIfPresent(CaptureParseRefParent.self, forKey: .refParent)) ?? nil
         spans = try container.decodeIfPresent([CaptureSpan].self, forKey: .spans) ?? []
         diagnostics =
             try container.decodeIfPresent([CaptureDiagnostic].self, forKey: .diagnostics) ?? []
@@ -147,6 +151,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         case section
         case blockID = "block_id"
         case needs
+        case refParent = "ref_parent"
         case spans
         case diagnostics
         case globalDestination = "global_destination"
@@ -157,6 +162,32 @@ public struct CaptureParseResponse: Codable, Equatable {
         case pomodoroAdjust = "pomodoro_adjust"
         case pomodoroShift = "pomodoro_shift"
         case pomodoroClose = "pomodoro_close"
+    }
+}
+
+/// Additive `ref_parent` on a `ref` parse item or response: the lexical
+/// parent token (explicit route, inherited global route, or `mac_inbox`)
+/// plus its source (`explicit`|`global`|`default`). Bob reports it outside
+/// `needs` so a bare URL stays submittable while the client knows to offer
+/// a parent picker. Older Bob omits it; missing decodes as nil.
+public struct CaptureParseRefParent: Codable, Equatable, Sendable {
+    public let token: String
+    public let source: String
+
+    public init(token: String = "", source: String = "") {
+        self.token = token
+        self.source = source
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        token = try container.decodeIfPresent(String.self, forKey: .token) ?? ""
+        source = try container.decodeIfPresent(String.self, forKey: .source) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case token
+        case source
     }
 }
 
@@ -171,6 +202,7 @@ public struct CaptureParseItem: Codable, Equatable {
     public let section: String?
     public let blockID: String?
     public let needs: [String]
+    public let refParent: CaptureParseRefParent?
     public let subBullets: [String]
     public let subBulletDepths: [Int]
     // Per-item additive `=<X>` start suffix. Omitted for items without one.
@@ -195,6 +227,7 @@ public struct CaptureParseItem: Codable, Equatable {
         section: String? = nil,
         blockID: String? = nil,
         needs: [String] = [],
+        refParent: CaptureParseRefParent? = nil,
         subBullets: [String] = [],
         subBulletDepths: [Int] = [],
         pomodoroStart: PomodoroStartSpec? = nil,
@@ -212,6 +245,7 @@ public struct CaptureParseItem: Codable, Equatable {
         self.section = section
         self.blockID = blockID
         self.needs = needs
+        self.refParent = refParent
         self.subBullets = subBullets
         self.subBulletDepths = subBulletDepths
         self.pomodoroStart = pomodoroStart
@@ -232,6 +266,7 @@ public struct CaptureParseItem: Codable, Equatable {
         section = try container.decodeIfPresent(String.self, forKey: .section)
         blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
         needs = try container.decodeIfPresent([String].self, forKey: .needs) ?? []
+        refParent = (try? container.decodeIfPresent(CaptureParseRefParent.self, forKey: .refParent)) ?? nil
         subBullets = try container.decodeIfPresent([String].self, forKey: .subBullets) ?? []
         subBulletDepths = try container.decodeIfPresent([Int].self, forKey: .subBulletDepths) ?? []
         pomodoroStart = try container.decodeIfPresent(PomodoroStartSpec.self, forKey: .pomodoroStart)
@@ -260,6 +295,7 @@ public struct CaptureParseItem: Codable, Equatable {
         case section
         case blockID = "block_id"
         case needs
+        case refParent = "ref_parent"
         case subBullets = "sub_bullets"
         case subBulletDepths = "sub_bullet_depths"
         case pomodoroStart = "pomodoro_start"
@@ -2233,11 +2269,57 @@ public struct CaptureRefFallback: Codable, Equatable, Sendable {
     }
 }
 
+/// The canonical resolved reference parent on a reference capture result:
+/// the route, its label, its kind, how the input token was selected
+/// (`explicit`|`global`|`default`), and the matched alias (or null). Every
+/// field decodes tolerantly so a malformed parent degrades to nil on the
+/// owning `ref` object instead of failing the capture decode.
+public struct CaptureRefParent: Codable, Equatable, Sendable {
+    public let route: String
+    public let label: String
+    public let kind: String
+    public let source: String
+    public let alias: String?
+
+    public init(
+        route: String = "",
+        label: String = "",
+        kind: String = "",
+        source: String = "",
+        alias: String? = nil
+    ) {
+        self.route = route
+        self.label = label
+        self.kind = kind
+        self.source = source
+        self.alias = alias
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        route = try container.decodeIfPresent(String.self, forKey: .route) ?? ""
+        label = try container.decodeIfPresent(String.self, forKey: .label) ?? ""
+        kind = try container.decodeIfPresent(String.self, forKey: .kind) ?? ""
+        source = try container.decodeIfPresent(String.self, forKey: .source) ?? ""
+        alias = try container.decodeIfPresent(String.self, forKey: .alias)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case route
+        case label
+        case kind
+        case source
+        case alias
+    }
+}
+
 /// The additive `ref` object on a reference (`kind == "ref"`) capture result:
-/// the classified URL, its offline library verdict, the staged job (real runs
-/// that queued only), and the inbox fallback (queued items only). Older Bob
-/// binaries omit it entirely; decode as nil, and a malformed value decodes as
-/// nil so it can never fail the capture decode.
+/// the classified URL, its offline library verdict, the canonical resolved
+/// parent, the staged job (real runs that queued only), and the inbox
+/// fallback (queued items only). Older Bob binaries omit `parent` entirely;
+/// a mistyped parent degrades to nil so it can never fail the capture
+/// decode. A malformed value decodes as nil so it can never fail the
+/// capture decode.
 public struct CaptureRef: Codable, Equatable, Sendable {
     public let url: String
     public let cleanedURL: String
@@ -2245,6 +2327,7 @@ public struct CaptureRef: Codable, Equatable, Sendable {
     public let display: String
     public let routeHint: String
     public let library: CaptureRefLibrary
+    public let parent: CaptureRefParent?
     public let job: CaptureRefJob?
     public let fallback: CaptureRefFallback?
 
@@ -2255,6 +2338,7 @@ public struct CaptureRef: Codable, Equatable, Sendable {
         display: String = "",
         routeHint: String = "",
         library: CaptureRefLibrary = CaptureRefLibrary(),
+        parent: CaptureRefParent? = nil,
         job: CaptureRefJob? = nil,
         fallback: CaptureRefFallback? = nil
     ) {
@@ -2264,6 +2348,7 @@ public struct CaptureRef: Codable, Equatable, Sendable {
         self.display = display
         self.routeHint = routeHint
         self.library = library
+        self.parent = parent
         self.job = job
         self.fallback = fallback
     }
@@ -2277,6 +2362,7 @@ public struct CaptureRef: Codable, Equatable, Sendable {
         routeHint = try container.decodeIfPresent(String.self, forKey: .routeHint) ?? ""
         library = try container.decodeIfPresent(CaptureRefLibrary.self, forKey: .library)
             ?? CaptureRefLibrary()
+        parent = (try? container.decodeIfPresent(CaptureRefParent.self, forKey: .parent)) ?? nil
         job = try container.decodeIfPresent(CaptureRefJob.self, forKey: .job)
         fallback = try container.decodeIfPresent(CaptureRefFallback.self, forKey: .fallback)
     }
@@ -2294,6 +2380,7 @@ public struct CaptureRef: Codable, Equatable, Sendable {
         case display
         case routeHint = "route_hint"
         case library
+        case parent
         case job
         case fallback
     }
@@ -3968,6 +4055,11 @@ public struct CaptureTarget: Codable, Equatable, Identifiable {
     public let isDefault: Bool
     public let status: String?
     public let relativePath: String
+    /// Frontmatter `project_name_aliases` on the area or project note. Bob
+    /// omits the key for older builds and sends `[]` when the note has no
+    /// aliases; a mistyped value decodes as empty so it can never fail the
+    /// targets decode.
+    public let projectNameAliases: [String]
 
     public var id: String { route }
 
@@ -3978,7 +4070,8 @@ public struct CaptureTarget: Codable, Equatable, Identifiable {
         kind: String,
         isDefault: Bool = false,
         status: String? = nil,
-        relativePath: String
+        relativePath: String,
+        projectNameAliases: [String] = []
     ) {
         self.route = route
         self.name = name
@@ -3987,6 +4080,38 @@ public struct CaptureTarget: Codable, Equatable, Identifiable {
         self.isDefault = isDefault
         self.status = status
         self.relativePath = relativePath
+        self.projectNameAliases = projectNameAliases
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        route = try container.decode(String.self, forKey: .route)
+        name = try container.decode(String.self, forKey: .name)
+        label = try container.decode(String.self, forKey: .label)
+        kind = try container.decode(String.self, forKey: .kind)
+        isDefault = try container.decodeIfPresent(Bool.self, forKey: .isDefault) ?? false
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        relativePath = try container.decode(String.self, forKey: .relativePath)
+        let decodedAliases: [String]?? =
+            try? container.decodeIfPresent([String].self, forKey: .projectNameAliases)
+        switch decodedAliases {
+        case .some(.some(let aliases)):
+            projectNameAliases = aliases
+        default:
+            projectNameAliases = []
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(route, forKey: .route)
+        try container.encode(name, forKey: .name)
+        try container.encode(label, forKey: .label)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(isDefault, forKey: .isDefault)
+        try container.encodeIfPresent(status, forKey: .status)
+        try container.encode(relativePath, forKey: .relativePath)
+        try container.encode(projectNameAliases, forKey: .projectNameAliases)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -3997,6 +4122,7 @@ public struct CaptureTarget: Codable, Equatable, Identifiable {
         case isDefault = "is_default"
         case status
         case relativePath = "relative_path"
+        case projectNameAliases = "project_name_aliases"
     }
 }
 

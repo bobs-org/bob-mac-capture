@@ -82,6 +82,8 @@ later_task_batch_suffix=$'\n\nFile follow-up @file+hand'
 later_task_id_batch_suffix=$'\n\nFile follow-up @file+new-id'
 close_batch_draft=$'-2\n\n=x'
 ref_draft='https://example.com/post'
+ref_explicit_draft='https://example.com/post @sase'
+ref_alias_draft='https://example.com/post @bob-cli'
 ref_library_draft='https://example.com/captured'
 ref_intake_draft='https://example.com/queued'
 ref_legacy_draft='https://example.com/legacy'
@@ -1519,6 +1521,16 @@ JSON
       # A bare link parses as `ref` with one `ref_url` span (real `bob
       # capture-parse` output).
       cat "${fixtures_dir}/capture-parse-ref.json"
+    elif [[ "${draft}" == "${ref_explicit_draft}" ]]; then
+      # A bare link plus one route parses as `ref` with an explicit
+      # `ref_parent` and the ordinary `route` span (real `bob
+      # capture-parse` output).
+      cat "${fixtures_dir}/capture-parse-ref-explicit.json"
+    elif [[ "${draft}" == "${ref_alias_draft}" ]]; then
+      # The lexical alias token is preserved in `ref_parent`; `bob capture`
+      # resolves it to the canonical route (real `bob capture-parse`
+      # output).
+      cat "${fixtures_dir}/capture-parse-ref-alias.json"
     else
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
@@ -4644,6 +4656,15 @@ JSON
       # A bare link queues for the reading queue (real `bob capture
       # --dry-run` output; only the dry-run flag varies).
       sed "s/\"dry_run\": *true/\"dry_run\":${dry_run}/g" "${fixtures_dir}/ref-queued.json"
+    elif [[ "${draft}" == "${ref_explicit_draft}" ]]; then
+      # A bare link plus one route files the ref under that route (real
+      # `bob capture --dry-run` output; only the dry-run flag varies).
+      sed "s/\"dry_run\": *true/\"dry_run\":${dry_run}/g" "${fixtures_dir}/ref-queued-explicit.json"
+    elif [[ "${draft}" == "${ref_alias_draft}" ]]; then
+      # An alias route resolves to the canonical parent with the matched
+      # alias (real `bob capture --dry-run` output; only the dry-run flag
+      # varies).
+      sed "s/\"dry_run\": *true/\"dry_run\":${dry_run}/g" "${fixtures_dir}/ref-queued-alias.json"
     elif [[ "${draft}" == "${ref_library_draft}" ]]; then
       sed "s/\"dry_run\": *true/\"dry_run\":${dry_run}/g" "${fixtures_dir}/ref-in-library.json"
     elif [[ "${draft}" == "${ref_intake_draft}" ]]; then

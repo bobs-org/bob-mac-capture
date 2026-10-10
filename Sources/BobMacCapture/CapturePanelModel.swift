@@ -156,6 +156,12 @@ final class CapturePanelModel: ObservableObject {
     @Published var parseDiagnostics: [CaptureDiagnostic] = []
     @Published var completionResponse: CaptureCompletionResponse?
     @Published var selectedCompletionIndex = 0
+    /// True while the visible inline completion list is the File-under
+    /// parent picker for a bare-URL reference draft (a synthesized route
+    /// list, not a server completion). The view headers it `File under`;
+    /// accepting splices ` @<route>` at the end of the draft, and Esc
+    /// dismisses it without reopening until the URL changes.
+    @Published var fileUnderActive = false
     @Published var targetCacheSnapshot = CaptureTargetsSnapshot(
         targets: nil,
         refreshedAt: nil,
@@ -229,6 +235,10 @@ final class CapturePanelModel: ObservableObject {
     // The draft that produced the visible `completionResponse`, so a `+` commit can
     // locate the route text by byte range instead of trusting the view-supplied caret.
     private var completionDraftSnapshot: String?
+    /// The trimmed bare-URL draft Esc dismissed the File-under list for.
+    /// The list does not reopen for this URL until the draft changes to a
+    /// different URL. Cleared on accept and on successful submit.
+    private var fileUnderDismissedURL: String?
     private var programmaticSelectionOffsetToIgnore: Int?
     private var priorityRollSeed: String?
     private var focusSequence: UInt64 = 0
@@ -994,6 +1004,7 @@ final class CapturePanelModel: ObservableObject {
                 previewGlobalDestination = nil
                 completionResponse = nil
                 completionDraftSnapshot = nil
+                fileUnderActive = false
                 clearPickerState()
                 invalidateAnalysis()
                 invalidateRewrite()
@@ -1094,6 +1105,7 @@ final class CapturePanelModel: ObservableObject {
             parseDiagnostics = []
             completionResponse = nil
             completionDraftSnapshot = nil
+            fileUnderActive = false
             clearInlinePrompts()
             previewState = .idle
             statusText = ""
@@ -1549,6 +1561,7 @@ final class CapturePanelModel: ObservableObject {
         parseDiagnostics = []
         completionResponse = nil
         completionDraftSnapshot = nil
+        fileUnderActive = false
         closeListParseSnapshot = nil
         closeListAssistParsePending = false
         closeCommaProvenance.clear()
@@ -1613,9 +1626,17 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func dismissCompletion() {
+        // Esc on the File-under list keeps the default inbox parent: remember
+        // the URL so the list does not reopen until the URL changes. Accept
+        // paths clear the record after splicing (see
+        // `applySelectedCompletionReplacement`).
+        if fileUnderActive {
+            fileUnderDismissedURL = plainDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         completionResponse = nil
         completionDraftSnapshot = nil
         selectedCompletionIndex = 0
+        fileUnderActive = false
     }
 
     // MARK: - Capture picker
@@ -2185,6 +2206,9 @@ final class CapturePanelModel: ObservableObject {
         completionResponse = completion.candidates.isEmpty ? nil : completion
         completionDraftSnapshot = completion.candidates.isEmpty ? nil : draft
         selectedCompletionIndex = 0
+        // A fresh server or cached completion is never the File-under list:
+        // only the File-under opener sets the header back below.
+        fileUnderActive = false
         // A `pomodoro_start_name` list that opened on the quiet incomplete
         // picker (`==#`, `==3#`, `=#`) still shows that calm status line:
         // refresh it from Bob's override object once completion arrives, so
@@ -4084,7 +4108,14 @@ final class CapturePanelModel: ObservableObject {
             return false
         }
 
+        // A File-under accept files the link under the chosen route, so the
+        // Esc record for the bare URL must not survive the splice (the
+        // dismiss below runs while the draft is still bare).
+        let wasFileUnder = fileUnderActive
         dismissCompletion()
+        if wasFileUnder {
+            fileUnderDismissedURL = nil
+        }
         suppressedCompletionAcceptanceDraft = text
         setPlainDraft(
             text,
@@ -5054,6 +5085,7 @@ final class CapturePanelModel: ObservableObject {
         case .success(let success):
             let captures = success.normalizedCaptures
             invalidateAnalysis()
+            rememberRefParent(captures: captures)
             lastSuccess = captures.first
             lastSuccessResults = captures
             lastSuccessGlobalDestination = success.globalDestination
@@ -5068,6 +5100,7 @@ final class CapturePanelModel: ObservableObject {
             parseDiagnostics = []
             completionResponse = nil
             completionDraftSnapshot = nil
+            fileUnderActive = false
             clearPickerState()
             previewState = .idle
             if let presentation = Self.soleTogglePresentation(for: captures) {
@@ -5357,7 +5390,8 @@ final class CapturePanelModel: ObservableObject {
                         pendingSeparator: closePending?.separator,
                         pendingAction: closePending?.action,
                         generation: generation,
-                        processClient: processClient
+                        processClient: processClient,
+                        trigger: trigger
                     )
                 }
 
@@ -5491,7 +5525,8 @@ final class CapturePanelModel: ObservableObject {
         pendingSeparator: String?,
         pendingAction: String?,
         generation: UInt64,
-        processClient: BobProcessClient
+        processClient: BobProcessClient,
+        trigger: CompletionTrigger
     ) {
         Task { [weak self, processClient] in
             do {
@@ -5515,6 +5550,13 @@ final class CapturePanelModel: ObservableObject {
                         self?.previewGlobalDestination = success.globalDestination
                         self?.errorMessage = nil
                         self?.errorCode = nil
+                        // A bare URL that will queue under the default parent
+                        // opens File under on its own; library hits never do.
+                        self?.maybeAutoOpenFileUnder(
+                            captures: captures,
+                            draft: draft,
+                            trigger: trigger
+                        )
                         if let presentation = Self.soleTogglePresentation(for: captures) {
                             self?.statusText = presentation.statusText
                         } else if let link = Self.soleLinkPresentation(for: captures) {
@@ -5782,10 +5824,113 @@ final class CapturePanelModel: ObservableObject {
                     route: target.route,
                     label: target.label,
                     kind: target.kind,
-                    status: target.status
+                    status: target.status,
+                    alias: aliasHint(for: target, query: query)
                 )
             }
         )
+    }
+
+    // MARK: - File under (bare-URL reference parent picker)
+
+    /// UserDefaults key for the last-used File-under parent route.
+    private static let lastUsedRefParentKey = "refFileUnderLastUsedParent"
+
+    /// The last-used File-under parent route, remembered after a successful
+    /// submit so the next list opens with it first.
+    private static var lastUsedRefParent: String? {
+        get { UserDefaults.standard.string(forKey: lastUsedRefParentKey) }
+        set { UserDefaults.standard.set(newValue, forKey: lastUsedRefParentKey) }
+    }
+
+    /// Synthesize the File-under route list for a bare-URL draft: cached
+    /// inbox, area, and project targets with the last-used parent first,
+    /// each accepting as ` @<route>` at the end of the draft through the
+    /// existing completion-accept path. Nil when the target cache is empty.
+    private func fileUnderCompletion(draft: String) -> CaptureCompletionResponse? {
+        guard let targets = targetCacheSnapshot.targets?.targets, !targets.isEmpty else {
+            return nil
+        }
+        let end = draft.utf8.count
+        guard stringRange(in: draft, start: end, end: end) != nil else {
+            return nil
+        }
+        let ordered = CaptureRefFileUnder.orderedTargets(
+            targets,
+            lastUsedParent: Self.lastUsedRefParent
+        )
+        return CaptureCompletionResponse(
+            ok: true,
+            cursor: end,
+            replacement: CaptureRange(start: end, end: end),
+            context: "route",
+            candidates: ordered.map { target in
+                CaptureCompletionCandidate(
+                    replacement: CaptureRefFileUnder.insertionText(route: target.route),
+                    route: target.route,
+                    label: target.label,
+                    kind: target.kind,
+                    status: target.status,
+                    alias: target.projectNameAliases.first
+                )
+            }
+        )
+    }
+
+    /// Open the File-under list on its own when the finished live preview
+    /// shows a single bare-URL reference that will queue under the default
+    /// parent. Library hits never open it; Esc records the URL so it does
+    /// not reopen until the URL changes. Only `.edit` analyses open it: a
+    /// caret-only move never does.
+    private func maybeAutoOpenFileUnder(
+        captures: [CaptureCommandSuccess],
+        draft: String,
+        trigger: CompletionTrigger
+    ) {
+        guard trigger == .edit,
+              picker == nil,
+              completionResponse == nil,
+              taskIDPrompt == nil,
+              pomodoroNamePrompt == nil,
+              captures.count == 1,
+              let capture = captures.first,
+              capture.kind.lowercased() == "ref",
+              capture.placement == "queued",
+              let ref = capture.ref,
+              let parent = ref.parent,
+              parent.source == "default",
+              CaptureRefFileUnder.queueableVerdicts.contains(ref.library.verdict)
+        else {
+            return
+        }
+        let url = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard url != fileUnderDismissedURL,
+              plainDraft == draft,
+              let fileUnder = fileUnderCompletion(draft: draft),
+              !fileUnder.candidates.isEmpty
+        else {
+            return
+        }
+        completionResponse = fileUnder
+        completionDraftSnapshot = draft
+        selectedCompletionIndex = 0
+        fileUnderActive = true
+    }
+
+    /// Remember the queued reference's parent after a successful submit so
+    /// the next File-under list opens with it first.
+    private func rememberRefParent(captures: [CaptureCommandSuccess]) {
+        guard captures.count == 1,
+              let capture = captures.first,
+              capture.kind.lowercased() == "ref",
+              capture.placement == "queued",
+              let route = capture.ref?.parent?.route,
+              !route.isEmpty
+        else {
+            return
+        }
+        Self.lastUsedRefParent = route
+        fileUnderDismissedURL = nil
     }
 
     private func routeReplacementRange(
@@ -5857,25 +6002,25 @@ final class CapturePanelModel: ObservableObject {
             || character == "+"
     }
 
+    /// Route completion ranking, owned by `CaptureRefFileUnder` so the
+    /// `@`-typed list filters exactly like File under: canonical prefix
+    /// matches first, then alias-prefix matches, then every other
+    /// substring match (aliases included).
     private func rankedTargets(_ targets: [CaptureTarget], query: String) -> [CaptureTarget] {
-        guard !query.isEmpty else {
-            return targets
-        }
+        CaptureRefFileUnder.rankedTargets(targets, query: query)
+    }
 
-        let prefix = targets.filter { target in
-            target.route.lowercased().hasPrefix(query)
-                || target.label.lowercased().hasPrefix(query)
-                || target.name.lowercased().hasPrefix(query)
+    /// The alias to show beside a route row for this query (`bob-cli` for
+    /// `bob`): the prefix-matching alias when one exists, else the first
+    /// substring-matching alias, else nil so ordinary rows read as today.
+    private func aliasHint(for target: CaptureTarget, query: String) -> String? {
+        guard !query.isEmpty else {
+            return nil
         }
-        let contains = targets.filter { target in
-            !prefix.contains(target)
-                && (
-                    target.route.lowercased().contains(query)
-                        || target.label.lowercased().contains(query)
-                        || target.name.lowercased().contains(query)
-                )
+        if let prefix = target.projectNameAliases.first(where: { $0.lowercased().hasPrefix(query) }) {
+            return prefix
         }
-        return prefix + contains
+        return target.projectNameAliases.first(where: { $0.lowercased().contains(query) })
     }
 
     private func restoreSelection(cursorUTF8Offset: Int, suppressEditorCallbacks: Bool = false) {

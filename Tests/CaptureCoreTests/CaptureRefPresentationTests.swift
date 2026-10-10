@@ -17,7 +17,10 @@ import XCTest
 //   # Failing stubs prove dry runs never touch the network:
 //   # fail-curl.sh / fail-clip.sh print to stderr and exit 1.
 //   export BOB_HIGHLIGHTS_CURL=$STATE/stubs/fail-curl.sh BOB_WEB_CLIP_ADAPTER=$STATE/stubs/fail-clip.sh
-//   # Seed the library notes (mirrors tests/cli/capture/ref.rs):
+//   # Seed the filing parents (sase, plus bob with a project_name_aliases entry)
+//   # and the library notes (mirrors tests/cli/capture/ref.rs):
+//   printf -- '---\ntype: "[[project]]"\nstatus: wip\n---\n\n# Sase\n\n## Tasks\n' > $VAULT/sase.md
+//   printf -- '---\ntype: "[[project]]"\nstatus: wip\nproject_name_aliases: ["bob-cli"]\n---\n\n# Bob\n\n## Tasks\n' > $VAULT/bob.md
 //   printf -- '---\ntitle: Captured Post\nstatus: ready\nsource_url: https://example.com/captured\nsource_pdf: lib/papers/captured.pdf\n---\n\n- [ ] ^ref\n' > $VAULT/ref/papers/captured.md
 //   printf -- '---\ntitle: Legacy Post\nstatus: ready\nsource_url: https://example.com/legacy\n---\n\n- [ ] ^ref\n' > $VAULT/ref/blogs/legacy.md
 //   # Seed intake state with a real clip (working fake curl serving article
@@ -26,8 +29,13 @@ import XCTest
 //   # failing stubs before recording:
 //   BOB_HIGHLIGHTS_CURL=$STATE/stubs/fake-curl.sh BOB_WEB_CLIP_ADAPTER=$STATE/stubs/fake-clip.sh \
 //     $BOBBIN ref create -b $VAULT https://example.com/queued   # installs xlib/blogs/queued.pdf
+//   # ref-in-intake.json stays pinned to the pre-parent recording: its intake
+//   # seed needs a real PDF clip, and the older-Bob shape (no ref.parent)
+//   # doubles as the missing-parent tolerance case.
 //   FIX=Tests/Fixtures
 //   $BOBBIN capture -b $VAULT -f json --dry-run -- 'https://example.com/post' > $FIX/ref-queued.json
+//   $BOBBIN capture -b $VAULT -f json --dry-run -- 'https://example.com/post @sase' > $FIX/ref-queued-explicit.json
+//   $BOBBIN capture -b $VAULT -f json --dry-run -- 'https://example.com/post @bob-cli' > $FIX/ref-queued-alias.json
 //   $BOBBIN capture -b $VAULT -f json --dry-run -- 'https://example.com/captured' > $FIX/ref-in-library.json
 //   $BOBBIN capture -b $VAULT -f json --dry-run -- 'https://example.com/queued' > $FIX/ref-in-intake.json
 //   $BOBBIN capture -b $VAULT -f json --dry-run -- 'https://example.com/legacy' > $FIX/ref-legacy.json
@@ -35,6 +43,8 @@ import XCTest
 //   printf 'https://example.com/1\nhttps://example.com/2' | $BOBBIN capture -b $VAULT -f json --dry-run > $FIX/ref-url-list.json
 //   printf 'buy milk\n\nhttps://example.com/2' | $BOBBIN capture -b $VAULT -f json --dry-run > $FIX/ref-mixed-batch.json
 //   $BOBBIN capture-parse -f json -- 'https://example.com/post' > $FIX/capture-parse-ref.json
+//   $BOBBIN capture-parse -f json -- 'https://example.com/post @sase' > $FIX/capture-parse-ref-explicit.json
+//   $BOBBIN capture-parse -f json -- 'https://example.com/post @bob-cli' > $FIX/capture-parse-ref-alias.json
 final class CaptureRefPresentationTests: XCTestCase {
     func testAbsentRefObjectDecodesAsNil() throws {
         let success = try decodeCaptureSuccess(
@@ -538,7 +548,7 @@ final class CaptureRefPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.destinationLabel, "example.com/post")
         XCTAssertEqual(
             presentation.detailText,
-            "new to your library · clips in the background"
+            "new to your library · reading task lands in mac_inbox.md · file it later"
         )
         XCTAssertEqual(presentation.chips, ["Article"])
         XCTAssertEqual(
@@ -546,8 +556,72 @@ final class CaptureRefPresentationTests: XCTestCase {
             "If clipping fails, it becomes a task in mac_inbox.md."
         )
         XCTAssertEqual(presentation.primaryActionTitle, "Queue")
-        XCTAssertEqual(presentation.statusText, "Would queue for clipping → reading queue")
+        XCTAssertEqual(presentation.statusText, "Would queue example.com/post → mac_inbox")
+        XCTAssertEqual(presentation.parentRoute, "mac_inbox")
+        XCTAssertEqual(presentation.parentLabel, "mac_inbox.md")
+        XCTAssertEqual(presentation.parentKind, "inbox")
+        XCTAssertEqual(presentation.parentSource, "default")
+        XCTAssertNil(presentation.parentAlias)
+        XCTAssertTrue(presentation.isDefaultParent)
+        XCTAssertEqual(
+            presentation.queueSummary,
+            "📖 Queue · example.com/post → mac_inbox · file it later"
+        )
+        XCTAssertNil(presentation.parentCaption)
+        XCTAssertEqual(presentation.notificationTitle, "Queued for reading")
+        XCTAssertEqual(presentation.notificationBody, "example.com/post → mac_inbox")
         XCTAssertNil(presentation.openTargetPath)
+    }
+
+    func testQueuedExplicitFixtureNamesTheChosenParent() throws {
+        let success = try decodeFixture("ref-queued-explicit.json")
+        let presentation = try XCTUnwrap(CaptureRefPresentation(capture: success))
+
+        XCTAssertTrue(presentation.isQueued)
+        XCTAssertEqual(presentation.parentRoute, "sase")
+        XCTAssertEqual(presentation.parentLabel, "sase.md")
+        XCTAssertEqual(presentation.parentKind, "project")
+        XCTAssertEqual(presentation.parentSource, "explicit")
+        XCTAssertNil(presentation.parentAlias)
+        XCTAssertFalse(presentation.isDefaultParent)
+        XCTAssertEqual(
+            presentation.detailText,
+            "new to your library · reading task lands in sase.md"
+        )
+        XCTAssertEqual(
+            presentation.queueSummary,
+            "📖 Queue · example.com/post → sase"
+        )
+        XCTAssertEqual(presentation.parentCaption, "sase.md · project")
+        XCTAssertEqual(presentation.statusText, "Would queue example.com/post → sase")
+        XCTAssertEqual(presentation.notificationBody, "example.com/post → sase")
+        XCTAssertEqual(
+            presentation.fallbackHint,
+            "If clipping fails, it becomes a task in sase.md."
+        )
+    }
+
+    func testQueuedAliasFixtureResolvesToTheCanonicalRoute() throws {
+        let success = try decodeFixture("ref-queued-alias.json")
+        let presentation = try XCTUnwrap(CaptureRefPresentation(capture: success))
+
+        XCTAssertTrue(presentation.isQueued)
+        XCTAssertEqual(presentation.parentRoute, "bob")
+        XCTAssertEqual(presentation.parentLabel, "bob.md")
+        XCTAssertEqual(presentation.parentKind, "project")
+        XCTAssertEqual(presentation.parentSource, "explicit")
+        XCTAssertEqual(presentation.parentAlias, "bob-cli")
+        XCTAssertFalse(presentation.isDefaultParent)
+        XCTAssertEqual(
+            presentation.queueSummary,
+            "📖 Queue · example.com/post → bob"
+        )
+        XCTAssertEqual(presentation.parentCaption, "bob.md · project")
+        XCTAssertEqual(presentation.statusText, "Would queue example.com/post → bob")
+        XCTAssertEqual(
+            presentation.detailText,
+            "new to your library · reading task lands in bob.md"
+        )
     }
 
     func testInLibraryFixtureRendersTheLibraryCard() throws {
@@ -660,5 +734,43 @@ final class CaptureRefPresentationTests: XCTestCase {
         XCTAssertEqual(span.start, 0)
         XCTAssertEqual(span.end, 24)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: span.kind), .link)
+        let refParent = try XCTUnwrap(parse.refParent)
+        XCTAssertEqual(refParent.token, "mac_inbox")
+        XCTAssertEqual(refParent.source, "default")
+    }
+
+    func testCaptureParseRefExplicitFixtureKeepsTheRouteToken() throws {
+        let parse = try decodeParseFixture("capture-parse-ref-explicit.json")
+
+        XCTAssertEqual(parse.mode, "ref")
+        XCTAssertEqual(parse.route, "sase")
+        let refParent = try XCTUnwrap(parse.refParent)
+        XCTAssertEqual(refParent.token, "sase")
+        XCTAssertEqual(refParent.source, "explicit")
+        XCTAssertTrue(parse.spans.contains { $0.kind == "ref_url" })
+        XCTAssertTrue(parse.spans.contains { $0.kind == "route" })
+    }
+
+    func testCaptureParseRefAliasFixtureKeepsTheLexicalToken() throws {
+        let parse = try decodeParseFixture("capture-parse-ref-alias.json")
+
+        XCTAssertEqual(parse.mode, "ref")
+        let refParent = try XCTUnwrap(parse.refParent)
+        XCTAssertEqual(refParent.token, "bob-cli")
+        XCTAssertEqual(refParent.source, "explicit")
+    }
+
+    func testOlderParseWithoutRefParentDecodesAsNil() throws {
+        let parse = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(
+                """
+                {"ok":true,"schema_version":1,"input":"https://example.com/post","body":"https://example.com/post","mode":"ref","route":null,"section":null,"block_id":null,"needs":[],"spans":[{"start":0,"end":24,"kind":"ref_url"}],"diagnostics":[]}
+                """.utf8
+            )
+        )
+
+        XCTAssertEqual(parse.mode, "ref")
+        XCTAssertNil(parse.refParent)
     }
 }

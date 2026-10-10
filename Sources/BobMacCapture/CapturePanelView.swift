@@ -1514,6 +1514,18 @@ private struct CompletionList: View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: 2) {
+                    // The File-under parent picker for a bare-URL reference
+                    // draft headers its synthesized route list so the choice
+                    // reads as a filing decision, not a destination edit.
+                    if model.fileUnderActive {
+                        Text("File under")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                            .padding(.horizontal, 8)
+                            .padding(.top, 4)
+                            .accessibilityAddTraits(.isHeader)
+                    }
                     // Ready-to-use / Needs-block-ID grouping is specific to the `task`
                     // context. Task-section rows stay a plain ungrouped list.
                     if model.completionResponse?.context == "task" {
@@ -3128,6 +3140,23 @@ struct PreviewPane: View {
             Text(ref.detailText)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
+
+            // A queued link names its resolved parent (`📖 Queue ·
+            // example.com/essay → sase`, or `→ mac_inbox · file it later`
+            // for the default inbox); an explicit `@route` also names the
+            // parent's kind. Older-Bob payloads without a parent show
+            // neither line.
+            if let queueSummary = ref.queueSummary {
+                Text(queueSummary)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            if let parentCaption = ref.parentCaption {
+                Text(parentCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
 
             if !ref.chips.isEmpty {
                 HStack(spacing: 6) {

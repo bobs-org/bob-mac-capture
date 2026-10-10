@@ -38,6 +38,21 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertNil(content.primaryMatchRange)
     }
 
+    func testRouteContextShowsTheMatchedAliasBesideTheCanonicalRoute() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "bob",
+            route: "bob",
+            label: "bob.md",
+            kind: "project",
+            alias: "bob-cli"
+        )
+
+        let content = completionRowContent(for: candidate, context: "route", query: "bob-cli")
+
+        XCTAssertEqual(content.primaryText, "bob · aka bob-cli")
+        XCTAssertEqual(content.secondaryText, "bob.md")
+    }
+
     func testSectionContextShowsTitleAndHeadingLevelBadge() {
         let candidate = CaptureCompletionCandidate(
             replacement: "Design",
