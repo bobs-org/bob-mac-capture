@@ -39,9 +39,24 @@ final class CapturePanelEyeLineTests: XCTestCase {
         controller.replayLatestContentMetricsForPresentation()
         let compactTop = panel.frame.maxY
 
+        // The panel reports the agenda through the production cap
+        // (below-eye-line budget plus pane padding, mirroring
+        // `agendaPaneHeightCap`), so the eye line holds on any screen
+        // size. An uncapped synthetic height would slide up on short
+        // screens, an input the product never emits.
+        let cappedAgendaIdeal: CGFloat
+        if model.agendaBudget > 0 {
+            cappedAgendaIdeal = min(
+                300,
+                CGFloat(model.agendaBudget)
+                    + 2 * CGFloat(CaptureAgendaLayoutMetrics.panePadding)
+            )
+        } else {
+            cappedAgendaIdeal = 300
+        }
         let agenda = policy.metrics(
             editorHeight: 42,
-            auxiliary: .overflow(idealHeight: 300),
+            auxiliary: .overflow(idealHeight: cappedAgendaIdeal),
             footerHeight: 40
         )
         controller.receiveContentMetrics(agenda)

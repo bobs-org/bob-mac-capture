@@ -11,11 +11,10 @@ import SwiftUI
 /// `CaptureAgendaLayoutMetrics`, and inter-row gaps live inside the
 /// row views (headers and the title take 4 pt below, other rows 2 pt,
 /// the strip takes 4 pt above and nothing below). Group containers
-/// add half their vertical insets on top and half minus the last
-/// row's gap below, and groups are separated by exactly
-/// `groupSpacing`. The rendered stack is therefore identical to the
-/// planner's total, which `CaptureAgendaHeightConsistencyTests`
-/// proves within 2 pt.
+/// add half their vertical insets on top and half below, and groups
+/// are separated by exactly `groupSpacing`. The rendered stack is
+/// therefore identical to the planner's total, which
+/// `CaptureAgendaHeightConsistencyTests` proves within 2 pt.
 @available(macOS 26.0, *)
 struct CaptureAgendaPaneView: View {
     let plan: CaptureAgendaPlan
@@ -272,9 +271,9 @@ enum CaptureAgendaChipMap {
 
 /// One Pomodoro group: the Now card (pink rail plus faint wash) for
 /// the running entry, plain rows otherwise. The container adds half
-/// the role's vertical insets above and half minus the last row's gap
-/// below, so the block matches the planner's
-/// `groupInsets + rows` exactly.
+/// the role's vertical insets above and half below, so the block
+/// matches the planner's `groupInsets + rows` exactly: measured row
+/// heights already carry their bottom gaps.
 @available(macOS 26.0, *)
 struct CaptureAgendaGroupView: View {
     let group: CaptureAgendaGroup
@@ -334,8 +333,8 @@ struct CaptureAgendaGroupView: View {
 
     private var topInset: CGFloat {
         // The Now card's inner padding is uniform; other roles split
-        // their insets half above and half (minus the last row's gap)
-        // below.
+        // their insets half above and half below, matching the
+        // planner's `groupInsets + rows` exactly.
         group.role == .current ? 0 : CGFloat(insets / 2)
     }
 
@@ -343,17 +342,7 @@ struct CaptureAgendaGroupView: View {
         guard group.role != .current else {
             return 0
         }
-        return CGFloat(insets / 2 - lastGap)
-    }
-
-    private var lastGap: Double {
-        guard let last = rows.last else {
-            return CaptureAgendaLayoutMetrics.rowSpacing
-        }
-        if last.kind == .groupHeader {
-            return CaptureAgendaLayoutMetrics.headerBottomSpacing
-        }
-        return CaptureAgendaLayoutMetrics.rowSpacing
+        return CGFloat(insets / 2)
     }
 }
 

@@ -347,12 +347,21 @@ final class CapturePanelModel: ObservableObject {
         refreshAgendaPlan()
     }
 
+    /// The day the current plan is built for. An explicit `today`
+    /// pins it; internal re-plans (expansion, width or budget change)
+    /// reuse it, so an expansion never re-plans for a different day
+    /// than the visible plan. A new snapshot clears it, so a
+    /// day-rollover fetch plans against the new day.
+    private var agendaPlanningDay: String?
+
     /// Measures what is missing, plans, and publishes. Runs on snapshot
     /// publish, width change, screen change (via the budget), and
     /// expansion. Planning iterates to a fixpoint: a freshly folded
     /// plan can surface new row variants (chips, strips) that need
     /// measuring before the final plan.
-    func refreshAgendaPlan(today: String = CaptureAgendaStore.localToday()) {
+    func refreshAgendaPlan(today: String? = nil) {
+        let day = today ?? agendaPlanningDay ?? CaptureAgendaStore.localToday()
+        agendaPlanningDay = day
         guard agendaEnabled, let snapshot = agendaStore?.snapshot else {
             agendaPresentation = nil
             agendaPlan = nil
@@ -360,7 +369,7 @@ final class CapturePanelModel: ObservableObject {
         }
         let presentation = CaptureAgendaPresentation(
             snapshot: snapshot,
-            today: today,
+            today: day,
             now: Date()
         )
         agendaPresentation = presentation
@@ -815,6 +824,7 @@ final class CapturePanelModel: ObservableObject {
             }
             self.agendaExpanded = []
             self.agendaMeasurer.noteSnapshotChange()
+            self.agendaPlanningDay = nil
             self.refreshAgendaPlan()
         }
     }

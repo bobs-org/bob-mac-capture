@@ -12,6 +12,12 @@ public enum CaptureAgendaLayoutMetrics {
     public static let nowCardInnerPadding: Double = 6
     /// Width of the pink Now rail.
     public static let railWidth: Double = 3
+    /// Horizontal chrome inside the Now card that narrows its rows
+    /// below the rows width: the rail, its gutter, and the inner
+    /// padding on both sides. The measurer uses this so current-group
+    /// rows are measured at the width they render.
+    public static let nowCardHorizontalChrome: Double =
+        railWidth + nowCardInnerPadding * 3
     /// Vertical space between groups.
     public static let groupSpacing: Double = 10
     /// Vertical space between rows inside a group.

@@ -388,13 +388,14 @@ public enum CaptureAgendaFitPlanner {
             }
             rows += rendered.rows
             visibleGroups += 1
+            // Measured row heights already carry their bottom gaps
+            // (inter-row gaps live inside the row views), so the block
+            // is exactly the role insets plus the row heights. This
+            // matches the plan's height model and what the group view
+            // lays out; see CaptureAgendaHeightConsistencyTests.
             var block = CaptureAgendaLayoutMetrics.groupVerticalInsets(role: group.role)
             for row in rendered.rows {
                 block += height(row)
-            }
-            if rendered.rows.count > 1 {
-                let gaps = Double(rendered.rows.count - 1)
-                block += gaps * CaptureAgendaLayoutMetrics.rowSpacing
             }
             total += block
         }
@@ -405,7 +406,11 @@ public enum CaptureAgendaFitPlanner {
         if !stripIDs.isEmpty {
             let stripRow = CaptureAgendaPresentation.makeStripRow(names: stripNames)
             rows.append(stripRow)
-            total += heights[presentation.stripFullRow.key]
+            // Budget the strip the view renders (a folded subset of the
+            // Later names), falling back to the full-strip upper bound
+            // while its variant is still unmeasured mid-fixpoint.
+            total += heights[stripRow.key]
+                ?? heights[presentation.stripFullRow.key]
                 ?? CaptureAgendaLayoutMetrics.defaultRowHeight
         }
         return FullRender(

@@ -135,6 +135,19 @@ enum CaptureAgendaHeightResolver {
         return plan
     }
 
+    /// The width a role's rows render at: current-group rows sit
+    /// inside the Now card, narrowed by its rail, gutter, and inner
+    /// padding. Every other row renders at the full rows width.
+    static func width(for role: CaptureAgendaRole, rowsWidth: CGFloat) -> CGFloat {
+        guard role == .current else {
+            return rowsWidth
+        }
+        return max(
+            1,
+            rowsWidth - CGFloat(CaptureAgendaLayoutMetrics.nowCardHorizontalChrome)
+        )
+    }
+
     static func measureMissing(
         presentation: CaptureAgendaPresentation,
         plan: CaptureAgendaPlan?,
@@ -147,13 +160,13 @@ enum CaptureAgendaHeightResolver {
                 continue
             }
             heights[row.key] = Double(
-                measurer.height(for: row, role: role, at: width)
+                measurer.height(for: row, role: role, at: width(for: role, rowsWidth: width))
             )
         }
         let strip = presentation.stripFullRow
         if heights[strip.key] == nil {
             heights[strip.key] = Double(
-                measurer.height(for: strip, role: .later, at: width)
+                measurer.height(for: strip, role: .later, at: width(for: .later, rowsWidth: width))
             )
         }
         guard let plan else {
@@ -170,7 +183,7 @@ enum CaptureAgendaHeightResolver {
             let role = CaptureAgendaSections.owner(of: row, in: presentation)?.role
                 ?? .later
             heights[row.key] = Double(
-                measurer.height(for: row, role: role, at: width)
+                measurer.height(for: row, role: role, at: width(for: role, rowsWidth: width))
             )
         }
     }
@@ -179,8 +192,10 @@ enum CaptureAgendaHeightResolver {
         _ presentation: CaptureAgendaPresentation
     ) -> [(CaptureAgendaRow, CaptureAgendaRole)] {
         // One entry per row is enough: row heights never depend on
-        // position, and the role only affects group headers, whose
-        // keys are unique per group outside pathological vaults.
+        // position. The role selects the measure width (the Now card
+        // narrows current-group rows) and only otherwise affects group
+        // headers, whose keys are unique per group outside
+        // pathological vaults.
         var out: [(CaptureAgendaRow, CaptureAgendaRole)] = []
         out.append((presentation.titleRow, .later))
         if let warning = presentation.warningRow {
