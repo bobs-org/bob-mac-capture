@@ -313,6 +313,36 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(decoded.notices, ["future notice"])
     }
 
+    func testCaptureRewriteResponseDecodesSeparatorTogglePayload() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Do work @file:id^",
+              "text": "Do work @file^id",
+              "changed": true,
+              "cursor": 16,
+              "rule": "switch_block_id_separator",
+              "edits": [
+                { "range": { "start": 8, "end": 17 }, "replacement": "@file^id" }
+              ],
+              "summary": "Changed @file:id to @file^id"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureRewriteResponse.self, from: data)
+
+        XCTAssertEqual(decoded.rule, "switch_block_id_separator")
+        XCTAssertEqual(decoded.text, "Do work @file^id")
+        XCTAssertEqual(decoded.cursor, 16)
+        XCTAssertEqual(
+            decoded.edits,
+            [CaptureRewriteEdit(range: CaptureRange(start: 8, end: 17), replacement: "@file^id")]
+        )
+    }
+
     func testCaptureRewriteResponseDecodesMinimalNoopPayload() throws {
         let data = Data(
             """
@@ -1829,6 +1859,17 @@ final class CaptureModelTests: XCTestCase {
 
         XCTAssertEqual(utf8Offset(in: text, at: index), offset)
         XCTAssertNil(attributedStringIndex(in: text, utf8Offset: 3))
+    }
+
+    func testUtf16RangeRoundTripsEmojiMarker() throws {
+        let text = "Hi 🧪 @file:id^"
+        let markerStart = text.utf8.count - "@file:id^".utf8.count
+        let markerEnd = text.utf8.count
+        let range = try XCTUnwrap(utf16Range(in: text, start: markerStart, end: markerEnd))
+        XCTAssertEqual((text as NSString).substring(with: range), "@file:id^")
+        XCTAssertEqual(utf8Offset(in: text, utf16Offset: range.location), markerStart)
+        XCTAssertNil(utf16Range(in: text, start: 3, end: 5), "emoji interior is not a UTF-8 boundary pair")
+        XCTAssertNil(utf8Offset(in: text, utf16Offset: 4), "interior surrogate is not a caret")
     }
 
     func testValidatedSpanRangesRejectMalformedUtf8AndOverlaps() {

@@ -1552,7 +1552,61 @@ JSON
       sleep "${FAKE_BOB_REWRITE_DELAY_SECONDS}" &
       wait $!
     fi
-    if [[ "${draft}" == "Buy milk @dev @@" ]]; then
+    if [[ -n "${FAKE_BOB_REWRITE_FAIL:-}" ]]; then
+      printf 'fake capture-rewrite failed\n' >&2
+      exit 1
+    fi
+    if [[ -n "${FAKE_BOB_REWRITE_MALFORMED:-}" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"not-the-draft","changed":true,"cursor":99,"rule":"switch_block_id_separator",
+"edits":[{"range":{"start":0,"end":99},"replacement":"x"}],
+"summary":"malformed"}
+JSON
+      exit 0
+    fi
+    if [[ "${draft}" == "Do work @file:id^" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"Do work @file^id","changed":true,"cursor":16,"rule":"switch_block_id_separator",
+"edits":[{"range":{"start":8,"end":17},"replacement":"@file^id"}],
+"summary":"Changed @file:id to @file^id"}
+JSON
+    elif [[ "${draft}" == "Do work @file^id:" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"Do work @file:id","changed":true,"cursor":16,"rule":"switch_block_id_separator",
+"edits":[{"range":{"start":8,"end":17},"replacement":"@file:id"}],
+"summary":"Changed @file^id to @file:id"}
+JSON
+    elif [[ "${draft}" == "@file:id^" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"@file^id","changed":true,"cursor":8,"rule":"switch_block_id_separator",
+"edits":[{"range":{"start":0,"end":9},"replacement":"@file^id"}],
+"summary":"Changed @file:id to @file^id"}
+JSON
+    elif [[ "${draft}" == "@file^id:" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"@file:id","changed":true,"cursor":8,"rule":"switch_block_id_separator",
+"edits":[{"range":{"start":0,"end":9},"replacement":"@file:id"}],
+"summary":"Changed @file^id to @file:id"}
+JSON
+    elif [[ "${draft}" == "Hi 🧪 @file:id^" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"Hi 🧪 @file^id","changed":true,"cursor":16,"rule":"switch_block_id_separator",
+"edits":[{"range":{"start":8,"end":17},"replacement":"@file^id"}],
+"summary":"Changed @file:id to @file^id"}
+JSON
+    elif [[ "${draft}" == "Buy milk @dev @@" ]]; then
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
       cat <<'JSON'

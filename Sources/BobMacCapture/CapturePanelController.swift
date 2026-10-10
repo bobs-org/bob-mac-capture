@@ -49,6 +49,17 @@ struct CaptureLineAboveEdit: Equatable {
     let resultingSelection: NSRange
 }
 
+/// One native `NSTextView` replacement for Bob's `switch_block_id_separator`
+/// rewrite. Ranges are UTF-16; `expectedDraft` is the post-key buffer Bob
+/// rewrote, and `resultingDraft` is the corrected text.
+struct CaptureNativeRewriteEdit: Equatable {
+    let replacementRange: NSRange
+    let replacementText: String
+    let resultingSelection: NSRange
+    let expectedDraft: String
+    let resultingDraft: String
+}
+
 private func preferredCaptureLineTerminator(in text: String) -> String {
     if text.contains("\r\n") {
         return "\r\n"
@@ -245,6 +256,15 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         // one frame.
         model.agendaPlanDidChange = { [weak self] in
             self?.settleAgendaWhileHidden()
+        }
+        model.applyNativeRewriteEdit = { [weak self] edit in
+            guard let self else {
+                return false
+            }
+            return Self.applySeparatorToggleInEditableTextView(
+                edit,
+                firstResponder: self.panel?.firstResponder
+            )
         }
     }
 
@@ -764,6 +784,61 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             resultingText: textView.string
         )
         return true
+    }
+
+    /// Records a one-shot `:`/`^` typing intent when the focused main draft
+    /// editor can insert that character natively. The key event still reaches
+    /// AppKit; the model consumes the intent from the resulting text change.
+    /// Modal fields, shortcuts, IME, and non-collapsed selections leave the
+    /// event alone.
+    static func noteSeparatorToggleIntentIfEligible(
+        event: NSEvent,
+        firstResponder: NSResponder?,
+        model: CapturePanelModel,
+        modalFieldActive: Bool
+    ) {
+        guard !modalFieldActive,
+              event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+              let characters = event.characters,
+              characters == ":" || characters == "^",
+              let textView = editableTextView(firstResponder),
+              !textView.hasMarkedText()
+        else {
+            return
+        }
+        let selection = textView.selectedRange()
+        guard selection.length == 0 else {
+            return
+        }
+        model.noteSeparatorToggleIntent(
+            typed: characters,
+            text: textView.string,
+            selectedRange: selection
+        )
+    }
+
+    /// Applies Bob's separator-toggle replacement through `NSTextView` so
+    /// undo, IME, and accessibility stay AppKit-owned. Returns false without
+    /// changing state when the focused editor is missing, composing, or no
+    /// longer showing the draft Bob rewrote.
+    static func applySeparatorToggleInEditableTextView(
+        _ edit: CaptureNativeRewriteEdit,
+        firstResponder: NSResponder?
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder),
+              !textView.hasMarkedText(),
+              textView.string == edit.expectedDraft
+        else {
+            return false
+        }
+        let selection = textView.selectedRange()
+        guard selection.length == 0 else {
+            return false
+        }
+        textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
+        textView.setSelectedRange(edit.resultingSelection)
+        textView.scrollRangeToVisible(edit.resultingSelection)
+        return textView.string == edit.resultingDraft
     }
 
     /// Backspace for an assist-generated `,<digit>` pair: with an editable
@@ -1492,11 +1567,25 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     closeTaskCommaArmed: self.model.closeTaskCommaArmed
                 )
             ) else {
+                self.noteSeparatorToggleIntentFromEvent(event)
                 return event
             }
 
             return self.perform(command) ? nil : event
         }
+    }
+
+    private func noteSeparatorToggleIntentFromEvent(_ event: NSEvent) {
+        Self.noteSeparatorToggleIntentIfEligible(
+            event: event,
+            firstResponder: panel?.firstResponder,
+            model: model,
+            modalFieldActive: model.pickerVisible
+                || model.taskIDPromptVisible
+                || model.pomodoroNamePromptVisible
+                || model.isStashPickerPresented
+                || model.editorInputLocked
+        )
     }
 
     /// While an inline naming prompt is open, a key event with no control holding first

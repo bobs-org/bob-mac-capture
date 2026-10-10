@@ -38,6 +38,32 @@ public func stringRange(in text: String, byteRange: CaptureRange) -> Range<Strin
     stringRange(in: text, start: byteRange.start, end: byteRange.end)
 }
 
+/// UTF-16 `NSRange` for a validated UTF-8 byte range, or `nil` when the
+/// bounds are not character boundaries in `text`.
+public func utf16Range(in text: String, start: Int, end: Int) -> NSRange? {
+    guard let range = stringRange(in: text, start: start, end: end) else {
+        return nil
+    }
+    return NSRange(range, in: text)
+}
+
+public func utf16Range(in text: String, byteRange: CaptureRange) -> NSRange? {
+    utf16Range(in: text, start: byteRange.start, end: byteRange.end)
+}
+
+/// UTF-8 byte offset of a UTF-16 caret, or `nil` when `utf16Offset` sits
+/// inside a surrogate pair or past the end of `text`.
+public func utf8Offset(in text: String, utf16Offset: Int) -> Int? {
+    guard utf16Offset >= 0 else {
+        return nil
+    }
+    let nsRange = NSRange(location: utf16Offset, length: 0)
+    guard let range = Range(nsRange, in: text) else {
+        return nil
+    }
+    return text[..<range.lowerBound].utf8.count
+}
+
 public func attributedStringIndex(
     in text: AttributedString,
     utf8Offset targetOffset: Int

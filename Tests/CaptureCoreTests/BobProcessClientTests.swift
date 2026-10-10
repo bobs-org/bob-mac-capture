@@ -214,6 +214,25 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 16 --format json -- Buy milk @dev @@"))
     }
 
+    func testCaptureRewriteDecodesSeparatorToggleFixture() async throws {
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+
+        let response = try await client.captureRewrite("Do work @file:id^", cursor: 17)
+
+        XCTAssertTrue(response.changed)
+        XCTAssertEqual(response.rule, "switch_block_id_separator")
+        XCTAssertEqual(response.text, "Do work @file^id")
+        XCTAssertEqual(response.cursor, 16)
+        XCTAssertEqual(response.summary, "Changed @file:id to @file^id")
+        XCTAssertEqual(
+            response.edits,
+            [CaptureRewriteEdit(range: CaptureRange(start: 8, end: 17), replacement: "@file^id")]
+        )
+    }
+
     func testCaptureRewriteRejectsWrongSchemaVersion() async throws {
         let client = BobProcessClient(
             executablePath: try fakeBobPath(),

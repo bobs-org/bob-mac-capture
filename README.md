@@ -41,7 +41,8 @@ mutation.
   - `/opt/homebrew/bin/bob`
   - `/usr/local/bin/bob`
 - A `bob` build that supports `@@route` / `@@route+block-id` global destination
-  declarations anywhere in the draft, `capture-rewrite`, `capture-complete --all-tasks`,
+  declarations anywhere in the draft, `capture-rewrite` (including
+  `switch_block_id_separator`), `capture-complete --all-tasks`,
   `capture-task-id`, `capture-pomodoro-name`, the `task_link` completion context for
   `:` picker queries (with `note_kind`, `block_id_suggestions`, `group`, `scheduled`,
   and `pulls_forward` candidate fields), the `task_parent` completion context for
@@ -411,6 +412,15 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
   reruns parse/preview. When Bob cannot absorb a marker such as `@route#Section`,
   `@route^block-id`, `@route:block-id`, or a Pomodoro-note `#`, the app leaves the draft
   untouched and announces Bob's notice.
+  Typing `^` immediately after a complete `@route:id`, or `:` immediately after
+  `@route^id`, uses that same rewrite lane. Bob decides whether the marker is
+  eligible; the app forwards the post-key draft and caret. A matching reply
+  consumes the new character, swaps the separator, and leaves the caret after
+  the unchanged ID so the keys can be repeated without moving backward. The
+  new key must sit against the ID, and only those two plain forms toggle —
+  space, suffixes (`#name`, `+`, `=`), `@@`, `@!`, and other marker families
+  type through. Undo restores the literal post-key draft. This gesture needs a
+  bob build that implements `switch_block_id_separator`.
   Typing `^` as the whole capture item opens the Active Task Picker (`active_task`
   context), a modal mode of the capture panel — not a second window. Bob supplies one
   full snapshot (every In Progress and Next task with

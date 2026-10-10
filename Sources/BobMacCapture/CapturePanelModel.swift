@@ -11,6 +11,13 @@ enum CapturePreviewState: Equatable {
     case failed(String)
 }
 
+/// One-shot expected buffer after a native `:`/`^` insertion. Cleared on
+/// consume, mismatch, or lifecycle invalidation; never used to parse grammar.
+private struct SeparatorToggleIntent: Equatable {
+    let expectedDraft: String
+    let expectedCursorUTF8: Int
+}
+
 /// What follows a successful Add block ID assignment.
 enum CaptureTaskLinkFollowUp: Equatable, Sendable {
     case none
@@ -221,6 +228,10 @@ final class CapturePanelModel: ObservableObject {
     var notificationService: NotificationService?
     var targetOpener: (URL) -> Void = { NSWorkspace.shared.open($0) }
     var panelDismisser: () -> Void = {}
+    /// Narrow controller bridge: apply Bob's separator-toggle replacement
+    /// through the focused `NSTextView` so Undo stays native. Nil in tests
+    /// that do not wire a text view; those results are left as typed.
+    var applyNativeRewriteEdit: ((CaptureNativeRewriteEdit) -> Bool)?
     let canceledDraftStash: CanceledDraftStash
 
     private let debounceNanoseconds: UInt64
@@ -228,6 +239,10 @@ final class CapturePanelModel: ObservableObject {
     private var rewriteTask: Task<Void, Never>?
     private var stashCancellable: AnyCancellable?
     private var analysisGeneration: UInt64 = 0
+    private var rewriteGeneration: UInt64 = 0
+    private var rewriteExpectedCursorUTF8: Int?
+    private var rewriteSawMatchingSelection = false
+    private var pendingSeparatorToggleIntent: SeparatorToggleIntent?
     private var isApplyingProgrammaticDraft = false
     // SwiftUI can deliver the text-change callback after a programmatic binding update.
     // Remember the accepted value so that callback cannot start completion analysis again.
@@ -1046,6 +1061,7 @@ final class CapturePanelModel: ObservableObject {
             closeListAssistParsePending = false
             closeCommaProvenance.clear()
             lastProvenanceDraft = plainDraft
+            invalidateRewrite()
         }
         if processClient == nil {
             if changed {
@@ -1121,6 +1137,35 @@ final class CapturePanelModel: ObservableObject {
         lastProvenanceDraft = newText
     }
 
+    /// Records the expected post-key draft and caret for a single typed
+    /// `:` or `^`. The character still inserts natively; `editorTextDidChange`
+    /// consumes this only when the resulting buffer matches.
+    func noteSeparatorToggleIntent(typed: String, text: String, selectedRange: NSRange) {
+        guard typed == ":" || typed == "^",
+              selectedRange.length == 0,
+              selectedRange.location >= 0
+        else {
+            pendingSeparatorToggleIntent = nil
+            return
+        }
+        let nsText = text as NSString
+        guard selectedRange.location <= nsText.length else {
+            pendingSeparatorToggleIntent = nil
+            return
+        }
+        let expectedDraft = nsText.replacingCharacters(in: selectedRange, with: typed)
+        let expectedUTF16 = selectedRange.location + (typed as NSString).length
+        guard let expectedCursorUTF8 = utf8Offset(in: expectedDraft, utf16Offset: expectedUTF16)
+        else {
+            pendingSeparatorToggleIntent = nil
+            return
+        }
+        pendingSeparatorToggleIntent = SeparatorToggleIntent(
+            expectedDraft: expectedDraft,
+            expectedCursorUTF8: expectedCursorUTF8
+        )
+    }
+
     func updateTargetCacheSnapshot(_ snapshot: CaptureTargetsSnapshot) {
         targetCacheSnapshot = snapshot
         if let error = snapshot.errorDescription {
@@ -1174,10 +1219,21 @@ final class CapturePanelModel: ObservableObject {
         }
 
         let insertionOffset = cursorUTF8Offset ?? collapsedSelectionUTF8Offset()
-        if let insertionOffset,
-           Self.isBareAtAtTrigger(in: draft, cursorUTF8Offset: insertionOffset)
+        var analysisCursor = insertionOffset
+        var requestCompletion = insertionOffset != nil
+        if let toggleCursor = consumeSeparatorToggleIntent(
+            draft: draft,
+            cursorUTF8Offset: insertionOffset
+        ) {
+            startCaptureRewrite(draft: draft, cursorUTF8Offset: toggleCursor)
+            analysisCursor = toggleCursor
+            requestCompletion = false
+        } else if let insertionOffset,
+                  Self.isBareAtAtTrigger(in: draft, cursorUTF8Offset: insertionOffset)
         {
             startCaptureRewrite(draft: draft, cursorUTF8Offset: insertionOffset)
+        } else {
+            invalidateRewrite()
         }
         if closeListAssistParsePending {
             closeListAssistParsePending = false
@@ -1186,8 +1242,8 @@ final class CapturePanelModel: ObservableObject {
             }
         }
         scheduleAnalysis(
-            cursorUTF8Offset: insertionOffset,
-            requestCompletion: insertionOffset != nil,
+            cursorUTF8Offset: analysisCursor,
+            requestCompletion: requestCompletion,
             trigger: .edit
         )
     }
@@ -1239,6 +1295,18 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
             programmaticSelectionOffsetToIgnore = nil
+        }
+        if let expected = rewriteExpectedCursorUTF8 {
+            if insertionOffset == expected {
+                rewriteSawMatchingSelection = true
+            } else {
+                let laggedPreInsertCaret =
+                    !rewriteSawMatchingSelection
+                    && insertionOffset == expected - 1
+                if !laggedPreInsertCaret {
+                    invalidateRewrite()
+                }
+            }
         }
         guard !isApplyingProgrammaticDraft, hasDraft else {
             return
@@ -1352,6 +1420,7 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
+        invalidateRewrite()
         let draft = plainDraft
         let requestID = UUID()
         activeRequestID = requestID
@@ -1603,6 +1672,7 @@ final class CapturePanelModel: ObservableObject {
         closePickerForDismissal()
         clearInlinePrompts()
         agendaExpanded = []
+        invalidateRewrite()
     }
 
     func requestFocus(_ target: CapturePanelFocusTarget) {
@@ -5524,6 +5594,10 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
+        rewriteGeneration &+= 1
+        let generation = rewriteGeneration
+        rewriteExpectedCursorUTF8 = cursorUTF8Offset
+        rewriteSawMatchingSelection = collapsedSelectionUTF8Offset() == cursorUTF8Offset
         rewriteTask?.cancel()
         rewriteTask = Task { [weak self, processClient] in
             do {
@@ -5533,7 +5607,13 @@ final class CapturePanelModel: ObservableObject {
                 try Task.checkCancellation()
 
                 await MainActor.run {
-                    self?.applyCaptureRewrite(response, draft: draft)
+                    self?.applyCaptureRewrite(
+                        response,
+                        draft: draft,
+                        cursorUTF8Offset: cursorUTF8Offset,
+                        generation: generation,
+                        processClient: processClient
+                    )
                 }
             } catch is CancellationError {
             } catch {
@@ -5545,9 +5625,19 @@ final class CapturePanelModel: ObservableObject {
 
     private func applyCaptureRewrite(
         _ response: CaptureRewriteResponse,
-        draft: String
+        draft: String,
+        cursorUTF8Offset: Int,
+        generation: UInt64,
+        processClient: BobProcessClient
     ) {
-        guard plainDraft == draft else {
+        guard rewriteGeneration == generation,
+              self.processClient === processClient,
+              plainDraft == draft,
+              response.input == draft
+        else {
+            return
+        }
+        if let current = collapsedSelectionUTF8Offset(), current != cursorUTF8Offset {
             return
         }
 
@@ -5555,6 +5645,11 @@ final class CapturePanelModel: ObservableObject {
             if let cursor = response.cursor,
                stringRange(in: response.text, start: cursor, end: cursor) == nil
             {
+                return
+            }
+
+            if response.rule == "switch_block_id_separator" {
+                applySeparatorToggleRewrite(response, draft: draft)
                 return
             }
 
@@ -5572,6 +5667,57 @@ final class CapturePanelModel: ObservableObject {
         } else if let notice = response.notices.first {
             announceStatus(notice)
         }
+    }
+
+    private func applySeparatorToggleRewrite(
+        _ response: CaptureRewriteResponse,
+        draft: String
+    ) {
+        guard let edit = response.edits.first,
+              response.edits.count == 1,
+              let replaced = stringRange(in: draft, byteRange: edit.range)
+        else {
+            return
+        }
+        var applied = draft
+        applied.replaceSubrange(replaced, with: edit.replacement)
+        guard applied == response.text else {
+            return
+        }
+        let cursor = response.cursor ?? response.text.utf8.count
+        guard let replacementRange = utf16Range(in: draft, byteRange: edit.range),
+              let cursorUTF16 = utf16Range(
+                in: response.text,
+                start: cursor,
+                end: cursor
+              )?.location
+        else {
+            return
+        }
+        let nativeEdit = CaptureNativeRewriteEdit(
+            replacementRange: replacementRange,
+            replacementText: edit.replacement,
+            resultingSelection: NSRange(location: cursorUTF16, length: 0),
+            expectedDraft: draft,
+            resultingDraft: response.text
+        )
+        suppressedCompletionAcceptanceDraft = response.text
+        guard applyNativeRewriteEdit?(nativeEdit) == true else {
+            suppressedCompletionAcceptanceDraft = nil
+            return
+        }
+        if plainDraft != response.text {
+            isApplyingProgrammaticDraft = true
+            attributedDraft = AttributedString(response.text)
+            isApplyingProgrammaticDraft = false
+        }
+        restoreSelection(cursorUTF8Offset: cursor, suppressEditorCallbacks: true)
+        if let summary = response.summary, !summary.isEmpty {
+            announceStatus(summary)
+        }
+        scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false, trigger: .edit)
+        rewriteExpectedCursorUTF8 = nil
+        rewriteSawMatchingSelection = false
     }
 
     private func startLivePreview(
@@ -5697,6 +5843,34 @@ final class CapturePanelModel: ObservableObject {
     private func invalidateRewrite() {
         rewriteTask?.cancel()
         rewriteTask = nil
+        rewriteGeneration &+= 1
+        rewriteExpectedCursorUTF8 = nil
+        rewriteSawMatchingSelection = false
+        pendingSeparatorToggleIntent = nil
+    }
+
+    private func consumeSeparatorToggleIntent(
+        draft: String,
+        cursorUTF8Offset: Int?
+    ) -> Int? {
+        guard let intent = pendingSeparatorToggleIntent else {
+            return nil
+        }
+        pendingSeparatorToggleIntent = nil
+        guard draft == intent.expectedDraft else {
+            return nil
+        }
+        if let cursorUTF8Offset {
+            if cursorUTF8Offset == intent.expectedCursorUTF8 {
+                return intent.expectedCursorUTF8
+            }
+            // SwiftUI can report the pre-insert caret one callback behind.
+            if cursorUTF8Offset + 1 == intent.expectedCursorUTF8 {
+                return intent.expectedCursorUTF8
+            }
+            return nil
+        }
+        return intent.expectedCursorUTF8
     }
 
     private func activePriorityRollSeed() -> String {
