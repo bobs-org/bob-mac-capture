@@ -473,7 +473,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                 depth: note.depth,
                 lineLimit: CaptureAgendaLayoutMetrics.childLineLimit,
                 statusGlyph: note.statusSymbol,
-                accessibilityLabel: note.text
+                accessibilityLabel: spokenKeepText(note.text)
             )
         }
         let chip: String? = entry.notes.isEmpty ? nil : "\(entry.notes.count) notes"
@@ -626,7 +626,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         name: String,
         tasks: [CaptureAgendaTask]
     ) -> CaptureAgendaRow {
-        let titles = tasks.map(\.title).joined(separator: " · ")
+        let titles = tasks.map { spokenKeepText($0.title) }.joined(separator: " · ")
         let joined = titles.isEmpty ? name : "\(name) · \(titles)"
         let text = truncate(joined, to: CaptureAgendaLayoutMetrics.maxOneRowLength)
         let chip = tasks.count == 1 ? "1 task" : "\(tasks.count) tasks"
@@ -652,12 +652,13 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     ) -> CaptureAgendaTask {
         let id = CaptureAgendaUnitID.task(ledgerLine: item.ledgerLine)
         let title = item.text ?? item.blockLink
+        let spokenTitle = spokenKeepText(title)
         let status = item.statusName ?? "Unknown"
         let baseLabel: String
         if let index = item.index {
-            baseLabel = "Task \(index), \(status), \(title)"
+            baseLabel = "Task \(index), \(status), \(spokenTitle)"
         } else {
-            baseLabel = "Task, \(status), \(title)"
+            baseLabel = "Task, \(status), \(spokenTitle)"
         }
         if item.resolution == .resolved, isDoneStatus(item.statusType) {
             let row = CaptureAgendaRow(
@@ -758,7 +759,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                 depth: max(1, note.depth),
                 lineLimit: CaptureAgendaLayoutMetrics.childLineLimit,
                 statusGlyph: note.statusSymbol,
-                accessibilityLabel: note.text
+                accessibilityLabel: spokenKeepText(note.text)
             )
         }
         let childRows = childRowsForLines(item.lines)
@@ -839,7 +840,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                     text: line.text,
                     depth: line.depth,
                     lineLimit: 1,
-                    accessibilityLabel: line.text
+                    accessibilityLabel: spokenKeepText(line.text)
                 )
             case (_, .work), (_, .schedule):
                 return CaptureAgendaRow(
@@ -848,7 +849,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                     depth: line.depth,
                     lineLimit: CaptureAgendaLayoutMetrics.childLineLimit,
                     statusGlyph: line.statusSymbol,
-                    accessibilityLabel: line.text
+                    accessibilityLabel: spokenKeepText(line.text)
                 )
             case (_, _):
                 return CaptureAgendaRow(
@@ -857,7 +858,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                     depth: line.depth,
                     lineLimit: CaptureAgendaLayoutMetrics.childLineLimit,
                     statusGlyph: line.statusSymbol,
-                    accessibilityLabel: line.text
+                    accessibilityLabel: spokenKeepText(line.text)
                 )
             }
         }
@@ -943,6 +944,13 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             return text
         }
         return String(text.prefix(length - 1)) + "…"
+    }
+
+    /// Narrow Keep-link projection for spoken labels and one-row
+    /// summaries. Ordinary row source text stays raw so the inline
+    /// renderer still sees a complete `[💡](url)` span.
+    static func spokenKeepText(_ source: String) -> String {
+        CaptureAgendaInlineText.projectingKeepSourceLinks(source)
     }
 
     private static var maxWarningLength: Int {

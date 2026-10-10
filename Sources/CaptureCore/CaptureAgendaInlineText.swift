@@ -25,12 +25,13 @@ public struct CaptureAgendaInlineSegment: Equatable, Sendable {
 }
 
 /// Parses agenda display text for inline styling: code spans, wikilink
-/// display text, `**strong**`, `*`/`_` emphasis, dimmed `[key:: value]`
-/// fields, and `#tags` become styled segments with their delimiters
-/// dropped or kept per kind, and everything else stays literal plain
-/// text. A trailing `^block-id` is hidden. Unmatched delimiters stay
-/// literal. Segments tile `text` exactly, as `TaskDisplayText`
-/// guarantees for its own callers (whose behavior is unchanged).
+/// display text, Keep `[💡](url)` source links, `**strong**`, `*`/`_`
+/// emphasis, dimmed `[key:: value]` fields, and `#tags` become styled
+/// segments with their delimiters dropped or kept per kind, and
+/// everything else stays literal plain text. A trailing `^block-id` is
+/// hidden. Unmatched delimiters stay literal. Segments tile `text`
+/// exactly, as `TaskDisplayText` guarantees for its own callers (whose
+/// behavior is unchanged).
 public struct CaptureAgendaInlineText: Equatable, Sendable {
     public let text: String
     public let segments: [CaptureAgendaInlineSegment]
@@ -71,7 +72,11 @@ public struct CaptureAgendaInlineText: Equatable, Sendable {
             } else if chars[index] == "_" {
                 index = Self.parseUnderscoreEmphasis(chars: chars, from: index, append: append)
             } else if chars[index] == "[" {
-                index = Self.parseField(chars: chars, from: index, append: append)
+                index = Self.parseKeepSourceLinkOrField(
+                    chars: chars,
+                    from: index,
+                    append: append
+                )
             } else if chars[index] == "#" {
                 index = Self.parseTag(chars: chars, from: index, append: append)
             } else {
@@ -81,6 +86,51 @@ public struct CaptureAgendaInlineText: Equatable, Sendable {
         }
         self.text = text
         self.segments = segments
+    }
+
+    /// Replaces each complete Keep source link with a bare `💡` and
+    /// leaves every other character unchanged, including code spans
+    /// and wikilink aliases, which stay opaque. Used for accessibility
+    /// labels and one-row summaries so truncation cannot cut a URL.
+    public static func projectingKeepSourceLinks(_ source: String) -> String {
+        let chars = Array(source)
+        var text = ""
+        var index = 0
+        while index < chars.count {
+            if chars[index] == "`" {
+                if let close = chars[(index + 1)...].firstIndex(of: "`"), close > index + 1 {
+                    text += String(chars[index...close])
+                    index = close + 1
+                } else {
+                    text.append("`")
+                    index += 1
+                }
+            } else if startsWith(chars, index, "[[") {
+                var cursor = index + 2
+                var closed: Int?
+                while cursor + 1 < chars.count {
+                    if chars[cursor] == "]", chars[cursor + 1] == "]" {
+                        closed = cursor + 1
+                        break
+                    }
+                    cursor += 1
+                }
+                if let closed {
+                    text += String(chars[index...closed])
+                    index = closed + 1
+                } else {
+                    text += "[["
+                    index += 2
+                }
+            } else if let end = keepSourceLinkEnd(chars: chars, from: index) {
+                text += "💡"
+                index = end
+            } else {
+                text.append(chars[index])
+                index += 1
+            }
+        }
+        return text
     }
 
     // MARK: - Block IDs
@@ -250,6 +300,68 @@ public struct CaptureAgendaInlineText: Equatable, Sendable {
         }
         append("_", .plain)
         return index + 1
+    }
+
+    /// A complete Keep source link `[💡](destination)` or
+    /// `[💡](destination "title")` becomes one link-tinted `💡`. The
+    /// destination is the nonempty percent-encoded form bob emits
+    /// (no spaces, parens, quotes, or angle brackets). Tooltip and
+    /// closing `)` are consumed together. Malformed or other-label
+    /// Markdown links stay literal via `parseField`.
+    static func parseKeepSourceLinkOrField(
+        chars: [Character],
+        from index: Int,
+        append: (String, CaptureAgendaInlineSegment.Kind) -> Void
+    ) -> Int {
+        if let end = keepSourceLinkEnd(chars: chars, from: index) {
+            append("💡", .link)
+            return end
+        }
+        return parseField(chars: chars, from: index, append: append)
+    }
+
+    /// Index after a complete Keep source link starting at `index`, or
+    /// `nil` when the span is missing, empty, or unclosed.
+    static func keepSourceLinkEnd(chars: [Character], from index: Int) -> Int? {
+        guard startsWith(chars, index, "[💡](") else {
+            return nil
+        }
+        var cursor = index + Array("[💡](").count
+        let destStart = cursor
+        while cursor < chars.count {
+            let char = chars[cursor]
+            if char == ")" || char == "(" || char == "\"" || char == "<" || char == ">"
+                || char.isWhitespace
+            {
+                break
+            }
+            cursor += 1
+        }
+        guard cursor > destStart else {
+            return nil
+        }
+        if cursor < chars.count, chars[cursor] == ")" {
+            return cursor + 1
+        }
+        guard cursor < chars.count, chars[cursor] == " " else {
+            return nil
+        }
+        cursor += 1
+        guard cursor < chars.count, chars[cursor] == "\"" else {
+            return nil
+        }
+        cursor += 1
+        while cursor < chars.count, chars[cursor] != "\"" {
+            cursor += 1
+        }
+        guard cursor < chars.count, chars[cursor] == "\"" else {
+            return nil
+        }
+        cursor += 1
+        guard cursor < chars.count, chars[cursor] == ")" else {
+            return nil
+        }
+        return cursor + 1
     }
 
     /// `[key:: value]` fields: the whole bracketed span (brackets kept)

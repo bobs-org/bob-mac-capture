@@ -27,6 +27,34 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
                 budget: 533,
                 expanded: []
             )
+            try assertConsistent(
+                fixture: "agenda-lightbulb.json",
+                contentWidth: width,
+                budget: 2_000,
+                expanded: []
+            )
+            let lightbulb = try agendaSnapshot("agenda-lightbulb.json")
+            let lightbulbPresentation = CaptureAgendaPresentation(
+                snapshot: lightbulb,
+                today: lightbulb.date ?? "",
+                now: nil
+            )
+            var lightbulbExpanded: Set<CaptureAgendaUnitID> = []
+            if let first = lightbulbPresentation.groups.first?.tasks.first {
+                lightbulbExpanded.insert(first.id)
+            }
+            try assertConsistent(
+                fixture: "agenda-lightbulb.json",
+                contentWidth: width,
+                budget: 2_000,
+                expanded: lightbulbExpanded
+            )
+            try assertConsistent(
+                fixture: "agenda-lightbulb.json",
+                contentWidth: width,
+                budget: 180,
+                expanded: []
+            )
             let snapshot = try agendaSnapshot("agenda-current.json")
             let presentation = CaptureAgendaPresentation(
                 snapshot: snapshot,

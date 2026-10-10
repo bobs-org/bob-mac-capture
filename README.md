@@ -1418,7 +1418,8 @@ only and is never written to disk.
 With an empty draft, the panel shows today's Pomodoro agenda below the editor, in
 the same thin-material pane as the live preview. It lists the running Pomodoro (Now)
 and every future one (Next, then Later), each with its linked tasks at the most
-detail that fits below the fixed eye line without scrolling. The `=x` and `=`
+detail that fits below the fixed eye line without scrolling. Keep source links in
+those task titles and details display as a lightbulb. The `=x` and `=`
 numbers match the ones `bob` will use: the current entry shows its `=x` numbers and
 every other open entry shows its `=` lineup number.
 

@@ -597,4 +597,162 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.groups.map(\.role), [.open, .open, .next])
         XCTAssertNotNil(presentation.warningRow)
     }
+
+    // MARK: - Keep source links
+
+    private let keepDentist =
+        "Call dentist [💡](https://keep.google.com/u/0/#NOTE/example \"Open in Google Keep\")"
+    private let keepNoTooltip =
+        "Hardware store [💡](https://keep.google.com/u/0/#NOTE/store)"
+    private let keepLongDestination =
+        "https://keep.google.com/u/0/#NOTE/" + String(repeating: "x", count: 90)
+    private var keepLongTitle: String {
+        "Call dentist [💡](\(keepLongDestination) \"Open in Google Keep\")"
+    }
+
+    func testKeepSourceLinksCollapseInNowNextAndLater() {
+        let presentation = present(makeSnapshot(entries: [
+            makeEntry(line: 3, name: "NOW", items: [
+                makeItem(
+                    ledgerLine: 4,
+                    text: keepDentist,
+                    lines: [
+                        makeLine(
+                            "Follow up [💡](https://keep.google.com/u/0/#NOTE/child \"Open in Google Keep\")"
+                        ),
+                    ],
+                    ledgerNotes: [
+                        makeLine(
+                            "From Keep [💡](https://keep.google.com/u/0/#NOTE/note \"Open in Google Keep\")"
+                        ),
+                    ]
+                ),
+            ]),
+            makeEntry(line: 10, name: "NEXT", role: .next, items: [
+                makeItem(ledgerLine: 11, blockID: "store", text: keepNoTooltip),
+            ]),
+            makeEntry(line: 20, name: "LATER", role: .later, items: [
+                makeItem(ledgerLine: 21, blockID: "later", text: keepDentist),
+            ]),
+        ]))
+        XCTAssertEqual(presentation.groups.map(\.role), [.current, .next, .later])
+
+        let now = presentation.groups[0].tasks[0]
+        XCTAssertEqual(now.title, keepDentist)
+        XCTAssertEqual(now.fullRows[0].text, keepDentist)
+        XCTAssertEqual(now.noLogsRows[0].text, keepDentist)
+        XCTAssertEqual(now.oneLineRow.text, keepDentist)
+        XCTAssertEqual(now.fullRows[0].numberBadge, 1)
+        for row in [now.fullRows[0], now.noLogsRows[0], now.oneLineRow] {
+            let parsed = CaptureAgendaInlineText(parsing: row.text)
+            XCTAssertEqual(parsed.text, "Call dentist 💡")
+            XCTAssertEqual(parsed.segments.map(\.kind), [.plain, .link])
+        }
+        XCTAssertEqual(
+            now.fullRows[0].accessibilityLabel,
+            "Task 1, Todo, Call dentist 💡"
+        )
+        XCTAssertEqual(now.fullRows[1].kind, .ledgerNote)
+        XCTAssertEqual(
+            now.fullRows[1].text,
+            "From Keep [💡](https://keep.google.com/u/0/#NOTE/note \"Open in Google Keep\")"
+        )
+        XCTAssertEqual(now.fullRows[1].accessibilityLabel, "From Keep 💡")
+        XCTAssertEqual(now.fullRows[2].kind, .childLine)
+        XCTAssertEqual(now.fullRows[2].accessibilityLabel, "Follow up 💡")
+
+        let next = presentation.groups[1].tasks[0]
+        XCTAssertEqual(
+            CaptureAgendaInlineText(parsing: next.fullRows[0].text).text,
+            "Hardware store 💡"
+        )
+        XCTAssertEqual(
+            next.fullRows[0].accessibilityLabel,
+            "Task 1, Todo, Hardware store 💡"
+        )
+
+        let later = presentation.groups[2].tasks[0]
+        XCTAssertEqual(
+            CaptureAgendaInlineText(parsing: later.fullRows[0].text).text,
+            "Call dentist 💡"
+        )
+        XCTAssertEqual(
+            later.fullRows[0].accessibilityLabel,
+            "Task 1, Todo, Call dentist 💡"
+        )
+    }
+
+    func testKeepSourceLinkOnDuplicateAndCompletedTasks() {
+        let presentation = present(makeSnapshot(entries: [
+            makeEntry(line: 3, name: "NOW", items: [
+                makeItem(ledgerLine: 4, text: keepDentist),
+                makeItem(
+                    ledgerLine: 5,
+                    blockID: "done",
+                    text: keepNoTooltip,
+                    statusType: "DONE",
+                    statusName: "Done"
+                ),
+            ]),
+            makeEntry(line: 10, name: "NEXT", role: .next, items: [
+                makeItem(ledgerLine: 11, text: keepDentist),
+            ]),
+        ]))
+        let duplicate = presentation.groups[1].tasks[0].fullRows[0]
+        XCTAssertEqual(duplicate.kind, .duplicate)
+        XCTAssertEqual(duplicate.text, "\(keepDentist) ↑ in NOW")
+        XCTAssertEqual(duplicate.numberBadge, 1)
+        XCTAssertEqual(
+            CaptureAgendaInlineText(parsing: duplicate.text).text,
+            "Call dentist 💡 ↑ in NOW"
+        )
+        XCTAssertEqual(
+            duplicate.accessibilityLabel,
+            "Task 1, Todo, Call dentist 💡, already shown"
+        )
+
+        let struck = presentation.groups[0].tasks[1].fullRows[0]
+        XCTAssertEqual(struck.kind, .struck)
+        XCTAssertEqual(struck.text, keepNoTooltip)
+        XCTAssertEqual(
+            CaptureAgendaInlineText(parsing: struck.text).text,
+            "Hardware store 💡"
+        )
+        XCTAssertEqual(
+            struck.accessibilityLabel,
+            "Task 1, Done, Hardware store 💡, completed"
+        )
+    }
+
+    func testOneRowProjectsKeepLinksBeforeTruncation() {
+        let presentation = present(makeSnapshot(entries: [
+            makeEntry(line: 20, name: "CALLS", role: .later, items: [
+                makeItem(ledgerLine: 21, blockID: "long", text: keepLongTitle),
+            ]),
+        ]))
+        let rawJoined = "CALLS · \(keepLongTitle)"
+        XCTAssertGreaterThan(rawJoined.count, CaptureAgendaLayoutMetrics.maxOneRowLength)
+        let oneRow = presentation.groups[0].oneRowRow
+        XCTAssertEqual(oneRow.text, "CALLS · Call dentist 💡")
+        XCTAssertLessThanOrEqual(oneRow.text.count, CaptureAgendaLayoutMetrics.maxOneRowLength)
+        XCTAssertFalse(oneRow.text.contains("https://"))
+        XCTAssertFalse(oneRow.text.contains("Open in Google Keep"))
+        XCTAssertEqual(oneRow.key.text, oneRow.text)
+    }
+
+    func testLightbulbFixtureProjectsKeepLinks() throws {
+        let snapshot = try fixture("agenda-lightbulb.json")
+        let presentation = present(snapshot)
+        XCTAssertEqual(presentation.groups.map(\.role), [.current, .next, .later])
+        let nowTitle = presentation.groups[0].tasks[0].fullRows[0]
+        XCTAssertEqual(
+            CaptureAgendaInlineText(parsing: nowTitle.text).text,
+            "Call dentist 💡"
+        )
+        XCTAssertEqual(
+            nowTitle.accessibilityLabel,
+            "Task 1, Todo, Call dentist 💡"
+        )
+        XCTAssertFalse(presentation.groups[2].oneRowRow.text.contains("https://"))
+    }
 }

@@ -35,6 +35,7 @@ final class CaptureAgendaDesignTests: XCTestCase {
             ("agenda-heavy", 533),
             ("agenda-empty", 2_000),
             ("agenda-multiple-timed", 2_000),
+            ("agenda-lightbulb", 2_000),
         ]
         for (base, budget) in cases {
             let snapshot = try agendaSnapshot(base + ".json")
@@ -45,6 +46,27 @@ final class CaptureAgendaDesignTests: XCTestCase {
             )
             try render(presentation: presentation, base: base, budget: budget)
         }
+        let lightbulb = try agendaSnapshot("agenda-lightbulb.json")
+        let lightbulbPresentation = CaptureAgendaPresentation(
+            snapshot: lightbulb,
+            today: lightbulb.date ?? "",
+            now: nil
+        )
+        try render(
+            presentation: lightbulbPresentation,
+            base: "agenda-lightbulb-folded",
+            budget: 180
+        )
+        var lightbulbExpanded: Set<CaptureAgendaUnitID> = []
+        if let first = lightbulbPresentation.groups.first?.tasks.first {
+            lightbulbExpanded.insert(first.id)
+        }
+        try render(
+            presentation: lightbulbPresentation,
+            base: "agenda-lightbulb-expanded",
+            budget: 2_000,
+            expanded: lightbulbExpanded
+        )
         // The stale marker on the title row's right, and the overdue
         // countdown: the current entry ends 08:30, so 08:38 reads
         // "overdue 8m" in orange.
@@ -83,7 +105,8 @@ final class CaptureAgendaDesignTests: XCTestCase {
     private func render(
         presentation: CaptureAgendaPresentation,
         base: String,
-        budget: Double
+        budget: Double,
+        expanded: Set<CaptureAgendaUnitID> = []
     ) throws {
         for width in [760, 620] as [CGFloat] {
             let rowsWidth = width - 36
@@ -92,7 +115,7 @@ final class CaptureAgendaDesignTests: XCTestCase {
             let plan = CaptureAgendaHeightResolver.resolve(
                 presentation: presentation,
                 budget: budget,
-                expanded: [],
+                expanded: expanded,
                 width: rowsWidth,
                 measurer: measurer
             )

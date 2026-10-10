@@ -1,0 +1,187 @@
+{
+  "completed_summary": {
+    "count": 1,
+    "minutes": 30
+  },
+  "count": 3,
+  "date": "2026-08-28",
+  "day_file": "/Users/test/bob/vault/2026/20260828.md",
+  "ok": true,
+  "pomodoros": [
+    {
+      "child_count": 3,
+      "ends_at": "2026-08-28T08:30",
+      "is_current": true,
+      "items": [
+        {
+          "block_id": "dentist",
+          "block_link": "[[tasks#^dentist]]",
+          "index": 1,
+          "ledger_depth": 1,
+          "ledger_line": 6,
+          "ledger_notes": [
+            {
+              "depth": 1,
+              "kind": "bullet",
+              "log": null,
+              "status_symbol": null,
+              "text": "From Keep [💡](https://keep.google.com/u/0/#NOTE/note \"Open in Google Keep\")"
+            }
+          ],
+          "line": 2,
+          "lines": [
+            {
+              "depth": 1,
+              "kind": "bullet",
+              "log": null,
+              "status_symbol": null,
+              "text": "They close at 5 [💡](https://keep.google.com/u/0/#NOTE/child \"Open in Google Keep\")"
+            }
+          ],
+          "lines_truncated": 0,
+          "marker": "plain",
+          "relative_target": "tasks.md",
+          "resolution": "resolved",
+          "status_name": "Todo",
+          "status_symbol": " ",
+          "status_type": "TODO",
+          "text": "Call dentist [💡](https://keep.google.com/u/0/#NOTE/example \"Open in Google Keep\")",
+          "warning": null
+        },
+        {
+          "block_id": "store",
+          "block_link": "[[tasks#^store]]",
+          "index": 2,
+          "ledger_depth": 1,
+          "ledger_line": 8,
+          "ledger_notes": [],
+          "line": 8,
+          "lines": [],
+          "lines_truncated": 0,
+          "marker": "plain",
+          "relative_target": "tasks.md",
+          "resolution": "resolved",
+          "status_name": "Done",
+          "status_symbol": "x",
+          "status_type": "DONE",
+          "text": "Hardware store #8 × 1¼″ 🧰 [💡](https://keep.google.com/u/0/#NOTE/store)",
+          "warning": null
+        }
+      ],
+      "line": 5,
+      "name": "CALLS",
+      "notes": [],
+      "placeholder": false,
+      "ref": "5:lightbulb-now",
+      "retired_link_count": 0,
+      "role": "current",
+      "selectable": true,
+      "slug": "calls",
+      "starts_at": "2026-08-28T08:00",
+      "state": "open",
+      "status_symbol": " ",
+      "task_link_count": 2,
+      "time_range": "0800-0830"
+    },
+    {
+      "child_count": 1,
+      "ends_at": null,
+      "is_current": false,
+      "items": [
+        {
+          "block_id": "encoded",
+          "block_link": "[[tasks#^encoded]]",
+          "index": 1,
+          "ledger_depth": 1,
+          "ledger_line": 12,
+          "ledger_notes": [],
+          "line": 12,
+          "lines": [],
+          "lines_truncated": 0,
+          "marker": "plain",
+          "relative_target": "tasks.md",
+          "resolution": "resolved",
+          "status_name": "Todo",
+          "status_symbol": " ",
+          "status_type": "TODO",
+          "text": "Encoded note [💡](https://example.test/a%28%22b%5Cc%29?q=x#frag \"Open in Google Keep\")",
+          "warning": null
+        }
+      ],
+      "line": 11,
+      "name": "ERRANDS",
+      "notes": [],
+      "placeholder": true,
+      "ref": "11:lightbulb-next",
+      "retired_link_count": 0,
+      "role": "next",
+      "selectable": true,
+      "slug": "errands",
+      "starts_at": null,
+      "state": "open",
+      "status_symbol": " ",
+      "task_link_count": 1,
+      "time_range": null
+    },
+    {
+      "child_count": 2,
+      "ends_at": null,
+      "is_current": false,
+      "items": [
+        {
+          "block_id": "long",
+          "block_link": "[[tasks#^long]]",
+          "index": 1,
+          "ledger_depth": 1,
+          "ledger_line": 16,
+          "ledger_notes": [],
+          "line": 16,
+          "lines": [],
+          "lines_truncated": 0,
+          "marker": "plain",
+          "relative_target": "tasks.md",
+          "resolution": "resolved",
+          "status_name": "Todo",
+          "status_symbol": " ",
+          "status_type": "TODO",
+          "text": "Call dentist [💡](https://keep.google.com/u/0/#NOTE/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \"Open in Google Keep\")",
+          "warning": null
+        },
+        {
+          "block_id": "dentist",
+          "block_link": "[[tasks#^dentist]]",
+          "index": 2,
+          "ledger_depth": 1,
+          "ledger_line": 17,
+          "ledger_notes": [],
+          "line": 2,
+          "lines": [],
+          "lines_truncated": 0,
+          "marker": "plain",
+          "relative_target": "tasks.md",
+          "resolution": "resolved",
+          "status_name": "Todo",
+          "status_symbol": " ",
+          "status_type": "TODO",
+          "text": "Call dentist [💡](https://keep.google.com/u/0/#NOTE/example \"Open in Google Keep\")",
+          "warning": null
+        }
+      ],
+      "line": 15,
+      "name": "LATER WORK",
+      "notes": [],
+      "placeholder": true,
+      "ref": "15:lightbulb-later",
+      "retired_link_count": 0,
+      "role": "later",
+      "selectable": true,
+      "slug": "later-work",
+      "starts_at": null,
+      "state": "open",
+      "status_symbol": " ",
+      "task_link_count": 2,
+      "time_range": null
+    }
+  ],
+  "warnings": []
+}

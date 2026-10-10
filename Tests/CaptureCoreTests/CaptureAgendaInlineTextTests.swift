@@ -156,4 +156,98 @@ final class CaptureAgendaInlineTextTests: XCTestCase {
         )
         assertTilesExactly(parsed)
     }
+
+    // MARK: - Keep source links
+
+    private let keepExample =
+        "[💡](https://keep.google.com/u/0/#NOTE/example \"Open in Google Keep\")"
+    private let keepNoTooltip = "[💡](https://keep.google.com/u/0/#NOTE/example)"
+    private let keepEncoded =
+        "[💡](https://example.test/a%28%22b%5Cc%29?q=x#frag \"Open in Google Keep\")"
+
+    func testKeepSourceLinkRendersAsLightbulb() {
+        let cases: [(source: String, text: String, kinds: [CaptureAgendaInlineSegment.Kind])] = [
+            (
+                "Call dentist \(keepExample)",
+                "Call dentist 💡",
+                [.plain, .link]
+            ),
+            (
+                "Call dentist \(keepNoTooltip)",
+                "Call dentist 💡",
+                [.plain, .link]
+            ),
+            (
+                "Hardware store #8 × 1¼″ 🧰 \(keepExample)",
+                "Hardware store #8 × 1¼″ 🧰 💡",
+                [.plain, .tag, .plain, .link]
+            ),
+            (
+                "A \(keepExample) and B \(keepNoTooltip)",
+                "A 💡 and B 💡",
+                [.plain, .link, .plain, .link]
+            ),
+            (
+                "Note \(keepEncoded)",
+                "Note 💡",
+                [.plain, .link]
+            ),
+            (
+                "Fix `deep` bug \(keepExample) [[ref/chat/ux|UX chat]] [due:: 2026-08-28] #gtd",
+                "Fix deep bug 💡 UX chat [due:: 2026-08-28] #gtd",
+                [.plain, .code, .plain, .link, .plain, .link, .plain, .field, .plain, .tag]
+            ),
+        ]
+        for (source, text, kinds) in cases {
+            let parsed = CaptureAgendaInlineText(parsing: source)
+            XCTAssertEqual(parsed.text, text, "source: \(source)")
+            XCTAssertEqual(kindList(parsed), kinds, "source: \(source)")
+            assertTilesExactly(parsed)
+        }
+    }
+
+    func testMalformedAndForeignLinksStayLiteral() {
+        let cases = [
+            "[💡](",
+            "[💡]()",
+            "[💡](https://keep.google.com/u/0/#NOTE/example \"Open in Google Keep\"",
+            "[docs](https://example.com)",
+            "[note](https://keep.google.com/u/0/#NOTE/example \"Open in Google Keep\")",
+            "see [the docs](https://example.com/path)",
+        ]
+        for source in cases {
+            let parsed = CaptureAgendaInlineText(parsing: source)
+            XCTAssertEqual(parsed.text, source, "source: \(source)")
+            XCTAssertFalse(
+                parsed.segments.contains { $0.kind == .link },
+                "source: \(source)"
+            )
+            assertTilesExactly(parsed)
+        }
+    }
+
+    func testKeepSourceLinkInsideCodeSpanIsPreserved() {
+        let source = "`\(keepExample)`"
+        let parsed = CaptureAgendaInlineText(parsing: source)
+        XCTAssertEqual(parsed.text, keepExample)
+        XCTAssertEqual(kindList(parsed), [.code])
+        assertTilesExactly(parsed)
+        XCTAssertEqual(
+            CaptureAgendaInlineText.projectingKeepSourceLinks(source),
+            source
+        )
+    }
+
+    func testProjectingKeepSourceLinksLeavesUnrelatedText() {
+        let source = "Call dentist \(keepExample) and [[tasks|tasks file]]"
+        XCTAssertEqual(
+            CaptureAgendaInlineText.projectingKeepSourceLinks(source),
+            "Call dentist 💡 and [[tasks|tasks file]]"
+        )
+    }
+
+    func testKeepSourceLinkLeavesTaskDisplayTextUnchanged() {
+        let source = "Call dentist \(keepExample)"
+        XCTAssertEqual(TaskDisplayText(parsing: source).text, source)
+    }
 }
