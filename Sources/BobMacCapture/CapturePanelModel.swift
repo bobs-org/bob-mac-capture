@@ -496,7 +496,12 @@ final class CapturePanelModel: ObservableObject {
     /// plan can surface new row variants (chips, strips) that need
     /// measuring before the final plan.
     func refreshAgendaPlan(today: String? = nil) {
-        let day = today ?? agendaPlanningDay ?? CaptureAgendaStore.localToday()
+        // A published snapshot carries its own date, which is today on
+        // the store's clock: plan against it, not the pinned day, so a
+        // store pinned to another date (tests) still paints content.
+        let day =
+            today ?? agendaSourceSnapshot?.date ?? agendaPlanningDay
+            ?? CaptureAgendaStore.localToday()
         agendaPlanningDay = day
         guard agendaEnabled, agendaStore != nil else {
             agendaPresentation = nil
@@ -526,7 +531,10 @@ final class CapturePanelModel: ObservableObject {
     /// and the store has nothing current yet. Unsupported bobs keep
     /// the compact bar with no agenda at all.
     private func publishAgendaLoading(today: String) {
-        if agendaStore?.status == .unsupported {
+        // The store's `@Published` properties emit in `willSet`: read
+        // the cached emission, never the store, or the unsupported plan
+        // never clears (the sink runs before `status` lands).
+        if agendaSourceStatus == .unsupported {
             agendaPresentation = nil
             agendaPlan = nil
             return

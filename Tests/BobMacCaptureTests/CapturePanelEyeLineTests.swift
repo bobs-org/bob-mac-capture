@@ -157,7 +157,14 @@ final class CapturePanelEyeLineTests: XCTestCase {
         guard visibleFrame(for: panel) != nil else {
             throw XCTSkip("no visible frame on this host")
         }
-        let policy = CapturePanelContentHeightPolicy(displayScale: 1)
+        // The eye line is derived from the compact height with the
+        // observed safe-area inset and display scale, so the reference
+        // metrics must use those same inputs: a default policy centres
+        // a different height and the tops disagree by half the gap.
+        let policy = CapturePanelContentHeightPolicy(
+            safeAreaTopInset: model.titlebarSafeAreaInset,
+            displayScale: panel.screen?.backingScaleFactor ?? 1
+        )
         let compact = policy.metrics(
             editorHeight: 42,
             auxiliaryHeight: nil,

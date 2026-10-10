@@ -132,7 +132,10 @@ final class CaptureAgendaModelTests: XCTestCase {
 
     func testExpansionPinsTaskAndResetsOnHide() async throws {
         let model = try refreshModel()
-        await waitUntil { model.agendaPlan != nil }
+        // The loading plan publishes synchronously on subscribe, so a
+        // `plan != nil` wait passes before the fetch lands: content
+        // tests must wait for the store's snapshot instead.
+        await waitUntil { model.agendaStore?.snapshot != nil }
         model.agendaBudget = 100
         guard let task = model.agendaPresentation?.groups.first?.tasks.first else {
             XCTFail("expected a task in the default fixture")
@@ -164,7 +167,7 @@ final class CaptureAgendaModelTests: XCTestCase {
 
     func testSettleHookFiresOnPublish() async throws {
         let model = try refreshModel()
-        await waitUntil { model.agendaPlan != nil }
+        await waitUntil { model.agendaStore?.snapshot != nil }
         guard let task = model.agendaPresentation?.groups.first?.tasks.first else {
             XCTFail("expected a task in the default fixture")
             return
@@ -179,7 +182,7 @@ final class CaptureAgendaModelTests: XCTestCase {
 
     func testPresentationFollowsLatestSnapshot() async throws {
         let model = try refreshModel()
-        await waitUntil { model.agendaPlan != nil }
+        await waitUntil { model.agendaStore?.snapshot != nil }
         let first = model.agendaPresentation
         XCTAssertNotNil(first)
         XCTAssertEqual(model.agendaStore?.snapshot?.pomodoros.count, 4)
@@ -197,7 +200,7 @@ final class CaptureAgendaModelTests: XCTestCase {
 
     func testStaleRecoversOnNextSuccess() async throws {
         let model = try refreshModel()
-        await waitUntil { model.agendaPlan != nil }
+        await waitUntil { model.agendaStore?.snapshot != nil }
         XCTAssertEqual(model.agendaPresentation?.isStale, false)
         try swapAgendaClient(
             model,
@@ -217,7 +220,7 @@ final class CaptureAgendaModelTests: XCTestCase {
 
     private func readyModel() async throws -> CapturePanelModel {
         let model = try refreshModel()
-        await waitUntil { model.agendaPlan != nil }
+        await waitUntil { model.agendaStore?.snapshot != nil }
         XCTAssertTrue(model.agendaVisible)
         return model
     }
