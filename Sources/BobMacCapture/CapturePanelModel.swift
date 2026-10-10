@@ -1199,15 +1199,7 @@ final class CapturePanelModel: ObservableObject {
 
         if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             priorityRollSeed = nil
-            parseDiagnostics = []
-            completionResponse = nil
-            completionDraftSnapshot = nil
-            fileUnderActive = false
-            clearInlinePrompts()
-            previewState = .idle
-            statusText = ""
-            invalidateAnalysis()
-            invalidateRewrite()
+            resetAnalysisState()
             noteAgendaDraftCleared()
             return
         }
@@ -1683,6 +1675,7 @@ final class CapturePanelModel: ObservableObject {
     private func resetAnalysisState() {
         invalidateAnalysis()
         invalidateRewrite()
+        cancelInFlightExplicitPreview()
         parseDiagnostics = []
         completionResponse = nil
         completionDraftSnapshot = nil
@@ -1700,6 +1693,19 @@ final class CapturePanelModel: ObservableObject {
         previewResult = nil
         previewResults = []
         previewGlobalDestination = nil
+        closePendingText = nil
+        closePendingAction = "Close"
+    }
+
+    /// Explicit Preview shares `activeRequestID` with submit. Retire only
+    /// a preview request so a late callback cannot refill a cleared draft,
+    /// and leave an in-flight capture alone.
+    private func cancelInFlightExplicitPreview() {
+        guard isPreviewing else {
+            return
+        }
+        activeRequestID = nil
+        isPreviewing = false
     }
 
     private func clearInlinePrompts() {

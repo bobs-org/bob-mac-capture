@@ -1446,7 +1446,9 @@ every other open entry shows its `=` lineup number.
   draft returns to blank; the region then swaps with one height change. In-place
   agenda updates cross-fade (120 ms, off under Reduce Motion); height is never
   animated. Clearing to empty repaints the cached plan instantly and revalidates in
-  the background. The Now countdown (`12m left`, `ending now`, `overdue 8m`) ticks at
+  the background; an in-flight Preview, leftover preview card, error, or pending-list
+  notice is retired with the draft so none of them can keep the agenda hidden. The Now
+  countdown (`12m left`, `ending now`, `overdue 8m`) ticks at
   minute granularity while the panel is visible.
 - Setting and diagnostics. Settings › Agenda toggles "Show today's Pomodoros when the
   draft is empty" (on by default); while off, the store keeps refreshing for the
