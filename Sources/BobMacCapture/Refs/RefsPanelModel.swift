@@ -27,6 +27,8 @@ public enum RefsCommand: Equatable, Sendable {
     case activate(id: String)
     case showActions
     case scan
+    /// Scroll the right-hand inspector by half its viewport.
+    case scrollInspector(RefsInspectorScrollDirection)
     /// Swallows the key without acting (Shift-Tab while the panel is up).
     case consume
 }
@@ -210,6 +212,12 @@ public final class RefsPanelModel: ObservableObject {
     @Published public private(set) var scanNotice: RefsScanOutcome?
     /// The inspector's hydrated content, published per selected id.
     public let inspectorLoader: RefsInspectorLoader
+    /// Live inspector scroll requests. Not published: successive identical
+    /// presses must all arrive, and trackpad movement must not redraw the
+    /// panel model.
+    public var inspectorScrolls: AnyPublisher<RefsInspectorScrollDirection, Never> {
+        inspectorScrollSubject.eraseToAnyPublisher()
+    }
 
     public var panelDismisser: () -> Void = {}
     public var panelPresenter: () -> Void = {}
@@ -234,6 +242,9 @@ public final class RefsPanelModel: ObservableObject {
     private let opener: RefsOpening
     private let highlights: RefsHighlightsLocating
     private let pasteboard: RefsPasteboardWriting
+    private let inspectorScrollSubject = PassthroughSubject<
+        RefsInspectorScrollDirection, Never
+    >()
     private var subscriptions = Set<AnyCancellable>()
     private var pendingOpen: (id: String, target: RefsOpenTarget)?
     /// Set by ⌘R (and Retry) so the next completed refresh builds a fresh
@@ -365,7 +376,8 @@ public final class RefsPanelModel: ObservableObject {
     }
 
     /// Runs one command. Returns false only when the command had no row to
-    /// act on, so the key router can pass the key through.
+    /// act on, so the key router can pass the key through. Inspector scroll
+    /// commands always consume, including with no selected row.
     @discardableResult
     public func perform(_ command: RefsCommand) -> Bool {
         switch command {
@@ -443,6 +455,9 @@ public final class RefsPanelModel: ObservableObject {
             scanNoticeSeen = false
             selectionAtScanStart = selectedID
             _ = library.scan()
+            return true
+        case .scrollInspector(let direction):
+            inspectorScrollSubject.send(direction)
             return true
         case .consume:
             return true

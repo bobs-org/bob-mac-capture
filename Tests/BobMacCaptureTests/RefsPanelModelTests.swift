@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import XCTest
 
@@ -556,6 +557,53 @@ final class RefsPanelModelTests: XCTestCase {
         ))
     }
 
+    func testScrollInspectorPublishesRepeatedAndAlternatingCommands() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        let snapshot = PanelSnapshot(harness.model)
+        var received: [RefsInspectorScrollDirection] = []
+        let cancellable = harness.model.inspectorScrolls.sink {
+            received.append($0)
+        }
+
+        XCTAssertTrue(harness.model.perform(.scrollInspector(.down)))
+        XCTAssertTrue(harness.model.perform(.scrollInspector(.down)))
+        XCTAssertTrue(harness.model.perform(.scrollInspector(.up)))
+        XCTAssertTrue(harness.model.perform(.scrollInspector(.down)))
+
+        XCTAssertEqual(received, [.down, .down, .up, .down])
+        snapshot.assertUnchanged(harness.model)
+        XCTAssertEqual(harness.dismissed, 0)
+        XCTAssertTrue(harness.opener.highlightsOpens.isEmpty)
+        _ = cancellable
+    }
+
+    func testScrollInspectorConsumesWithoutSubscriberOrSelection() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        harness.model.installForPreviews(
+            items: [],
+            signals: RefsSignals(),
+            query: "keep",
+            scope: .papers,
+            selectedID: nil,
+            banner: RefsBanner(
+                kind: .warning,
+                message: "stay",
+                actions: [.copyDiagnostic]
+            ),
+            refreshState: .idle
+        )
+        let snapshot = PanelSnapshot(harness.model)
+
+        XCTAssertNil(harness.model.selectedID)
+        XCTAssertTrue(harness.model.perform(.scrollInspector(.down)))
+        XCTAssertTrue(harness.model.perform(.scrollInspector(.up)))
+        snapshot.assertUnchanged(harness.model)
+        XCTAssertEqual(harness.dismissed, 0)
+    }
+
     func testVisibleSelectionMovedKeepsUserSelection() async throws {
         let markerDir = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -754,6 +802,30 @@ final class RefsPanelModelTests: XCTestCase {
         failed.model.prepareForPresentation()
         XCTAssertEqual(failed.model.banner?.kind, .error)
         XCTAssertEqual(failed.model.banner?.actions, [.scanAgain, .copyDiagnostic])
+    }
+
+    private struct PanelSnapshot {
+        let query: String
+        let scope: RefScope
+        let selectedID: String?
+        let listing: RefsListing
+        let banner: RefsBanner?
+
+        init(_ model: RefsPanelModel) {
+            query = model.query
+            scope = model.scope
+            selectedID = model.selectedID
+            listing = model.listing
+            banner = model.banner
+        }
+
+        func assertUnchanged(_ model: RefsPanelModel) {
+            XCTAssertEqual(model.query, query)
+            XCTAssertEqual(model.scope, scope)
+            XCTAssertEqual(model.selectedID, selectedID)
+            XCTAssertEqual(model.listing, listing)
+            XCTAssertEqual(model.banner, banner)
+        }
     }
 
     // MARK: - Harness

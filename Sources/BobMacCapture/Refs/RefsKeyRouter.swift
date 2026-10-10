@@ -40,6 +40,8 @@ public enum RefsKeyRouter {
         static let five: UInt16 = 23
         static let r: UInt16 = 15
         static let s: UInt16 = 1
+        static let d: UInt16 = 2
+        static let u: UInt16 = 32
         static let j: UInt16 = 38
         static let k: UInt16 = 40
         static let n: UInt16 = 45
@@ -134,6 +136,16 @@ public enum RefsKeyRouter {
             return nil
         case KeyCode.j:
             return flags == .control ? .move(.next) : nil
+        case KeyCode.d:
+            if flags == .control {
+                return context.markedTextPresent ? nil : .scrollInspector(.down)
+            }
+            return nil
+        case KeyCode.u:
+            if flags == .control {
+                return context.markedTextPresent ? nil : .scrollInspector(.up)
+            }
+            return nil
         case KeyCode.one:
             return flags == .command ? .setScope(.all) : nil
         case KeyCode.two:

@@ -237,7 +237,7 @@ public final class RefsPanelController: NSObject {
         return panel
     }
 
-    private func makePanelIfNeeded() -> RefsPanel {
+    func makePanelIfNeeded() -> RefsPanel {
         if let panel {
             return panel
         }
@@ -264,18 +264,32 @@ public final class RefsPanelController: NSObject {
             localMonitor = NSEvent.addLocalMonitorForEvents(
                 matching: .keyDown
             ) { [weak self] event in
-                guard let self,
-                      self.panel?.isKeyWindow == true
-                else {
+                guard let self else {
                     return event
                 }
-                self.repairFilterFocusIfNeeded()
-                guard let command = self.command(for: event) else {
-                    return event
-                }
-                return self.model.perform(command) ? nil : event
+                return self.handleKeyDown(event)
             }
         }
+    }
+
+    /// The production monitor's key-window gate. Tests that need the
+    /// pass-through when Refs is not key call this; tests that drive
+    /// routed commands call `processKeyEvent`.
+    func handleKeyDown(_ event: NSEvent) -> NSEvent? {
+        guard panel?.isKeyWindow == true else {
+            return event
+        }
+        return processKeyEvent(event)
+    }
+
+    /// Focus repair plus router plus model. The local monitor calls this
+    /// only while the panel is key.
+    func processKeyEvent(_ event: NSEvent) -> NSEvent? {
+        repairFilterFocusIfNeeded()
+        guard let command = command(for: event) else {
+            return event
+        }
+        return model.perform(command) ? nil : event
     }
 
     private func command(for event: NSEvent) -> RefsCommand? {
@@ -359,6 +373,47 @@ public final class RefsPanelController: NSObject {
             }
         }
         return nil
+    }
+
+    static func findInspectorScrollView(in view: NSView?) -> NSScrollView? {
+        guard let view else {
+            return nil
+        }
+        if view.accessibilityIdentifier() == refsInspectorScrollAccessibilityIdentifier {
+            return firstScrollView(in: view)
+        }
+        for subview in view.subviews {
+            if let found = findInspectorScrollView(in: subview) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    private static func firstScrollView(in view: NSView) -> NSScrollView? {
+        if let scroll = view as? NSScrollView {
+            return scroll
+        }
+        for subview in view.subviews {
+            if let found = firstScrollView(in: subview) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    static func scrollViews(in view: NSView?) -> [NSScrollView] {
+        guard let view else {
+            return []
+        }
+        var found: [NSScrollView] = []
+        if let scroll = view as? NSScrollView {
+            found.append(scroll)
+        }
+        for subview in view.subviews {
+            found.append(contentsOf: scrollViews(in: subview))
+        }
+        return found
     }
 }
 

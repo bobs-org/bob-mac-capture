@@ -1268,7 +1268,8 @@ Diagnostic for hard failures.
 | Command-Return | Open the note in Obsidian |
 | Option-Return | Reveal the PDF in Finder |
 | Up/Down, Ctrl-P/Ctrl-N, Ctrl-K/Ctrl-J | Move (wraps) |
-| Page Up/Page Down | Page by one less than fits |
+| Page Up/Page Down | Page the results list by one less than fits |
+| Ctrl-D / Ctrl-U | Scroll the preview down/up by half its height; search keeps focus |
 | Command-Up/Command-Down, Home/End | First, last |
 | Option-Up/Option-Down | First row of the previous/next section (browse only) |
 | Command-1 … Command-5 | Scope All, Chats, Papers, Articles, Docs |
@@ -1279,9 +1280,12 @@ Diagnostic for hard failures.
 | Esc, Ctrl-[ | Banner, then query, then scope, then close |
 | Shift-Tab | Consumed (no-op) |
 
-Return while IME-composing passes through to the text system.
-Printable keys fall through to the search field. Result counts are
-announced 600 ms after typing stops, never on every keystroke.
+Return while IME-composing passes through to the text system. Ctrl-D
+and Ctrl-U also pass through while IME-composing; once recognized they
+consume the key even when the preview is hidden, short, empty, or
+already at an edge. Printable keys fall through to the search field.
+Result counts are announced 600 ms after typing stops, never on every
+keystroke.
 
 ### Opening Bob Refs
 

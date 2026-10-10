@@ -16,6 +16,8 @@ final class RefsKeyRouterTests: XCTestCase {
         static let a: UInt16 = 0
         static let r: UInt16 = 15
         static let s: UInt16 = 1
+        static let d: UInt16 = 2
+        static let u: UInt16 = 32
         static let j: UInt16 = 38
         static let k: UInt16 = 40
         static let n: UInt16 = 45
@@ -98,6 +100,43 @@ final class RefsKeyRouterTests: XCTestCase {
         XCTAssertEqual(route(KeyCode.end), .move(.last))
         XCTAssertNil(route(KeyCode.pageDown, .shift))
         XCTAssertNil(route(KeyCode.home, .command))
+    }
+
+    func testControlDAndUScrollInspectorInBrowseAndSearch() {
+        let browse = RefsKeyContext(listModeIsBrowse: true)
+        let search = RefsKeyContext(listModeIsBrowse: false)
+        XCTAssertEqual(
+            route(KeyCode.d, .control, context: browse),
+            .scrollInspector(.down)
+        )
+        XCTAssertEqual(
+            route(KeyCode.u, .control, context: browse),
+            .scrollInspector(.up)
+        )
+        XCTAssertEqual(
+            route(KeyCode.d, .control, context: search),
+            .scrollInspector(.down)
+        )
+        XCTAssertEqual(
+            route(KeyCode.u, .control, context: search),
+            .scrollInspector(.up)
+        )
+    }
+
+    func testControlDAndURequireExactControl() {
+        XCTAssertNil(route(KeyCode.d))
+        XCTAssertNil(route(KeyCode.u))
+        XCTAssertNil(route(KeyCode.d, .command))
+        XCTAssertNil(route(KeyCode.u, .option))
+        XCTAssertNil(route(KeyCode.d, [.control, .shift]))
+        XCTAssertNil(route(KeyCode.u, [.control, .command]))
+        XCTAssertNil(route(KeyCode.d, [.control, .option]))
+    }
+
+    func testControlDAndUPassThroughWhileComposing() {
+        let composing = RefsKeyContext(markedTextPresent: true)
+        XCTAssertNil(route(KeyCode.d, .control, context: composing))
+        XCTAssertNil(route(KeyCode.u, .control, context: composing))
     }
 
     func testOptionArrowsJumpSectionsInBrowseOnly() {

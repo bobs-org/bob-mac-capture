@@ -1,6 +1,12 @@
 import AppKit
+import Combine
 import RefsCore
 import SwiftUI
+
+/// Accessibility identifier of the live inspector scroll view, so
+/// hosted tests can find it beside the list scroll view.
+let refsInspectorScrollAccessibilityIdentifier =
+    "org.bobs.bob-mac-capture.refs-inspector-scroll"
 
 /// The full inspector column (§10): it fills instantly from the list
 /// item and upgrades lazily as the loader hydrates summaries,
@@ -18,6 +24,13 @@ struct RefsInspectorView: View {
     /// snapshots `ScrollView` content blank, so the live scroll view
     /// never appears in a fixture.
     var previewMode = false
+    /// Keyboard half-viewport requests. Design fixtures pass the
+    /// default empty publisher and never subscribe.
+    var scrollCommands: AnyPublisher<RefsInspectorScrollDirection, Never> =
+        Empty<RefsInspectorScrollDirection, Never>().eraseToAnyPublisher()
+
+    @State private var planner = RefsInspectorScrollPlanner()
+    @State private var scrollPosition = ScrollPosition(idType: Int.self)
 
     var body: some View {
         if previewMode {
@@ -26,6 +39,69 @@ struct RefsInspectorView: View {
             ScrollView(.vertical) {
                 column
             }
+            .accessibilityIdentifier(refsInspectorScrollAccessibilityIdentifier)
+            .scrollPosition($scrollPosition)
+            .onScrollGeometryChange(for: RefsInspectorScrollGeometry.self) {
+                geometry in
+                Self.projection(geometry)
+            } action: { _, new in
+                applyGeometry(new)
+            }
+            .onScrollPhaseChange { _, newPhase, context in
+                if newPhase == .interacting || newPhase == .decelerating {
+                    var next = planner
+                    let measured = Self.projection(context.geometry)
+                    next.beginUserScroll(at: measured.offsetY)
+                    next.applyGeometry(measured)
+                    planner = next
+                }
+            }
+            .onReceive(scrollCommands) { direction in
+                scroll(direction)
+            }
+            .onDisappear {
+                planner.reset()
+            }
+        }
+    }
+
+    private func applyGeometry(_ new: RefsInspectorScrollGeometry) {
+        var next = planner
+        let clamp = next.applyGeometry(new)
+        planner = next
+        if let clamp {
+            jump(to: clamp)
+        }
+    }
+
+    private func scroll(_ direction: RefsInspectorScrollDirection) {
+        var next = planner
+        let target = next.command(direction)
+        planner = next
+        if let target {
+            jump(to: target)
+        }
+    }
+
+    private static func projection(
+        _ geometry: ScrollGeometry
+    ) -> RefsInspectorScrollGeometry {
+        RefsInspectorScrollGeometry(
+            offsetY: geometry.contentOffset.y,
+            contentHeight: geometry.contentSize.height,
+            viewportHeight: geometry.containerSize.height,
+            topInset: geometry.contentInsets.top,
+            bottomInset: geometry.contentInsets.bottom
+        )
+    }
+
+    private func jump(to y: CGFloat) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            var position = scrollPosition
+            position.scrollTo(y: y)
+            scrollPosition = position
         }
     }
 
