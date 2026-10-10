@@ -170,6 +170,12 @@ final class CapturePanelEyeLineTests: XCTestCase {
         )
         controller.receiveContentMetrics(settle)
         controller.replayLatestContentMetricsForPresentation()
+        // TEMP-DIAG: settled inputs for CI failure 607 vs 611.
+        print(
+            "TEMP-DIAG settle inset=\(model.titlebarSafeAreaInset)"
+                + " settleIdeal=\(settle.idealContentHeight)"
+                + " panelFrame=\(panel.frame)"
+        )
         model.footerHeight = 40
         // The eye line is derived from the compact height with the
         // observed safe-area inset and display scale, so the reference
@@ -192,6 +198,13 @@ final class CapturePanelEyeLineTests: XCTestCase {
         let reference = CapturePanelController.makePanel()
         reference.setFrame(panel.frame, display: false)
         reference.center()
+        // TEMP-DIAG: reference inputs for CI failure 607 vs 611.
+        print(
+            "TEMP-DIAG compact inset=\(model.titlebarSafeAreaInset)"
+                + " compactIdeal=\(compact.idealContentHeight)"
+                + " panelFrame=\(panel.frame)"
+                + " referenceFrame=\(reference.frame)"
+        )
         XCTAssertEqual(
             panel.frame.maxY,
             reference.frame.maxY,

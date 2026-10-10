@@ -234,6 +234,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     private var pendingRecenter = false
     private var isApplyingContentHeight = false
     private var metricsArrivedDuringApplication = false
+    /// Guards the eye-line probe: while it sizes the hidden panel to
+    /// the compact height, `windowWillResize` must not clamp that
+    /// measuring resize to the last applied height.
+    private var measuringEyeLine = false
     private var panelPlacement = CapturePanelPlacement()
 
     init(model: CapturePanelModel) {
@@ -292,6 +296,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        if measuringEyeLine {
+            return frameSize
+        }
         guard let panel, let appliedContentHeight else {
             return frameSize
         }
@@ -353,11 +360,14 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return
         }
 
-        updateAgendaBudget()
-
         let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
         updateAvailableScreenHeight(visibleFrame?.height)
         updateTitlebarSafeAreaInset()
+        // The budget derives the eye line from the titlebar inset,
+        // so refresh the inset first (mirroring `makePanelIfNeeded`):
+        // deriving from the pre-layout inset centres a different
+        // height and the tops disagree by half the gap.
+        updateAgendaBudget()
         let sizer = CapturePanelWindowSizer(
             maximumContentHeight: visibleFrame == nil ? CapturePanelLayout.panelMaximumContentHeight : nil,
             displayScale: panel.screen?.backingScaleFactor ?? 1
@@ -475,11 +485,22 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             width: savedMax.width,
             height: max(savedMax.height, compact)
         )
+        // TEMP-DIAG: eye-line probe inputs for CI failure 607 vs 611.
+        let frameBefore = panel.frame
+        measuringEyeLine = true
         panel.setContentSize(
             NSSize(width: panel.frame.width, height: compact)
         )
         panel.center()
+        measuringEyeLine = false
         let top = Double(panel.frame.maxY)
+        print(
+            "TEMP-DIAG eyeLineTop compact=\(compact)"
+                + " inset=\(model.titlebarSafeAreaInset)"
+                + " frameBefore=\(frameBefore)"
+                + " frameAfter=\(panel.frame)"
+                + " top=\(top)"
+        )
         panel.contentMinSize = savedMin
         panel.contentMaxSize = savedMax
         if model.footerHeight > 1 {
@@ -495,7 +516,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             safeAreaTopInset: model.titlebarSafeAreaInset,
             displayScale: panel?.screen?.backingScaleFactor ?? 1
         )
-        let editorMinimum = CaptureEditorHeightPolicy().minimumHeight
+        let editorMinimum = CaptureEditorHeightPolicy(
+            displayScale: panel?.screen?.backingScaleFactor ?? 1
+        ).minimumHeight
         // The footer measures around 40 pt; until SwiftUI reports it,
         // the fallback keeps the first eye line close to the real one.
         let footer = model.footerHeight > 1 ? model.footerHeight : 40
