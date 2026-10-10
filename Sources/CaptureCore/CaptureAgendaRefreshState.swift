@@ -61,6 +61,14 @@ public struct CaptureAgendaRefreshState: Sendable {
         return followUp ? .followUp : .done
     }
 
+    /// True while the generation still owns the in-flight refresh.
+    /// A late result from an old executable (after Recheck Bob or a
+    /// reset) presents a stale generation and must be discarded
+    /// without touching capability, snapshot, or status.
+    public func isCurrentGeneration(_ generation: UInt64) -> Bool {
+        generation == self.generation
+    }
+
     /// Drops in-flight results, queued follow-ups, cached bytes, and the
     /// capability verdict, so the next refresh retries `--tasks` fresh.
     public mutating func reset() {

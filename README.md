@@ -315,7 +315,8 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
   reports rendered editor, auxiliary, and footer metrics. After that, the window's
   height tracks measured content as the editor grows with the draft, the completion
   list appears, the live preview arrives, and errors show or clear. Every show
-  places the panel at a fixed eye line: the compact panel's top is computed once per
+  places the panel at a fixed eye line: the compact panel's top is what AppKit's
+  center() gives it, cached once per
   screen, so the input line lands in the same place with or without the agenda or a
   retained draft. The agenda never moves the editor — its auxiliary height is capped
   at the below-eye-line budget — and typed previews keep growing downward from the

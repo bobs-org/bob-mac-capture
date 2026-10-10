@@ -104,24 +104,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &agendaCancellables)
         // The Agenda diagnostic follows the store live, so Settings
         // shows the last refresh time, the refresh failure, or the
-        // old-bob upgrade hint without polling.
+        // old-bob upgrade hint without polling. The pure function
+        // reads the emitted pair, never `willSet`-stale properties.
         settings.agendaDiagnostic = agendaStore.diagnosticLine()
         agendaStore.$status
+            .combineLatest(agendaStore.$lastRefreshedAt)
             .dropFirst()
-            .sink { [weak self] _ in
-                guard let self else {
-                    return
-                }
-                self.settings.agendaDiagnostic = self.agendaStore?.diagnosticLine() ?? ""
-            }
-            .store(in: &agendaCancellables)
-        agendaStore.$lastRefreshedAt
-            .dropFirst()
-            .sink { [weak self] _ in
-                guard let self else {
-                    return
-                }
-                self.settings.agendaDiagnostic = self.agendaStore?.diagnosticLine() ?? ""
+            .sink { [weak self] status, lastRefreshedAt in
+                self?.settings.agendaDiagnostic =
+                    CaptureAgendaStore.diagnosticLine(
+                        status: status,
+                        lastRefreshedAt: lastRefreshedAt
+                    )
             }
             .store(in: &agendaCancellables)
         panelController = CapturePanelController(model: model)
@@ -681,30 +675,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsPresentation.present()
     }
 
-    /// Resets the agenda store when the bob executable or vault root
-    /// setting changes, so a new executable retries `--tasks` and a new
-    /// vault never shows the old vault's agenda.
+    /// Reconfigures the bob client when the bob executable or vault
+    /// root setting changes, so a new executable retries `--tasks`
+    /// and a new vault never shows the old vault's agenda. Either
+    /// setting alone fires; no other path reconfigures the client on
+    /// these settings.
     func observeBobSettings() {
         settings.$bobDirectory
             .dropFirst()
             .removeDuplicates()
-            .combineLatest(
-                settings.$bobExecutableOverride.dropFirst().removeDuplicates()
+            .map { _ in () }
+            .merge(
+                with: settings.$bobExecutableOverride
+                    .dropFirst()
+                    .removeDuplicates()
+                    .map { _ in () }
             )
             .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
-            .sink { [weak self] _, _ in
-                self?.agendaStore?.reset()
+            .sink { [weak self] _ in
+                self?.reconfigureBobClient()
             }
             .store(in: &agendaCancellables)
     }
 
-    @objc private func recheckBob() {
+    /// The shared client reconfiguration behind Recheck Bob and bob
+    /// settings changes: a fresh process client reaches the panel
+    /// model and the agenda store, the vault watcher restarts for the
+    /// current root, and the store resets before refreshing.
+    private func reconfigureBobClient() {
         configureProcessClient()
         panelModel?.processClient = processClient
         agendaStore?.processClient = processClient
         agendaStore?.reset()
-        registerHotKey()
         configureVaultWatcher()
+    }
+
+    @objc private func recheckBob() {
+        reconfigureBobClient()
+        registerHotKey()
         // Recheck re-points the Refs fetcher (via configureProcessClient)
         // and restarts its watcher for the current vault root, plus a
         // snapshot refresh.

@@ -4,8 +4,10 @@ import Foundation
 /// without the agenda or a retained draft, puts the input line in the
 /// same place.
 ///
-/// The eye line is the top edge `center()` gives the _compact_ panel
-/// (editor + footer, no auxiliary region). Shows place the panel at
+/// The eye line is the top edge AppKit's `center()` gives the
+/// _compact_ panel (editor + footer, no auxiliary region). The
+/// controller derives it from the hidden panel itself and stores it
+/// here, cached per screen visible frame; shows place the panel at
 /// that top with the target height, so the agenda grows downward from
 /// the same input line instead of re-centring. Typed previews keep
 /// today's clamp and slide-up rule on top of it.
@@ -36,22 +38,23 @@ public struct CapturePanelPlacement: Equatable, Sendable {
 
     public init() {}
 
-    /// The eye-line top for a screen: where `center()` puts the top of
-    /// the compact panel. Compact means the one-line editor plus the
-    /// footer and chrome, with no auxiliary region.
-    public mutating func eyeLineTop(
-        compactContentHeight: Double,
-        chromeHeight: Double,
+    /// Records the eye-line top the controller read back from the
+    /// centred compact panel on this screen.
+    public mutating func noteCompactTop(
+        _ top: Double,
         visibleFrame: VisibleFrame
-    ) -> Double {
-        if let cachedFrame, let cachedTop, cachedFrame == visibleFrame {
-            return cachedTop
-        }
-        let frameHeight = compactContentHeight + chromeHeight
-        let top = visibleFrame.minY + (visibleFrame.height - frameHeight) / 2 + frameHeight
+    ) {
         cachedFrame = visibleFrame
         cachedTop = top
-        return top
+    }
+
+    /// The recorded top for this screen, if the controller derived it
+    /// since the last invalidate.
+    public func cachedTop(for visibleFrame: VisibleFrame) -> Double? {
+        guard let cachedFrame, let cachedTop, cachedFrame == visibleFrame else {
+            return nil
+        }
+        return cachedTop
     }
 
     /// The last cached top without computing, so callers can tell a

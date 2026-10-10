@@ -392,7 +392,7 @@ final class CaptureAgendaFitPlannerTests: XCTestCase {
 
     // MARK: - Strip bound, overflow, determinism
 
-    func testStripBudgetsTheFullStripHeight() {
+    func testStripFallsBackToFullStripHeight() {
         let presentation = standardPresentation()
         var heights = uniformHeights(presentation, height: 1)
         heights[presentation.stripFullRow.key] = 500

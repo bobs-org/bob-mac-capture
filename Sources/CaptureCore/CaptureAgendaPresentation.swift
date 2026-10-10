@@ -40,19 +40,22 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
     public let depth: Int
     public let lineLimit: Int
     public let hasAccessory: Bool
+    public let notesChip: String?
 
     public init(
         kind: CaptureAgendaRowKind,
         text: String,
         depth: Int,
         lineLimit: Int,
-        hasAccessory: Bool
+        hasAccessory: Bool,
+        notesChip: String? = nil
     ) {
         self.kind = kind
         self.text = text
         self.depth = depth
         self.lineLimit = lineLimit
         self.hasAccessory = hasAccessory
+        self.notesChip = notesChip
     }
 }
 
@@ -70,6 +73,9 @@ public struct CaptureAgendaRow: Equatable, Sendable {
     public let statusGlyph: String?
     public let accessibilityLabel: String?
     public let accessoryAccessibilityLabel: String?
+    /// A session-notes chip rendered as its own capsule button next
+    /// to the header's normal trailing accessory, never inside it.
+    public let notesChip: String?
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -80,7 +86,8 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         accessoryText: String? = nil,
         statusGlyph: String? = nil,
         accessibilityLabel: String? = nil,
-        accessoryAccessibilityLabel: String? = nil
+        accessoryAccessibilityLabel: String? = nil,
+        notesChip: String? = nil
     ) {
         self.kind = kind
         self.text = text
@@ -91,12 +98,14 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         self.statusGlyph = statusGlyph
         self.accessibilityLabel = accessibilityLabel
         self.accessoryAccessibilityLabel = accessoryAccessibilityLabel
+        self.notesChip = notesChip
         key = CaptureAgendaRowKey(
             kind: kind,
             text: text,
             depth: depth,
             lineLimit: lineLimit,
-            hasAccessory: numberBadge != nil || accessoryText != nil
+            hasAccessory: numberBadge != nil || accessoryText != nil,
+            notesChip: notesChip
         )
     }
 }
@@ -204,8 +213,9 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     /// The title row's stale suffix, shared by the presentation and the
     /// view's stale-icon split. Never a ledger fact, only wording.
     public static let staleSuffix = "Couldn't refresh"
-    /// The strip with every Later name, used only to budget the strip's
-    /// upper bound; the rendered strip lists the current members.
+    /// The strip with every Later name: the unmeasured fallback for
+    /// budgeting the strip; the rendered strip lists the current
+    /// members.
     public let stripFullRow: CaptureAgendaRow
 
     public init(
@@ -643,8 +653,12 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         let id = CaptureAgendaUnitID.task(ledgerLine: item.ledgerLine)
         let title = item.text ?? item.blockLink
         let status = item.statusName ?? "Unknown"
-        let labelNumber = item.index.map(String.init) ?? "\(number)"
-        let baseLabel = "Task \(labelNumber), \(status), \(title)"
+        let baseLabel: String
+        if let index = item.index {
+            baseLabel = "Task \(index), \(status), \(title)"
+        } else {
+            baseLabel = "Task, \(status), \(title)"
+        }
         if item.resolution == .resolved, isDoneStatus(item.statusType) {
             let row = CaptureAgendaRow(
                 kind: .struck,
@@ -670,7 +684,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                 kind: .warning,
                 text: text,
                 depth: 0,
-                lineLimit: 2,
+                lineLimit: 1,
                 accessibilityLabel: warning == nil
                     ? "Warning, \(item.blockLink)"
                     : "Warning, \(warning ?? "")"
@@ -776,16 +790,18 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         let noLogs = [noLogsHeadline] + ledgerRows + plainChildren
             + (truncationRow.map { [$0] } ?? [])
         let hiddenCount = item.ledgerNotes.count + item.lines.count + item.linesTruncated
+        let hiddenChip: String? = hiddenCount > 0 ? "+\(hiddenCount) lines" : nil
+        let hiddenLabel: String? = hiddenCount > 0 ? "Show \(hiddenCount) hidden lines" : nil
         let oneLine = CaptureAgendaRow(
             kind: .taskHeadline,
             text: title,
             depth: 0,
             lineLimit: CaptureAgendaLayoutMetrics.oneLineLimit,
             numberBadge: item.index,
-            accessoryText: joinAccessories(["+\(hiddenCount) lines", caption]),
+            accessoryText: joinAccessories([hiddenChip, caption]),
             statusGlyph: item.statusSymbol,
             accessibilityLabel: baseLabel,
-            accessoryAccessibilityLabel: "Show \(hiddenCount) hidden lines"
+            accessoryAccessibilityLabel: hiddenLabel
         )
         return CaptureAgendaTask(
             id: id,

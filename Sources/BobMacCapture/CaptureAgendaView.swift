@@ -137,9 +137,9 @@ struct CaptureAgendaRowsView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        // In-place updates cross-fade; height is never animated.
-        // Reduce Motion disables the fade.
-        .animation(agendaUpdateAnimation, value: plan.rows)
+        // In-place updates cross-fade opacity only; height is never
+        // animated. Reduce Motion disables the fade.
+        .transition(reduceMotion ? .identity : .opacity)
         .onGeometryChange(for: CGFloat.self) { geometry in
             geometry.size.width
         } action: { width in
@@ -148,10 +148,6 @@ struct CaptureAgendaRowsView: View {
             }
             onContentWidthChange(width)
         }
-    }
-
-    private var agendaUpdateAnimation: Animation? {
-        reduceMotion ? nil : .easeOut(duration: CaptureAgendaHold.updateFadeSeconds)
     }
 }
 
@@ -289,6 +285,7 @@ struct CaptureAgendaGroupView: View {
     let targets: [Int: CaptureAgendaUnitID]
     let baseIndex: Int
     var onExpand: (CaptureAgendaUnitID) -> Void = { _ in }
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     var body: some View {
         let stack = VStack(alignment: .leading, spacing: 0) {
@@ -319,7 +316,9 @@ struct CaptureAgendaGroupView: View {
             }
             .padding(CGFloat(CaptureAgendaLayoutMetrics.nowCardInnerPadding))
             .background(
-                CaptureEditorPalette.color(for: .pomodoroStart).opacity(0.06),
+                CaptureEditorPalette.color(for: .pomodoroStart).opacity(
+                    colorSchemeContrast == .increased ? 0.12 : 0.06
+                ),
                 in: RoundedRectangle(
                     cornerRadius: CGFloat(CaptureAgendaLayoutMetrics.cornerRadius)
                 )
@@ -371,6 +370,9 @@ struct CaptureAgendaRowView: View {
     /// row whose presentation names an expansion action, plus the
     /// strip, truncation, and one-row rows, which always expand.
     static func showsChip(for row: CaptureAgendaRow) -> Bool {
+        if row.notesChip != nil {
+            return true
+        }
         if row.accessoryAccessibilityLabel != nil {
             return true
         }
@@ -719,12 +721,24 @@ struct CaptureAgendaRowView: View {
 
     @ViewBuilder
     private var headerAccessoryView: some View {
-        if expands {
+        if let chip = row.notesChip {
+            HStack(spacing: 6) {
+                plainHeaderAccessoryView
+                chipButton(text: chip, label: "Show \(chip)")
+            }
+        } else if expands {
             chipButton(
                 text: row.accessoryText ?? "",
                 label: row.accessoryAccessibilityLabel ?? row.accessoryText ?? ""
             )
-        } else if role == .next, row.accessoryText == "= starts it" {
+        } else {
+            plainHeaderAccessoryView
+        }
+    }
+
+    @ViewBuilder
+    private var plainHeaderAccessoryView: some View {
+        if role == .next, row.accessoryText == "= starts it" {
             HStack(spacing: 0) {
                 Text("= ")
                     .font(.callout.monospacedDigit())

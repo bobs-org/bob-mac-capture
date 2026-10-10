@@ -157,6 +157,62 @@ final class CaptureAgendaStoreTests: XCTestCase {
         XCTAssertNil(store.currentTaskLinkCount)
     }
 
+    func testUnchangedRefreshRestoresCountAfterFailure() async throws {
+        let store = try makeStore()
+        store.refresh(reason: .show)
+        await waitUntil { store.currentTaskLinkCount == 3 }
+        store.processClient = try makeClient(
+            environment: ["FAKE_BOB_AGENDA_FAIL": "1"]
+        )
+        store.refresh(reason: .show)
+        await waitUntil { self.isStale(store.status) }
+        XCTAssertNil(store.currentTaskLinkCount)
+        // The failure keeps the raw bytes, so the byte-identical
+        // refresh takes the `.unchanged` branch and re-publishes the
+        // last good snapshot's count.
+        store.processClient = try makeClient()
+        store.refresh(reason: .show)
+        await waitUntil { store.currentTaskLinkCount == 3 }
+        XCTAssertEqual(store.status, .ready)
+    }
+
+    func testDiagnosticLineCoversStates() {
+        XCTAssertEqual(
+            CaptureAgendaStore.diagnosticLine(
+                status: .unsupported,
+                lastRefreshedAt: nil
+            ),
+            "Update bob to show the agenda (needs `capture-pomodoros --tasks`)"
+        )
+        XCTAssertEqual(
+            CaptureAgendaStore.diagnosticLine(
+                status: .stale("boom"),
+                lastRefreshedAt: nil
+            ),
+            "Couldn't refresh: boom"
+        )
+        XCTAssertEqual(
+            CaptureAgendaStore.diagnosticLine(
+                status: .failed("boom"),
+                lastRefreshedAt: nil
+            ),
+            "Couldn't refresh: boom"
+        )
+        XCTAssertEqual(
+            CaptureAgendaStore.diagnosticLine(
+                status: .idle,
+                lastRefreshedAt: nil
+            ),
+            "Loading today…"
+        )
+        XCTAssertTrue(
+            CaptureAgendaStore.diagnosticLine(
+                status: .ready,
+                lastRefreshedAt: Date()
+            ).hasPrefix("Last refreshed")
+        )
+    }
+
     func testYesterdaySnapshotStaysHidden() async throws {
         let store = try makeStore(
             environment: ["FAKE_BOB_AGENDA_FIXTURE": "agenda-yesterday.json"]
@@ -235,6 +291,9 @@ final class CaptureAgendaStoreTests: XCTestCase {
         store.refresh(reason: .show)
         await waitUntil { store.status == .ready }
         try? await Task.sleep(nanoseconds: 300_000_000)
+        // Every recorded bob invocation counts, not just `--tasks`
+        // lines: one show costs at most one fetch however entered.
+        XCTAssertEqual(recordArgv(recordURL).count, 1)
         XCTAssertEqual(
             recordArgv(recordURL).filter { $0.contains("--tasks") }.count,
             1

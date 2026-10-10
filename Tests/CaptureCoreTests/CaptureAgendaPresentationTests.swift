@@ -422,6 +422,43 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         let task = presentation.groups[0].tasks[0]
         XCTAssertEqual(task.fullRows.map(\.kind), [.warning])
         XCTAssertEqual(task.fullRows[0].text, "[[tasks.md#^block]] — Note not found")
+        XCTAssertEqual(task.fullRows[0].lineLimit, 1)
+    }
+
+    func testNilIndexOmitsPositionalNumber() {
+        let presentation = present(makeSnapshot(entries: [
+            makeEntry(line: 3, items: [makeItem(ledgerLine: 4, index: nil)]),
+        ]))
+        XCTAssertEqual(
+            presentation.groups[0].tasks[0].fullRows[0].accessibilityLabel,
+            "Task, Todo, Task title"
+        )
+    }
+
+    func testOneLineRowOmitsZeroHiddenChip() {
+        let presentation = present(makeSnapshot(entries: [
+            makeEntry(line: 3, items: [makeItem(ledgerLine: 4)]),
+        ]))
+        let oneLine = presentation.groups[0].tasks[0].oneLineRow
+        XCTAssertNil(oneLine.accessoryText)
+        XCTAssertNil(oneLine.accessoryAccessibilityLabel)
+    }
+
+    func testFoldedHeaderKeepsTimeAndChipsNotesSeparately() {
+        let presentation = present(makeSnapshot(entries: [
+            makeEntry(
+                line: 3,
+                notes: [makeLine("epic on test"), makeLine("another note")],
+                items: [makeItem(ledgerLine: 4)]
+            ),
+        ]))
+        let group = presentation.groups[0]
+        XCTAssertEqual(group.sessionNotesChip, "2 notes")
+        let folded = CaptureAgendaFitPlanner.headerWithNotesChip(group: group)
+        XCTAssertEqual(folded.accessoryText, group.headerRow.accessoryText)
+        XCTAssertEqual(folded.notesChip, "2 notes")
+        XCTAssertEqual(folded.key.notesChip, "2 notes")
+        XCTAssertNotEqual(folded, group.headerRow)
     }
 
     func testRepeatsFoldToADuplicateLine() {

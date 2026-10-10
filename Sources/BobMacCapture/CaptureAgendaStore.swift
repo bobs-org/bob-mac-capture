@@ -181,6 +181,16 @@ public final class CaptureAgendaStore: ObservableObject {
     /// the refresh failure, or the old-bob upgrade hint. Metadata only,
     /// never titles or paths.
     public func diagnosticLine() -> String {
+        Self.diagnosticLine(status: status, lastRefreshedAt: lastRefreshedAt)
+    }
+
+    /// The diagnostic as a pure function of the emitted status and
+    /// refresh time, so subscribers feed it combineLatest values
+    /// instead of reading `willSet`-stale properties.
+    public static func diagnosticLine(
+        status: CaptureAgendaStoreStatus,
+        lastRefreshedAt: Date?
+    ) -> String {
         switch status {
         case .unsupported:
             return "Update bob to show the agenda (needs `capture-pomodoros --tasks`)"
@@ -222,6 +232,13 @@ public final class CaptureAgendaStore: ObservableObject {
             lastRefreshedAt = now()
             if hasCurrentSnapshot {
                 status = .ready
+                // A transient failure nils the count while keeping the
+                // bytes, so the next byte-identical refresh re-publishes
+                // the last good snapshot's count through the idempotent
+                // `publish(_:)`.
+                if let lastGoodSnapshot {
+                    publish(lastGoodSnapshot)
+                }
             }
         case .changed(let fetched, let bytes):
             state.lastBytes = bytes
@@ -262,7 +279,12 @@ public final class CaptureAgendaStore: ObservableObject {
             // An old bob without `--tasks`: hide the agenda, remember not
             // to retry it, and keep the count on the plain lane only. The
             // generation stays open across the plain call, so one `end`
-            // still covers the whole refresh unit.
+            // still covers the whole refresh unit. A late result from an
+            // old executable after Recheck Bob or a reset presents a
+            // stale generation and is discarded untouched.
+            guard state.isCurrentGeneration(generation) else {
+                return
+            }
             state.capability = .unsupported
             snapshot = nil
             status = .unsupported

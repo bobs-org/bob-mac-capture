@@ -145,6 +145,18 @@ final class CaptureAgendaRefreshFilterTests: XCTestCase {
                 flags: [],
                 expected: true
             ),
+            Case(
+                name: "git directory removal is irrelevant",
+                paths: ["/vault/.git/rebase-merge"],
+                flags: [.itemRemoved, .itemIsDir],
+                expected: false
+            ),
+            Case(
+                name: "visible folder rename is relevant",
+                paths: ["/vault/projects/renamed"],
+                flags: [.itemRenamed, .itemIsDir],
+                expected: true
+            ),
         ]
         for testCase in cases {
             let batch = VaultChangeBatch(

@@ -64,8 +64,9 @@ public struct CaptureAgendaPlan: Equatable, Sendable {
 /// 2. `noLogs`: Later groups (last to first), then Next, then Now/Open.
 /// 3. `oneLineTasks`: Later groups (last to first).
 /// 4. `oneRow`: Later groups (last to first).
-/// 5. `inStrip`: Later groups (last to first), budgeted at the strip's
-///    measured height with all Later names (an upper bound).
+/// 5. `inStrip`: Later groups (last to first), budgeted at the
+///    rendered strip's measured height, with the full-strip upper
+///    bound as the unmeasured fallback.
 /// 6. `oneLineTasks`: Next, then Now/Open (last to first).
 /// 7. Overflow: the most-folded plan is marked `overflows` and the view
 ///    scrolls with a bottom fade and an `N more` cue.
@@ -308,22 +309,17 @@ public enum CaptureAgendaFitPlanner {
             return group.headerRow
         }
         let base = group.headerRow
-        let accessory: String?
-        if let current = base.accessoryText {
-            accessory = "\(current) · \(chip)"
-        } else {
-            accessory = chip
-        }
         return CaptureAgendaRow(
             kind: base.kind,
             text: base.text,
             depth: base.depth,
             lineLimit: base.lineLimit,
             numberBadge: base.numberBadge,
-            accessoryText: accessory,
+            accessoryText: base.accessoryText,
             statusGlyph: base.statusGlyph,
             accessibilityLabel: base.accessibilityLabel,
-            accessoryAccessibilityLabel: "Show \(chip)"
+            accessoryAccessibilityLabel: base.accessoryAccessibilityLabel,
+            notesChip: chip
         )
     }
 

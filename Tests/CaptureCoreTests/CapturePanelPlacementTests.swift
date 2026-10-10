@@ -7,53 +7,41 @@ final class CapturePanelPlacementTests: XCTestCase {
         CapturePanelPlacement.VisibleFrame(minX: 0, minY: 0, width: 1440, height: height)
     }
 
-    func testEyeLineIsCenteredCompactTop() {
+    func testStoresProvidedTop() {
         var placement = CapturePanelPlacement()
-        // A 200 pt compact panel on a 900 pt screen centers at
-        // y = 350 with height 200, so the top is 550.
-        let top = placement.eyeLineTop(
-            compactContentHeight: 180,
-            chromeHeight: 20,
-            visibleFrame: frame()
-        )
-        XCTAssertEqual(top, 550)
+        XCTAssertNil(placement.cachedTop(for: frame()))
+        // The controller reads this top back from the centred compact
+        // panel; the placement only remembers it.
+        placement.noteCompactTop(550, visibleFrame: frame())
+        XCTAssertEqual(placement.cachedTop(for: frame()), 550)
     }
 
-    func testEyeLineCachesPerVisibleFrame() {
+    func testCachesPerVisibleFrame() {
         var placement = CapturePanelPlacement()
-        let first = placement.eyeLineTop(
-            compactContentHeight: 180,
-            chromeHeight: 20,
-            visibleFrame: frame()
+        placement.noteCompactTop(550, visibleFrame: frame())
+        // A new note on the same screen overwrites: every show puts
+        // the input line in one place.
+        placement.noteCompactTop(560, visibleFrame: frame())
+        XCTAssertEqual(placement.cachedTop(for: frame()), 560)
+        // A new screen has no recorded top until derived; noting it
+        // replaces the single cached screen.
+        XCTAssertNil(placement.cachedTop(for: frame(height: 1080)))
+        placement.noteCompactTop(640, visibleFrame: frame(height: 1080))
+        XCTAssertEqual(
+            placement.cachedTop(for: frame(height: 1080)),
+            640
         )
-        // A different compact height on the same screen reuses the
-        // cached top: every show puts the input line in one place.
-        let second = placement.eyeLineTop(
-            compactContentHeight: 400,
-            chromeHeight: 20,
-            visibleFrame: frame()
-        )
-        XCTAssertEqual(first, second)
-        // A new screen re-derives the line.
-        let moved = placement.eyeLineTop(
-            compactContentHeight: 400,
-            chromeHeight: 20,
-            visibleFrame: frame(height: 1080)
-        )
-        XCTAssertNotEqual(moved, second)
+        XCTAssertNil(placement.cachedTop(for: frame()))
     }
 
     func testInvalidateForgetsCachedTop() {
         var placement = CapturePanelPlacement()
         XCTAssertNil(placement.lastCachedTop)
-        _ = placement.eyeLineTop(
-            compactContentHeight: 180,
-            chromeHeight: 20,
-            visibleFrame: frame()
-        )
+        placement.noteCompactTop(550, visibleFrame: frame())
         XCTAssertNotNil(placement.lastCachedTop)
         placement.invalidate()
         XCTAssertNil(placement.lastCachedTop)
+        XCTAssertNil(placement.cachedTop(for: frame()))
     }
 
     func testOriginYPreservesTopEdge() {

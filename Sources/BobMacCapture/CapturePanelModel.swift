@@ -347,6 +347,12 @@ final class CapturePanelModel: ObservableObject {
 
     private let agendaMeasurer = CaptureAgendaRowMeasurer()
     private var agendaSnapshotCancellable: AnyCancellable?
+    private var agendaDayChangeCancellable: AnyCancellable?
+
+    /// Whether the panel itself is ordered front. The countdown
+    /// ticker mounts only while this is true, so a hidden panel never
+    /// re-plans every minute.
+    @Published private(set) var panelVisible = false
 
     /// Whether the agenda paints: the setting is on, the draft is
     /// blank, nothing else owns the auxiliary region, no live preview
@@ -421,15 +427,12 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
-    /// Cancels the hold when the draft returns to blank. When a hold
-    /// was active the cached plan repaints immediately and one
-    /// background revalidation follows, per plan §7.
+    /// Cancels the hold when the draft returns to blank. The cached
+    /// plan repaints immediately and one background revalidation
+    /// always follows, per plan §7.
     func noteAgendaDraftCleared() {
-        let wasHolding = agendaHold == .holding
         releaseAgendaHold(event: .draftReturnedToBlank)
-        if wasHolding {
-            agendaStore?.refresh(reason: .show)
-        }
+        agendaStore?.refresh(reason: .show)
     }
 
     /// Releases the hold when the agenda stops showing because the
@@ -478,7 +481,16 @@ final class CapturePanelModel: ObservableObject {
     /// day-rollover fetch plans against the new day.
     private var agendaPlanningDay: String?
 
-    /// Measures what is missing, plans, and publishes. Runs on snapshot
+    /// The store values the current plan is built from. The store's
+    /// `@Published` properties emit in `willSet`, so planning must
+    /// read these cached emissions, never the store directly: the
+    /// subscription below refreshes them before re-planning, and
+    /// every re-plan (budget, width, expansion, countdown) reuses
+    /// them.
+    private var agendaSourceSnapshot: CaptureAgendaSnapshot?
+    private var agendaSourceStatus: CaptureAgendaStoreStatus = .idle
+
+    /// Measures what is missing, plans, and publishes. Runs on store
     /// publish, width change, screen change (via the budget), and
     /// expansion. Planning iterates to a fixpoint: a freshly folded
     /// plan can surface new row variants (chips, strips) that need
@@ -491,12 +503,12 @@ final class CapturePanelModel: ObservableObject {
             agendaPlan = nil
             return
         }
-        guard let snapshot = agendaStore?.snapshot else {
+        guard let snapshot = agendaSourceSnapshot else {
             publishAgendaLoading(today: day)
             return
         }
         let stale: Bool
-        if case .stale = agendaStore?.status {
+        if case .stale = agendaSourceStatus {
             stale = true
         } else {
             stale = false
@@ -957,6 +969,7 @@ final class CapturePanelModel: ObservableObject {
     private func subscribeToAgendaStore() {
         agendaCancellable = nil
         agendaSnapshotCancellable = nil
+        agendaDayChangeCancellable = nil
         guard let agendaStore else {
             return
         }
@@ -966,18 +979,49 @@ final class CapturePanelModel: ObservableObject {
             }
             self.currentPomodoroTaskLinkCount = count
         }
-        // A new snapshot resets expansions and re-plans. The store
-        // only publishes on change, so byte-identical output stays a
-        // no-op here too.
-        agendaSnapshotCancellable = agendaStore.$snapshot.sink { [weak self] _ in
-            guard let self else {
-                return
+        // The store's `@Published` properties emit in `willSet`, so
+        // the sink plans from the emitted values, never the store:
+        // the first emission after launch would otherwise plan
+        // against nil ("Loading today…") and every later snapshot
+        // would render the one before it. Status-only changes (stale,
+        // recovery, unsupported) re-plan through the same path. The
+        // store only publishes on change, so byte-identical output
+        // stays a no-op here too.
+        agendaSnapshotCancellable = agendaStore.$snapshot
+            .combineLatest(agendaStore.$status)
+            .sink { [weak self] snapshot, status in
+                guard let self else {
+                    return
+                }
+                let snapshotChanged = snapshot != self.agendaSourceSnapshot
+                self.agendaSourceSnapshot = snapshot
+                self.agendaSourceStatus = status
+                if snapshotChanged {
+                    self.agendaExpanded = []
+                    self.agendaMeasurer.noteSnapshotChange()
+                    self.agendaPlanningDay = nil
+                }
+                self.refreshAgendaPlan()
             }
-            self.agendaExpanded = []
-            self.agendaMeasurer.noteSnapshotChange()
-            self.agendaPlanningDay = nil
-            self.refreshAgendaPlan()
-        }
+        agendaDayChangeCancellable = NotificationCenter.default
+            .publisher(for: .NSCalendarDayChanged)
+            .merge(
+                with: NotificationCenter.default.publisher(
+                    for: .NSSystemClockDidChange
+                )
+            )
+            .sink { [weak self] _ in
+                self?.noteAgendaDayChanged()
+            }
+    }
+
+    /// A day or clock change retires the pinned planning day and
+    /// parks the agenda on "Loading today…" until the store's refresh
+    /// lands, so a hidden panel never paints yesterday's plan at the
+    /// next show.
+    private func noteAgendaDayChanged() {
+        agendaPlanningDay = nil
+        publishAgendaLoading(today: CaptureAgendaStore.localToday())
     }
 
     func setProcessClient(_ processClient: BobProcessClient?) {
@@ -1380,6 +1424,7 @@ final class CapturePanelModel: ObservableObject {
     /// Records a close that keeps the draft. Closing the panel is never destructive;
     /// permanent discarding is an explicit action from the Discard button.
     func prepareForRetainedClose() {
+        panelVisible = false
         dismissStashPicker()
         clearInlinePrompts()
         agendaExpanded = []
@@ -1531,6 +1576,7 @@ final class CapturePanelModel: ObservableObject {
     // non-empty draft still re-runs analysis: a close preview's `closed_at` and timing
     // go stale while the panel is hidden, so the card must resolve them fresh.
     func prepareForPresentation() {
+        panelVisible = true
         dismissStashPicker()
         guard !hasDraft else {
             editorTextDidChange()
@@ -1544,6 +1590,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func prepareForDismissal() {
+        panelVisible = false
         dismissStashPicker()
         closePickerForDismissal()
         clearInlinePrompts()

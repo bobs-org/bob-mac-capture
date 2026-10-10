@@ -54,8 +54,9 @@ public enum CaptureAgendaRefreshFilter {
 
     /// True when the batch can change what the agenda shows:
     /// - the stream says rescan, root-changed, or dropped events;
-    /// - a directory under the vault was renamed or removed (folder
-    ///   moves change basename resolution);
+    /// - a directory was renamed or removed alongside a visible vault
+    ///   path (folder moves change basename resolution, but `.git/`
+    ///   churn in the same debounce window must not refresh);
     /// - a visible `.md` note changed (no path component starts with
     ///   `.`, so `.git/`, `.trash/`, and `.obsidian/workspace*.json`
     ///   stay ignored);
@@ -72,14 +73,9 @@ public enum CaptureAgendaRefreshFilter {
         {
             return true
         }
-        if flags.contains(.itemIsDir)
-            && (flags.contains(.itemRenamed)
-                || flags.contains(.itemRemoved))
-        {
-            return true
-        }
         let prefix =
             vaultRoot.hasSuffix("/") ? vaultRoot : vaultRoot + "/"
+        var hasVisiblePath = false
         for path in batch.paths {
             guard path.hasPrefix(prefix) else {
                 continue
@@ -88,15 +84,22 @@ public enum CaptureAgendaRefreshFilter {
             if relative == tasksFilterRelativePath {
                 return true
             }
-            guard relative.hasSuffix(".md") else {
-                continue
-            }
             let hidden = relative.split(separator: "/").contains {
                 $0.hasPrefix(".")
             }
             if hidden {
                 continue
             }
+            hasVisiblePath = true
+            if relative.hasSuffix(".md") {
+                return true
+            }
+        }
+        if hasVisiblePath
+            && flags.contains(.itemIsDir)
+            && (flags.contains(.itemRenamed)
+                || flags.contains(.itemRemoved))
+        {
             return true
         }
         return false

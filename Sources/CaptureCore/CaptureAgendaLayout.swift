@@ -30,8 +30,6 @@ public enum CaptureAgendaLayoutMetrics {
     public static let badgeColumnWidth: Double = 26
     /// Width reserved for the status glyph column.
     public static let glyphColumnWidth: Double = 16
-    /// Width reserved for the trailing accessory (chips, captions).
-    public static let trailingAccessoryWidth: Double = 72
     /// Line-limit clamps shared by the planner and the views.
     public static let headlineLineLimit = 3
     public static let childLineLimit = 4

@@ -422,49 +422,53 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     /// Places the panel at the fixed eye line with the target height:
-    /// the compact panel's centered top, cached per visible frame, so
+    /// the compact panel's centred top, cached per visible frame, so
     /// every show puts the input line in the same place. The existing
     /// screen clamp below still slides the panel up only when it would
     /// cross an edge, which is how typed previews keep growing
-    /// downward.
+    /// downward. This runs before the panel is ordered front, so
+    /// nothing flickers.
     private func placePanelAtEyeLine(
         _ panel: NSPanel,
         targetContentHeight: CGFloat,
         visibleFrame: NSRect
     ) {
-        let chrome = Self.chromeHeight(for: panel)
-        let frame = CapturePanelPlacement.VisibleFrame(
+        let key = CapturePanelPlacement.VisibleFrame(
             minX: Double(visibleFrame.minX),
             minY: Double(visibleFrame.minY),
             width: Double(visibleFrame.width),
             height: Double(visibleFrame.height)
         )
-        let compact = Double(compactContentHeight())
-        let top: Double
-        if model.footerHeight > 1 {
-            top = panelPlacement.eyeLineTop(
-                compactContentHeight: compact,
-                chromeHeight: Double(chrome),
-                visibleFrame: frame
-            )
-        } else {
-            // The footer is not measured yet: derive the line without
-            // caching it, so the first measured show still sets it.
-            var fresh = CapturePanelPlacement()
-            top = fresh.eyeLineTop(
-                compactContentHeight: compact,
-                chromeHeight: Double(chrome),
-                visibleFrame: frame
-            )
-        }
-        let originY = CGFloat(
-            CapturePanelPlacement.originY(
-                topEdge: top,
-                contentHeight: Double(targetContentHeight),
-                chromeHeight: Double(chrome)
-            )
+        let top = eyeLineTop(panel: panel, key: key)
+        panel.setContentSize(
+            NSSize(width: panel.frame.width, height: targetContentHeight)
         )
-        panel.setFrameOrigin(NSPoint(x: panel.frame.origin.x, y: originY))
+        let originX = visibleFrame.midX - panel.frame.width / 2
+        let originY = CGFloat(top) - panel.frame.height
+        panel.setFrameOrigin(NSPoint(x: originX, y: originY))
+    }
+
+    /// The fixed eye-line top, read back from AppKit itself: on a
+    /// cache miss the hidden panel is sized to the compact content
+    /// height, centred, and its top (`frame.maxY`) is cached per
+    /// visible frame. Until the footer measures, the line is derived
+    /// without caching so the first measured show still sets it.
+    private func eyeLineTop(
+        panel: NSPanel,
+        key: CapturePanelPlacement.VisibleFrame
+    ) -> Double {
+        if model.footerHeight > 1, let cached = panelPlacement.cachedTop(for: key) {
+            return cached
+        }
+        panel.setContentSize(
+            NSSize(width: panel.frame.width, height: compactContentHeight())
+        )
+        panel.center()
+        let top = Double(panel.frame.maxY)
+        if model.footerHeight > 1 {
+            panelPlacement.noteCompactTop(top, visibleFrame: key)
+        }
+        return top
     }
 
     /// The compact panel's content height: the one-line editor plus
@@ -497,21 +501,13 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             ?? NSScreen.main?.visibleFrame
             ?? Self.unlimitedVisibleFrame
         let chrome = Self.chromeHeight(for: panel)
-        let frame = CapturePanelPlacement.VisibleFrame(
+        let key = CapturePanelPlacement.VisibleFrame(
             minX: Double(visibleFrame.minX),
             minY: Double(visibleFrame.minY),
             width: Double(visibleFrame.width),
             height: Double(visibleFrame.height)
         )
-        var placement = panelPlacement
-        let top = placement.eyeLineTop(
-            compactContentHeight: Double(compactContentHeight()),
-            chromeHeight: Double(chrome),
-            visibleFrame: frame
-        )
-        if model.footerHeight > 1 {
-            panelPlacement = placement
-        }
+        let top = eyeLineTop(panel: panel, key: key)
         let budget = CaptureAgendaBudget(
             eyeLineTop: top,
             visibleMinY: Double(visibleFrame.minY),

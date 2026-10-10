@@ -129,4 +129,52 @@ final class CapturePanelEyeLineTests: XCTestCase {
         _ = CapturePanelController(model: model)
         XCTAssertNotNil(model.agendaPlanDidChange)
     }
+
+    func testPanelHorizontallyCentredAfterPresentation() throws {
+        let model = CapturePanelModel()
+        model.footerHeight = 40
+        let controller = CapturePanelController(model: model)
+        let panel = controller.makePanelIfNeeded()
+        guard let visible = visibleFrame(for: panel) else {
+            throw XCTSkip("no visible frame on this host")
+        }
+        let policy = CapturePanelContentHeightPolicy(displayScale: 1)
+        let compact = policy.metrics(
+            editorHeight: 42,
+            auxiliaryHeight: nil,
+            footerHeight: 40
+        )
+        controller.receiveContentMetrics(compact)
+        controller.replayLatestContentMetricsForPresentation()
+        XCTAssertEqual(panel.frame.midX, visible.midX, accuracy: 1)
+    }
+
+    func testCompactTopMatchesCenter() throws {
+        let model = CapturePanelModel()
+        model.footerHeight = 40
+        let controller = CapturePanelController(model: model)
+        let panel = controller.makePanelIfNeeded()
+        guard visibleFrame(for: panel) != nil else {
+            throw XCTSkip("no visible frame on this host")
+        }
+        let policy = CapturePanelContentHeightPolicy(displayScale: 1)
+        let compact = policy.metrics(
+            editorHeight: 42,
+            auxiliaryHeight: nil,
+            footerHeight: 40
+        )
+        controller.receiveContentMetrics(compact)
+        controller.replayLatestContentMetricsForPresentation()
+        // The reference goes through AppKit itself: the compact
+        // frame size, centred, so the eye line is where the compact
+        // bar opened before the epic.
+        let reference = CapturePanelController.makePanel()
+        reference.setFrame(panel.frame, display: false)
+        reference.center()
+        XCTAssertEqual(
+            panel.frame.maxY,
+            reference.frame.maxY,
+            accuracy: 1
+        )
+    }
 }

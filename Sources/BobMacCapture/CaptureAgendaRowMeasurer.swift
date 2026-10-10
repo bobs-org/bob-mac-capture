@@ -22,8 +22,6 @@ final class CaptureAgendaRowMeasurer {
     private var cache: [CacheKey: CGFloat] = [:]
     private var host: NSHostingView<AnyView>?
 
-    var cachedCount: Int { cache.count }
-
     func height(
         for row: CaptureAgendaRow,
         role: CaptureAgendaRole,
@@ -46,10 +44,6 @@ final class CaptureAgendaRowMeasurer {
         if cache.count > Self.cacheBound {
             cache = [:]
         }
-    }
-
-    func clear() {
-        cache = [:]
     }
 
     private func renderHeight(

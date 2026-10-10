@@ -70,18 +70,36 @@ final class CaptureAgendaModelTests: XCTestCase {
         return model
     }
 
+    /// Points the model's store at a new fake-bob and refreshes, so
+    /// the model's presentation follows the store's emissions, never
+    /// a hand-called re-plan.
+    private func swapAgendaClient(
+        _ model: CapturePanelModel,
+        environment: [String: String]
+    ) throws {
+        var full = [
+            "HOME": "/tmp",
+            "PATH": "/usr/bin:/bin",
+        ]
+        for (key, value) in environment {
+            full[key] = value
+        }
+        model.agendaStore?.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: full
+        )
+        model.agendaStore?.refresh(reason: .show)
+    }
+
     func testAgendaVisibleWhenPlanReady() async throws {
         let model = try refreshModel()
-        await waitUntil { model.agendaStore?.snapshot != nil }
-        model.refreshAgendaPlan(today: "2026-08-28")
-        XCTAssertNotNil(model.agendaPlan)
+        await waitUntil { model.agendaPlan != nil }
         XCTAssertTrue(model.agendaVisible)
     }
 
     func testAgendaHiddenWhenSettingOff() async throws {
         let model = try refreshModel()
-        await waitUntil { model.agendaStore?.snapshot != nil }
-        model.refreshAgendaPlan(today: "2026-08-28")
+        await waitUntil { model.agendaPlan != nil }
         XCTAssertTrue(model.agendaVisible)
         model.agendaEnabled = false
         XCTAssertNil(model.agendaPlan)
@@ -90,8 +108,7 @@ final class CaptureAgendaModelTests: XCTestCase {
 
     func testAgendaHiddenWithDraftPreviewRegionOrNoPlan() async throws {
         let model = try refreshModel()
-        await waitUntil { model.agendaStore?.snapshot != nil }
-        model.refreshAgendaPlan(today: "2026-08-28")
+        await waitUntil { model.agendaPlan != nil }
         XCTAssertTrue(model.agendaVisible)
 
         model.plainDraft = "068"
@@ -109,16 +126,14 @@ final class CaptureAgendaModelTests: XCTestCase {
         XCTAssertTrue(model.agendaVisible)
 
         let bare = CapturePanelModel()
-        bare.refreshAgendaPlan(today: "2026-08-28")
         XCTAssertNil(bare.agendaPlan)
         XCTAssertFalse(bare.agendaVisible)
     }
 
     func testExpansionPinsTaskAndResetsOnHide() async throws {
         let model = try refreshModel()
-        await waitUntil { model.agendaStore?.snapshot != nil }
+        await waitUntil { model.agendaPlan != nil }
         model.agendaBudget = 100
-        model.refreshAgendaPlan(today: "2026-08-28")
         guard let task = model.agendaPresentation?.groups.first?.tasks.first else {
             XCTFail("expected a task in the default fixture")
             return
@@ -137,9 +152,8 @@ final class CaptureAgendaModelTests: XCTestCase {
 
     func testTinyBudgetFoldsToOverflow() async throws {
         let model = try refreshModel(agendaFixture: "agenda-heavy.json")
-        await waitUntil { model.agendaStore?.snapshot != nil }
         model.agendaBudget = 100
-        model.refreshAgendaPlan(today: "2026-08-28")
+        await waitUntil { model.agendaPlan?.overflows == true }
         guard let plan = model.agendaPlan else {
             XCTFail("expected a plan for the heavy fixture")
             return
@@ -150,21 +164,60 @@ final class CaptureAgendaModelTests: XCTestCase {
 
     func testSettleHookFiresOnPublish() async throws {
         let model = try refreshModel()
-        await waitUntil { model.agendaStore?.snapshot != nil }
+        await waitUntil { model.agendaPlan != nil }
+        guard let task = model.agendaPresentation?.groups.first?.tasks.first else {
+            XCTFail("expected a task in the default fixture")
+            return
+        }
         var fired = false
         model.agendaPlanDidChange = {
             fired = true
         }
-        model.refreshAgendaPlan(today: "2026-08-28")
+        model.expandAgendaUnit(task.id)
         XCTAssertTrue(fired)
+    }
+
+    func testPresentationFollowsLatestSnapshot() async throws {
+        let model = try refreshModel()
+        await waitUntil { model.agendaPlan != nil }
+        let first = model.agendaPresentation
+        XCTAssertNotNil(first)
+        XCTAssertEqual(model.agendaStore?.snapshot?.pomodoros.count, 4)
+        try swapAgendaClient(
+            model,
+            environment: ["FAKE_BOB_AGENDA_FIXTURE": "agenda-heavy.json"]
+        )
+        await waitUntil {
+            model.agendaStore?.snapshot?.pomodoros.count == 25
+        }
+        await waitUntil { model.agendaPresentation != first }
+        XCTAssertNotNil(model.agendaPlan)
+        XCTAssertTrue(model.agendaVisible)
+    }
+
+    func testStaleRecoversOnNextSuccess() async throws {
+        let model = try refreshModel()
+        await waitUntil { model.agendaPlan != nil }
+        XCTAssertEqual(model.agendaPresentation?.isStale, false)
+        try swapAgendaClient(
+            model,
+            environment: ["FAKE_BOB_AGENDA_FAIL": "1"]
+        )
+        await waitUntil { model.agendaPresentation?.isStale == true }
+        // The same bytes come back, so the store takes the
+        // `.unchanged` branch; the status emission still re-plans and
+        // clears the stale marker.
+        try swapAgendaClient(model, environment: [:])
+        await waitUntil { model.agendaPresentation?.isStale == false }
+        XCTAssertEqual(model.agendaStore?.status, .ready)
+        XCTAssertTrue(model.agendaVisible)
     }
 
     // MARK: - Dim-hold and states (mac-agenda-polish)
 
     private func readyModel() async throws -> CapturePanelModel {
         let model = try refreshModel()
-        await waitUntil { model.agendaStore?.snapshot != nil }
-        model.refreshAgendaPlan(today: "2026-08-28")
+        await waitUntil { model.agendaPlan != nil }
         XCTAssertTrue(model.agendaVisible)
         return model
     }
@@ -221,22 +274,11 @@ final class CaptureAgendaModelTests: XCTestCase {
     func testStaleSnapshotMarksTitleRow() async throws {
         let model = try await readyModel()
         XCTAssertEqual(model.agendaPresentation?.isStale, false)
-        model.agendaStore?.processClient = BobProcessClient(
-            executablePath: try fakeBobPath(),
-            environment: [
-                "HOME": "/tmp",
-                "PATH": "/usr/bin:/bin",
-                "FAKE_BOB_AGENDA_FAIL": "1",
-            ]
+        try swapAgendaClient(
+            model,
+            environment: ["FAKE_BOB_AGENDA_FAIL": "1"]
         )
-        model.agendaStore?.refresh(reason: .show)
-        await waitUntil {
-            if case .stale = model.agendaStore?.status {
-                return true
-            }
-            return false
-        }
-        model.refreshAgendaPlan(today: "2026-08-28")
+        await waitUntil { model.agendaPresentation?.isStale == true }
         XCTAssertEqual(model.agendaPresentation?.isStale, true)
         XCTAssertTrue(
             model.agendaPresentation?.titleRow.accessoryText?.contains(
@@ -251,13 +293,7 @@ final class CaptureAgendaModelTests: XCTestCase {
 
     func testNoSnapshotShowsLoadingLine() async throws {
         let model = try refreshModel(agendaEnvironment: ["FAKE_BOB_AGENDA_FAIL": "1"])
-        await waitUntil {
-            if case .failed = model.agendaStore?.status {
-                return true
-            }
-            return false
-        }
-        model.refreshAgendaPlan(today: "2026-08-28")
+        await waitUntil { model.agendaPresentation?.state == .loading }
         XCTAssertEqual(model.agendaPresentation?.state, .loading)
         XCTAssertEqual(model.agendaPresentation?.stateRow?.text, "Loading today…")
         XCTAssertTrue(model.agendaVisible)
@@ -268,7 +304,7 @@ final class CaptureAgendaModelTests: XCTestCase {
             agendaEnvironment: ["FAKE_BOB_AGENDA_UNSUPPORTED": "1"]
         )
         await waitUntil { model.agendaStore?.status == .unsupported }
-        model.refreshAgendaPlan(today: "2026-08-28")
+        await waitUntil { model.agendaPlan == nil && model.agendaPresentation == nil }
         XCTAssertNil(model.agendaPlan)
         XCTAssertFalse(model.agendaVisible)
         XCTAssertEqual(
