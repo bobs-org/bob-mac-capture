@@ -160,13 +160,13 @@ enum CaptureAgendaHeightResolver {
                 continue
             }
             heights[row.key] = Double(
-                measurer.height(for: row, role: role, at: width(for: role, rowsWidth: width))
+                measurer.height(for: row, role: role, at: Self.width(for: role, rowsWidth: width))
             )
         }
         let strip = presentation.stripFullRow
         if heights[strip.key] == nil {
             heights[strip.key] = Double(
-                measurer.height(for: strip, role: .later, at: width(for: .later, rowsWidth: width))
+                measurer.height(for: strip, role: .later, at: Self.width(for: .later, rowsWidth: width))
             )
         }
         guard let plan else {
@@ -183,7 +183,7 @@ enum CaptureAgendaHeightResolver {
             let role = CaptureAgendaSections.owner(of: row, in: presentation)?.role
                 ?? .later
             heights[row.key] = Double(
-                measurer.height(for: row, role: role, at: width(for: role, rowsWidth: width))
+                measurer.height(for: row, role: role, at: Self.width(for: role, rowsWidth: width))
             )
         }
     }
