@@ -266,3 +266,38 @@ public enum CaptureAgendaClock {
         return calendar.date(from: components)
     }
 }
+
+/// One authoritative agenda viewport: the rows the planner measured,
+/// bounded by the available below-eye-line budget, plus the pane's own
+/// vertical padding exactly once. Both the rendered pane and the
+/// window's reported auxiliary height use this, so the planned height,
+/// the rendered height, and the height passed to AppKit agree.
+///
+/// The planner's `totalHeight` covers rows, group insets, and gaps but
+/// never the pane's outer padding; the pane adds
+/// `panePadding` on top and below. An actual zero budget means zero
+/// available agenda space (the model supplies a positive startup
+/// fallback before live geometry is known), never an unbounded
+/// sentinel. Invalid inputs collapse to the safe bound, never to an
+/// unbounded pane that could push the editor or footer offscreen.
+public enum CaptureAgendaViewport {
+    /// Rows height for the given planned total and budget: the plan's
+    /// total when it fits, otherwise the budget. Zero or invalid
+    /// budgets yield zero rows; an invalid total yields zero rows.
+    public static func rowsHeight(planTotalHeight: Double, budget: Double) -> Double {
+        guard planTotalHeight.isFinite else {
+            return 0
+        }
+        let total = max(0, planTotalHeight)
+        guard budget.isFinite else {
+            return 0
+        }
+        return min(total, max(0, budget))
+    }
+
+    /// Full pane height including the outer padding exactly once.
+    public static func paneHeight(planTotalHeight: Double, budget: Double) -> Double {
+        rowsHeight(planTotalHeight: planTotalHeight, budget: budget)
+            + 2 * CaptureAgendaLayoutMetrics.panePadding
+    }
+}

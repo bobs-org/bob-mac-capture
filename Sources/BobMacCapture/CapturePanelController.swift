@@ -312,6 +312,14 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        // While a geometry transaction (metrics apply, eye-line probe,
+        // budget refresh) owns the panel, never clamp a resize to the
+        // stale applied target: the probe's compact sizing must reach
+        // AppKit unclamped, and temporary geometry must not be treated
+        // as final.
+        guard !isApplyingContentHeight else {
+            return frameSize
+        }
         guard let panel, let appliedContentHeight else {
             return frameSize
         }
@@ -372,6 +380,21 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             metricsArrivedDuringApplication = true
             return
         }
+        // Own the complete geometry transaction before anything that can
+        // publish model state or change AppKit geometry: the screen,
+        // inset, and budget refreshes below re-plan synchronously, and
+        // the eye-line probe resizes the panel. Metrics arriving
+        // mid-transaction are preserved in `latestContentMetrics` and
+        // applied once below, so no update is lost and re-application
+        // stays bounded by actual model changes.
+        isApplyingContentHeight = true
+        defer {
+            isApplyingContentHeight = false
+            if metricsArrivedDuringApplication {
+                metricsArrivedDuringApplication = false
+                applyLatestContentMetricsIfPossible()
+            }
+        }
 
         let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
         updateAvailableScreenHeight(visibleFrame?.height)
@@ -390,18 +413,21 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             availableScreenHeight: visibleFrame?.height
         )
 
-        let heightChanged = appliedContentHeight.map { abs($0 - target) >= 0.5 } ?? true
-        guard force || heightChanged || pendingRecenter else {
-            return
-        }
-
-        isApplyingContentHeight = true
-        defer {
-            isApplyingContentHeight = false
-            if metricsArrivedDuringApplication {
-                metricsArrivedDuringApplication = false
-                applyLatestContentMetricsIfPossible()
+        let chrome = Self.chromeHeight(for: panel)
+        let cachedChanged = appliedContentHeight.map { abs($0 - target) >= 0.5 } ?? true
+        // A stale cache must not prevent repairing a mismatched frame:
+        // the eye-line probe or a screen/inset change can leave the real
+        // frame different from the cached target while the metrics are
+        // equal. Compare the actual applied geometry as well.
+        let frameMismatched: Bool = {
+            let actual = panel.frame.height - chrome
+            guard actual.isFinite else {
+                return true
             }
+            return abs(actual - target) >= 0.5
+        }()
+        guard force || cachedChanged || frameMismatched || pendingRecenter else {
+            return
         }
 
         panel.contentMinSize = NSSize(width: CapturePanelLayout.panelMinimumContentWidth, height: target)
@@ -421,7 +447,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         let frame = sizer.frame(
             forCurrentFrame: panel.frame,
             contentHeight: target,
-            chromeHeight: Self.chromeHeight(for: panel),
+            chromeHeight: chrome,
             visibleFrame: visibleFrame ?? Self.unlimitedVisibleFrame
         )
         panel.setFrame(frame, display: true, animate: false)
@@ -487,9 +513,30 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         // last applied target; without lifting them first this measuring
         // resize is clamped to that stale height and `center()` caches
         // the wrong top (CI: compact top 607 vs re-centred 611).
+        // The probe reuses the live panel, so it must be non-destructive:
+        // the visible panel keeps its frame and sizing constraints on
+        // every exit, and the probe holds the geometry-transaction guard
+        // itself (`windowWillResize` bypasses its clamp there) so
+        // observers never treat this temporary geometry as final. The
+        // panel must not flash at the probe size. Callers inside
+        // `applyContentMetrics` already hold the guard; the `wasApplying`
+        // handoff keeps it held and lets the outer transaction drain.
         let compact = compactContentHeight()
+        let wasApplying = isApplyingContentHeight
+        isApplyingContentHeight = true
+        let savedFrame = panel.frame
         let savedMin = panel.contentMinSize
         let savedMax = panel.contentMaxSize
+        defer {
+            panel.contentMinSize = savedMin
+            panel.contentMaxSize = savedMax
+            panel.setFrame(savedFrame, display: false)
+            isApplyingContentHeight = wasApplying
+            if !wasApplying, metricsArrivedDuringApplication {
+                metricsArrivedDuringApplication = false
+                applyLatestContentMetricsIfPossible()
+            }
+        }
         panel.contentMinSize = NSSize(
             width: savedMin.width,
             height: min(savedMin.height, compact)
@@ -503,8 +550,6 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         )
         panel.center()
         let top = Double(panel.frame.maxY)
-        panel.contentMinSize = savedMin
-        panel.contentMaxSize = savedMax
         if model.footerHeight > 1 {
             panelPlacement.noteCompactTop(top, visibleFrame: key)
         }
@@ -593,7 +638,13 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 self?.receiveContentMetrics(metrics)
             }
         )
-        hostingView.sizingOptions = []
+        // Track the SwiftUI fitting size instead of fixing the host: with
+        // `[]` oversized SwiftUI content centres inside the smaller host
+        // and both the editor and the footer are lost, exactly the idle-
+        // agenda screenshot. The controller still pins the window's content
+        // min/max to each applied target, and the root view top-anchors,
+        // so transient overshoot clips at the bottom with the editor kept.
+        hostingView.sizingOptions = [.minSize, .maxSize]
         created.contentView = hostingView
         updateAvailableScreenHeight()
         updateTitlebarSafeAreaInset()

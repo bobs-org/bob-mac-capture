@@ -350,8 +350,17 @@ struct CapturePanelView: View {
             .onChange(of: model.agendaVisible) { oldVisible, newVisible in
                 if oldVisible, !newVisible {
                     model.noteAgendaStoppedShowing()
+                    measuredAuxiliaryContentHeight = 0
                 }
-                measuredAuxiliaryContentHeight = 0
+                // When the agenda becomes visible the steady-state height
+                // comes from the already-measured plan
+                // (`currentAuxiliaryHeight`), not from a fresh geometry
+                // callback: resetting to zero here would publish an
+                // agenda height of zero while a positive-height plan owns
+                // the region and clip the editor/footer until the next
+                // callback fires (if one fires at all). Stale preview or
+                // picker measurements are discarded structurally by the
+                // plan-derived height, never reused as the agenda height.
                 reportContentMetrics()
             }
             .onChange(of: model.agendaPlan) { _, _ in
@@ -435,9 +444,15 @@ struct CapturePanelView: View {
         }
         .padding(.top, CapturePanelLayout.titlebarDragInset)
         .padding([.horizontal, .bottom], CapturePanelLayout.rootPadding)
+        // Fill the host vertically and anchor the stack at the top: when
+        // the host is transiently smaller than the content (budget
+        // re-plan, screen change), oversized content must clip at the
+        // bottom, never centre so the editor and footer are lost at both
+        // ends (see `NSHostingView.sizingOptions` in the controller).
         .frame(
             minWidth: CapturePanelLayout.panelMinimumContentWidth,
             maxWidth: .infinity,
+            maxHeight: .infinity,
             alignment: .topLeading
         )
     }
@@ -720,28 +735,31 @@ struct CapturePanelView: View {
             )
         }
 
-        // While the agenda owns the auxiliary region, its reported
-        // ideal height is capped at the below-eye-line budget (plus
-        // the pane's own padding, which the budget already subtracts
-        // as preview-pane insets), so the panel never slides up for
-        // the agenda. An unknown budget leaves the height uncapped.
+        // While the agenda owns the auxiliary region, the reported
+        // height is the authoritative shared viewport derived from the
+        // already-measured plan (`CaptureAgendaViewport.paneHeight`),
+        // exactly what `CaptureAgendaPaneView` renders. It is available
+        // synchronously from the cached plan even when no new geometry
+        // event fires, so first show and clear-to-blank never publish a
+        // zero height while a positive-height plan owns the region. The
+        // observed rendered height stays as a consistency signal only;
+        // it never decides how much room the measured agenda receives,
+        // and no stale preview measurement feeds this path.
         if model.agendaVisible {
-            let cap = agendaPaneHeightCap
-            return .overflow(
-                idealHeight: cap.map { min(measuredAuxiliaryContentHeight, $0) }
-                    ?? measuredAuxiliaryContentHeight
-            )
+            if let plan = model.agendaPlan {
+                return .overflow(
+                    idealHeight: CGFloat(
+                        CaptureAgendaViewport.paneHeight(
+                            planTotalHeight: plan.totalHeight,
+                            budget: plan.budget
+                        )
+                    )
+                )
+            }
+            return .overflow(idealHeight: measuredAuxiliaryContentHeight)
         }
 
         return .overflow(idealHeight: measuredAuxiliaryContentHeight)
-    }
-
-    private var agendaPaneHeightCap: CGFloat? {
-        guard model.agendaBudget > 0 else {
-            return nil
-        }
-        return CGFloat(model.agendaBudget)
-            + 2 * CGFloat(CaptureAgendaLayoutMetrics.panePadding)
     }
 
     private enum AuxiliarySection: Hashable {

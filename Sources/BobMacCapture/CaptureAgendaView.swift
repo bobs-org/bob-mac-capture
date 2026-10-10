@@ -54,11 +54,14 @@ struct CaptureAgendaPaneView: View {
                     }
                 }
                 .frame(
-                    height: cappedHeight,
+                    height: viewportRowsHeight,
                     alignment: .top
                 )
             } else {
-                rows
+                rows.frame(
+                    height: viewportRowsHeight,
+                    alignment: .top
+                )
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -71,13 +74,19 @@ struct CaptureAgendaPaneView: View {
         )
     }
 
-    private var cappedHeight: CGFloat {
-        let total = CGFloat(plan.totalHeight)
-        let budget = CGFloat(plan.budget)
-        guard budget > 0 else {
-            return total
-        }
-        return min(total, budget)
+    /// Rows height shared with the window's reported auxiliary height:
+    /// the measured plan bounded by its budget. Both the scrolled
+    /// overflow frame and the ordinary pinned frame use it, so the
+    /// rendered pane and the AppKit content height agree. The outer
+    /// `.padding(panePadding)` below adds the pane chrome exactly once,
+    /// matching `CaptureAgendaViewport.paneHeight`.
+    private var viewportRowsHeight: CGFloat {
+        CGFloat(
+            CaptureAgendaViewport.rowsHeight(
+                planTotalHeight: plan.totalHeight,
+                budget: plan.budget
+            )
+        )
     }
 }
 

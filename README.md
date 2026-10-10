@@ -319,8 +319,11 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
   places the panel at a fixed eye line: the compact panel's top is what AppKit's
   center() gives it, cached once per
   screen, so the input line lands in the same place with or without the agenda or a
-  retained draft. The agenda never moves the editor — its auxiliary height is capped
-  at the below-eye-line budget — and typed previews keep growing downward from the
+  retained draft. The agenda never moves the editor — the rendered pane and the
+  reported auxiliary height share one viewport derived from the measured plan bounded
+  by the below-eye-line budget plus the pane padding once, so a cached plan paints
+  synchronously with no zero-height frame and a zero budget stays bounded instead of
+  unbounded — and typed previews keep growing downward from the
   same top under today's clamp and slide-up rule. Measured
   heights include the titlebar safe-area inset of the full-size-content panel, so
   the applied content height already accounts for the titlebar strip SwiftUI lays
