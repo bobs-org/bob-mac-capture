@@ -234,10 +234,6 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     private var pendingRecenter = false
     private var isApplyingContentHeight = false
     private var metricsArrivedDuringApplication = false
-    /// Guards the eye-line probe: while it sizes the hidden panel to
-    /// the compact height, `windowWillResize` must not clamp that
-    /// measuring resize to the last applied height.
-    private var measuringEyeLine = false
     private var panelPlacement = CapturePanelPlacement()
 
     init(model: CapturePanelModel) {
@@ -296,9 +292,6 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
-        if measuringEyeLine {
-            return frameSize
-        }
         guard let panel, let appliedContentHeight else {
             return frameSize
         }
@@ -485,22 +478,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             width: savedMax.width,
             height: max(savedMax.height, compact)
         )
-        // TEMP-DIAG: eye-line probe inputs for CI failure 607 vs 611.
-        let frameBefore = panel.frame
-        measuringEyeLine = true
         panel.setContentSize(
             NSSize(width: panel.frame.width, height: compact)
         )
         panel.center()
-        measuringEyeLine = false
         let top = Double(panel.frame.maxY)
-        print(
-            "TEMP-DIAG eyeLineTop compact=\(compact)"
-                + " inset=\(model.titlebarSafeAreaInset)"
-                + " frameBefore=\(frameBefore)"
-                + " frameAfter=\(panel.frame)"
-                + " top=\(top)"
-        )
         panel.contentMinSize = savedMin
         panel.contentMaxSize = savedMax
         if model.footerHeight > 1 {
@@ -516,9 +498,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             safeAreaTopInset: model.titlebarSafeAreaInset,
             displayScale: panel?.screen?.backingScaleFactor ?? 1
         )
-        let editorMinimum = CaptureEditorHeightPolicy(
-            displayScale: panel?.screen?.backingScaleFactor ?? 1
-        ).minimumHeight
+        let editorMinimum = CaptureEditorHeightPolicy().minimumHeight
         // The footer measures around 40 pt; until SwiftUI reports it,
         // the fallback keeps the first eye line close to the real one.
         let footer = model.footerHeight > 1 ? model.footerHeight : 40
@@ -632,6 +612,12 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return
         }
         model.titlebarSafeAreaInset = resolved
+        // The cached eye line was derived from the old inset: the
+        // footer can arrive (via SwiftUI or the test) before the inset
+        // settles, so a first derivation with the pre-layout inset
+        // would pin every later show to the wrong top (CI: 607 vs 611).
+        // Drop it; the next placement re-derives from the fresh inset.
+        panelPlacement.invalidate()
     }
 
     private static func chromeHeight(for panel: NSPanel) -> CGFloat {
