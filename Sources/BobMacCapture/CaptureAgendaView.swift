@@ -93,6 +93,7 @@ struct CaptureAgendaRowsView: View {
     let presentation: CaptureAgendaPresentation
     var onExpand: (CaptureAgendaUnitID) -> Void = { _ in }
     var onContentWidthChange: (CGFloat) -> Void = { _ in }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let targets = CaptureAgendaChipMap.targets(
@@ -136,6 +137,9 @@ struct CaptureAgendaRowsView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        // In-place updates cross-fade; height is never animated.
+        // Reduce Motion disables the fade.
+        .animation(agendaUpdateAnimation, value: plan.rows)
         .onGeometryChange(for: CGFloat.self) { geometry in
             geometry.size.width
         } action: { width in
@@ -144,6 +148,10 @@ struct CaptureAgendaRowsView: View {
             }
             onContentWidthChange(width)
         }
+    }
+
+    private var agendaUpdateAnimation: Animation? {
+        reduceMotion ? nil : .easeOut(duration: CaptureAgendaHold.updateFadeSeconds)
     }
 }
 
@@ -513,15 +521,52 @@ struct CaptureAgendaRowView: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             titleLeadingView
             Spacer(minLength: 12)
-            if let summary = row.accessoryText {
-                Text(summary)
+            titleAccessoryView
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(row.accessibilityLabel ?? row.text)
+    }
+
+    @ViewBuilder
+    private var titleAccessoryView: some View {
+        if let accessory = row.accessoryText {
+            if accessory == CaptureAgendaPresentation.staleSuffix {
+                staleMarkerView(summary: nil)
+            } else if accessory.hasSuffix(titleStaleSuffix) {
+                let cut = accessory.index(
+                    accessory.endIndex,
+                    offsetBy: -titleStaleSuffix.count
+                )
+                staleMarkerView(summary: String(accessory[..<cut]))
+            } else {
+                Text(accessory)
                     .font(.callout.monospacedDigit())
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(row.accessibilityLabel ?? row.text)
+    }
+
+    private var titleStaleSuffix: String {
+        " · \(CaptureAgendaPresentation.staleSuffix)"
+    }
+
+    private func staleMarkerView(summary: String?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            if let summary, !summary.isEmpty {
+                Text(summary)
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            Image(systemName: "clock.badge.exclamationmark")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(CaptureAgendaPresentation.staleSuffix)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
     }
 
     private var titleLeadingView: some View {
@@ -609,7 +654,21 @@ struct CaptureAgendaRowView: View {
 
     // MARK: - Header
 
+    @ViewBuilder
     private var headerView: some View {
+        if role == .current, let countdown = headerCountdownText {
+            headerStack
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(row.accessibilityLabel ?? row.text)
+                .accessibilityValue(countdown)
+        } else {
+            headerStack
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(row.accessibilityLabel ?? row.text)
+        }
+    }
+
+    private var headerStack: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             headerGlyphView
             Text(row.text)
@@ -619,8 +678,21 @@ struct CaptureAgendaRowView: View {
             Spacer(minLength: 12)
             headerAccessoryView
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(row.accessibilityLabel ?? row.text)
+    }
+
+    /// The Now countdown ("12m left", "ending now", "overdue 8m") read
+    /// as the header's accessibility value, so it is not re-announced
+    /// every minute. Split from display text, never JSON.
+    private var headerCountdownText: String? {
+        guard role == .current, let accessory = row.accessoryText else {
+            return nil
+        }
+        let parts = accessory.split(separator: "·")
+        guard parts.count > 1 else {
+            return nil
+        }
+        let countdown = parts[1].trimmingCharacters(in: .whitespaces)
+        return countdown.isEmpty ? nil : countdown
     }
 
     @ViewBuilder

@@ -123,14 +123,17 @@ public final class CaptureAgendaStore: ObservableObject {
             status = .loading
         }
         let previous = state.lastBytes
+        let token = CaptureSignpost.begin(CaptureSignpost.agendaRefresh)
         Task { [weak self] in
             do {
                 let fetch = try await client.captureAgenda(previous: previous)
                 await MainActor.run {
+                    CaptureSignpost.end(token)
                     self?.finishAgenda(fetch, generation: generation)
                 }
             } catch let clientError as BobClientError {
                 await MainActor.run {
+                    CaptureSignpost.end(token)
                     self?.finishClientError(
                         clientError,
                         generation: generation,
@@ -139,6 +142,7 @@ public final class CaptureAgendaStore: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
+                    CaptureSignpost.end(token)
                     self?.finishFailure(
                         String(describing: error),
                         generation: generation
@@ -173,6 +177,29 @@ public final class CaptureAgendaStore: ObservableObject {
         refresh(reason: .recheck)
     }
 
+    /// One-line Settings diagnostic (plan §9): the last refresh time,
+    /// the refresh failure, or the old-bob upgrade hint. Metadata only,
+    /// never titles or paths.
+    public func diagnosticLine() -> String {
+        switch status {
+        case .unsupported:
+            return "Update bob to show the agenda (needs `capture-pomodoros --tasks`)"
+        case .stale(let message), .failed(let message):
+            return "Couldn't refresh: \(message)"
+        case .loading, .idle, .ready:
+            if let lastRefreshedAt {
+                return "Last refreshed \(Self.clockFormatter.string(from: lastRefreshedAt))"
+            }
+            return "Loading today…"
+        }
+    }
+
+    private static let clockFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
     private var hasCurrentSnapshot: Bool {
         guard let lastGoodSnapshot else {
             return false
@@ -191,6 +218,7 @@ public final class CaptureAgendaStore: ObservableObject {
         state.capability = .supported
         switch fetch {
         case .unchanged:
+            CaptureSignpost.event(CaptureSignpost.agendaUnchanged)
             lastRefreshedAt = now()
             if hasCurrentSnapshot {
                 status = .ready
@@ -216,6 +244,7 @@ public final class CaptureAgendaStore: ObservableObject {
     private func publish(_ fetched: CaptureAgendaSnapshot) {
         if snapshot != fetched {
             snapshot = fetched
+            CaptureSignpost.event(CaptureSignpost.agendaPublished)
         }
         let count = fetched.currentTaskLinkCount
         if currentTaskLinkCount != count {

@@ -35,6 +35,11 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(agendaEnabled, forKey: Keys.agendaEnabled) }
     }
 
+    /// Live agenda diagnostic from the store ("Last refreshed 14:32",
+    /// "Couldn't refresh: …", or the old-bob hint). Transient: never
+    /// persisted. AppDelegate keeps it in sync with the store.
+    @Published var agendaDiagnostic = ""
+
     @Published var canceledDraftStashCapacity: Int {
         didSet {
             let clamped = Self.clampedCanceledDraftStashCapacity(canceledDraftStashCapacity)

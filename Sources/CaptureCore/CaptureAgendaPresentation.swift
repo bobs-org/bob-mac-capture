@@ -190,9 +190,20 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     public let state: State
     public let titleRow: CaptureAgendaRow
     public let summaryText: String?
+    /// True when the last refresh failed but the previous snapshot is
+    /// still today: the agenda paints with a "Couldn't refresh" marker
+    /// on the title row's right. Encoded into the title accessory text
+    /// so the measurer and the renderer agree by construction.
+    public let isStale: Bool
+    /// True while a current entry carries an end time: the view mounts
+    /// its minute-granularity countdown only then.
+    public let hasLiveCountdown: Bool
     public let warningRow: CaptureAgendaRow?
     public let groups: [CaptureAgendaGroup]
     public let stateRow: CaptureAgendaRow?
+    /// The title row's stale suffix, shared by the presentation and the
+    /// view's stale-icon split. Never a ledger fact, only wording.
+    public static let staleSuffix = "Couldn't refresh"
     /// The strip with every Later name, used only to budget the strip's
     /// upper bound; the rendered strip lists the current members.
     public let stripFullRow: CaptureAgendaRow
@@ -201,8 +212,10 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         snapshot: CaptureAgendaSnapshot,
         today: String,
         now: Date? = nil,
-        locale: Locale = Locale.current
+        locale: Locale = Locale.current,
+        isStale: Bool = false
     ) {
+        self.isStale = isStale
         summaryText = CaptureAgendaClock.summaryText(
             count: snapshot.completedSummary.count,
             minutes: snapshot.completedSummary.minutes
@@ -211,11 +224,15 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         let currentCount = entries.filter { $0.role == .current }.count
         let openCount = entries.filter { $0.role == .open }.count
         let nothingRunning = currentCount == 0 && openCount == 0
+        hasLiveCountdown = entries.contains {
+            $0.role == .current && !($0.endsAt ?? "").isEmpty
+        }
         titleRow = Self.makeTitleRow(
             rawDate: snapshot.date,
             nothingRunning: nothingRunning,
             summaryText: summaryText,
-            locale: locale
+            locale: locale,
+            stale: isStale
         )
         let ordered = Self.orderEntries(entries)
         warningRow = openCount >= 2 ? Self.makeMultiOpenWarningRow() : nil
@@ -273,11 +290,60 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
 
     // MARK: - Title, warning, and state rows
 
+    /// A loading presentation for the no-snapshot-yet state: the title
+    /// row plus one quiet "Loading today…" line. The model paints this
+    /// while the setting is on and the store has nothing current yet.
+    public static func loading(
+        today: String,
+        locale: Locale = Locale.current
+    ) -> CaptureAgendaPresentation {
+        let titleRow = makeTitleRow(
+            rawDate: today,
+            nothingRunning: false,
+            summaryText: nil,
+            locale: locale
+        )
+        return CaptureAgendaPresentation(
+            state: .loading,
+            titleRow: titleRow,
+            summaryText: nil,
+            isStale: false,
+            hasLiveCountdown: false,
+            warningRow: nil,
+            groups: [],
+            stateRow: makeStateRow(text: "Loading today…"),
+            stripFullRow: makeStripRow(names: [])
+        )
+    }
+
+    private init(
+        state: State,
+        titleRow: CaptureAgendaRow,
+        summaryText: String?,
+        isStale: Bool,
+        hasLiveCountdown: Bool,
+        warningRow: CaptureAgendaRow?,
+        groups: [CaptureAgendaGroup],
+        stateRow: CaptureAgendaRow?,
+        stripFullRow: CaptureAgendaRow
+    ) {
+        self.state = state
+        self.titleRow = titleRow
+        self.summaryText = summaryText
+        self.isStale = isStale
+        self.hasLiveCountdown = hasLiveCountdown
+        self.warningRow = warningRow
+        self.groups = groups
+        self.stateRow = stateRow
+        self.stripFullRow = stripFullRow
+    }
+
     static func makeTitleRow(
         rawDate: String?,
         nothingRunning: Bool,
         summaryText: String?,
-        locale: Locale
+        locale: Locale,
+        stale: Bool = false
     ) -> CaptureAgendaRow {
         let dateText = CaptureAgendaClock.titleDateText(rawDate: rawDate, locale: locale)
         var text = "Today"
@@ -287,13 +353,21 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         if nothingRunning {
             text += " · Nothing running"
         }
+        var accessory = summaryText
+        if stale {
+            if let existing = accessory, !existing.isEmpty {
+                accessory = "\(existing) · \(staleSuffix)"
+            } else {
+                accessory = staleSuffix
+            }
+        }
         return CaptureAgendaRow(
             kind: .title,
             text: text,
             depth: 0,
             lineLimit: 1,
-            accessoryText: summaryText,
-            accessibilityLabel: summaryText == nil ? text : "\(text). \(summaryText ?? "")"
+            accessoryText: accessory,
+            accessibilityLabel: accessory == nil ? text : "\(text). \(accessory ?? "")"
         )
     }
 

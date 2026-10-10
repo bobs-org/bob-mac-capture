@@ -102,6 +102,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 model?.agendaEnabled = enabled
             }
             .store(in: &agendaCancellables)
+        // The Agenda diagnostic follows the store live, so Settings
+        // shows the last refresh time, the refresh failure, or the
+        // old-bob upgrade hint without polling.
+        settings.agendaDiagnostic = agendaStore.diagnosticLine()
+        agendaStore.$status
+            .dropFirst()
+            .sink { [weak self] _ in
+                guard let self else {
+                    return
+                }
+                self.settings.agendaDiagnostic = self.agendaStore?.diagnosticLine() ?? ""
+            }
+            .store(in: &agendaCancellables)
+        agendaStore.$lastRefreshedAt
+            .dropFirst()
+            .sink { [weak self] _ in
+                guard let self else {
+                    return
+                }
+                self.settings.agendaDiagnostic = self.agendaStore?.diagnosticLine() ?? ""
+            }
+            .store(in: &agendaCancellables)
         panelController = CapturePanelController(model: model)
         panelController?.prewarm()
         // Prefetch after prewarm so the first hotkey after login already

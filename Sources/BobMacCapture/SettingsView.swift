@@ -63,6 +63,14 @@ struct SettingsView: View {
                     "Show today's Pomodoros when the draft is empty",
                     isOn: $settings.agendaEnabled
                 )
+                if !settings.agendaDiagnostic.isEmpty {
+                    Text(settings.agendaDiagnostic)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(
+                            "Agenda status, \(settings.agendaDiagnostic)"
+                        )
+                }
             }
 
             Section("Canceled Draft Stash") {

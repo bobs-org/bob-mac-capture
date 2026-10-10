@@ -43,7 +43,8 @@ final class CaptureAgendaModelTests: XCTestCase {
     }
 
     private func refreshModel(
-        agendaFixture: String? = nil
+        agendaFixture: String? = nil,
+        agendaEnvironment: [String: String] = [:]
     ) throws -> CapturePanelModel {
         var environment = [
             "HOME": "/tmp",
@@ -51,6 +52,9 @@ final class CaptureAgendaModelTests: XCTestCase {
         ]
         if let agendaFixture {
             environment["FAKE_BOB_AGENDA_FIXTURE"] = agendaFixture
+        }
+        for (key, value) in agendaEnvironment {
+            environment[key] = value
         }
         let store = CaptureAgendaStore(
             processClient: BobProcessClient(
@@ -153,5 +157,130 @@ final class CaptureAgendaModelTests: XCTestCase {
         }
         model.refreshAgendaPlan(today: "2026-08-28")
         XCTAssertTrue(fired)
+    }
+
+    // MARK: - Dim-hold and states (mac-agenda-polish)
+
+    private func readyModel() async throws -> CapturePanelModel {
+        let model = try refreshModel()
+        await waitUntil { model.agendaStore?.snapshot != nil }
+        model.refreshAgendaPlan(today: "2026-08-28")
+        XCTAssertTrue(model.agendaVisible)
+        return model
+    }
+
+    private func beginHold(_ model: CapturePanelModel) {
+        model.plainDraft = "068"
+        model.noteAgendaFirstKeystroke()
+        XCTAssertTrue(model.agendaDimmed)
+    }
+
+    func testFirstKeystrokeDimsAndKeepsAgendaMounted() async throws {
+        let model = try await readyModel()
+        beginHold(model)
+        // The agenda stays mounted (dimmed) with a non-blank draft.
+        XCTAssertTrue(model.agendaVisible)
+        model.releaseAgendaHoldForTests(event: .previewSettled)
+        XCTAssertFalse(model.agendaDimmed)
+        XCTAssertFalse(model.agendaVisible)
+    }
+
+    func testHoldReleasesOnEveryPath() async throws {
+        let model = try await readyModel()
+
+        beginHold(model)
+        model.releaseAgendaHoldForTests(event: .regionTaken)
+        XCTAssertFalse(model.agendaDimmed)
+
+        beginHold(model)
+        model.noteAgendaDraftCleared()
+        XCTAssertFalse(model.agendaDimmed)
+
+        beginHold(model)
+        model.noteAgendaStoppedShowing()
+        XCTAssertFalse(model.agendaDimmed)
+
+        beginHold(model)
+        model.previewState = .failed("preview failed")
+        XCTAssertFalse(model.agendaDimmed)
+        model.previewState = .idle
+
+        beginHold(model)
+        await waitUntil(timeout: 5) { !model.agendaDimmed }
+        XCTAssertFalse(model.agendaVisible)
+    }
+
+    func testHoldIgnoresKeystrokeWhenAgendaHidden() async throws {
+        let model = try await readyModel()
+        model.agendaEnabled = false
+        model.plainDraft = "068"
+        model.noteAgendaFirstKeystroke()
+        XCTAssertFalse(model.agendaDimmed)
+    }
+
+    func testStaleSnapshotMarksTitleRow() async throws {
+        let model = try await readyModel()
+        XCTAssertEqual(model.agendaPresentation?.isStale, false)
+        model.agendaStore?.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_AGENDA_FAIL": "1",
+            ]
+        )
+        model.agendaStore?.refresh(reason: .show)
+        await waitUntil {
+            if case .stale = model.agendaStore?.status {
+                return true
+            }
+            return false
+        }
+        model.refreshAgendaPlan(today: "2026-08-28")
+        XCTAssertEqual(model.agendaPresentation?.isStale, true)
+        XCTAssertTrue(
+            model.agendaPresentation?.titleRow.accessoryText?.contains(
+                CaptureAgendaPresentation.staleSuffix
+            ) == true
+        )
+        XCTAssertTrue(model.agendaVisible)
+        XCTAssertTrue(
+            model.agendaStore?.diagnosticLine().hasPrefix("Couldn't refresh") == true
+        )
+    }
+
+    func testNoSnapshotShowsLoadingLine() async throws {
+        let model = try refreshModel(agendaEnvironment: ["FAKE_BOB_AGENDA_FAIL": "1"])
+        await waitUntil {
+            if case .failed = model.agendaStore?.status {
+                return true
+            }
+            return false
+        }
+        model.refreshAgendaPlan(today: "2026-08-28")
+        XCTAssertEqual(model.agendaPresentation?.state, .loading)
+        XCTAssertEqual(model.agendaPresentation?.stateRow?.text, "Loading today…")
+        XCTAssertTrue(model.agendaVisible)
+    }
+
+    func testUnsupportedBobHidesAgenda() async throws {
+        let model = try refreshModel(
+            agendaEnvironment: ["FAKE_BOB_AGENDA_UNSUPPORTED": "1"]
+        )
+        await waitUntil { model.agendaStore?.status == .unsupported }
+        model.refreshAgendaPlan(today: "2026-08-28")
+        XCTAssertNil(model.agendaPlan)
+        XCTAssertFalse(model.agendaVisible)
+        XCTAssertEqual(
+            model.agendaStore?.diagnosticLine(),
+            "Update bob to show the agenda (needs `capture-pomodoros --tasks`)"
+        )
+    }
+
+    func testReadyStoreReportsLastRefreshed() async throws {
+        let model = try await readyModel()
+        XCTAssertTrue(
+            model.agendaStore?.diagnosticLine().hasPrefix("Last refreshed") == true
+        )
     }
 }

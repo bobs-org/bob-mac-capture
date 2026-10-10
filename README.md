@@ -287,12 +287,19 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
 - Development/rollback hotkey: Control-Shift-Command-R, selectable in Settings.
 - The hotkey path uses a pre-warmed non-activating `NSPanel`; subprocess work is kept
   off that path.
-- A fresh popup is a compact, Spotlight-like bar — a one-line editor plus persistent
-  footer actions, no empty preview placeholder, no dead space. Its first frame uses a
-  conservative compact fallback only until SwiftUI reports rendered editor, auxiliary,
-  and footer metrics. After that, the window's height tracks measured content as the
-  editor grows with the draft, the completion list appears, the live preview arrives,
-  and errors show or clear, staying anchored at the window's top edge. Measured
+- A fresh popup is a compact bar — a one-line editor plus persistent footer actions.
+  With an empty draft, the auxiliary region below the editor shows today's agenda
+  (see Idle agenda); with the agenda off or nothing to show, the popup is the
+  compact bar exactly as before, with no empty preview placeholder and no dead
+  space. Its first frame uses a conservative compact fallback only until SwiftUI
+  reports rendered editor, auxiliary, and footer metrics. After that, the window's
+  height tracks measured content as the editor grows with the draft, the completion
+  list appears, the live preview arrives, and errors show or clear. Every show
+  places the panel at a fixed eye line: the compact panel's top is computed once per
+  screen, so the input line lands in the same place with or without the agenda or a
+  retained draft. The agenda never moves the editor — its auxiliary height is capped
+  at the below-eye-line budget — and typed previews keep growing downward from the
+  same top under today's clamp and slide-up rule. Measured
   heights include the titlebar safe-area inset of the full-size-content panel, so
   the applied content height already accounts for the titlebar strip SwiftUI lays
   out inside. The editor's ceiling is a screen-derived budget — the visible frame
@@ -1371,6 +1378,55 @@ only and is never written to disk.
   where it stalls. Quitting mid-scan stops it — `bob`'s note writes are
   atomic per file, and the next scan or cron run finishes the job.
 
+## Idle agenda
+
+With an empty draft, the panel shows today's Pomodoro agenda below the editor, in
+the same thin-material pane as the live preview. It lists the running Pomodoro (Now)
+and every future one (Next, then Later), each with its linked tasks at the most
+detail that fits below the fixed eye line without scrolling. The `=x` and `=`
+numbers match the ones `bob` will use: the current entry shows its `=x` numbers and
+every other open entry shows its `=` lineup number.
+
+- Freshness and caching. `bob` owns every fact via
+  `bob capture-pomodoros --format json --tasks`; the app caches the last good
+  snapshot in memory and revalidates it on launch (prefetch after prewarm), on
+  filtered vault events (visible `.md` notes and the Tasks-plugin filter — never
+  `.git/`, attachments, or settings churn), on every panel show
+  (stale-while-revalidate, replacing the old per-show spawn), after each successful
+  submit, on wake, unlock, day change, and clock change, and fresh after Recheck Bob
+  or a `bob` executable or directory change. One refresh flies at a time with at most
+  one follow-up; byte-identical output publishes nothing. A snapshot whose date is
+  not today is never shown ("Loading today…" until the refresh lands); a failed
+  refresh keeps the last good agenda and marks the title row "Couldn't refresh". An
+  older `bob` without `--tasks` hides the agenda and serves only the close-comma
+  count until Recheck Bob or an executable change.
+- Folding. Detail fades with distance: the farthest Pomodoros lose their logs first,
+  then collapse to one line per task, one row per Pomodoro, and finally into a Later
+  name strip. Every fold leaves a chip (`⚒ 3`, `+5 lines`, `4 tasks`) that expands
+  that unit in place; expansions reset on hide and on snapshot change, and pinned
+  units may overflow with a scroll and an `N more` cue.
+- Transitions. No animation on show — cached content is in the first frame. The first
+  keystroke dims the agenda to 35% (100 ms, instant under Reduce Motion) and holds it
+  until the preview settles, another owner takes the region, 250 ms elapse, or the
+  draft returns to blank; the region then swaps with one height change. In-place
+  agenda updates cross-fade (120 ms, off under Reduce Motion); height is never
+  animated. Clearing to empty repaints the cached plan instantly and revalidates in
+  the background. The Now countdown (`12m left`, `ending now`, `overdue 8m`) ticks at
+  minute granularity while the panel is visible.
+- Setting and diagnostics. Settings › Agenda toggles "Show today's Pomodoros when the
+  draft is empty" (on by default); while off, the store keeps refreshing for the
+  close-comma count but nothing is measured, planned, or shown. The same section
+  reports "Last refreshed 14:32", "Couldn't refresh: …", or the old-`bob` upgrade
+  hint.
+- Accessibility. Each Pomodoro group is one container ("Running Pomodoro FIX, 14:10
+  to 14:35, 2 tasks"); the countdown is the header's value, not its label. Task rows
+  read "Task 1, In Progress, …" and chips announce what they expand. Return in an
+  empty editor never acts on an agenda row, and keyboard focus never leaves the
+  editor.
+- Signposts. Intervals `agenda-refresh`, `agenda-measure`, and `agenda-plan`, plus
+  events `agenda-unchanged`, `agenda-published`, and `agenda-hold-released` —
+  metadata only (see Diagnostics and Signposts).
+
 ## Keyboard
 
 | Key | In the editor | While completion is visible | While Add block ID is open | While Name Pomodoro is open |
@@ -1995,10 +2051,13 @@ text is stored separately in that Application Support directory (see Privacy).
 The app emits `os_signpost` intervals/events (subsystem `org.bobs.bob-mac-capture`,
 category `capture`) around hotkey receipt, panel ordering, editor focus, parse,
 completion, preview, submit, block-ID focus claims, plain-text paste
-(`paste-plain-text`), notification scheduling, and install-restart notification
-requests (`install-restart-notification-requested`), visible in Instruments' Points of
-Interest / os_signpost templates. These, and the bounded Recent Activity list in
-Settings, are metadata-only by construction — see Privacy above.
+(`paste-plain-text`), notification scheduling, install-restart notification
+requests (`install-restart-notification-requested`), and the idle agenda
+(intervals `agenda-refresh`, `agenda-measure`, `agenda-plan`; events
+`agenda-unchanged`, `agenda-published`, `agenda-hold-released`), visible in
+Instruments' Points of Interest / os_signpost templates. These, and the bounded
+Recent Activity list in Settings, are metadata-only by construction — see Privacy
+above.
 
 ## CI
 

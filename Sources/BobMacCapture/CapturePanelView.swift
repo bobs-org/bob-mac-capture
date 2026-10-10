@@ -305,6 +305,7 @@ struct CapturePanelView: View {
     @FocusState private var focusedControl: CapturePanelFocusTarget?
     @AccessibilityFocusState private var errorIsFocused: Bool
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var measuredEditorHeight = CaptureEditorHeightPolicy().minimumHeight
     @State private var measuredAuxiliaryContentHeight: CGFloat = 0
     @State private var measuredFooterHeight: CGFloat = 0
@@ -346,7 +347,10 @@ struct CapturePanelView: View {
             .onChange(of: measuredFooterHeight) { _, _ in
                 reportContentMetrics()
             }
-            .onChange(of: model.agendaVisible) { _, _ in
+            .onChange(of: model.agendaVisible) { oldVisible, newVisible in
+                if oldVisible, !newVisible {
+                    model.noteAgendaStoppedShowing()
+                }
                 measuredAuxiliaryContentHeight = 0
                 reportContentMetrics()
             }
@@ -482,26 +486,49 @@ struct CapturePanelView: View {
     @ViewBuilder
     private var agendaPane: some View {
         if let plan = model.agendaPlan, let presentation = model.agendaPresentation {
-            CaptureAgendaPaneView(
-                plan: plan,
-                presentation: presentation,
-                onExpand: { model.expandAgendaUnit($0) },
-                onContentWidthChange: { width in
-                    guard model.agendaContentWidth != width else {
-                        return
-                    }
-                    model.agendaContentWidth = width
+            if model.agendaHasLiveCountdown {
+                TimelineView(.everyMinute) { context in
+                    agendaContent(plan: plan, presentation: presentation)
+                        .onChange(of: context.date) { _, _ in
+                            model.refreshAgendaPlan()
+                        }
                 }
-            )
-            .layoutPriority(0)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Today's Pomodoros")
-            .onGeometryChange(for: CGFloat.self) { geometry in
-                geometry.size.height
-            } action: { height in
-                updateMeasuredAuxiliaryContentHeight(height)
+            } else {
+                agendaContent(plan: plan, presentation: presentation)
             }
         }
+    }
+
+    private func agendaContent(
+        plan: CaptureAgendaPlan,
+        presentation: CaptureAgendaPresentation
+    ) -> some View {
+        CaptureAgendaPaneView(
+            plan: plan,
+            presentation: presentation,
+            onExpand: { model.expandAgendaUnit($0) },
+            onContentWidthChange: { width in
+                guard model.agendaContentWidth != width else {
+                    return
+                }
+                model.agendaContentWidth = width
+            }
+        )
+        .layoutPriority(0)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Today's Pomodoros")
+        .opacity(model.agendaDimmed ? CaptureAgendaHold.dimmedOpacity : 1)
+        .animation(agendaDimAnimation, value: model.agendaDimmed)
+        .onGeometryChange(for: CGFloat.self) { geometry in
+            geometry.size.height
+        } action: { height in
+            updateMeasuredAuxiliaryContentHeight(height)
+        }
+    }
+
+    private var agendaDimAnimation: Animation? {
+        // Reduce Motion disables the fade; the dim still applies.
+        reduceMotion ? nil : .easeOut(duration: CaptureAgendaHold.dimFadeSeconds)
     }
 
     private var auxiliaryScrollRegion: some View {

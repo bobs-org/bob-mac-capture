@@ -153,6 +153,87 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         }
     }
 
+    func testStaleMarksTitleRow() {
+        let fresh = present(makeSnapshot(entries: [
+            makeEntry(line: 5, items: [makeItem(ledgerLine: 6)]),
+        ]))
+        XCTAssertFalse(fresh.isStale)
+        XCTAssertEqual(fresh.titleRow.accessoryText, "1 done · 2h 40m")
+
+        let snapshot = makeSnapshot(entries: [
+            makeEntry(line: 5, items: [makeItem(ledgerLine: 6)]),
+        ])
+        let stale = CaptureAgendaPresentation(
+            snapshot: snapshot,
+            today: today,
+            now: nil,
+            locale: locale,
+            isStale: true
+        )
+        XCTAssertTrue(stale.isStale)
+        XCTAssertEqual(
+            stale.titleRow.accessoryText,
+            "1 done · 2h 40m · \(CaptureAgendaPresentation.staleSuffix)"
+        )
+        XCTAssertTrue(
+            stale.titleRow.accessibilityLabel?.contains(
+                CaptureAgendaPresentation.staleSuffix
+            ) == true
+        )
+    }
+
+    func testStaleWithoutSummaryShowsSuffixAlone() {
+        let snapshot = makeSnapshot(
+            summary: CaptureAgendaCompletedSummary(),
+            entries: [makeEntry(line: 5, items: [makeItem(ledgerLine: 6)])]
+        )
+        let stale = CaptureAgendaPresentation(
+            snapshot: snapshot,
+            today: today,
+            now: nil,
+            locale: locale,
+            isStale: true
+        )
+        XCTAssertEqual(
+            stale.titleRow.accessoryText,
+            CaptureAgendaPresentation.staleSuffix
+        )
+    }
+
+    func testLiveCountdownFollowsCurrentEndsAt() {
+        let timed = present(makeSnapshot(entries: [
+            makeEntry(line: 5, endsAt: "2026-08-28T08:30"),
+        ]))
+        XCTAssertTrue(timed.hasLiveCountdown)
+
+        let untimed = present(makeSnapshot(entries: [
+            makeEntry(
+                line: 5,
+                startsAt: nil,
+                endsAt: nil
+            ),
+        ]))
+        XCTAssertFalse(untimed.hasLiveCountdown)
+
+        let nextOnly = present(makeSnapshot(entries: [
+            makeEntry(line: 5, role: .next, endsAt: "2026-08-28T09:30"),
+        ]))
+        XCTAssertFalse(nextOnly.hasLiveCountdown)
+    }
+
+    func testLoadingFactoryShowsQuietLine() {
+        let loading = CaptureAgendaPresentation.loading(
+            today: today,
+            locale: locale
+        )
+        XCTAssertEqual(loading.state, .loading)
+        XCTAssertTrue(loading.groups.isEmpty)
+        XCTAssertFalse(loading.isStale)
+        XCTAssertFalse(loading.hasLiveCountdown)
+        XCTAssertEqual(loading.titleRow.text, "Today · Fri 28 Aug")
+        XCTAssertEqual(loading.stateRow?.text, "Loading today…")
+    }
+
     func testDateMismatchShowsLoading() {
         let presentation = present(makeSnapshot(
             date: "2026-08-27",

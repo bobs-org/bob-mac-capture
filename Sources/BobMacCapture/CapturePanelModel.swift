@@ -143,7 +143,16 @@ final class CapturePanelModel: ObservableObject {
     @Published var attributedDraft = AttributedString()
     @Published var editorSelection = AttributedTextSelection()
     @Published var statusText = ""
-    @Published var previewState: CapturePreviewState = .idle
+    @Published var previewState: CapturePreviewState = .idle {
+        didSet {
+            switch previewState {
+            case .ready, .failed:
+                releaseAgendaHold(event: .previewSettled)
+            case .idle, .loading:
+                break
+            }
+        }
+    }
     @Published var parseDiagnostics: [CaptureDiagnostic] = []
     @Published var completionResponse: CaptureCompletionResponse?
     @Published var selectedCompletionIndex = 0
@@ -308,6 +317,16 @@ final class CapturePanelModel: ObservableObject {
     /// Reset on hide and when the snapshot changes.
     @Published var agendaExpanded: Set<CaptureAgendaUnitID> = []
 
+    /// First-keystroke dim-hold (plan §7): true from the first non-blank
+    /// keystroke while the agenda shows until the preview settles, the
+    /// region is taken, 250 ms elapse, or the draft returns to blank.
+    /// The view dims the agenda to 35% while this holds.
+    @Published private(set) var agendaDimmed = false
+
+    private var agendaHold: CaptureAgendaHold.State = .idle
+    private var agendaHoldTask: Task<Void, Never>?
+    private var agendaHoldGeneration: UInt64 = 0
+
     /// Measured footer height, reported by the panel view. The
     /// controller derives the compact panel's top from it.
     @Published var footerHeight: CGFloat = 0
@@ -321,15 +340,28 @@ final class CapturePanelModel: ObservableObject {
 
     /// Whether the agenda paints: the setting is on, the draft is
     /// blank, nothing else owns the auxiliary region, no live preview
-    /// is showing, and a plan is ready.
+    /// is showing, and a plan is ready. While the dim-hold is active
+    /// the agenda stays mounted (dimmed) even with a non-blank draft,
+    /// so the region swaps with one height change when the hold ends.
     var agendaVisible: Bool {
-        CaptureAgendaVisibility.isVisible(
+        if agendaHold == .holding {
+            let previewPending = previewState == .idle || previewState == .loading
+            return agendaEnabled && !auxiliaryOwnedByOther && previewPending
+                && agendaPlan != nil
+        }
+        return CaptureAgendaVisibility.isVisible(
             settingOn: agendaEnabled,
             draftBlank: !hasDraft,
             regionFree: !auxiliaryOwnedByOther,
             previewIdle: previewState == .idle,
             hasPlan: agendaPlan != nil
         )
+    }
+
+    /// True while a current entry carries an end time: the view mounts
+    /// its minute-granularity countdown only then.
+    var agendaHasLiveCountdown: Bool {
+        agendaPresentation?.hasLiveCountdown == true
     }
 
     private var auxiliaryOwnedByOther: Bool {
@@ -347,6 +379,88 @@ final class CapturePanelModel: ObservableObject {
         refreshAgendaPlan()
     }
 
+    /// Starts the dim-hold when the draft turns non-blank while the
+    /// agenda shows. Called from the non-blank path of
+    /// `editorTextDidChange`, where the pre-keystroke visibility is
+    /// exactly setting-on, plan-ready, region-free, and preview-idle.
+    func noteAgendaFirstKeystroke() {
+        let wasShowing = agendaEnabled && agendaPlan != nil
+            && !auxiliaryOwnedByOther && previewState == .idle
+        guard wasShowing else {
+            return
+        }
+        let advanced = CaptureAgendaHold.next(
+            state: agendaHold,
+            event: .draftBecameNonBlank
+        )
+        guard advanced == .holding, agendaHold != .holding else {
+            return
+        }
+        agendaHold = .holding
+        agendaDimmed = true
+        agendaHoldGeneration &+= 1
+        let generation = agendaHoldGeneration
+        agendaHoldTask?.cancel()
+        agendaHoldTask = Task { [weak self] in
+            try? await Task.sleep(
+                nanoseconds: CaptureAgendaHold.timeoutNanoseconds
+            )
+            await MainActor.run {
+                self?.expireAgendaHold(generation: generation)
+            }
+        }
+    }
+
+    /// Cancels the hold when the draft returns to blank. When a hold
+    /// was active the cached plan repaints immediately and one
+    /// background revalidation follows, per plan §7.
+    func noteAgendaDraftCleared() {
+        let wasHolding = agendaHold == .holding
+        releaseAgendaHold(event: .draftReturnedToBlank)
+        if wasHolding {
+            agendaStore?.refresh(reason: .show)
+        }
+    }
+
+    /// Releases the hold when the agenda stops showing because the
+    /// preview settled or another owner took the auxiliary region. The
+    /// view calls this from its `agendaVisible` transition; the live
+    /// preview's settled height resets structurally there, because the
+    /// preview pane remounts fresh at the 92 pt floor.
+    func noteAgendaStoppedShowing() {
+        if previewState == .idle {
+            releaseAgendaHold(event: .regionTaken)
+        } else {
+            releaseAgendaHold(event: .previewSettled)
+        }
+    }
+
+    private func expireAgendaHold(generation: UInt64) {
+        guard generation == agendaHoldGeneration else {
+            return
+        }
+        releaseAgendaHold(event: .timeoutElapsed)
+    }
+
+    private func releaseAgendaHold(event: CaptureAgendaHold.Event) {
+        let advanced = CaptureAgendaHold.next(state: agendaHold, event: event)
+        guard advanced == .idle, agendaHold != .idle else {
+            return
+        }
+        agendaHold = .idle
+        agendaDimmed = false
+        agendaHoldGeneration &+= 1
+        agendaHoldTask?.cancel()
+        agendaHoldTask = nil
+        CaptureSignpost.event(CaptureSignpost.agendaHoldReleased)
+    }
+
+    /// Test-only release covering every hold-release path without a
+    /// draft or a timer.
+    func releaseAgendaHoldForTests(event: CaptureAgendaHold.Event) {
+        releaseAgendaHold(event: event)
+    }
+
     /// The day the current plan is built for. An explicit `today`
     /// pins it; internal re-plans (expansion, width or budget change)
     /// reuse it, so an expansion never re-plans for a different day
@@ -362,16 +476,43 @@ final class CapturePanelModel: ObservableObject {
     func refreshAgendaPlan(today: String? = nil) {
         let day = today ?? agendaPlanningDay ?? CaptureAgendaStore.localToday()
         agendaPlanningDay = day
-        guard agendaEnabled, let snapshot = agendaStore?.snapshot else {
+        guard agendaEnabled, agendaStore != nil else {
             agendaPresentation = nil
             agendaPlan = nil
             return
         }
+        guard let snapshot = agendaStore?.snapshot else {
+            publishAgendaLoading(today: day)
+            return
+        }
+        let stale: Bool
+        if case .stale = agendaStore?.status {
+            stale = true
+        } else {
+            stale = false
+        }
         let presentation = CaptureAgendaPresentation(
             snapshot: snapshot,
             today: day,
-            now: Date()
+            now: Date(),
+            isStale: stale
         )
+        publishAgendaPlan(presentation)
+    }
+
+    /// Paints one quiet "Loading today…" line while the setting is on
+    /// and the store has nothing current yet. Unsupported bobs keep
+    /// the compact bar with no agenda at all.
+    private func publishAgendaLoading(today: String) {
+        if agendaStore?.status == .unsupported {
+            agendaPresentation = nil
+            agendaPlan = nil
+            return
+        }
+        publishAgendaPlan(CaptureAgendaPresentation.loading(today: today))
+    }
+
+    private func publishAgendaPlan(_ presentation: CaptureAgendaPresentation) {
         agendaPresentation = presentation
         let plan = CaptureAgendaHeightResolver.resolve(
             presentation: presentation,
@@ -958,8 +1099,11 @@ final class CapturePanelModel: ObservableObject {
             statusText = ""
             invalidateAnalysis()
             invalidateRewrite()
+            noteAgendaDraftCleared()
             return
         }
+
+        noteAgendaFirstKeystroke()
 
         if commitRouteCompletionOnPlus(draft: draft) {
             return

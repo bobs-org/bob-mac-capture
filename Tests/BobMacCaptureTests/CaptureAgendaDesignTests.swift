@@ -43,32 +43,73 @@ final class CaptureAgendaDesignTests: XCTestCase {
                 today: snapshot.date ?? "",
                 now: nil
             )
-            for width in [760, 620] as [CGFloat] {
-                let rowsWidth = width - 36
-                    - 2 * CGFloat(CaptureAgendaLayoutMetrics.panePadding)
-                let measurer = CaptureAgendaRowMeasurer()
-                let plan = CaptureAgendaHeightResolver.resolve(
-                    presentation: presentation,
-                    budget: budget,
-                    expanded: [],
-                    width: rowsWidth,
-                    measurer: measurer
+            try render(presentation: presentation, base: base, budget: budget)
+        }
+        // The stale marker on the title row's right, and the overdue
+        // countdown: the current entry ends 08:30, so 08:38 reads
+        // "overdue 8m" in orange.
+        let current = try agendaSnapshot("agenda-current.json")
+        try render(
+            presentation: CaptureAgendaPresentation(
+                snapshot: current,
+                today: current.date ?? "",
+                now: nil,
+                isStale: true
+            ),
+            base: "agenda-current-stale",
+            budget: 2_000
+        )
+        let overdueNow = Calendar.current.date(
+            from: DateComponents(
+                year: 2_026,
+                month: 8,
+                day: 28,
+                hour: 8,
+                minute: 38
+            )
+        )
+        try render(
+            presentation: CaptureAgendaPresentation(
+                snapshot: current,
+                today: current.date ?? "",
+                now: overdueNow,
+                locale: Locale(identifier: "en_US_POSIX")
+            ),
+            base: "agenda-current-overdue",
+            budget: 2_000
+        )
+    }
+
+    private func render(
+        presentation: CaptureAgendaPresentation,
+        base: String,
+        budget: Double
+    ) throws {
+        for width in [760, 620] as [CGFloat] {
+            let rowsWidth = width - 36
+                - 2 * CGFloat(CaptureAgendaLayoutMetrics.panePadding)
+            let measurer = CaptureAgendaRowMeasurer()
+            let plan = CaptureAgendaHeightResolver.resolve(
+                presentation: presentation,
+                budget: budget,
+                expanded: [],
+                width: rowsWidth,
+                measurer: measurer
+            )
+            let pane = CaptureAgendaPaneView(
+                plan: plan,
+                presentation: presentation
+            )
+            for appearance in [
+                NSAppearance.Name.aqua,
+                NSAppearance.Name.darkAqua,
+            ] {
+                try RenderFixtureWriter.write(
+                    pane,
+                    name: "agenda-\(base)-\(Int(width))",
+                    width: width - 36,
+                    appearance: appearance
                 )
-                let pane = CaptureAgendaPaneView(
-                    plan: plan,
-                    presentation: presentation
-                )
-                for appearance in [
-                    NSAppearance.Name.aqua,
-                    NSAppearance.Name.darkAqua,
-                ] {
-                    try RenderFixtureWriter.write(
-                        pane,
-                        name: "agenda-\(base)-\(Int(width))",
-                        width: width - 36,
-                        appearance: appearance
-                    )
-                }
             }
         }
     }

@@ -33,4 +33,13 @@ enum CaptureSignpost {
         defer { end(token) }
         return try await operation()
     }
+
+    // Idle-agenda intervals and events (plan §10). Metadata only:
+    // refresh reasons, counts, and durations, never titles or paths.
+    static let agendaRefresh: StaticString = "agenda-refresh"
+    static let agendaMeasure: StaticString = "agenda-measure"
+    static let agendaPlan: StaticString = "agenda-plan"
+    static let agendaUnchanged: StaticString = "agenda-unchanged"
+    static let agendaPublished: StaticString = "agenda-published"
+    static let agendaHoldReleased: StaticString = "agenda-hold-released"
 }

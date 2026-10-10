@@ -100,6 +100,7 @@ enum CaptureAgendaHeightResolver {
         measurer: CaptureAgendaRowMeasurer
     ) -> CaptureAgendaPlan {
         var heights: [CaptureAgendaRowKey: Double] = [:]
+        let measureToken = CaptureSignpost.begin(CaptureSignpost.agendaMeasure)
         measureMissing(
             presentation: presentation,
             plan: nil,
@@ -107,14 +108,18 @@ enum CaptureAgendaHeightResolver {
             measurer: measurer,
             heights: &heights
         )
+        CaptureSignpost.end(measureToken)
+        let planToken = CaptureSignpost.begin(CaptureSignpost.agendaPlan)
         var plan = CaptureAgendaFitPlanner.plan(
             presentation: presentation,
             heights: heights,
             budget: budget,
             expanded: expanded
         )
+        CaptureSignpost.end(planToken)
         for _ in 0..<8 {
             let known = heights.count
+            let fixToken = CaptureSignpost.begin(CaptureSignpost.agendaMeasure)
             measureMissing(
                 presentation: presentation,
                 plan: plan,
@@ -122,15 +127,18 @@ enum CaptureAgendaHeightResolver {
                 measurer: measurer,
                 heights: &heights
             )
+            CaptureSignpost.end(fixToken)
             guard heights.count > known else {
                 break
             }
+            let replanToken = CaptureSignpost.begin(CaptureSignpost.agendaPlan)
             plan = CaptureAgendaFitPlanner.plan(
                 presentation: presentation,
                 heights: heights,
                 budget: budget,
                 expanded: expanded
             )
+            CaptureSignpost.end(replanToken)
         }
         return plan
     }
