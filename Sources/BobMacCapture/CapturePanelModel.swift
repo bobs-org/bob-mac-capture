@@ -262,6 +262,122 @@ final class CapturePanelModel: ObservableObject {
 
     private var agendaCancellable: AnyCancellable?
 
+    // MARK: - Idle agenda view state
+
+    /// The Settings toggle, observed live from AppDelegate. While off,
+    /// the store keeps refreshing for the close-comma count, but
+    /// nothing is measured, planned, or shown.
+    @Published var agendaEnabled = true {
+        didSet {
+            guard agendaEnabled != oldValue else {
+                return
+            }
+            refreshAgendaPlan()
+        }
+    }
+
+    /// The latest planned agenda, or nil when there is no snapshot or
+    /// state line to show.
+    @Published var agendaPresentation: CaptureAgendaPresentation?
+    @Published var agendaPlan: CaptureAgendaPlan?
+
+    /// Below-eye-line budget for the agenda, published by the panel
+    /// controller. Planning is arithmetic on cached heights, so a
+    /// screen change re-plans without re-measuring.
+    @Published var agendaBudget: Double = 533 {
+        didSet {
+            guard agendaBudget != oldValue else {
+                return
+            }
+            refreshAgendaPlan()
+        }
+    }
+
+    /// Agenda content width, reported by the agenda pane. A width
+    /// change re-measures what is missing, then re-plans.
+    @Published var agendaContentWidth: CGFloat = 724 {
+        didSet {
+            guard agendaContentWidth != oldValue else {
+                return
+            }
+            refreshAgendaPlan()
+        }
+    }
+
+    /// Manually expanded fold units, pinned at full by the planner.
+    /// Reset on hide and when the snapshot changes.
+    @Published var agendaExpanded: Set<CaptureAgendaUnitID> = []
+
+    /// Measured footer height, reported by the panel view. The
+    /// controller derives the compact panel's top from it.
+    @Published var footerHeight: CGFloat = 0
+
+    /// Fires when a new plan publishes, so the controller can settle
+    /// the layout while the panel is hidden.
+    var agendaPlanDidChange: (() -> Void)?
+
+    private let agendaMeasurer = CaptureAgendaRowMeasurer()
+    private var agendaSnapshotCancellable: AnyCancellable?
+
+    /// Whether the agenda paints: the setting is on, the draft is
+    /// blank, nothing else owns the auxiliary region, no live preview
+    /// is showing, and a plan is ready.
+    var agendaVisible: Bool {
+        CaptureAgendaVisibility.isVisible(
+            settingOn: agendaEnabled,
+            draftBlank: !hasDraft,
+            regionFree: !auxiliaryOwnedByOther,
+            previewIdle: previewState == .idle,
+            hasPlan: agendaPlan != nil
+        )
+    }
+
+    private var auxiliaryOwnedByOther: Bool {
+        isStashPickerPresented || inlinePromptVisible || pickerVisible
+            || pickerChipVisible || completionVisible
+            || destinationSummary != nil || errorMessage != nil
+            || taskIDPromptVisible || pomodoroNamePromptVisible
+    }
+
+    /// Expands one fold unit in place and returns focus to the editor,
+    /// so keyboard focus never leaves the editor in v1.
+    func expandAgendaUnit(_ unit: CaptureAgendaUnitID) {
+        agendaExpanded.insert(unit)
+        requestFocus(.editor)
+        refreshAgendaPlan()
+    }
+
+    /// Measures what is missing, plans, and publishes. Runs on snapshot
+    /// publish, width change, screen change (via the budget), and
+    /// expansion. Planning iterates to a fixpoint: a freshly folded
+    /// plan can surface new row variants (chips, strips) that need
+    /// measuring before the final plan.
+    func refreshAgendaPlan(today: String = CaptureAgendaStore.localToday()) {
+        guard agendaEnabled, let snapshot = agendaStore?.snapshot else {
+            agendaPresentation = nil
+            agendaPlan = nil
+            return
+        }
+        let presentation = CaptureAgendaPresentation(
+            snapshot: snapshot,
+            today: today,
+            now: Date()
+        )
+        agendaPresentation = presentation
+        let plan = CaptureAgendaHeightResolver.resolve(
+            presentation: presentation,
+            budget: agendaBudget,
+            expanded: agendaExpanded,
+            width: max(1, agendaContentWidth),
+            measurer: agendaMeasurer
+        )
+        let changed = agendaPlan != plan
+        agendaPlan = plan
+        if changed {
+            agendaPlanDidChange?()
+        }
+    }
+
     /// True while the close-comma assist may fire: the running Pomodoro
     /// has a known count below the single-digit limit.
     var closeTaskCommaArmed: Bool {
@@ -680,6 +796,7 @@ final class CapturePanelModel: ObservableObject {
     /// so the model only forwards it.
     private func subscribeToAgendaStore() {
         agendaCancellable = nil
+        agendaSnapshotCancellable = nil
         guard let agendaStore else {
             return
         }
@@ -688,6 +805,17 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
             self.currentPomodoroTaskLinkCount = count
+        }
+        // A new snapshot resets expansions and re-plans. The store
+        // only publishes on change, so byte-identical output stays a
+        // no-op here too.
+        agendaSnapshotCancellable = agendaStore.$snapshot.sink { [weak self] _ in
+            guard let self else {
+                return
+            }
+            self.agendaExpanded = []
+            self.agendaMeasurer.noteSnapshotChange()
+            self.refreshAgendaPlan()
         }
     }
 
@@ -1088,6 +1216,7 @@ final class CapturePanelModel: ObservableObject {
     func prepareForRetainedClose() {
         dismissStashPicker()
         clearInlinePrompts()
+        agendaExpanded = []
         if hasDraft {
             statusText = "Draft retained"
         }
@@ -1252,6 +1381,7 @@ final class CapturePanelModel: ObservableObject {
         dismissStashPicker()
         closePickerForDismissal()
         clearInlinePrompts()
+        agendaExpanded = []
     }
 
     func requestFocus(_ target: CapturePanelFocusTarget) {

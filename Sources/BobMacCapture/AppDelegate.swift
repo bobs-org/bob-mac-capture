@@ -91,6 +91,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         self.agendaStore = agendaStore
         model.agendaStore = agendaStore
+        // The Agenda toggle applies live: the store keeps refreshing
+        // for the close-comma count while the model stops measuring,
+        // planning, and showing.
+        model.agendaEnabled = settings.agendaEnabled
+        settings.$agendaEnabled
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak model] enabled in
+                model?.agendaEnabled = enabled
+            }
+            .store(in: &agendaCancellables)
         panelController = CapturePanelController(model: model)
         panelController?.prewarm()
         // Prefetch after prewarm so the first hotkey after login already

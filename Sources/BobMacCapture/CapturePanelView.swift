@@ -346,6 +346,13 @@ struct CapturePanelView: View {
             .onChange(of: measuredFooterHeight) { _, _ in
                 reportContentMetrics()
             }
+            .onChange(of: model.agendaVisible) { _, _ in
+                measuredAuxiliaryContentHeight = 0
+                reportContentMetrics()
+            }
+            .onChange(of: model.agendaPlan) { _, _ in
+                reportContentMetrics()
+            }
     }
 
     private var editorHeightPolicy: CaptureEditorHeightPolicy {
@@ -440,6 +447,7 @@ struct CapturePanelView: View {
             || model.destinationSummary != nil
             || model.errorMessage != nil
             || model.previewState != .idle
+            || model.agendaVisible
     }
 
     @ViewBuilder
@@ -464,8 +472,35 @@ struct CapturePanelView: View {
                 } action: { height in
                     updateMeasuredAuxiliaryContentHeight(height)
                 }
+        } else if model.agendaVisible {
+            agendaPane
         } else {
             auxiliaryScrollRegion
+        }
+    }
+
+    @ViewBuilder
+    private var agendaPane: some View {
+        if let plan = model.agendaPlan, let presentation = model.agendaPresentation {
+            CaptureAgendaPaneView(
+                plan: plan,
+                presentation: presentation,
+                onExpand: { model.expandAgendaUnit($0) },
+                onContentWidthChange: { width in
+                    guard model.agendaContentWidth != width else {
+                        return
+                    }
+                    model.agendaContentWidth = width
+                }
+            )
+            .layoutPriority(0)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Today's Pomodoros")
+            .onGeometryChange(for: CGFloat.self) { geometry in
+                geometry.size.height
+            } action: { height in
+                updateMeasuredAuxiliaryContentHeight(height)
+            }
         }
     }
 
@@ -590,6 +625,12 @@ struct CapturePanelView: View {
             return
         }
         measuredFooterHeight = height
+        // The controller derives the compact panel's top (the fixed
+        // eye line) from the footer; publish it the way the screen
+        // height and safe-area inset are published.
+        if model.footerHeight != height {
+            model.footerHeight = height
+        }
         reportContentMetrics()
     }
 
@@ -652,7 +693,28 @@ struct CapturePanelView: View {
             )
         }
 
+        // While the agenda owns the auxiliary region, its reported
+        // ideal height is capped at the below-eye-line budget (plus
+        // the pane's own padding, which the budget already subtracts
+        // as preview-pane insets), so the panel never slides up for
+        // the agenda. An unknown budget leaves the height uncapped.
+        if model.agendaVisible {
+            let cap = agendaPaneHeightCap
+            return .overflow(
+                idealHeight: cap.map { min(measuredAuxiliaryContentHeight, $0) }
+                    ?? measuredAuxiliaryContentHeight
+            )
+        }
+
         return .overflow(idealHeight: measuredAuxiliaryContentHeight)
+    }
+
+    private var agendaPaneHeightCap: CGFloat? {
+        guard model.agendaBudget > 0 else {
+            return nil
+        }
+        return CGFloat(model.agendaBudget)
+            + 2 * CGFloat(CaptureAgendaLayoutMetrics.panePadding)
     }
 
     private enum AuxiliarySection: Hashable {

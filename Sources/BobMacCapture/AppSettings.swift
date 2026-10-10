@@ -31,6 +31,10 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(refsHighlightsAppPath, forKey: Keys.refsHighlightsAppPath) }
     }
 
+    @Published var agendaEnabled: Bool {
+        didSet { defaults.set(agendaEnabled, forKey: Keys.agendaEnabled) }
+    }
+
     @Published var canceledDraftStashCapacity: Int {
         didSet {
             let clamped = Self.clampedCanceledDraftStashCapacity(canceledDraftStashCapacity)
@@ -86,6 +90,9 @@ final class AppSettings: ObservableObject {
             refsHighlightsOpenKey = .cmdO
         }
         refsHighlightsAppPath = defaults.string(forKey: Keys.refsHighlightsAppPath) ?? ""
+        agendaEnabled = defaults.object(forKey: Keys.agendaEnabled) == nil
+            ? true
+            : defaults.bool(forKey: Keys.agendaEnabled)
         canceledDraftStashCapacity = Self.loadCanceledDraftStashCapacity(from: defaults)
     }
 
@@ -128,4 +135,5 @@ private enum Keys {
     static let refsHighlightsOpenKey = "refsHighlightsOpenKey"
     static let refsHighlightsAppPath = AppSettings.refsHighlightsAppPathKey
     static let canceledDraftStashCapacity = "canceledDraftStashCapacity"
+    static let agendaEnabled = "agendaEnabled"
 }

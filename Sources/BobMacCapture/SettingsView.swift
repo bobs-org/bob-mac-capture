@@ -58,6 +58,13 @@ struct SettingsView: View {
                 .accessibilityHint("Clears recently-opened rows and frecency.")
             }
 
+            Section("Agenda") {
+                Toggle(
+                    "Show today's Pomodoros when the draft is empty",
+                    isOn: $settings.agendaEnabled
+                )
+            }
+
             Section("Canceled Draft Stash") {
                 Stepper(
                     value: Binding(

@@ -1,0 +1,117 @@
+import AppKit
+import CaptureCore
+import XCTest
+
+@testable import BobMacCapture
+
+/// Fixed eye-line placement: every show, with or without the agenda
+/// or a retained draft, puts the input line in the same place, while
+/// typed previews keep growing downward and slide up only at the
+/// screen's edges.
+@MainActor
+final class CapturePanelEyeLineTests: XCTestCase {
+    private func contentMetrics(ideal: CGFloat, minimum: CGFloat)
+        -> CapturePanelContentMetrics
+    {
+        CapturePanelContentMetrics(
+            idealContentHeight: ideal,
+            minimumVisibleContentHeight: minimum
+        )
+    }
+
+    private func visibleFrame(for panel: NSPanel) -> NSRect? {
+        panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+    }
+
+    func testTopIdenticalAcrossShowsWithAndWithoutAgenda() {
+        let model = CapturePanelModel()
+        model.footerHeight = 40
+        let controller = CapturePanelController(model: model)
+        let panel = controller.makePanelIfNeeded()
+        let policy = CapturePanelContentHeightPolicy(displayScale: 1)
+
+        let compact = policy.metrics(
+            editorHeight: 42,
+            auxiliaryHeight: nil,
+            footerHeight: 40
+        )
+        controller.receiveContentMetrics(compact)
+        controller.replayLatestContentMetricsForPresentation()
+        let compactTop = panel.frame.maxY
+
+        let agenda = policy.metrics(
+            editorHeight: 42,
+            auxiliary: .overflow(idealHeight: 300),
+            footerHeight: 40
+        )
+        controller.receiveContentMetrics(agenda)
+        controller.replayLatestContentMetricsForPresentation()
+        XCTAssertEqual(panel.frame.maxY, compactTop, accuracy: 0.5)
+    }
+
+    func testTopIdenticalWithRetainedDraftPreview() {
+        let model = CapturePanelModel()
+        model.footerHeight = 40
+        let controller = CapturePanelController(model: model)
+        let panel = controller.makePanelIfNeeded()
+        let policy = CapturePanelContentHeightPolicy(displayScale: 1)
+
+        let compact = policy.metrics(
+            editorHeight: 42,
+            auxiliaryHeight: nil,
+            footerHeight: 40
+        )
+        controller.receiveContentMetrics(compact)
+        controller.replayLatestContentMetricsForPresentation()
+        let compactTop = panel.frame.maxY
+
+        let preview = policy.metrics(
+            editorHeight: 60,
+            auxiliary: .overflow(idealHeight: 200),
+            footerHeight: 40
+        )
+        controller.receiveContentMetrics(preview)
+        controller.replayLatestContentMetricsForPresentation()
+        XCTAssertEqual(panel.frame.maxY, compactTop, accuracy: 0.5)
+    }
+
+    func testTallPreviewGrowsDownwardAndClampsAtScreenEdges() throws {
+        let model = CapturePanelModel()
+        model.footerHeight = 40
+        let controller = CapturePanelController(model: model)
+        let panel = controller.makePanelIfNeeded()
+        guard let visible = visibleFrame(for: panel) else {
+            throw XCTSkip("no visible frame on this host")
+        }
+        let policy = CapturePanelContentHeightPolicy(displayScale: 1)
+
+        let compact = policy.metrics(
+            editorHeight: 42,
+            auxiliaryHeight: nil,
+            footerHeight: 40
+        )
+        controller.receiveContentMetrics(compact)
+        controller.replayLatestContentMetricsForPresentation()
+        let compactTop = panel.frame.maxY
+
+        let tall = policy.metrics(
+            editorHeight: 42,
+            auxiliary: .overflow(idealHeight: 5_000),
+            footerHeight: 40
+        )
+        controller.receiveContentMetrics(tall)
+        controller.replayLatestContentMetricsForPresentation()
+        XCTAssertGreaterThan(panel.frame.height, 500)
+        XCTAssertLessThanOrEqual(panel.frame.maxY, visible.maxY + 0.5)
+        XCTAssertGreaterThanOrEqual(panel.frame.minY, visible.minY - 0.5)
+        // A clamped panel keeps the eye line when it fits below it.
+        XCTAssertLessThanOrEqual(compactTop, visible.maxY + 0.5)
+    }
+
+    func testControllerWiresSettleHook() {
+        let model = CapturePanelModel()
+        XCTAssertNil(model.agendaPlanDidChange)
+        _ = CapturePanelController(model: model)
+        XCTAssertNotNil(model.agendaPlanDidChange)
+    }
+}

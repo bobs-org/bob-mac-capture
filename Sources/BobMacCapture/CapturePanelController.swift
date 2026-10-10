@@ -1,4 +1,5 @@
 import AppKit
+import CaptureCore
 import SwiftUI
 
 /// Direction of a bullet-indentation edit between Bob's two supported authored-child
@@ -233,11 +234,18 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     private var pendingRecenter = false
     private var isApplyingContentHeight = false
     private var metricsArrivedDuringApplication = false
+    private var panelPlacement = CapturePanelPlacement()
 
     init(model: CapturePanelModel) {
         self.model = model
         super.init()
         model.panelDismisser = { [weak self] in self?.hidePanel() }
+        // Settles the layout while the panel is hidden: when a new
+        // agenda plan publishes offscreen, the next show replays it in
+        // one frame.
+        model.agendaPlanDidChange = { [weak self] in
+            self?.settleAgendaWhileHidden()
+        }
     }
 
     deinit {
@@ -293,6 +301,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     func windowDidChangeScreen(_: Notification) {
         updateAvailableScreenHeight()
         updateTitlebarSafeAreaInset()
+        updateAgendaBudget()
         applyLatestContentMetricsIfPossible()
     }
 
@@ -344,6 +353,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return
         }
 
+        updateAgendaBudget()
+
         let visibleFrame = panel.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
         updateAvailableScreenHeight(visibleFrame?.height)
         updateTitlebarSafeAreaInset()
@@ -376,7 +387,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
         if pendingRecenter {
             panel.setContentSize(NSSize(width: panel.frame.width, height: target))
-            panel.center()
+            placePanelAtEyeLine(
+                panel,
+                targetContentHeight: target,
+                visibleFrame: visibleFrame ?? Self.unlimitedVisibleFrame
+            )
             pendingRecenter = false
         }
 
@@ -394,6 +409,128 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return
         }
         applyContentMetrics(latestContentMetrics, force: force)
+    }
+
+    /// Settles a hidden panel's layout after an offscreen agenda plan
+    /// publishes, so `latestContentMetrics` already holds the agenda
+    /// height when the next show replays it.
+    private func settleAgendaWhileHidden() {
+        guard let panel, !panel.isVisible else {
+            return
+        }
+        panel.contentView?.layoutSubtreeIfNeeded()
+    }
+
+    /// Places the panel at the fixed eye line with the target height:
+    /// the compact panel's centered top, cached per visible frame, so
+    /// every show puts the input line in the same place. The existing
+    /// screen clamp below still slides the panel up only when it would
+    /// cross an edge, which is how typed previews keep growing
+    /// downward.
+    private func placePanelAtEyeLine(
+        _ panel: NSPanel,
+        targetContentHeight: CGFloat,
+        visibleFrame: NSRect
+    ) {
+        let chrome = Self.chromeHeight(for: panel)
+        let frame = CapturePanelPlacement.VisibleFrame(
+            minX: Double(visibleFrame.minX),
+            minY: Double(visibleFrame.minY),
+            width: Double(visibleFrame.width),
+            height: Double(visibleFrame.height)
+        )
+        let compact = Double(compactContentHeight())
+        let top: Double
+        if model.footerHeight > 1 {
+            top = panelPlacement.eyeLineTop(
+                compactContentHeight: compact,
+                chromeHeight: Double(chrome),
+                visibleFrame: frame
+            )
+        } else {
+            // The footer is not measured yet: derive the line without
+            // caching it, so the first measured show still sets it.
+            var fresh = CapturePanelPlacement()
+            top = fresh.eyeLineTop(
+                compactContentHeight: compact,
+                chromeHeight: Double(chrome),
+                visibleFrame: frame
+            )
+        }
+        let originY = CGFloat(
+            CapturePanelPlacement.originY(
+                topEdge: top,
+                contentHeight: Double(targetContentHeight),
+                chromeHeight: Double(chrome)
+            )
+        )
+        panel.setFrameOrigin(NSPoint(x: panel.frame.origin.x, y: originY))
+    }
+
+    /// The compact panel's content height: the one-line editor plus
+    /// the measured footer, with no auxiliary region.
+    private func compactContentHeight() -> CGFloat {
+        let policy = CapturePanelContentHeightPolicy(
+            safeAreaTopInset: model.titlebarSafeAreaInset,
+            displayScale: panel?.screen?.backingScaleFactor ?? 1
+        )
+        let editorMinimum = CaptureEditorHeightPolicy().minimumHeight
+        // The footer measures around 40 pt; until SwiftUI reports it,
+        // the fallback keeps the first eye line close to the real one.
+        let footer = model.footerHeight > 1 ? model.footerHeight : 40
+        return policy.metrics(
+            editorHeight: editorMinimum,
+            auxiliary: nil,
+            footerHeight: footer
+        ).idealContentHeight
+    }
+
+    /// Republishes the below-eye-line agenda budget. Planning is
+    /// arithmetic on cached heights, so this never measures on the
+    /// show path: the model's `didSet` only re-plans when the value
+    /// actually changes.
+    private func updateAgendaBudget() {
+        guard let panel else {
+            return
+        }
+        let visibleFrame = panel.screen?.visibleFrame
+            ?? NSScreen.main?.visibleFrame
+            ?? Self.unlimitedVisibleFrame
+        let chrome = Self.chromeHeight(for: panel)
+        let frame = CapturePanelPlacement.VisibleFrame(
+            minX: Double(visibleFrame.minX),
+            minY: Double(visibleFrame.minY),
+            width: Double(visibleFrame.width),
+            height: Double(visibleFrame.height)
+        )
+        var placement = panelPlacement
+        let top = placement.eyeLineTop(
+            compactContentHeight: Double(compactContentHeight()),
+            chromeHeight: Double(chrome),
+            visibleFrame: frame
+        )
+        if model.footerHeight > 1 {
+            panelPlacement = placement
+        }
+        let budget = CaptureAgendaBudget(
+            eyeLineTop: top,
+            visibleMinY: Double(visibleFrame.minY),
+            frameChrome: Double(chrome),
+            titlebarDragInset: Double(
+                CapturePanelLayout.titlebarDragInset + model.titlebarSafeAreaInset
+            ),
+            compactEditorHeight: Double(CaptureEditorHeightPolicy().minimumHeight),
+            footerHeight: Double(
+                model.footerHeight > 1 ? model.footerHeight : 40
+            ),
+            rootBottomPadding: Double(CapturePanelLayout.rootPadding),
+            previewPaneInsets: Double(CaptureAgendaLayoutMetrics.panePadding),
+            slackRowHeight: Double(CaptureAgendaLayoutMetrics.defaultRowHeight),
+            sectionSpacing: Double(CapturePanelLayout.sectionSpacing)
+        )
+        if model.agendaBudget != budget.value {
+            model.agendaBudget = budget.value
+        }
     }
 
     private func applyFallbackContentHeight(force: Bool = false) {
@@ -426,6 +563,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         updateTitlebarSafeAreaInset()
         created.contentView?.layoutSubtreeIfNeeded()
         CaptureEditorTextConfiguration.configureEditorTextViews(in: created.contentView)
+        updateAgendaBudget()
         applyLatestContentMetricsIfPossible()
         return created
     }
