@@ -316,7 +316,7 @@ public struct CaptureAgendaLine: Decodable, Equatable, Sendable {
 
 /// Entry role in the agenda, from the ledger facts only. Unknown strings
 /// decode to `.other` instead of failing the snapshot.
-public enum CaptureAgendaRole: Equatable, Sendable, Decodable {
+public enum CaptureAgendaRole: Hashable, Sendable, Decodable {
     case current
     case next
     case later

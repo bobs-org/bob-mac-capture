@@ -97,7 +97,7 @@ public final class CaptureAgendaStore: ObservableObject {
     }
 
     /// The app's local `yyyy-MM-dd` for the snapshot date guard.
-    public static func localToday() -> String {
+    public nonisolated static func localToday() -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
