@@ -460,11 +460,28 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         if model.footerHeight > 1, let cached = panelPlacement.cachedTop(for: key) {
             return cached
         }
+        // `applyContentMetrics` pins the panel's content min/max to the
+        // last applied target; without lifting them first this measuring
+        // resize is clamped to that stale height and `center()` caches
+        // the wrong top (CI: compact top 607 vs re-centred 611).
+        let compact = compactContentHeight()
+        let savedMin = panel.contentMinSize
+        let savedMax = panel.contentMaxSize
+        panel.contentMinSize = NSSize(
+            width: savedMin.width,
+            height: min(savedMin.height, compact)
+        )
+        panel.contentMaxSize = NSSize(
+            width: savedMax.width,
+            height: max(savedMax.height, compact)
+        )
         panel.setContentSize(
-            NSSize(width: panel.frame.width, height: compactContentHeight())
+            NSSize(width: panel.frame.width, height: compact)
         )
         panel.center()
         let top = Double(panel.frame.maxY)
+        panel.contentMinSize = savedMin
+        panel.contentMaxSize = savedMax
         if model.footerHeight > 1 {
             panelPlacement.noteCompactTop(top, visibleFrame: key)
         }
