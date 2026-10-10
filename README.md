@@ -816,8 +816,9 @@ updated CLI (decoders stay backward compatible for every older payload).
   `pomodoro_start_name` context offers no rows there; the panel simply shows
   no completion until Bob is upgraded.
 - Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through
-  a dedicated process-client API that asserts `--no-clip`. `%` markers stay literal in
-  continuous preview; clipboard-resolving preview is a separate explicit action.
+  a dedicated process-client API that asserts `--no-clip`. Bob's admitted URL `%`
+  listen marker remains a reference request in continuous preview; ordinary clipboard
+  spans stay literal until the separate explicit clipboard-resolving preview.
 - The additive `sub_bullets` field on `capture` output is the exact rendered authored
   child lines, including Bob's target-selected indentation, and is omitted entirely when
   a draft has no authored bullets. `capture-parse` keeps `sub_bullets` as normalized
@@ -1835,9 +1836,12 @@ or Diagnostics entry; see Privacy below.
 
 The continuously updated preview below the editor calls
 `bob capture --dry-run --no-clip --format json` on every debounced edit and never reads
-the clipboard, so `%`, `%N`, and `%header` markers stay literal while you type. Pressing
-the explicit **Preview** button or **Capture** resolves the clipboard and Clipy history
-normally, exactly as the final capture would. A `p:<N>` random schedule is rolled once per
+the clipboard. Bob still claims an eligible URL-only reference ending in exact `%` as
+a companion-audio request: `https://arxiv.org/pdf/2609.12039 %` stays a reference
+while you type. Ordinary `%`, `%N`, and `%header` clipboard spans stay literal. Pressing
+the explicit **Preview** button or **Capture** resolves the clipboard and
+Clipy history normally, exactly as the final capture would. A `p:<N>` random
+schedule is rolled once per
 draft and reused by every subsequent live preview and by the final submission, so the
 displayed scheduled date always matches what gets written.
 

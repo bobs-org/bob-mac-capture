@@ -82,6 +82,10 @@ later_task_batch_suffix=$'\n\nFile follow-up @file+hand'
 later_task_id_batch_suffix=$'\n\nFile follow-up @file+new-id'
 close_batch_draft=$'-2\n\n=x'
 ref_draft='https://example.com/post'
+ref_listen_draft='https://arxiv.org/pdf/2609.12039 %'
+ref_listen_alias_draft='https://example.com/post @'
+ref_listen_route_draft='https://arxiv.org/pdf/2609.12039 % @mac_inbox'
+ref_listen_mixed_draft=$'https://arxiv.org/pdf/2609.12039 %\n\nhttps://example.com/post'
 ref_explicit_draft='https://example.com/post @sase'
 ref_alias_draft='https://example.com/post @bob-cli'
 ref_library_draft='https://example.com/captured'
@@ -1517,6 +1521,14 @@ JSON
   "diagnostics": []
 }
 JSON
+    elif [[ "${draft}" == "${ref_listen_draft}" ]]; then
+      cat "${fixtures_dir}/capture-parse-ref-listen.json"
+    elif [[ "${draft}" == "${ref_listen_alias_draft}" ]]; then
+      cat "${fixtures_dir}/capture-parse-ref-listen-alias.json"
+    elif [[ "${draft}" == "${ref_listen_route_draft}" ]]; then
+      cat "${fixtures_dir}/capture-parse-ref-listen-route.json"
+    elif [[ "${draft}" == "${ref_listen_mixed_draft}" ]]; then
+      cat "${fixtures_dir}/capture-parse-ref-listen-mixed.json"
     elif [[ "${draft}" == "${ref_draft}" ]]; then
       # A bare link parses as `ref` with one `ref_url` span (real `bob
       # capture-parse` output).
@@ -4706,6 +4718,14 @@ JSON
     elif [[ "${draft}" == $'!sase:one\n\n!sase:two' ]]; then
       # Two-item batch (real `bob` output; only the dry-run flag varies).
       sed "s/\"dry_run\": *false/\"dry_run\":${dry_run}/g" "${fixtures_dir}/task-complete-batch.json"
+    elif [[ "${draft}" == "${ref_listen_draft}" ]]; then
+      sed "s/\"dry_run\": *true/\"dry_run\":${dry_run}/g" "${fixtures_dir}/ref-queued-listen.json"
+    elif [[ "${draft}" == "${ref_listen_alias_draft}" ]]; then
+      sed "s/\"dry_run\": *true/\"dry_run\":${dry_run}/g" "${fixtures_dir}/ref-queued-listen-alias.json"
+    elif [[ "${draft}" == "${ref_listen_route_draft}" ]]; then
+      sed "s/\"dry_run\": *true/\"dry_run\":${dry_run}/g" "${fixtures_dir}/ref-queued-listen.json"
+    elif [[ "${draft}" == "https://example.com/captured %" ]]; then
+      sed "s/\"dry_run\": *true/\"dry_run\":${dry_run}/g" "${fixtures_dir}/ref-in-library-listen.json"
     elif [[ "${draft}" == "${ref_draft}" ]]; then
       # A bare link queues for the reading queue (real `bob capture
       # --dry-run` output; only the dry-run flag varies).

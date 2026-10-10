@@ -859,7 +859,12 @@ final class CapturePanelModel: ObservableObject {
     }
 
     var livePreviewUsesLiteralClipboard: Bool {
-        plainDraft.contains("%")
+        guard let snapshot = closeListParseSnapshot,
+              snapshot.draft == plainDraft
+        else {
+            return false
+        }
+        return snapshot.spans.contains { $0.kind == "clipboard" }
     }
 
     /// The live preview's toggle presentation, when the current draft is exactly one

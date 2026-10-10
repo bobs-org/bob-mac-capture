@@ -100,7 +100,11 @@ public struct CaptureRefPresentation: Equatable, Sendable {
         parentAlias = ref.parent?.alias
         isDefaultParent = parentRoute == "mac_inbox" && (parentSource == "default" || parentSource.isEmpty && ref.parent != nil)
 
-        detailText = Self.detailText(ref: ref, isDryRun: capture.dryRun)
+        detailText = Self.detailText(
+            ref: ref,
+            isDryRun: capture.dryRun,
+            isQueued: isQueued
+        )
 
         chips = Self.chips(ref: ref, isQueued: isQueued)
 
@@ -180,7 +184,25 @@ public struct CaptureRefPresentation: Equatable, Sendable {
     /// plus `· file it later` for the default inbox) once Bob reports
     /// `ref.parent`; older-Bob payloads without a parent keep today's
     /// wording.
-    private static func detailText(ref: CaptureRef, isDryRun: Bool) -> String {
+    private static func detailText(
+        ref: CaptureRef,
+        isDryRun: Bool,
+        isQueued: Bool
+    ) -> String {
+        let base = baseDetailText(ref: ref, isDryRun: isDryRun)
+        guard ref.listen else {
+            return base
+        }
+        if isQueued {
+            return "\(base) · companion audio requested"
+        }
+        if let hint = ref.listenHint, !hint.isEmpty {
+            return "\(base) · \(hint)"
+        }
+        return base
+    }
+
+    private static func baseDetailText(ref: CaptureRef, isDryRun: Bool) -> String {
         let library = ref.library
         switch library.verdict {
         case "in_library":

@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"https://arxiv.org/pdf/2609.12039 %","body":"https://arxiv.org/pdf/2609.12039","mode":"ref","route":null,"section":null,"block_id":null,"needs":[],"ref_parent":{"token":"mac_inbox","source":"default"},"ref_listen":true,"spans":[{"start":0,"end":32,"kind":"ref_url"},{"start":33,"end":34,"kind":"ref_listen"}],"diagnostics":[]}

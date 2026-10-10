@@ -71,6 +71,10 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .priority
     case "clipboard":
         return .clipboard
+    case "ref_listen":
+        // Bob marks the listen directive semantically; use the existing
+        // route accent so it stays distinct from clipboard syntax.
+        return .route
     case "wikilink_delimiter":
         return .wikilinkDelimiter
     case "wikilink_target":

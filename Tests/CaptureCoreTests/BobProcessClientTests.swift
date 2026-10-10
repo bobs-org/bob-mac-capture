@@ -610,6 +610,56 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(record.contains("BOB_PRIORITY_ROLL_SEED=fixed"))
     }
 
+    func testPercentListenReferencePassesUnchangedToNoClipPreview() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "https://arxiv.org/pdf/2609.12039 %"
+
+        let response = try await client.captureLivePreview(draft, priorityRollSeed: "fixed")
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected Bob's listen-reference preview")
+        }
+        XCTAssertEqual(success.kind, "ref")
+        XCTAssertTrue(success.ref?.listen ?? false)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"))
+        XCTAssertEqual(record.components(separatedBy: "argv=capture").count - 1, 1)
+    }
+
+    func testPercentListenReferenceWithFileUnderRouteSubmitsAsOneDraft() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = "https://arxiv.org/pdf/2609.12039 % @mac_inbox"
+
+        let response = try await client.capture(draft, dryRun: false, readClipboard: true)
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected Bob's routed listen-reference result")
+        }
+        XCTAssertEqual(success.kind, "ref")
+        XCTAssertTrue(success.ref?.listen ?? false)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --format json -- \(draft)"))
+        XCTAssertEqual(record.components(separatedBy: "argv=capture").count - 1, 1)
+    }
+
     func testWildcardCloseDraftPassesUnchangedToPreviewAndSubmit() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

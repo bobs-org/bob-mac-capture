@@ -11,6 +11,8 @@ public struct CaptureParseResponse: Codable, Equatable {
     public let blockID: String?
     public let needs: [String]
     public let refParent: CaptureParseRefParent?
+    /// Additive schema-version-1 listen intent; older Bob payloads default false.
+    public let refListen: Bool
     public let spans: [CaptureSpan]
     public let diagnostics: [CaptureDiagnostic]
     public let globalDestination: CaptureGlobalDestination?
@@ -45,6 +47,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         blockID: String? = nil,
         needs: [String] = [],
         refParent: CaptureParseRefParent? = nil,
+        refListen: Bool = false,
         spans: [CaptureSpan] = [],
         diagnostics: [CaptureDiagnostic] = [],
         globalDestination: CaptureGlobalDestination? = nil,
@@ -66,6 +69,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         self.blockID = blockID
         self.needs = needs
         self.refParent = refParent
+        self.refListen = refListen
         self.spans = spans
         self.diagnostics = diagnostics
         self.globalDestination = globalDestination
@@ -93,6 +97,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
         needs = try container.decodeIfPresent([String].self, forKey: .needs) ?? []
         refParent = (try? container.decodeIfPresent(CaptureParseRefParent.self, forKey: .refParent)) ?? nil
+        refListen = (try? container.decodeIfPresent(Bool.self, forKey: .refListen)) ?? false
         spans = try container.decodeIfPresent([CaptureSpan].self, forKey: .spans) ?? []
         diagnostics =
             try container.decodeIfPresent([CaptureDiagnostic].self, forKey: .diagnostics) ?? []
@@ -152,6 +157,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         case blockID = "block_id"
         case needs
         case refParent = "ref_parent"
+        case refListen = "ref_listen"
         case spans
         case diagnostics
         case globalDestination = "global_destination"
@@ -203,6 +209,8 @@ public struct CaptureParseItem: Codable, Equatable {
     public let blockID: String?
     public let needs: [String]
     public let refParent: CaptureParseRefParent?
+    /// Per-item additive listen intent; omitted by older Bob versions.
+    public let refListen: Bool
     public let subBullets: [String]
     public let subBulletDepths: [Int]
     // Per-item additive `=<X>` start suffix. Omitted for items without one.
@@ -228,6 +236,7 @@ public struct CaptureParseItem: Codable, Equatable {
         blockID: String? = nil,
         needs: [String] = [],
         refParent: CaptureParseRefParent? = nil,
+        refListen: Bool = false,
         subBullets: [String] = [],
         subBulletDepths: [Int] = [],
         pomodoroStart: PomodoroStartSpec? = nil,
@@ -246,6 +255,7 @@ public struct CaptureParseItem: Codable, Equatable {
         self.blockID = blockID
         self.needs = needs
         self.refParent = refParent
+        self.refListen = refListen
         self.subBullets = subBullets
         self.subBulletDepths = subBulletDepths
         self.pomodoroStart = pomodoroStart
@@ -267,6 +277,7 @@ public struct CaptureParseItem: Codable, Equatable {
         blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
         needs = try container.decodeIfPresent([String].self, forKey: .needs) ?? []
         refParent = (try? container.decodeIfPresent(CaptureParseRefParent.self, forKey: .refParent)) ?? nil
+        refListen = (try? container.decodeIfPresent(Bool.self, forKey: .refListen)) ?? false
         subBullets = try container.decodeIfPresent([String].self, forKey: .subBullets) ?? []
         subBulletDepths = try container.decodeIfPresent([Int].self, forKey: .subBulletDepths) ?? []
         pomodoroStart = try container.decodeIfPresent(PomodoroStartSpec.self, forKey: .pomodoroStart)
@@ -296,6 +307,7 @@ public struct CaptureParseItem: Codable, Equatable {
         case blockID = "block_id"
         case needs
         case refParent = "ref_parent"
+        case refListen = "ref_listen"
         case subBullets = "sub_bullets"
         case subBulletDepths = "sub_bullet_depths"
         case pomodoroStart = "pomodoro_start"
@@ -2327,6 +2339,10 @@ public struct CaptureRef: Codable, Equatable, Sendable {
     public let dedupeKey: String
     public let display: String
     public let routeHint: String
+    /// True when Bob queued this reference with companion audio requested.
+    public let listen: Bool
+    /// Bob's explicit retry command when a listen request finds an unchanged ref.
+    public let listenHint: String?
     public let library: CaptureRefLibrary
     public let parent: CaptureRefParent?
     public let job: CaptureRefJob?
@@ -2338,6 +2354,8 @@ public struct CaptureRef: Codable, Equatable, Sendable {
         dedupeKey: String = "",
         display: String = "",
         routeHint: String = "",
+        listen: Bool = false,
+        listenHint: String? = nil,
         library: CaptureRefLibrary = CaptureRefLibrary(),
         parent: CaptureRefParent? = nil,
         job: CaptureRefJob? = nil,
@@ -2348,6 +2366,8 @@ public struct CaptureRef: Codable, Equatable, Sendable {
         self.dedupeKey = dedupeKey
         self.display = display
         self.routeHint = routeHint
+        self.listen = listen
+        self.listenHint = listenHint
         self.library = library
         self.parent = parent
         self.job = job
@@ -2361,6 +2381,8 @@ public struct CaptureRef: Codable, Equatable, Sendable {
         dedupeKey = try container.decodeIfPresent(String.self, forKey: .dedupeKey) ?? ""
         display = try container.decodeIfPresent(String.self, forKey: .display) ?? ""
         routeHint = try container.decodeIfPresent(String.self, forKey: .routeHint) ?? ""
+        listen = (try? container.decodeIfPresent(Bool.self, forKey: .listen)) ?? false
+        listenHint = (try? container.decodeIfPresent(String.self, forKey: .listenHint)) ?? nil
         library = try container.decodeIfPresent(CaptureRefLibrary.self, forKey: .library)
             ?? CaptureRefLibrary()
         parent = (try? container.decodeIfPresent(CaptureRefParent.self, forKey: .parent)) ?? nil
@@ -2380,6 +2402,8 @@ public struct CaptureRef: Codable, Equatable, Sendable {
         case dedupeKey = "dedupe_key"
         case display
         case routeHint = "route_hint"
+        case listen
+        case listenHint = "listen_hint"
         case library
         case parent
         case job

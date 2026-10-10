@@ -460,6 +460,7 @@ final class CaptureRefPresentationTests: XCTestCase {
 
     func testRefURLSpanMapsToLinkCategory() {
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "ref_url"), .link)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "ref_listen"), .route)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "route"), .route)
         XCTAssertEqual(captureSemanticCategory(forSpanKind: "bogus-kind"), .neutral)
     }
@@ -542,6 +543,7 @@ final class CaptureRefPresentationTests: XCTestCase {
         let success = try decodeFixture("ref-queued.json")
         let presentation = try XCTUnwrap(CaptureRefPresentation(capture: success))
 
+        XCTAssertFalse(success.ref?.listen ?? true)
         XCTAssertTrue(presentation.isDryRun)
         XCTAssertTrue(presentation.isQueued)
         XCTAssertEqual(presentation.headline, "Save to reading queue")
@@ -571,6 +573,36 @@ final class CaptureRefPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.notificationTitle, "Queued for reading")
         XCTAssertEqual(presentation.notificationBody, "example.com/post → mac_inbox")
         XCTAssertNil(presentation.openTargetPath)
+    }
+
+    func testQueuedListenFixtureShowsRequestedAudioWithoutPromisingAvailability() throws {
+        let success = try decodeFixture("ref-queued-listen.json")
+        let presentation = try XCTUnwrap(CaptureRefPresentation(capture: success))
+
+        XCTAssertEqual(success.ref?.url, "https://arxiv.org/pdf/2609.12039")
+        XCTAssertTrue(success.ref?.listen ?? false)
+        XCTAssertTrue(presentation.isQueued)
+        XCTAssertEqual(presentation.chips, ["arXiv"])
+        XCTAssertEqual(
+            presentation.detailText,
+            "new to your library · reading task lands in mac_inbox.md · file it later · companion audio requested"
+        )
+        XCTAssertTrue(presentation.previewAccessibilitySummary.contains("companion audio requested"))
+        XCTAssertTrue(presentation.previewAccessibilitySummary.contains("reading task lands in mac_inbox.md"))
+        XCTAssertTrue(presentation.previewAccessibilitySummary.contains("If clipping fails"))
+    }
+
+    func testUnchangedListenFixtureShowsBobsAttachAudioHint() throws {
+        let success = try decodeFixture("ref-in-library-listen.json")
+        let presentation = try XCTUnwrap(CaptureRefPresentation(capture: success))
+
+        XCTAssertTrue(success.ref?.listen ?? false)
+        XCTAssertEqual(
+            success.ref?.listenHint,
+            "no new listen job was queued · to attach audio run: bob ref create https://example.com/captured -P mac_inbox -L"
+        )
+        XCTAssertTrue(presentation.detailText.contains("to attach audio run: bob ref create"))
+        XCTAssertTrue(presentation.previewAccessibilitySummary.contains("-L"))
     }
 
     func testQueuedExplicitFixtureNamesTheChosenParent() throws {
@@ -698,6 +730,8 @@ final class CaptureRefPresentationTests: XCTestCase {
         let success = try decodeFixture("ref-url-list.json")
         let captures = success.normalizedCaptures
         XCTAssertEqual(captures.count, 2)
+        XCTAssertFalse(captures[0].ref?.listen ?? true)
+        XCTAssertFalse(captures[1].ref?.listen ?? true)
 
         for capture in captures {
             let presentation = try XCTUnwrap(CaptureRefPresentation(capture: capture))
@@ -728,6 +762,7 @@ final class CaptureRefPresentationTests: XCTestCase {
         let parse = try decodeParseFixture("capture-parse-ref.json")
 
         XCTAssertEqual(parse.mode, "ref")
+        XCTAssertFalse(parse.refListen)
         XCTAssertEqual(parse.spans.count, 1)
         let span = try XCTUnwrap(parse.spans.first)
         XCTAssertEqual(span.kind, "ref_url")
@@ -737,6 +772,24 @@ final class CaptureRefPresentationTests: XCTestCase {
         let refParent = try XCTUnwrap(parse.refParent)
         XCTAssertEqual(refParent.token, "mac_inbox")
         XCTAssertEqual(refParent.source, "default")
+    }
+
+    func testCaptureParsePercentAndAtListenFixturesDecodeSemanticSpans() throws {
+        let percent = try decodeParseFixture("capture-parse-ref-listen.json")
+        XCTAssertTrue(percent.refListen)
+        XCTAssertEqual(percent.input, "https://arxiv.org/pdf/2609.12039 %")
+        XCTAssertEqual(
+            percent.spans.filter { $0.kind == "ref_listen" },
+            [CaptureSpan(start: 33, end: 34, kind: "ref_listen")]
+        )
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "ref_listen"), .route)
+
+        let alias = try decodeParseFixture("capture-parse-ref-listen-alias.json")
+        XCTAssertTrue(alias.refListen)
+
+        let mixed = try decodeParseFixture("capture-parse-ref-listen-mixed.json")
+        XCTAssertTrue(mixed.refListen)
+        XCTAssertEqual(mixed.items.map(\.refListen), [true, false])
     }
 
     func testCaptureParseRefExplicitFixtureKeepsTheRouteToken() throws {
