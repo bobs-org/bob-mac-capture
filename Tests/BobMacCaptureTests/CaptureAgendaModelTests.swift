@@ -168,15 +168,21 @@ final class CaptureAgendaModelTests: XCTestCase {
     func testSettleHookFiresOnPublish() async throws {
         let model = try refreshModel()
         await waitUntil { model.agendaStore?.snapshot != nil }
-        guard let task = model.agendaPresentation?.groups.first?.tasks.first else {
-            XCTFail("expected a task in the default fixture")
-            return
-        }
+        let first = model.agendaPresentation
+        XCTAssertNotNil(first)
+        // Expanding an already-full task re-publishes an identical
+        // plan, which correctly stays silent: the hook fires only when
+        // a new plan publishes. Drive a publish that changes the plan
+        // (a new snapshot through the store) instead.
         var fired = false
         model.agendaPlanDidChange = {
             fired = true
         }
-        model.expandAgendaUnit(task.id)
+        try swapAgendaClient(
+            model,
+            environment: ["FAKE_BOB_AGENDA_FIXTURE": "agenda-heavy.json"]
+        )
+        await waitUntil { model.agendaPresentation != first }
         XCTAssertTrue(fired)
     }
 

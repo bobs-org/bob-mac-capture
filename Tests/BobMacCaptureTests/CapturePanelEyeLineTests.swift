@@ -151,12 +151,26 @@ final class CapturePanelEyeLineTests: XCTestCase {
 
     func testCompactTopMatchesCenter() throws {
         let model = CapturePanelModel()
-        model.footerHeight = 40
         let controller = CapturePanelController(model: model)
         let panel = controller.makePanelIfNeeded()
         guard visibleFrame(for: panel) != nil else {
             throw XCTSkip("no visible frame on this host")
         }
+        // The controller refreshes the titlebar safe-area inset from
+        // the live panel on every metrics report, so settle it before
+        // building the reference input: a policy built with the
+        // pre-layout inset centres a different height and the tops
+        // disagree by half the gap. The footer stays 0 until the
+        // inset settles so the pre-layout derivation never pins the
+        // cached eye line.
+        let settle = CapturePanelContentHeightPolicy(displayScale: 1).metrics(
+            editorHeight: 42,
+            auxiliaryHeight: nil,
+            footerHeight: 40
+        )
+        controller.receiveContentMetrics(settle)
+        controller.replayLatestContentMetricsForPresentation()
+        model.footerHeight = 40
         // The eye line is derived from the compact height with the
         // observed safe-area inset and display scale, so the reference
         // metrics must use those same inputs: a default policy centres
