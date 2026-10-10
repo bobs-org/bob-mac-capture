@@ -170,7 +170,16 @@ final class CapturePanelEyeLineTests: XCTestCase {
         )
         controller.receiveContentMetrics(settle)
         controller.replayLatestContentMetricsForPresentation()
-        model.footerHeight = 40
+        // The hosted SwiftUI view measures the real footer asynchronously
+        // and publishes it on the model, so a hardcoded footer fights the
+        // live view: drain those callbacks, then derive the reference from
+        // the observed footer like the inset and scale below. A stale 40
+        // pins the cached eye line below the reference (CI: 607 vs 611).
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.2))
+        controller.replayLatestContentMetricsForPresentation()
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.2))
+        let observedFooter = model.footerHeight > 1 ? model.footerHeight : 40
+        model.footerHeight = observedFooter
         // The eye line is derived from the compact height with the
         // observed safe-area inset and display scale, so the reference
         // metrics must use those same inputs: a default policy centres
@@ -182,7 +191,7 @@ final class CapturePanelEyeLineTests: XCTestCase {
         let compact = policy.metrics(
             editorHeight: 42,
             auxiliaryHeight: nil,
-            footerHeight: 40
+            footerHeight: observedFooter
         )
         controller.receiveContentMetrics(compact)
         controller.replayLatestContentMetricsForPresentation()
