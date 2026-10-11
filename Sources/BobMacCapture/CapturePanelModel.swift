@@ -13,6 +13,9 @@ enum CapturePreviewState: Equatable {
 
 /// One-shot expected buffer after a native `:`/`^` insertion. Cleared on
 /// consume, mismatch, or lifecycle invalidation; never used to parse grammar.
+/// The keystroke's completion waits on the eager rewrite (the completion gate):
+/// an accepted toggle supersedes that analysis, while any other outcome completes
+/// like an ordinary keystroke.
 private struct SeparatorToggleIntent: Equatable {
     let expectedDraft: String
     let expectedCursorUTF8: Int
@@ -1217,14 +1220,14 @@ final class CapturePanelModel: ObservableObject {
 
         let insertionOffset = cursorUTF8Offset ?? collapsedSelectionUTF8Offset()
         var analysisCursor = insertionOffset
-        var requestCompletion = insertionOffset != nil
+        let requestCompletion = insertionOffset != nil
+        var completionGate: Task<Void, Never>?
         if let toggleCursor = consumeSeparatorToggleIntent(
             draft: draft,
             cursorUTF8Offset: insertionOffset
         ) {
-            startCaptureRewrite(draft: draft, cursorUTF8Offset: toggleCursor)
+            completionGate = startCaptureRewrite(draft: draft, cursorUTF8Offset: toggleCursor)
             analysisCursor = toggleCursor
-            requestCompletion = false
         } else if let insertionOffset,
                   Self.isBareAtAtTrigger(in: draft, cursorUTF8Offset: insertionOffset)
         {
@@ -1241,7 +1244,8 @@ final class CapturePanelModel: ObservableObject {
         scheduleAnalysis(
             cursorUTF8Offset: analysisCursor,
             requestCompletion: requestCompletion,
-            trigger: .edit
+            trigger: .edit,
+            completionGate: completionGate
         )
     }
 
@@ -5450,10 +5454,14 @@ final class CapturePanelModel: ObservableObject {
         isApplyingProgrammaticDraft = false
     }
 
+    /// `completionGate` holds this analysis's completion request until that task
+    /// settles. An accepted correction reschedules the analysis meanwhile, which
+    /// supersedes this one; any other outcome completes as if ungated.
     private func scheduleAnalysis(
         cursorUTF8Offset: Int?,
         requestCompletion: Bool,
-        trigger: CompletionTrigger
+        trigger: CompletionTrigger,
+        completionGate: Task<Void, Never>? = nil
     ) {
         guard let processClient else {
             statusText = "Bob is not resolved"
@@ -5531,6 +5539,14 @@ final class CapturePanelModel: ObservableObject {
                     )
                 }
 
+                if requestCompletion, let completionGate {
+                    await completionGate.value
+                    try Task.checkCancellation()
+                    guard await self?.isCurrentAnalysis(generation) == true else {
+                        return
+                    }
+                }
+
                 if let cursorUTF8Offset,
                    requestCompletion,
                    await self?.shouldRequestCompletion(
@@ -5600,9 +5616,10 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
-    private func startCaptureRewrite(draft: String, cursorUTF8Offset: Int) {
+    @discardableResult
+    private func startCaptureRewrite(draft: String, cursorUTF8Offset: Int) -> Task<Void, Never>? {
         guard let processClient else {
-            return
+            return nil
         }
 
         rewriteGeneration &+= 1
@@ -5610,7 +5627,7 @@ final class CapturePanelModel: ObservableObject {
         rewriteExpectedCursorUTF8 = cursorUTF8Offset
         rewriteSawMatchingSelection = collapsedSelectionUTF8Offset() == cursorUTF8Offset
         rewriteTask?.cancel()
-        rewriteTask = Task { [weak self, processClient] in
+        let task = Task { [weak self, processClient] in
             do {
                 let response = try await CaptureSignpost.measure("rewrite") {
                     try await processClient.captureRewrite(draft, cursor: cursorUTF8Offset)
@@ -5632,6 +5649,8 @@ final class CapturePanelModel: ObservableObject {
                 // on the original draft, so transport failures should not disturb the UI.
             }
         }
+        rewriteTask = task
+        return task
     }
 
     private func applyCaptureRewrite(

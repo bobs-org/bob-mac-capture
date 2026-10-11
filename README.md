@@ -422,8 +422,10 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
   the unchanged ID so the keys can be repeated without moving backward. The
   new key must sit against the ID, and only those two plain forms toggle —
   space, suffixes (`#name`, `+`, `=`), `@@`, `@!`, and other marker families
-  type through. Undo restores the literal post-key draft. This gesture needs a
-  bob build that implements `switch_block_id_separator`.
+  type through. Undo restores the literal post-key draft. When Bob leaves the key
+  alone (for example `@route:` or `@route^` with no ID yet, or a whole-item `^`), the
+  keystroke behaves like ordinary typing, and its picker or completion opens as before.
+  This gesture needs a bob build that implements `switch_block_id_separator`.
   Typing `^` as the whole capture item opens the Active Task Picker (`active_task`
   context), a modal mode of the capture panel — not a second window. Bob supplies one
   full snapshot (every In Progress and Next task with
