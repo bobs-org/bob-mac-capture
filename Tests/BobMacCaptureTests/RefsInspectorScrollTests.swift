@@ -167,7 +167,7 @@ final class RefsInspectorScrollTests: XCTestCase {
         let caret = editor?.selectedRange()
         let selected = harness.model.selectedID
         let query = harness.model.query
-        let listOffset = listOffset(in: harness.panel)
+        let listOffsetBefore = listOffset(in: harness.panel)
         let start = inspectorOffset(in: harness.panel)
 
         XCTAssertNil(
@@ -179,7 +179,7 @@ final class RefsInspectorScrollTests: XCTestCase {
 
         let afterDown = inspectorOffset(in: harness.panel)
         XCTAssertGreaterThan(afterDown, start)
-        XCTAssertEqual(listOffset(in: harness.panel), listOffset, accuracy: 1)
+        XCTAssertEqual(listOffset(in: harness.panel), listOffsetBefore, accuracy: 1)
         XCTAssertEqual(harness.model.selectedID, selected)
         XCTAssertEqual(harness.model.query, query)
         XCTAssertEqual((field.currentEditor() as? NSTextView)?.selectedRange(), caret)

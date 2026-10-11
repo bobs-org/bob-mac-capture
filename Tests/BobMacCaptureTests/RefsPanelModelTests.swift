@@ -804,6 +804,7 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertEqual(failed.model.banner?.actions, [.scanAgain, .copyDiagnostic])
     }
 
+    @MainActor
     private struct PanelSnapshot {
         let query: String
         let scope: RefScope
