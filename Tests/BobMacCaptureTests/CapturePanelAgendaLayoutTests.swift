@@ -557,7 +557,7 @@ final class CapturePanelAgendaLayoutTests: XCTestCase {
         assertComposedPanel(model, panel)
         // A zero budget bounds the region to the pane chrome instead of
         // going unbounded: the editor and footer cannot be displaced.
-        model.agendaBudget = 0
+        controller.agendaBudgetLimit = 0
         settlePanel(panel)
         await waitForEditorFocus(panel)
         info = diagnostics(model, panel)

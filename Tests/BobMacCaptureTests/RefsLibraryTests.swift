@@ -212,6 +212,47 @@ final class RefsLibraryTests: XCTestCase {
         XCTAssertEqual(record.components(separatedBy: "argv=plan -f json").count, 3)
     }
 
+    func testSnapshotPassKeepsGitDatesMergedDuringItsSweep() async throws {
+        let sweepGate = RefsCallGate(holding: 2)
+        let gitGate = RefsCallGate(holding: 1)
+        let context = try makeContext(spotlight: GatedSpotlight(gate: sweepGate))
+        let fetcher = ScriptedRefsFetcher(
+            plainURL: try fixtureURL("refs-list.json"),
+            gitURL: try fixtureURL("refs-list-git.json"),
+            gitGate: gitGate
+        )
+        context.library.setFetcher(fetcher)
+
+        context.library.refresh(reason: .manual)
+        await waitUntil(timeout: 15) { fetcher.gitListCount == 1 }
+
+        context.library.refresh(reason: .manual)
+        await waitUntil(timeout: 15) { sweepGate.isHolding }
+
+        gitGate.release()
+        await waitUntil(timeout: 15) {
+            context.library.items.contains {
+                $0.id == "ref/blogs/small_opened.md" && $0.added != nil
+            }
+        }
+
+        sweepGate.release()
+        await waitUntil(timeout: 15) {
+            if case .idle = context.library.refreshState {
+                return true
+            }
+            return false
+        }
+        try? await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertTrue(
+            context.library.items.contains {
+                $0.id == "ref/blogs/small_opened.md" && $0.added != nil
+            }
+        )
+        XCTAssertEqual(fetcher.gitListCount, 1)
+    }
+
     func testTodayLoadsAndSchemaMismatchKeepsLastToday() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -779,6 +820,116 @@ struct FakeSpotlight: RefsSpotlightProviding, Sendable {
 final class TimedOutRefsFetcher: RefsFetching, @unchecked Sendable {
     func list(gitDates: Bool) async throws -> RefsListResponse {
         RefsListResponse(schemaVersion: 1)
+    }
+
+    func plan() async throws -> RefsPlanResponse {
+        RefsPlanResponse(schemaVersion: 2)
+    }
+
+    func show(path: String) async throws -> RefsShowResponse {
+        RefsShowResponse(schemaVersion: 1, refs: [])
+    }
+
+    func scan() async throws -> RefsScanResponse {
+        throw BobClientError.timedOut(command: ["bob", "ref", "scan"], seconds: 300)
+    }
+}
+
+final class RefsCallGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    private let holding: Int
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var released = false
+    private var holdingNow = false
+
+    init(holding: Int) {
+        self.holding = holding
+    }
+
+    var isHolding: Bool {
+        lock.withLock { holdingNow }
+    }
+
+    func pass() async {
+        let shouldHold: Bool = lock.withLock {
+            count += 1
+            if released {
+                return false
+            }
+            if count == holding {
+                holdingNow = true
+                return true
+            }
+            return false
+        }
+        guard shouldHold else {
+            return
+        }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            var resumeNow = false
+            lock.withLock {
+                if released {
+                    resumeNow = true
+                    holdingNow = false
+                } else {
+                    self.continuation = continuation
+                }
+            }
+            if resumeNow {
+                continuation.resume()
+            }
+        }
+        lock.withLock { holdingNow = false }
+    }
+
+    func release() {
+        let continuation: CheckedContinuation<Void, Never>? = lock.withLock {
+            released = true
+            holdingNow = false
+            let held = self.continuation
+            self.continuation = nil
+            return held
+        }
+        continuation?.resume()
+    }
+}
+
+struct GatedSpotlight: RefsSpotlightProviding, Sendable {
+    let gate: RefsCallGate
+
+    func sweep(_ requests: [RefsSpotlightRequest]) async -> [String: RefsSpotlightFacts] {
+        await gate.pass()
+        return [:]
+    }
+}
+
+final class ScriptedRefsFetcher: RefsFetching, @unchecked Sendable {
+    private let lock = NSLock()
+    private var counted = 0
+    private let plainURL: URL
+    private let gitURL: URL
+    private let gitGate: RefsCallGate
+
+    var gitListCount: Int {
+        lock.withLock { counted }
+    }
+
+    init(plainURL: URL, gitURL: URL, gitGate: RefsCallGate) {
+        self.plainURL = plainURL
+        self.gitURL = gitURL
+        self.gitGate = gitGate
+    }
+
+    func list(gitDates: Bool) async throws -> RefsListResponse {
+        if gitDates {
+            lock.withLock { counted += 1 }
+            await gitGate.pass()
+            let data = try Data(contentsOf: gitURL)
+            return try JSONDecoder().decode(RefsListResponse.self, from: data)
+        }
+        let data = try Data(contentsOf: plainURL)
+        return try JSONDecoder().decode(RefsListResponse.self, from: data)
     }
 
     func plan() async throws -> RefsPlanResponse {

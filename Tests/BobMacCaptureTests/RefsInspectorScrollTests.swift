@@ -162,6 +162,7 @@ final class RefsInspectorScrollTests: XCTestCase {
         defer { harness.panel.orderOut(nil) }
         settle(harness.panel)
         focusSearch(harness)
+        XCTAssertNotNil(RefsPanelController.findInspectorScrollView(in: harness.panel.contentView))
         let field = tryUnwrapFilter(harness.panel)
         let editor = field.currentEditor() as? NSTextView
         let caret = editor?.selectedRange()
@@ -178,7 +179,7 @@ final class RefsInspectorScrollTests: XCTestCase {
         waitForInspectorOffset(in: harness.panel) { $0 > start + 8 }
 
         let afterDown = inspectorOffset(in: harness.panel)
-        XCTAssertGreaterThan(afterDown, start)
+        XCTAssertGreaterThan(afterDown, start, inspectorDiagnostics(in: harness.panel))
         XCTAssertEqual(listOffset(in: harness.panel), listOffsetBefore, accuracy: 1)
         XCTAssertEqual(harness.model.selectedID, selected)
         XCTAssertEqual(harness.model.query, query)
@@ -191,7 +192,7 @@ final class RefsInspectorScrollTests: XCTestCase {
             )
         )
         waitForInspectorOffset(in: harness.panel) { $0 < afterDown - 8 }
-        XCTAssertLessThan(inspectorOffset(in: harness.panel), afterDown)
+        XCTAssertLessThan(inspectorOffset(in: harness.panel), afterDown, inspectorDiagnostics(in: harness.panel))
         XCTAssertEqual(harness.model.selectedID, selected)
         XCTAssertTrue(field.holdsFirstResponder)
     }
@@ -201,6 +202,7 @@ final class RefsInspectorScrollTests: XCTestCase {
         defer { wide.panel.orderOut(nil) }
         settle(wide.panel)
         focusSearch(wide)
+        XCTAssertNotNil(RefsPanelController.findInspectorScrollView(in: wide.panel.contentView))
         for _ in 0..<40 {
             XCTAssertNil(
                 wide.controller.processKeyEvent(
@@ -214,7 +216,7 @@ final class RefsInspectorScrollTests: XCTestCase {
                 keyEvent(keyCode: Self.dKey, modifiers: .control, characters: "d")
             )
         )
-        XCTAssertEqual(inspectorOffset(in: wide.panel), atBottom, accuracy: 2)
+        XCTAssertEqual(inspectorOffset(in: wide.panel), atBottom, accuracy: 2, inspectorDiagnostics(in: wide.panel))
 
         let narrow = makeHostedHarness(width: 700)
         defer { narrow.panel.orderOut(nil) }
@@ -353,17 +355,17 @@ final class RefsInspectorScrollTests: XCTestCase {
     }
 
     private func inspectorScroll(in panel: RefsPanel) -> NSScrollView? {
-        if let named = RefsPanelController.findInspectorScrollView(in: panel.contentView) {
-            return named
+        RefsPanelController.findInspectorScrollView(in: panel.contentView)
+    }
+
+    private func inspectorDiagnostics(in panel: RefsPanel) -> String {
+        guard let scroll = RefsPanelController.findInspectorScrollView(in: panel.contentView),
+            let documentView = scroll.documentView
+        else {
+            return "lookup=nil"
         }
-        let scrolls = RefsPanelController.scrollViews(in: panel.contentView)
-        guard scrolls.count >= 2 else {
-            return nil
-        }
-        return scrolls.max { lhs, rhs in
-            lhs.convert(lhs.bounds, to: nil).minX
-                < rhs.convert(rhs.bounds, to: nil).minX
-        }
+        let clip = scroll.contentView
+        return "lookup=found clip=\(clip.bounds) docHeight=\(documentView.frame.height) flipped=\(documentView.isFlipped) insets=\(clip.contentInsets)"
     }
 
     private func inspectorOffset(in panel: RefsPanel) -> CGFloat {
@@ -387,7 +389,7 @@ final class RefsInspectorScrollTests: XCTestCase {
                 return
             }
         }
-        XCTFail("inspector offset did not change as expected")
+        XCTFail("inspector offset did not change as expected; \(inspectorDiagnostics(in: panel))")
     }
 
     private func keyEvent(

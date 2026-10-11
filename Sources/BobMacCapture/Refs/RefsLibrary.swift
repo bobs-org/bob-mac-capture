@@ -420,13 +420,10 @@ public final class RefsLibrary: ObservableObject {
             var next = RefsSnapshot(
                 fetchedAt: now(),
                 records: response.refs,
-                gitAddedDates: snapshot?.gitAddedDates ?? [:]
+                gitAddedDates: [:]
             )
-            let paths = Set(response.refs.map(\.path))
-            next.gitAddedDates = next.gitAddedDates.filter { paths.contains($0.key) }
-            let items = RefsCatalog.items(from: next)
             let root = vaultRoot()
-            let requests = items.map {
+            let requests = RefsCatalog.items(from: next).map {
                 RefsSpotlightRequest(id: $0.id, url: root.appendingPathComponent($0.pdfPath))
             }
             let (missing, facts) = await Self.checkFilesAndSweep(
@@ -434,6 +431,13 @@ public final class RefsLibrary: ObservableObject {
                 fileExists: fileExists,
                 spotlight: spotlight
             )
+            // Carry git dates forward only after the sweep: the `-g` lane
+            // can merge while this pass awaits, and reading them earlier
+            // would publish over that merge and re-run the `-g` pass.
+            let paths = Set(response.refs.map(\.path))
+            next.gitAddedDates = (snapshot?.gitAddedDates ?? [:])
+                .filter { paths.contains($0.key) }
+            let items = RefsCatalog.items(from: next)
             snapshot = next
             self.items = items
             var signals = signals

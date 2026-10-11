@@ -1,4 +1,3 @@
-import Combine
 import RefsCore
 import SwiftUI
 
@@ -165,8 +164,7 @@ public struct RefsPanelView: View {
                 signals: model.signals,
                 inspector: model.inspectorContent(for: selected),
                 thumbnail: model.inspectorThumbnail(for: selected),
-                previewMode: previewMode,
-                scrollCommands: model.inspectorScrolls
+                previewMode: previewMode
             )
             .id("\(selected)#\(model.presentationCount)")
             .onAppear { model.inspectorRequested() }

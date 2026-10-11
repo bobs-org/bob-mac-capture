@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 /// The accessibility identifier of the Refs search field, so the panel
@@ -36,6 +37,7 @@ public final class RefsPanelController: NSObject {
     private let model: RefsPanelModel
     private var panel: RefsPanel?
     private var localMonitor: Any?
+    private var inspectorScrollCancellable: AnyCancellable?
     /// While true, a resign-key does not hide the panel. The ⌘K
     /// actions menu sets this while it tracks.
     var suspendHideOnResign = false
@@ -47,6 +49,9 @@ public final class RefsPanelController: NSObject {
         model.panelPresenter = { [weak self] in self?.show() }
         model.actionsPresenter = { [weak self] in self?.showActionsMenu() }
         model.panelIsVisible = { [weak self] in self?.isVisible == true }
+        inspectorScrollCancellable = model.inspectorScrolls.sink { [weak self] direction in
+            self?.scrollInspector(direction)
+        }
     }
 
     deinit {
@@ -379,8 +384,8 @@ public final class RefsPanelController: NSObject {
         guard let view else {
             return nil
         }
-        if view.accessibilityIdentifier() == refsInspectorScrollAccessibilityIdentifier {
-            return firstScrollView(in: view)
+        if view is RefsInspectorScrollAnchorView {
+            return view.enclosingScrollView
         }
         for subview in view.subviews {
             if let found = findInspectorScrollView(in: subview) {
@@ -390,16 +395,32 @@ public final class RefsPanelController: NSObject {
         return nil
     }
 
-    private static func firstScrollView(in view: NSView) -> NSScrollView? {
-        if let scroll = view as? NSScrollView {
-            return scroll
+    func scrollInspector(_ direction: RefsInspectorScrollDirection) {
+        guard let scrollView = Self.findInspectorScrollView(in: panel?.contentView),
+            let documentView = scrollView.documentView
+        else {
+            return
         }
-        for subview in view.subviews {
-            if let found = firstScrollView(in: subview) {
-                return found
-            }
+        let clip = scrollView.contentView
+        let content = documentView.frame.height
+        let viewport = clip.bounds.height
+        let flipped = documentView.isFlipped
+        let offset = flipped ? clip.bounds.origin.y : content - viewport - clip.bounds.origin.y
+        var planner = RefsInspectorScrollPlanner(
+            geometry: RefsInspectorScrollGeometry(
+                offsetY: offset,
+                contentHeight: content,
+                viewportHeight: viewport,
+                topInset: clip.contentInsets.top,
+                bottomInset: clip.contentInsets.bottom
+            )
+        )
+        guard let target = planner.command(direction) else {
+            return
         }
-        return nil
+        let y = flipped ? target : content - viewport - target
+        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
+        scrollView.reflectScrolledClipView(clip)
     }
 
     static func scrollViews(in view: NSView?) -> [NSScrollView] {

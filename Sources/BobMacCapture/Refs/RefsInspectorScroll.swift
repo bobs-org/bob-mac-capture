@@ -56,6 +56,9 @@ struct RefsInspectorScrollGeometry: Equatable, Sendable {
 /// Keyboard target and bounds for the inspector scroll view. Successive
 /// commands accumulate from an outstanding target until geometry
 /// catches up or the user takes over with a trackpad or mouse.
+/// Production measures live geometry synchronously and uses only
+/// `command`; the reconciliation API (`applyGeometry`, `beginUserScroll`,
+/// the pending target) is test-only.
 struct RefsInspectorScrollPlanner: Equatable, Sendable {
     private(set) var geometry: RefsInspectorScrollGeometry
     private(set) var pendingTarget: CGFloat?

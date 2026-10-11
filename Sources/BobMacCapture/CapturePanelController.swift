@@ -609,8 +609,18 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             slackRowHeight: Double(CaptureAgendaLayoutMetrics.defaultRowHeight),
             sectionSpacing: Double(CapturePanelLayout.sectionSpacing)
         )
-        if model.agendaBudget != budget.value {
-            model.agendaBudget = budget.value
+        let value = agendaBudgetLimit.map { min($0, budget.value) } ?? budget.value
+        if model.agendaBudget != value {
+            model.agendaBudget = value
+        }
+    }
+
+    /// Test seam: an upper bound on the published below-eye-line budget,
+    /// so hosted tests can model a screen with little room below the eye
+    /// line. Production leaves it nil and the screen alone decides.
+    var agendaBudgetLimit: Double? {
+        didSet {
+            updateAgendaBudget()
         }
     }
 
@@ -886,6 +896,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         guard selection.length == 0 else {
             return false
         }
+        // End the typed key's coalesced typing run first, so the swap is
+        // its own undo step: Undo restores the literal post-key draft and
+        // Redo replays exactly this replacement.
+        textView.breakUndoCoalescing()
         textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
         textView.setSelectedRange(edit.resultingSelection)
         textView.scrollRangeToVisible(edit.resultingSelection)

@@ -51,17 +51,21 @@ public func utf16Range(in text: String, byteRange: CaptureRange) -> NSRange? {
     utf16Range(in: text, start: byteRange.start, end: byteRange.end)
 }
 
-/// UTF-8 byte offset of a UTF-16 caret, or `nil` when `utf16Offset` sits
-/// inside a surrogate pair or past the end of `text`.
+/// UTF-8 byte offset of a UTF-16 caret, or `nil` when `utf16Offset` is not
+/// a character boundary (for example inside a surrogate pair) or past the
+/// end of `text`.
 public func utf8Offset(in text: String, utf16Offset: Int) -> Int? {
-    guard utf16Offset >= 0 else {
+    let utf16 = text.utf16
+    guard utf16Offset >= 0, utf16Offset <= utf16.count else {
         return nil
     }
-    let nsRange = NSRange(location: utf16Offset, length: 0)
-    guard let range = Range(nsRange, in: text) else {
+    // Validate explicitly: `Range(NSRange, in:)` rounds an interior
+    // surrogate down to its scalar on current Foundation.
+    let position = utf16.index(utf16.startIndex, offsetBy: utf16Offset)
+    guard let index = String.Index(position, within: text) else {
         return nil
     }
-    return text[..<range.lowerBound].utf8.count
+    return text.utf8.distance(from: text.utf8.startIndex, to: index)
 }
 
 public func attributedStringIndex(

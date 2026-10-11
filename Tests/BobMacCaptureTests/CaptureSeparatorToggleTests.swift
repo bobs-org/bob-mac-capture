@@ -257,7 +257,21 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = try processClient(recordURL: recordURL)
+        // Native undo lives on the window: a windowless text view has no
+        // undo manager, so undo and redo would silently do nothing.
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 80),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
         let textView = makeTextView("Do work @file:id")
+        window.contentView?.addSubview(textView)
+        window.makeFirstResponder(textView)
+        textView.setSelectedRange(NSRange(location: 16, length: 0))
+        XCTAssertNotNil(textView.undoManager)
         wireNativeApply(model, textView: textView)
 
         typeSeparator("^", into: textView, model: model)
@@ -277,6 +291,11 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         model.editorTextDidChange(cursorUTF8Offset: textView.string.utf8.count)
         try await Task.sleep(nanoseconds: 80_000_000)
         XCTAssertEqual(textView.string, "Do work @file^id")
+        // History stays intact: the swap undoes again, then the typed key.
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "Do work @file:id^")
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "Do work @file:id")
 
         let record = try String(contentsOf: recordURL)
         let rewriteCount = record.components(separatedBy: "argv=capture-rewrite").count - 1
