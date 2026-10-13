@@ -45,7 +45,9 @@ mutation.
   `switch_block_id_separator`), `capture-complete --all-tasks`,
   `capture-task-id`, `capture-pomodoro-name`, the `task_link` completion context for
   `:` picker queries (with `note_kind`, `block_id_suggestions`, `group`, `scheduled`,
-  and `pulls_forward` candidate fields), the `task_parent` completion context for
+  and `pulls_forward` candidate fields), the `task_goto` completion context for a
+  whole-draft `/` query (`note_path` and absolute `target` candidate fields), the
+  `task_parent` completion context for
   leading and prose-terminal `+` (with the additive `picker` descriptor:
   `kind: parent_task`, `scope: note|vault`, `scope_token`, `note_target`,
   `marker_range`, `trigger_removal_range`, optional `action_continuation_keys`,
@@ -90,6 +92,9 @@ mutation.
   ` ^id` project-task tokens (`project_task_block_id` completion context with
   intent `new`, `project_task_link_marker` / `project_task_block_id` parse
   spans, and the additive `project_note.task_links` capture object).
+  Go To also requires bob-plugins **bob-navigation-hotkeys ≥ 2.32.0** (or the version
+  that shipped `obsidian://bob-goto-task`), deployed to the vault with
+  `bob plugins sync`.
   Older builds can still capture ordinary drafts, but
   global declarations, bare-`@@` absorption, the Add block ID flow, the Name Pomodoro
   flow, the task-section popup, and the task-toggle footer/preview report the local Bob
@@ -497,6 +502,33 @@ Task Link Picker keys: Return/Tab Link, Shift-Return Link & Start,
 Command-Return Link & Capture, Escape Clear/Cancel, Backspace on empty filter
 removes `:`. In the link-mode Add block ID prompt, Tab / Shift-Tab cycle
 suggestions.
+
+### Go To Picker
+
+Typing `/` as the whole capture draft opens the Go To picker (`task_goto`
+context), the same card as `:` with scope `/` and caption Go To. When
+`capture-parse` reports `task_goto` in `needs`, the app skips the doomed live
+dry run and shows "Pick a task to open — press Tab to browse".
+
+Bob lists the same open tasks as `:`, in the same order. Every row is
+selectable, including ID-less ones: they show `note.md:line` with no
+`plus.circle` suggestion and no Add block ID prompt. The detail strip reads
+"↩ Opens note.md at ^id" or "↩ Opens note.md at line N". A scheduled date
+still shows as context; there is no "pulls it forward" warning. Accepting a
+row dispatches `obsidian://bob-goto-task` (provided by bob-navigation-hotkeys)
+and, once that open succeeds, hides the panel and discards the draft. Nothing
+is minted, stamped, linked, walked, or captured. A failed dispatch keeps the
+picker open with "Couldn't open Obsidian".
+
+Return, Tab, click, and Command-Return all Go To the selected row.
+Shift-Return and Option-Return are consumed. Escape clears a non-empty
+filter, then cancels to the reopen chip; Backspace on an empty filter removes
+the `/` token and the idle agenda returns. Control-C on a Go To draft
+discards it instead of pushing it to the canceled-draft stash.
+
+Go To Picker keys: Return/Tab/Command-Return Go To, Shift-Return consumed,
+Escape Clear/Cancel, Backspace on empty filter removes `/`, Control-C
+discards.
 
 ### Parent Task Picker
 
@@ -1504,7 +1536,7 @@ including the next panel show.
 | Up / Ctrl-P | (normal focus traversal) | Select the previous completion | Consume the key; do not move completion selection | Consume the key; do not move completion selection |
 | Escape / Ctrl-[ | Close the panel, retaining a nonempty draft without confirmation | Close completion | Cancel back to the task list | Cancel back to the Pomodoro list |
 | Control-S | Open the canceled-draft stash picker | Open the canceled-draft stash picker | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
-| Control-C | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close |
+| Control-C | Stash a nonempty draft, then clear and close. A Go To (`/`) draft is discarded instead of stashed | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close |
 
 Every capture action is reachable from the keyboard alone; the hotkey, editor, completion
 list, Stash/Capture/Preview/Discard buttons, and stash picker never require a pointer.

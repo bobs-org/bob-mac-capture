@@ -230,6 +230,22 @@ final class CapturePanelModel: ObservableObject {
     var processClient: BobProcessClient?
     var notificationService: NotificationService?
     var targetOpener: (URL) -> Void = { NSWorkspace.shared.open($0) }
+    /// Read-only Go To dispatch. Production opens `obsidian://bob-goto-task`
+    /// through `NSWorkspace` with `activates = true` and reports success on
+    /// the main actor. Tests inject a closure. Distinct from `targetOpener`,
+    /// which still opens capture-result note URLs synchronously.
+    var taskGotoOpener: (
+        URL,
+        @escaping @MainActor (Bool) -> Void
+    ) -> Void = { url, completion in
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.open(url, configuration: configuration) { _, error in
+            Task { @MainActor in
+                completion(error == nil)
+            }
+        }
+    }
     var panelDismisser: () -> Void = {}
     /// Narrow controller bridge: apply Bob's separator-toggle replacement
     /// through the focused `NSTextView` so Undo stays native. Nil in tests
@@ -269,6 +285,13 @@ final class CapturePanelModel: ObservableObject {
     /// Local fuzzy index for the picker's snapshot. Kept private; the view only
     /// sees the derived `pickerPresentation`.
     private var pickerIndex: CapturePickerIndex?
+    /// True while a Go To `NSWorkspace` open is in flight. Picker keys are
+    /// swallowed until the opener reports, so a double Return cannot dispatch
+    /// twice.
+    private(set) var taskGotoDispatchInFlight = false
+    /// Latest parse reported the `task_goto` need. Ctrl-C uses this so a `/`
+    /// draft is discarded even when the picker has already chipped.
+    private var lastAnalysisNeedsTaskGoto = false
     /// Replacement-range start of the `^` token auto-open is suppressed for
     /// (set by the two-stage Escape cancel). Cleared when an `.edit` analysis
     /// leaves the token.
@@ -748,6 +771,11 @@ final class CapturePanelModel: ObservableObject {
     /// True when the open picker belongs to the `:` source.
     var pickerSourceIsTaskLink: Bool {
         picker?.source == .taskLink
+    }
+
+    /// True when the open picker belongs to the `/` source.
+    var pickerSourceIsTaskGoto: Bool {
+        picker?.source == .taskGoto
     }
 
     /// True when the open picker belongs to the `&` source.
@@ -1533,7 +1561,10 @@ final class CapturePanelModel: ObservableObject {
     func stashDraftAndClose() {
         if hasDraft {
             let draft = plainDraft
-            let stashed = canceledDraftStash.push(draft) != nil
+            let discardGoto = picker?.source == .taskGoto
+                || pickerChip?.source == .taskGoto
+                || lastAnalysisNeedsTaskGoto
+            let stashed = discardGoto ? false : canceledDraftStash.push(draft) != nil
             discardDraft()
             announceStatus(stashed ? "Canceled draft stashed" : "Canceled draft discarded")
         } else {
@@ -1693,6 +1724,8 @@ final class CapturePanelModel: ObservableObject {
         closeListAssistParsePending = false
         closeCommaProvenance.clear()
         lastProvenanceDraft = plainDraft
+        taskGotoDispatchInFlight = false
+        lastAnalysisNeedsTaskGoto = false
         clearPickerState()
         clearInlinePrompts()
         previewState = .idle
@@ -1800,6 +1833,32 @@ final class CapturePanelModel: ObservableObject {
             draftSnapshot: "^",
             replacementRange: CaptureRange(start: 0, end: 1),
             restoreCursor: 1,
+            filter: filter,
+            snapshotIsPartial: false
+        )
+    }
+
+    /// Go To preview hook: mounts the `/` session production presents for a
+    /// decoded `task_goto` response, so panel tests can dispatch without a
+    /// subprocess round trip.
+    func installTaskGotoPickerForPreviews(
+        candidates: [CaptureCompletionCandidate],
+        warnings: [String] = [],
+        filter: String = "",
+        draft: String = "/",
+        replacement: CaptureRange = CaptureRange(start: 0, end: 1)
+    ) {
+        let index = CapturePickerIndex.taskGoto(
+            TaskLinkPickerIndex(candidates: candidates, mode: .taskGoto)
+        )
+        installPickerSessionForPreviews(
+            source: .taskGoto,
+            index: index,
+            candidates: candidates,
+            warnings: warnings,
+            draftSnapshot: draft,
+            replacementRange: replacement,
+            restoreCursor: replacement.end,
             filter: filter,
             snapshotIsPartial: false
         )
@@ -2005,9 +2064,9 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// Routes one completion result: `active_task`, `task_link`,
-    /// `task_dependency`, and block-ID responses feed the picker or the
-    /// reopen chip and never populate the inline list; every other context
-    /// keeps the inline list and clears the chip.
+    /// `task_goto`, `task_dependency`, and block-ID responses feed the
+    /// picker or the reopen chip and never populate the inline list; every
+    /// other context keeps the inline list and clears the chip.
     private func handleCompletionResponse(
         _ completion: CaptureCompletionResponse,
         draft: String,
@@ -2026,14 +2085,16 @@ final class CapturePanelModel: ObservableObject {
             dismissCompletion()
             return
         }
-        if completion.context == "task_link" {
+        if completion.context == "task_link" || completion.context == "task_goto" {
             await handleTaskLinkCompletion(
                 completion,
                 draft: draft,
                 cursor: cursor,
                 generation: generation,
                 processClient: processClient,
-                trigger: trigger
+                trigger: trigger,
+                source: completion.context == "task_goto" ? .taskGoto : .taskLink,
+                expectedContext: completion.context
             )
             return
         }
@@ -2471,19 +2532,23 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
-    /// Routes a `task_link` completion response into the picker card, mirroring
-    /// `handleActiveTaskCompletion`: dismiss the inline list, auto-open only on
-    /// `.edit` when not suppressed, show the chip on `.selection`, and refetch
-    /// the full list at `r.start` when the caret is past it.
+    /// Routes a `task_link` or `task_goto` completion response into the
+    /// picker card, mirroring `handleActiveTaskCompletion`: dismiss the
+    /// inline list, auto-open only on `.edit` when not suppressed, show the
+    /// chip on `.selection`, and refetch the full list at `r.start` when the
+    /// caret is past the sigil. The catalog source decides the index mode
+    /// (link vs Go To) and the expected Bob context.
     private func handleTaskLinkCompletion(
         _ completion: CaptureCompletionResponse,
         draft: String,
         cursor: Int,
         generation: UInt64,
         processClient: BobProcessClient,
-        trigger: CompletionTrigger
+        trigger: CompletionTrigger,
+        source: CapturePickerSource = .taskLink,
+        expectedContext: String = "task_link"
     ) async {
-        // A `task_link` response never sets `completionResponse`, even when
+        // A catalog response never sets `completionResponse`, even when
         // `candidates` is empty.
         dismissCompletion()
         let r = completion.replacement
@@ -2494,7 +2559,7 @@ final class CapturePanelModel: ObservableObject {
         }
         guard trigger == .edit, pickerAutoOpenSuppressedStart != r.start else {
             pickerChip = CapturePickerChipState(
-                source: .taskLink,
+                source: source,
                 draftSnapshot: draft,
                 replacementRange: r,
                 cursor: cursor,
@@ -2508,12 +2573,12 @@ final class CapturePanelModel: ObservableObject {
             if let snapshot = try? await processClient.captureComplete(draft, cursor: r.start),
                isCurrentAnalysis(generation),
                plainDraft == draft,
-               snapshot.context == "task_link",
+               snapshot.context == expectedContext,
                snapshot.replacement == r
             {
                 presentPicker(
-                    source: .taskLink,
-                    index: .taskLink(TaskLinkPickerIndex(candidates: snapshot.candidates)),
+                    source: source,
+                    index: Self.taskCatalogIndex(source: source, candidates: snapshot.candidates),
                     candidates: snapshot.candidates,
                     warnings: snapshot.warnings,
                     draft: draft,
@@ -2528,8 +2593,8 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
             presentPicker(
-                source: .taskLink,
-                index: .taskLink(TaskLinkPickerIndex(candidates: completion.candidates)),
+                source: source,
+                index: Self.taskCatalogIndex(source: source, candidates: completion.candidates),
                 candidates: completion.candidates,
                 warnings: completion.warnings,
                 draft: draft,
@@ -2541,8 +2606,8 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         presentPicker(
-            source: .taskLink,
-            index: .taskLink(TaskLinkPickerIndex(candidates: completion.candidates)),
+            source: source,
+            index: Self.taskCatalogIndex(source: source, candidates: completion.candidates),
             candidates: completion.candidates,
             warnings: completion.warnings,
             draft: draft,
@@ -2551,6 +2616,16 @@ final class CapturePanelModel: ObservableObject {
             query: query,
             snapshotIsPartial: false
         )
+    }
+
+    private static func taskCatalogIndex(
+        source: CapturePickerSource,
+        candidates: [CaptureCompletionCandidate]
+    ) -> CapturePickerIndex {
+        if source == .taskGoto {
+            return .taskGoto(TaskLinkPickerIndex(candidates: candidates, mode: .taskGoto))
+        }
+        return .taskLink(TaskLinkPickerIndex(candidates: candidates))
     }
 
     /// Routes `task_parent` and descriptor-bearing scoped `task` responses
@@ -3288,6 +3363,10 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func acceptPickerRow(id: String, submitAfterInsert: Bool) {
+        if picker?.source == .taskGoto {
+            acceptTaskGotoRow(id: id)
+            return
+        }
         guard let picker = picker,
               plainDraft == picker.draftSnapshot,
               let range = stringRange(in: plainDraft, byteRange: picker.replacementRange)
@@ -3401,6 +3480,51 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
             submit(openAfterCapture: false)
+        }
+    }
+
+    /// Dispatches `obsidian://bob-goto-task` for a Go To row. Command-Return
+    /// equals Return: `submitAfterInsert` is ignored and nothing is captured.
+    /// A missing destination keeps the picker open; a failed open keeps it
+    /// open with an error; success discards the draft (no stash) and hides
+    /// the panel. In-flight accepts are no-ops so a double Return opens once.
+    func acceptTaskGotoRow(id: String) {
+        if taskGotoDispatchInFlight {
+            return
+        }
+        guard let picker = picker,
+              picker.source == .taskGoto,
+              plainDraft == picker.draftSnapshot,
+              stringRange(in: plainDraft, byteRange: picker.replacementRange) != nil
+        else {
+            closePickerAfterStaleDraft()
+            return
+        }
+        guard let row = pickerPresentation?.row(id: id),
+              let destination = row.taskGotoDestination,
+              let url = ObsidianOpenURL.taskGotoURL(
+                  path: destination.target,
+                  line: destination.line,
+                  ref: destination.ref,
+                  blockID: destination.blockID
+              )
+        else {
+            announceStatus("bob sent no location for this task — update bob")
+            return
+        }
+        taskGotoDispatchInFlight = true
+        announceStatus("Opening in Obsidian…")
+        taskGotoOpener(url) { [weak self] success in
+            guard let self else {
+                return
+            }
+            self.taskGotoDispatchInFlight = false
+            if success {
+                self.discardDraft()
+                self.panelDismisser()
+            } else {
+                self.announceStatus("Couldn't open Obsidian")
+            }
         }
     }
 
@@ -3585,9 +3709,10 @@ final class CapturePanelModel: ObservableObject {
 
     /// Backspace on an empty filter removes the source's trigger byte together
     /// with any fragment it opened on (`^` for active tasks, `:` for task
-    /// links and `&` for dependencies, whose replacements already include the
-    /// sigil). Parent-task uses Bob's `trigger_removal_range` and never hunts
-    /// for the marker. Otherwise behaves like cancel.
+    /// links, `/` for Go To, and `&` for dependencies, whose replacements
+    /// already include the sigil). Parent-task uses Bob's
+    /// `trigger_removal_range` and never hunts for the marker. Otherwise
+    /// behaves like cancel.
     func removePickerTrigger() {
         guard let picker = picker, picker.filterText.isEmpty else {
             return
@@ -3612,10 +3737,14 @@ final class CapturePanelModel: ObservableObject {
             cancelPicker()
             return
         }
-        if picker.source == .taskLink || picker.source == .dependency || picker.source == .taskComplete {
+        if picker.source == .taskLink || picker.source == .taskGoto
+            || picker.source == .dependency || picker.source == .taskComplete
+        {
             let sigil: UInt8
             if picker.source == .taskLink {
                 sigil = 58 // `:`
+            } else if picker.source == .taskGoto {
+                sigil = 47 // `/`
             } else if picker.source == .dependency {
                 sigil = 38 // `&`
             } else {
@@ -3682,7 +3811,7 @@ final class CapturePanelModel: ObservableObject {
            let partRange = stringRange(in: draft, byteRange: r)
         {
             query = String(draft[partRange])
-        } else if chip.source == .taskLink {
+        } else if chip.source == .taskLink || chip.source == .taskGoto {
             query = Self.taskLinkPickerQuery(in: draft, range: r, cursor: chip.cursor)
         } else if chip.source == .dependency {
             query = Self.dependencyPickerQuery(in: draft, range: r, cursor: chip.cursor)
@@ -3699,7 +3828,9 @@ final class CapturePanelModel: ObservableObject {
         // after the sigil refetches at `r.start`. Vault parent-task matches
         // that rule; scoped parent-task matches `^` (ID-only range).
         let needsRefetch: Bool
-        if chip.source == .taskLink || chip.source == .dependency || chip.source == .taskComplete {
+        if chip.source == .taskLink || chip.source == .taskGoto
+            || chip.source == .dependency || chip.source == .taskComplete
+        {
             needsRefetch = chip.cursor > r.start + 1
         } else if case .parentTask(let context) = chip.source {
             needsRefetch = context.isVault ? chip.cursor > r.start + 1 : chip.cursor != r.start
@@ -3765,8 +3896,23 @@ final class CapturePanelModel: ObservableObject {
                             snapshotIsPartial: false
                         )
                     case .taskGoto:
-                        // The panel phase owns Go To chip refetch routing.
-                        return
+                        guard snapshot.context == "task_goto" else {
+                            return
+                        }
+                        self.presentPicker(
+                            source: chip.source,
+                            index: Self.taskCatalogIndex(
+                                source: chip.source,
+                                candidates: snapshot.candidates
+                            ),
+                            candidates: snapshot.candidates,
+                            warnings: snapshot.warnings,
+                            draft: draft,
+                            range: r,
+                            restoreCursor: chip.cursor,
+                            query: query,
+                            snapshotIsPartial: false
+                        )
                     case .dependency:
                         guard snapshot.context == "task_dependency" else {
                             return
@@ -3847,8 +3993,20 @@ final class CapturePanelModel: ObservableObject {
                 snapshotIsPartial: false
             )
         case .taskGoto:
-            // The panel phase owns opening Go To chips.
-            break
+            presentPicker(
+                source: chip.source,
+                index: Self.taskCatalogIndex(
+                    source: chip.source,
+                    candidates: chip.candidates
+                ),
+                candidates: chip.candidates,
+                warnings: chip.warnings,
+                draft: draft,
+                range: r,
+                restoreCursor: chip.cursor,
+                query: query,
+                snapshotIsPartial: false
+            )
         case .dependency:
             presentPicker(
                 source: chip.source,
@@ -3940,9 +4098,10 @@ final class CapturePanelModel: ObservableObject {
 
     /// An incomplete picker token is a state, not an error: skip the doomed
     /// live dry run and show a calm status line instead of red errors.
-    /// Precedence is `active_task`, then `task_link`, then `task_parent`,
-    /// then `task_dependency`, then `pomodoro_id`, then `block_id`, then the
-    /// `=<X>#` named-start incomplete, checked top-level or in any item.
+    /// Precedence is `active_task`, then `task_link`, then `task_goto`, then
+    /// `task_parent`, then `task_dependency`, then `pomodoro_id`, then
+    /// `block_id`, then the `=<X>#` named-start incomplete, checked
+    /// top-level or in any item.
     /// Suffix-only states such as `@sase:x#` (`pomodoro_name` without a
     /// `pomodoro_start` object) keep today's behavior.
     private static func pickerNeed(in parse: CaptureParseResponse) -> CapturePickerNeed? {
@@ -4359,6 +4518,8 @@ final class CapturePanelModel: ObservableObject {
                 statusText = CapturePickerNeed.dependency.statusText
             } else if returnPicker.source == .taskComplete {
                 statusText = CapturePickerNeed.taskComplete.statusText
+            } else if returnPicker.source == .taskGoto {
+                statusText = CapturePickerNeed.taskGoto.statusText
             } else {
                 statusText = "Pick any open task — press Tab to browse"
             }
@@ -5930,6 +6091,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func applyParse(_ parse: CaptureParseResponse, draft: String) {
+        lastAnalysisNeedsTaskGoto = Self.pickerNeed(in: parse) == .taskGoto
         parseDiagnostics = parse.diagnostics
         if plainDraft == draft {
             closeListParseSnapshot = CaptureParseSnapshot(
@@ -5995,8 +6157,8 @@ final class CapturePanelModel: ObservableObject {
 
         let completionNeeds = Set([
             "route", "section", "pomodoro_id", "pomodoro_name", "task", "task_section",
-            "active_task", "task_link", "task_parent", "task_dependency", "dependency_target",
-            "task_complete", "block_id",
+            "active_task", "task_link", "task_goto", "task_parent", "task_dependency",
+            "dependency_target", "task_complete", "block_id",
         ])
         if !completionNeeds.isDisjoint(with: Set(parse.needs)) {
             return true

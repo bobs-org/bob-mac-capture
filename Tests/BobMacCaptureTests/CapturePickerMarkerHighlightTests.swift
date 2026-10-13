@@ -74,6 +74,17 @@ final class CapturePickerMarkerHighlightTests: XCTestCase {
         )
     }
 
+    func testMarkerHighlightRangeForTaskGotoKeepsSigilRange() {
+        XCTAssertEqual(
+            CapturePanelModel.pickerMarkerHighlightRange(
+                source: .taskGoto,
+                replacementRange: CaptureRange(start: 0, end: 4),
+                markerRange: nil
+            ),
+            CaptureRange(start: 0, end: 4)
+        )
+    }
+
     func testMarkerHighlightRangeForParentTaskUsesDescriptorRange() {
         let context = ParentTaskPickerContext.note(
             route: "cash",

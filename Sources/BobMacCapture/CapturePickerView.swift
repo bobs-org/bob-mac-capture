@@ -958,8 +958,7 @@ private struct CapturePickerDetailStrip: View {
             // The panel phase owns the task-link teaching line.
             return nil
         case .taskGoto:
-            // Go To has no follow-up insertion gesture.
-            return nil
+            return "Pick a task to open it in Obsidian — nothing is written"
         case .dependency:
             // The detail strip already teaches "space adds another &".
             return nil

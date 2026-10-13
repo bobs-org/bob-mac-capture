@@ -1625,6 +1625,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     pickerVisible: self.model.pickerVisible,
                     pickerSourceIsTaskLink: self.model.pickerSourceIsTaskLink,
                     pickerSourceIsTaskComplete: self.model.pickerSourceIsTaskComplete,
+                    pickerDispatchInFlight: self.model.taskGotoDispatchInFlight,
                     pickerFilterIsEmpty: self.model.pickerFilterIsEmpty,
                     pickerChipVisible: self.model.pickerChipVisible,
                     pickerOperatorContinuationKeys: self.model.pickerOperatorContinuationKeys,

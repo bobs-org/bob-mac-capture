@@ -63,6 +63,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var pickerVisible = false
     var pickerSourceIsTaskLink = false
     var pickerSourceIsTaskComplete = false
+    var pickerDispatchInFlight = false
     var pickerFilterIsEmpty = true
     var pickerChipVisible = false
     var pickerOperatorContinuationKeys: [String] = []
@@ -117,6 +118,9 @@ struct CaptureKeyCommandRouter {
         }
 
         if context.pickerVisible {
+            if context.pickerDispatchInFlight {
+                return .consumeKey
+            }
             return pickerCommand(for: event, modifiers: modifiers, context: context)
         }
 

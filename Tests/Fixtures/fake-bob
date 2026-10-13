@@ -1104,6 +1104,26 @@ JSON
 JSON
     elif [[ "${draft}" == ":" ]]; then
       cat "${fixtures_dir}/task-link-parse-colon.json"
+    elif [[ "${draft}" == "/" ]]; then
+      cat "${fixtures_dir}/task-goto-parse-slash.json"
+    elif [[ "${draft}" == "/dee" ]]; then
+      cat <<'JSON'
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "/dee",
+  "body": "",
+  "mode": "incomplete",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": ["task_goto"],
+  "spans": [
+    { "start": 0, "end": 4, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": []
+}
+JSON
     elif [[ "${draft}" == "+" ]]; then
       cat "${fixtures_dir}/parent-task-parse-plus.json"
     elif [[ "${draft}" == "+bank" ]]; then
@@ -2721,6 +2741,14 @@ JSON
         cat "${fixtures_dir}/task-link-complete-full.json"
       else
         cat "${fixtures_dir}/task-link-complete-dee.json"
+      fi
+    elif [[ "${draft}" == "/" ]]; then
+      cat "${fixtures_dir}/task-goto-complete-full.json"
+    elif [[ "${draft}" == "/dee" ]]; then
+      if [[ "${cursor}" == "0" ]]; then
+        cat "${fixtures_dir}/task-goto-complete-full.json"
+      else
+        cat "${fixtures_dir}/task-goto-complete-dee.json"
       fi
     elif [[ "${draft}" == "^sase:deep-fix#b" ]]; then
       cat <<JSON
