@@ -509,17 +509,17 @@ final class CaptureTogglePresentationTests: XCTestCase {
     ) -> String {
         let pomodoroNameField = pomodoroName.map { ", \"pomodoro_name\": \"\($0)\"" } ?? ""
         let droppedField = droppedDependencies
-            ? """,
-          "dropped_dependencies": [
-            {
-              "note_path": "job.md",
-              "block_id": "prep",
-              "link": "[[job#^prep]]",
-              "text": "Prep work",
-              "status_symbol": " ",
-              "status_name": "Ready"
-            }
-          ]"""
+            ? #"
+, "dropped_dependencies": [
+  {
+    "note_path": "job.md",
+    "block_id": "prep",
+    "link": "[[job#^prep]]",
+    "text": "Prep work",
+    "status_symbol": " ",
+    "status_name": "Ready"
+  }
+]"#
             : ""
         return """
         {
@@ -573,37 +573,37 @@ final class CaptureTogglePresentationTests: XCTestCase {
         case 0:
             droppedField = ""
         case 1:
-            droppedField = """,
-          "dropped_dependencies": [
-            {
-              "note_path": "job.md",
-              "block_id": "prep",
-              "link": "[[job#^prep]]",
-              "text": "Prep work",
-              "status_symbol": " ",
-              "status_name": "Ready"
-            }
-          ]"""
+            droppedField = #"
+, "dropped_dependencies": [
+  {
+    "note_path": "job.md",
+    "block_id": "prep",
+    "link": "[[job#^prep]]",
+    "text": "Prep work",
+    "status_symbol": " ",
+    "status_name": "Ready"
+  }
+]"#
         default:
-            droppedField = """,
-          "dropped_dependencies": [
-            {
-              "note_path": "job.md",
-              "block_id": "prep",
-              "link": "[[job#^prep]]",
-              "text": "Prep work",
-              "status_symbol": " ",
-              "status_name": "Ready"
-            },
-            {
-              "note_path": "ops.md",
-              "block_id": "budget",
-              "link": "[[ops#^budget]]",
-              "text": "Budget work",
-              "status_symbol": " ",
-              "status_name": "Ready"
-            }
-          ]"""
+            droppedField = #"
+, "dropped_dependencies": [
+  {
+    "note_path": "job.md",
+    "block_id": "prep",
+    "link": "[[job#^prep]]",
+    "text": "Prep work",
+    "status_symbol": " ",
+    "status_name": "Ready"
+  },
+  {
+    "note_path": "ops.md",
+    "block_id": "budget",
+    "link": "[[ops#^budget]]",
+    "text": "Budget work",
+    "status_symbol": " ",
+    "status_name": "Ready"
+  }
+]"#
         }
         return """
         {

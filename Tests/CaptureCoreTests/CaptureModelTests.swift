@@ -1250,12 +1250,12 @@ final class CaptureModelTests: XCTestCase {
 
         XCTAssertEqual(success.kind, "link_guard")
         XCTAssertEqual(success.droppedDependencies, [])
-        let guard = try XCTUnwrap(success.linkGuard)
-        XCTAssertEqual(guard.reasons, ["local_dependency", "project_dependency"])
-        XCTAssertEqual(guard.promoted, ["local.md#^prep"])
-        XCTAssertEqual(guard.dropRefused, "project_blocked")
+        let linkGuard = try XCTUnwrap(success.linkGuard)
+        XCTAssertEqual(linkGuard.reasons, ["local_dependency", "project_dependency"])
+        XCTAssertEqual(linkGuard.promoted, ["local.md#^prep"])
+        XCTAssertEqual(linkGuard.dropRefused, "project_blocked")
         XCTAssertTrue(
-            (guard.detail ?? "").contains("dependencies kept: its project is blocked")
+            (linkGuard.detail ?? "").contains("dependencies kept: its project is blocked")
         )
         XCTAssertNotNil(CaptureLinkGuardPresentation(capture: success))
         XCTAssertNil(CapturePomodoroLinkPresentation(capture: success))

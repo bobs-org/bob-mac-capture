@@ -25,7 +25,7 @@ public struct CaptureLinkGuardPresentation: Equatable, Sendable {
     public let previewAccessibilitySummary: String
 
     public init?(capture: CaptureCommandSuccess) {
-        guard let guard = capture.linkGuard else {
+        guard let linkGuard = capture.linkGuard else {
             return nil
         }
         let kind = capture.kind
@@ -41,8 +41,8 @@ public struct CaptureLinkGuardPresentation: Equatable, Sendable {
         isDryRun = capture.dryRun
         headline = capture.dryRun ? "Would not link" : "Not linked"
         glyphName = "lock.fill"
-        detail = guard.detail ?? ""
-        promoted = guard.promoted
+        detail = linkGuard.detail ?? ""
+        promoted = linkGuard.promoted
         notificationTitle = "Not linked"
 
         var bodyLines: [String] = []
