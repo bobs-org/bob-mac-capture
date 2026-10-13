@@ -262,6 +262,8 @@ just test
 just bundle
 ```
 
+On a host without Xcode, only CaptureCore, RefsCore, and refs-rank build; `just portable-check` lints every Swift file and builds and tests those targets, but cannot type-check the `BobMacCapture*` targets.
+
 `just bundle` creates `.build/bundle/Bob Mac Capture.app` and signs it with the ad-hoc
 identity `-`. Release installs should prefer an Apple Development identity:
 
@@ -2161,7 +2163,7 @@ above.
 
 ## CI
 
-GitHub Actions runs on `macos-26` for pushes to `master` and pull requests. The workflow
+GitHub Actions runs on `macos-26` for pushes to `master` and pull requests. Formatting runs first, and a Swift parse error there skips Build, Test, Bundle, and the install gates, so a red lint step can hide compile errors further down. The workflow
 checks Swift formatting, `swift build`, `swift test`, bundle assembly, `plutil -lint`,
 signature verification, and the bundle identifier. It also launches the bundled app and
 requires the `launch-complete` signpost to appear in the unified log before quitting it,

@@ -2085,7 +2085,7 @@ final class CapturePanelModel: ObservableObject {
             dismissCompletion()
             return
         }
-        if completion.context == "task_link" || completion.context == "task_goto" {
+        if let context = completion.context, context == "task_link" || context == "task_goto" {
             await handleTaskLinkCompletion(
                 completion,
                 draft: draft,
@@ -2093,8 +2093,8 @@ final class CapturePanelModel: ObservableObject {
                 generation: generation,
                 processClient: processClient,
                 trigger: trigger,
-                source: completion.context == "task_goto" ? .taskGoto : .taskLink,
-                expectedContext: completion.context
+                source: context == "task_goto" ? .taskGoto : .taskLink,
+                expectedContext: context
             )
             return
         }
