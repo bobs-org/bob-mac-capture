@@ -75,7 +75,7 @@ final class CapturePullInChoiceTests: XCTestCase {
 
   func testMutedResidentsAndFoldedProjectCountsAreNeverSelectable() throws {
     let projectPath = "projects/sase_foo.md"
-    var state = choiceState(
+    let state = choiceState(
       offers: [offer(n: 1, group: "project", project: projectPath)],
       stillBlocked: [
         TaskCompleteStillBlocked(
@@ -258,7 +258,7 @@ final class CapturePullInChoiceTests: XCTestCase {
     modifiers: NSEvent.ModifierFlags = [],
     repeat isRepeat: Bool = false
   ) -> NSEvent {
-    let characters: String? = keyCode == 49 ? " " : nil
+    let characters = keyCode == 49 ? " " : ""
     return NSEvent.keyEvent(
       with: .keyDown,
       location: .zero,
