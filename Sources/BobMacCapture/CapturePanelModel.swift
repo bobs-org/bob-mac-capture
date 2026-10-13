@@ -141,11 +141,25 @@ enum CapturePanelFocusTarget: Hashable {
     /// Model-level focus intent owned by `CapturePickerFilterField` / AppKit,
     /// not `@FocusState`.
     case pickerFilter
+    case pullInFilter
+    case pullInOfferList
 }
 
 struct CapturePanelFocusRequest: Equatable {
     let sequence: UInt64
     let target: CapturePanelFocusTarget
+}
+
+private struct CapturePullInPreviewSnapshot {
+    let draft: String
+    let clientIdentity: String
+    let seed: String
+    let generation: UInt64
+    let requestID: UUID?
+    let pullIn: CapturePullIn?
+    let planBudget: CapturePlanBudget?
+    let offers: [TaskCompleteUnblocked]
+    let stillBlocked: [TaskCompleteStillBlocked]
 }
 
 @MainActor
@@ -210,6 +224,7 @@ final class CapturePanelModel: ObservableObject {
     @Published var selectedStashIndex = 0
     @Published var taskIDPrompt: CaptureTaskIDPromptState?
     @Published var pomodoroNamePrompt: CapturePomodoroNamePromptState?
+    @Published var pullInChoice: CapturePullInChoiceState?
     @Published var picker: CapturePickerState?
     /// Recomputed only when the picker snapshot or the filter text changes.
     @Published var pickerPresentation: CapturePickerPresentation?
@@ -227,7 +242,26 @@ final class CapturePanelModel: ObservableObject {
     /// so measured heights describe the whole content view.
     @Published var titlebarSafeAreaInset: CGFloat = 0
 
-    var processClient: BobProcessClient?
+    var processClient: BobProcessClient? {
+        didSet {
+            guard oldValue !== processClient else {
+                return
+            }
+            invalidateAnalysis()
+            previewPullInSnapshot = nil
+            previewResult = nil
+            previewResults = []
+            previewGlobalDestination = nil
+            previewState = .idle
+            if isPreviewing {
+                activeRequestID = nil
+                isPreviewing = false
+            }
+            if pullInChoice != nil {
+                cancelPullInChoiceFromKeyboard()
+            }
+        }
+    }
     var notificationService: NotificationService?
     var targetOpener: (URL) -> Void = { NSWorkspace.shared.open($0) }
     /// Read-only Go To dispatch. Production opens `obsidian://bob-goto-task`
@@ -275,6 +309,7 @@ final class CapturePanelModel: ObservableObject {
     private var fileUnderDismissedURL: String?
     private var programmaticSelectionOffsetToIgnore: Int?
     private var priorityRollSeed: String?
+    private var previewPullInSnapshot: CapturePullInPreviewSnapshot?
     private var focusSequence: UInt64 = 0
 
     // Shared by submit and preview so a late callback from either one can never mutate
@@ -698,7 +733,18 @@ final class CapturePanelModel: ObservableObject {
     }
 
     var inlinePromptVisible: Bool {
-        taskIDPrompt != nil || pomodoroNamePrompt != nil
+        taskIDPrompt != nil || pomodoroNamePrompt != nil || pullInChoice != nil
+    }
+
+    var pullInChoiceVisible: Bool {
+        pullInChoice != nil
+    }
+
+    var pullInCapabilityNote: String? {
+        guard processClient?.pullInGuardKnownUnsupported == true else {
+            return nil
+        }
+        return "This Bob does not support successor-choice checks."
     }
 
     var pickerVisible: Bool {
@@ -1215,6 +1261,12 @@ final class CapturePanelModel: ObservableObject {
         }
 
         let draft = plainDraft
+        if let pullInChoice, pullInChoice.draftSnapshot != draft {
+            cancelPullInChoiceFromKeyboard()
+        }
+        if previewPullInSnapshot?.draft != draft {
+            previewPullInSnapshot = nil
+        }
         if draft != lastProvenanceDraft {
             closeCommaProvenance.reconcile(oldText: lastProvenanceDraft, newText: draft)
             lastProvenanceDraft = draft
@@ -1449,35 +1501,306 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
-        invalidateRewrite()
         let draft = plainDraft
+        if let preview = currentPullInPreview(for: draft, processClient: processClient),
+           preview.pullIn?.supported == true,
+           preview.offers.contains(where: { $0.offer.map { !$0.key.isEmpty } == true })
+        {
+            _ = openPullInChoice(
+                offers: preview.offers,
+                stillBlocked: preview.stillBlocked,
+                pullIn: preview.pullIn!,
+                planBudget: preview.planBudget,
+                draft: draft,
+                processClientIdentity: preview.clientIdentity,
+                openAfterCapture: openAfterCapture,
+                seed: preview.seed,
+                generation: preview.generation,
+                requestID: preview.requestID
+            )
+            return
+        }
+        dispatchCapture(
+            draft: draft,
+            openAfterCapture: openAfterCapture,
+            selection: nil,
+            capabilityAdvertised: false,
+            seed: activePriorityRollSeed()
+        )
+    }
+
+    private func dispatchCapture(
+        draft: String,
+        openAfterCapture: Bool,
+        selection: CapturePullInSelection?,
+        capabilityAdvertised: Bool,
+        seed: String
+    ) {
+        guard let processClient else {
+            errorMessage = "Bob is not resolved. Check Settings and Recheck Bob."
+            errorCode = nil
+            return
+        }
+        invalidateRewrite()
         let requestID = UUID()
+        let processClientIdentity = processClient.identityToken
         activeRequestID = requestID
         isSubmitting = true
         errorMessage = nil
         errorCode = nil
         statusText = openAfterCapture ? "Capturing and opening\u{2026}" : "Capturing\u{2026}"
-        let seed = activePriorityRollSeed()
-
-        Task {
+        Task { [weak self, processClient] in
             do {
                 let response = try await CaptureSignpost.measure("submit") {
                     try await processClient.capture(
                         draft,
                         dryRun: false,
                         readClipboard: true,
-                        priorityRollSeed: seed
+                        priorityRollSeed: seed,
+                        pullInSelection: selection,
+                        requirePullInChoice: selection == nil,
+                        pullInCapabilityAdvertised: capabilityAdvertised
                     )
                 }
                 await MainActor.run {
-                    self.completeSubmit(requestID: requestID, response: response, openAfterCapture: openAfterCapture)
+                    self?.completeSubmit(
+                        requestID: requestID,
+                        response: response,
+                        openAfterCapture: openAfterCapture,
+                        draft: draft,
+                        choiceSeed: seed,
+                        processClientIdentity: processClientIdentity
+                    )
                 }
             } catch {
                 await MainActor.run {
-                    self.failSubmit(requestID: requestID, error: error)
+                    self?.failSubmit(requestID: requestID, error: error)
                 }
             }
         }
+    }
+
+    private func currentPullInPreview(
+        for draft: String,
+        processClient: BobProcessClient
+    ) -> CapturePullInPreviewSnapshot? {
+        guard let previewPullInSnapshot,
+              previewPullInSnapshot.draft == draft,
+              previewPullInSnapshot.clientIdentity == processClient.identityToken,
+              previewPullInSnapshot.generation == analysisGeneration
+        else {
+            return nil
+        }
+        return previewPullInSnapshot
+    }
+
+    private func openPullInChoice(
+        offers: [TaskCompleteUnblocked],
+        stillBlocked: [TaskCompleteStillBlocked],
+        pullIn: CapturePullIn,
+        planBudget: CapturePlanBudget?,
+        draft: String,
+        processClientIdentity: String,
+        openAfterCapture: Bool,
+        seed: String,
+        generation: UInt64,
+        requestID: UUID?
+    ) -> Bool {
+        guard pullIn.supported else {
+            return false
+        }
+        let unique = Self.uniquePullInRows(offers)
+        guard unique.contains(where: { $0.offer?.key.isEmpty == false }) else {
+            errorMessage = "Bob requested a successor choice but returned no usable offer keys. Preview again before submitting."
+            errorCode = nil
+            statusText = "Successor offers need refresh"
+            return false
+        }
+        let rows = unique.compactMap { item -> CapturePullInChoiceRow? in
+            guard let offer = item.offer, !offer.key.isEmpty else {
+                return nil
+            }
+            return CapturePullInChoiceRow(
+                offerRow: item,
+                blockedRow: nil,
+                group: offer.group,
+                project: offer.project
+            )
+        } + stillBlocked.map { item in
+            CapturePullInChoiceRow(
+                offerRow: nil,
+                blockedRow: item,
+                group: item.project == nil ? "" : "project",
+                project: item.project
+            )
+        }
+        let firstKey = unique
+            .filter { $0.offer?.key.isEmpty == false }
+            .sorted { ($0.offer?.n ?? .max) < ($1.offer?.n ?? .max) }
+            .first?.offer?.key
+        pullInChoice = CapturePullInChoiceState(
+            draftSnapshot: draft,
+            processClientIdentity: processClientIdentity,
+            openAfterCapture: openAfterCapture,
+            priorityRollSeed: seed,
+            generation: generation,
+            requestID: requestID,
+            pullIn: pullIn,
+            planBudget: planBudget,
+            rows: rows,
+            highlightedKey: firstKey
+        )
+        editorInputLocked = true
+        completionResponse = nil
+        pickerChip = nil
+        statusText = "Choose successor offers"
+        requestFocus(.pullInOfferList)
+        return true
+    }
+
+    private static func uniquePullInRows(_ offers: [TaskCompleteUnblocked]) -> [TaskCompleteUnblocked] {
+        var seen = Set<String>()
+        return offers.filter { row in
+            guard let key = row.offer?.key, !key.isEmpty else {
+                return false
+            }
+            return seen.insert(key).inserted
+        }.sorted {
+            let left = $0.offer?.n ?? .max
+            let right = $1.offer?.n ?? .max
+            return left == right ? ($0.offer?.key ?? "") < ($1.offer?.key ?? "") : left < right
+        }
+    }
+
+    func confirmPullInChoice() {
+        guard let choice = pullInChoice, !isSubmitting else {
+            return
+        }
+        let keys = choice.effectiveSelectionKeys
+        guard !keys.isEmpty else {
+            announceStatus("No visible successor offer is selected")
+            return
+        }
+        commitPullInChoice(choice, selection: .keys(keys))
+    }
+
+    func chooseNoPullInOffers() {
+        guard let choice = pullInChoice, !isSubmitting else {
+            return
+        }
+        commitPullInChoice(choice, selection: .none)
+    }
+
+    private func commitPullInChoice(
+        _ choice: CapturePullInChoiceState,
+        selection: CapturePullInSelection
+    ) {
+        guard plainDraft == choice.draftSnapshot,
+              processClient?.identityToken == choice.processClientIdentity,
+              choice.generation == analysisGeneration,
+              choice.pullIn.supported
+        else {
+            cancelPullInChoiceFromKeyboard()
+            return
+        }
+        pullInChoice = nil
+        clearEditorInputLockIfFree()
+        dispatchCapture(
+            draft: choice.draftSnapshot,
+            openAfterCapture: choice.openAfterCapture,
+            selection: selection,
+            capabilityAdvertised: choice.pullIn.supported,
+            seed: choice.priorityRollSeed
+        )
+    }
+
+    func cancelPullInChoiceFromKeyboard() {
+        guard pullInChoice != nil else {
+            return
+        }
+        pullInChoice = nil
+        errorMessage = nil
+        errorCode = nil
+        clearEditorInputLockIfFree()
+        requestFocus(.editor)
+        statusText = "Successor choice canceled"
+    }
+
+    func movePullInChoiceHighlight(by delta: Int) {
+        guard var choice = pullInChoice else {
+            return
+        }
+        choice.moveHighlight(by: delta)
+        pullInChoice = choice
+        requestFocus(.pullInOfferList)
+    }
+
+    func toggleHighlightedPullInOffer() {
+        guard var choice = pullInChoice else {
+            return
+        }
+        choice.toggleHighlighted()
+        pullInChoice = choice
+    }
+
+    func togglePullInOffer(_ key: String) {
+        guard var choice = pullInChoice else {
+            return
+        }
+        choice.highlightedKey = key
+        choice.toggleHighlighted()
+        pullInChoice = choice
+        requestFocus(.pullInOfferList)
+    }
+
+    func markAllPullInOffers() {
+        guard var choice = pullInChoice else {
+            return
+        }
+        choice.markAll()
+        pullInChoice = choice
+    }
+
+    func updatePullInChoiceFilter(_ text: String) {
+        guard var choice = pullInChoice else {
+            return
+        }
+        choice.updateFilter(text)
+        pullInChoice = choice
+    }
+
+    func focusPullInChoiceFilter() {
+        requestFocus(.pullInFilter)
+    }
+
+    func togglePullInChoiceGroup(_ id: String) {
+        guard var choice = pullInChoice else {
+            return
+        }
+        choice.toggleGroup(id)
+        pullInChoice = choice
+    }
+
+    func installPullInChoiceForPreviews(
+        offers: [TaskCompleteUnblocked],
+        stillBlocked: [TaskCompleteStillBlocked] = [],
+        pullIn: CapturePullIn,
+        planBudget: CapturePlanBudget? = nil,
+        draft: String,
+        openAfterCapture: Bool = false
+    ) {
+        _ = openPullInChoice(
+            offers: offers,
+            stillBlocked: stillBlocked,
+            pullIn: pullIn,
+            planBudget: planBudget,
+            draft: draft,
+            processClientIdentity: processClient?.identityToken ?? "preview-test",
+            openAfterCapture: openAfterCapture,
+            seed: activePriorityRollSeed(),
+            generation: analysisGeneration,
+            requestID: nil
+        )
     }
 
     func preview() {
@@ -1492,8 +1815,12 @@ final class CapturePanelModel: ObservableObject {
 
         let draft = plainDraft
         let requestID = UUID()
+        let generation = analysisGeneration
+        let seed = activePriorityRollSeed()
+        let processClientIdentity = processClient.identityToken
         activeRequestID = requestID
         isPreviewing = true
+        previewPullInSnapshot = nil
         errorMessage = nil
         errorCode = nil
         statusText = "Resolving clipboard preview\u{2026}"
@@ -1505,15 +1832,30 @@ final class CapturePanelModel: ObservableObject {
                         draft,
                         dryRun: true,
                         readClipboard: true,
-                        priorityRollSeed: activePriorityRollSeed()
+                        priorityRollSeed: seed
                     )
                 }
                 await MainActor.run {
-                    self.completePreview(requestID: requestID, response: response)
+                    self.completePreview(
+                        requestID: requestID,
+                        response: response,
+                        draft: draft,
+                        seed: seed,
+                        generation: generation,
+                        processClient: processClient,
+                        processClientIdentity: processClientIdentity
+                    )
                 }
             } catch {
                 await MainActor.run {
-                    self.failPreview(requestID: requestID, error: error)
+                    self.failPreview(
+                        requestID: requestID,
+                        error: error,
+                        draft: draft,
+                        generation: generation,
+                        processClient: processClient,
+                        processClientIdentity: processClientIdentity
+                    )
                 }
             }
         }
@@ -1531,6 +1873,7 @@ final class CapturePanelModel: ObservableObject {
     /// permanent discarding is an explicit action from the Discard button.
     func prepareForRetainedClose() {
         panelVisible = false
+        previewPullInSnapshot = nil
         dismissStashPicker()
         clearInlinePrompts()
         agendaExpanded = []
@@ -1700,6 +2043,7 @@ final class CapturePanelModel: ObservableObject {
 
     func prepareForDismissal() {
         panelVisible = false
+        previewPullInSnapshot = nil
         dismissStashPicker()
         closePickerForDismissal()
         clearInlinePrompts()
@@ -1735,6 +2079,7 @@ final class CapturePanelModel: ObservableObject {
         previewResult = nil
         previewResults = []
         previewGlobalDestination = nil
+        previewPullInSnapshot = nil
         closePendingText = nil
         closePendingAction = "Close"
     }
@@ -1753,6 +2098,8 @@ final class CapturePanelModel: ObservableObject {
     private func clearInlinePrompts() {
         clearTaskIDPrompt()
         clearPomodoroNamePrompt()
+        pullInChoice = nil
+        clearEditorInputLockIfFree()
     }
 
     private func clearTaskIDPrompt() {
@@ -1775,7 +2122,7 @@ final class CapturePanelModel: ObservableObject {
 
     /// The editor stays locked while the picker or either prompt is open.
     private func clearEditorInputLockIfFree() {
-        if taskIDPrompt == nil, pomodoroNamePrompt == nil, picker == nil {
+        if taskIDPrompt == nil, pomodoroNamePrompt == nil, pullInChoice == nil, picker == nil {
             clearEditorInputLock()
         }
     }
@@ -5390,7 +5737,10 @@ final class CapturePanelModel: ObservableObject {
     private func completeSubmit(
         requestID: UUID,
         response: CaptureCommandResponse,
-        openAfterCapture: Bool
+        openAfterCapture: Bool,
+        draft: String,
+        choiceSeed: String,
+        processClientIdentity: String
     ) {
         guard activeRequestID == requestID else {
             return
@@ -5406,6 +5756,7 @@ final class CapturePanelModel: ObservableObject {
             lastSuccess = captures.first
             lastSuccessResults = captures
             lastSuccessGlobalDestination = success.globalDestination
+            previewPullInSnapshot = nil
             previewResult = nil
             previewResults = []
             previewGlobalDestination = nil
@@ -5451,6 +5802,38 @@ final class CapturePanelModel: ObservableObject {
             }
             panelDismisser()
         case .failure(let failure):
+            if failure.code == "pull_in_choice_required" {
+                guard let processClient,
+                      plainDraft == draft,
+                      processClient.identityToken == processClientIdentity,
+                      let pullIn = failure.pullIn,
+                      pullIn.supported
+                else {
+                    errorMessage = "Bob's successor offer response was incomplete or stale. Preview again before submitting."
+                    errorCode = nil
+                    statusText = "Successor offers need refresh"
+                    return
+                }
+                let opened = openPullInChoice(
+                    offers: failure.offers,
+                    stillBlocked: [],
+                    pullIn: pullIn,
+                    planBudget: nil,
+                    draft: draft,
+                    processClientIdentity: processClientIdentity,
+                    openAfterCapture: openAfterCapture,
+                    seed: choiceSeed,
+                    generation: analysisGeneration,
+                    requestID: requestID
+                )
+                if !opened {
+                    errorMessage = "Bob requested a successor choice but returned no usable offer keys. Preview again before submitting."
+                    errorCode = nil
+                    statusText = "Successor offers need refresh"
+                }
+                return
+            }
+            previewPullInSnapshot = nil
             errorMessage = failure.error
             errorCode = failure.code
             statusText = "Capture failed"
@@ -5464,6 +5847,7 @@ final class CapturePanelModel: ObservableObject {
         }
         activeRequestID = nil
         isSubmitting = false
+        previewPullInSnapshot = nil
 
         let message = String(describing: error)
         errorMessage = message
@@ -5472,8 +5856,25 @@ final class CapturePanelModel: ObservableObject {
         notificationService?.notifyCaptureFailure(message: message)
     }
 
-    private func completePreview(requestID: UUID, response: CaptureCommandResponse) {
+    private func completePreview(
+        requestID: UUID,
+        response: CaptureCommandResponse,
+        draft: String,
+        seed: String,
+        generation: UInt64,
+        processClient: BobProcessClient,
+        processClientIdentity: String
+    ) {
         guard activeRequestID == requestID else {
+            return
+        }
+        guard generation == analysisGeneration,
+              plainDraft == draft,
+              self.processClient === processClient,
+              processClient.identityToken == processClientIdentity
+        else {
+            activeRequestID = nil
+            isPreviewing = false
             return
         }
         activeRequestID = nil
@@ -5482,6 +5883,15 @@ final class CapturePanelModel: ObservableObject {
         switch response {
         case .success(let success):
             let captures = success.normalizedCaptures
+            previewPullInSnapshot = makePullInPreviewSnapshot(
+                success: success,
+                captures: captures,
+                draft: draft,
+                processClientIdentity: processClientIdentity,
+                seed: seed,
+                generation: generation,
+                requestID: requestID
+            )
             previewResult = captures.first
             previewResults = captures
             previewGlobalDestination = success.globalDestination
@@ -5512,10 +5922,45 @@ final class CapturePanelModel: ObservableObject {
             previewResult = nil
             previewResults = []
             previewGlobalDestination = nil
+            previewPullInSnapshot = nil
             errorMessage = failure.error
             errorCode = failure.code
             statusText = "Preview failed"
         }
+    }
+
+    private func makePullInPreviewSnapshot(
+        success: CaptureCommandSuccess,
+        captures: [CaptureCommandSuccess],
+        draft: String,
+        processClientIdentity: String,
+        seed: String,
+        generation: UInt64,
+        requestID: UUID?
+    ) -> CapturePullInPreviewSnapshot {
+        var offers: [TaskCompleteUnblocked] = []
+        var stillBlocked: [TaskCompleteStillBlocked] = []
+        for capture in captures {
+            if let complete = capture.taskComplete {
+                offers.append(contentsOf: complete.unblocked)
+                stillBlocked.append(contentsOf: complete.stillBlocked)
+            }
+            if let close = capture.pomodoroClose {
+                offers.append(contentsOf: close.unblocked)
+                stillBlocked.append(contentsOf: close.stillBlocked)
+            }
+        }
+        return CapturePullInPreviewSnapshot(
+            draft: draft,
+            clientIdentity: processClientIdentity,
+            seed: seed,
+            generation: generation,
+            requestID: requestID,
+            pullIn: success.pullIn,
+            planBudget: success.planBudget,
+            offers: Self.uniquePullInRows(offers),
+            stillBlocked: stillBlocked
+        )
     }
 
     /// A batch's toggle presentation, only when it is exactly one `task_toggle` item —
@@ -5596,8 +6041,24 @@ final class CapturePanelModel: ObservableObject {
         return CapturePomodoroStartPresentation(capture: captures[0])
     }
 
-    private func failPreview(requestID: UUID, error: Error) {
+    private func failPreview(
+        requestID: UUID,
+        error: Error,
+        draft: String,
+        generation: UInt64,
+        processClient: BobProcessClient,
+        processClientIdentity: String
+    ) {
         guard activeRequestID == requestID else {
+            return
+        }
+        guard generation == analysisGeneration,
+              plainDraft == draft,
+              self.processClient === processClient,
+              processClient.identityToken == processClientIdentity
+        else {
+            activeRequestID = nil
+            isPreviewing = false
             return
         }
         activeRequestID = nil
@@ -5608,6 +6069,7 @@ final class CapturePanelModel: ObservableObject {
         previewResult = nil
         previewResults = []
         previewGlobalDestination = nil
+        previewPullInSnapshot = nil
         errorMessage = String(describing: error)
         errorCode = nil
         statusText = "Preview failed"
@@ -5618,6 +6080,17 @@ final class CapturePanelModel: ObservableObject {
         cursorUTF8Offset: Int? = nil,
         suppressSelectionCallbacks: Bool = false
     ) {
+        let previousDraft = plainDraft
+        if previousDraft != text {
+            if let pullInChoice, pullInChoice.draftSnapshot != text {
+                self.pullInChoice = nil
+                clearEditorInputLockIfFree()
+                requestFocus(.editor)
+            }
+            if previewPullInSnapshot?.draft != text {
+                previewPullInSnapshot = nil
+            }
+        }
         closeListParseSnapshot = nil
         closeListAssistParsePending = false
         closeCommaProvenance.clear()
@@ -5640,6 +6113,9 @@ final class CapturePanelModel: ObservableObject {
         trigger: CompletionTrigger,
         completionGate: Task<Void, Never>? = nil
     ) {
+        if pullInChoice != nil {
+            cancelPullInChoiceFromKeyboard()
+        }
         guard let processClient else {
             statusText = "Bob is not resolved"
             return
@@ -5661,6 +6137,7 @@ final class CapturePanelModel: ObservableObject {
         let debounceNanoseconds = self.debounceNanoseconds
         analysisTask?.cancel()
         previewState = .loading
+        previewPullInSnapshot = nil
         // A changed draft can still have the prior response in these caches while
         // the debounce is running. Clear it before calculating the next preview so
         // the footer and preview card always describe the same draft.
@@ -5939,6 +6416,7 @@ final class CapturePanelModel: ObservableObject {
         Task { [weak self, processClient] in
             do {
                 let seed = await self?.activePriorityRollSeed() ?? UUID().uuidString
+                let processClientIdentity = processClient.identityToken
                 let preview = try await CaptureSignpost.measure("preview") {
                     try await processClient.captureLivePreview(
                         previewDraft,
@@ -5952,6 +6430,15 @@ final class CapturePanelModel: ObservableObject {
                     switch preview {
                     case .success(let success):
                         let captures = success.normalizedCaptures
+                        self?.previewPullInSnapshot = self?.makePullInPreviewSnapshot(
+                            success: success,
+                            captures: captures,
+                            draft: previewDraft,
+                            processClientIdentity: processClientIdentity,
+                            seed: seed,
+                            generation: generation,
+                            requestID: nil
+                        )
                         self?.previewState = .ready(success)
                         self?.previewResult = captures.first
                         self?.previewResults = captures
@@ -6018,6 +6505,7 @@ final class CapturePanelModel: ObservableObject {
                         self?.previewResult = nil
                         self?.previewResults = []
                         self?.previewGlobalDestination = nil
+                        self?.previewPullInSnapshot = nil
                         self?.closePendingText = nil
                         self?.closePendingAction = "Close"
                         self?.errorMessage = failure.error

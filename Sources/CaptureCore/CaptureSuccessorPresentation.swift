@@ -19,6 +19,9 @@ public enum SuccessorRowKind: Equatable, Sendable {
     case recovered
     /// This dependent stays blocked.
     case stillBlocked
+    /// Bob reported a selectable successor candidate; it has not been
+    /// linked by the preview itself.
+    case offered
 }
 
 /// One `unblocked[]` row: linked (with a destination capsule and an
@@ -98,6 +101,17 @@ public enum SuccessorRows {
                     isInbox: item.inbox
                 )
             }
+            if let offer = item.offer {
+                return SuccessorUnblockedRow(
+                    kind: .offered,
+                    transitionText: "Offer \(offer.n) · \(item.text)",
+                    locatorText: locator(item),
+                    text: item.text,
+                    destinationText: offerDestination(offer),
+                    captionText: recoveredCaption(item: item),
+                    isInbox: item.inbox
+                )
+            }
             return SuccessorUnblockedRow(
                 kind: .recovered,
                 transitionText: transition(item),
@@ -170,6 +184,10 @@ public enum SuccessorRows {
     /// when nothing was linked and the breaker did not fire (the caller
     /// then keeps its existing `· unblocked A, B` body).
     public static func notificationLine(unblocked: [TaskCompleteUnblocked]) -> String? {
+        let pulledInCount = unblocked.filter { $0.offer?.selected == true }.count
+        if pulledInCount > 0 {
+            return "🔓 Pulled in \(pulledInCount) successor offer\(pulledInCount == 1 ? "" : "s")"
+        }
         let linked: [LinkedRow] = unblocked.compactMap { item in
             guard let link = item.link else { return nil }
             return (item, link)
@@ -223,6 +241,12 @@ public enum SuccessorRows {
             return "not linked · more than 5"
         case "project_task":
             return "project task"
+        case "project_member":
+            return "project member"
+        case "not_selected":
+            return "not pulled in"
+        case "no_destination":
+            return "no open Pomodoro"
         case "hidden":
             return "hidden"
         case "disabled":
@@ -272,6 +296,16 @@ public enum SuccessorRows {
 
     private static func stillBlockedCaption(item: TaskCompleteStillBlocked) -> String {
         let lane = item.statusName.isEmpty ? "Blocked" : item.statusName
+        if item.reason == "project" {
+            let projectName = item.project.map {
+                URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent
+            }
+            let dependency = projectName.map { "blocked by project \($0)" } ?? "project is blocked"
+            if let date = item.scheduled {
+                return "stays \(lane) · \(dependency) until \(shortMonthDay(date) ?? date)"
+            }
+            return "stays \(lane) · \(dependency)"
+        }
         if item.reason == "scheduled" {
             if let date = item.scheduled {
                 return "stays \(lane) · until \(shortMonthDay(date) ?? date)"
@@ -279,6 +313,18 @@ public enum SuccessorRows {
             return "stays \(lane) · scheduled"
         }
         return "stays \(lane) · waits on \(item.waitsOn) more"
+    }
+
+    private static func offerDestination(_ offer: TaskCompleteOffer) -> String? {
+        let destination = offer.destination
+        let name = destination.entryName.isEmpty ? destination.dayFile : destination.entryName
+        guard !name.isEmpty else { return nil }
+        let role = destination.entryRole.replacingOccurrences(of: "_", with: " ")
+        var suffix = role.isEmpty ? "" : " · \(role)"
+        if destination.fallback {
+            suffix += " · fallback"
+        }
+        return "→ \(name)\(suffix)"
     }
 
     /// `"Oct 13"` from `"2026-10-13"`, or nil when the date does not

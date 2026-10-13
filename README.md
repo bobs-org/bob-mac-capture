@@ -1548,6 +1548,23 @@ including the next panel show.
 | Control-S | Open the canceled-draft stash picker | Open the canceled-draft stash picker | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-C | Stash a nonempty draft, then clear and close. A Go To (`/`) draft is discarded instead of stashed | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close |
 
+When a current Bob preview reports successor offers for `!` completion or `=x` close,
+Return opens a grouped choice card before the capture is written. Nothing is marked
+initially, including a single offer. Return chooses marked offers or, when none are
+marked, the highlighted offer. Up/Down moves the highlight; Space toggles it after
+navigation moves focus to the offer list. The filter keeps ordinary typing, including
+spaces, while it has focus. Command-A marks every offer, Shift-Return commits with no
+offers, and Escape returns to the unchanged draft without writing. The card shows Bob's
+global offer numbers, destinations, project folds, blocked residents, and a projected
+plan-link count when Bob supplied the budget. The success notification reports what was
+pulled in.
+
+If Bob rejects the exact `--require-pull-in-choice` flag as an unexpected argument
+(exit 2), the app retries once without that guard and shows a note that this Bob lacks
+successor-choice checks. Other failures and explicit stale-key refusals are never
+retried. The app only sends explicit offer keys from a matching preview or write-free
+refusal back to `bob capture`.
+
 Every capture action is reachable from the keyboard alone; the hotkey, editor, completion
 list, Stash/Capture/Preview/Discard buttons, and stash picker never require a pointer.
 Opening the **Add block ID** or **Name Pomodoro** prompt moves keyboard focus into that

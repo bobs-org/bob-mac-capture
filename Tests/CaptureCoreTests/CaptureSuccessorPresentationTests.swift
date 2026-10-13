@@ -110,6 +110,9 @@ final class CaptureSuccessorPresentationTests: XCTestCase {
             ("already_planned", "Ready · already planned"),
             ("breaker", "Ready · not linked · more than 5"),
             ("project_task", "Ready · project task"),
+            ("project_member", "Ready · project member"),
+            ("not_selected", "Ready · not pulled in"),
+            ("no_destination", "Ready · no open Pomodoro"),
             ("hidden", "Ready · hidden"),
             ("disabled", "Ready · linking off"),
             (nil, "Ready"),
@@ -143,6 +146,15 @@ final class CaptureSuccessorPresentationTests: XCTestCase {
             locator: { "\($0.notePath) ^\($0.blockID)" }
         )
         XCTAssertEqual(scheduled[0].captionText, "stays Blocked · until Oct 13")
+        let project = SuccessorRows.stillBlockedRows(
+            from: [TaskCompleteStillBlocked(
+                notePath: "projects/sase_foo.md", blockID: "resident", line: 11,
+                text: "Waiting resident", statusSymbol: "?", statusName: "Blocked",
+                reason: "project", project: "projects/sase_foo.md"
+            )],
+            locator: { _ in "" }
+        )
+        XCTAssertEqual(project.first?.captionText, "stays Blocked · blocked by project sase_foo")
     }
 
     func testNotificationLineForOneLinked() throws {
@@ -194,6 +206,50 @@ final class CaptureSuccessorPresentationTests: XCTestCase {
     func testNotificationLineKeepsOldBodyForRecoveredOnly() throws {
         XCTAssertNil(SuccessorRows.notificationLine(unblocked: [recoveredItem()]))
         XCTAssertNil(SuccessorRows.notificationLine(unblocked: []))
+    }
+
+    func testOfferRowIsNumberedNotPresentedAsLinkedAndSuccessReportsPulledIn() throws {
+        let offer = TaskCompleteUnblocked(
+            notePath: "travel.md",
+            blockID: "book",
+            text: "Book flights",
+            statusSymbol: " ",
+            statusName: "Ready",
+            notLinked: "not_selected",
+            offer: TaskCompleteOffer(
+                key: "opaque#^key",
+                n: 4,
+                group: "hand_off",
+                destination: TaskCompleteOfferDestination(
+                    dayFile: "20261013.md",
+                    entryName: "FOCUS",
+                    entryRole: "next_up"
+                ),
+                selected: false,
+                blockIDNeeded: true
+            )
+        )
+        let row = try XCTUnwrap(SuccessorRows.unblockedRows(
+            from: [offer],
+            transition: { _ in "" },
+            locator: { _ in "" }
+        ).first)
+        XCTAssertEqual(row.kind, .offered)
+        XCTAssertEqual(row.transitionText, "Offer 4 · Book flights")
+        XCTAssertEqual(row.destinationText, "→ FOCUS · next up")
+        XCTAssertEqual(row.captionText, "Ready · not pulled in")
+        XCTAssertNil(SuccessorRows.notificationLine(unblocked: [offer]))
+
+        let picked = TaskCompleteUnblocked(
+            notePath: "travel.md",
+            blockID: "book",
+            text: "Book flights",
+            offer: TaskCompleteOffer(key: "opaque#^key", n: 4, group: "hand_off", selected: true)
+        )
+        XCTAssertEqual(
+            SuccessorRows.notificationLine(unblocked: [picked]),
+            "🔓 Pulled in 1 successor offer"
+        )
     }
 
     func testRecoveredLine() throws {

@@ -4,6 +4,7 @@ import SwiftUI
 /// Lets `CapturePanelController` find this field in the window's view tree without a
 /// reference back into SwiftUI.
 let pickerFilterFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.picker-filter"
+let pullInFilterFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.pull-in-filter"
 
 @available(macOS 26.0, *)
 final class CapturePickerFilterNSTextField: NSTextField {
@@ -56,6 +57,9 @@ struct CapturePickerFilterField: NSViewRepresentable {
     var accessibilityLabel: String
     let focusRequest: CapturePanelFocusRequest
     let onTextChange: (String) -> Void
+    var fieldIdentifier = pickerFilterFieldAccessibilityIdentifier
+    var focusTarget: CapturePanelFocusTarget = .pickerFilter
+    var onFocusChange: (Bool) -> Void = { _ in }
 
     func makeNSView(context: Context) -> CapturePickerFilterNSTextField {
         let field = CapturePickerFilterNSTextField()
@@ -69,7 +73,7 @@ struct CapturePickerFilterField: NSViewRepresentable {
         field.placeholderString = placeholder
         field.font = NSFont.systemFont(ofSize: 15)
         field.delegate = context.coordinator
-        field.setAccessibilityIdentifier(pickerFilterFieldAccessibilityIdentifier)
+        field.setAccessibilityIdentifier(fieldIdentifier)
         field.setAccessibilityLabel(accessibilityLabel)
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
         field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -86,9 +90,12 @@ struct CapturePickerFilterField: NSViewRepresentable {
         }
         field.setAccessibilityLabel(accessibilityLabel)
 
-        guard focusRequest.target == .pickerFilter,
+        guard focusRequest.target == focusTarget,
               context.coordinator.appliedFocusSequence != focusRequest.sequence
         else {
+            if focusRequest.target != focusTarget, field.holdsFirstResponder {
+                _ = field.window?.makeFirstResponder(nil)
+            }
             return
         }
         context.coordinator.appliedFocusSequence = focusRequest.sequence
@@ -121,23 +128,21 @@ struct CapturePickerFilterField: NSViewRepresentable {
         }
 
         func controlTextDidBeginEditing(_ notification: Notification) {
-            // The picker filter only ever holds ID characters, so automatic
-            // dash, quote, and text replacement plus spelling correction are
-            // disabled: `--` must never become an em dash.
+            parent.onFocusChange(true)
+            // Automatic text substitutions must not change filter input.
             if let editor = (notification.object as? NSTextField)?.currentEditor() as? NSTextView {
                 editor.isAutomaticDashSubstitutionEnabled = false
                 editor.isAutomaticQuoteSubstitutionEnabled = false
                 editor.isAutomaticTextReplacementEnabled = false
                 editor.isContinuousSpellCheckingEnabled = false
                 editor.isAutomaticSpellingCorrectionEnabled = false
+                let end = (editor.string as NSString).length
+                editor.selectedRange = NSRange(location: end, length: 0)
             }
-            // The filter is seeded from the draft at open; land the caret at
-            // the end so typing appends to the seed.
-            guard let editor = (notification.object as? NSTextField)?.currentEditor() else {
-                return
-            }
-            let end = (editor.string as NSString).length
-            editor.selectedRange = NSRange(location: end, length: 0)
+        }
+
+        func controlTextDidEndEditing(_ notification: Notification) {
+            parent.onFocusChange(false)
         }
     }
 }

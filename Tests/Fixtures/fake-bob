@@ -48,6 +48,16 @@ if [[ -n "${FAKE_BOB_STDERR:-}" ]]; then
   printf '%s\n' "${FAKE_BOB_STDERR}" >&2
 fi
 
+if [[ "${FAKE_BOB_GUARD_FLAG_UNSUPPORTED:-}" == "1" && " $* " == *" --require-pull-in-choice "* ]]; then
+  printf "error: unexpected argument '--require-pull-in-choice' found\n\nUsage: bob capture [OPTIONS] -- <TEXT>\n" >&2
+  exit 2
+fi
+
+if [[ "${FAKE_BOB_STALE_PULL_IN:-}" == "1" ]]; then
+  printf '%s\n' '{"ok":false,"error":"Successor offer is stale","code":"pull_in_stale"}'
+  exit 1
+fi
+
 if [[ -n "${FAKE_BOB_STDOUT:-}" ]]; then
   printf '%s\n' "${FAKE_BOB_STDOUT}"
   exit "${FAKE_BOB_EXIT:-0}"

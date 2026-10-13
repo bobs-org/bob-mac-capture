@@ -13,6 +13,14 @@ public struct BobProcessResult: Equatable {
     public let stderr: String
 }
 
+/// A deliberate answer to Bob's successor-offer prompt. Keys are Bob's
+/// opaque identities, kept in display order; `.none` is distinct from no
+/// decision so an explicit empty choice can be committed safely.
+public enum CapturePullInSelection: Equatable, Sendable {
+    case keys([String])
+    case none
+}
+
 public final class BobProcessClient: @unchecked Sendable {
     // Every `bob` invocation is local, offline, and expected to finish in well under a
     // second; 20s is a generous bound that only fires for a genuinely wedged process
@@ -25,6 +33,8 @@ public final class BobProcessClient: @unchecked Sendable {
     private let stateQueue = DispatchQueue(label: "org.bobs.bob-mac-capture.process-client")
     private var activeProcesses: [String: ActiveProcess] = [:]
     private var activeGeneration: UInt64 = 0
+    private var pullInGuardIdentity: String?
+    private var pullInGuardUnsupported = false
 
     public init(
         executablePath: String,
@@ -38,6 +48,28 @@ public final class BobProcessClient: @unchecked Sendable {
 
     public static func makeDecoder() -> JSONDecoder {
         JSONDecoder()
+    }
+
+    /// Changes if the resolved executable is replaced in place, which
+    /// invalidates the cached compatibility result for its guard flag.
+    public var identityToken: String {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: executablePath)
+        let device = attributes?[.systemNumber].map { String(describing: $0) } ?? "?"
+        let inode = attributes?[.systemFileNumber].map { String(describing: $0) } ?? "?"
+        let size = attributes?[.size].map { String(describing: $0) } ?? "?"
+        let modified = attributes?[.modificationDate].map { String(describing: $0) } ?? "?"
+        return "\(executablePath)|\(device)|\(inode)|\(size)|\(modified)"
+    }
+
+    public var pullInGuardKnownUnsupported: Bool {
+        let identity = identityToken
+        return stateQueue.sync {
+            if pullInGuardIdentity != identity {
+                pullInGuardIdentity = identity
+                pullInGuardUnsupported = false
+            }
+            return pullInGuardUnsupported
+        }
     }
 
     public func captureParse(
@@ -284,8 +316,14 @@ public final class BobProcessClient: @unchecked Sendable {
         _ draft: String,
         dryRun: Bool = false,
         readClipboard: Bool = true,
-        priorityRollSeed: String? = nil
+        priorityRollSeed: String? = nil,
+        pullInSelection: CapturePullInSelection? = nil,
+        requirePullInChoice: Bool = false,
+        pullInCapabilityAdvertised: Bool = false
     ) async throws -> CaptureCommandResponse {
+        if pullInSelection != nil, !pullInCapabilityAdvertised {
+            throw BobClientError.unsupportedOption("--pull-in")
+        }
         var arguments = ["capture", "--format", "json"]
         if dryRun {
             arguments.append("--dry-run")
@@ -293,14 +331,46 @@ public final class BobProcessClient: @unchecked Sendable {
         if !readClipboard {
             arguments.append("--no-clip")
         }
+        if let pullInSelection {
+            switch pullInSelection {
+            case .keys(let keys):
+                guard !keys.isEmpty, keys.allSatisfy({ !$0.isEmpty }) else {
+                    throw BobClientError.unsupportedOption("--pull-in requires opaque offer keys")
+                }
+                arguments += ["--pull-in", keys.joined(separator: ",")]
+            case .none:
+                arguments += ["--pull-in", "none"]
+            }
+        }
+        let requireGuard = requirePullInChoice && !pullInGuardKnownUnsupported
+        if requireGuard {
+            arguments.append("--require-pull-in-choice")
+        }
         arguments.append("--")
         arguments.append(draft)
-
+        let environmentOverrides = priorityRollSeed.map { ["BOB_PRIORITY_ROLL_SEED": $0] } ?? [:]
+        let lane = dryRun ? "preview-explicit" : "submit"
         return try await decodeCaptureResult(
             arguments: arguments,
-            environmentOverrides: priorityRollSeed.map { ["BOB_PRIORITY_ROLL_SEED": $0] } ?? [:],
-            lane: dryRun ? "preview-explicit" : "submit"
+            environmentOverrides: environmentOverrides,
+            lane: lane,
+            allowsGuardFallback: requireGuard
         )
+    }
+
+    private func rememberPullInGuardUnsupported() {
+        let identity = identityToken
+        stateQueue.sync {
+            pullInGuardIdentity = identity
+            pullInGuardUnsupported = true
+        }
+    }
+
+    private static func isUnsupportedGuardFlagFailure(exitStatus: Int32, stderr: String) -> Bool {
+        guard exitStatus == 2 else { return false }
+        let normalized = stderr.lowercased()
+        return normalized.contains("unexpected argument '--require-pull-in-choice'")
+            || normalized.contains("unexpected argument \"--require-pull-in-choice\"")
     }
 
     public func run(
@@ -595,11 +665,28 @@ public final class BobProcessClient: @unchecked Sendable {
     private func decodeCaptureResult(
         arguments: [String],
         environmentOverrides: [String: String] = [:],
-        lane: String = "default"
+        lane: String = "default",
+        allowsGuardFallback: Bool = false
     ) async throws -> CaptureCommandResponse {
         let result = try await run(arguments: arguments, environmentOverrides: environmentOverrides, lane: lane)
         let stderr = boundedProcessText(result.stderr)
         let trimmedStdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if allowsGuardFallback,
+           trimmedStdout.isEmpty,
+           Self.isUnsupportedGuardFlagFailure(exitStatus: result.exitStatus, stderr: stderr)
+        {
+            rememberPullInGuardUnsupported()
+            var retryArguments = arguments
+            if let guardIndex = retryArguments.firstIndex(of: "--require-pull-in-choice") {
+                retryArguments.remove(at: guardIndex)
+                return try await decodeCaptureResult(
+                    arguments: retryArguments,
+                    environmentOverrides: environmentOverrides,
+                    lane: lane
+                )
+            }
+        }
 
         guard !trimmedStdout.isEmpty else {
             if result.exitStatus != 0 {

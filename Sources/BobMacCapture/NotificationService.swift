@@ -522,7 +522,11 @@ final class NotificationService: NSObject, ObservableObject {
                 let detail = presentation.map { "\($0.destinationLabel): \($0.transitionText)" } ?? batchLineText(capture)
                 return "\(index + 1). \(detail)"
             }
-            let summary = "\(nonemptyCaptures.count) completed tasks"
+            let summaryParts = [
+                "\(nonemptyCaptures.count) completed tasks",
+                pulledInSummary(captures: nonemptyCaptures),
+            ].filter { !$0.isEmpty }
+            let summary = summaryParts.joined(separator: " · ")
             return CaptureNotificationPresentation(
                 title: "Completed \(nonemptyCaptures.count) tasks",
                 subtitle: summary,
@@ -538,9 +542,12 @@ final class NotificationService: NSObject, ObservableObject {
             captures: nonemptyCaptures,
             targetPathCount: targetPaths.count
         )
-        let summary = [kindSummary, destinationSummary]
+        let kindDestinationSummary = [kindSummary, destinationSummary]
             .filter { !$0.isEmpty }
             .joined(separator: " across ")
+        let summary = [kindDestinationSummary, pulledInSummary(captures: nonemptyCaptures)]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
         let lines = nonemptyCaptures.enumerated().map { index, capture in
             let scheduled = capture.scheduled.map { " scheduled \($0)" } ?? ""
             let suffix = "\(scheduled)\(startedSuffix(for: capture))"
@@ -570,7 +577,10 @@ final class NotificationService: NSObject, ObservableObject {
         let overrideSummary = overrideCount == 0
             ? ""
             : "\(overrideCount) local override\(overrideCount == 1 ? "" : "s")"
-        let summary = [kindSummary, globalDestination.scopeSummary, overrideSummary]
+        let kindDestinationSummary = [kindSummary, globalDestination.scopeSummary, overrideSummary]
+            .filter { !$0.isEmpty }
+            .joined(separator: " \u{00b7} ")
+        let summary = [kindDestinationSummary, pulledInSummary(captures: captures)]
             .filter { !$0.isEmpty }
             .joined(separator: " \u{00b7} ")
         let lines = captures.enumerated().map { index, capture in
@@ -627,6 +637,16 @@ final class NotificationService: NSObject, ObservableObject {
     nonisolated private static func closedSuffix(for capture: CaptureCommandSuccess) -> String {
         CapturePomodoroClosePresentation(capture: capture)
             .map(\.batchSuffix) ?? ""
+    }
+
+    nonisolated private static func pulledInSummary(captures: [CaptureCommandSuccess]) -> String {
+        let count = captures.reduce(into: 0) { total, capture in
+            let completionCount = capture.taskComplete?.unblocked.filter { $0.offer?.selected == true }.count ?? 0
+            let closeCount = capture.pomodoroClose?.unblocked.filter { $0.offer?.selected == true }.count ?? 0
+            total += completionCount + closeCount
+        }
+        guard count > 0 else { return "" }
+        return "Pulled in \(count) successor offer\(count == 1 ? "" : "s")"
     }
 
     nonisolated private static func resetSuffix(for capture: CaptureCommandSuccess) -> String {

@@ -2604,6 +2604,9 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     // today's Pomodoros section. It is not per item. Older Bob omits it
     // entirely; decode as nil.
     public let planBudget: CapturePlanBudget?
+    /// Additive batch-level successor-choice capability and grouped offers.
+    /// Older Bob binaries omit this field.
+    public let pullIn: CapturePullIn?
     // Additive batch-level `pomodoro_blocks`: every Pomodoro the capture
     // touches, creates, or reports, in its final after-state. Older Bob
     // omits it entirely, and a malformed value decodes as empty so it can
@@ -2680,6 +2683,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         projectNote: CaptureProjectNoteSummary? = nil,
         ref: CaptureRef? = nil,
         planBudget: CapturePlanBudget? = nil,
+        pullIn: CapturePullIn? = nil,
         captures: [CaptureCommandSuccess] = [],
         globalDestination: CaptureGlobalDestination? = nil,
         warnings: [String] = [],
@@ -2742,6 +2746,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.projectNote = projectNote
         self.ref = ref
         self.planBudget = planBudget
+        self.pullIn = pullIn
         self.pomodoroBlocks = pomodoroBlocks
         self.taskBlocks = taskBlocks
         self.droppedDependencies = droppedDependencies
@@ -2841,6 +2846,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
             CapturePlanBudget.self,
             forKey: .planBudget
         )
+        pullIn = (try? container.decodeIfPresent(CapturePullIn.self, forKey: .pullIn)) ?? nil
         pomodoroBlocks =
             (try? container.decodeIfPresent(
                 [CapturePomodoroBlock].self,
@@ -2923,6 +2929,7 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case projectNote = "project_note"
         case ref
         case planBudget = "plan_budget"
+        case pullIn = "pull_in"
         case pomodoroBlocks = "pomodoro_blocks"
         case taskBlocks = "task_blocks"
         case droppedDependencies = "dropped_dependencies"
@@ -3495,6 +3502,190 @@ public struct TaskCompleteSuccessorLink: Codable, Equatable, Sendable {
     }
 }
 
+/// A destination selected by Bob's successor-offer planner. Values remain
+/// opaque presentation metadata; the client does not derive eligibility.
+public struct TaskCompleteOfferDestination: Codable, Equatable, Sendable {
+    public let dayFile: String
+    public let entryName: String
+    public let entryRole: String
+    public let fallback: Bool
+
+    public init(
+        dayFile: String = "",
+        entryName: String = "",
+        entryRole: String = "",
+        fallback: Bool = false
+    ) {
+        self.dayFile = dayFile
+        self.entryName = entryName
+        self.entryRole = entryRole
+        self.fallback = fallback
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        dayFile = (try? container.decodeIfPresent(String.self, forKey: .dayFile)) ?? ""
+        entryName = (try? container.decodeIfPresent(String.self, forKey: .entryName)) ?? ""
+        entryRole = (try? container.decodeIfPresent(String.self, forKey: .entryRole)) ?? ""
+        fallback = (try? container.decodeIfPresent(Bool.self, forKey: .fallback)) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case dayFile = "day_file"
+        case entryName = "entry_name"
+        case entryRole = "entry_role"
+        case fallback
+    }
+}
+
+/// Bob-issued opaque identity for one successor candidate. Never parse or
+/// reconstruct `key`; it may contain separators or digest suffixes.
+public struct TaskCompleteOffer: Codable, Equatable, Sendable {
+    public let key: String
+    public let n: Int
+    public let group: String
+    public let project: String?
+    public let destination: TaskCompleteOfferDestination
+    public let selected: Bool
+    public let blockIDNeeded: Bool
+
+    public init(
+        key: String = "",
+        n: Int = 0,
+        group: String = "",
+        project: String? = nil,
+        destination: TaskCompleteOfferDestination = TaskCompleteOfferDestination(),
+        selected: Bool = false,
+        blockIDNeeded: Bool = false
+    ) {
+        self.key = key
+        self.n = n
+        self.group = group
+        self.project = project
+        self.destination = destination
+        self.selected = selected
+        self.blockIDNeeded = blockIDNeeded
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        key = (try? container.decodeIfPresent(String.self, forKey: .key)) ?? ""
+        n = (try? container.decodeIfPresent(Int.self, forKey: .n)) ?? 0
+        group = (try? container.decodeIfPresent(String.self, forKey: .group)) ?? ""
+        project = try? container.decodeIfPresent(String.self, forKey: .project)
+        destination = (try? container.decode(
+            TaskCompleteOfferDestination.self,
+            forKey: .destination
+        )) ?? TaskCompleteOfferDestination()
+        selected = (try? container.decodeIfPresent(Bool.self, forKey: .selected)) ?? false
+        blockIDNeeded = (try? container.decodeIfPresent(Bool.self, forKey: .blockIDNeeded)) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case key
+        case n
+        case group
+        case project
+        case destination
+        case selected
+        case blockIDNeeded = "block_id_needed"
+    }
+}
+
+public struct CapturePullInFolded: Codable, Equatable, Sendable {
+    public let hidden: Int
+    public let alreadyPlanned: Int
+    public let subProjects: Int
+
+    public init(hidden: Int = 0, alreadyPlanned: Int = 0, subProjects: Int = 0) {
+        self.hidden = hidden
+        self.alreadyPlanned = alreadyPlanned
+        self.subProjects = subProjects
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        hidden = (try? container.decodeIfPresent(Int.self, forKey: .hidden)) ?? 0
+        alreadyPlanned = (try? container.decodeIfPresent(Int.self, forKey: .alreadyPlanned)) ?? 0
+        subProjects = (try? container.decodeIfPresent(Int.self, forKey: .subProjects)) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case hidden
+        case alreadyPlanned = "already_planned"
+        case subProjects = "sub_projects"
+    }
+}
+
+public struct CapturePullInGroup: Codable, Equatable, Sendable {
+    public let group: String
+    public let project: String
+    public let folded: CapturePullInFolded
+
+    public init(
+        group: String = "",
+        project: String = "",
+        folded: CapturePullInFolded = CapturePullInFolded()
+    ) {
+        self.group = group
+        self.project = project
+        self.folded = folded
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        group = (try? container.decodeIfPresent(String.self, forKey: .group)) ?? ""
+        project = (try? container.decodeIfPresent(String.self, forKey: .project)) ?? ""
+        folded = (try? container.decode(CapturePullInFolded.self, forKey: .folded))
+            ?? CapturePullInFolded()
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case group
+        case project
+        case folded
+    }
+}
+
+public struct CapturePullIn: Codable, Equatable, Sendable {
+    public let supported: Bool
+    public let offerCount: Int
+    public let choice: String?
+    public let pickedCount: Int
+    public let groups: [CapturePullInGroup]
+
+    public init(
+        supported: Bool = false,
+        offerCount: Int = 0,
+        choice: String? = nil,
+        pickedCount: Int = 0,
+        groups: [CapturePullInGroup] = []
+    ) {
+        self.supported = supported
+        self.offerCount = offerCount
+        self.choice = choice
+        self.pickedCount = pickedCount
+        self.groups = groups
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        supported = (try? container.decodeIfPresent(Bool.self, forKey: .supported)) ?? false
+        offerCount = (try? container.decodeIfPresent(Int.self, forKey: .offerCount)) ?? 0
+        choice = try? container.decodeIfPresent(String.self, forKey: .choice)
+        pickedCount = (try? container.decodeIfPresent(Int.self, forKey: .pickedCount)) ?? 0
+        groups = (try? container.decodeIfPresent([CapturePullInGroup].self, forKey: .groups)) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case supported
+        case offerCount = "offer_count"
+        case choice
+        case pickedCount = "picked_count"
+        case groups
+    }
+}
+
 /// One dependent unblocked by a `task_complete` item: linked into its
 /// predecessor's slot (`link` non-nil), or recovered with the reason it
 /// was not linked (`notLinked`). The successor-link fields are additive
@@ -3513,6 +3704,9 @@ public struct TaskCompleteUnblocked: Codable, Equatable, Sendable {
     public let unblockedBy: [TaskCompleteUnblockedCause]
     public let link: TaskCompleteSuccessorLink?
     public let notLinked: String?
+    public let offer: TaskCompleteOffer?
+    public let trigger: String?
+    public let hideRemoved: Bool
 
     public init(
         notePath: String = "",
@@ -3526,7 +3720,10 @@ public struct TaskCompleteUnblocked: Codable, Equatable, Sendable {
         inbox: Bool = false,
         unblockedBy: [TaskCompleteUnblockedCause] = [],
         link: TaskCompleteSuccessorLink? = nil,
-        notLinked: String? = nil
+        notLinked: String? = nil,
+        offer: TaskCompleteOffer? = nil,
+        trigger: String? = nil,
+        hideRemoved: Bool = false
     ) {
         self.notePath = notePath
         self.blockID = blockID
@@ -3540,6 +3737,9 @@ public struct TaskCompleteUnblocked: Codable, Equatable, Sendable {
         self.unblockedBy = unblockedBy
         self.link = link
         self.notLinked = notLinked
+        self.offer = offer
+        self.trigger = trigger
+        self.hideRemoved = hideRemoved
     }
 
     public init(from decoder: Decoder) throws {
@@ -3568,6 +3768,9 @@ public struct TaskCompleteUnblocked: Codable, Equatable, Sendable {
             forKey: .link
         )) ?? nil
         notLinked = (try? container.decodeIfPresent(String.self, forKey: .notLinked)) ?? nil
+        offer = (try? container.decodeIfPresent(TaskCompleteOffer.self, forKey: .offer)) ?? nil
+        trigger = try? container.decodeIfPresent(String.self, forKey: .trigger)
+        hideRemoved = (try? container.decodeIfPresent(Bool.self, forKey: .hideRemoved)) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -3583,6 +3786,9 @@ public struct TaskCompleteUnblocked: Codable, Equatable, Sendable {
         case unblockedBy = "unblocked_by"
         case link
         case notLinked = "not_linked"
+        case offer
+        case trigger
+        case hideRemoved = "hide_removed"
     }
 }
 
@@ -3600,6 +3806,8 @@ public struct TaskCompleteStillBlocked: Codable, Equatable, Sendable {
     public let reason: String
     public let waitsOn: Int
     public let scheduled: String?
+    public let project: String?
+    public let trigger: String?
 
     public init(
         notePath: String = "",
@@ -3610,7 +3818,9 @@ public struct TaskCompleteStillBlocked: Codable, Equatable, Sendable {
         statusName: String = "",
         reason: String = "",
         waitsOn: Int = 0,
-        scheduled: String? = nil
+        scheduled: String? = nil,
+        project: String? = nil,
+        trigger: String? = nil
     ) {
         self.notePath = notePath
         self.blockID = blockID
@@ -3621,6 +3831,8 @@ public struct TaskCompleteStillBlocked: Codable, Equatable, Sendable {
         self.reason = reason
         self.waitsOn = waitsOn
         self.scheduled = scheduled
+        self.project = project
+        self.trigger = trigger
     }
 
     public init(from decoder: Decoder) throws {
@@ -3634,6 +3846,8 @@ public struct TaskCompleteStillBlocked: Codable, Equatable, Sendable {
         reason = (try? container.decodeIfPresent(String.self, forKey: .reason)) ?? ""
         waitsOn = (try? container.decodeIfPresent(Int.self, forKey: .waitsOn)) ?? 0
         scheduled = (try? container.decodeIfPresent(String.self, forKey: .scheduled)) ?? nil
+        project = try? container.decodeIfPresent(String.self, forKey: .project)
+        trigger = try? container.decodeIfPresent(String.self, forKey: .trigger)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -3646,6 +3860,8 @@ public struct TaskCompleteStillBlocked: Codable, Equatable, Sendable {
         case reason
         case waitsOn = "waits_on"
         case scheduled
+        case project
+        case trigger
     }
 }
 
@@ -3764,11 +3980,21 @@ public struct CaptureCommandFailure: Codable, Equatable {
     // plan-budget refusal (`plan_theme_cap_exceeded`). Older Bob omits it
     // and it decodes as nil.
     public let code: String?
+    public let pullIn: CapturePullIn?
+    public let offers: [TaskCompleteUnblocked]
 
-    public init(ok: Bool = false, error: String, code: String? = nil) {
+    public init(
+        ok: Bool = false,
+        error: String,
+        code: String? = nil,
+        pullIn: CapturePullIn? = nil,
+        offers: [TaskCompleteUnblocked] = []
+    ) {
         self.ok = ok
         self.error = error
         self.code = code
+        self.pullIn = pullIn
+        self.offers = offers
     }
 
     public init(from decoder: Decoder) throws {
@@ -3776,12 +4002,16 @@ public struct CaptureCommandFailure: Codable, Equatable {
         ok = try container.decodeIfPresent(Bool.self, forKey: .ok) ?? false
         error = try container.decodeIfPresent(String.self, forKey: .error) ?? ""
         code = try container.decodeIfPresent(String.self, forKey: .code)
+        pullIn = (try? container.decodeIfPresent(CapturePullIn.self, forKey: .pullIn)) ?? nil
+        offers = (try? container.decodeIfPresent([TaskCompleteUnblocked].self, forKey: .offers)) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
         case ok
         case error
         case code
+        case pullIn = "pull_in"
+        case offers
     }
 }
 

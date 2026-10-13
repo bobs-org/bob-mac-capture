@@ -1382,6 +1382,35 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertTrue(content.body.contains("2 completed tasks"))
     }
 
+    func testBatchSuccessNotificationReportsPulledInOfferCountOnce() {
+        let selectedOffer = TaskCompleteUnblocked(
+            notePath: "travel.md",
+            blockID: "flight",
+            text: "Book flights",
+            offer: TaskCompleteOffer(key: "opaque:key", n: 1, group: "hand_off", selected: true)
+        )
+        let capture = CaptureCommandSuccess(
+            ok: true,
+            dryRun: false,
+            routed: true,
+            routeLabel: "travel.md",
+            relativeTarget: "travel.md",
+            target: "/tmp/travel.md",
+            text: "Complete trip prep",
+            taskLine: "- [ ] Complete trip prep",
+            kind: "task_complete",
+            created: "2026-10-13",
+            placement: "updated",
+            taskComplete: CaptureTaskComplete(unblocked: [selectedOffer])
+        )
+
+        let content = NotificationService.successContent(captures: [capture, capture])
+
+        XCTAssertEqual(content.title, "Completed 2 tasks")
+        XCTAssertTrue(content.subtitle.contains("Pulled in 2 successor offers"))
+        XCTAssertEqual(content.body.components(separatedBy: "Pulled in 2 successor offers").count - 1, 1)
+    }
+
     func testTaskCompleteSuccessorsAddsNoticeLineAndOpensDailyNote() throws {
         let success = try closeSuccessFixture("task-complete-successors.json")
         let content = NotificationService.successContent(captures: [success])

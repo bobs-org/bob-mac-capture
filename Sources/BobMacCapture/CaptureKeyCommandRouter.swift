@@ -32,6 +32,13 @@ enum CaptureKeyCommand: Equatable {
     case cancelTaskIDPrompt
     case submitPomodoroNamePrompt
     case cancelPomodoroNamePrompt
+    case confirmPullInChoice
+    case chooseNoPullInOffers
+    case cancelPullInChoice
+    case nextPullInOffer
+    case previousPullInOffer
+    case togglePullInOffer
+    case markAllPullInOffers
     case acceptPickerRow
     case acceptPickerRowAndStart
     case acceptPickerRowAndContinue
@@ -60,6 +67,9 @@ struct CaptureKeyRoutingContext: Equatable {
     var taskIDPromptIsDependency = false
     var taskIDPromptIsTaskComplete = false
     var pomodoroNamePromptVisible = false
+    var pullInChoiceVisible = false
+    var pullInFilterFocused = false
+    var keyIsRepeat = false
     var pickerVisible = false
     var pickerSourceIsTaskLink = false
     var pickerSourceIsTaskComplete = false
@@ -87,6 +97,7 @@ struct CaptureKeyCommandRouter {
         static let home: UInt16 = 115
         static let end: UInt16 = 119
         static let a: UInt16 = 0
+        static let space: UInt16 = 49
         static let j: UInt16 = 38
         static let k: UInt16 = 40
         static let s: UInt16 = 1
@@ -115,6 +126,15 @@ struct CaptureKeyCommandRouter {
 
         if context.pomodoroNamePromptVisible {
             return pomodoroNamePromptCommand(for: event, modifiers: modifiers)
+        }
+
+        if context.pullInChoiceVisible {
+            return pullInChoiceCommand(
+                for: event,
+                modifiers: modifiers,
+                isRepeat: context.keyIsRepeat || event.isARepeat,
+                filterFocused: context.pullInFilterFocused
+            )
         }
 
         if context.pickerVisible {
@@ -212,6 +232,37 @@ struct CaptureKeyCommandRouter {
             {
                 return .insertCloseTaskNumber(characters)
             }
+            return nil
+        }
+    }
+
+    private func pullInChoiceCommand(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags,
+        isRepeat: Bool,
+        filterFocused: Bool
+    ) -> CaptureKeyCommand? {
+        switch event.keyCode {
+        case KeyCode.return, KeyCode.keypadEnter:
+            guard !isRepeat else { return .consumeKey }
+            if modifiers == .shift {
+                return .chooseNoPullInOffers
+            }
+            return modifiers.isEmpty ? .confirmPullInChoice : .consumeKey
+        case KeyCode.escape:
+            return .cancelPullInChoice
+        case KeyCode.leftBracket:
+            return modifiers == .control ? .cancelPullInChoice : nil
+        case KeyCode.arrowUp:
+            return modifiers.isEmpty ? .previousPullInOffer : nil
+        case KeyCode.arrowDown:
+            return modifiers.isEmpty ? .nextPullInOffer : nil
+        case KeyCode.space:
+            guard modifiers.isEmpty, !filterFocused else { return nil }
+            return isRepeat ? .consumeKey : .togglePullInOffer
+        case KeyCode.a:
+            return modifiers == .command ? .markAllPullInOffers : nil
+        default:
             return nil
         }
     }

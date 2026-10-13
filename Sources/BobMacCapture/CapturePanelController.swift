@@ -1580,6 +1580,29 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .cancelPomodoroNamePrompt:
             model.cancelPomodoroNamePrompt()
             return true
+        case .confirmPullInChoice:
+            model.confirmPullInChoice()
+            return true
+        case .chooseNoPullInOffers:
+            model.chooseNoPullInOffers()
+            return true
+        case .cancelPullInChoice:
+            model.cancelPullInChoiceFromKeyboard()
+            return true
+        case .nextPullInOffer:
+            resignPullInFilterIfFocused()
+            model.movePullInChoiceHighlight(by: 1)
+            return true
+        case .previousPullInOffer:
+            resignPullInFilterIfFocused()
+            model.movePullInChoiceHighlight(by: -1)
+            return true
+        case .togglePullInOffer:
+            model.toggleHighlightedPullInOffer()
+            return true
+        case .markAllPullInOffers:
+            model.markAllPullInOffers()
+            return true
         case .continuePickerOperator(let key):
             model.continuePickerOperator(key)
             return true
@@ -1622,6 +1645,13 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     taskIDPromptIsDependency: self.model.taskIDPromptIsDependency,
                     taskIDPromptIsTaskComplete: self.model.taskIDPromptIsTaskComplete,
                     pomodoroNamePromptVisible: self.model.pomodoroNamePromptVisible,
+                    pullInChoiceVisible: self.model.pullInChoiceVisible,
+                    pullInFilterFocused: self.model.pullInChoiceVisible
+                        && (Self.findPickerFilterField(
+                            in: self.panel?.contentView,
+                            identifier: pullInFilterFieldAccessibilityIdentifier
+                        )?.holdsFirstResponder ?? false),
+                    keyIsRepeat: event.isARepeat,
                     pickerVisible: self.model.pickerVisible,
                     pickerSourceIsTaskLink: self.model.pickerSourceIsTaskLink,
                     pickerSourceIsTaskComplete: self.model.pickerSourceIsTaskComplete,
@@ -1639,6 +1669,19 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
             return self.perform(command) ? nil : event
         }
+    }
+
+    private func resignPullInFilterIfFocused() {
+        guard let panel,
+              let field = Self.findPickerFilterField(
+                in: panel.contentView,
+                identifier: pullInFilterFieldAccessibilityIdentifier
+              ),
+              field.holdsFirstResponder
+        else {
+            return
+        }
+        _ = panel.makeFirstResponder(nil)
     }
 
     private func noteSeparatorToggleIntentFromEvent(_ event: NSEvent) {
@@ -1701,10 +1744,13 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         )
     }
 
-    static func findPickerFilterField(in view: NSView?) -> CapturePickerFilterNSTextField? {
+    static func findPickerFilterField(
+        in view: NSView?,
+        identifier: String = pickerFilterFieldAccessibilityIdentifier
+    ) -> CapturePickerFilterNSTextField? {
         findTextField(
             in: view,
-            identifier: pickerFilterFieldAccessibilityIdentifier
+            identifier: identifier
         )
     }
 
@@ -1712,15 +1758,26 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     /// that raced the open lands in the disabled editor's view otherwise, so
     /// claim the filter field before routing, like `findBlockIDField`.
     private func repairPickerFilterFocusIfNeeded() {
-        guard model.pickerVisible,
-              let panel,
-              let field = Self.findPickerFilterField(in: panel.contentView),
-              !field.holdsFirstResponder
-        else {
+        guard let panel else { return }
+        if model.pickerVisible,
+           let field = Self.findPickerFilterField(in: panel.contentView),
+           !field.holdsFirstResponder
+        {
+            field.requestFirstResponder()
+            CaptureSignpost.event("picker-filter-focus-repaired")
             return
         }
-        field.requestFirstResponder()
-        CaptureSignpost.event("picker-filter-focus-repaired")
+        if model.pullInChoiceVisible,
+           model.focusRequest.target == .pullInFilter,
+           let field = Self.findPickerFilterField(
+               in: panel.contentView,
+               identifier: pullInFilterFieldAccessibilityIdentifier
+           ),
+           !field.holdsFirstResponder
+        {
+            field.requestFirstResponder()
+            CaptureSignpost.event("pull-in-filter-focus-repaired")
+        }
     }
 
     private static func findTextField<Field: NSTextField>(
