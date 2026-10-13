@@ -4668,6 +4668,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let title: String?
     public let level: Int?
     public let taskRef: String?
+    /// Absolute note path for read-only `task_goto` candidates. Older Bob
+    /// versions and every other completion context omit it.
+    public let target: String?
     public let blockID: String?
     public let requiresBlockID: Bool
     public let statusSymbol: String?
@@ -4769,6 +4772,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         title: String? = nil,
         level: Int? = nil,
         taskRef: String? = nil,
+        target: String? = nil,
         blockID: String? = nil,
         requiresBlockID: Bool = false,
         statusSymbol: String? = nil,
@@ -4820,6 +4824,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.title = title
         self.level = level
         self.taskRef = taskRef
+        self.target = target
         self.blockID = blockID
         self.requiresBlockID = requiresBlockID
         self.statusSymbol = statusSymbol
@@ -4874,6 +4879,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         title = try container.decodeIfPresent(String.self, forKey: .title)
         level = try container.decodeIfPresent(Int.self, forKey: .level)
         taskRef = try container.decodeIfPresent(String.self, forKey: .taskRef)
+        target = try container.decodeIfPresent(String.self, forKey: .target)
         blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
         requiresBlockID = try container.decodeIfPresent(Bool.self, forKey: .requiresBlockID) ?? false
         statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol)
@@ -4927,6 +4933,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case title
         case level
         case taskRef = "ref"
+        case target
         case blockID = "block_id"
         case requiresBlockID = "requires_block_id"
         case statusSymbol = "status_symbol"

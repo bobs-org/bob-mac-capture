@@ -81,6 +81,7 @@ enum CompletionTrigger {
 enum CapturePickerIndex {
     case activeTask(ActiveTaskPickerIndex)
     case taskLink(TaskLinkPickerIndex)
+    case taskGoto(TaskLinkPickerIndex)
     case dependency(DependencyPickerIndex)
     case taskComplete(TaskCompletePickerIndex)
     case blockID(BlockIDPickerIndex)
@@ -91,6 +92,8 @@ enum CapturePickerIndex {
         case .activeTask(let index):
             return index.presentation(filter: filter)
         case .taskLink(let index):
+            return index.presentation(filter: filter)
+        case .taskGoto(let index):
             return index.presentation(filter: filter)
         case .dependency(let index):
             return index.presentation(filter: filter)
@@ -108,6 +111,8 @@ enum CapturePickerIndex {
         case .parentTask(let index):
             return index.actionLine(for: row)
         case .taskComplete(let index):
+            return index.actionLine(for: row)
+        case .taskGoto(let index):
             return index.actionLine(for: row)
         default:
             return nil

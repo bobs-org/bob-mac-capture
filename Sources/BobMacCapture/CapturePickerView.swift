@@ -957,6 +957,9 @@ private struct CapturePickerDetailStrip: View {
         case .taskLink:
             // The panel phase owns the task-link teaching line.
             return nil
+        case .taskGoto:
+            // Go To has no follow-up insertion gesture.
+            return nil
         case .dependency:
             // The detail strip already teaches "space adds another &".
             return nil
@@ -976,6 +979,10 @@ private struct CapturePickerDetailStrip: View {
     }
 
     private func insertionText(for row: CapturePickerRow) -> Text {
+        if source == .taskGoto {
+            let line = row.taskGotoDestination?.actionLine ?? "Task location unavailable"
+            return Text(line).foregroundColor(.secondary)
+        }
         if source == .taskLink {
             if let insertion = row.insertion {
                 return Text("↩ inserts \(insertion) · ⇧↩ adds = to start it")

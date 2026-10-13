@@ -65,12 +65,13 @@ public struct BlockIDPickerContext: Equatable, Sendable {
     }
 }
 
-/// Which picker source a session belongs to. `^`, `:`, `&`, and the Block
+/// Which picker source a session belongs to. `^`, `:`, `/`, `&`, and the Block
 /// ID picker are sources feeding one state machine, routing, focus repair,
 /// filter field, sizing, and card.
 public enum CapturePickerSource: Equatable, Sendable {
     case activeTask
     case taskLink
+    case taskGoto
     case dependency
     case taskComplete
     case blockID(BlockIDPickerContext)
@@ -93,7 +94,7 @@ public enum CapturePickerSource: Equatable, Sendable {
         return nil
     }
 
-    /// Draft byte the picker opened on (`^` for active tasks, `:` or `&`
+    /// Draft byte the picker opened on (`^` for active tasks, `:`, `/`, or `&`
     /// for the pickers, `:` or `^` for block IDs, `+` for parent tasks).
     /// Backspace on an empty filter removes this byte together with any
     /// fragment it opened on, except parent-task which uses Bob's
@@ -104,6 +105,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return 94 // `^`
         case .taskLink:
             return 58 // `:`
+        case .taskGoto:
+            return 47 // `/`
         case .dependency:
             return 38 // `&`
         case .taskComplete:
@@ -122,6 +125,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Filter by task, note, ^id, or Pomodoro"
         case .taskLink:
             return "Search tasks by text, note, or ^id"
+        case .taskGoto:
+            return "Search tasks to open by text, note, or ^id"
         case .dependency:
             return "Search tasks by text, note, or ^id"
         case .taskComplete:
@@ -147,6 +152,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Filter active tasks"
         case .taskLink:
             return "Search open tasks"
+        case .taskGoto:
+            return "Search tasks to open"
         case .dependency:
             return "Search tasks to depend on"
         case .taskComplete:
@@ -164,13 +171,15 @@ public enum CapturePickerSource: Equatable, Sendable {
         }
     }
 
-    /// Scope-token symbol text (`^`, `@sase:`) shown in the filter bar capsule.
+    /// Scope-token symbol text (`^`, `@sase:`, `/`) shown in the filter bar capsule.
     public var scopeSymbolText: String {
         switch self {
         case .activeTask:
             return "^"
         case .taskLink:
             return ":"
+        case .taskGoto:
+            return "/"
         case .dependency:
             return "&"
         case .taskComplete:
@@ -190,6 +199,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Active Tasks"
         case .taskLink:
             return "Open Tasks"
+        case .taskGoto:
+            return "Go To"
         case .dependency:
             return "Depends On"
         case .taskComplete:
@@ -214,6 +225,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Browse active tasks"
         case .taskLink:
             return "Browse open tasks"
+        case .taskGoto:
+            return "Go to a task"
         case .dependency:
             return "Choose dependency"
         case .taskComplete:
@@ -235,6 +248,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "list.bullet.rectangle.portrait"
         case .taskLink:
             return "magnifyingglass"
+        case .taskGoto:
+            return "arrow.up.forward.square"
         case .dependency:
             return "link"
         case .taskComplete:
@@ -253,6 +268,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Reopen the Active Task Picker for the ^ item (Tab)."
         case .taskLink:
             return "Reopen the Task Link Picker for the : item (Tab)."
+        case .taskGoto:
+            return "Reopen the Go To picker for the / item (Tab)."
         case .dependency:
             return "Reopen the dependency picker for the & item (Tab)."
         case .taskComplete:
@@ -271,6 +288,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Browse active tasks"
         case .taskLink:
             return "Browse open tasks"
+        case .taskGoto:
+            return "Go to a task"
         case .dependency:
             return "Choose dependency"
         case .taskComplete:
@@ -289,6 +308,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Opens the Active Task Picker for the current item."
         case .taskLink:
             return "Opens the Task Link Picker for the current item."
+        case .taskGoto:
+            return "Opens the Go To picker for the current draft."
         case .dependency:
             return "Opens the dependency picker for the current item."
         case .taskComplete:
@@ -307,6 +328,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Active task picker"
         case .taskLink:
             return "Task link picker"
+        case .taskGoto:
+            return "Go To picker"
         case .dependency:
             return "Dependency picker"
         case .taskComplete:
@@ -331,6 +354,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Arrow keys move, Return inserts the task, Escape cancels."
         case .taskLink:
             return "Arrow keys move, Return inserts the task link, Shift-Return inserts it and starts its session, Escape cancels."
+        case .taskGoto:
+            return "Arrow keys move, Return or Command-Return opens the task in Obsidian, Escape cancels."
         case .dependency:
             return "Arrow keys move, Return inserts the prerequisite, Command Return inserts and captures, Escape cancels."
         case .taskComplete:
@@ -352,6 +377,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Active tasks"
         case .taskLink:
             return "Open tasks"
+        case .taskGoto:
+            return "Go To"
         case .dependency:
             return "Prerequisites"
         case .taskComplete:
@@ -382,6 +409,13 @@ public enum CapturePickerSource: Equatable, Sendable {
                 ("↩", "Link"),
                 ("⇧↩", "Link & Start"),
                 ("⌘↩", "Link & Capture"),
+                ("esc", "Clear / Cancel"),
+            ]
+        case .taskGoto:
+            return [
+                ("↑↓", "Move"),
+                ("↩", "Open"),
+                ("⌘↩", "Open"),
                 ("esc", "Clear / Cancel"),
             ]
         case .dependency:
@@ -436,6 +470,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Escape to clear or cancel."
         case .taskLink:
             return "Picker keys: up and down to move, Return to link, Shift Return to link and start, Command Return to link and capture, Escape to clear or cancel."
+        case .taskGoto:
+            return "Picker keys: up and down to move, Return or Command Return to open the task in Obsidian, Escape to clear or cancel."
         case .dependency:
             return "Picker keys: up and down to move, Return to use the task, Command Return to use it and capture, Escape to clear or cancel."
         case .taskComplete:
@@ -458,6 +494,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "org.bobs.bob-mac-capture.active-task-picker-used"
         case .taskLink:
             return "org.bobs.bob-mac-capture.task-link-picker-used"
+        case .taskGoto:
+            return "org.bobs.bob-mac-capture.task-goto-picker-used"
         case .dependency:
             return "org.bobs.bob-mac-capture.dependency-picker-used"
         case .taskComplete:
@@ -477,7 +515,7 @@ public enum CapturePickerSource: Equatable, Sendable {
         return "Type a number or + to adjust; Esc to extend +5m"
     }
 
-    /// Locator separator between route and block ID (`:` for `:`/`^`/`&`,
+    /// Locator separator between route and block ID (`:` for `:`/`^`/`&`/`/`,
     /// `+` for parent-task, the session marker for block IDs).
     public var locatorMarker: String {
         switch self {
@@ -485,7 +523,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "+"
         case .blockID(let context):
             return context.marker
-        case .activeTask, .taskLink, .dependency, .taskComplete:
+        case .activeTask, .taskLink, .taskGoto, .dependency, .taskComplete:
             return ":"
         }
     }
@@ -493,11 +531,12 @@ public enum CapturePickerSource: Equatable, Sendable {
 
 /// Which incomplete picker need a parse reports. Each need carries the calm
 /// status line shown instead of the doomed live dry run. Precedence is
-/// `activeTask`, then `taskLink`, then `taskParent`, then `dependency`, then
+/// `activeTask`, then `taskLink`, then `taskGoto`, then `taskParent`, then `dependency`, then
 /// `pomodoroID`, then `blockID`, then `pomodoroStart`.
 public enum CapturePickerNeed: Equatable, Sendable {
     case activeTask
     case taskLink
+    case taskGoto
     case taskParent
     case dependency
     case taskComplete
@@ -511,6 +550,8 @@ public enum CapturePickerNeed: Equatable, Sendable {
             return "Pick an active task — press Tab to browse"
         case .taskLink:
             return "Pick any open task — press Tab to browse"
+        case .taskGoto:
+            return "Pick a task to open — press Tab to browse"
         case .taskParent:
             return "Choose a task to append to — press Tab to browse"
         case .dependency:
@@ -733,6 +774,31 @@ public struct CapturePickerRowDetail: Equatable, Sendable {
     }
 }
 
+/// Read-only destination for a task Go To row. `target` is the absolute
+/// filesystem path Bob supplied; `notePath` is its vault-relative display
+/// path. The ref and optional block ID let the protocol handler re-find the
+/// task safely after the picker snapshot becomes stale.
+public struct CaptureTaskGotoDestination: Equatable, Sendable {
+    public let target: String
+    public let notePath: String
+    public let line: Int
+    public let ref: String
+    public let blockID: String?
+
+    public init(target: String, notePath: String, line: Int, ref: String, blockID: String? = nil) {
+        self.target = target
+        self.notePath = notePath
+        self.line = line
+        self.ref = ref
+        self.blockID = blockID
+    }
+
+    public var actionLine: String {
+        let anchor = blockID.map { "^\($0)" } ?? "line \(line)"
+        return "↩ Opens \(notePath) at \(anchor)"
+    }
+}
+
 /// An ID-less `:` row's pending block-ID assignment: the routed note, the
 /// stale-safe task ref for `bob capture-task-id`, and Bob's ID suggestions
 /// (possibly empty). Nil on every other row.
@@ -791,6 +857,8 @@ public struct CapturePickerRow: Equatable, Sendable {
     /// Whether linking pulls a future schedule forward. Only set on `:`
     /// rows with a schedule; false everywhere else.
     public let pullsForward: Bool
+    /// Destination present only for rows in the read-only Go To picker.
+    public let taskGotoDestination: CaptureTaskGotoDestination?
     public let detail: CapturePickerRowDetail
     public let accessibilityLabel: String
 
@@ -814,6 +882,7 @@ public struct CapturePickerRow: Equatable, Sendable {
         pendingBlockID: CapturePickerPendingBlockID? = nil,
         scheduledText: String? = nil,
         pullsForward: Bool = false,
+        taskGotoDestination: CaptureTaskGotoDestination? = nil,
         detail: CapturePickerRowDetail,
         accessibilityLabel: String
     ) {
@@ -836,6 +905,7 @@ public struct CapturePickerRow: Equatable, Sendable {
         self.pendingBlockID = pendingBlockID
         self.scheduledText = scheduledText
         self.pullsForward = pullsForward
+        self.taskGotoDestination = taskGotoDestination
         self.detail = detail
         self.accessibilityLabel = accessibilityLabel
     }
@@ -868,6 +938,13 @@ public struct CapturePickerEmptyState: Equatable, Sendable {
         Self(
             title: "No open tasks",
             message: "No open tasks in your area or project notes."
+        )
+    }
+
+    public static var noTasksToOpen: Self {
+        Self(
+            title: "No tasks to open",
+            message: "No open tasks in your capture notes."
         )
     }
 

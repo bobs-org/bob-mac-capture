@@ -1,6 +1,13 @@
 import Foundation
 
-/// One fetched `task_link` snapshot in Bob order, with display text and
+/// Presentation contract for the shared open-task catalog: `:` links the
+/// selected task, while `/` opens its note without creating a link.
+public enum TaskLinkPickerMode: Equatable, Sendable {
+    case taskLink
+    case taskGoto
+}
+
+/// One fetched `task_link` or `task_goto` snapshot in Bob order, with display text and
 /// weighted search fields precomputed so every keystroke filters locally.
 /// Presents `CapturePickerPresentation` values for the source-agnostic card.
 /// Rows are keyed by `"route|ref"` (never by `replacement`, which Bob sends
@@ -8,10 +15,15 @@ import Foundation
 /// `group` instead of the `^` buckets.
 public struct TaskLinkPickerIndex: Sendable {
     private let entries: [TaskLinkPickerIndexEntry]
+    public let mode: TaskLinkPickerMode
     /// Pomodoro line to its 1-based section ordinal (first-appearance order).
     private let pomodoroOrdinals: [Int: Int]
 
-    public init(candidates: [CaptureCompletionCandidate]) {
+    public init(
+        candidates: [CaptureCompletionCandidate],
+        mode: TaskLinkPickerMode = .taskLink
+    ) {
+        self.mode = mode
         var seen: Set<String> = []
         var entries: [TaskLinkPickerIndexEntry] = []
         for candidate in candidates {
@@ -20,7 +32,13 @@ public struct TaskLinkPickerIndex: Sendable {
                 continue
             }
             seen.insert(key)
-            entries.append(TaskLinkPickerIndexEntry(candidate: candidate, bobIndex: entries.count))
+            entries.append(
+                TaskLinkPickerIndexEntry(
+                    candidate: candidate,
+                    bobIndex: entries.count,
+                    mode: mode
+                )
+            )
         }
         self.entries = entries
         var ordinals: [Int: Int] = [:]
@@ -45,7 +63,7 @@ public struct TaskLinkPickerIndex: Sendable {
 
     /// Presents the snapshot for `filter`: grouped sections for an empty
     /// query, one ranked flat section otherwise. The filter may carry the
-    /// `:` seed from the draft; it is stripped before matching.
+    /// `:` or `/` seed from the draft; it is stripped before matching.
     public func presentation(filter: String) -> CapturePickerPresentation {
         let groupedSections = groupedRows()
         let groupedRowCount = groupedSections.reduce(0) { $0 + $1.rows.count }
@@ -56,7 +74,8 @@ public struct TaskLinkPickerIndex: Sendable {
             budget = min(max(groupedRowCount + groupedSections.count, 4), 11)
         }
 
-        let query = FuzzyQuery(filter, leadingSigil: ":")
+        let leadingSigil: Character = mode == .taskGoto ? "/" : ":"
+        let query = FuzzyQuery(filter, leadingSigil: leadingSigil)
         if query.isEmpty {
             let ids = groupedSections.flatMap { $0.rows.map { $0.id } }
             let byID = Dictionary(uniqueKeysWithValues: groupedSections.flatMap { $0.rows }.map { ($0.id, $0) })
@@ -69,7 +88,7 @@ public struct TaskLinkPickerIndex: Sendable {
                 totalCount: entries.count,
                 matchCount: entries.count,
                 countText: countText,
-                emptyState: entries.isEmpty ? .noOpenTasks : nil,
+                emptyState: entries.isEmpty ? emptyState : nil,
                 visibleRowBudget: budget
             )
         }
@@ -94,9 +113,17 @@ public struct TaskLinkPickerIndex: Sendable {
             totalCount: entries.count,
             matchCount: rows.count,
             countText: "\(rows.count) of \(entries.count)",
-            emptyState: rows.isEmpty ? .noMatches(query: filter, noun: "open tasks") : nil,
+            emptyState: rows.isEmpty ? .noMatches(query: filter, noun: emptyNoun) : nil,
             visibleRowBudget: budget
         )
+    }
+
+    private var emptyState: CapturePickerEmptyState {
+        mode == .taskGoto ? .noTasksToOpen : .noOpenTasks
+    }
+
+    private var emptyNoun: String {
+        mode == .taskGoto ? "tasks to open" : "open tasks"
     }
 
     // MARK: - Grouped view
@@ -259,7 +286,10 @@ public struct TaskLinkPickerIndex: Sendable {
         let candidate = entry.candidate
         let pending: CapturePickerPendingBlockID?
         let insertion: String?
-        if candidate.requiresBlockID {
+        if mode == .taskGoto {
+            pending = nil
+            insertion = nil
+        } else if candidate.requiresBlockID {
             pending = CapturePickerPendingBlockID(
                 route: candidate.route ?? "",
                 taskRef: candidate.taskRef ?? "",
@@ -287,7 +317,8 @@ public struct TaskLinkPickerIndex: Sendable {
             insertion: insertion,
             pendingBlockID: pending,
             scheduledText: candidate.scheduled.map { Self.formattedScheduledDate($0) },
-            pullsForward: candidate.pullsForward,
+            pullsForward: mode == .taskLink && candidate.pullsForward,
+            taskGotoDestination: destination(for: candidate),
             detail: CapturePickerRowDetail(
                 statusText: entry.status.displayName,
                 route: candidate.route,
@@ -301,9 +332,15 @@ public struct TaskLinkPickerIndex: Sendable {
 
     // MARK: - Detail lines
 
-    /// The detail-strip action line for `row`: the insertion for identified
-    /// rows, or the Add block ID outcome for ID-less rows.
+    /// The detail-strip action line for `row`: a Go To destination, a link
+    /// insertion, or the Add block ID outcome for an ID-less link row.
     public func actionLine(for row: CapturePickerRow) -> String {
+        if mode == .taskGoto {
+            guard let destination = row.taskGotoDestination else {
+                return "Task location unavailable"
+            }
+            return destination.actionLine
+        }
         if let insertion = row.insertion {
             return "↩ inserts \(insertion) · ⇧↩ adds = to start it"
         }
@@ -323,6 +360,26 @@ public struct TaskLinkPickerIndex: Sendable {
             return nil
         }
         return "Scheduled \(scheduled) — linking pulls it forward"
+    }
+
+    private func destination(
+        for candidate: CaptureCompletionCandidate
+    ) -> CaptureTaskGotoDestination? {
+        guard mode == .taskGoto,
+              let target = candidate.target, !target.isEmpty,
+              let notePath = candidate.notePath, !notePath.isEmpty,
+              let line = candidate.line, line > 0,
+              let ref = candidate.taskRef
+        else {
+            return nil
+        }
+        return CaptureTaskGotoDestination(
+            target: target,
+            notePath: notePath,
+            line: line,
+            ref: ref,
+            blockID: candidate.blockID
+        )
     }
 
     /// `YYYY-MM-DD` renders as `Oct 3`, with the year appended outside
@@ -452,7 +509,7 @@ private struct TaskLinkPickerIndexEntry: Sendable {
     let routeField: FuzzyField?
     let sectionField: FuzzyField?
 
-    init(candidate: CaptureCompletionCandidate, bobIndex: Int) {
+    init(candidate: CaptureCompletionCandidate, bobIndex: Int, mode: TaskLinkPickerMode) {
         self.candidate = candidate
         self.bobIndex = bobIndex
         let display = TaskDisplayText(parsing: candidate.text ?? candidate.replacement)
@@ -467,6 +524,8 @@ private struct TaskLinkPickerIndexEntry: Sendable {
         self.route = candidate.route
         if let blockID = candidate.blockID, !blockID.isEmpty {
             self.effectiveBlockID = blockID
+        } else if mode == .taskGoto {
+            self.effectiveBlockID = nil
         } else {
             self.effectiveBlockID = candidate.blockIDSuggestions.first
         }

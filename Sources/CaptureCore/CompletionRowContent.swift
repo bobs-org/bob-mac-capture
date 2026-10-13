@@ -155,6 +155,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case taskSection
     case activeTask
     case taskLink
+    case taskGoto
     case taskParent
     case taskDependency
     case taskComplete
@@ -175,6 +176,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "task_section": self = .taskSection
         case "active_task": self = .activeTask
         case "task_link": self = .taskLink
+        case "task_goto": self = .taskGoto
         case "task_parent": self = .taskParent
         case "task_dependency": self = .taskDependency
         case "task_complete": self = .taskComplete
@@ -492,6 +494,19 @@ public func completionRowContent(
         }
         accessibilityHint = "Inserts this task's route and block ID."
 
+    case .taskGoto:
+        category = .blockID
+        symbolName = "arrow.up.forward"
+        contextLabel = "Task to open"
+        primaryText = candidate.text ?? candidate.replacement
+        if let notePath = candidate.notePath, let line = candidate.line {
+            let anchor = candidate.blockID.map { "^\($0)" } ?? "line \(line)"
+            secondaryText = "\(notePath):\(anchor)"
+        } else {
+            secondaryText = candidate.notePath ?? candidate.route
+        }
+        accessibilityHint = "Opens this task in Obsidian without changing the vault."
+
     case .taskDependency:
         // The `&` picker owns the card; this is only the stray inline
         // rendering, which reads as a prerequisite rather than neutral
@@ -613,7 +628,7 @@ public func completionRowContent(
 
 /// The `book` override for reading-task rows in the task pickers, or
 /// nil when the row renders as before. Only `task_kind == "ref"` rows in
-/// the `^` (active_task), `:` (task_link), `+` (task_parent and scoped
+/// the `^` (active_task), `:` (task_link), `/` (task_goto), `+` (task_parent and scoped
 /// task), `&` (task_dependency), and `!` (task_complete) contexts change;
 /// an older `bob` omits `task_kind` and every other context is untouched.
 private func bookSymbolName(
@@ -624,7 +639,7 @@ private func bookSymbolName(
         return nil
     }
     switch context {
-    case .activeTask, .taskLink, .task, .taskParent, .taskDependency, .taskComplete:
+    case .activeTask, .taskLink, .taskGoto, .task, .taskParent, .taskDependency, .taskComplete:
         return "book"
     default:
         return nil

@@ -2999,6 +2999,9 @@ final class CapturePanelModel: ObservableObject {
         case .taskLink:
             // Bob's `task_link` replacement already includes the `:` sigil.
             return replacementRange
+        case .taskGoto:
+            // Bob's `task_goto` replacement already includes the `/` sigil.
+            return replacementRange
         case .dependency:
             // Bob's `task_dependency` replacement already includes the `&`
             // sigil, quoted note included.
@@ -3761,6 +3764,9 @@ final class CapturePanelModel: ObservableObject {
                             query: query,
                             snapshotIsPartial: false
                         )
+                    case .taskGoto:
+                        // The panel phase owns Go To chip refetch routing.
+                        return
                     case .dependency:
                         guard snapshot.context == "task_dependency" else {
                             return
@@ -3840,6 +3846,9 @@ final class CapturePanelModel: ObservableObject {
                 query: query,
                 snapshotIsPartial: false
             )
+        case .taskGoto:
+            // The panel phase owns opening Go To chips.
+            break
         case .dependency:
             presentPicker(
                 source: chip.source,
@@ -3946,6 +3955,9 @@ final class CapturePanelModel: ObservableObject {
         }
         if needs("task_link") {
             return .taskLink
+        }
+        if needs("task_goto") {
+            return .taskGoto
         }
         if needs("task_parent") {
             return .taskParent
@@ -4313,6 +4325,10 @@ final class CapturePanelModel: ObservableObject {
                 index = .dependency(DependencyPickerIndex(candidates: returnPicker.candidates))
             case .taskLink:
                 index = .taskLink(TaskLinkPickerIndex(candidates: returnPicker.candidates))
+            case .taskGoto:
+                index = .taskGoto(
+                    TaskLinkPickerIndex(candidates: returnPicker.candidates, mode: .taskGoto)
+                )
             case .taskComplete:
                 index = .taskComplete(TaskCompletePickerIndex(candidates: returnPicker.candidates))
             case .activeTask:
