@@ -41,17 +41,19 @@ final class CapturePullInChoiceModelTests: XCTestCase {
     model.movePullInChoiceHighlight(by: 1)
     model.toggleHighlightedPullInOffer()
     XCTAssertEqual(model.pullInChoice?.markedKeys, ["opaque:two#^suffix"])
+    let controller = CapturePanelController(model: model)
     var opened: [URL] = []
     var dismissed = 0
     model.targetOpener = { opened.append($0) }
     model.panelDismisser = { dismissed += 1 }
-    let controller = CapturePanelController(model: model)
     XCTAssertTrue(controller.perform(.confirmPullInChoice))
     try await waitUntil { !model.isSubmitting }
 
     XCTAssertNil(model.pullInChoice)
     XCTAssertEqual(model.plainDraft, "")
-    XCTAssertEqual(opened, [URL(fileURLWithPath: "/tmp/day.md")])
+    XCTAssertEqual(
+      opened,
+      [try XCTUnwrap(ObsidianOpenURL.url(forAbsolutePath: "/tmp/day.md"))])
     XCTAssertEqual(dismissed, 1)
     let calls = try recordText(record)
     XCTAssertEqual(calls.components(separatedBy: "argv=capture").count - 1, 2)

@@ -8,13 +8,17 @@ final class CapturePullInChoiceTests: XCTestCase {
   func testOneSixElevenAndTwentyOffersRemainReachableInBobOrder() {
     for count in [1, 6, 11, 20] {
       var state = choiceState(offers: offers(count: count))
+      let bobOrderKeys = (1...count).map { "opaque#\($0)^suffix" }
       XCTAssertEqual(state.markedKeys, [], "Offers begin unmarked for count \(count)")
-      XCTAssertEqual(state.selectableKeys.count, count)
-      XCTAssertEqual(state.visibleSelectableKeys.count, count)
+      XCTAssertEqual(state.selectableKeys, bobOrderKeys)
+      XCTAssertEqual(Set(state.visibleSelectableKeys), Set(bobOrderKeys))
       XCTAssertEqual(state.effectiveSelectionKeys, ["opaque#1^suffix"])
+      // Arrow keys walk the grouped visible list (hand-offs, then project),
+      // not bob number order, and clamp at the ends.
       state.moveHighlight(by: count + 5)
-      XCTAssertEqual(state.highlightedKey, "opaque#\(count)^suffix")
-      XCTAssertEqual(state.effectiveSelectionKeys, ["opaque#\(count)^suffix"])
+      let lastVisible = state.visibleSelectableKeys.last
+      XCTAssertEqual(state.highlightedKey, lastVisible)
+      XCTAssertEqual(state.effectiveSelectionKeys, lastVisible.map { [$0] } ?? [])
     }
   }
 
@@ -156,6 +160,7 @@ final class CapturePullInChoiceTests: XCTestCase {
   func testControllerDispatchMovesMarksAndCancelsOnlyTheChoice() {
     let offers = offers(count: 3)
     let model = CapturePanelModel()
+    model.plainDraft = "unchanged draft"
     model.installPullInChoiceForPreviews(
       offers: offers,
       pullIn: CapturePullIn(supported: true, offerCount: offers.count),
@@ -163,11 +168,15 @@ final class CapturePullInChoiceTests: XCTestCase {
     )
     let controller = CapturePanelController(model: model)
 
+    XCTAssertEqual(
+      model.pullInChoice?.visibleSelectableKeys,
+      ["opaque#2^suffix", "opaque#1^suffix", "opaque#3^suffix"])
+    XCTAssertEqual(model.pullInChoice?.highlightedKey, "opaque#1^suffix")
     XCTAssertTrue(controller.perform(.nextPullInOffer))
-    XCTAssertEqual(model.pullInChoice?.highlightedKey, "opaque#2^suffix")
+    XCTAssertEqual(model.pullInChoice?.highlightedKey, "opaque#3^suffix")
     XCTAssertEqual(model.focusRequest.target, .pullInOfferList)
     XCTAssertTrue(controller.perform(.togglePullInOffer))
-    XCTAssertEqual(model.pullInChoice?.markedKeys, ["opaque#2^suffix"])
+    XCTAssertEqual(model.pullInChoice?.markedKeys, ["opaque#3^suffix"])
     XCTAssertTrue(controller.perform(.markAllPullInOffers))
     XCTAssertEqual(model.pullInChoice?.markedKeys.count, 3)
     XCTAssertTrue(controller.perform(.cancelPullInChoice))
