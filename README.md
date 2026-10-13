@@ -1550,15 +1550,19 @@ including the next panel show.
 
 When a current Bob preview reports successor offers for `!` completion or `=x` close,
 Return opens a grouped choice card before the capture is written. Nothing is marked
-initially, including a single offer. Return chooses marked offers or, when none are
-marked, the highlighted offer. Up/Down or Control-N/Control-P moves the highlight,
-including from the filter. Space marks or unmarks the highlighted offer whenever the
-filter is empty or unfocused, including immediately after the card opens. The filter
-takes spaces only once it holds text. Command-A marks every offer, Shift-Return
-commits with no offers, and Escape returns to the unchanged draft without writing.
-The card shows Bob's global offer numbers, destinations, project folds, blocked
-residents, and a projected plan-link count when Bob supplied the budget. The success
-notification reports what was pulled in.
+initially, including a single offer. Return is Pull In: it chooses marked offers or,
+when none are marked, the highlighted offer. Up/Down or Control-N/Control-P moves the
+highlight, including from the filter. Space marks or unmarks the highlighted offer
+whenever the filter is empty or unfocused, including immediately after the card opens.
+The filter takes spaces only once it holds text. Command-A marks every offer,
+Shift-Return is Skip: it commits with no offers, and Escape returns to the unchanged
+draft without writing. The card shows Bob's global offer numbers, destinations,
+project folds, blocked residents, and a projected plan-link count when Bob supplied
+the budget. It is a full-width card like the task picker, with a context line naming
+what unblocked the offers, destination capsules that turn green on the offers Return
+will pull in, a live Links projection when Bob supplied the budget, and footer hints
+with Skip and Pull In N buttons that also work by pointer. The success notification
+reports what was pulled in.
 
 If Bob rejects the exact `--require-pull-in-choice` flag as an unexpected argument
 (exit 2), the app retries once without that guard and shows a note that this Bob lacks

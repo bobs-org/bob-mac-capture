@@ -15,7 +15,6 @@ enum CapturePanelLayout {
     static let completionVisibleRows = 5
     static let completionRowHeight: CGFloat = 48
     static let completionViewportHeight = completionRowHeight * CGFloat(completionVisibleRows) + 12
-    static let pullInChoiceViewportHeight: CGFloat = 190
     static let stashVisibleRows = 5
     static let stashListPadding: CGFloat = 6
     static let stashRowSpacing: CGFloat = 2
@@ -333,6 +332,10 @@ struct CapturePanelView: View {
                 measuredAuxiliaryContentHeight = 0
                 reportContentMetrics()
             }
+            .onChange(of: model.pullInChoiceVisible) { _, _ in
+                measuredAuxiliaryContentHeight = 0
+                reportContentMetrics()
+            }
             .onChange(of: model.stashCount) { _, _ in
                 reportContentMetrics()
             }
@@ -420,7 +423,16 @@ struct CapturePanelView: View {
                 auxiliaryRegion
             }
 
-            if model.pickerVisible && !model.pullInChoiceVisible {
+            if model.pullInChoiceVisible {
+                CapturePullInChoiceFooter(model: model)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(2)
+                    .onGeometryChange(for: CGFloat.self) { geometry in
+                        geometry.size.height
+                    } action: { height in
+                        updateMeasuredFooterHeight(height)
+                    }
+            } else if model.pickerVisible {
                 CapturePickerKeyHints(
                     source: model.picker?.source ?? .activeTask,
                     showOperatorHint: model.pickerFilterIsEmpty
@@ -469,12 +481,20 @@ struct CapturePanelView: View {
             || model.previewState != .idle
             || model.agendaVisible
             || model.pullInCapabilityNote != nil
+            || model.pullInChoiceVisible
     }
 
     @ViewBuilder
     private var auxiliaryRegion: some View {
-        if model.pullInChoiceVisible {
-            auxiliaryScrollRegion
+        if model.pullInChoiceVisible, let choice = model.pullInChoice {
+            CapturePullInChoiceCard(model: model, choice: choice)
+                .layoutPriority(0)
+                .focused($focusedControl, equals: .pullInOfferList)
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    updateMeasuredAuxiliaryContentHeight(height)
+                }
         } else if model.pickerVisible {
             CapturePickerCard(model: model)
                 .layoutPriority(0)
@@ -579,14 +599,6 @@ struct CapturePanelView: View {
 
     private var auxiliaryContent: some View {
         VStack(alignment: .leading, spacing: CapturePanelLayout.sectionSpacing) {
-            if model.pullInChoiceVisible, let choice = model.pullInChoice {
-                CapturePullInChoiceCard(model: model, choice: choice)
-                    .frame(width: 520)
-                    .padding(.leading, 14)
-                    .layoutPriority(0)
-                    .focused($focusedControl, equals: .pullInOfferList)
-                    .id(AuxiliarySection.pullInChoice)
-            } else {
             if model.pickerChipVisible {
                 CapturePickerChip(model: model)
                     .id(AuxiliarySection.pickerChip)
@@ -659,7 +671,6 @@ struct CapturePanelView: View {
                     .id(AuxiliarySection.preview)
             }
             pullInCapabilityNotice
-            }
         }
     }
 
@@ -742,6 +753,14 @@ struct CapturePanelView: View {
             return nil
         }
 
+        if model.pullInChoiceVisible, let choice = model.pullInChoice {
+            let policy = CapturePullInChoiceHeightPolicy(choice: choice, displayScale: displayScale)
+            return CapturePanelAuxiliaryHeight(
+                idealHeight: max(policy.idealHeight, measuredAuxiliaryContentHeight),
+                minimumVisibleHeight: policy.minimumVisibleHeight
+            )
+        }
+
         if model.isStashPickerPresented {
             let explicit = CanceledDraftStashPickerHeightPolicy(
                 entryCount: model.stashCount,
@@ -800,213 +819,6 @@ struct CapturePanelView: View {
         case destination
         case error
         case preview
-        case pullInChoice
-    }
-}
-
-@available(macOS 26.0, *)
-private struct CapturePullInChoiceCard: View {
-    @ObservedObject var model: CapturePanelModel
-    let choice: CapturePullInChoiceState
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Label("Choose successor offers", systemImage: "arrow.turn.down.right")
-                    .font(.headline)
-                Spacer(minLength: 8)
-                Text("\(choice.selectableKeys.count) offers")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            CapturePickerFilterField(
-                text: choice.filterText,
-                placeholder: "Filter successor offers",
-                accessibilityLabel: "Filter successor offers",
-                focusRequest: model.focusRequest,
-                onTextChange: { model.updatePullInChoiceFilter($0) },
-                fieldIdentifier: pullInFilterFieldAccessibilityIdentifier,
-                focusTarget: .pullInFilter,
-                onFocusChange: { focused in
-                    if focused {
-                        model.focusPullInChoiceFilter()
-                    }
-                }
-            )
-            .frame(height: 26)
-            .padding(.horizontal, 7)
-            .background(.background.opacity(0.55), in: RoundedRectangle(cornerRadius: 6))
-
-            ScrollViewReader { proxy in
-                ScrollView(.vertical) {
-                    LazyVStack(alignment: .leading, spacing: 7) {
-                        ForEach(choice.sections) { section in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Button {
-                                    model.togglePullInChoiceGroup(section.id)
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: choice.collapsedGroups.contains(section.id)
-                                            && choice.filterText.isEmpty ? "chevron.right" : "chevron.down")
-                                            .font(.caption2)
-                                        Text(section.title)
-                                            .font(.subheadline.weight(.semibold))
-                                        Text("\(section.rows.filter(\.isSelectable).count)")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                        Spacer(minLength: 0)
-                                    }
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("\(section.title), \(section.rows.filter(\.isSelectable).count) offers")
-
-                                if let folded = section.folded {
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        if folded.hidden > 0 {
-                                            Text("\(folded.hidden) hidden")
-                                        }
-                                        if folded.alreadyPlanned > 0 {
-                                            Text("\(folded.alreadyPlanned) already planned")
-                                        }
-                                        if folded.subProjects > 0 {
-                                            Text("\(folded.subProjects) sub-projects stay blocked until the next reconcile")
-                                        }
-                                    }
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .padding(.leading, 20)
-                                }
-
-                                ForEach(choice.visibleRows(in: section)) { row in
-                                    if let key = row.offerKey {
-                                        Button {
-                                            model.togglePullInOffer(key)
-                                        } label: {
-                                            CapturePullInChoiceRowView(
-                                                row: row,
-                                                isHighlighted: choice.highlightedKey == key,
-                                                isMarked: choice.markedKeys.contains(key)
-                                            )
-                                        }
-                                        .buttonStyle(.plain)
-                                        .id(key)
-                                    } else {
-                                        CapturePullInChoiceRowView(
-                                            row: row,
-                                            isHighlighted: false,
-                                            isMarked: false
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        if choice.visibleSelectableKeys.isEmpty {
-                            Text("No matching successor offers")
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                                .padding(.vertical, 8)
-                        }
-                    }
-                    .padding(.vertical, 3)
-                }
-                .frame(maxHeight: CapturePanelLayout.pullInChoiceViewportHeight, alignment: .top)
-                .onChange(of: choice.highlightedKey) { _, key in
-                    guard let key else { return }
-                    withAnimation(.easeOut(duration: 0.12)) {
-                        proxy.scrollTo(key, anchor: .center)
-                    }
-                }
-            }
-            .overlay(alignment: .top) {
-                Rectangle().fill(Color.secondary.opacity(0.2)).frame(height: 0.5)
-            }
-
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("\(choice.effectivePickCount) pull-in\(choice.effectivePickCount == 1 ? "" : "s")")
-                    .font(.caption.weight(.semibold))
-                Spacer(minLength: 4)
-                if let projection = choice.projectedLinksText {
-                    Text(projection)
-                        .font(.caption)
-                        .foregroundStyle(choice.projectedLinksOverCap ? .orange : .secondary)
-                        .accessibilityLabel(choice.projectedLinksOverCap ? "Warning: \(projection)" : projection)
-                }
-            }
-            Text("Ctrl-N/P move · Space mark · Return choose · Shift-Return none · Esc cancel")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Up, Down, Control-N, or Control-P moves the highlight. Space marks the highlighted offer. Return chooses the marked offers or highlighted offer. Shift-Return chooses no offers. Escape cancels without writing.")
-        }
-        .padding(10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.secondary.opacity(0.22)))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Successor offer choices")
-        .focusable()
-    }
-}
-
-@available(macOS 26.0, *)
-private struct CapturePullInChoiceRowView: View {
-    let row: CapturePullInChoiceRow
-    let isHighlighted: Bool
-    let isMarked: Bool
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: row.isSelectable
-                ? (isMarked ? "checkmark.square.fill" : "square") : "lock.fill")
-                .foregroundStyle(row.isSelectable
-                    ? (isMarked ? Color.accentColor : Color.secondary)
-                    : Color(nsColor: .tertiaryLabelColor))
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    if let number = row.offerNumber {
-                        Text("Offer \(number)")
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                    Text(row.text)
-                        .font(.callout)
-                        .lineLimit(2)
-                        .foregroundStyle(row.isSelectable ? .primary : .secondary)
-                    Spacer(minLength: 0)
-                }
-                HStack(spacing: 8) {
-                    if let destination = row.destinationText {
-                        Text(destination)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    if row.needsBlockID {
-                        Text("needs ^id")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                    Text(row.notePath + (row.blockID.isEmpty ? "" : " ^\(row.blockID)"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                if let detail = row.detailText {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(row.isSelectable ? .secondary : .tertiary)
-                }
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(isHighlighted ? Color.accentColor.opacity(0.13) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
-        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(isHighlighted ? Color.accentColor.opacity(0.55) : .clear))
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(row.accessibilityLabel + (isMarked ? ", marked" : ""))
     }
 }
 

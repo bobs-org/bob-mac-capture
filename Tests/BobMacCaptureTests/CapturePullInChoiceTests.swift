@@ -251,6 +251,273 @@ final class CapturePullInChoiceTests: XCTestCase {
     XCTAssertEqual(model.focusRequest.target, .pullInOfferList)
   }
 
+  func testHeightPolicyContentMaxMinContextAndFilterStability() {
+    let bar = CapturePanelLayout.pullInBarHeight
+    let context = CapturePanelLayout.pullInContextHeight
+    let header = CapturePanelLayout.pullInSectionHeaderHeight
+    let fold = CapturePanelLayout.pullInFoldRowHeight
+    let row = CapturePanelLayout.pullInRowHeight
+    let padding = CapturePanelLayout.pullInListPadding
+
+    var one = choiceState(offers: [offer(n: 1, group: "hand_off")])
+    let onePolicy = CapturePullInChoiceHeightPolicy(choice: one)
+    let oneContent = 2 * padding + header + row
+    XCTAssertEqual(onePolicy.listContentHeight, oneContent, accuracy: 0.001)
+    XCTAssertEqual(onePolicy.listViewportHeight, oneContent, accuracy: 0.001)
+    XCTAssertEqual(onePolicy.idealHeight, bar + 1 + oneContent, accuracy: 0.001)
+
+    let projectPath = "projects/sase_foo.md"
+    let mixed = choiceState(
+      offers: [
+        offer(n: 1, group: "hand_off"),
+        offer(n: 2, group: "hand_off"),
+        offer(n: 3, group: "project", project: projectPath),
+      ],
+      stillBlocked: [
+        TaskCompleteStillBlocked(
+          notePath: projectPath,
+          blockID: "resident",
+          line: 9,
+          text: "Resident",
+          statusSymbol: "?",
+          statusName: "Blocked",
+          reason: "project",
+          project: projectPath
+        )
+      ],
+      pullIn: CapturePullIn(
+        supported: true,
+        offerCount: 3,
+        groups: [
+          CapturePullInGroup(
+            group: "project",
+            project: projectPath,
+            folded: CapturePullInFolded(hidden: 5, alreadyPlanned: 3, subProjects: 2)
+          )
+        ]
+      )
+    )
+    let mixedPolicy = CapturePullInChoiceHeightPolicy(choice: mixed)
+    let mixedContent = 2 * padding + 2 * header + fold + 4 * row
+    XCTAssertEqual(mixedPolicy.listContentHeight, mixedContent, accuracy: 0.001)
+    XCTAssertEqual(mixedPolicy.listViewportHeight, mixedContent, accuracy: 0.001)
+
+    let twenty = choiceState(offers: offers(count: 20))
+    let twentyPolicy = CapturePullInChoiceHeightPolicy(choice: twenty)
+    let maxList = 2 * padding + header
+      + CGFloat(CapturePanelLayout.pullInMaxVisibleRows) * row
+    XCTAssertEqual(twentyPolicy.listViewportHeight, maxList, accuracy: 0.001)
+    let minList = 2 * padding + header
+      + CGFloat(CapturePanelLayout.pullInMinVisibleRows) * row
+    XCTAssertEqual(
+      twentyPolicy.minimumVisibleHeight, bar + 1 + minList, accuracy: 0.001)
+    XCTAssertEqual(twentyPolicy.idealHeight, bar + 1 + maxList, accuracy: 0.001)
+
+    let budgeted = choiceState(
+      offers: [offer(n: 1, group: "hand_off")],
+      planBudget: CapturePlanBudget(
+        status: "ok",
+        themes: CapturePlanBudgetMeter(count: 1, cap: 5, over: false),
+        links: CapturePlanBudgetMeter(count: 4, cap: 10, over: false)
+      )
+    )
+    let budgetedPolicy = CapturePullInChoiceHeightPolicy(choice: budgeted)
+    XCTAssertEqual(
+      budgetedPolicy.idealHeight, onePolicy.idealHeight + context, accuracy: 0.001)
+
+    var filtered = one
+    filtered.updateFilter("zzz")
+    if let section = filtered.sections.first {
+      filtered.toggleGroup(section.id)
+    }
+    XCTAssertEqual(CapturePullInChoiceHeightPolicy(choice: filtered), onePolicy)
+    one.updateFilter("zzz")
+    XCTAssertEqual(CapturePullInChoiceHeightPolicy(choice: one), onePolicy)
+  }
+
+  func testMetaDetailsOmitsRecoveredCaptionAndHeaderRepeat() {
+    func row(
+      n: Int, group: String, trigger: String?, hideRemoved: Bool
+    ) -> CapturePullInChoiceRow {
+      CapturePullInChoiceRow(
+        offerRow: TaskCompleteUnblocked(
+          notePath: "sase.md",
+          blockID: "task-\(n)",
+          line: n,
+          text: "Task \(n)",
+          previousStatusSymbol: "?",
+          previousStatusName: "Blocked",
+          statusSymbol: " ",
+          statusName: "Ready",
+          notLinked: "not_selected",
+          offer: TaskCompleteOffer(
+            key: "key-\(n)",
+            n: n,
+            group: group,
+            destination: TaskCompleteOfferDestination(dayFile: "20261013.md")
+          ),
+          trigger: trigger,
+          hideRemoved: hideRemoved
+        ),
+        blockedRow: nil,
+        group: group,
+        project: nil
+      )
+    }
+    let finished = row(n: 1, group: "project_finished", trigger: "project_empty", hideRemoved: true)
+    XCTAssertEqual(finished.metaDetails, ["removed #hide"])
+    XCTAssertFalse(finished.metaDetails.joined(separator: " ").contains("not pulled in"))
+    XCTAssertNotNil(finished.detailText)
+    XCTAssertTrue(finished.detailText?.contains("not pulled in") == true)
+    XCTAssertEqual(
+      row(n: 2, group: "hand_off", trigger: "project_empty", hideRemoved: false).metaDetails,
+      ["project finished"])
+    XCTAssertEqual(
+      row(n: 3, group: "hand_off", trigger: "manual", hideRemoved: false).metaDetails,
+      ["trigger: manual"])
+    XCTAssertEqual(
+      row(n: 4, group: "hand_off", trigger: nil, hideRemoved: false).metaDetails, [])
+  }
+
+  func testContextTextCoversOneThreeAndNoCauses() {
+    func causedOffer(
+      n: Int, notePath: String, blockID: String, text: String
+    ) -> TaskCompleteUnblocked {
+      TaskCompleteUnblocked(
+        notePath: "sase.md",
+        blockID: "task-\(n)",
+        line: n,
+        text: "Task \(n)",
+        previousStatusSymbol: "?",
+        previousStatusName: "Blocked",
+        statusSymbol: " ",
+        statusName: "Ready",
+        notLinked: "not_selected",
+        unblockedBy: [
+          TaskCompleteUnblockedCause(notePath: notePath, blockID: blockID, text: text)
+        ],
+        offer: TaskCompleteOffer(
+          key: "key-\(n)",
+          n: n,
+          group: "hand_off",
+          destination: TaskCompleteOfferDestination(dayFile: "20261013.md")
+        )
+      )
+    }
+    let one = choiceState(offers: [
+      causedOffer(n: 1, notePath: "a.md", blockID: "c1", text: "Fix apollo machine")
+    ])
+    XCTAssertEqual(one.causes.count, 1)
+    XCTAssertEqual(one.contextText, "Unblocked by Fix apollo machine")
+    XCTAssertFalse(one.showsRowCauses)
+
+    let dup = choiceState(offers: [
+      causedOffer(n: 1, notePath: "a.md", blockID: "c1", text: "Fix apollo machine"),
+      causedOffer(n: 2, notePath: "a.md", blockID: "c1", text: "Fix apollo machine"),
+    ])
+    XCTAssertEqual(dup.causes.count, 1)
+    XCTAssertEqual(dup.contextText, "Unblocked by Fix apollo machine")
+
+    let three = choiceState(offers: [
+      causedOffer(n: 1, notePath: "a.md", blockID: "c1", text: "First cause"),
+      causedOffer(n: 2, notePath: "b.md", blockID: "c2", text: "Second cause"),
+      causedOffer(n: 3, notePath: "c.md", blockID: "c3", text: "Third cause"),
+    ])
+    XCTAssertEqual(three.causes.count, 3)
+    XCTAssertEqual(three.contextText, "Unblocked by First cause and 2 more")
+    XCTAssertTrue(three.showsRowCauses)
+
+    let none = choiceState(offers: offers(count: 2))
+    XCTAssertTrue(none.causes.isEmpty)
+    XCTAssertNil(none.contextText)
+    XCTAssertFalse(none.showsRowCauses)
+  }
+
+  func testCountTextCoversSingularPluralAndFiltered() {
+    XCTAssertEqual(choiceState(offers: [offer(n: 1, group: "hand_off")]).countText, "1 offer")
+    XCTAssertEqual(choiceState(offers: offers(count: 3)).countText, "3 offers")
+    var filtered = choiceState(offers: offers(count: 3))
+    filtered.updateFilter("zzz")
+    XCTAssertEqual(filtered.countText, "0 of 3")
+    filtered.updateFilter("Task 1")
+    XCTAssertEqual(filtered.countText, "1 of 3")
+  }
+
+  func testEffectiveSelectionMarkedCountActionTitleAndBudgetTexts() throws {
+    var state = choiceState(offers: offers(count: 3))
+    let highlighted = try XCTUnwrap(state.highlightedKey)
+    XCTAssertEqual(highlighted, "opaque#1^suffix")
+    XCTAssertTrue(state.isEffectivelySelected("opaque#1^suffix"))
+    XCTAssertFalse(state.isEffectivelySelected("opaque#2^suffix"))
+    XCTAssertEqual(state.pullInActionTitle, "Pull In 1")
+
+    state.markedKeys = ["opaque#2^suffix", "bogus"]
+    XCTAssertTrue(state.isEffectivelySelected("opaque#2^suffix"))
+    XCTAssertFalse(state.isEffectivelySelected("opaque#1^suffix"))
+    XCTAssertEqual(state.pullInActionTitle, "Pull In 1")
+    state.markedKeys = ["opaque#2^suffix", "opaque#3^suffix"]
+    XCTAssertEqual(state.pullInActionTitle, "Pull In 2")
+
+    let handOff = try XCTUnwrap(state.sections.first(where: { $0.group == "hand_off" }))
+    XCTAssertEqual(state.markedCount(in: handOff), 1)
+    let project = try XCTUnwrap(state.sections.first(where: { $0.group == "project" }))
+    XCTAssertEqual(state.markedCount(in: project), 1)
+
+    var empty = choiceState(offers: offers(count: 2))
+    empty.updateFilter("zzz")
+    XCTAssertEqual(empty.effectivePickCount, 0)
+    XCTAssertEqual(empty.pullInActionTitle, "Pull In")
+    XCTAssertNil(empty.projectedLinksCapsuleText)
+    XCTAssertNil(empty.projectedLinksDeltaText)
+
+    let budgeted = choiceState(
+      offers: offers(count: 3),
+      planBudget: CapturePlanBudget(
+        status: "ok",
+        themes: CapturePlanBudgetMeter(count: 1, cap: 5, over: false),
+        links: CapturePlanBudgetMeter(count: 4, cap: 10, over: false)
+      )
+    )
+    XCTAssertEqual(budgeted.projectedLinksCapsuleText, "Links 5/10")
+    XCTAssertEqual(budgeted.projectedLinksDeltaText, "+1")
+
+    var over = choiceState(
+      offers: offers(count: 2),
+      planBudget: CapturePlanBudget(
+        status: "over",
+        themes: CapturePlanBudgetMeter(count: 1, cap: 5, over: false),
+        links: CapturePlanBudgetMeter(count: 4, cap: 5, over: false)
+      )
+    )
+    over.markAll()
+    XCTAssertTrue(over.projectedLinksOverCap)
+    XCTAssertEqual(over.projectedLinksCapsuleText, "Links 6/5")
+    XCTAssertEqual(over.projectedLinksDeltaText, "+2")
+  }
+
+  func testFilterMatchRangeIsCaseInsensitiveAndNilWhenEmpty() {
+    var state = choiceState(offers: offers(count: 1))
+    XCTAssertNil(state.filterMatchRange(in: "Task 1"))
+    state.updateFilter("book")
+    XCTAssertEqual(state.filterMatchRange(in: "Book flights"), 0..<4)
+    state.updateFilter("BOOK")
+    XCTAssertEqual(state.filterMatchRange(in: "Book flights"), 0..<4)
+    state.updateFilter("flights")
+    XCTAssertEqual(state.filterMatchRange(in: "Book flights"), 5..<12)
+    state.updateFilter("zzz")
+    XCTAssertNil(state.filterMatchRange(in: "Book flights"))
+  }
+
+  func testFooterContractPinsHintsAndAccessibilityText() {
+    let items = CapturePullInChoiceFooter.hintItems
+    XCTAssertEqual(items.map { $0.keys }, ["⌃N ⌃P", "space", "⌘A", "esc"])
+    XCTAssertEqual(items.map { $0.action }, ["Move", "Mark", "All", "Back"])
+    let label = CapturePullInChoiceFooter.accessibilityText
+    for phrase in ["Control-N", "Space", "Command-A", "Return", "Shift-Return", "Escape"] {
+      XCTAssertTrue(label.contains(phrase), "Footer label mentions \(phrase)")
+    }
+  }
+
   private func choiceState(
     offers: [TaskCompleteUnblocked],
     stillBlocked: [TaskCompleteStillBlocked] = [],

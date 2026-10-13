@@ -72,6 +72,28 @@ struct CapturePullInChoiceRow: Equatable, Identifiable {
     offerRow?.offer?.blockIDNeeded == true
   }
 
+  /// Presentation-only meta fragments for offer rows. Unlike `detailText`,
+  /// this never includes the recovered "Ready · not pulled in" caption.
+  var metaDetails: [String] {
+    guard let offerRow else {
+      return []
+    }
+    var details: [String] = []
+    if offerRow.hideRemoved {
+      details.append("removed #hide")
+    }
+    if let trigger = offerRow.trigger, !trigger.isEmpty {
+      if trigger == "project_empty" {
+        if group != "project_finished" {
+          details.append("project finished")
+        }
+      } else {
+        details.append("trigger: \(trigger)")
+      }
+    }
+    return details
+  }
+
   var detailText: String? {
     if let offerRow {
       let presentation = SuccessorRows.unblockedRows(
@@ -227,6 +249,100 @@ struct CapturePullInChoiceState: Equatable {
       return nil
     }
     return "Projected links \(projectedLinkCount)/\(planBudget.links.cap)"
+  }
+
+  /// Distinct `unblockedBy` causes across offer rows, in first-seen order.
+  var causes: [TaskCompleteUnblockedCause] {
+    var seen = Set<String>()
+    var ordered: [TaskCompleteUnblockedCause] = []
+    for row in rows {
+      guard let offerRow = row.offerRow else {
+        continue
+      }
+      for cause in offerRow.unblockedBy {
+        let key = "\(cause.notePath)\u{1F}\(cause.blockID)"
+        guard seen.insert(key).inserted else {
+          continue
+        }
+        ordered.append(cause)
+      }
+    }
+    return ordered
+  }
+
+  /// "Unblocked by X" / "Unblocked by X and N more" / nil.
+  var contextText: String? {
+    let all = causes
+    guard let first = all.first, !first.text.isEmpty else {
+      return nil
+    }
+    let head = SuccessorRows.truncate(first.text)
+    guard all.count > 1 else {
+      return "Unblocked by \(head)"
+    }
+    return "Unblocked by \(head) and \(all.count - 1) more"
+  }
+
+  /// True when rows should show their own "from ‹cause›" suffix.
+  var showsRowCauses: Bool {
+    causes.count > 1
+  }
+
+  /// "3 offers" / "1 offer" / "1 of 3" while filtering.
+  var countText: String {
+    let total = selectableKeys.count
+    if !filterText.isEmpty {
+      return "\(visibleSelectableKeys.count) of \(total)"
+    }
+    return total == 1 ? "1 offer" : "\(total) offers"
+  }
+
+  func isEffectivelySelected(_ key: String) -> Bool {
+    effectiveSelectionKeys.contains(key)
+  }
+
+  /// Valid marks inside one section (stale keys never count).
+  func markedCount(in section: CapturePullInChoiceSection) -> Int {
+    let valid = markedKeys.intersection(Set(selectableKeys))
+    guard !valid.isEmpty else {
+      return 0
+    }
+    return section.rows.compactMap(\.offerKey).filter(valid.contains).count
+  }
+
+  /// "Pull In N" / "Pull In" when nothing would be picked.
+  var pullInActionTitle: String {
+    effectivePickCount == 0 ? "Pull In" : "Pull In \(effectivePickCount)"
+  }
+
+  /// "Links 6/10" when Bob supplied the budget.
+  var projectedLinksCapsuleText: String? {
+    guard let planBudget, let projectedLinkCount else {
+      return nil
+    }
+    return "Links \(projectedLinkCount)/\(planBudget.links.cap)"
+  }
+
+  /// "+N" when the budget is present and something would be picked.
+  var projectedLinksDeltaText: String? {
+    guard planBudget != nil, effectivePickCount > 0 else {
+      return nil
+    }
+    return "+\(effectivePickCount)"
+  }
+
+  /// Character offsets of the first case-insensitive filter match in
+  /// `text`, or nil when the filter is empty or absent.
+  func filterMatchRange(in text: String) -> Range<Int>? {
+    guard !filterText.isEmpty else {
+      return nil
+    }
+    guard let range = text.range(of: filterText, options: [.caseInsensitive]) else {
+      return nil
+    }
+    let lower = text.distance(from: text.startIndex, to: range.lowerBound)
+    let upper = text.distance(from: text.startIndex, to: range.upperBound)
+    return lower..<upper
   }
 
   var sections: [CapturePullInChoiceSection] {
