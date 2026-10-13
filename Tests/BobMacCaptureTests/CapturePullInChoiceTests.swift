@@ -158,7 +158,7 @@ final class CapturePullInChoiceTests: XCTestCase {
     XCTAssertEqual(router.command(for: keyEvent(45), context: focusedContext), nil)
     XCTAssertEqual(router.command(for: keyEvent(35), context: focusedContext), nil)
     let completionContext = CaptureKeyRoutingContext(
-      pullInChoiceVisible: true, pickerVisible: true, completionVisible: true)
+      completionVisible: true, pullInChoiceVisible: true, pickerVisible: true)
     XCTAssertEqual(
       router.command(for: keyEvent(45, modifiers: .control), context: completionContext),
       .nextPullInOffer)
@@ -392,10 +392,10 @@ final class CapturePullInChoiceTests: XCTestCase {
         previousStatusName: "Blocked",
         statusSymbol: " ",
         statusName: "Ready",
-        notLinked: "not_selected",
         unblockedBy: [
           TaskCompleteUnblockedCause(notePath: notePath, blockID: blockID, text: text)
         ],
+        notLinked: "not_selected",
         offer: TaskCompleteOffer(
           key: "key-\(n)",
           n: n,

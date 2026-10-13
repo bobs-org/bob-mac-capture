@@ -26,6 +26,9 @@ portable-check:
     swift build --build-tests
     swift test
 
+typecheck-tests:
+    ./Scripts/typecheck-tests.sh
+
 bundle identity="-":
     ./Scripts/bundle.sh --identity "{{identity}}"
 

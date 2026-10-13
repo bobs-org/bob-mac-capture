@@ -235,10 +235,10 @@ final class CapturePullInChoiceDesignTests: XCTestCase {
       previousStatusName: "Blocked",
       statusSymbol: " ",
       statusName: "Ready",
-      notLinked: "not_selected",
       unblockedBy: cause.map {
         [TaskCompleteUnblockedCause(notePath: "sase.md", blockID: $0, text: $0)]
       } ?? [],
+      notLinked: "not_selected",
       offer: TaskCompleteOffer(
         key: "opaque#\(n)^suffix",
         n: n,

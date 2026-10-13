@@ -323,7 +323,7 @@ struct CapturePullInChoiceCard: View {
             let budget = choice.planBudget,
             let projected = choice.projectedLinkCount
         else {
-            return capsule ?? ""
+            return choice.projectedLinksCapsuleText ?? ""
         }
         let base = "Projected links \(projected) of \(budget.links.cap)"
         return choice.projectedLinksOverCap ? "Warning: \(base)" : base
@@ -508,7 +508,7 @@ struct CapturePullInSectionHeader: View {
                 if marked > 0 {
                     Text("\(marked) marked")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.accentColor)
+                        .foregroundStyle(Color.accentColor)
                         .monospacedDigit()
                 }
             }

@@ -9,8 +9,11 @@ on a tailnet host that has Swift (athena).
 `portable-check` cannot type-check `Sources/BobMacCapture*` or
 `Tests/BobMacCapture*`. When you change those, compile a scratch copy on the mac
 (best effort): rsync without `.build`/`.git`, then `bundle.sh` and
-`xcode-swift.sh build --build-tests`, then delete the copy. Never use Bryan's
+`just typecheck-tests`, then delete the copy. Never use Bryan's
 checkout or `just install` there.
+The Mac has only Command Line Tools, which ship no XCTest, so `--build-tests` cannot
+work there; `typecheck-tests` type-checks every test target against a stub, and CI
+still runs the tests.
 
 If the mac is offline, say in the final report that the macOS targets are
 unverified.

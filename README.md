@@ -264,6 +264,8 @@ just bundle
 
 On a host without Xcode, only CaptureCore, RefsCore, and refs-rank build; `just portable-check` lints every Swift file and builds and tests those targets, but cannot type-check the `BobMacCapture*` targets.
 
+`just typecheck-tests` type-checks all test targets on a Mac with only Command Line Tools.
+
 `just bundle` creates `.build/bundle/Bob Mac Capture.app` and signs it with the ad-hoc
 identity `-`. Release installs should prefer an Apple Development identity:
 
