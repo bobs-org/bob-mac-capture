@@ -1551,13 +1551,14 @@ including the next panel show.
 When a current Bob preview reports successor offers for `!` completion or `=x` close,
 Return opens a grouped choice card before the capture is written. Nothing is marked
 initially, including a single offer. Return chooses marked offers or, when none are
-marked, the highlighted offer. Up/Down moves the highlight; Space toggles it after
-navigation moves focus to the offer list. The filter keeps ordinary typing, including
-spaces, while it has focus. Command-A marks every offer, Shift-Return commits with no
-offers, and Escape returns to the unchanged draft without writing. The card shows Bob's
-global offer numbers, destinations, project folds, blocked residents, and a projected
-plan-link count when Bob supplied the budget. The success notification reports what was
-pulled in.
+marked, the highlighted offer. Up/Down or Control-N/Control-P moves the highlight,
+including from the filter. Space marks or unmarks the highlighted offer whenever the
+filter is empty or unfocused, including immediately after the card opens. The filter
+takes spaces only once it holds text. Command-A marks every offer, Shift-Return
+commits with no offers, and Escape returns to the unchanged draft without writing.
+The card shows Bob's global offer numbers, destinations, project folds, blocked
+residents, and a projected plan-link count when Bob supplied the budget. The success
+notification reports what was pulled in.
 
 If Bob rejects the exact `--require-pull-in-choice` flag as an unexpected argument
 (exit 2), the app retries once without that guard and shows a note that this Bob lacks

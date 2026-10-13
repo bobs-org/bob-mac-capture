@@ -134,15 +134,59 @@ final class CapturePullInChoiceTests: XCTestCase {
       router.command(for: keyEvent(33, modifiers: .control), context: context), .cancelPullInChoice)
     XCTAssertEqual(router.command(for: keyEvent(126), context: context), .previousPullInOffer)
     XCTAssertEqual(router.command(for: keyEvent(125), context: context), .nextPullInOffer)
+    XCTAssertEqual(
+      router.command(for: keyEvent(45, modifiers: .control), context: context), .nextPullInOffer)
+    XCTAssertEqual(
+      router.command(for: keyEvent(35, modifiers: .control), context: context),
+      .previousPullInOffer)
+    XCTAssertEqual(
+      router.command(for: keyEvent(45, modifiers: .control, repeat: true), context: context),
+      .nextPullInOffer)
+    let focusedContext = CaptureKeyRoutingContext(
+      pullInChoiceVisible: true, pullInFilterFocused: true)
+    XCTAssertEqual(
+      router.command(for: keyEvent(45, modifiers: .control), context: focusedContext),
+      .nextPullInOffer)
+    XCTAssertEqual(
+      router.command(for: keyEvent(35, modifiers: .control), context: focusedContext),
+      .previousPullInOffer)
+    XCTAssertEqual(
+      router.command(for: keyEvent(45, modifiers: [.control, .shift]), context: focusedContext),
+      nil)
+    XCTAssertEqual(
+      router.command(for: keyEvent(45, modifiers: .command), context: focusedContext), nil)
+    XCTAssertEqual(router.command(for: keyEvent(45), context: focusedContext), nil)
+    XCTAssertEqual(router.command(for: keyEvent(35), context: focusedContext), nil)
+    let completionContext = CaptureKeyRoutingContext(
+      pullInChoiceVisible: true, pickerVisible: true, completionVisible: true)
+    XCTAssertEqual(
+      router.command(for: keyEvent(45, modifiers: .control), context: completionContext),
+      .nextPullInOffer)
+    XCTAssertEqual(
+      router.command(for: keyEvent(35, modifiers: .control), context: completionContext),
+      .previousPullInOffer)
     XCTAssertEqual(router.command(for: keyEvent(49), context: context), .togglePullInOffer)
     XCTAssertEqual(router.command(for: keyEvent(49, repeat: true), context: context), .consumeKey)
     XCTAssertEqual(
-      router.command(for: keyEvent(0, modifiers: .command), context: context), .markAllPullInOffers)
+      router.command(
+        for: keyEvent(49),
+        context: CaptureKeyRoutingContext(
+          pullInChoiceVisible: true, pullInFilterFocused: true, pullInFilterIsEmpty: true)),
+      .togglePullInOffer)
     XCTAssertEqual(
       router.command(
         for: keyEvent(49),
-        context: CaptureKeyRoutingContext(pullInChoiceVisible: true, pullInFilterFocused: true)),
+        context: CaptureKeyRoutingContext(
+          pullInChoiceVisible: true, pullInFilterFocused: true, pullInFilterIsEmpty: false)),
       nil)
+    XCTAssertEqual(
+      router.command(
+        for: keyEvent(49, repeat: true),
+        context: CaptureKeyRoutingContext(
+          pullInChoiceVisible: true, pullInFilterFocused: true, pullInFilterIsEmpty: true)),
+      .consumeKey)
+    XCTAssertEqual(
+      router.command(for: keyEvent(0, modifiers: .command), context: context), .markAllPullInOffers)
     XCTAssertEqual(
       router.command(
         for: keyEvent(0, modifiers: .command),
@@ -183,6 +227,28 @@ final class CapturePullInChoiceTests: XCTestCase {
     XCTAssertFalse(model.pullInChoiceVisible)
     XCTAssertEqual(model.plainDraft, "unchanged draft")
     XCTAssertEqual(model.focusRequest.target, .editor)
+  }
+
+  @MainActor
+  func testControllerToggleMarksImmediatelyAndArrowKeysKeepOfferListFocus() {
+    let offers = offers(count: 3)
+    let model = CapturePanelModel()
+    model.plainDraft = "unchanged draft"
+    model.installPullInChoiceForPreviews(
+      offers: offers,
+      pullIn: CapturePullIn(supported: true, offerCount: offers.count),
+      draft: "unchanged draft"
+    )
+    let controller = CapturePanelController(model: model)
+
+    XCTAssertEqual(model.pullInChoice?.highlightedKey, "opaque#1^suffix")
+    XCTAssertTrue(controller.perform(.togglePullInOffer))
+    XCTAssertEqual(model.pullInChoice?.markedKeys, ["opaque#1^suffix"])
+
+    XCTAssertTrue(controller.perform(.previousPullInOffer))
+    XCTAssertEqual(model.focusRequest.target, .pullInOfferList)
+    XCTAssertTrue(controller.perform(.nextPullInOffer))
+    XCTAssertEqual(model.focusRequest.target, .pullInOfferList)
   }
 
   private func choiceState(

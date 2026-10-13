@@ -1651,6 +1651,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                             in: self.panel?.contentView,
                             identifier: pullInFilterFieldAccessibilityIdentifier
                         )?.holdsFirstResponder ?? false),
+                    pullInFilterIsEmpty: self.model.pullInChoice?.filterText.isEmpty ?? true,
                     keyIsRepeat: event.isARepeat,
                     pickerVisible: self.model.pickerVisible,
                     pickerSourceIsTaskLink: self.model.pickerSourceIsTaskLink,

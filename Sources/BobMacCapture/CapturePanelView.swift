@@ -934,10 +934,10 @@ private struct CapturePullInChoiceCard: View {
                         .accessibilityLabel(choice.projectedLinksOverCap ? "Warning: \(projection)" : projection)
                 }
             }
-            Text("Return choose · Shift-Return choose none · Esc cancel")
+            Text("Ctrl-N/P move · Space mark · Return choose · Shift-Return none · Esc cancel")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .accessibilityLabel("Return chooses the marked offers or highlighted offer. Shift-Return chooses no offers. Escape cancels without writing.")
+                .accessibilityLabel("Up, Down, Control-N, or Control-P moves the highlight. Space marks the highlighted offer. Return chooses the marked offers or highlighted offer. Shift-Return chooses no offers. Escape cancels without writing.")
         }
         .padding(10)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))

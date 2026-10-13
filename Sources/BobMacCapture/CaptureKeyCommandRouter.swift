@@ -69,6 +69,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var pomodoroNamePromptVisible = false
     var pullInChoiceVisible = false
     var pullInFilterFocused = false
+    var pullInFilterIsEmpty = true
     var keyIsRepeat = false
     var pickerVisible = false
     var pickerSourceIsTaskLink = false
@@ -133,7 +134,8 @@ struct CaptureKeyCommandRouter {
                 for: event,
                 modifiers: modifiers,
                 isRepeat: context.keyIsRepeat || event.isARepeat,
-                filterFocused: context.pullInFilterFocused
+                filterFocused: context.pullInFilterFocused,
+                filterIsEmpty: context.pullInFilterIsEmpty
             )
         }
 
@@ -240,7 +242,8 @@ struct CaptureKeyCommandRouter {
         for event: NSEvent,
         modifiers: NSEvent.ModifierFlags,
         isRepeat: Bool,
-        filterFocused: Bool
+        filterFocused: Bool,
+        filterIsEmpty: Bool
     ) -> CaptureKeyCommand? {
         switch event.keyCode {
         case KeyCode.return, KeyCode.keypadEnter:
@@ -257,9 +260,16 @@ struct CaptureKeyCommandRouter {
             return modifiers.isEmpty ? .previousPullInOffer : nil
         case KeyCode.arrowDown:
             return modifiers.isEmpty ? .nextPullInOffer : nil
+        case KeyCode.n:
+            return modifiers == .control ? .nextPullInOffer : nil
+        case KeyCode.p:
+            return modifiers == .control ? .previousPullInOffer : nil
         case KeyCode.space:
-            guard modifiers.isEmpty, !filterFocused else { return nil }
-            return isRepeat ? .consumeKey : .togglePullInOffer
+            guard modifiers.isEmpty else { return nil }
+            if isRepeat {
+                return .consumeKey
+            }
+            return (!filterFocused || filterIsEmpty) ? .togglePullInOffer : nil
         case KeyCode.a:
             return modifiers == .command ? .markAllPullInOffers : nil
         default:
