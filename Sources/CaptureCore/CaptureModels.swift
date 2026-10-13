@@ -2411,6 +2411,106 @@ public struct CaptureRef: Codable, Equatable, Sendable {
     }
 }
 
+/// One prerequisite Bob dropped from a task's Depends-On line
+/// (`dropped_dependencies` on a capture success). Additive: older Bob
+/// omits the array entirely, and a missing or partial object still
+/// decodes rather than failing the capture.
+public struct CaptureDroppedDependency: Codable, Equatable, Sendable {
+    public let notePath: String
+    public let blockID: String
+    public let link: String
+    public let text: String
+    public let statusSymbol: String
+    public let statusName: String
+
+    public init(
+        notePath: String,
+        blockID: String,
+        link: String,
+        text: String,
+        statusSymbol: String,
+        statusName: String
+    ) {
+        self.notePath = notePath
+        self.blockID = blockID
+        self.link = link
+        self.text = text
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        notePath = try container.decodeIfPresent(String.self, forKey: .notePath) ?? ""
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID) ?? ""
+        link = try container.decodeIfPresent(String.self, forKey: .link) ?? ""
+        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        statusSymbol = try container.decodeIfPresent(String.self, forKey: .statusSymbol) ?? ""
+        statusName = try container.decodeIfPresent(String.self, forKey: .statusName) ?? ""
+    }
+
+    /// Chip wording for the link, toggle, Ensure Next, and close
+    /// presentations. One prerequisite names its display text; several
+    /// collapse to a count. Mirrors bob's human `dropped …` line without
+    /// the chain emoji or dry-run tense.
+    public static func chip(from dropped: [CaptureDroppedDependency]) -> String? {
+        switch dropped.count {
+        case 0:
+            return nil
+        case 1:
+            let label = dropped[0].text.isEmpty ? dropped[0].link : dropped[0].text
+            return "dropped dependency on \(label)"
+        default:
+            return "dropped \(dropped.count) dependencies"
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case notePath = "note_path"
+        case blockID = "block_id"
+        case link
+        case text
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
+    }
+}
+
+/// Why a link gesture left its target unlinked (`link_guard` on a
+/// capture success). Additive: older Bob omits it entirely.
+public struct CaptureLinkGuard: Codable, Equatable, Sendable {
+    public let reasons: [String]
+    public let promoted: [String]
+    public let detail: String?
+    public let dropRefused: String?
+
+    public init(
+        reasons: [String] = [],
+        promoted: [String] = [],
+        detail: String? = nil,
+        dropRefused: String? = nil
+    ) {
+        self.reasons = reasons
+        self.promoted = promoted
+        self.detail = detail
+        self.dropRefused = dropRefused
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        reasons = try container.decodeIfPresent([String].self, forKey: .reasons) ?? []
+        promoted = try container.decodeIfPresent([String].self, forKey: .promoted) ?? []
+        detail = try container.decodeIfPresent(String.self, forKey: .detail)
+        dropRefused = try container.decodeIfPresent(String.self, forKey: .dropRefused)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case reasons
+        case promoted
+        case detail
+        case dropRefused = "drop_refused"
+    }
+}
+
 public struct CaptureCommandSuccess: Codable, Equatable {
     public let ok: Bool
     public let dryRun: Bool
@@ -2514,6 +2614,13 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     // entirely, and a malformed value decodes as empty so it can never
     // fail the capture decode.
     public let taskBlocks: [CaptureTaskBlock]
+    // Additive `dropped_dependencies`: prerequisites removed from a
+    // Blocked task's Depends-On line before a capture link gesture.
+    // Older Bob omits the key; decode as empty.
+    public let droppedDependencies: [CaptureDroppedDependency]
+    // Additive `link_guard`: present when a link gesture left its target
+    // unlinked (§13.5). Older Bob omits it; decode as nil.
+    public let linkGuard: CaptureLinkGuard?
     public let captures: [CaptureCommandSuccess]
     public let globalDestination: CaptureGlobalDestination?
     public let warnings: [String]
@@ -2577,7 +2684,9 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         globalDestination: CaptureGlobalDestination? = nil,
         warnings: [String] = [],
         pomodoroBlocks: [CapturePomodoroBlock] = [],
-        taskBlocks: [CaptureTaskBlock] = []
+        taskBlocks: [CaptureTaskBlock] = [],
+        droppedDependencies: [CaptureDroppedDependency] = [],
+        linkGuard: CaptureLinkGuard? = nil
     ) {
         self.ok = ok
         self.dryRun = dryRun
@@ -2635,6 +2744,8 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.planBudget = planBudget
         self.pomodoroBlocks = pomodoroBlocks
         self.taskBlocks = taskBlocks
+        self.droppedDependencies = droppedDependencies
+        self.linkGuard = linkGuard
         self.captures = captures
         self.globalDestination = globalDestination
         self.warnings = warnings
@@ -2740,6 +2851,15 @@ public struct CaptureCommandSuccess: Codable, Equatable {
                 [CaptureTaskBlock].self,
                 forKey: .taskBlocks
             )) ?? []
+        droppedDependencies =
+            (try? container.decodeIfPresent(
+                [CaptureDroppedDependency].self,
+                forKey: .droppedDependencies
+            )) ?? []
+        linkGuard = try container.decodeIfPresent(
+            CaptureLinkGuard.self,
+            forKey: .linkGuard
+        )
         captures = try container.decodeIfPresent([CaptureCommandSuccess].self, forKey: .captures) ?? []
         globalDestination = try container.decodeIfPresent(
             CaptureGlobalDestination.self,
@@ -2805,6 +2925,8 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case planBudget = "plan_budget"
         case pomodoroBlocks = "pomodoro_blocks"
         case taskBlocks = "task_blocks"
+        case droppedDependencies = "dropped_dependencies"
+        case linkGuard = "link_guard"
         case captures
         case globalDestination = "global_destination"
         case warnings

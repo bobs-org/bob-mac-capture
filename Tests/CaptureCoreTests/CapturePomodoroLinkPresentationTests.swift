@@ -191,6 +191,45 @@ final class CapturePomodoroLinkPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.notificationTitle, "Started BUGS")
     }
 
+    func testDroppedDependencyChipNamesThePrerequisiteText() throws {
+        let capture = try decodeFixture("pomodoro-link-dropped-one.json")
+        let presentation = try XCTUnwrap(CapturePomodoroLinkPresentation(capture: capture))
+
+        XCTAssertEqual(presentation.chips, ["dropped dependency on Prep work"])
+        XCTAssertTrue(presentation.notificationBody.contains("dropped dependency on Prep work"))
+        XCTAssertTrue(
+            presentation.previewAccessibilitySummary.contains("dropped dependency on Prep work")
+        )
+        XCTAssertEqual(presentation.transitionText, "[?] \u{2192} [*]  #task Blocked work")
+        XCTAssertNil(CaptureLinkGuardPresentation(capture: capture))
+    }
+
+    func testSeveralDroppedDependenciesCollapseToACountChip() throws {
+        let capture = try decodeFixture("pomodoro-link-dropped-two.json")
+        let presentation = try XCTUnwrap(CapturePomodoroLinkPresentation(capture: capture))
+
+        XCTAssertEqual(presentation.chips, ["dropped 2 dependencies"])
+        XCTAssertTrue(presentation.notificationBody.contains("dropped 2 dependencies"))
+        XCTAssertTrue(presentation.previewAccessibilitySummary.contains("dropped 2 dependencies"))
+    }
+
+    private func decodeFixture(_ name: String) throws -> CaptureCommandSuccess {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let text = try String(contentsOf: fixtures.appendingPathComponent(name), encoding: .utf8)
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: Data(text.utf8))
+        guard case .success(let success) = decoded else {
+            throw CaptureFixtureError.expectedSuccess
+        }
+        return success
+    }
+
+    private enum CaptureFixtureError: Error {
+        case expectedSuccess
+    }
+
     private func linkCapture(
         dryRun: Bool = true,
         kind: String = "pomodoro_link",

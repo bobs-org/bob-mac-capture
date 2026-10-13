@@ -58,6 +58,7 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
     /// view chooses the `\u{2212}`/color.
     public let removedLinksText: String?
     /// Dim chips in `print_human_task_toggle_success`'s exact order and wording:
+    /// "dropped dependency on …" / "dropped N dependencies", then
     /// "removed future schedule", "logged schedule change", "already linked",
     /// "#<name> not used when clearing".
     public let chips: [String]
@@ -138,6 +139,9 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         }
 
         var chips: [String] = []
+        if let dropped = CaptureDroppedDependency.chip(from: capture.droppedDependencies) {
+            chips.append(dropped)
+        }
         if capture.removedScheduled != nil {
             chips.append("removed future schedule")
         }

@@ -203,6 +203,9 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     /// `"Linked bob.md · ^ready into CAPTURE"`, `"Moved from SASE"`, or
     /// `"New task Draft docs → bob.md · ^draft-docs"`; nil for plain closes.
     public let viaText: String?
+    /// Dim chip on the link row when Bob dropped own-prerequisite edges
+    /// before linking-and-closing. Nil when nothing was dropped.
+    public let droppedDependenciesChip: String?
     /// `"Would close CAPTURE · 1 started · 3 Work Log entries"`
     /// (dry run) or `"Closed …"` (committed).
     public let statusText: String
@@ -351,6 +354,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             let blockID = capture.blockID ?? ""
             viaText = "New task \(capture.text) → \(capture.routeLabel) · ^\(blockID)"
         }
+        droppedDependenciesChip = CaptureDroppedDependency.chip(from: capture.droppedDependencies)
 
         let startedCount = summary.tasks.filter(\.statusChanged).count
         let workLogCount = summary.tasks.reduce(0) { $0 + $1.workLog.count }
@@ -401,12 +405,18 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         if let successorLine = SuccessorRows.notificationLine(unblocked: summary.unblocked) {
             bodyLines.append(successorLine)
         }
+        if let droppedDependenciesChip {
+            bodyLines.append(droppedDependenciesChip)
+        }
         notificationBody = bodyLines.joined(separator: "\n")
         batchSuffix = " (closed \(pomodoroName))"
 
         var summaryParts = [title, sessionText, timingText, destinationText]
         if let viaText {
             summaryParts.append(viaText)
+        }
+        if let droppedDependenciesChip {
+            summaryParts.append(droppedDependenciesChip)
         }
         summaryParts.append(contentsOf: taskRows.map(\.accessibilityLabel))
         for row in unblockedRows {

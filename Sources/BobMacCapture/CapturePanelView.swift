@@ -1970,6 +1970,14 @@ struct PreviewPane: View {
                 total: total,
                 isLocalOverride: isLocalOverride
             )
+        } else if let linkGuard = CaptureLinkGuardPresentation(capture: success) {
+            linkGuardPreviewItem(
+                linkGuard,
+                success: success,
+                index: index,
+                total: total,
+                isLocalOverride: isLocalOverride
+            )
         } else {
             standardPreviewItem(
                 success,
@@ -2110,6 +2118,13 @@ struct PreviewPane: View {
                         .lineLimit(1)
                         .textSelection(.enabled)
                 }
+            }
+            if let droppedChip = close.droppedDependenciesChip {
+                Text(droppedChip)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .textSelection(.enabled)
             }
 
             if close.taskRows.isEmpty {
@@ -3579,5 +3594,69 @@ struct PreviewPane: View {
         let position = total > 1 ? "Item \(index + 1) of \(total), " : ""
         let override = isLocalOverride ? ", local override" : ""
         return "\(position)\(success.kind)\(override), \(link.previewAccessibilitySummary)"
+    }
+
+    @ViewBuilder
+    private func linkGuardPreviewItem(
+        _ linkGuard: CaptureLinkGuardPresentation,
+        success: CaptureCommandSuccess,
+        index: Int,
+        total: Int,
+        isLocalOverride: Bool
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if total > 1 {
+                Text("\(index + 1)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Image(systemName: linkGuard.glyphName)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(linkGuard.headline)
+                .fontWeight(.semibold)
+            if isLocalOverride {
+                Text("local override")
+                    .foregroundStyle(.secondary)
+            }
+            Text(success.kind)
+                .foregroundStyle(.secondary)
+        }
+        .lineLimit(1)
+
+        VStack(alignment: .leading, spacing: 3) {
+            if !linkGuard.detail.isEmpty {
+                Text(linkGuard.detail)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            ForEach(linkGuard.promoted, id: \.self) { identity in
+                Text(identity)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(linkGuardPreviewAccessibilityLabel(
+            for: linkGuard,
+            success: success,
+            index: index,
+            total: total,
+            isLocalOverride: isLocalOverride
+        ))
+    }
+
+    private func linkGuardPreviewAccessibilityLabel(
+        for linkGuard: CaptureLinkGuardPresentation,
+        success: CaptureCommandSuccess,
+        index: Int,
+        total: Int,
+        isLocalOverride: Bool
+    ) -> String {
+        let position = total > 1 ? "Item \(index + 1) of \(total), " : ""
+        let override = isLocalOverride ? ", local override" : ""
+        return "\(position)\(success.kind)\(override), \(linkGuard.previewAccessibilitySummary)"
     }
 }

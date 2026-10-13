@@ -1209,7 +1209,57 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertNil(success.pomodoroLinkAction)
         XCTAssertNil(success.pomodoroLinkSource)
         XCTAssertNil(success.pomodoroLinkDestination)
+        XCTAssertEqual(success.droppedDependencies, [])
+        XCTAssertNil(success.linkGuard)
         XCTAssertNil(CapturePomodoroLinkPresentation(capture: success))
+        XCTAssertNil(CaptureLinkGuardPresentation(capture: success))
+    }
+
+    func testCaptureCommandResponseDecodesDroppedDependenciesFromBob() throws {
+        let success = try decodeFixture("pomodoro-link-dropped-one.json")
+
+        XCTAssertEqual(success.kind, "pomodoro_link")
+        XCTAssertEqual(success.droppedDependencies.count, 1)
+        let dropped = try XCTUnwrap(success.droppedDependencies.first)
+        XCTAssertEqual(dropped.notePath, "job.md")
+        XCTAssertEqual(dropped.blockID, "prep")
+        XCTAssertEqual(dropped.link, "[[job#^prep]]")
+        XCTAssertEqual(dropped.text, "Prep work")
+        XCTAssertEqual(dropped.statusSymbol, " ")
+        XCTAssertEqual(dropped.statusName, "Ready")
+        XCTAssertNil(success.linkGuard)
+        XCTAssertEqual(
+            CaptureDroppedDependency.chip(from: success.droppedDependencies),
+            "dropped dependency on Prep work"
+        )
+    }
+
+    func testCaptureCommandResponseDecodesSeveralDroppedDependencies() throws {
+        let success = try decodeFixture("pomodoro-link-dropped-two.json")
+
+        XCTAssertEqual(success.droppedDependencies.count, 2)
+        XCTAssertEqual(success.droppedDependencies[1].text, "Budget work")
+        XCTAssertEqual(
+            CaptureDroppedDependency.chip(from: success.droppedDependencies),
+            "dropped 2 dependencies"
+        )
+    }
+
+    func testCaptureCommandResponseDecodesLinkGuardWithDropRefused() throws {
+        let success = try decodeFixture("link-guard-project-blocked.json")
+
+        XCTAssertEqual(success.kind, "link_guard")
+        XCTAssertEqual(success.droppedDependencies, [])
+        let guard = try XCTUnwrap(success.linkGuard)
+        XCTAssertEqual(guard.reasons, ["local_dependency", "project_dependency"])
+        XCTAssertEqual(guard.promoted, ["local.md#^prep"])
+        XCTAssertEqual(guard.dropRefused, "project_blocked")
+        XCTAssertTrue(
+            (guard.detail ?? "").contains("dependencies kept: its project is blocked")
+        )
+        XCTAssertNotNil(CaptureLinkGuardPresentation(capture: success))
+        XCTAssertNil(CapturePomodoroLinkPresentation(capture: success))
+        XCTAssertNil(CaptureTogglePresentation(capture: success))
     }
 
     func testCompletionResponseDecodesActiveTaskCandidatesWithPomodoro() throws {
@@ -2644,6 +2694,15 @@ final class CaptureModelTests: XCTestCase {
             throw CaptureFixtureError.expectedSuccess
         }
         return success
+    }
+
+    private func decodeFixture(_ name: String) throws -> CaptureCommandSuccess {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let text = try String(contentsOf: fixtures.appendingPathComponent(name), encoding: .utf8)
+        return try decodeCaptureSuccess(text)
     }
 
     func testProjectNoteDecodesTaskLinksTolerantly() throws {

@@ -1,0 +1,79 @@
+{
+  "ok": true,
+  "dry_run": true,
+  "routed": true,
+  "route": "child",
+  "route_label": "child.md",
+  "relative_target": "child.md",
+  "target": "/tmp/bob/child.md",
+  "text": "",
+  "task_line": "- [?] #task Work #prj_is_blocked [id:: child__work] [dependsOn:: local__prep] ^work",
+  "kind": "link_guard",
+  "created": "2026-07-10",
+  "scheduled": null,
+  "placement": "unchanged",
+  "block_id": "work",
+  "day_file": "/tmp/bob/2026/20260710.md",
+  "previous_task_line": "- [?] #task Work #prj_is_blocked [id:: child__work] [dependsOn:: local__prep] ^work",
+  "status_symbol": "?",
+  "status_name": "Blocked",
+  "previous_status_symbol": "?",
+  "previous_status_name": "Blocked",
+  "removed_pomodoro_links": 1,
+  "status_changed": false,
+  "link_guard": {
+    "reasons": [
+      "local_dependency",
+      "project_dependency"
+    ],
+    "promoted": [
+      "local.md#^prep"
+    ],
+    "detail": "not linked (waits on [[local.md#^prep]]; project parent.md waits on [[local.md#^prep]]) · promoted local.md#^prep · dependencies kept: its project is blocked",
+    "drop_refused": "project_blocked"
+  },
+  "plan_budget": {
+    "status": "ok",
+    "themes": {
+      "count": 1,
+      "cap": 4,
+      "over": false,
+      "before": 1
+    },
+    "links": {
+      "count": 0,
+      "cap": 12,
+      "over": false,
+      "before": 1
+    }
+  },
+  "pomodoro_blocks": [
+    {
+      "relative_target": "day.md",
+      "line": 2,
+      "name": "CURRENT",
+      "status": "queued",
+      "created": false,
+      "roles": [
+        "changed"
+      ],
+      "lines": [
+        {
+          "text": "- [ ] () — CURRENT",
+          "depth": 0,
+          "change": "unchanged"
+        },
+        {
+          "text": "  - [[child#^work]]",
+          "depth": 1,
+          "change": "removed"
+        },
+        {
+          "text": "  - context",
+          "depth": 1,
+          "change": "unchanged"
+        }
+      ]
+    }
+  ]
+}

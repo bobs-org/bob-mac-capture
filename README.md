@@ -57,7 +57,10 @@ mutation.
   `@route^block-id` ordinary task-with-ID marker, the additive top-level `block_id`
   object on both block-ID contexts (intent, marker range, body, allowed-character
   rule, used IDs, suggestions), the additive `creates_pomodoro`
-  create-future-Pomodoro action, `task_toggle` capture JSON, the
+  create-future-Pomodoro action, `task_toggle` capture JSON, the additive
+  `dropped_dependencies` rows and `link_guard` object (`reasons`, `promoted`,
+  `detail`, `drop_refused`) on link, toggle, Ensure Next, and link-then-close
+  captures, the
   `task_toggle_*` parse spans, and the current task-toggle spellings:
   plain `@route+block-id` for Ensure Next relocation to the implicit
   current/next Pomodoro, `@route+block-id#pomodoro` for named Ensure Next
@@ -1608,7 +1611,13 @@ Second task @bar
 
 Bob's routed marker syntax works directly in the editor. `@route^block-id` captures an
 ordinary `[ ]` task with a trailing `^block-id` and no Pomodoro task link, while
-`@route:block-id` keeps the Pomodoro-linked next-task behavior, `@route:block-id#name`
+`@route:block-id` keeps the Pomodoro-linked next-task behavior. When that existing
+task is Blocked only by its own open prerequisites, Bob drops those links and then
+links; the preview shows a `dropped dependency on …` chip, or `dropped N
+dependencies` when several go. A refused drop — the task's project is blocked, the
+target is a `^prj`, its Depends-On line needs repair, or several `[scheduled::]`
+fields still block it — keeps the task unlinked and the preview shows Bob's
+not-linked sentence with the promoted prerequisites. `@route:block-id#name`
 targets a named open Pomodoro by slug, and `@route:block-id=<X>` or
 `@route:block-id#name=<X>` atomically starts that session (`<X>` mirrors the
 `se<X>` snippet; empty is 25 minutes). The `=<X>` suffix highlights as its own
@@ -1657,7 +1666,9 @@ row — sourced only from `bob capture --dry-run --no-clip --format json` —
 with a **Restart** / **Swap** footer and matching notifications. Type `=x`, a blank
 line, then `=` to close the running session and start the next one in a single
 draft. A whole-item `=x` closes
-the running Pomodoro; `@route:block-id=x` links an existing task first, and
+the running Pomodoro; `@route:block-id=x` links an existing task first (dropping
+own-prerequisite Blocked edges the same way `@route:block-id` does; a refused drop
+keeps today's history link), and
 `<text> @route:block-id=x` creates a task inside that session before closing it.
 Appending task numbers chooses each Task Link's outcome: `=x2` keeps only 2 in
 progress, `=x!2` completes 2, `=x1!2` does both, and a note-free `=x0` resets the session to first future while a note-bearing `=x0` defers all (single-quote
@@ -1692,10 +1703,14 @@ number follows; a dangling Work Log bullet (`=x` plus `- 1`) previews the rest
 dimmed with `Type the Work Log entry for task 1` and keeps
 **Close** disabled; a start list left dangling on `~`/`,` previews the trimmed start
 the same way with **Start** disabled instead. A marker-only `@route+block-id` ensures that existing task is Next and
-relocates its Task Link, `@route+block-id#pomodoro` does the
+relocates its Task Link (dropping own-prerequisite Blocked edges the same way
+the `@route:block-id` link does; a refused drop stays unlinked and the preview
+shows Bob's not-linked sentence), `@route+block-id#pomodoro` does the
 same onto a named Pomodoro (creating the named future Pomodoro if needed),
 `@route+block-id!` is the explicit link-presence toggle: it links an unlinked
-task (Ready and Blocked rise to Next, Next and In Progress keep their lane)
+task (Ready and a task Blocked only by its own prerequisites rise to Next after
+those prerequisites are dropped; other Blocked tasks stay unlinked and the
+preview shows why; Next and In Progress keep their lane)
 and unlinks a linked task without touching the lane, and `@route+block-id` with
 body text nests beneath the task. `@route+block-id#section` nests under that task's
 matching section bullet once body text is present; the same `#` position opens the

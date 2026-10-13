@@ -92,6 +92,19 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
             presentation.statusText,
             "Closed CAPTURE · 2 started · 3 Work Log entries"
         )
+        XCTAssertNil(presentation.droppedDependenciesChip)
+    }
+
+    func testLinkCloseDroppedDependencyChipSitsOnTheLinkRow() throws {
+        let success = try decodeFixture("pomodoro-close-link-dropped.json")
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+
+        XCTAssertEqual(presentation.variant, .linkedTask)
+        XCTAssertEqual(presentation.droppedDependenciesChip, "dropped dependency on Prep work")
+        XCTAssertTrue(presentation.notificationBody.contains("dropped dependency on Prep work"))
+        XCTAssertTrue(
+            presentation.accessibilitySummary.contains("dropped dependency on Prep work")
+        )
     }
 
     func testRealBobMovedCloseReportsMovedSource() throws {

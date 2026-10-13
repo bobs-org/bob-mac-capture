@@ -143,6 +143,31 @@ final class CaptureTogglePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.chips, ["removed future schedule", "logged schedule change"])
     }
 
+    func testLinkToggleDroppedDependencyChipLeadsTheChipRow() throws {
+        let success = try decodeCaptureSuccess(
+            Self.nextDirectionJSON(droppedDependencies: true)
+        )
+        let presentation = try XCTUnwrap(CaptureTogglePresentation(capture: success))
+
+        XCTAssertEqual(presentation.chips, ["dropped dependency on Prep work"])
+        XCTAssertTrue(presentation.notificationBody.contains("dropped dependency on Prep work"))
+        XCTAssertTrue(
+            presentation.previewAccessibilitySummary.contains("dropped dependency on Prep work")
+        )
+        XCTAssertTrue(presentation.voiceOverAnnouncement.contains("dropped dependency on Prep work"))
+    }
+
+    func testEnsureNextDroppedDependenciesChipUsesTheCount() throws {
+        let success = try decodeCaptureSuccess(
+            Self.ensureNextJSON(droppedCount: 2)
+        )
+        let presentation = try XCTUnwrap(CaptureTogglePresentation(capture: success))
+
+        XCTAssertTrue(presentation.isEnsureNext)
+        XCTAssertEqual(presentation.chips, ["dropped 2 dependencies"])
+        XCTAssertTrue(presentation.notificationBody.contains("dropped 2 dependencies"))
+    }
+
     func testOpenDirectionAlwaysReportsRemovedLinksEvenWhenZero() throws {
         let success = try decodeCaptureSuccess(Self.openDirectionJSON(removedPomodoroLinks: 0))
 
@@ -479,9 +504,23 @@ final class CaptureTogglePresentationTests: XCTestCase {
         dryRun: Bool = false,
         pomodoroAlreadyLinked: Bool = false,
         removedPomodoroLinks: Int = 0,
-        pomodoroName: String? = nil
+        pomodoroName: String? = nil,
+        droppedDependencies: Bool = false
     ) -> String {
         let pomodoroNameField = pomodoroName.map { ", \"pomodoro_name\": \"\($0)\"" } ?? ""
+        let droppedField = droppedDependencies
+            ? """,
+          "dropped_dependencies": [
+            {
+              "note_path": "job.md",
+              "block_id": "prep",
+              "link": "[[job#^prep]]",
+              "text": "Prep work",
+              "status_symbol": " ",
+              "status_name": "Ready"
+            }
+          ]"""
+            : ""
         return """
         {
           "ok": true,
@@ -508,7 +547,7 @@ final class CaptureTogglePresentationTests: XCTestCase {
           "creates_pomodoro": false,
           "pomodoro_already_linked": \(pomodoroAlreadyLinked),
           "removed_pomodoro_links": \(removedPomodoroLinks),
-          "pomodoro_selector_unused": false\(pomodoroNameField)
+          "pomodoro_selector_unused": false\(pomodoroNameField)\(droppedField)
         }
         """
     }
@@ -523,10 +562,48 @@ final class CaptureTogglePresentationTests: XCTestCase {
         sourceName: String? = "LATER",
         sourceTimeRange: String? = nil,
         destinationName: String? = "CURRENT",
-        destinationTimeRange: String? = "0900-0930"
+        destinationTimeRange: String? = "0900-0930",
+        droppedCount: Int = 0
     ) -> String {
         func optionalString(_ key: String, _ value: String?) -> String {
             value.map { ", \"\(key)\": \"\($0)\"" } ?? ""
+        }
+        let droppedField: String
+        switch droppedCount {
+        case 0:
+            droppedField = ""
+        case 1:
+            droppedField = """,
+          "dropped_dependencies": [
+            {
+              "note_path": "job.md",
+              "block_id": "prep",
+              "link": "[[job#^prep]]",
+              "text": "Prep work",
+              "status_symbol": " ",
+              "status_name": "Ready"
+            }
+          ]"""
+        default:
+            droppedField = """,
+          "dropped_dependencies": [
+            {
+              "note_path": "job.md",
+              "block_id": "prep",
+              "link": "[[job#^prep]]",
+              "text": "Prep work",
+              "status_symbol": " ",
+              "status_name": "Ready"
+            },
+            {
+              "note_path": "ops.md",
+              "block_id": "budget",
+              "link": "[[ops#^budget]]",
+              "text": "Budget work",
+              "status_symbol": " ",
+              "status_name": "Ready"
+            }
+          ]"""
         }
         return """
         {
@@ -558,7 +635,7 @@ final class CaptureTogglePresentationTests: XCTestCase {
           "status_changed": \(statusChanged),
           "pomodoro_link_action": "\(linkAction)",
           "pomodoro_link_source": { "line": 4\(optionalString("name", sourceName))\(optionalString("time_range", sourceTimeRange)) },
-          "pomodoro_link_destination": { "line": 2\(optionalString("name", destinationName))\(optionalString("time_range", destinationTimeRange)) }
+          "pomodoro_link_destination": { "line": 2\(optionalString("name", destinationName))\(optionalString("time_range", destinationTimeRange)) }\(droppedField)
         }
         """
     }

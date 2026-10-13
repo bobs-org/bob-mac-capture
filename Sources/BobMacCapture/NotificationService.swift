@@ -480,6 +480,14 @@ final class NotificationService: NSObject, ObservableObject {
                     targetPaths: targetPaths
                 )
             }
+            if let linkGuard = CaptureLinkGuardPresentation(capture: capture) {
+                return CaptureNotificationPresentation(
+                    title: linkGuard.notificationTitle,
+                    subtitle: displayLabel(for: capture),
+                    body: linkGuard.notificationBody,
+                    targetPaths: targetPaths
+                )
+            }
             if let ref = CaptureRefPresentation(capture: capture) {
                 return CaptureNotificationPresentation(
                     title: ref.notificationTitle,
@@ -632,6 +640,9 @@ final class NotificationService: NSObject, ObservableObject {
     nonisolated private static func batchLineText(_ capture: CaptureCommandSuccess) -> String {
         if let link = CapturePomodoroLinkPresentation(capture: capture) {
             return link.transitionText
+        }
+        if let linkGuard = CaptureLinkGuardPresentation(capture: capture) {
+            return linkGuard.headline
         }
         if let complete = CaptureTaskCompletePresentation(capture: capture) {
             return complete.transitionText

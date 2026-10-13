@@ -46,7 +46,8 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
     /// footer's primary action verb. Does not vary with `isDryRun`: it always
     /// names what pressing Return will do next, not what a preview computed.
     public let primaryActionTitle: String
-    /// Dim chips mirroring the toggle vocabulary: "removed future schedule" and
+    /// Dim chips: "dropped dependency on …" / "dropped N dependencies"
+    /// first, then the toggle vocabulary "removed future schedule" and
     /// "logged schedule change".
     public let chips: [String]
 
@@ -126,6 +127,9 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
         primaryActionTitle = capture.pomodoroStart == nil ? "Link" : "Start"
 
         var chips: [String] = []
+        if let dropped = CaptureDroppedDependency.chip(from: capture.droppedDependencies) {
+            chips.append(dropped)
+        }
         if capture.removedScheduled != nil {
             chips.append("removed future schedule")
         }
