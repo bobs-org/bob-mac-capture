@@ -521,6 +521,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             opener: WorkspaceRefsOpener(),
             highlights: HighlightsLocator(overridePath: Self.storedHighlightsAppPath)
         )
+        model.notesPageSize = settings.refsInspectorNotesPageSize
         model.settingsPresenter = { [weak self] in self?.openSettings() }
         // Hidden-panel scan outcomes notify through the coordinator's
         // showRefs, so a visible Capture draft is retained on click.
@@ -580,6 +581,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] key, path in
                 self?.highlightsTakeover?.sync(key: key, appPath: path)
             }
+            .store(in: &refsCancellables)
+        settings.$refsInspectorNotesPageSize
+            .sink { [weak self] size in self?.refsPanelModel?.notesPageSize = size }
             .store(in: &refsCancellables)
     }
 

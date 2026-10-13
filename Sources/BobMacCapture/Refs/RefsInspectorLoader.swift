@@ -397,7 +397,6 @@ public struct RefsInspectorContent: Equatable, Sendable {
     public var summary: RefsSummary?
     public var outline: [String]
     public var notes: [RefsShowAnnotation]
-    public var remainingNoteCount: Int
     public var openTaskCount: Int
     public var readingTime: RefsReadingTime?
     public var pageCount: Int?
@@ -408,7 +407,6 @@ public struct RefsInspectorContent: Equatable, Sendable {
         summary: RefsSummary? = nil,
         outline: [String] = [],
         notes: [RefsShowAnnotation] = [],
-        remainingNoteCount: Int = 0,
         openTaskCount: Int = 0,
         readingTime: RefsReadingTime? = nil,
         pageCount: Int? = nil,
@@ -418,7 +416,6 @@ public struct RefsInspectorContent: Equatable, Sendable {
         self.summary = summary
         self.outline = outline
         self.notes = notes
-        self.remainingNoteCount = remainingNoteCount
         self.openTaskCount = openTaskCount
         self.readingTime = readingTime
         self.pageCount = pageCount
@@ -544,7 +541,6 @@ public final class RefsInspectorLoader: ObservableObject {
         }
         if let row = showRow {
             built.notes = row.commentedHighlights
-            built.remainingNoteCount = row.remainingCommentCount
             built.openTaskCount = row.openTasks.count
             built.showFailed = false
         } else {

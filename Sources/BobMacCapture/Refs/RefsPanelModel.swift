@@ -183,6 +183,21 @@ public struct HighlightsLocator: RefsHighlightsLocating, Sendable {
     }
 }
 
+/// One revealed-notes event: the model stored the page and the
+/// controller should follow the new batch's tail. Not published: every
+/// reveal must arrive, even successive identical ones.
+public struct RefsInspectorNotesReveal: Equatable, Sendable {
+    public let id: String
+    public let generation: Int
+    public let range: Range<Int>
+
+    public init(id: String, generation: Int, range: Range<Int>) {
+        self.id = id
+        self.generation = generation
+        self.range = range
+    }
+}
+
 /// The Refs panel model: the query, the scope, the frozen listing, the
 /// id-based selection, commands, open dispatch, and banners. Library
 /// publications refresh row content in place and never re-rank: re-ranking
@@ -193,7 +208,34 @@ public final class RefsPanelModel: ObservableObject {
     @Published public var query: String = ""
     @Published public private(set) var scope: RefScope = .all
     @Published public private(set) var listing: RefsListing
-    @Published public private(set) var selectedID: String?
+    @Published public private(set) var selectedID: String? {
+        didSet {
+            if oldValue != selectedID {
+                revealedPageID = nil
+                revealedPage = nil
+            }
+        }
+    }
+    /// Notes shown on the inspector's first page, and revealed per page
+    /// after. Clamped to `RefsNotesPage.sizeRange`; changing it clears
+    /// the stored reveal so the next selection starts on the first page.
+    @Published public var notesPageSize: Int = RefsNotesPage.defaultSize {
+        didSet {
+            let clamped = RefsNotesPage.clampedSize(notesPageSize)
+            if notesPageSize != clamped {
+                notesPageSize = clamped
+            }
+            revealedPageID = nil
+            revealedPage = nil
+        }
+    }
+    /// The revealed page plus the id it belongs to: one entry, cleared
+    /// on every selection change and on every panel presentation
+    /// (reveal_memory = reset). Read through
+    /// `inspectorNotesPage(for:)`, which returns a fresh page for any
+    /// other id.
+    @Published private(set) var revealedPageID: String?
+    @Published private(set) var revealedPage: RefsNotesPage?
     @Published public private(set) var unavailableIDs: Set<String> = []
     @Published public private(set) var banner: RefsBanner?
     /// Counts presentations: `prepareForPresentation` bumps it, so the
@@ -217,6 +259,11 @@ public final class RefsPanelModel: ObservableObject {
     /// panel model.
     public var inspectorScrolls: AnyPublisher<RefsInspectorScrollDirection, Never> {
         inspectorScrollSubject.eraseToAnyPublisher()
+    }
+    /// Live inspector note reveals. Not published, matching
+    /// `inspectorScrolls`: the controller follows each reveal's tail.
+    public var inspectorNoteReveals: AnyPublisher<RefsInspectorNotesReveal, Never> {
+        inspectorNoteRevealsSubject.eraseToAnyPublisher()
     }
 
     public var panelDismisser: () -> Void = {}
@@ -244,6 +291,9 @@ public final class RefsPanelModel: ObservableObject {
     private let pasteboard: RefsPasteboardWriting
     private let inspectorScrollSubject = PassthroughSubject<
         RefsInspectorScrollDirection, Never
+    >()
+    private let inspectorNoteRevealsSubject = PassthroughSubject<
+        RefsInspectorNotesReveal, Never
     >()
     private var subscriptions = Set<AnyCancellable>()
     private var pendingOpen: (id: String, target: RefsOpenTarget)?
@@ -351,6 +401,8 @@ public final class RefsPanelModel: ObservableObject {
         scope = .all
         banner = nil
         pendingOpen = nil
+        revealedPageID = nil
+        revealedPage = nil
         rerankSelectingFirst()
         if let pending = pendingScanBanner {
             banner = pending
@@ -640,6 +692,45 @@ public final class RefsPanelModel: ObservableObject {
     /// The inspector thumbnail for an id, or nil while it loads.
     public func inspectorThumbnail(for id: String) -> NSImage? {
         inspectorLoader.thumbnail(for: id)
+    }
+
+    /// The revealed-notes page for an id: the stored page when the id
+    /// matches, otherwise a fresh page at the current page size.
+    public func inspectorNotesPage(for id: String) -> RefsNotesPage {
+        if let revealedPage, revealedPageID == id {
+            return revealedPage
+        }
+        return RefsNotesPage(size: notesPageSize)
+    }
+
+    /// Reveals the next page of the selected row's notes. Returns false
+    /// unless the selected id has hydrated content that still hides
+    /// notes. On success it stores the page, announces the new count,
+    /// and emits on `inspectorNoteReveals` for the controller's
+    /// follow-tail scroll.
+    @discardableResult
+    public func revealMoreInspectorNotes() -> Bool {
+        guard let id = selectedID,
+              let content = inspectorLoader.content(for: id)
+        else {
+            return false
+        }
+        var page = inspectorNotesPage(for: id)
+        guard let range = page.reveal(total: content.notes.count) else {
+            return false
+        }
+        revealedPageID = id
+        revealedPage = page
+        let visible = page.visibleCount(total: content.notes.count)
+        AccessibilityNotification.Announcement(
+            "Showing \(visible) of \(content.notes.count) notes"
+        ).post()
+        inspectorNoteRevealsSubject.send(RefsInspectorNotesReveal(
+            id: id,
+            generation: page.generation,
+            range: range
+        ))
+        return true
     }
 
     /// The ⌘K menu sections for the selected row, or empty when nothing

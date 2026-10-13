@@ -18,6 +18,67 @@ struct RefsInspectorScrollAnchor: NSViewRepresentable {
     func updateNSView(_ nsView: RefsInspectorScrollAnchorView, context: Context) {}
 }
 
+/// Layout marker for the first note of the latest revealed page: the
+/// controller converts its frame into document coordinates to pin the
+/// follow-tail scroll. Never hit-tests, so the search field keeps
+/// focus.
+final class RefsInspectorRevealAnchorView: NSView {
+    var generation: Int = 0
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+}
+
+struct RefsInspectorRevealAnchor: NSViewRepresentable {
+    var generation: Int
+
+    func makeNSView(context: Context) -> RefsInspectorRevealAnchorView {
+        let view = RefsInspectorRevealAnchorView()
+        view.generation = generation
+        return view
+    }
+
+    func updateNSView(_ nsView: RefsInspectorRevealAnchorView, context: Context) {
+        nsView.generation = generation
+    }
+}
+
+/// Fades revealed notes in once: opacity 0→1 plus a 6 pt rise,
+/// `easeOut(0.22)`, staggered by batch position. Layout is never
+/// animated, so the follow-scroll measures the final height at once.
+/// First-page notes, Reduce Motion, and design-fixture previews render
+/// fully visible at once.
+private struct RefsInspectorNoteFade: ViewModifier {
+    let isRevealed: Bool
+    let delay: Double
+    let previewMode: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appeared: Bool
+
+    init(isRevealed: Bool, delay: Double, previewMode: Bool) {
+        self.isRevealed = isRevealed
+        self.delay = delay
+        self.previewMode = previewMode
+        _appeared = State(initialValue: !isRevealed || previewMode)
+    }
+
+    func body(content: Content) -> some View {
+        if !isRevealed || reduceMotion || previewMode {
+            content
+        } else {
+            content
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 6)
+                .onAppear {
+                    withAnimation(.easeOut(duration: 0.22).delay(delay)) {
+                        appeared = true
+                    }
+                }
+        }
+    }
+}
+
 /// The full inspector column (§10): it fills instantly from the list
 /// item and upgrades lazily as the loader hydrates summaries,
 /// outlines, notes, and thumbnails. Papers, articles, and docs show a
@@ -34,6 +95,13 @@ struct RefsInspectorView: View {
     /// snapshots `ScrollView` content blank, so the live scroll view
     /// never appears in a fixture.
     var previewMode = false
+    /// The revealed-notes page for the selected id, value-driven from
+    /// the model. Defaults to the first page.
+    var notesPage: RefsNotesPage = RefsNotesPage(size: RefsNotesPage.defaultSize)
+    /// Runs the model's reveal; the controller follows the tail for
+    /// keyboard and click reveals alike.
+    var onRevealMoreNotes: () -> Void = {}
+    @State private var disclosureHover = false
 
     var body: some View {
         if previewMode {
@@ -453,18 +521,65 @@ struct RefsInspectorView: View {
     @ViewBuilder
     private var notesSection: some View {
         if let inspector {
-            if !inspector.notes.isEmpty || inspector.remainingNoteCount > 0 {
+            if !inspector.notes.isEmpty {
+                let total = inspector.notes.count
+                let visible = notesPage.visibleCount(total: total)
+                let hidden = notesPage.hiddenCount(total: total)
+                let nextBatch = notesPage.nextBatchCount(total: total)
                 VStack(alignment: .leading, spacing: 8) {
-                    sectionLabel("YOUR NOTES")
-                    ForEach(inspector.notes.indices, id: \.self) { index in
-                        noteView(inspector.notes[index])
+                    HStack(spacing: 6) {
+                        Text("YOUR NOTES")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Text("\(total)")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.tertiary)
                     }
-                    if inspector.remainingNoteCount > 0 {
-                        Text(
-                            "+\(inspector.remainingNoteCount) more · ⌘↵ opens the note"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Your notes, \(total)")
+                    .accessibilityAddTraits(.isHeader)
+                    ForEach(0..<visible, id: \.self) { index in
+                        let note = inspector.notes[index]
+                        let isRevealed = index >= notesPage.size
+                        let batchStart = notesPage.batchStart ?? notesPage.size
+                        let delay = index >= batchStart
+                            ? Double(index - batchStart) * 0.04 : 0
+                        noteView(note)
+                            .modifier(RefsInspectorNoteFade(
+                                isRevealed: isRevealed,
+                                delay: delay,
+                                previewMode: previewMode
+                            ))
+                            .background {
+                                if notesPage.batchStart == index {
+                                    RefsInspectorRevealAnchor(
+                                        generation: notesPage.generation
+                                    )
+                                }
+                            }
+                    }
+                    if let more = RefsNotesPage.moreText(
+                        hidden: hidden,
+                        nextBatch: nextBatch
+                    ) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.down")
+                                .font(.caption2.weight(.semibold))
+                            Text(more)
+                                .font(.caption.monospacedDigit())
+                        }
+                        .foregroundStyle(disclosureHover ? .secondary : .tertiary)
+                        .pointerStyle(.link)
+                        .onHover { disclosureHover = $0 }
+                        .onTapGesture {
+                            onRevealMoreNotes()
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("\(hidden) more notes")
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityAction(named: "Show more notes") {
+                            onRevealMoreNotes()
+                        }
                     }
                 }
             } else if inspector.showFailed {
@@ -478,8 +593,8 @@ struct RefsInspectorView: View {
 
     private func noteView(_ note: RefsShowAnnotation) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            if let pageLabel = note.pageLabel, !pageLabel.isEmpty {
-                Text("Page \(pageLabel)")
+            if let pageLabel = note.displayPageLabel {
+                Text(pageLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

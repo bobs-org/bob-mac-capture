@@ -77,16 +77,11 @@ public struct RefsShowRow: Decodable, Equatable, Sendable {
         )
     }
 
-    /// Up to 3 commented highlights, in note order: the inspector's
-    /// "Your notes" block. Images and standalone notes never appear here.
+    /// Every commented highlight, in note order: the inspector's
+    /// "Your notes" block pages through these. Images and standalone
+    /// notes never appear here.
     public var commentedHighlights: [RefsShowAnnotation] {
-        Array(annotations.filter(\.hasComment).prefix(3))
-    }
-
-    /// How many commented highlights exist beyond the shown three, for
-    /// the "+N more" line.
-    public var remainingCommentCount: Int {
-        max(annotations.filter(\.hasComment).count - 3, 0)
+        annotations.filter(\.hasComment)
     }
 
     /// Open `## Tasks` lines, for the "N open" fact.
@@ -143,6 +138,111 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
             return false
         }
         return true
+    }
+
+    /// The page label as the inspector shows it: nil for nil or blank;
+    /// as-is when it already starts with `page`, `p.`, or `p `
+    /// (case-insensitive, the same prefixes as bob's
+    /// `is_sidecar_page_label`); otherwise `Page <label>`.
+    public var displayPageLabel: String? {
+        guard let raw = pageLabel?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ), !raw.isEmpty else {
+            return nil
+        }
+        let lowered = raw.lowercased()
+        if lowered.hasPrefix("page") || lowered.hasPrefix("p.")
+            || lowered.hasPrefix("p ")
+        {
+            return raw
+        }
+        return "Page \(raw)"
+    }
+}
+
+/// How many of the inspector's notes show at once, and how many more
+/// each Ctrl+D at the bottom reveals. Value-driven: the view reads
+/// `visibleCount(total:)` and the model stores one per selection.
+public struct RefsNotesPage: Equatable, Sendable {
+    /// The first page size, and the fallback when settings are missing.
+    public static let defaultSize = 3
+    /// The allowed page-size range, shared with Settings.
+    public static let sizeRange = 1...20
+
+    /// Clamps a page size into `sizeRange`.
+    public static func clampedSize(_ size: Int) -> Int {
+        min(max(size, sizeRange.lowerBound), sizeRange.upperBound)
+    }
+
+    /// Notes shown on the first page, and revealed per page after.
+    public let size: Int
+    /// How many notes the current selection has revealed so far.
+    public private(set) var shown: Int
+    /// The first index of the latest revealed page, for the follow-tail
+    /// scroll anchor. Nil until the first reveal.
+    public private(set) var batchStart: Int?
+    /// Increases by one per reveal, so the controller's follow task can
+    /// tell a stale reveal from the current one.
+    public private(set) var generation: Int
+
+    public init(size: Int) {
+        let clamped = Self.clampedSize(size)
+        self.size = clamped
+        shown = clamped
+        batchStart = nil
+        generation = 0
+    }
+
+    /// Notes visible for a total count, capped at the total so a total
+    /// that shrank never leaves a gap.
+    public func visibleCount(total: Int) -> Int {
+        min(max(total, 0), shown)
+    }
+
+    /// Notes still hidden for a total count.
+    public func hiddenCount(total: Int) -> Int {
+        max(max(total, 0) - visibleCount(total: total), 0)
+    }
+
+    /// Notes the next reveal would show for a total count.
+    public func nextBatchCount(total: Int) -> Int {
+        min(size, hiddenCount(total: total))
+    }
+
+    /// Reveals the next page for a total count: nil when nothing is
+    /// hidden, otherwise the revealed range. The start uses
+    /// `visibleCount` (not the stored `shown`) so a total that shrank
+    /// never leaves a gap.
+    @discardableResult
+    public mutating func reveal(total: Int) -> Range<Int>? {
+        let safeTotal = max(total, 0)
+        let start = visibleCount(total: safeTotal)
+        guard safeTotal - start > 0 else {
+            return nil
+        }
+        let end = min(safeTotal, shown + size)
+        guard end > start else {
+            return nil
+        }
+        shown = end
+        batchStart = start
+        generation += 1
+        return start..<end
+    }
+
+    /// The disclosure-row text for hidden notes, or nil when none are
+    /// hidden.
+    public static func moreText(hidden: Int, nextBatch: Int) -> String? {
+        guard hidden > 0 else {
+            return nil
+        }
+        if hidden == 1 {
+            return "+1 more · ⌃D shows it"
+        }
+        if hidden > nextBatch {
+            return "+\(hidden) more · ⌃D shows \(nextBatch) more"
+        }
+        return "+\(hidden) more · ⌃D shows the rest"
     }
 }
 

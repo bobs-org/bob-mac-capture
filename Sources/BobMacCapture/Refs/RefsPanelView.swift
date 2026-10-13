@@ -164,7 +164,9 @@ public struct RefsPanelView: View {
                 signals: model.signals,
                 inspector: model.inspectorContent(for: selected),
                 thumbnail: model.inspectorThumbnail(for: selected),
-                previewMode: previewMode
+                previewMode: previewMode,
+                notesPage: model.inspectorNotesPage(for: selected),
+                onRevealMoreNotes: { model.revealMoreInspectorNotes() }
             )
             .id("\(selected)#\(model.presentationCount)")
             .onAppear { model.inspectorRequested() }

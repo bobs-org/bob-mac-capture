@@ -51,6 +51,16 @@ struct RefsInspectorScrollGeometry: Equatable, Sendable {
         }
         return min(max(offset, minOffset), maxOffset)
     }
+
+    /// Whether the measured offset rests at the bottom, within
+    /// `tolerance`. Content that fits the viewport is always at the
+    /// bottom; invalid geometry never is.
+    func isAtBottom(tolerance: CGFloat = 1) -> Bool {
+        guard isValid else {
+            return false
+        }
+        return abs(offsetY - maxOffset) <= tolerance
+    }
 }
 
 /// Keyboard target and bounds for the inspector scroll view. Successive
@@ -97,6 +107,26 @@ struct RefsInspectorScrollPlanner: Equatable, Sendable {
         let next = geometry.clamped(raw)
         pendingTarget = next
         return next
+    }
+
+    /// The follow-tail target after a notes reveal: the new page's top
+    /// minus context, pinned to the new bottom. Nil for invalid geometry
+    /// or when the target would not move down, so the view never scrolls
+    /// up and never moves when the content still fits.
+    static func revealTarget(
+        geometry: RefsInspectorScrollGeometry,
+        batchTop: CGFloat,
+        context: CGFloat
+    ) -> CGFloat? {
+        guard geometry.isValid, batchTop.isFinite, context.isFinite else {
+            return nil
+        }
+        let raw = min(geometry.maxOffset, batchTop - context)
+        let target = geometry.clamped(raw)
+        guard target > geometry.offsetY + 0.5 else {
+            return nil
+        }
+        return target
     }
 
     /// Trackpad or mouse scrolling takes over from the measured offset.

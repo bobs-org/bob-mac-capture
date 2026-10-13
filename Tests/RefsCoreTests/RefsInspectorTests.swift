@@ -140,7 +140,115 @@ final class RefsInspectorTests: XCTestCase {
 
         XCTAssertEqual(row.commentedHighlights.count, 1)
         XCTAssertEqual(row.commentedHighlights.first?.comment, "Keep.")
-        XCTAssertEqual(row.remainingCommentCount, 0)
+    }
+
+    func testCommentedHighlightsReturnAllEightInNoteOrder() throws {
+        let annotations = (1...8).map { index in
+            RefsShowAnnotation(
+                pageLabel: "\(index)",
+                kind: "highlight",
+                quote: "Quote \(index)",
+                comment: "Comment \(index)"
+            )
+        }
+        let row = RefsShowRow(path: "ref/chat/x.md", annotations: annotations)
+
+        XCTAssertEqual(row.commentedHighlights.count, 8)
+        XCTAssertEqual(
+            row.commentedHighlights.map(\.comment),
+            (1...8).map { "Comment \($0)" as String? }
+        )
+    }
+
+    // MARK: - Notes paging
+
+    func testNotesPageDefaultsAndClampsSize() throws {
+        XCTAssertEqual(RefsNotesPage.defaultSize, 3)
+        XCTAssertEqual(RefsNotesPage(size: 3).size, 3)
+        XCTAssertEqual(RefsNotesPage(size: 0).size, 1)
+        XCTAssertEqual(RefsNotesPage(size: 1).size, 1)
+        XCTAssertEqual(RefsNotesPage(size: 20).size, 20)
+        XCTAssertEqual(RefsNotesPage(size: 99).size, 20)
+        XCTAssertEqual(RefsNotesPage.clampedSize(0), 1)
+        XCTAssertEqual(RefsNotesPage.clampedSize(99), 20)
+    }
+
+    func testNotesPageRevealsEightNotesInPages() throws {
+        var page = RefsNotesPage(size: 3)
+        XCTAssertEqual(page.visibleCount(total: 8), 3)
+        XCTAssertEqual(page.hiddenCount(total: 8), 5)
+        XCTAssertEqual(page.nextBatchCount(total: 8), 3)
+        XCTAssertNil(page.batchStart)
+        XCTAssertEqual(page.generation, 0)
+
+        XCTAssertEqual(page.reveal(total: 8), 3..<6)
+        XCTAssertEqual(page.visibleCount(total: 8), 6)
+        XCTAssertEqual(page.batchStart, 3)
+        XCTAssertEqual(page.generation, 1)
+
+        XCTAssertEqual(page.reveal(total: 8), 6..<8)
+        XCTAssertEqual(page.visibleCount(total: 8), 8)
+        XCTAssertEqual(page.batchStart, 6)
+        XCTAssertEqual(page.generation, 2)
+
+        XCTAssertNil(page.reveal(total: 8))
+        XCTAssertEqual(page.generation, 2)
+    }
+
+    func testNotesPageShrunkenTotalClampsVisible() throws {
+        var page = RefsNotesPage(size: 3)
+        XCTAssertEqual(page.reveal(total: 8), 3..<6)
+        // The total shrank below shown: the visible count clamps and the
+        // next reveal starts at the clamped count or is nil.
+        XCTAssertEqual(page.visibleCount(total: 4), 4)
+        XCTAssertNil(page.reveal(total: 4))
+        var fresh = RefsNotesPage(size: 3)
+        XCTAssertEqual(fresh.visibleCount(total: 2), 2)
+        XCTAssertNil(fresh.reveal(total: 2))
+    }
+
+    func testNotesPageTotalWithinFirstPageRevealsNothing() throws {
+        var page = RefsNotesPage(size: 3)
+        XCTAssertEqual(page.hiddenCount(total: 3), 0)
+        XCTAssertNil(page.reveal(total: 3))
+        XCTAssertNil(page.reveal(total: 0))
+    }
+
+    func testMoreTextStrings() throws {
+        XCTAssertNil(RefsNotesPage.moreText(hidden: 0, nextBatch: 0))
+        XCTAssertEqual(
+            RefsNotesPage.moreText(hidden: 5, nextBatch: 3),
+            "+5 more · ⌃D shows 3 more"
+        )
+        XCTAssertEqual(
+            RefsNotesPage.moreText(hidden: 1, nextBatch: 1),
+            "+1 more · ⌃D shows it"
+        )
+        XCTAssertEqual(
+            RefsNotesPage.moreText(hidden: 2, nextBatch: 2),
+            "+2 more · ⌃D shows the rest"
+        )
+    }
+
+    func testDisplayPageLabel() throws {
+        XCTAssertEqual(
+            RefsShowAnnotation(pageLabel: "Page 1").displayPageLabel,
+            "Page 1"
+        )
+        XCTAssertEqual(
+            RefsShowAnnotation(pageLabel: "page 2").displayPageLabel,
+            "page 2"
+        )
+        XCTAssertEqual(
+            RefsShowAnnotation(pageLabel: "p. 4").displayPageLabel,
+            "p. 4"
+        )
+        XCTAssertEqual(
+            RefsShowAnnotation(pageLabel: "3").displayPageLabel,
+            "Page 3"
+        )
+        XCTAssertNil(RefsShowAnnotation(pageLabel: "  ").displayPageLabel)
+        XCTAssertNil(RefsShowAnnotation(pageLabel: nil).displayPageLabel)
     }
 
     // MARK: - Show fetcher

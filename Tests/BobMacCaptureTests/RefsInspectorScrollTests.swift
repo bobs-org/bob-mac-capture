@@ -157,6 +157,91 @@ final class RefsInspectorScrollTests: XCTestCase {
         XCTAssertEqual(planner.offset, 200)
     }
 
+    func testIsAtBottom() {
+        XCTAssertTrue(Self.overflowAtBottom.isAtBottom())
+        XCTAssertTrue(Self.overflowAtBottom.isAtBottom(tolerance: 1))
+        XCTAssertFalse(Self.overflow.isAtBottom())
+        // Within tolerance counts as the bottom.
+        let nearBottom = RefsInspectorScrollGeometry(
+            offsetY: 999.5,
+            contentHeight: 1400,
+            viewportHeight: 400,
+            topInset: 0,
+            bottomInset: 0
+        )
+        XCTAssertTrue(nearBottom.isAtBottom())
+        XCTAssertFalse(nearBottom.isAtBottom(tolerance: 0.2))
+        // Content that fits the viewport is always at the bottom.
+        let fitting = RefsInspectorScrollGeometry(
+            offsetY: 0,
+            contentHeight: 400,
+            viewportHeight: 400,
+            topInset: 0,
+            bottomInset: 0
+        )
+        XCTAssertTrue(fitting.isAtBottom())
+        XCTAssertFalse(RefsInspectorScrollGeometry.invalid.isAtBottom())
+    }
+
+    func testRevealTarget() {
+        // Content that fits gives nil: nothing to scroll to.
+        let fitting = RefsInspectorScrollGeometry(
+            offsetY: 0,
+            contentHeight: 400,
+            viewportHeight: 400,
+            topInset: 0,
+            bottomInset: 0
+        )
+        XCTAssertNil(RefsInspectorScrollPlanner.revealTarget(
+            geometry: fitting,
+            batchTop: 300,
+            context: 24
+        ))
+        // A short batch pins to the new maxOffset.
+        let short = RefsInspectorScrollGeometry(
+            offsetY: 800,
+            contentHeight: 1600,
+            viewportHeight: 400,
+            topInset: 0,
+            bottomInset: 0
+        )
+        XCTAssertEqual(
+            RefsInspectorScrollPlanner.revealTarget(
+                geometry: short,
+                batchTop: 1500,
+                context: 24
+            ),
+            1200
+        )
+        // A tall batch is capped at batchTop − context.
+        let tall = RefsInspectorScrollGeometry(
+            offsetY: 1000,
+            contentHeight: 3000,
+            viewportHeight: 400,
+            topInset: 0,
+            bottomInset: 0
+        )
+        XCTAssertEqual(
+            RefsInspectorScrollPlanner.revealTarget(
+                geometry: tall,
+                batchTop: 1400,
+                context: 24
+            ),
+            1376
+        )
+        // Never upward: at or above the target gives nil.
+        XCTAssertNil(RefsInspectorScrollPlanner.revealTarget(
+            geometry: tall,
+            batchTop: 900,
+            context: 24
+        ))
+        XCTAssertNil(RefsInspectorScrollPlanner.revealTarget(
+            geometry: .invalid,
+            batchTop: 1400,
+            context: 24
+        ))
+    }
+
     func testHostedControlDUScrollsInspectorWhileSearchKeepsFocus() {
         let harness = makeHostedHarness(width: 880)
         defer { harness.panel.orderOut(nil) }
@@ -247,6 +332,134 @@ final class RefsInspectorScrollTests: XCTestCase {
         XCTAssertTrue(harness.controller.handleKeyDown(event) === event)
     }
 
+    func testHostedNotesAboveBottomScrollsHalfPageAndRevealsNothing() {
+        let harness = makeHostedHarness(width: 880, notes: Self.eightNotes())
+        defer { harness.panel.orderOut(nil) }
+        settle(harness.panel)
+        focusSearch(harness)
+        let selected = tryUnwrapSelected(harness)
+        XCTAssertEqual(harness.model.inspectorNotesPage(for: selected).generation, 0)
+        let start = inspectorOffset(in: harness.panel)
+
+        XCTAssertNil(
+            harness.controller.processKeyEvent(
+                keyEvent(keyCode: Self.dKey, modifiers: .control, characters: "d")
+            )
+        )
+        waitForInspectorOffset(in: harness.panel) { $0 > start + 8 }
+
+        XCTAssertEqual(harness.model.inspectorNotesPage(for: selected).generation, 0)
+        XCTAssertEqual(
+            harness.model.inspectorNotesPage(for: selected).visibleCount(
+                total: 8
+            ),
+            3
+        )
+    }
+
+    func testHostedNotesAtBottomRevealPages() {
+        let harness = makeHostedHarness(width: 880, notes: Self.eightNotes())
+        defer { harness.panel.orderOut(nil) }
+        settle(harness.panel)
+        focusSearch(harness)
+        let selected = tryUnwrapSelected(harness)
+        let query = harness.model.query
+        scrollInspectorToBottom(in: harness.panel)
+        let oldBottom = inspectorOffset(in: harness.panel)
+
+        XCTAssertNil(
+            harness.controller.processKeyEvent(
+                keyEvent(keyCode: Self.dKey, modifiers: .control, characters: "d")
+            )
+        )
+        XCTAssertEqual(
+            harness.model.inspectorNotesPage(for: selected).visibleCount(total: 8),
+            6
+        )
+        XCTAssertEqual(
+            harness.model.inspectorNotesPage(for: selected).generation,
+            1
+        )
+        waitForInspectorOffset(in: harness.panel) { $0 > oldBottom + 2 }
+        let newBottom = inspectorOffset(in: harness.panel)
+        waitForInspectorSettled(in: harness.panel, around: newBottom, tolerance: 2)
+
+        XCTAssertNil(
+            harness.controller.processKeyEvent(
+                keyEvent(keyCode: Self.dKey, modifiers: .control, characters: "d")
+            )
+        )
+        XCTAssertEqual(
+            harness.model.inspectorNotesPage(for: selected).visibleCount(total: 8),
+            8
+        )
+        XCTAssertEqual(
+            harness.model.inspectorNotesPage(for: selected).generation,
+            2
+        )
+        XCTAssertEqual(harness.model.selectedID, selected)
+        XCTAssertEqual(harness.model.query, query)
+        XCTAssertTrue(tryUnwrapFilter(harness.panel).holdsFirstResponder)
+    }
+
+    func testHostedShortContentRevealsWithNoOffsetChange() {
+        let harness = makeHostedHarness(
+            width: 880,
+            notes: Self.eightNotes(),
+            shortContent: true
+        )
+        defer { harness.panel.orderOut(nil) }
+        settleShort(harness.panel)
+        focusSearch(harness)
+        let selected = tryUnwrapSelected(harness)
+        let before = inspectorOffset(in: harness.panel)
+
+        XCTAssertNil(
+            harness.controller.processKeyEvent(
+                keyEvent(keyCode: Self.dKey, modifiers: .control, characters: "d")
+            )
+        )
+        XCTAssertEqual(
+            harness.model.inspectorNotesPage(for: selected).visibleCount(total: 8),
+            6
+        )
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.6))
+        XCTAssertEqual(
+            inspectorOffset(in: harness.panel),
+            before,
+            accuracy: 2,
+            inspectorDiagnostics(in: harness.panel)
+        )
+    }
+
+    func testHostedTwoRapidRevealsStackTwoPages() {
+        let harness = makeHostedHarness(width: 880, notes: Self.eightNotes())
+        defer { harness.panel.orderOut(nil) }
+        settle(harness.panel)
+        focusSearch(harness)
+        let selected = tryUnwrapSelected(harness)
+        scrollInspectorToBottom(in: harness.panel)
+
+        XCTAssertNil(
+            harness.controller.processKeyEvent(
+                keyEvent(keyCode: Self.dKey, modifiers: .control, characters: "d")
+            )
+        )
+        XCTAssertNil(
+            harness.controller.processKeyEvent(
+                keyEvent(keyCode: Self.dKey, modifiers: .control, characters: "d")
+            )
+        )
+        XCTAssertEqual(
+            harness.model.inspectorNotesPage(for: selected).visibleCount(total: 8),
+            8
+        )
+        XCTAssertEqual(
+            harness.model.inspectorNotesPage(for: selected).generation,
+            2
+        )
+    }
+
     // MARK: - Hosted harness
 
     private struct HostedHarness {
@@ -255,7 +468,11 @@ final class RefsInspectorScrollTests: XCTestCase {
         let panel: RefsPanel
     }
 
-    private func makeHostedHarness(width: CGFloat) -> HostedHarness {
+    private func makeHostedHarness(
+        width: CGFloat,
+        notes: [RefsShowAnnotation]? = nil,
+        shortContent: Bool = false
+    ) -> HostedHarness {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let library = RefsLibrary(
@@ -290,6 +507,40 @@ final class RefsInspectorScrollTests: XCTestCase {
             )
         }
         let selected = items[0].id
+        let inspectorContent: RefsInspectorContent
+        if shortContent {
+            inspectorContent = RefsInspectorContent(
+                summary: RefsSummary(
+                    label: "SUMMARY",
+                    paragraph: "Short preview."
+                ),
+                outline: [],
+                notes: notes ?? []
+            )
+        } else if let notes {
+            inspectorContent = RefsInspectorContent(
+                summary: RefsSummary(
+                    label: "SUMMARY",
+                    paragraph: String(
+                        repeating: "Long preview paragraph for overflow. ",
+                        count: 40
+                    )
+                ),
+                outline: (0..<80).map { "Heading \($0)" },
+                notes: notes
+            )
+        } else {
+            inspectorContent = RefsInspectorContent(
+                summary: RefsSummary(
+                    label: "SUMMARY",
+                    paragraph: String(
+                        repeating: "Long preview paragraph for overflow. ",
+                        count: 40
+                    )
+                ),
+                outline: (0..<80).map { "Heading \($0)" }
+            )
+        }
         model.installForPreviews(
             items: items,
             signals: RefsSignals(),
@@ -298,18 +549,7 @@ final class RefsInspectorScrollTests: XCTestCase {
             selectedID: selected,
             banner: nil,
             refreshState: .idle,
-            inspector: [
-                selected: RefsInspectorContent(
-                    summary: RefsSummary(
-                        label: "SUMMARY",
-                        paragraph: String(
-                            repeating: "Long preview paragraph for overflow. ",
-                            count: 40
-                        )
-                    ),
-                    outline: (0..<80).map { "Heading \($0)" }
-                ),
-            ]
+            inspector: [selected: inspectorContent]
         )
         let controller = RefsPanelController(model: model)
         let panel = controller.makePanelIfNeeded()
@@ -392,6 +632,68 @@ final class RefsInspectorScrollTests: XCTestCase {
         XCTFail("inspector offset did not change as expected; \(inspectorDiagnostics(in: panel))")
     }
 
+    private func waitForInspectorSettled(
+        in panel: RefsPanel,
+        around expected: CGFloat,
+        tolerance: CGFloat
+    ) {
+        let deadline = Date().addingTimeInterval(1.5)
+        while Date() < deadline {
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+            panel.contentView?.layoutSubtreeIfNeeded()
+            if abs(inspectorOffset(in: panel) - expected) <= tolerance {
+                // One more turn to catch a late follow-scroll.
+                RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.2))
+                if abs(inspectorOffset(in: panel) - expected) <= tolerance {
+                    return
+                }
+            }
+        }
+        XCTFail(
+            "inspector offset did not settle around \(expected); "
+                + inspectorDiagnostics(in: panel)
+        )
+    }
+
+    private func tryUnwrapSelected(_ harness: HostedHarness) -> String {
+        let selected = harness.model.selectedID
+        XCTAssertNotNil(selected)
+        return selected!
+    }
+
+    private func scrollInspectorToBottom(in panel: RefsPanel) {
+        guard let scroll = inspectorScroll(in: panel),
+              let documentView = scroll.documentView
+        else {
+            XCTFail("no inspector scroll view to pin to the bottom")
+            return
+        }
+        let clip = scroll.contentView
+        let content = documentView.frame.height
+        let viewport = clip.bounds.height
+        let flipped = documentView.isFlipped
+        let maxOffset = max(content - viewport + clip.contentInsets.bottom, -clip.contentInsets.top)
+        let y = flipped ? maxOffset : content - viewport - maxOffset
+        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
+        scroll.reflectScrolledClipView(clip)
+        panel.contentView?.layoutSubtreeIfNeeded()
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+    }
+
+    private func settleShort(_ panel: RefsPanel) {
+        let deadline = Date().addingTimeInterval(1.5)
+        while Date() < deadline {
+            panel.contentView?.layoutSubtreeIfNeeded()
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.03))
+            if RefsPanelController.findFilterField(in: panel.contentView) != nil,
+               inspectorScroll(in: panel) != nil
+            {
+                return
+            }
+        }
+        XCTFail("hosted Refs panel did not settle")
+    }
+
     private func keyEvent(
         keyCode: UInt16,
         modifiers: NSEvent.ModifierFlags,
@@ -418,6 +720,24 @@ final class RefsInspectorScrollTests: XCTestCase {
         topInset: 0,
         bottomInset: 0
     )
+    private static let overflowAtBottom = RefsInspectorScrollGeometry(
+        offsetY: 1000,
+        contentHeight: 1400,
+        viewportHeight: 400,
+        topInset: 0,
+        bottomInset: 0
+    )
     private static let dKey: UInt16 = 2
     private static let uKey: UInt16 = 32
+
+    private static func eightNotes() -> [RefsShowAnnotation] {
+        (1...8).map { index in
+            RefsShowAnnotation(
+                pageLabel: "\(index)",
+                kind: "highlight",
+                quote: "Quote \(index)",
+                comment: "Comment \(index)"
+            )
+        }
+    }
 }

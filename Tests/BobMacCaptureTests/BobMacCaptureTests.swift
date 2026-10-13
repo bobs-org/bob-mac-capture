@@ -3710,6 +3710,32 @@ final class BobMacCaptureTests: XCTestCase {
     }
 
     @MainActor
+    func testRefsInspectorNotesPageSizeDefaultsPersistsAndClamps() {
+        let suiteName = "org.bobs.bob-mac-capture.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertEqual(settings.refsInspectorNotesPageSize, 3)
+
+        settings.refsInspectorNotesPageSize = 5
+        XCTAssertEqual(defaults.integer(forKey: "refsInspectorNotesPageSize"), 5)
+        XCTAssertEqual(AppSettings(defaults: defaults).refsInspectorNotesPageSize, 5)
+
+        settings.refsInspectorNotesPageSize = 99
+        XCTAssertEqual(settings.refsInspectorNotesPageSize, 20)
+        XCTAssertEqual(defaults.integer(forKey: "refsInspectorNotesPageSize"), 20)
+
+        settings.refsInspectorNotesPageSize = 0
+        XCTAssertEqual(settings.refsInspectorNotesPageSize, 1)
+        XCTAssertEqual(defaults.integer(forKey: "refsInspectorNotesPageSize"), 1)
+
+        defaults.set("not an integer", forKey: "refsInspectorNotesPageSize")
+        XCTAssertEqual(AppSettings(defaults: defaults).refsInspectorNotesPageSize, 3)
+        defaults.removePersistentDomain(forName: suiteName)
+    }
+
+    @MainActor
     func testStashCapacityPropagationTrimsImmediatelyAndPayloadsStayOutOfDefaultsAndDiagnostics() {
         let suiteName = "org.bobs.bob-mac-capture.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

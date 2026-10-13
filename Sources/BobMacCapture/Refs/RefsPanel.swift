@@ -38,6 +38,12 @@ public final class RefsPanelController: NSObject {
     private var panel: RefsPanel?
     private var localMonitor: Any?
     private var inspectorScrollCancellable: AnyCancellable?
+    private var inspectorRevealCancellable: AnyCancellable?
+    private var revealFollowTask: Task<Void, Never>?
+    /// While a reveal waits for SwiftUI layout, the next Ctrl+D counts
+    /// as at-the-bottom so rapid presses stack into pages.
+    private var revealFollowPending = false
+    private var pendingRevealGeneration: Int?
     /// While true, a resign-key does not hide the panel. The ⌘K
     /// actions menu sets this while it tracks.
     var suspendHideOnResign = false
@@ -51,6 +57,9 @@ public final class RefsPanelController: NSObject {
         model.panelIsVisible = { [weak self] in self?.isVisible == true }
         inspectorScrollCancellable = model.inspectorScrolls.sink { [weak self] direction in
             self?.scrollInspector(direction)
+        }
+        inspectorRevealCancellable = model.inspectorNoteReveals.sink { [weak self] reveal in
+            self?.followReveal(reveal)
         }
     }
 
@@ -395,32 +404,160 @@ public final class RefsPanelController: NSObject {
         return nil
     }
 
-    func scrollInspector(_ direction: RefsInspectorScrollDirection) {
+    static func findRevealAnchor(generation: Int, in view: NSView?) -> RefsInspectorRevealAnchorView? {
+        guard let view else {
+            return nil
+        }
+        if let anchor = view as? RefsInspectorRevealAnchorView,
+           anchor.generation == generation
+        {
+            return anchor
+        }
+        for subview in view.subviews {
+            if let found = findRevealAnchor(generation: generation, in: subview) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    /// Measures the inspector scroll geometry, or nil when there is no
+    /// inspector scroll view (narrow panel).
+    private func measureInspectorScroll() -> (
+        scrollView: NSScrollView,
+        geometry: RefsInspectorScrollGeometry,
+        flipped: Bool
+    )? {
         guard let scrollView = Self.findInspectorScrollView(in: panel?.contentView),
-            let documentView = scrollView.documentView
+              let documentView = scrollView.documentView
         else {
-            return
+            return nil
         }
         let clip = scrollView.contentView
         let content = documentView.frame.height
         let viewport = clip.bounds.height
         let flipped = documentView.isFlipped
-        let offset = flipped ? clip.bounds.origin.y : content - viewport - clip.bounds.origin.y
-        var planner = RefsInspectorScrollPlanner(
-            geometry: RefsInspectorScrollGeometry(
-                offsetY: offset,
-                contentHeight: content,
-                viewportHeight: viewport,
-                topInset: clip.contentInsets.top,
-                bottomInset: clip.contentInsets.bottom
-            )
+        let offset = flipped
+            ? clip.bounds.origin.y : content - viewport - clip.bounds.origin.y
+        let geometry = RefsInspectorScrollGeometry(
+            offsetY: offset,
+            contentHeight: content,
+            viewportHeight: viewport,
+            topInset: clip.contentInsets.top,
+            bottomInset: clip.contentInsets.bottom
         )
-        guard let target = planner.command(direction) else {
+        return (scrollView, geometry, flipped)
+    }
+
+    /// Sets an offset measured from the content top on the clip view.
+    private func setInspectorOffset(
+        _ target: CGFloat,
+        scrollView: NSScrollView,
+        flipped: Bool
+    ) {
+        guard let documentView = scrollView.documentView else {
             return
         }
+        let clip = scrollView.contentView
+        let content = documentView.frame.height
+        let viewport = clip.bounds.height
         let y = flipped ? target : content - viewport - target
         clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
         scrollView.reflectScrolledClipView(clip)
+    }
+
+    private func cancelRevealFollow() {
+        revealFollowTask?.cancel()
+        revealFollowTask = nil
+        revealFollowPending = false
+        pendingRevealGeneration = nil
+    }
+
+    func scrollInspector(_ direction: RefsInspectorScrollDirection) {
+        if direction == .up {
+            cancelRevealFollow()
+        }
+        guard let measured = measureInspectorScroll() else {
+            return
+        }
+        if direction == .down,
+           (revealFollowPending || measured.geometry.isAtBottom()),
+           model.revealMoreInspectorNotes()
+        {
+            return
+        }
+        var planner = RefsInspectorScrollPlanner(geometry: measured.geometry)
+        guard let target = planner.command(direction) else {
+            return
+        }
+        setInspectorOffset(
+            target,
+            scrollView: measured.scrollView,
+            flipped: measured.flipped
+        )
+    }
+
+    private func followReveal(_ reveal: RefsInspectorNotesReveal) {
+        revealFollowTask?.cancel()
+        revealFollowPending = true
+        pendingRevealGeneration = reveal.generation
+        let id = reveal.id
+        let generation = reveal.generation
+        revealFollowTask = Task { [weak self] in
+            defer {
+                if self?.pendingRevealGeneration == generation {
+                    self?.revealFollowPending = false
+                    self?.pendingRevealGeneration = nil
+                    self?.revealFollowTask = nil
+                }
+            }
+            let deadline = Date().addingTimeInterval(0.5)
+            while Date() < deadline {
+                if Task.isCancelled {
+                    return
+                }
+                guard let self else {
+                    return
+                }
+                if !self.isVisible {
+                    return
+                }
+                if self.model.selectedID != id {
+                    return
+                }
+                if self.model.inspectorNotesPage(for: id).generation != generation {
+                    return
+                }
+                self.panel?.contentView?.layoutSubtreeIfNeeded()
+                if let measured = self.measureInspectorScroll(),
+                   let anchor = Self.findRevealAnchor(
+                       generation: generation,
+                       in: self.panel?.contentView
+                   ),
+                   let documentView = measured.scrollView.documentView
+                {
+                    let rect = anchor.convert(anchor.bounds, to: documentView)
+                    if rect.height > 0.5 {
+                        let documentHeight = documentView.frame.height
+                        let batchTop: CGFloat = documentView.isFlipped
+                            ? rect.minY : documentHeight - rect.maxY
+                        if let target = RefsInspectorScrollPlanner.revealTarget(
+                            geometry: measured.geometry,
+                            batchTop: batchTop,
+                            context: RefsVisualTokens.inspectorRevealContext
+                        ) {
+                            self.setInspectorOffset(
+                                target,
+                                scrollView: measured.scrollView,
+                                flipped: measured.flipped
+                            )
+                        }
+                        return
+                    }
+                }
+                try? await Task.sleep(nanoseconds: 16_000_000)
+            }
+        }
     }
 
     static func scrollViews(in view: NSView?) -> [NSScrollView] {

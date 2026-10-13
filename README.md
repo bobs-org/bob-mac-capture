@@ -1322,7 +1322,7 @@ Diagnostic for hard failures.
 | Option-Return | Reveal the PDF in Finder |
 | Up/Down, Ctrl-P/Ctrl-N, Ctrl-K/Ctrl-J | Move (wraps) |
 | Page Up/Page Down | Page the results list by one less than fits |
-| Ctrl-D / Ctrl-U | Scroll the preview down/up by half its height; search keeps focus |
+| Ctrl-D / Ctrl-U | Scroll the preview down/up by half its height; at the very bottom, Ctrl-D shows the next page of your notes; search keeps focus |
 | Command-Up/Command-Down, Home/End | First, last |
 | Option-Up/Option-Down | First row of the previous/next section (browse only) |
 | Command-1 … Command-5 | Scope All, Chats, Papers, Articles, Docs |
@@ -1336,9 +1336,11 @@ Diagnostic for hard failures.
 Return while IME-composing passes through to the text system. Ctrl-D
 and Ctrl-U also pass through while IME-composing; once recognized they
 consume the key even when the preview is hidden, short, empty, or
-already at an edge. Printable keys fall through to the search field.
-Result counts are announced 600 ms after typing stops, never on every
-keystroke.
+already at an edge. At the very bottom, Ctrl-D shows the next page of
+your notes (clicking the disclosure row does the same); when nothing is
+hidden it is still consumed and does nothing. Printable keys fall
+through to the search field. Result counts are announced 600 ms after
+typing stops, never on every keystroke.
 
 ### Opening Bob Refs
 
@@ -1364,7 +1366,8 @@ keystroke.
 - Settings › References also shows the resolved Highlights app (name,
   version, and path, or "Not found"), with Choose… (limited to `.app`)
   and Use Default, plus Reset Open History… behind a confirmation
-  dialog.
+  dialog. It also sets Preview notes per page (1–20, default 3) for the
+  inspector, or `defaults write org.bobs.bob-mac-capture refsInspectorNotesPageSize -int 5`.
 - Diagnostics: a failed global or takeover registration reports
   "Refs hotkey conflict: …"; free the shortcut and use Recheck Bob.
   Toggling the References settings re-registers immediately.
@@ -1390,8 +1393,13 @@ one thumbnail PNG each). What each kind shows:
 - Every hydrated row adds reading time to Pages
   ("22 · ≈ 70 min · 3 Pomodoros", 230 words per minute, Pomodoros of
   25 minutes), Tasks ("2 open") from `ref show`, the top-level
-  outline headings (up to 6), and up to 3 commented highlights with
-  their page labels, quotes, and comments ("+N more" beyond that).
+  outline headings (up to 6), and your notes with their page labels,
+  quotes, and comments. The preview shows the first page (3 by default,
+  Settings › References › Preview notes per page); the disclosure row
+  (`+N more · ⌃D shows …`) or Ctrl-D at the very bottom reveals the next
+  page until all show. Revealed pages reset on every selection change
+  and on every show. Page labels show as bob writes them (`Page 1`
+  stays `Page 1`).
 - Chats name consolidated reports and researcher drafts in the
   byline from the stem (`__final`, `__x`).
 - The Reading task fact names where the reference's task lives: the
@@ -1428,8 +1436,8 @@ intrinsics cache (`intrinsics.json`) with thumbnails
 (`thumbs/<sha256>.png`) under
 `~/Library/Caches/org.bobs.bob-mac-capture/refs/`. The References
 settings persist a small set of `UserDefaults` keys (the ⌃⇧⌘R
-binding flag, the Highlights-frontmost open key, and the Highlights
-override path). Signposts carry event names only, never note text.
+binding flag, the Highlights-frontmost open key, the Highlights
+override path, and the preview notes page size). Signposts carry event names only, never note text.
 Scan notifications may show reference titles, as capture notifications
 already show task text; the Just scanned mark itself lives in memory
 only and is never written to disk.

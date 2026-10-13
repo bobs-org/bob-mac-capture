@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import RefsCore
 
 @MainActor
 final class AppSettings: ObservableObject {
@@ -47,6 +48,21 @@ final class AppSettings: ObservableObject {
                 canceledDraftStashCapacity = clamped
             }
             defaults.set(canceledDraftStashCapacity, forKey: Keys.canceledDraftStashCapacity)
+        }
+    }
+
+    @Published var refsInspectorNotesPageSize: Int {
+        didSet {
+            let clamped = Self.clampedRefsInspectorNotesPageSize(
+                refsInspectorNotesPageSize
+            )
+            if refsInspectorNotesPageSize != clamped {
+                refsInspectorNotesPageSize = clamped
+            }
+            defaults.set(
+                refsInspectorNotesPageSize,
+                forKey: Keys.refsInspectorNotesPageSize
+            )
         }
     }
 
@@ -99,6 +115,7 @@ final class AppSettings: ObservableObject {
             ? true
             : defaults.bool(forKey: Keys.agendaEnabled)
         canceledDraftStashCapacity = Self.loadCanceledDraftStashCapacity(from: defaults)
+        refsInspectorNotesPageSize = Self.loadRefsInspectorNotesPageSize(from: defaults)
     }
 
     var hotKeyConfiguration: HotKeyConfiguration {
@@ -107,6 +124,10 @@ final class AppSettings: ObservableObject {
 
     static func clampedCanceledDraftStashCapacity(_ capacity: Int) -> Int {
         CanceledDraftStash.clampedCapacity(capacity)
+    }
+
+    static func clampedRefsInspectorNotesPageSize(_ size: Int) -> Int {
+        RefsNotesPage.clampedSize(size)
     }
 
     private static func loadCanceledDraftStashCapacity(from defaults: UserDefaults) -> Int {
@@ -121,6 +142,20 @@ final class AppSettings: ObservableObject {
             return clampedCanceledDraftStashCapacity(number.intValue)
         }
         return CanceledDraftStash.defaultCapacity
+    }
+
+    private static func loadRefsInspectorNotesPageSize(from defaults: UserDefaults) -> Int {
+        guard let value = defaults.object(forKey: Keys.refsInspectorNotesPageSize) else {
+            return RefsNotesPage.defaultSize
+        }
+
+        if let size = value as? Int {
+            return clampedRefsInspectorNotesPageSize(size)
+        }
+        if let number = value as? NSNumber {
+            return clampedRefsInspectorNotesPageSize(number.intValue)
+        }
+        return RefsNotesPage.defaultSize
     }
 
     private func recordDiagnostic(_ message: String) {
@@ -140,5 +175,6 @@ private enum Keys {
     static let refsHighlightsOpenKey = "refsHighlightsOpenKey"
     static let refsHighlightsAppPath = AppSettings.refsHighlightsAppPathKey
     static let canceledDraftStashCapacity = "canceledDraftStashCapacity"
+    static let refsInspectorNotesPageSize = "refsInspectorNotesPageSize"
     static let agendaEnabled = "agendaEnabled"
 }

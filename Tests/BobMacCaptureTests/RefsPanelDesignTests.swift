@@ -44,6 +44,7 @@ final class RefsPanelDesignTests: XCTestCase {
         try renderScanAddedNarrow(model: model, now: now)
         try renderNarrowBrowse(model: model, now: now)
         try renderInspectorChat(model: model, now: now)
+        try renderInspectorNotesRevealed(model: model, now: now)
         try renderInspectorPaper(model: model, now: now)
         try renderInspectorEncrypted(model: model, now: now)
         try await renderUnavailable(model: model, now: now)
@@ -586,19 +587,36 @@ final class RefsPanelDesignTests: XCTestCase {
                 outline: ["Review question", "Evidence", "Risks", "Decision"],
                 notes: [
                     RefsShowAnnotation(
-                        pageLabel: "3",
+                        pageLabel: "Page 1",
                         kind: "highlight",
                         quote: "The pipeline drains while the child runs.",
                         comment: "Key insight for the fetcher."
                     ),
                     RefsShowAnnotation(
-                        pageLabel: "5",
+                        pageLabel: "2",
                         kind: "highlight",
                         quote: "A weak fuzzy match never beats a title word.",
                         comment: "Keep the tier invariant."
                     ),
+                    RefsShowAnnotation(
+                        pageLabel: "3",
+                        kind: "highlight",
+                        quote: "A third note for the disclosure row.",
+                        comment: "Third comment."
+                    ),
+                    RefsShowAnnotation(
+                        pageLabel: "5",
+                        kind: "highlight",
+                        quote: "A fourth note beyond the first page.",
+                        comment: "Fourth comment."
+                    ),
+                    RefsShowAnnotation(
+                        pageLabel: "7",
+                        kind: "highlight",
+                        quote: "A fifth note beyond the first page.",
+                        comment: "Fifth comment."
+                    ),
                 ],
-                remainingNoteCount: 1,
                 openTaskCount: 2,
                 readingTime: RefsReadingTime(minutes: 70, pomodoros: 3),
                 pageCount: 11
@@ -606,6 +624,49 @@ final class RefsPanelDesignTests: XCTestCase {
         )
         XCTAssertNotNil(model.inspectorContent(for: id))
         try write(model: model, name: "refs-inspector-chat-880", width: 880)
+    }
+
+    private func renderInspectorNotesRevealed(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeFixture(now: now)
+        let id = "ref/chat/today_report.md"
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: id,
+            banner: nil,
+            refreshState: .idle,
+            inspector: [id: RefsInspectorContent(
+                summary: RefsSummary(
+                    label: "SUMMARY",
+                    bullets: ["Retrieval quality beats index size here."]
+                ),
+                outline: ["Review question", "Evidence"],
+                notes: (1...8).map { index in
+                    RefsShowAnnotation(
+                        pageLabel: "\(index)",
+                        kind: "highlight",
+                        quote: "Quote \(index).",
+                        comment: "Comment \(index)."
+                    )
+                },
+                openTaskCount: 1,
+                readingTime: RefsReadingTime(minutes: 17, pomodoros: 1),
+                pageCount: 11
+            )]
+        )
+        XCTAssertTrue(model.revealMoreInspectorNotes())
+        let page = model.inspectorNotesPage(for: id)
+        XCTAssertEqual(page.visibleCount(total: 8), 6)
+        XCTAssertEqual(
+            RefsNotesPage.moreText(
+                hidden: page.hiddenCount(total: 8),
+                nextBatch: page.nextBatchCount(total: 8)
+            ),
+            "+2 more · ⌃D shows the rest"
+        )
+        try write(model: model, name: "refs-inspector-notes-revealed-880", width: 880)
     }
 
     /// The full inspector for a paper: the thumbnail stand-in, the

@@ -48,6 +48,9 @@ enum RefsVisualTokens {
     static let kindTileSize: CGFloat = 28
     static let kindTileRadius: CGFloat = 7
     static let factLabelWidth: CGFloat = 84
+    /// Context kept above a newly revealed notes page, so the last line
+    /// of the previous page stays visible.
+    static let inspectorRevealContext: CGFloat = 24
 
     // MARK: - Geometry
 

@@ -579,6 +579,155 @@ final class RefsPanelModelTests: XCTestCase {
         _ = cancellable
     }
 
+    func testRevealReturnsFalseWithoutHydratedContent() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let items = Self.twoPreviewItems()
+        harness.model.installForPreviews(
+            items: items,
+            signals: RefsSignals(),
+            query: "",
+            scope: .all,
+            selectedID: items[0].id,
+            banner: nil,
+            refreshState: .idle,
+            inspector: [:]
+        )
+        XCTAssertFalse(harness.model.revealMoreInspectorNotes())
+    }
+
+    func testRevealReturnsFalseWhenNothingHidden() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let items = Self.twoPreviewItems()
+        harness.model.installForPreviews(
+            items: items,
+            signals: RefsSignals(),
+            query: "",
+            scope: .all,
+            selectedID: items[0].id,
+            banner: nil,
+            refreshState: .idle,
+            inspector: [items[0].id: RefsInspectorContent(
+                notes: Self.twoNotes()
+            )]
+        )
+        XCTAssertFalse(harness.model.revealMoreInspectorNotes())
+    }
+
+    func testRevealEmitsRangeAndGeneration() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let items = Self.twoPreviewItems()
+        harness.model.installForPreviews(
+            items: items,
+            signals: RefsSignals(),
+            query: "",
+            scope: .all,
+            selectedID: items[0].id,
+            banner: nil,
+            refreshState: .idle,
+            inspector: [items[0].id: RefsInspectorContent(
+                notes: Self.eightNotes()
+            )]
+        )
+        var received: [RefsInspectorNotesReveal] = []
+        let cancellable = harness.model.inspectorNoteReveals.sink {
+            received.append($0)
+        }
+        XCTAssertTrue(harness.model.revealMoreInspectorNotes())
+        XCTAssertEqual(received.count, 1)
+        XCTAssertEqual(received[0].id, items[0].id)
+        XCTAssertEqual(received[0].generation, 1)
+        XCTAssertEqual(received[0].range, 3..<6)
+        XCTAssertEqual(
+            harness.model.inspectorNotesPage(for: items[0].id).visibleCount(total: 8),
+            6
+        )
+        XCTAssertTrue(harness.model.revealMoreInspectorNotes())
+        XCTAssertEqual(received.count, 2)
+        XCTAssertEqual(received[1].range, 6..<8)
+        XCTAssertEqual(received[1].generation, 2)
+        XCTAssertFalse(harness.model.revealMoreInspectorNotes())
+        _ = cancellable
+    }
+
+    func testRevealResetsOnSelectionChangeAndPresentation() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let items = Self.twoPreviewItems()
+        harness.model.installForPreviews(
+            items: items,
+            signals: RefsSignals(),
+            query: "",
+            scope: .all,
+            selectedID: items[0].id,
+            banner: nil,
+            refreshState: .idle,
+            inspector: [
+                items[0].id: RefsInspectorContent(notes: Self.eightNotes()),
+                items[1].id: RefsInspectorContent(notes: Self.eightNotes()),
+            ]
+        )
+        XCTAssertTrue(harness.model.revealMoreInspectorNotes())
+        XCTAssertEqual(
+            harness.model.inspectorNotesPage(for: items[0].id).generation,
+            1
+        )
+        XCTAssertTrue(harness.model.perform(.move(.next)))
+        XCTAssertEqual(harness.model.selectedID, items[1].id)
+        XCTAssertEqual(
+            harness.model.inspectorNotesPage(for: items[1].id).generation,
+            0
+        )
+        XCTAssertEqual(
+            harness.model.inspectorNotesPage(for: items[0].id).visibleCount(total: 8),
+            3
+        )
+        XCTAssertTrue(harness.model.perform(.move(.previous)))
+        XCTAssertEqual(harness.model.selectedID, items[0].id)
+        XCTAssertEqual(
+            harness.model.inspectorNotesPage(for: items[0].id).generation,
+            0
+        )
+        XCTAssertTrue(harness.model.revealMoreInspectorNotes())
+        harness.model.prepareForPresentation()
+        let current = harness.model.selectedID!
+        XCTAssertEqual(
+            harness.model.inspectorNotesPage(for: current).generation,
+            0
+        )
+    }
+
+    func testNotesPageSizeClampsAndSeedsFreshPages() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        harness.model.notesPageSize = 0
+        XCTAssertEqual(harness.model.notesPageSize, 1)
+        harness.model.notesPageSize = 99
+        XCTAssertEqual(harness.model.notesPageSize, 20)
+        harness.model.notesPageSize = 5
+        let items = Self.twoPreviewItems()
+        harness.model.installForPreviews(
+            items: items,
+            signals: RefsSignals(),
+            query: "",
+            scope: .all,
+            selectedID: items[0].id,
+            banner: nil,
+            refreshState: .idle,
+            inspector: [items[0].id: RefsInspectorContent(
+                notes: Self.eightNotes()
+            )]
+        )
+        // installForPreviews keeps the explicitly set page size: a fresh
+        // page shows 5, not the default 3.
+        XCTAssertEqual(
+            harness.model.inspectorNotesPage(for: items[0].id).visibleCount(total: 8),
+            5
+        )
+    }
+
     func testScrollInspectorConsumesWithoutSubscriberOrSelection() async throws {
         let harness = try makeHarness()
         await harness.waitForSnapshot()
@@ -826,6 +975,53 @@ final class RefsPanelModelTests: XCTestCase {
             XCTAssertEqual(model.selectedID, selectedID)
             XCTAssertEqual(model.listing, listing)
             XCTAssertEqual(model.banner, banner)
+        }
+    }
+
+    private static func twoPreviewItems() -> [RefItem] {
+        [
+            RefItem(
+                id: "ref/chat/alpha.md",
+                link: "[[ref/chat/alpha]]",
+                rawTitle: "Alpha",
+                stem: "alpha",
+                kind: .chat,
+                state: .ready,
+                isBlocked: false,
+                pdfPath: "lib/chat/alpha.pdf"
+            ),
+            RefItem(
+                id: "ref/chat/beta.md",
+                link: "[[ref/chat/beta]]",
+                rawTitle: "Beta",
+                stem: "beta",
+                kind: .chat,
+                state: .ready,
+                isBlocked: false,
+                pdfPath: "lib/chat/beta.pdf"
+            ),
+        ]
+    }
+
+    private static func eightNotes() -> [RefsShowAnnotation] {
+        (1...8).map { index in
+            RefsShowAnnotation(
+                pageLabel: "\(index)",
+                kind: "highlight",
+                quote: "Quote \(index)",
+                comment: "Comment \(index)"
+            )
+        }
+    }
+
+    private static func twoNotes() -> [RefsShowAnnotation] {
+        (1...2).map { index in
+            RefsShowAnnotation(
+                pageLabel: "\(index)",
+                kind: "highlight",
+                quote: "Quote \(index)",
+                comment: "Comment \(index)"
+            )
         }
     }
 

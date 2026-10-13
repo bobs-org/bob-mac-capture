@@ -31,6 +31,24 @@ struct SettingsView: View {
                     "Open Bob Refs with Control-Shift-Command-O",
                     isOn: $settings.refsHotkeyEnabled
                 )
+                Stepper(
+                    value: Binding(
+                        get: { settings.refsInspectorNotesPageSize },
+                        set: { settings.refsInspectorNotesPageSize = $0 }
+                    ),
+                    in: 1...20
+                ) {
+                    LabeledContent(
+                        "Preview notes per page",
+                        value: "\(settings.refsInspectorNotesPageSize)"
+                    )
+                }
+                Text(
+                    "The preview shows this many of your notes at first; "
+                        + "Control-D at the bottom of the preview shows this many more."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 Picker(
                     "In Highlights, open Bob Refs with",
                     selection: $settings.refsHighlightsOpenKey
