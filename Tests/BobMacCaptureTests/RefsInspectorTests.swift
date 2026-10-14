@@ -385,7 +385,7 @@ final class RefsInspectorLoaderTests: XCTestCase {
 
         XCTAssertEqual(RefsAction.copy.title, "Copy…")
         XCTAssertEqual(RefsAction.copy.keyEquivalent, "y")
-        XCTAssertEqual(RefsAction.copy.keyEquivalentModifierMask, .control)
+        XCTAssertEqual(RefsAction.copy.keyEquivalentModifierMask, .command)
         model.performAction(.copy)
         XCTAssertNotNil(model.copyCard)
 

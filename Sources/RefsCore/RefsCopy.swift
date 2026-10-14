@@ -799,7 +799,7 @@ public enum RefsCopyKeyMap {
         if keyCode == 33 {
             if flags == .control { return .close }
         }
-        if keyCode == 16, flags == .control || flags == [.control, .option] {
+        if keyCode == 16, flags == .command || flags == [.command, .option] {
             return .copySelected
         }
         if keyCode == 40, flags == .command {

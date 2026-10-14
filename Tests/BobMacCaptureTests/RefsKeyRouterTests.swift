@@ -94,14 +94,16 @@ final class RefsKeyRouterTests: XCTestCase {
         XCTAssertEqual(route(KeyCode.k, .command), .showActions)
     }
 
-    func testControlYOpensCopyCardAndPassesThroughWhileComposing() {
-        XCTAssertEqual(route(KeyCode.y, .control), .showCopyCard)
-        XCTAssertEqual(route(KeyCode.y, [.control, .capsLock]), .showCopyCard)
+    func testCommandYOpensCopyCardAndPassesThroughWhileComposing() {
+        XCTAssertEqual(route(KeyCode.y, .command), .showCopyCard)
+        XCTAssertEqual(route(KeyCode.y, [.command, .capsLock]), .showCopyCard)
         XCTAssertNil(route(KeyCode.y))
-        XCTAssertNil(route(KeyCode.y, [.control, .shift]))
+        XCTAssertNil(route(KeyCode.y, .control))
+        XCTAssertNil(route(KeyCode.y, [.command, .shift]))
+        XCTAssertNil(route(KeyCode.y, [.command, .option]))
         XCTAssertNil(route(
             KeyCode.y,
-            .control,
+            .command,
             context: RefsKeyContext(markedTextPresent: true)
         ))
     }

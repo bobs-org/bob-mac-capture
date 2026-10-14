@@ -49,7 +49,7 @@ struct RefsFooter: View {
     }
 
     static func hintVariants(openHint: String) -> [String] {
-        let core = "\(openHint)  ⌘↵ Note  ⌥↵ Reveal  ⌃Y Copy  ⌘K Actions"
+        let core = "\(openHint)  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘K Actions"
         return [
             "\(core)  ⌘S Scan  ⌘1–5 Scope  esc Close",
             "\(core)  ⌘S Scan  esc Close",

@@ -64,7 +64,7 @@ public enum RefsAction: Equatable, Sendable {
         case .reveal:
             return .option
         case .copy:
-            return .control
+            return .command
         case .openHighlights, .openSourceURL, .openNarration, .openDefaultApp:
             return []
         }

@@ -9,12 +9,12 @@ final class RefsFooterTests: XCTestCase {
     func testHintsCarryCopyAndScanShortcuts() {
         XCTAssertEqual(
             RefsFooter.hintsText(openHint: "↵ Open in Highlights"),
-            "↵ Open in Highlights  ⌘↵ Note  ⌥↵ Reveal  ⌃Y Copy  ⌘K Actions  "
+            "↵ Open in Highlights  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘K Actions  "
                 + "⌘S Scan  ⌘1–5 Scope  esc Close"
         )
         XCTAssertEqual(
             RefsFooter.hintsText(openHint: "↵ Open note"),
-            "↵ Open note  ⌘↵ Note  ⌥↵ Reveal  ⌃Y Copy  ⌘K Actions  ⌘S Scan  "
+            "↵ Open note  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘K Actions  ⌘S Scan  "
                 + "⌘1–5 Scope  esc Close"
         )
         XCTAssertEqual(

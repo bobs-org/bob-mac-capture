@@ -319,7 +319,18 @@ final class RefsCopyTests: XCTestCase {
         XCTAssertEqual(RefsCopyKeyMap.command(characters: nil, keyCode: 53, modifiers: []), .close)
         XCTAssertEqual(RefsCopyKeyMap.command(characters: "[", keyCode: 33, modifiers: []), .unknown("["))
         XCTAssertEqual(RefsCopyKeyMap.command(characters: "[", keyCode: 33, modifiers: [.control]), .close)
-        XCTAssertEqual(RefsCopyKeyMap.command(characters: "y", keyCode: 16, modifiers: [.control]), .copySelected)
+        XCTAssertEqual(
+            RefsCopyKeyMap.command(characters: "y", keyCode: 16, modifiers: [.command]),
+            .copySelected
+        )
+        XCTAssertEqual(
+            RefsCopyKeyMap.command(characters: "y", keyCode: 16, modifiers: [.command, .capsLock]),
+            .copySelected
+        )
+        XCTAssertEqual(
+            RefsCopyKeyMap.command(characters: "y", keyCode: 16, modifiers: [.control]),
+            .consume
+        )
         XCTAssertEqual(RefsCopyKeyMap.command(characters: nil, keyCode: 76, modifiers: [.numericPad]), .copySelected)
         XCTAssertEqual(RefsCopyKeyMap.command(characters: "k", keyCode: 40, modifiers: [.command]), .showActions)
         XCTAssertEqual(RefsCopyKeyMap.command(characters: "q", keyCode: 12, modifiers: []), .unknown("q"))

@@ -121,7 +121,11 @@ final class RefsCopyAlternatesTests: XCTestCase {
         XCTAssertEqual(
             RefsCopyKeyMap.command(characters: nil, keyCode: 36, modifiers: .option), .copySelected)
         XCTAssertEqual(
-            RefsCopyKeyMap.command(characters: nil, keyCode: 16, modifiers: [.control, .option]),
+            RefsCopyKeyMap.command(
+                characters: nil,
+                keyCode: 16,
+                modifiers: [.command, .option]
+            ),
             .copySelected)
     }
 

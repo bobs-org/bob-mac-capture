@@ -1331,12 +1331,12 @@ Diagnostic for hard failures.
 | Command-R | Refresh library, Today, and git dates now; re-rank |
 | Command-S | Scan for new references now (`bob ref scan -w` in the background); a second ⌘S while one runs does nothing |
 | Command-K | Actions menu for the selected row |
-| Control-Y | Open the Copy card for the selected row |
+| Command-Y | Open the Copy card for the selected row |
 | Backspace on an empty query | Remove the scope token |
 | Esc, Ctrl-[ | Copy card, then banner, then query, then scope, then close |
 | Shift-Tab | Consumed (no-op) |
 
-Return while IME-composing passes through to the text system. Ctrl-D
+Return and Command-Y while IME-composing pass through to the text system. Ctrl-D
 and Ctrl-U also pass through while IME-composing; once recognized they
 consume the key even when the preview is hidden, short, empty, or
 already at an edge. At the very bottom, Ctrl-D shows the next page of
@@ -1347,7 +1347,7 @@ typing stops, never on every keystroke.
 
 ### Copy card
 
-Control-Y opens an in-panel card for the selected reference. The fixed keys
+Command-Y opens an in-panel card for the selected reference. The fixed keys
 copy `I` marker ID, `T` title, `W` wiki link, `U` source URL, `L` Markdown
 link, `X` arXiv ID, `D` DOI, `N` note path, `O` Obsidian link, `P` PDF path,
 `F` the PDF file,
@@ -1356,7 +1356,7 @@ commented highlights, including their page and block-link provenance; `A`
 copies all commented highlights and standalone notes plus Bob's own notes; `H`
 opens a highlight picker for every highlight and standalone note (digits copy
 the visible window, arrows scroll the rest, `A` copies all highlights). Rows
-that do not apply are hidden without moving the other keys. Return or Control-Y
+that do not apply are hidden without moving the other keys. Return or Command-Y
 copies the selected row (marker ID when available, otherwise wiki link); Up/Down
 and Ctrl-P/N/J/K move the
 selection, and Escape returns to the inspector. From the picker, Escape
@@ -1456,7 +1456,7 @@ outline headings feed back into the ranking signals, so rows gain
 
 The ⌘K actions menu pops up below the selected row (at the list's
 center when the row frame is unknown): Open in Highlights (↵), Open
-Note (⌘↵), Reveal in Finder (⌥↵), Copy… (⌃Y), Open Source URL (only
+Note (⌘↵), Reveal in Finder (⌥↵), Copy… (⌘Y), Open Source URL (only
 with `urls`), Open Narration (only with `audio`, in the default app),
 Open in Default App, Refresh Library (⌘R), and Scan for New References
 (⌘S, last; disabled while a scan runs). Copy… opens the same Copy card.
