@@ -40,17 +40,20 @@ public struct RefsShowRow: Decodable, Equatable, Sendable {
     public let annotations: [RefsShowAnnotation]
     public let tasks: [RefsShowTask]
     public let annotationsStatus: String?
+    public let ownNotes: String
 
     public init(
         path: String,
         annotations: [RefsShowAnnotation] = [],
         tasks: [RefsShowTask] = [],
-        annotationsStatus: String? = nil
+        annotationsStatus: String? = nil,
+        ownNotes: String = ""
     ) {
         self.path = path
         self.annotations = annotations
         self.tasks = tasks
         self.annotationsStatus = annotationsStatus
+        self.ownNotes = ownNotes
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -58,6 +61,7 @@ public struct RefsShowRow: Decodable, Equatable, Sendable {
         case annotations
         case tasks
         case annotationsStatus = "annotations_status"
+        case ownNotes = "own_notes"
     }
 
     public init(from decoder: Decoder) throws {
@@ -75,6 +79,7 @@ public struct RefsShowRow: Decodable, Equatable, Sendable {
             String.self,
             forKey: .annotationsStatus
         )
+        ownNotes = try container.decodeIfPresent(String.self, forKey: .ownNotes) ?? ""
     }
 
     /// Every commented highlight, in note order: the inspector's
@@ -82,6 +87,16 @@ public struct RefsShowRow: Decodable, Equatable, Sendable {
     /// notes never appear here.
     public var commentedHighlights: [RefsShowAnnotation] {
         annotations.filter(\.hasComment)
+    }
+
+    /// Standalone user notes in annotation order. Blank notes are ignored.
+    public var standaloneNotes: [RefsShowAnnotation] {
+        annotations.filter(\.isStandaloneNote)
+    }
+
+    /// Notes shown by the Copy card, preserving the source order.
+    public var yourNotes: [RefsShowAnnotation] {
+        annotations.filter { $0.hasComment || $0.isStandaloneNote }
     }
 
     /// Open `## Tasks` lines, for the "N open" fact.
@@ -98,17 +113,23 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
     public let kind: String
     public let quote: String?
     public let comment: String?
+    public let blockID: String?
+    public let link: String?
 
     public init(
         pageLabel: String? = nil,
         kind: String = "highlight",
         quote: String? = nil,
-        comment: String? = nil
+        comment: String? = nil,
+        blockID: String? = nil,
+        link: String? = nil
     ) {
         self.pageLabel = pageLabel
         self.kind = kind
         self.quote = quote
         self.comment = comment
+        self.blockID = blockID
+        self.link = link
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -116,6 +137,8 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
         case kind
         case quote
         case comment
+        case blockID = "block_id"
+        case link
     }
 
     public init(from decoder: Decoder) throws {
@@ -124,12 +147,26 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
         kind = try container.decodeIfPresent(String.self, forKey: .kind) ?? "highlight"
         quote = try container.decodeIfPresent(String.self, forKey: .quote)
         comment = try container.decodeIfPresent(String.self, forKey: .comment)
+        blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
+        link = try container.decodeIfPresent(String.self, forKey: .link)
     }
 
     /// A highlight carrying a user comment: the only annotation kind the
     /// inspector's "Your notes" block shows.
     public var hasComment: Bool {
         guard kind == "highlight" else {
+            return false
+        }
+        guard let comment, !comment.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).isEmpty else {
+            return false
+        }
+        return true
+    }
+
+    public var isStandaloneNote: Bool {
+        guard kind == "note" else {
             return false
         }
         guard let comment, !comment.trimmingCharacters(

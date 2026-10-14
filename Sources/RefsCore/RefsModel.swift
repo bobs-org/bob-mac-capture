@@ -260,6 +260,9 @@ public struct RefItem: Identifiable, Equatable, Sendable {
     public let title: TaskDisplayText
     public let stem: String
     public let titleDisambiguator: String?
+    public let markerID: RefMarkerID
+    public let markerIDShareCount: Int
+    public let researchRef: String?
     public let kind: RefKind
     public let state: RefState
     public let isBlocked: Bool
@@ -287,6 +290,9 @@ public struct RefItem: Identifiable, Equatable, Sendable {
         rawTitle: String,
         stem: String,
         titleDisambiguator: String? = nil,
+        markerID: RefMarkerID = .unsupported,
+        markerIDShareCount: Int = 0,
+        researchRef: String? = nil,
         kind: RefKind,
         state: RefState,
         isBlocked: Bool,
@@ -314,6 +320,9 @@ public struct RefItem: Identifiable, Equatable, Sendable {
         self.title = TaskDisplayText(parsing: rawTitle)
         self.stem = stem
         self.titleDisambiguator = titleDisambiguator
+        self.markerID = markerID
+        self.markerIDShareCount = markerIDShareCount
+        self.researchRef = researchRef
         self.kind = kind
         self.state = state
         self.isBlocked = isBlocked
@@ -341,7 +350,8 @@ extension RefItem {
     static func make(
         from record: RefRecord,
         gitAddedDates: [String: String],
-        titleDisambiguator: String? = nil
+        titleDisambiguator: String? = nil,
+        markerIDShareCount: Int = 0
     ) -> RefItem? {
         guard let pdf = record.sourcePDF, !pdf.isEmpty, Self.isSafePDFPath(pdf) else {
             return nil
@@ -376,6 +386,11 @@ extension RefItem {
             rawTitle: record.title,
             stem: Self.stem(forPDFPath: pdf),
             titleDisambiguator: titleDisambiguator,
+            markerID: record.reportsMarkerID
+                ? (record.markerID.map(RefMarkerID.present) ?? .absent)
+                : .unsupported,
+            markerIDShareCount: markerIDShareCount,
+            researchRef: record.researchRef,
             kind: RefKind(refType: record.refType),
             state: RefState(status: record.status, readingState: record.readingState),
             isBlocked: record.blocked,
@@ -459,8 +474,18 @@ extension RefItem {
 /// the stem wherever another item shares the folded display title.
 public enum RefsCatalog {
     public static func items(from snapshot: RefsSnapshot) -> [RefItem] {
+        var markerIDCounts: [String: Int] = [:]
+        for record in snapshot.records {
+            if let markerID = record.markerID {
+                markerIDCounts[markerID, default: 0] += 1
+            }
+        }
         let prelim = snapshot.records.compactMap {
-            RefItem.make(from: $0, gitAddedDates: snapshot.gitAddedDates)
+            RefItem.make(
+                from: $0,
+                gitAddedDates: snapshot.gitAddedDates,
+                markerIDShareCount: $0.markerID.map { markerIDCounts[$0, default: 0] } ?? 0
+            )
         }
         var counts: [String: Int] = [:]
         for item in prelim {
@@ -477,6 +502,9 @@ public enum RefsCatalog {
                     rawTitle: item.rawTitle,
                     stem: item.stem,
                     titleDisambiguator: item.stem,
+                    markerID: item.markerID,
+                    markerIDShareCount: item.markerIDShareCount,
+                    researchRef: item.researchRef,
                     kind: item.kind,
                     state: item.state,
                     isBlocked: item.isBlocked,

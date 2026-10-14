@@ -95,6 +95,9 @@ public struct RefRecord: Codable, Equatable, Sendable {
     public let path: String
     public let link: String
     public let title: String
+    public let markerID: String?
+    public let reportsMarkerID: Bool
+    public let researchRef: String?
     public let refType: String?
     public let origin: String?
     public let status: String?
@@ -121,6 +124,9 @@ public struct RefRecord: Codable, Equatable, Sendable {
         path: String,
         link: String,
         title: String,
+        markerID: String? = nil,
+        reportsMarkerID: Bool = false,
+        researchRef: String? = nil,
         refType: String? = nil,
         origin: String? = nil,
         status: String? = nil,
@@ -146,6 +152,9 @@ public struct RefRecord: Codable, Equatable, Sendable {
         self.path = path
         self.link = link
         self.title = title
+        self.markerID = markerID
+        self.reportsMarkerID = reportsMarkerID
+        self.researchRef = researchRef
         self.refType = refType
         self.origin = origin
         self.status = status
@@ -173,6 +182,8 @@ public struct RefRecord: Codable, Equatable, Sendable {
         case path
         case link
         case title
+        case markerID = "marker_id"
+        case researchRef = "research_ref"
         case refType = "ref_type"
         case origin
         case status
@@ -238,6 +249,9 @@ public struct RefRecord: Codable, Equatable, Sendable {
         path = try container.decode(String.self, forKey: .path)
         link = try container.decode(String.self, forKey: .link)
         title = try container.decode(String.self, forKey: .title)
+        markerID = try container.decodeIfPresent(String.self, forKey: .markerID)
+        reportsMarkerID = container.contains(.markerID)
+        researchRef = try container.decodeIfPresent(String.self, forKey: .researchRef)
         refType = try container.decodeIfPresent(String.self, forKey: .refType)
         origin = try container.decodeIfPresent(String.self, forKey: .origin)
         status = try container.decodeIfPresent(String.self, forKey: .status)
@@ -270,6 +284,14 @@ public struct RefRecord: Codable, Equatable, Sendable {
         try container.encode(path, forKey: .path)
         try container.encode(link, forKey: .link)
         try container.encode(title, forKey: .title)
+        if reportsMarkerID {
+            if let markerID {
+                try container.encode(markerID, forKey: .markerID)
+            } else {
+                try container.encodeNil(forKey: .markerID)
+            }
+        }
+        try container.encodeIfPresent(researchRef, forKey: .researchRef)
         try container.encodeIfPresent(refType, forKey: .refType)
         try container.encodeIfPresent(origin, forKey: .origin)
         try container.encodeIfPresent(status, forKey: .status)
