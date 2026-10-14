@@ -1186,6 +1186,22 @@ JSON
 JSON
     elif [[ "${draft}" == "&" ]]; then
       cat "${fixtures_dir}/task-dependency-parse-amp.json"
+    elif [[ "${draft}" == "@body+excercise &" ]]; then
+      cat "${fixtures_dir}/task-dependency-parse-body-amp.json"
+    elif [[ "${draft}" == "^body:excercise *" ]]; then
+      cat "${fixtures_dir}/blocked-task-parse-caret-star.json"
+    elif [[ "${draft}" == "Buy milk &" ]]; then
+      cat "${fixtures_dir}/task-dependency-parse-buy-milk.json"
+    elif [[ "${draft}" == "&foo:bar " ]]; then
+      cat "${fixtures_dir}/task-dependency-parse-target.json"
+    elif [[ "${draft}" == "*job:cleanup " ]]; then
+      cat "${fixtures_dir}/blocked-task-parse-target.json"
+    elif [[ "${draft}" == "&foo:bar *job:cleanup " ]]; then
+      cat "${fixtures_dir}/task-dependency-parse-both-target.json"
+    elif [[ "${draft}" == "&foo:bar +" ]]; then
+      cat "${fixtures_dir}/parent-task-parse-relate-amp.json"
+    elif [[ "${draft}" == "*job:cleanup +" ]]; then
+      cat "${fixtures_dir}/parent-task-parse-relate-star.json"
     elif [[ "${draft}" == "Ask Kelly *" ]]; then
       cat "${fixtures_dir}/blocked-task-parse-need.json"
     elif [[ "${draft}" == "Ask Kelly *job:cleanup" ]]; then
@@ -2705,6 +2721,20 @@ JSON
 JSON
     elif [[ "${draft}" == "&" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/task-dependency-complete-ownerless.json"
+    elif [[ "${draft}" == "@body+excercise &" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/task-dependency-complete-body-exercise.json"
+    elif [[ "${draft}" == "^body:excercise *" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/blocked-task-complete-caret-star.json"
+    elif [[ "${draft}" == "Buy milk &" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/task-dependency-complete-buy-milk.json"
+    elif [[ "${draft}" == "&foo:bar " ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/task-dependency-complete-target.json"
+    elif [[ "${draft}" == "*job:cleanup " ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/blocked-task-complete-target.json"
+    elif [[ "${draft}" == "&foo:bar +" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-relate-amp.json"
+    elif [[ "${draft}" == "*job:cleanup +" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-relate-star.json"
     elif [[ "${draft}" == "Ask Kelly *" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/blocked-task-complete.json"
     elif [[ "${draft}" == "Ask Kelly *job:cl" ]]; then

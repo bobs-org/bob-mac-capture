@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "@body+excercise &",
+  "body": "",
+  "mode": "incomplete",
+  "route": "body",
+  "section": null,
+  "block_id": "excercise",
+  "needs": ["task_dependency"],
+  "spans": [
+    { "start": 16, "end": 17, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": [],
+  "dependency_target": {
+    "kind": "existing_task",
+    "route": "body",
+    "block_id": "excercise",
+    "text": "Exercise",
+    "note_path": "body.md",
+    "status_symbol": "/",
+    "status_name": "In Progress"
+  }
+}

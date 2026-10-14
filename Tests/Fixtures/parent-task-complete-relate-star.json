@@ -1,0 +1,63 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 14,
+  "replacement": { "start": 13, "end": 14 },
+  "context": "task_parent",
+  "candidates": [
+    {
+      "replacement": "@body+excercise",
+      "ref": "4:ex",
+      "route": "body",
+      "note_kind": "area",
+      "block_id": "excercise",
+      "requires_block_id": false,
+      "block_id_suggestions": [],
+      "status_symbol": "/",
+      "status_name": "In Progress",
+      "status_type": "IN_PROGRESS",
+      "text": "Exercise",
+      "section": "Tasks",
+      "depth": 0,
+      "line": 4,
+      "group": "in_progress"
+    },
+    {
+      "replacement": "",
+      "ref": "4:cleanup",
+      "route": "job",
+      "note_kind": "project",
+      "block_id": "cleanup",
+      "requires_block_id": false,
+      "block_id_suggestions": [],
+      "status_symbol": " ",
+      "status_name": "Todo",
+      "status_type": "TODO",
+      "text": "Do cleanup tasks",
+      "section": "Tasks",
+      "depth": 0,
+      "line": 4,
+      "group": "note",
+      "disabled_reason": "the blocked task itself"
+    }
+  ],
+  "query": "",
+  "picker": {
+    "kind": "parent_task",
+    "scope": "vault",
+    "scope_token": "+",
+    "marker_range": { "start": 13, "end": 14 },
+    "trigger_removal_range": { "start": 13, "end": 14 },
+    "relationship": {
+      "dependencies": [],
+      "blocked_tasks": [
+        {
+          "raw": "*job:cleanup",
+          "note_path": "job.md",
+          "block_id": "cleanup",
+          "text": "Do cleanup tasks"
+        }
+      ]
+    }
+  }
+}

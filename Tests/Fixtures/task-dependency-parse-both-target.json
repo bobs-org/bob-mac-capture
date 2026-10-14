@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "&foo:bar *job:cleanup ",
+  "body": "",
+  "mode": "incomplete",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": ["dependency_target"],
+  "spans": [],
+  "diagnostics": [],
+  "dependencies": [
+    {
+      "raw": "&foo:bar",
+      "note": "foo",
+      "block_id": "bar",
+      "quoted": false,
+      "range": { "start": 0, "end": 8 }
+    }
+  ],
+  "blocked_tasks": [
+    {
+      "raw": "*job:cleanup",
+      "note": "job",
+      "block_id": "cleanup",
+      "quoted": false,
+      "range": { "start": 9, "end": 21 }
+    }
+  ]
+}

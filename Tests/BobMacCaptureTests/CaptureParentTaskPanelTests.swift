@@ -544,6 +544,66 @@ final class CaptureParentTaskPanelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, "@cash+plan-handoff")
     }
 
+    func testOwnerModeDisabledAcceptAnnouncesAndKeepsDraft() {
+        let relationship = CapturePickerRelationship(
+            dependencies: [
+                CapturePickerRelationshipEntry(
+                    raw: "&foo:bar",
+                    notePath: "foo.md",
+                    blockID: "bar",
+                    text: "Buy shoes"
+                ),
+            ]
+        )
+        let context = ParentTaskPickerContext.vault(
+            markerRange: CaptureRange(start: 9, end: 10),
+            relationship: relationship
+        )
+        let guarded = CaptureCompletionCandidate(
+            replacement: "",
+            route: "foo",
+            taskRef: "2:bar",
+            blockID: "bar",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            text: "Buy shoes",
+            group: "note",
+            disabledReason: "the prerequisite itself"
+        )
+        let model = CapturePanelModel()
+        model.installParentTaskPickerForPreviews(
+            candidates: [guarded],
+            context: context,
+            draft: "&foo:bar +",
+            replacement: CaptureRange(start: 9, end: 10)
+        )
+        XCTAssertEqual(model.statusText, "Choose the task to relate")
+        model.acceptPickerRow(id: "foo|2:bar", submitAfterInsert: false)
+        XCTAssertEqual(model.plainDraft, "&foo:bar +")
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertEqual(model.statusText, "the prerequisite itself")
+    }
+
+    func testOwnerModeOpensFromFakeBob() async throws {
+        let model = try parentTaskModel()
+        let draft = "&foo:bar +"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil { model.pickerVisible }
+        XCTAssertEqual(model.statusText, "Choose the task to relate")
+        if case .parentTask(let context) = model.picker?.source {
+            XCTAssertTrue(context.isOwnerMode)
+            XCTAssertEqual(context.relationship?.dependencies.first?.text, "Buy shoes")
+        } else {
+            XCTFail("expected owner-mode parent-task source")
+        }
+        XCTAssertNil(model.errorMessage)
+        model.acceptPickerRow(id: "foo|2:bar", submitAfterInsert: false)
+        XCTAssertEqual(model.plainDraft, "&foo:bar +")
+        XCTAssertEqual(model.statusText, "the prerequisite itself")
+    }
+
     func testChangedDraftAfterIDAssignmentKeepsPrompt() async throws {
         let model = try parentTaskModel()
         model.installParentTaskPickerForPreviews(

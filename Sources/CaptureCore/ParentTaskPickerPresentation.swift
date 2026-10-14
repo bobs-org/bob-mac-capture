@@ -18,6 +18,7 @@ public struct ParentTaskPickerContext: Equatable, Sendable {
     public let markerRange: CaptureRange
     public let triggerRemovalRange: CaptureRange
     public let actionContinuationKeys: [String]
+    public let relationship: CapturePickerRelationship?
 
     public init(
         scope: ParentTaskPickerScope,
@@ -25,7 +26,8 @@ public struct ParentTaskPickerContext: Equatable, Sendable {
         noteTarget: String? = nil,
         markerRange: CaptureRange,
         triggerRemovalRange: CaptureRange,
-        actionContinuationKeys: [String] = []
+        actionContinuationKeys: [String] = [],
+        relationship: CapturePickerRelationship? = nil
     ) {
         self.scope = scope
         self.scopeToken = scopeToken
@@ -33,6 +35,7 @@ public struct ParentTaskPickerContext: Equatable, Sendable {
         self.markerRange = markerRange
         self.triggerRemovalRange = triggerRemovalRange
         self.actionContinuationKeys = actionContinuationKeys
+        self.relationship = relationship
     }
 
     public var isVault: Bool {
@@ -53,9 +56,17 @@ public struct ParentTaskPickerContext: Equatable, Sendable {
         return "this note"
     }
 
+    public var isOwnerMode: Bool {
+        if let relationship, !relationship.isEmpty {
+            return true
+        }
+        return false
+    }
+
     public static func vault(
         markerRange: CaptureRange,
-        actionContinuationKeys: [String] = []
+        actionContinuationKeys: [String] = [],
+        relationship: CapturePickerRelationship? = nil
     ) -> ParentTaskPickerContext {
         ParentTaskPickerContext(
             scope: .vault,
@@ -63,7 +74,8 @@ public struct ParentTaskPickerContext: Equatable, Sendable {
             noteTarget: nil,
             markerRange: markerRange,
             triggerRemovalRange: markerRange,
-            actionContinuationKeys: actionContinuationKeys
+            actionContinuationKeys: actionContinuationKeys,
+            relationship: relationship
         )
     }
 
@@ -71,14 +83,16 @@ public struct ParentTaskPickerContext: Equatable, Sendable {
         route: String,
         noteTarget: String,
         markerRange: CaptureRange,
-        triggerRemovalRange: CaptureRange
+        triggerRemovalRange: CaptureRange,
+        relationship: CapturePickerRelationship? = nil
     ) -> ParentTaskPickerContext {
         ParentTaskPickerContext(
             scope: .note,
             scopeToken: "@\(route)+",
             noteTarget: noteTarget,
             markerRange: markerRange,
-            triggerRemovalRange: triggerRemovalRange
+            triggerRemovalRange: triggerRemovalRange,
+            relationship: relationship
         )
     }
 }
@@ -189,7 +203,14 @@ public struct ParentTaskPickerIndex: Sendable {
             }
             return "↩ names this task, then inserts @route+id"
         }
+        if let badge = row.badgeText, !badge.isEmpty {
+            return badge
+        }
         return "↩ names this task, then inserts @route+id"
+    }
+
+    public static func headerTitle(relationship: CapturePickerRelationship) -> String {
+        CaptureRelationshipCopy.parentPickerTitle(relationship: relationship)
     }
 
     private var emptyCatalogState: CapturePickerEmptyState {
@@ -363,16 +384,23 @@ public struct ParentTaskPickerIndex: Sendable {
         let candidate = entry.candidate
         let pending: CapturePickerPendingBlockID?
         let insertion: String?
-        if candidate.requiresBlockID {
+        let badge: String?
+        if candidate.disabledReason != nil {
+            pending = nil
+            insertion = nil
+            badge = candidate.disabledReason
+        } else if candidate.requiresBlockID {
             pending = CapturePickerPendingBlockID(
                 route: candidate.route ?? "",
                 taskRef: candidate.taskRef ?? "",
                 suggestions: candidate.blockIDSuggestions
             )
             insertion = nil
+            badge = nil
         } else {
             pending = nil
-            insertion = candidate.replacement
+            insertion = candidate.replacement.isEmpty ? nil : candidate.replacement
+            badge = nil
         }
         return CapturePickerRow(
             id: Self.key(for: candidate),
@@ -386,7 +414,7 @@ public struct ParentTaskPickerIndex: Sendable {
             routeMatchRanges: routeMatchRanges,
             blockIDMatchRanges: blockIDMatchRanges,
             chipText: chipText,
-            badgeText: nil,
+            badgeText: badge,
             depth: depth,
             insertion: insertion,
             pendingBlockID: pending,
@@ -396,7 +424,7 @@ public struct ParentTaskPickerIndex: Sendable {
                 statusText: entry.status.displayName,
                 route: candidate.route,
                 section: candidate.section,
-                summary: pomodoroSummary(for: entry),
+                summary: summary(for: entry),
                 insertionPrefix: "@"
             ),
             accessibilityLabel: accessibilityLabel(for: entry)
@@ -416,6 +444,13 @@ public struct ParentTaskPickerIndex: Sendable {
             return label
         }
         return name ?? "Planned"
+    }
+
+    private func summary(for entry: ParentTaskPickerIndexEntry) -> String {
+        if let reason = entry.candidate.disabledReason, !reason.isEmpty {
+            return reason
+        }
+        return pomodoroSummary(for: entry)
     }
 
     private func pomodoroSummary(for entry: ParentTaskPickerIndexEntry) -> String {
@@ -450,7 +485,7 @@ public struct ParentTaskPickerIndex: Sendable {
         } else if let route = entry.candidate.route {
             parts.append("Note \(route)")
         }
-        parts.append(pomodoroSummary(for: entry))
+        parts.append(summary(for: entry))
         return parts.joined(separator: ". ") + "."
     }
 }

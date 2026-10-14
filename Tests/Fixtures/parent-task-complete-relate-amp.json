@@ -1,0 +1,81 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 10,
+  "replacement": { "start": 9, "end": 10 },
+  "context": "task_parent",
+  "candidates": [
+    {
+      "replacement": "@body+excercise",
+      "ref": "4:ex",
+      "route": "body",
+      "note_kind": "area",
+      "block_id": "excercise",
+      "requires_block_id": false,
+      "block_id_suggestions": [],
+      "status_symbol": "/",
+      "status_name": "In Progress",
+      "status_type": "IN_PROGRESS",
+      "text": "Exercise",
+      "section": "Tasks",
+      "depth": 0,
+      "line": 4,
+      "group": "in_progress"
+    },
+    {
+      "replacement": "",
+      "ref": "2:bar",
+      "route": "foo",
+      "note_kind": "area",
+      "block_id": "bar",
+      "requires_block_id": false,
+      "block_id_suggestions": [],
+      "status_symbol": " ",
+      "status_name": "Todo",
+      "status_type": "TODO",
+      "text": "Buy shoes",
+      "section": "Tasks",
+      "depth": 0,
+      "line": 2,
+      "group": "note",
+      "disabled_reason": "the prerequisite itself"
+    },
+    {
+      "replacement": "",
+      "ref": "3:cycle",
+      "route": "job",
+      "note_kind": "project",
+      "block_id": "cycle",
+      "requires_block_id": false,
+      "block_id_suggestions": [],
+      "status_symbol": " ",
+      "status_name": "Todo",
+      "status_type": "TODO",
+      "text": "Would cycle",
+      "section": "Tasks",
+      "depth": 0,
+      "line": 3,
+      "group": "note",
+      "disabled_reason": "would create a dependency cycle"
+    }
+  ],
+  "query": "",
+  "picker": {
+    "kind": "parent_task",
+    "scope": "vault",
+    "scope_token": "+",
+    "marker_range": { "start": 9, "end": 10 },
+    "trigger_removal_range": { "start": 9, "end": 10 },
+    "relationship": {
+      "dependencies": [
+        {
+          "raw": "&foo:bar",
+          "note_path": "foo.md",
+          "block_id": "bar",
+          "text": "Buy shoes"
+        }
+      ],
+      "blocked_tasks": []
+    }
+  }
+}

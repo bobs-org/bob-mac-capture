@@ -1,0 +1,32 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 10,
+  "replacement": { "start": 9, "end": 10 },
+  "context": "task_dependency",
+  "candidates": [
+    {
+      "replacement": "&foo:bar",
+      "ref": "2:bar",
+      "note_path": "foo.md",
+      "locator": "foo",
+      "group": "open",
+      "hidden": false,
+      "block_id": "bar",
+      "requires_block_id": false,
+      "block_id_suggestions": [],
+      "status_symbol": " ",
+      "status_name": "Todo",
+      "status_type": "TODO",
+      "text": "Buy shoes",
+      "section": "Tasks",
+      "depth": 0,
+      "line": 2
+    }
+  ],
+  "query": "",
+  "owner": {
+    "kind": "new_task",
+    "text": "Buy milk"
+  }
+}

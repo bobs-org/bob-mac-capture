@@ -334,4 +334,32 @@ final class DependencyDecodingTests: XCTestCase {
             "Pick a task to block — press Tab to browse"
         )
     }
+
+    func testParseTargetFixtureDecodesRelationshipMarkers() throws {
+        let parse = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("task-dependency-parse-target.json").utf8)
+        )
+        XCTAssertEqual(parse.needs, ["dependency_target"])
+        XCTAssertEqual(parse.dependencies.first?.raw, "&foo:bar")
+        XCTAssertEqual(parse.dependencies.first?.note, "foo")
+        XCTAssertEqual(parse.dependencies.first?.blockID, "bar")
+        XCTAssertNil(parse.dependencyTarget)
+    }
+
+    func testExistingOwnerCompleteFixtureDecodesTextAndThisNote() throws {
+        let complete = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(fixtureText("task-dependency-complete-body-exercise.json").utf8)
+        )
+        XCTAssertEqual(complete.owner?.text, "Exercise")
+        XCTAssertEqual(complete.owner?.notePath, "body.md")
+        XCTAssertEqual(complete.owner?.statusName, "In Progress")
+        XCTAssertEqual(complete.candidates.first?.group, "in_this_note")
+        let presentation = DependencyPickerIndex(
+            candidates: complete.candidates
+        ).presentation(filter: "")
+        XCTAssertEqual(presentation.sections.first?.kind, .thisNote)
+        XCTAssertEqual(presentation.sections.first?.title, "This note")
+    }
 }

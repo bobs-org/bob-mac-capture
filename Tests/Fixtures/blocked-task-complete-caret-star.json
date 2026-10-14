@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 17,
+  "replacement": { "start": 16, "end": 17 },
+  "context": "blocked_task",
+  "candidates": [
+    {
+      "replacement": "*job:cleanup",
+      "ref": "4:aaaa1111",
+      "note_path": "job.md",
+      "locator": "job",
+      "group": "open",
+      "hidden": false,
+      "block_id": "cleanup",
+      "requires_block_id": false,
+      "block_id_suggestions": [],
+      "status_symbol": " ",
+      "status_name": "Todo",
+      "status_type": "TODO",
+      "text": "Do cleanup tasks",
+      "section": "Tasks",
+      "depth": 0,
+      "line": 4
+    }
+  ],
+  "query": "",
+  "owner": {
+    "kind": "existing_task",
+    "route": "body",
+    "block_id": "excercise",
+    "text": "Exercise",
+    "note_path": "body.md",
+    "status_symbol": "/",
+    "status_name": "In Progress"
+  }
+}

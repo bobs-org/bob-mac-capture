@@ -455,6 +455,100 @@ final class ParentTaskPickerPresentationTests: XCTestCase {
         )
     }
 
+    func testOwnerModeChipAndHeader() {
+        let relationship = CapturePickerRelationship(
+            dependencies: [
+                CapturePickerRelationshipEntry(
+                    raw: "&foo:bar",
+                    notePath: "foo.md",
+                    blockID: "bar",
+                    text: "Buy shoes"
+                ),
+            ]
+        )
+        let context = ParentTaskPickerContext.vault(
+            markerRange: CaptureRange(start: 10, end: 11),
+            relationship: relationship
+        )
+        XCTAssertTrue(context.isOwnerMode)
+        let source = CapturePickerSource.parentTask(context)
+        XCTAssertEqual(source.chipLabel, "Choose the task to relate")
+        XCTAssertEqual(
+            ParentTaskPickerIndex.headerTitle(relationship: relationship),
+            "⛓ Which task depends on \u{201C}Buy shoes\u{201D}?"
+        )
+    }
+
+    func testOwnerModeDisabledRowAnnouncesAndDoesNotInsert() throws {
+        let relationship = CapturePickerRelationship(
+            dependencies: [
+                CapturePickerRelationshipEntry(
+                    raw: "&foo:bar",
+                    notePath: "foo.md",
+                    blockID: "bar",
+                    text: "Buy shoes"
+                ),
+            ]
+        )
+        let context = ParentTaskPickerContext.vault(
+            markerRange: CaptureRange(start: 10, end: 11),
+            relationship: relationship
+        )
+        let open = CaptureCompletionCandidate(
+            replacement: "@body+excercise",
+            route: "body",
+            taskRef: "4:ex",
+            blockID: "excercise",
+            requiresBlockID: false,
+            statusSymbol: "/",
+            statusName: "In Progress",
+            text: "Exercise",
+            group: "note"
+        )
+        let guarded = CaptureCompletionCandidate(
+            replacement: "",
+            route: "foo",
+            taskRef: "2:bar",
+            blockID: "bar",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            text: "Buy shoes",
+            group: "note",
+            disabledReason: "the prerequisite itself"
+        )
+        let index = ParentTaskPickerIndex(candidates: [open, guarded], context: context)
+        let presentation = index.presentation(filter: "")
+        let usable = try XCTUnwrap(presentation.rowsByID["body|4:ex"])
+        XCTAssertEqual(usable.insertion, "@body+excercise")
+        XCTAssertFalse(usable.isGuarded)
+        let disabled = try XCTUnwrap(presentation.rowsByID["foo|2:bar"])
+        XCTAssertNil(disabled.insertion)
+        XCTAssertNil(disabled.pendingBlockID)
+        XCTAssertEqual(disabled.badgeText, "the prerequisite itself")
+        XCTAssertTrue(disabled.isGuarded)
+        XCTAssertEqual(index.actionLine(for: disabled), "the prerequisite itself")
+        XCTAssertTrue(disabled.accessibilityLabel.contains("the prerequisite itself"))
+    }
+
+    func testOwnerModeFixtureDecodesRelationshipAndDisabledRows() throws {
+        let data = try Data(contentsOf: fixtureURL("parent-task-complete-relate-amp.json"))
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+        XCTAssertEqual(decoded.context, "task_parent")
+        let context = try XCTUnwrap(decoded.picker?.parentTaskContext)
+        XCTAssertTrue(context.isOwnerMode)
+        XCTAssertEqual(context.relationship?.dependencies.first?.text, "Buy shoes")
+        let presentation = ParentTaskPickerIndex(
+            candidates: decoded.candidates,
+            context: context
+        ).presentation(filter: "")
+        let guarded = try XCTUnwrap(presentation.rowsByID["foo|2:bar"])
+        XCTAssertTrue(guarded.isGuarded)
+        XCTAssertEqual(guarded.badgeText, "the prerequisite itself")
+        let cycle = try XCTUnwrap(presentation.rowsByID["job|3:cycle"])
+        XCTAssertEqual(cycle.badgeText, "would create a dependency cycle")
+    }
+
     func testBackendVaultFixtureMatchesUnfilteredPresentation() throws {
         let data = try Data(contentsOf: fixtureURL("parent-task-complete-full.json"))
         let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)

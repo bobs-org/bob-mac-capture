@@ -227,12 +227,21 @@ final class DependencyPickerPresentationTests: XCTestCase {
               "replacement": {"start": 0, "end": 9},
               "context": "task_dependency", "candidates": [],
               "query": "cash:bu",
-              "owner": {"kind": "existing_task", "route": "home", "block_id": "groceries"}
+              "owner": {
+                "kind": "existing_task", "route": "body", "block_id": "excercise",
+                "text": "Exercise", "note_path": "body.md",
+                "status_symbol": "/", "status_name": "In Progress"
+              }
             }
             """.utf8)
         )
         XCTAssertEqual(response.query, "cash:bu")
-        XCTAssertEqual(response.owner?.headerText, "@home+groceries")
+        XCTAssertEqual(response.owner?.headerText, "@body+excercise")
+        XCTAssertEqual(response.owner?.text, "Exercise")
+        XCTAssertEqual(response.owner?.notePath, "body.md")
+        XCTAssertEqual(response.owner?.statusSymbol, "/")
+        XCTAssertEqual(response.owner?.statusName, "In Progress")
+        XCTAssertEqual(response.owner?.locationSubtitle, "body.md ^excercise · In Progress")
         XCTAssertTrue(response.owner?.isExistingTask ?? false)
     }
 
@@ -348,17 +357,70 @@ final class DependencyPickerPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             DependencyPickerIndex.headerSubtitle(owner: nil, dependentText: nil),
-            "Then add task text or @note+id"
+            "Then type the task, or + for an existing one"
         )
     }
 
     func testExistingOwnerHeader() {
-        let owner = DependencyOwner(kind: "existing_task", route: "home", blockID: "groceries")
+        let owner = DependencyOwner(
+            kind: "existing_task",
+            route: "body",
+            blockID: "excercise",
+            text: "Exercise",
+            notePath: "body.md",
+            statusSymbol: "/",
+            statusName: "In Progress"
+        )
         XCTAssertEqual(
             DependencyPickerIndex.headerTitle(owner: owner, dependentText: nil),
-            "For: @home+groceries"
+            "⛓ Exercise depends on\u{2026}"
         )
-        XCTAssertNil(DependencyPickerIndex.headerSubtitle(owner: owner, dependentText: nil))
+        XCTAssertEqual(
+            DependencyPickerIndex.headerSubtitle(owner: owner, dependentText: nil),
+            "body.md ^excercise · In Progress"
+        )
+    }
+
+    func testNewTaskOwnerHeaderQuotesText() {
+        let owner = DependencyOwner(kind: "new_task", text: "Buy Groceries!")
+        XCTAssertEqual(
+            DependencyPickerIndex.headerTitle(owner: owner, dependentText: "ignored"),
+            "⛓ \u{201C}Buy Groceries!\u{201D} depends on\u{2026}"
+        )
+        XCTAssertNil(DependencyPickerIndex.headerSubtitle(owner: owner, dependentText: "ignored"))
+    }
+
+    func testThisNoteGroupRendersFirst() throws {
+        let thisNote = CaptureCompletionCandidate(
+            replacement: "&body:hospital-swarm",
+            taskRef: "30:32a6a0da",
+            blockID: "hospital-swarm",
+            requiresBlockID: false,
+            statusSymbol: "?",
+            statusName: "Blocked",
+            text: "Launch swarm to find hospital!",
+            group: "in_this_note",
+            notePath: "body.md",
+            locator: "body"
+        )
+        let inProgress = CaptureCompletionCandidate(
+            replacement: "&sase:deep-fix",
+            taskRef: "7:aaaa1111",
+            blockID: "deep-fix",
+            requiresBlockID: false,
+            statusSymbol: "/",
+            statusName: "In Progress",
+            text: "Fix deep bug",
+            group: "in_progress",
+            notePath: "sase.md",
+            locator: "sase"
+        )
+        let presentation = DependencyPickerIndex(
+            candidates: [thisNote, inProgress]
+        ).presentation(filter: "")
+        XCTAssertEqual(presentation.sections.map(\.kind), [.thisNote, .unqueuedInProgress])
+        XCTAssertEqual(presentation.sections.map(\.title), ["This note", "In Progress"])
+        XCTAssertEqual(presentation.sections.first?.rows.first?.displayText, "Launch swarm to find hospital!")
     }
 
     func testBlocksDirectionUsesStarCopyAndAlreadyBlockedState() throws {

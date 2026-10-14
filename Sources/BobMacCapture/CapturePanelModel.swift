@@ -326,6 +326,9 @@ final class CapturePanelModel: ObservableObject {
     private var priorityRollSeed: String?
     private var previewPullInSnapshot: CapturePullInPreviewSnapshot?
     private var focusSequence: UInt64 = 0
+    /// Display text of accepted `&` / `*` picker replacements, used for the
+    /// calm `dependency_target` hint. Cleared when the draft resets.
+    private var relationshipDisplayNames: [String: String] = [:]
 
     // Shared by submit and preview so a late callback from either one can never mutate
     // state on behalf of a request that is no longer the active one.
@@ -2108,6 +2111,7 @@ final class CapturePanelModel: ObservableObject {
         previewPullInSnapshot = nil
         closePendingText = nil
         closePendingAction = "Close"
+        relationshipDisplayNames = [:]
     }
 
     /// Explicit Preview shares `activeRequestID` with submit. Retire only
@@ -2460,6 +2464,7 @@ final class CapturePanelModel: ObservableObject {
             markerRange: Self.blockIDMarkerRange(for: source)
         )
         applyPickerMarkerHighlight()
+        applyOwnerModeParentStatus(source: source)
     }
 
     /// Routes one completion result: `active_task`, `task_link`,
@@ -3472,7 +3477,14 @@ final class CapturePanelModel: ObservableObject {
         dismissCompletion()
         pickerChip = nil
         editorInputLocked = true
+        applyOwnerModeParentStatus(source: source)
         requestFocus(.pickerFilter)
+    }
+
+    private func applyOwnerModeParentStatus(source: CapturePickerSource) {
+        if case .parentTask(let context) = source, context.isOwnerMode {
+            statusText = CaptureRelationshipCopy.relateStatusText
+        }
     }
 
     /// Draft-global byte range of the marker token the picker edits: Bob's
@@ -3851,9 +3863,14 @@ final class CapturePanelModel: ObservableObject {
                 announceStatus(
                     Self.blockIDNoAcceptReason(filter: picker.filterText, presentation: pickerPresentation)
                 )
-            } else if picker.source == .dependency || picker.source == .blockedTask || picker.source == .taskComplete {
+            } else if picker.source == .dependency
+                || picker.source == .blockedTask
+                || picker.source == .taskComplete
+            {
                 // Already-added and guarded rows keep the draft unchanged and
                 // say why, leaving the picker open.
+                announceStatus(row.badgeText ?? "That task cannot be used yet")
+            } else if case .parentTask = picker.source {
                 announceStatus(row.badgeText ?? "That task cannot be used yet")
             }
             return
@@ -3880,6 +3897,9 @@ final class CapturePanelModel: ObservableObject {
 
         let source = picker.source
         let owner = picker.dependencyOwner
+        if source == .dependency || source == .blockedTask {
+            rememberRelationshipDisplayName(replacement: insertion, text: row.displayText)
+        }
         closePickerForAccept()
         suppressedCompletionAcceptanceDraft = text
         setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
@@ -4539,7 +4559,8 @@ final class CapturePanelModel: ObservableObject {
     /// An incomplete picker token is a state, not an error: skip the doomed
     /// live dry run and show a calm status line instead of red errors.
     /// Precedence is `active_task`, then `task_link`, then `task_goto`, then
-    /// `task_parent`, then `task_dependency`, then `pomodoro_id`, then
+    /// `task_parent`, then `task_dependency`, then `blocked_task`, then
+    /// `task_complete`, then `dependency_target`, then `pomodoro_id`, then
     /// `block_id`, then the `=<X>#` named-start incomplete, checked
     /// top-level or in any item.
     /// Suffix-only states such as `@sase:x#` (`pomodoro_name` without a
@@ -4570,6 +4591,9 @@ final class CapturePanelModel: ObservableObject {
         if needs("task_complete") {
             return .taskComplete
         }
+        if needs("dependency_target") {
+            return .dependencyTarget
+        }
         if needs("pomodoro_id") {
             return .pomodoroID
         }
@@ -4593,7 +4617,7 @@ final class CapturePanelModel: ObservableObject {
         return nil
     }
 
-    private func applyQuietIncompletePicker(_ need: CapturePickerNeed) {
+    private func applyQuietIncompletePicker(_ need: CapturePickerNeed, parse: CaptureParseResponse) {
         previewState = .idle
         previewResult = nil
         previewResults = []
@@ -4602,7 +4626,36 @@ final class CapturePanelModel: ObservableObject {
         closePendingAction = "Close"
         errorMessage = nil
         errorCode = nil
-        statusText = need.statusText
+        switch need {
+        case .dependencyTarget:
+            statusText = CaptureRelationshipCopy.dependencyTargetHint(
+                parse: parse,
+                names: relationshipDisplayNames
+            )
+        case .taskParent where CaptureRelationshipCopy.parseHasRelationshipModifiers(parse):
+            statusText = CaptureRelationshipCopy.relateStatusText
+        default:
+            statusText = need.statusText
+        }
+    }
+
+    private func rememberRelationshipDisplayName(replacement: String, text: String) {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedText.isEmpty else {
+            return
+        }
+        let trimmed = replacement.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            return
+        }
+        relationshipDisplayNames[trimmed] = trimmedText
+        relationshipDisplayNames[replacement] = trimmedText
+        if trimmed.hasPrefix("&") || trimmed.hasPrefix("*") {
+            let locator = String(trimmed.dropFirst())
+            if !locator.isEmpty {
+                relationshipDisplayNames[locator] = trimmedText
+            }
+        }
     }
 
     /// The pending close/start-list trim for a draft that dangles on a list
@@ -4961,8 +5014,10 @@ final class CapturePanelModel: ObservableObject {
             dismissCompletion()
             pickerChip = nil
             editorInputLocked = true
-            if case .parentTask = returnPicker.source {
-                statusText = CapturePickerNeed.taskParent.statusText
+            if case .parentTask(let context) = returnPicker.source {
+                statusText = context.isOwnerMode
+                    ? CaptureRelationshipCopy.relateStatusText
+                    : CapturePickerNeed.taskParent.statusText
             } else if returnPicker.source == .dependency {
                 statusText = CapturePickerNeed.dependency.statusText
             } else if returnPicker.source == .blockedTask {
@@ -6384,7 +6439,7 @@ final class CapturePanelModel: ObservableObject {
                         // An incomplete `^` is a state, not an error: skip the
                         // doomed live dry run and stay calm instead of flashing
                         // red "incomplete Pomodoro link" errors while picking.
-                        self?.applyQuietIncompletePicker(need)
+                        self?.applyQuietIncompletePicker(need, parse: parse)
                     }
                 }
 

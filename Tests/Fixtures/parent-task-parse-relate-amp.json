@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "&foo:bar +",
+  "body": "",
+  "mode": "incomplete",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": ["task_parent"],
+  "spans": [
+    { "start": 9, "end": 10, "kind": "interactive_placeholder" }
+  ],
+  "diagnostics": [],
+  "dependencies": [
+    {
+      "raw": "&foo:bar",
+      "note": "foo",
+      "block_id": "bar",
+      "quoted": false,
+      "range": { "start": 0, "end": 8 }
+    }
+  ]
+}

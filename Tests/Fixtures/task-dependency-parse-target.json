@@ -1,0 +1,26 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "&foo:bar ",
+  "body": "",
+  "mode": "incomplete",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": ["dependency_target"],
+  "spans": [
+    { "start": 0, "end": 1, "kind": "dependency_sigil" },
+    { "start": 1, "end": 4, "kind": "dependency_note" },
+    { "start": 5, "end": 8, "kind": "dependency_block_id" }
+  ],
+  "diagnostics": [],
+  "dependencies": [
+    {
+      "raw": "&foo:bar",
+      "note": "foo",
+      "block_id": "bar",
+      "quoted": false,
+      "range": { "start": 0, "end": 8 }
+    }
+  ]
+}

@@ -174,6 +174,10 @@ struct CapturePickerCard: View {
 
             if source == .dependency || source == .blockedTask {
                 dependencyHeader
+            } else if case .parentTask(let context) = source, context.isOwnerMode,
+                      let relationship = context.relationship
+            {
+                parentOwnerHeader(relationship: relationship)
             }
 
             Divider()
@@ -294,6 +298,26 @@ struct CapturePickerCard: View {
                 }
                 ?? DependencyPickerIndex.headerTitle(owner: owner, dependentText: nil, direction: direction)
         )
+    }
+
+    /// Owner-mode `+` / `@route+` header from Bob's `picker.relationship`.
+    @ViewBuilder
+    private func parentOwnerHeader(relationship: CapturePickerRelationship) -> some View {
+        let title = ParentTaskPickerIndex.headerTitle(relationship: relationship)
+        HStack(spacing: 6) {
+            Image(systemName: "link")
+                .foregroundStyle(CaptureEditorPalette.color(for: .blockID))
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.callout.weight(.semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title)
     }
 
     @ViewBuilder
@@ -480,7 +504,7 @@ private struct CapturePickerSectionHeader: View {
             suggestionHeader
         case .usedIDs:
             usedIDsHeader
-        case .taskCompleteFiltered:
+        case .taskCompleteFiltered, .thisNote:
             taskCompleteFilteredHeader
         case .pomodoro, .unqueuedInProgress, .unqueuedNext, .other, .matches, .note:
             standardHeader
@@ -678,7 +702,7 @@ private struct CapturePickerRowView: View {
             }
         }
         .onHover { isHovered = $0 }
-        .opacity(isInfoRow ? 0.8 : 1.0)
+        .opacity(isInfoRow || row.isGuarded ? 0.8 : 1.0)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(row.accessibilityLabel)
     }
@@ -1013,23 +1037,12 @@ private struct CapturePickerDetailStrip: View {
         {
             return Text(actionLine).foregroundColor(.secondary)
         }
-        if case .parentTask = source {
-            return Text(parentTaskActionLine(for: row)).foregroundColor(.secondary)
+        if case .parentTask = source,
+           let actionLine = model.pickerActionLine(for: row)
+        {
+            return Text(actionLine).foregroundColor(.secondary)
         }
         return Text("\(Text("↩ inserts ").foregroundStyle(.secondary))\(Text(row.detail.insertionPrefix).foregroundStyle(.primary))\(locatorInsertionText(for: row))")
-    }
-
-    private func parentTaskActionLine(for row: CapturePickerRow) -> String {
-        if let insertion = row.insertion {
-            return "Inserts \(insertion)"
-        }
-        if let pending = row.pendingBlockID {
-            if let first = pending.suggestions.first {
-                return "↩ adds ^\(first) to \(pending.route).md, then inserts @\(pending.route)+\(first)"
-            }
-            return "↩ names this task, then inserts @route+id"
-        }
-        return "↩ names this task, then inserts @route+id"
     }
 
     private func pullForwardLine(for row: CapturePickerRow) -> String? {

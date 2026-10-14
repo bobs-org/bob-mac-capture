@@ -261,6 +261,9 @@ public enum CapturePickerSource: Equatable, Sendable {
             }
             return "Browse \(context.noteTarget) tasks"
         case .parentTask(let context):
+            if context.isOwnerMode {
+                return CaptureRelationshipCopy.relateStatusText
+            }
             return context.isVault ? "Select a parent task" : "Append to a task"
         }
     }
@@ -580,8 +583,11 @@ public enum CapturePickerSource: Equatable, Sendable {
 
 /// Which incomplete picker need a parse reports. Each need carries the calm
 /// status line shown instead of the doomed live dry run. Precedence is
-/// `activeTask`, then `taskLink`, then `taskGoto`, then `taskParent`, then `dependency`, `blockedTask`, then
-/// `pomodoroID`, then `blockID`, then `pomodoroStart`.
+/// `activeTask`, then `taskLink`, then `taskGoto`, then `taskParent`, then
+/// `dependency`, then `blockedTask`, then `taskComplete`, then
+/// `dependencyTarget`, then `pomodoroID`, then `blockID`, then `pomodoroStart`.
+/// A bare `&` reports both `task_dependency` and `dependency_target`; the
+/// picker need wins so the list opens instead of the owner hint.
 public enum CapturePickerNeed: Equatable, Sendable {
     case activeTask
     case taskLink
@@ -590,6 +596,7 @@ public enum CapturePickerNeed: Equatable, Sendable {
     case dependency
     case blockedTask
     case taskComplete
+    case dependencyTarget
     case pomodoroID
     case blockID
     case pomodoroStart
@@ -610,6 +617,8 @@ public enum CapturePickerNeed: Equatable, Sendable {
             return "Pick a task to block — press Tab to browse"
         case .taskComplete:
             return "Pick a task to complete — press Tab to browse"
+        case .dependencyTarget:
+            return "Type a new task, or + for an existing one"
         case .pomodoroID:
             return "Pick a task or type a new ID — press Tab to browse"
         case .blockID:
@@ -743,6 +752,7 @@ public enum CapturePickerSectionKind: Equatable, Sendable {
     case suggestions
     case usedIDs
     case note
+    case thisNote
 }
 
 /// One picker section: a queued Pomodoro entry, an unqueued status bucket, or
@@ -886,8 +896,8 @@ public struct CapturePickerRow: Equatable, Sendable {
     /// Small Pomodoro chip for filtered rows; nil in grouped mode (the header
     /// already says it) and for unqueued tasks.
     public let chipText: String?
-    /// Trailing badge capsule. Currently always nil; kept so row layout
-    /// stays stable if a future source needs one.
+    /// Trailing badge capsule: Bob's `disabled_reason`, already-added, or
+    /// already-blocked copy. Nil when the row inserts or opens Add block ID.
     public let badgeText: String?
     /// Nesting depth; the row indents 14pt per depth (max 2). Always 0 for
     /// `^`, and nonzero only in grouped `:` note sections.
@@ -960,6 +970,12 @@ public struct CapturePickerRow: Equatable, Sendable {
         self.taskGotoDestination = taskGotoDestination
         self.detail = detail
         self.accessibilityLabel = accessibilityLabel
+    }
+
+    /// Guarded rows stay selectable so Return announces Bob's reason, but
+    /// they never insert and never open Add block ID.
+    public var isGuarded: Bool {
+        insertion == nil && pendingBlockID == nil && !(badgeText ?? "").isEmpty
     }
 }
 

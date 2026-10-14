@@ -105,9 +105,17 @@ final class CaptureDependencyPanelTests: XCTestCase {
         model.installBlockedTaskPickerForPreviews(
             candidates: [blockedCandidate(), blockedIDlessCandidate()],
             filter: "",
-            draft: "Ask Kelly *",
-            replacement: CaptureRange(start: 10, end: 11),
-            owner: DependencyOwner(kind: "existing_task", route: "mac_inbox", blockID: "ask-kelly")
+            draft: "@mac_inbox+ask-kelly *",
+            replacement: CaptureRange(start: 22, end: 23),
+            owner: DependencyOwner(
+                kind: "existing_task",
+                route: "mac_inbox",
+                blockID: "ask-kelly",
+                text: "Ask Kelly",
+                notePath: "mac_inbox.md",
+                statusSymbol: " ",
+                statusName: "Todo"
+            )
         )
         return model
     }
@@ -201,7 +209,7 @@ final class CaptureDependencyPanelTests: XCTestCase {
         XCTAssertTrue(model.pickerVisible)
         XCTAssertTrue(model.pickerSourceIsBlockedTask)
         model.acceptPickerRow(id: "job.md|4:aaaa1111", submitAfterInsert: false)
-        XCTAssertEqual(model.plainDraft, "Ask Kelly *job:cleanup ")
+        XCTAssertEqual(model.plainDraft, "@mac_inbox+ask-kelly *job:cleanup ")
         XCTAssertEqual(model.statusText, "Inserted *job:cleanup ")
         XCTAssertFalse(model.pickerVisible)
     }
@@ -220,7 +228,7 @@ final class CaptureDependencyPanelTests: XCTestCase {
     func testRemoveBlocksPickerTriggerDeletesStarToken() {
         let model = installBlocksPicker()
         model.removePickerTrigger()
-        XCTAssertEqual(model.plainDraft, "Ask Kelly ")
+        XCTAssertEqual(model.plainDraft, "@mac_inbox+ask-kelly ")
         XCTAssertFalse(model.pickerVisible)
     }
 
@@ -274,6 +282,49 @@ final class CaptureDependencyPanelTests: XCTestCase {
             router.command(for: keyEvent(keyCode: 36, modifiers: .shift), context: context),
             .consumeKey
         )
+    }
+
+    func testDependencyTargetHintIsCalmAndSkipsDryRun() async throws {
+        let model = try liveModel()
+        let draft = "&foo:bar "
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            model.statusText ==
+                "⛓ What depends on \u{201C}foo:bar\u{201D}? Type a new task, or + for an existing one."
+        }
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.previewState, .idle)
+        XCTAssertFalse(model.pickerVisible)
+    }
+
+    func testBlocksTargetHintIsCalm() async throws {
+        let model = try liveModel()
+        let draft = "*job:cleanup "
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            model.statusText ==
+                "🧱 What blocks \u{201C}job:cleanup\u{201D}? Type a new task, or + for an existing one"
+        }
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.previewState, .idle)
+    }
+
+    func testExistingOwnerCompleteFixtureGroupsThisNote() throws {
+        let data = try Data(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Fixtures", isDirectory: true)
+                .appendingPathComponent("task-dependency-complete-body-exercise.json")
+        )
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+        XCTAssertEqual(decoded.owner?.text, "Exercise")
+        XCTAssertEqual(decoded.owner?.notePath, "body.md")
+        let presentation = DependencyPickerIndex(candidates: decoded.candidates).presentation(filter: "")
+        XCTAssertEqual(presentation.sections.first?.kind, .thisNote)
+        XCTAssertEqual(presentation.sections.first?.title, "This note")
     }
 
     func testRouterTabCyclesInDependencyPrompt() {

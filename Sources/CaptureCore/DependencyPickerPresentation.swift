@@ -129,6 +129,7 @@ public struct DependencyPickerIndex: Sendable {
     // MARK: - Grouped view
 
     private func groupedRows() -> [CapturePickerSection] {
+        var thisNote: [CapturePickerRow] = []
         var inProgress: [CapturePickerRow] = []
         var next: [CapturePickerRow] = []
         var noteOrder: [String] = []
@@ -136,6 +137,8 @@ public struct DependencyPickerIndex: Sendable {
         var completed: [CapturePickerRow] = []
         for entry in entries {
             switch entry.group {
+            case .thisNote:
+                thisNote.append(groupedNoteRow(for: entry))
             case .inProgress:
                 inProgress.append(groupedRow(for: entry))
             case .next:
@@ -152,10 +155,19 @@ public struct DependencyPickerIndex: Sendable {
             }
         }
         // Hidden rows render subdued and sort last within their section.
+        thisNote = Self.hiddenLast(thisNote, entries: entries)
         inProgress = Self.hiddenLast(inProgress, entries: entries)
         next = Self.hiddenLast(next, entries: entries)
         completed = Self.hiddenLast(completed, entries: entries)
         var sections: [CapturePickerSection] = []
+        if !thisNote.isEmpty {
+            sections.append(CapturePickerSection(
+                id: "dependency-this-note",
+                kind: .thisNote,
+                title: "This note",
+                rows: thisNote
+            ))
+        }
         if !inProgress.isEmpty {
             sections.append(CapturePickerSection(
                 id: "dependency-in-progress",
@@ -386,7 +398,7 @@ public struct DependencyPickerIndex: Sendable {
         switch entry.group {
         case .completed:
             return "Completed history — selecting never blocks"
-        case .inProgress, .next, .open:
+        case .thisNote, .inProgress, .next, .open:
             return direction == .blocks
                 ? "Becomes Blocked until this is done"
                 : "Open · will block the dependent until finished"
@@ -415,36 +427,26 @@ public struct DependencyPickerIndex: Sendable {
 
     // MARK: - Owner header
 
-    /// Picker header for the dependent: `For: <text>` when the draft names
-    /// one, else the ownerless prompt. Choosing a prerequisite stays allowed
-    /// before the dependent exists.
+    /// Picker header for the dependent: owner name and direction, else the
+    /// ownerless prompt. Choosing a prerequisite stays allowed before the
+    /// dependent exists.
     public static func headerTitle(
         owner: DependencyOwner?,
-        dependentText: String?,
+        dependentText: String? = nil,
         direction: DependencyPickerDirection = .prerequisite
     ) -> String {
-        if let dependentText, !dependentText.isEmpty {
-            return "For: \(dependentText)"
-        }
-        if let header = owner?.headerText {
-            return "For: \(header)"
-        }
-        return direction == .blocks ? "Choose a task to block" : "Choose a prerequisite"
+        _ = dependentText
+        return CaptureRelationshipCopy.dependencyPickerTitle(owner: owner, direction: direction)
     }
 
-    /// Ownerless subtitle shown under the header when no dependent exists.
+    /// Existing-owner location line, or the ownerless next-step prompt.
     public static func headerSubtitle(
         owner: DependencyOwner?,
-        dependentText: String?,
+        dependentText: String? = nil,
         direction: DependencyPickerDirection = .prerequisite
     ) -> String? {
-        if let dependentText, !dependentText.isEmpty {
-            return nil
-        }
-        if owner?.headerText != nil {
-            return nil
-        }
-        return "Then add task text or @note+id"
+        _ = dependentText
+        return CaptureRelationshipCopy.dependencyPickerSubtitle(owner: owner, direction: direction)
     }
 }
 
@@ -453,6 +455,7 @@ public struct DependencyPickerIndex: Sendable {
 /// Bob's dependency `group` wire value, in precedence order. Missing or
 /// unknown groups fall back to `open` so the row still appears.
 private enum DependencyGroup: Sendable {
+    case thisNote
     case inProgress
     case next
     case open
@@ -460,6 +463,8 @@ private enum DependencyGroup: Sendable {
 
     init(wireValue: String?) {
         switch wireValue {
+        case "in_this_note":
+            self = .thisNote
         case "in_progress":
             self = .inProgress
         case "next":

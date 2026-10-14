@@ -551,7 +551,14 @@ as AND terms. Rows never show a Link & Start action or a schedule pull-forward
 warning. The detail strip always says **Inserts @cash+goog-exit**.
 
 When `capture-parse` reports `task_parent` in `needs`, the app skips the doomed
-live dry run and shows "Choose a task to append to — press Tab to browse". A
+live dry run and shows "Choose a task to append to — press Tab to browse".
+Inside a relationship draft Bob sends `picker.relationship`; the picker then
+opens in owner mode headed **⛓ Which task depends on “Buy shoes”?** /
+**🧱 Which task blocks “Do cleanup tasks”?** /
+**Which task depends on “Buy shoes” and blocks “Do cleanup tasks”?**, the
+status line and reopen chip read **Choose the task to relate**, and rows Bob
+guards (`the prerequisite itself`, cycles, a project's own resident) are
+dimmed with that reason as the badge — accepting one only announces it. A
 lone whole-item `+` stays a valid +5m Pomodoro adjustment: the picker still
 opens, Escape leaves the draft unchanged, and submitting it extends as before.
 Bob lists `action_continuation_keys` (`0`–`9` and `+`) only for that dual-use
@@ -590,15 +597,29 @@ and Unicode preserved), the display `locator`, the `group`, `hidden`,
 `replacement` (`&note:id`, quoted when the locator needs it) that is empty for
 ID-less and guarded rows.
 
-The header names the dependent (`For: @route+id`) or, for an ownerless leading
-`&`, says Choose a prerequisite with "Then add task text or @note+id" —
-choosing first stays allowed. With an empty filter rows group in Bob's order:
-In Progress, Next, one section per note (`note_path`), then a separate
-Completed history section (selecting there never blocks); `#hide` rows render
-subdued and sort last within their section. A non-empty filter replaces the
-groups with one ranked flat list. Already-added rows show Already added and
-accepting one changes nothing; guarded rows carry Bob's explanation and neither
-insert nor open the ID flow.
+The header names the owner and direction: **⛓ Exercise depends on…** with
+`body.md ^excercise · In Progress` beneath, or **⛓ “Buy Groceries!” depends
+on…** for a new-task owner (empty new-task text is **New task depends on…**).
+An older Bob that omits owner text falls back to `@body+excercise`. For an
+ownerless leading `&`, the title stays Choose a prerequisite and the subtitle
+is "Then type the task, or + for an existing one" — choosing first stays
+allowed. No word appears twice in the header. With an empty filter rows group
+in Bob's order: **This note** (`in_this_note`) first, then In Progress, Next,
+one section per note (`note_path`), then a separate Completed history section
+(selecting there never blocks); `#hide` rows render subdued and sort last
+within their section. A non-empty filter replaces the groups with one ranked
+flat list. Already-added rows show Already added and accepting one changes
+nothing; guarded rows carry Bob's explanation and neither insert nor open the
+ID flow.
+
+When `capture-parse` reports `dependency_target` with no open picker (a
+complete `&foo:bar` and no owner yet), the app skips the doomed live dry run
+and shows a calm secondary hint instead of a red preview error: **⛓ What
+depends on “Buy shoes”? Type a new task, or + for an existing one.** Names
+come from `&`/`*` rows the user accepted; a token typed by hand falls back to
+`foo:bar`. The other shapes are **🧱 What blocks “Do cleanup tasks”? Type a
+new task, or + for an existing one** and **Type the task between “Buy shoes”
+and “Do cleanup tasks”, or + for an existing one**.
 
 Return (or Tab) replaces only Bob's range with the replacement and returns to
 the editor; at a terminal token one separating space is left for typing another
@@ -620,8 +641,9 @@ nothing. The prompt buttons read Add ID & Use / Add ID & Capture.
 
 Typing `*` in Bob's valid blocked-task position opens the shared dependency
 picker in the Blocks direction (`blocked_task` context): scope `*`, caption
-Blocks, and the header **Blocks · Choose a task to block** or **For: …** when
-Bob reports an owner. Bob supplies the query, owner, candidates,
+Blocks, and the header **🧱 Exercise blocks…** with the owner location line,
+**🧱 “Buy Groceries!” blocks…** for a new-task owner, or **Choose a task to
+block** when there is no owner yet. Bob supplies the query, owner, candidates,
 `already_blocked`, disabled reasons, and backend-formatted `*note:id`
 replacements. The action line reads
 `↩ inserts *job:cleanup · space adds another *`; rows already on the owner's
