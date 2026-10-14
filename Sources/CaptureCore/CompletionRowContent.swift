@@ -17,6 +17,7 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case wikilinkAlias
     case interactivePlaceholder
     case explicitToggle
+    case blockedTaskSigil
     case pomodoroStart
     case pomodoroCloseInProgress
     case pomodoroClosePark
@@ -55,6 +56,12 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         // the route family, the ID the block family. Never claimed by a
         // Swift-side regex — only Bob's semantic spans highlight here.
         return .route
+    case "blocked_task_sigil":
+        return .blockedTaskSigil
+    case "blocked_task_note":
+        return .route
+    case "blocked_task_block_id":
+        return .blockID
     case "task_complete_sigil":
         // The `!` sigil completes like `=x!`: it shares the complete-green
         // with the close-list complete digits.
@@ -158,6 +165,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case taskGoto
     case taskParent
     case taskDependency
+    case blockedTask
     case taskComplete
     case wikilinkNote
     case wikilinkHeading
@@ -179,6 +187,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "task_goto": self = .taskGoto
         case "task_parent": self = .taskParent
         case "task_dependency": self = .taskDependency
+        case "blocked_task": self = .blockedTask
         case "task_complete": self = .taskComplete
         case "wikilink_note": self = .wikilinkNote
         case "wikilink_heading": self = .wikilinkHeading
@@ -535,6 +544,30 @@ public func completionRowContent(
         }
         accessibilityHint = "Inserts this prerequisite."
 
+    case .blockedTask:
+        category = .blockID
+        symbolName = "link"
+        contextLabel = "Task to block"
+        primaryText = candidate.text ?? candidate.replacement
+        let locator = candidate.locator ?? candidate.route
+        if let locator, let blockID = candidate.blockID ?? candidate.blockIDSuggestions.first {
+            var secondary = "\(locator):\(blockID)"
+            if let section = candidate.section, !section.isEmpty {
+                secondary += " · \(section)"
+            }
+            secondaryText = secondary
+        } else {
+            secondaryText = candidate.section
+        }
+        if candidate.alreadyBlocked {
+            badges = ["Already blocked"]
+        } else if let reason = candidate.disabledReason, !reason.isEmpty {
+            badges = [reason]
+        } else if candidate.requiresBlockID {
+            badges = ["Needs ID"]
+        }
+        accessibilityHint = "Blocks this task until the current task is done."
+
     case .taskComplete:
         // The `!` picker owns the card; this is only the stray inline
         // rendering, which reads as a completable task. The locator uses
@@ -639,7 +672,7 @@ private func bookSymbolName(
         return nil
     }
     switch context {
-    case .activeTask, .taskLink, .taskGoto, .task, .taskParent, .taskDependency, .taskComplete:
+    case .activeTask, .taskLink, .taskGoto, .task, .taskParent, .taskDependency, .blockedTask, .taskComplete:
         return "book"
     default:
         return nil

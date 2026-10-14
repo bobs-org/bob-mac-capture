@@ -616,6 +616,25 @@ reopens them) and splicing Bob's `dependency_replacement` verbatim. Escape
 returns to the picker with the filter intact; assignment failure inserts
 nothing. The prompt buttons read Add ID & Use / Add ID & Capture.
 
+### Blocks Picker
+
+Typing `*` in Bob's valid blocked-task position opens the shared dependency
+picker in the Blocks direction (`blocked_task` context): scope `*`, caption
+Blocks, and the header **Blocks · Choose a task to block** or **For: …** when
+Bob reports an owner. Bob supplies the query, owner, candidates,
+`already_blocked`, disabled reasons, and backend-formatted `*note:id`
+replacements. The action line reads
+`↩ inserts *job:cleanup · space adds another *`; rows already on the owner's
+Depends-On line say **Already blocked**. Disabled explanations appear verbatim
+from Bob.
+
+The partial `X *` need shows **Pick a task to block — press Tab to browse**.
+Return or Tab inserts Bob's replacement, Command-Return inserts then captures
+when the owner is complete, and Backspace on an empty filter removes the `*`
+token. A line-initial `*` stays a Markdown bullet placeholder. ID-less rows use
+`capture-task-id --note-path` and splice `blocked_task_replacement`; older Bob
+shows **This Bob is too old for blocked-task picks. Update Bob first.**
+
 ### Complete Picker
 
 Typing `!` at the start of an item opens the Complete picker
@@ -651,14 +670,15 @@ and splice Bob's `complete_replacement` verbatim; Swift never builds the
 token. The prompt previews `!<locator>:<id>` from Bob's candidate locator,
 never the file name. The buttons read Add ID & Insert and Add ID & Complete.
 
-Preview shows `New task · depends on …` or `Add dependency to "…"`, the
-resulting `DEPENDS ON` child, the waiting count, and the Blocked/closed
-distinction from Bob's `dependency_update`, reusing the final task-block
-cards for target ID/status effects. A dependency-only action is never labeled
-"Create task". The `&` editor text highlights through Bob's `dependency_sigil` /
-`dependency_note` / `dependency_block_id` spans; Swift never regexes
-ampersands. An older Bob does not understand `&`: the feature needs the
-updated CLI (decoders stay backward compatible for every older payload).
+Preview shows Bob's ordered `dependency_updates[]` (falling back to the legacy
+singular `dependency_update`): prerequisite effects keep the existing waiting
+summary, while `blocked_task` effects show `🧱 Blocks "T" · [/] → [?] Blocked`
+and the count of newly blocked project tasks. Consumed links use Bob's session
+name, time, state, action, and removal flag; deleted sessions render red, and
+removed Pomodoro lines keep the red diff style. A dependency-only action is
+never labeled "Create task". The `&` and `*` editor spans are supplied by Bob;
+Swift never scans either sigil to parse capture grammar. Older Bob payloads
+without the additive fields keep decoding and previewing as before.
 - Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
   valid opens the Block ID Picker (`pomodoro_block_id` / `task_block_id` contexts),
   and typing a trailing ` :` / ` ^` on a project-note bullet opens the Project task

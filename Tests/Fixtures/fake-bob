@@ -1186,6 +1186,16 @@ JSON
 JSON
     elif [[ "${draft}" == "&" ]]; then
       cat "${fixtures_dir}/task-dependency-parse-amp.json"
+    elif [[ "${draft}" == "Ask Kelly *" ]]; then
+      cat "${fixtures_dir}/blocked-task-parse-need.json"
+    elif [[ "${draft}" == "Ask Kelly *job:cleanup" ]]; then
+      cat "${fixtures_dir}/blocked-task-parse.json"
+    elif [[ "${draft}" == "Ask Kelly *job:pack" ]]; then
+      cat "${fixtures_dir}/blocked-task-parse-new.json"
+    elif [[ "${draft}" == "Keep notes *job:cleanup" ]]; then
+      cat "${fixtures_dir}/blocked-task-parse-notes-kept.json"
+    elif [[ "${draft}" == "Ship work *release:prj" ]]; then
+      cat "${fixtures_dir}/blocked-task-parse-project.json"
     elif [[ "${draft}" == "!" ]]; then
       # A bare `!` is a Complete picker query (real `bob capture-parse`
       # output): incomplete mode with a `task_complete` need.
@@ -2695,6 +2705,10 @@ JSON
 JSON
     elif [[ "${draft}" == "&" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/task-dependency-complete-ownerless.json"
+    elif [[ "${draft}" == "Ask Kelly *" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/blocked-task-complete.json"
+    elif [[ "${draft}" == "Ask Kelly *job:cl" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/blocked-task-complete-filtered.json"
     elif [[ "${draft}" == "Buy Groceries! &" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/task-dependency-complete-new-task.json"
     elif [[ "${draft}" == ":" ]]; then
@@ -3353,6 +3367,12 @@ JSON
       cat "${fixtures_dir}/task-dependency-task-id-success.json"
       exit 0
     fi
+    if [[ "${note_path}" == "job.md" && "${task_ref}" == "3:fe1ef85f" && "${block_id}" == "call-bank" ]]; then
+      # Worked-example `*` Add block ID success (real `bob capture-task-id
+      # --note-path` output on the phase fixture vault).
+      cat "${fixtures_dir}/blocked-task-task-id-success.json"
+      exit 0
+    fi
     if [[ "${route}" == "sase" && "${task_ref}" == "7:446bd057" && "${block_id}" == "fix-flaky-gkeep" ]]; then
       # Worked-example ID-less assignment (real `bob capture-task-id`
       # output on a fresh vault copy).
@@ -3496,7 +3516,15 @@ JSON
       fi
     done
     draft="${*: -1}"
-    if [[ "${draft}" == "=x" ]]; then
+    if [[ "${draft}" == "Ask Kelly *job:pack" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/blocked-task-preview-new.json"
+    elif [[ "${draft}" == "Ask Kelly *job:cleanup" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/blocked-task-preview-running-removed.json"
+    elif [[ "${draft}" == "Keep notes *job:cleanup" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/blocked-task-preview-notes-kept.json"
+    elif [[ "${draft}" == "Ship work *release:prj" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/blocked-task-preview-project.json"
+    elif [[ "${draft}" == "=x" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-worked.json"
     elif [[ "${draft}" == "${close_log_trimmed_draft}" ]]; then
       # A dangling Work Log bullet trims to a `-` placeholder row, which real

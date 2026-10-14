@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"Ask Kelly *","body":"Ask Kelly","mode":"task","route":null,"section":null,"block_id":null,"needs":["blocked_task"],"spans":[{"start":10,"end":11,"kind":"interactive_placeholder"}],"diagnostics":[],"dependency_target":{"kind":"new_task"}}

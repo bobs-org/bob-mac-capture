@@ -1145,6 +1145,9 @@ private struct TaskIDPromptCard: View {
         if case .dependency = prompt.purpose {
             return true
         }
+        if case .blockedTask = prompt.purpose {
+            return true
+        }
         return false
     }
 
@@ -1192,6 +1195,8 @@ private struct TaskIDPromptCard: View {
             case .none, .start:
                 return "Add ID & Use"
             }
+        case .blockedTask(_, _, _, let followUp, _):
+            return followUp == .submit ? "Add ID & Capture" : "Add ID & Use"
         case .taskComplete(_, _, _, let followUp, _):
             switch followUp {
             case .submit:
@@ -1219,6 +1224,8 @@ private struct TaskIDPromptCard: View {
             return "Inserts @\(route):\(typed)\(suffix)"
         case .dependency(let notePath, _, _, _, _, _):
             return "Inserts &\(notePath):\(typed)"
+        case .blockedTask(let notePath, _, _, _, _):
+            return "Inserts *\(notePath):\(typed)"
         case .taskComplete(let notePath, _, _, _, _):
             return "Inserts !\(taskCompleteLocator(for: prompt, fallback: notePath)):\(typed)"
         case .parentTask:
@@ -1246,6 +1253,8 @@ private struct TaskIDPromptCard: View {
             return Text("\(Text("Inserts @").foregroundStyle(.secondary))\(Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))\(Text(suffix).foregroundStyle(.secondary))")
         case .dependency(let notePath, _, _, _, _, _):
             return Text("\(Text("Inserts &").foregroundStyle(.secondary))\(Text(notePath).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
+        case .blockedTask(let notePath, _, _, _, _):
+            return Text("\(Text("Inserts *").foregroundStyle(CaptureEditorPalette.color(for: .blockedTaskSigil)))\(Text(notePath).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
         case .taskComplete(let notePath, _, _, _, _):
             return Text("\(Text("Inserts !").foregroundStyle(.secondary))\(Text(taskCompleteLocator(for: prompt, fallback: notePath)).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
         case .parentTask:
@@ -3142,31 +3151,71 @@ struct PreviewPane: View {
             .accessibilityLabel(projectNote.previewAccessibilitySummary)
         }
 
-        // A dependency capture names its prerequisites from Bob's resolved
-        // `dependency_update` object: the headline never reads "Create task"
-        // for a dependency-only action, and the waiting count plus the
-        // Blocked/closed distinction come straight from Bob. No Swift-side
-        // graph logic — only Bob's rows and wording.
-        if let dependency = success.dependencyUpdate {
+        // Dependency effects come from Bob's ordered `dependency_updates[]`;
+        // the normalized model falls back to the legacy singular key.
+        if !success.dependencyUpdates.isEmpty {
             VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Image(systemName: "link")
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                    Text(dependency.headline)
-                        .font(.system(.callout, design: .monospaced))
-                        .fontWeight(.semibold)
+                ForEach(Array(success.dependencyUpdates.enumerated()), id: \.offset) { _, dependency in
+                    if dependency.role == "blocked_task" {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("🧱 Blocks \"\(dependency.dependentText)\" · [\(dependency.previousStatus)] → [\(dependency.dependentStatus)] \(dependency.dependentStatusName)")
+                                .font(.system(.callout, design: .monospaced))
+                                .fontWeight(.semibold)
+                            Text("⛓️ \(dependency.managedLineText)")
+                                .font(.system(.callout, design: .monospaced))
+                                .textSelection(.enabled)
+                            if dependency.blockedResidents > 0 {
+                                let noun = dependency.blockedResidents == 1 ? "task" : "tasks"
+                                Text("· blocks \(dependency.blockedResidents) project \(noun)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Image(systemName: "link")
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityHidden(true)
+                                Text(dependency.headline)
+                                    .font(.system(.callout, design: .monospaced))
+                                    .fontWeight(.semibold)
+                            }
+                            Text("⛓️ \(dependency.managedLineText)")
+                                .font(.system(.callout, design: .monospaced))
+                                .textSelection(.enabled)
+                            Text(dependency.waitingText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(dependency.previewAccessibilitySummary)
+                    }
                 }
-                Text("⛓️ \(dependency.managedLineText)")
-                    .font(.system(.callout, design: .monospaced))
-                    .textSelection(.enabled)
-                Text(dependency.waitingText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(dependency.previewAccessibilitySummary)
+        }
+
+        if let minted = success.mintedBlockerBlockID {
+            Text("🧱 New blocker ID · \(minted.path) ^\(minted.blockID)")
+                .font(.system(.caption, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+        }
+
+        if !success.consumedLinks.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(success.consumedLinks.enumerated()), id: \.offset) { _, consumed in
+                    Text(consumed.previewText(dryRun: success.dryRun))
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(consumed.pomodoro.removed ? .red : .secondary)
+                        .textSelection(.enabled)
+                        .accessibilityLabel(consumed.previewText(dryRun: success.dryRun))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
 
         // `previewBlockLines` is the parent line, the authored children, the clipboard

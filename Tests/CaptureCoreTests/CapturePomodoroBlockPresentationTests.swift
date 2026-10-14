@@ -95,6 +95,23 @@ final class CapturePomodoroBlockPresentationTests: XCTestCase {
         XCTAssertEqual(presented.badgeText, "New")
     }
 
+    func testRemovedRunningSessionUsesRemovedCaptionAndRedSymbol() {
+        let block = CapturePomodoroBlock(
+            relativeTarget: "2026/20261014.md",
+            line: 4,
+            name: "JOB",
+            timeRange: "1010-1035",
+            status: .running,
+            removed: true
+        )
+        let presented = CapturePomodoroBlockPresentation(block: block, dryRun: true)
+
+        XCTAssertTrue(presented.isRemoved)
+        XCTAssertEqual(presented.captionText, "Removed · line 4")
+        XCTAssertEqual(presented.statusSymbolName, "trash.fill")
+        XCTAssertTrue(presented.accessibilitySummary.contains("Removed, line 4"))
+    }
+
     func testCreatedBadgeReadsCreatedOnceCommitted() throws {
         let presented = try presentation(
             "pomodoro-close-blocks.json",

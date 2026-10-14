@@ -65,7 +65,7 @@ public struct BlockIDPickerContext: Equatable, Sendable {
     }
 }
 
-/// Which picker source a session belongs to. `^`, `:`, `/`, `&`, and the Block
+/// Which picker source a session belongs to. `^`, `:`, `/`, `&`, `*`, and the Block
 /// ID picker are sources feeding one state machine, routing, focus repair,
 /// filter field, sizing, and card.
 public enum CapturePickerSource: Equatable, Sendable {
@@ -73,6 +73,7 @@ public enum CapturePickerSource: Equatable, Sendable {
     case taskLink
     case taskGoto
     case dependency
+    case blockedTask
     case taskComplete
     case blockID(BlockIDPickerContext)
     case parentTask(ParentTaskPickerContext)
@@ -94,7 +95,18 @@ public enum CapturePickerSource: Equatable, Sendable {
         return nil
     }
 
-    /// Draft byte the picker opened on (`^` for active tasks, `:`, `/`, or `&`
+    public var dependencyDirection: DependencyPickerDirection? {
+        switch self {
+        case .dependency:
+            return .prerequisite
+        case .blockedTask:
+            return .blocks
+        default:
+            return nil
+        }
+    }
+
+    /// Draft byte the picker opened on (`^` for active tasks, `:`, `/`, `&`, or `*`
     /// for the pickers, `:` or `^` for block IDs, `+` for parent tasks).
     /// Backspace on an empty filter removes this byte together with any
     /// fragment it opened on, except parent-task which uses Bob's
@@ -109,6 +121,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return 47 // `/`
         case .dependency:
             return 38 // `&`
+        case .blockedTask:
+            return 42 // `*`
         case .taskComplete:
             return 33 // `!`
         case .blockID(let context):
@@ -129,6 +143,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Search tasks to open by text, note, or ^id"
         case .dependency:
             return "Search tasks by text, note, or ^id"
+        case .blockedTask:
+            return "Search tasks to block by text, note, or ^id"
         case .taskComplete:
             return "Search open tasks to complete"
         case .blockID(let context):
@@ -156,6 +172,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Search tasks to open"
         case .dependency:
             return "Search tasks to depend on"
+        case .blockedTask:
+            return "Search tasks to block"
         case .taskComplete:
             return "Search open tasks to complete"
         case .blockID(let context):
@@ -182,6 +200,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "/"
         case .dependency:
             return "&"
+        case .blockedTask:
+            return "*"
         case .taskComplete:
             return "!"
         case .blockID(let context):
@@ -203,6 +223,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Go To"
         case .dependency:
             return "Depends On"
+        case .blockedTask:
+            return "Blocks"
         case .taskComplete:
             return "Complete"
         case .blockID(let context):
@@ -229,6 +251,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Go to a task"
         case .dependency:
             return "Choose dependency"
+        case .blockedTask:
+            return "Choose task to block"
         case .taskComplete:
             return "Pick a task to complete"
         case .blockID(let context):
@@ -252,6 +276,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "arrow.up.forward.square"
         case .dependency:
             return "link"
+        case .blockedTask:
+            return "arrow.down.to.line"
         case .taskComplete:
             return "checkmark.circle"
         case .blockID(let context):
@@ -272,6 +298,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Reopen the Go To picker for the / item (Tab)."
         case .dependency:
             return "Reopen the dependency picker for the & item (Tab)."
+        case .blockedTask:
+            return "Reopen the blocks picker for the * item (Tab)."
         case .taskComplete:
             return "Reopen the Complete picker for the ! item (Tab)."
         case .blockID(let context):
@@ -292,6 +320,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Go to a task"
         case .dependency:
             return "Choose dependency"
+        case .blockedTask:
+            return "Choose task to block"
         case .taskComplete:
             return "Pick a task to complete"
         case .blockID:
@@ -312,6 +342,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Opens the Go To picker for the current draft."
         case .dependency:
             return "Opens the dependency picker for the current item."
+        case .blockedTask:
+            return "Opens the blocks picker for the current item."
         case .taskComplete:
             return "Opens the Complete picker for the current item."
         case .blockID(let context):
@@ -332,6 +364,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Go To picker"
         case .dependency:
             return "Dependency picker"
+        case .blockedTask:
+            return "Blocks picker"
         case .taskComplete:
             return "Complete picker"
         case .blockID(let context):
@@ -358,6 +392,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Arrow keys move, Return or Command-Return opens the task in Obsidian, Escape cancels."
         case .dependency:
             return "Arrow keys move, Return inserts the prerequisite, Command Return inserts and captures, Escape cancels."
+        case .blockedTask:
+            return "Arrow keys move, Return inserts the task to block, Command Return inserts and captures, Escape cancels."
         case .taskComplete:
             return "Arrow keys move, Return inserts the task, Shift Return inserts it and starts the next, Command Return inserts and captures, Escape cancels."
         case .blockID(let context):
@@ -381,6 +417,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Go To"
         case .dependency:
             return "Prerequisites"
+        case .blockedTask:
+            return "Tasks to block"
         case .taskComplete:
             return "Tasks to complete"
         case .blockID(let context):
@@ -424,6 +462,13 @@ public enum CapturePickerSource: Equatable, Sendable {
             return [
                 ("↑↓", "Move"),
                 ("↩", "Use task"),
+                ("⌘↩", "Capture"),
+                ("esc", "Clear / Cancel"),
+            ]
+        case .blockedTask:
+            return [
+                ("↑↓", "Move"),
+                ("↩", "Block task"),
                 ("⌘↩", "Capture"),
                 ("esc", "Clear / Cancel"),
             ]
@@ -474,6 +519,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "Picker keys: up and down to move, Return or Command Return to open the task in Obsidian, Escape to clear or cancel."
         case .dependency:
             return "Picker keys: up and down to move, Return to use the task, Command Return to use it and capture, Escape to clear or cancel."
+        case .blockedTask:
+            return "Picker keys: up and down to move, Return to block the task, Command Return to block it and capture, Escape to clear or cancel."
         case .taskComplete:
             return "Picker keys: up and down to move, Return to insert, Shift Return to insert and start the next, Command Return to insert and capture, Escape to clear or cancel."
         case .blockID(let context):
@@ -498,6 +545,8 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "org.bobs.bob-mac-capture.task-goto-picker-used"
         case .dependency:
             return "org.bobs.bob-mac-capture.dependency-picker-used"
+        case .blockedTask:
+            return "org.bobs.bob-mac-capture.blocked-task-picker-used"
         case .taskComplete:
             return "org.bobs.bob-mac-capture.task-complete-picker-used"
         case .blockID:
@@ -523,7 +572,7 @@ public enum CapturePickerSource: Equatable, Sendable {
             return "+"
         case .blockID(let context):
             return context.marker
-        case .activeTask, .taskLink, .taskGoto, .dependency, .taskComplete:
+        case .activeTask, .taskLink, .taskGoto, .dependency, .blockedTask, .taskComplete:
             return ":"
         }
     }
@@ -531,7 +580,7 @@ public enum CapturePickerSource: Equatable, Sendable {
 
 /// Which incomplete picker need a parse reports. Each need carries the calm
 /// status line shown instead of the doomed live dry run. Precedence is
-/// `activeTask`, then `taskLink`, then `taskGoto`, then `taskParent`, then `dependency`, then
+/// `activeTask`, then `taskLink`, then `taskGoto`, then `taskParent`, then `dependency`, `blockedTask`, then
 /// `pomodoroID`, then `blockID`, then `pomodoroStart`.
 public enum CapturePickerNeed: Equatable, Sendable {
     case activeTask
@@ -539,6 +588,7 @@ public enum CapturePickerNeed: Equatable, Sendable {
     case taskGoto
     case taskParent
     case dependency
+    case blockedTask
     case taskComplete
     case pomodoroID
     case blockID
@@ -556,6 +606,8 @@ public enum CapturePickerNeed: Equatable, Sendable {
             return "Choose a task to append to — press Tab to browse"
         case .dependency:
             return "Pick a prerequisite — press Tab to browse"
+        case .blockedTask:
+            return "Pick a task to block — press Tab to browse"
         case .taskComplete:
             return "Pick a task to complete — press Tab to browse"
         case .pomodoroID:

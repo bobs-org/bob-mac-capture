@@ -38,8 +38,9 @@ struct CapturePickerState: Equatable {
     /// announced only when this changes, so typing within one category stays
     /// quiet. A fresh session starts unannounced.
     var lastAvailabilityKey: String? = nil
-    /// Lexical owner of the `task_dependency` modifier the session opened
-    /// on (nil for every other source, and for an ownerless leading `&`).
+    /// Lexical owner of the `task_dependency` or `blocked_task` modifier
+    /// the session opened on (nil for every other source, and for an
+    /// ownerless leading sigil).
     /// Command-Return submits after insert only when this is non-nil: an
     /// ownerless pick must first gain task text or `@note+id`.
     var dependencyOwner: DependencyOwner? = nil
@@ -63,7 +64,7 @@ struct CapturePickerChipState: Equatable {
     var cursor: Int
     var candidates: [CaptureCompletionCandidate]
     var warnings: [String]
-    /// Lexical `task_dependency` owner the chip's snapshot belongs to, so a
+    /// Lexical dependency owner the chip's snapshot belongs to, so a
     /// refetch-free reopen keeps the Command-Return gate. Nil for other
     /// sources and ownerless picks.
     var dependencyOwner: DependencyOwner? = nil
@@ -83,6 +84,7 @@ enum CapturePickerIndex {
     case taskLink(TaskLinkPickerIndex)
     case taskGoto(TaskLinkPickerIndex)
     case dependency(DependencyPickerIndex)
+    case blockedTask(DependencyPickerIndex)
     case taskComplete(TaskCompletePickerIndex)
     case blockID(BlockIDPickerIndex)
     case parentTask(ParentTaskPickerIndex)
@@ -96,6 +98,8 @@ enum CapturePickerIndex {
         case .taskGoto(let index):
             return index.presentation(filter: filter)
         case .dependency(let index):
+            return index.presentation(filter: filter)
+        case .blockedTask(let index):
             return index.presentation(filter: filter)
         case .taskComplete(let index):
             return index.presentation(filter: filter)
@@ -113,6 +117,8 @@ enum CapturePickerIndex {
         case .taskComplete(let index):
             return index.actionLine(for: row)
         case .taskGoto(let index):
+            return index.actionLine(for: row)
+        case .dependency(let index), .blockedTask(let index):
             return index.actionLine(for: row)
         default:
             return nil

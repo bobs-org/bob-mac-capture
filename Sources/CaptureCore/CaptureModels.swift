@@ -1032,6 +1032,9 @@ public struct CapturePomodoroBlock: Codable, Equatable, Sendable {
     public let timeRange: String?
     public let status: CapturePomodoroBlockStatus
     public let created: Bool
+    /// True when capture deleted the whole session after consuming its last
+    /// task link. Older Bob omits this additive field.
+    public let removed: Bool
     public let roles: [String]
     public let lines: [CapturePomodoroBlockLine]
 
@@ -1042,6 +1045,7 @@ public struct CapturePomodoroBlock: Codable, Equatable, Sendable {
         timeRange: String? = nil,
         status: CapturePomodoroBlockStatus = .other,
         created: Bool = false,
+        removed: Bool = false,
         roles: [String] = [],
         lines: [CapturePomodoroBlockLine] = []
     ) {
@@ -1051,6 +1055,7 @@ public struct CapturePomodoroBlock: Codable, Equatable, Sendable {
         self.timeRange = timeRange
         self.status = status
         self.created = created
+        self.removed = removed
         self.roles = roles
         self.lines = lines
     }
@@ -1067,6 +1072,7 @@ public struct CapturePomodoroBlock: Codable, Equatable, Sendable {
                 forKey: .status
             ) ?? .other
         created = try container.decodeIfPresent(Bool.self, forKey: .created) ?? false
+        removed = (try? container.decodeIfPresent(Bool.self, forKey: .removed)) ?? false
         roles = try container.decodeIfPresent([String].self, forKey: .roles) ?? []
         lines =
             try container.decodeIfPresent(
@@ -1082,6 +1088,7 @@ public struct CapturePomodoroBlock: Codable, Equatable, Sendable {
         case timeRange = "time_range"
         case status
         case created
+        case removed
         case roles
         case lines
     }
@@ -2588,6 +2595,14 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     // prerequisite summaries, open prerequisite count, and resulting
     // dependent status. Older Bob omits it entirely; decode as nil.
     public let dependencyUpdate: DependencyUpdateSummary?
+    /// Additive per-item dependency effects. If an older Bob omits the array,
+    /// normalize the legacy singular update to a one-element list.
+    public let dependencyUpdates: [DependencyUpdateSummary]
+    /// Task Links consumed from today's Pomodoros by dependency captures.
+    /// Malformed additive data is ignored so the rest of capture still shows.
+    public let consumedLinks: [CaptureConsumedLink]
+    /// Newly minted identity for a task that blocks another task (`*`).
+    public let mintedBlockerBlockID: CaptureMintedBlockID?
     // Additive `task_complete` object on a whole-item `!note:block-id`
     // completion. Older Bob binaries omit it entirely; decode as nil, and a
     // malformed value decodes as nil so it can never fail the capture decode.
@@ -2679,6 +2694,9 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         pomodoroClose: PomodoroCloseSummary? = nil,
         pomodoroReset: PomodoroResetSummary? = nil,
         dependencyUpdate: DependencyUpdateSummary? = nil,
+        dependencyUpdates: [DependencyUpdateSummary]? = nil,
+        consumedLinks: [CaptureConsumedLink] = [],
+        mintedBlockerBlockID: CaptureMintedBlockID? = nil,
         taskComplete: CaptureTaskComplete? = nil,
         projectNote: CaptureProjectNoteSummary? = nil,
         ref: CaptureRef? = nil,
@@ -2742,6 +2760,9 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.pomodoroClose = pomodoroClose
         self.pomodoroReset = pomodoroReset
         self.dependencyUpdate = dependencyUpdate
+        self.dependencyUpdates = dependencyUpdates ?? dependencyUpdate.map { [$0] } ?? []
+        self.consumedLinks = consumedLinks
+        self.mintedBlockerBlockID = mintedBlockerBlockID
         self.taskComplete = taskComplete
         self.projectNote = projectNote
         self.ref = ref
@@ -2828,10 +2849,25 @@ public struct CaptureCommandSuccess: Codable, Equatable {
             PomodoroResetSummary.self,
             forKey: .pomodoroReset
         )
-        dependencyUpdate = try container.decodeIfPresent(
+        dependencyUpdate = (try? container.decodeIfPresent(
             DependencyUpdateSummary.self,
             forKey: .dependencyUpdate
+        )) ?? nil
+        let decodedDependencyUpdates = try? container.decode(
+            [DependencyUpdateSummary].self,
+            forKey: .dependencyUpdates
         )
+        dependencyUpdates = decodedDependencyUpdates
+            ?? dependencyUpdate.map { [$0] }
+            ?? []
+        consumedLinks = (try? container.decode(
+            [CaptureConsumedLink].self,
+            forKey: .consumedLinks
+        )) ?? []
+        mintedBlockerBlockID = (try? container.decodeIfPresent(
+            CaptureMintedBlockID.self,
+            forKey: .mintedBlockerBlockID
+        )) ?? nil
         taskComplete =
             (try? container.decodeIfPresent(
                 CaptureTaskComplete.self,
@@ -2925,6 +2961,9 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case pomodoroClose = "pomodoro_close"
         case pomodoroReset = "pomodoro_reset"
         case dependencyUpdate = "dependency_update"
+        case dependencyUpdates = "dependency_updates"
+        case consumedLinks = "consumed_links"
+        case mintedBlockerBlockID = "minted_blocker_block_id"
         case taskComplete = "task_complete"
         case projectNote = "project_note"
         case ref
@@ -3061,7 +3100,10 @@ public struct DependencyPrerequisite: Codable, Equatable, Sendable {
 /// counts, prerequisite summaries, open prerequisite count, resulting
 /// dependent status, and whether the capture created the dependent.
 public struct DependencyUpdateSummary: Codable, Equatable, Sendable {
+    /// `dependent` for an `&` update, `blocked_task` for a `*` target.
+    public let role: String
     public let dependentNote: String
+    public let dependentBlockID: String?
     public let dependentText: String
     public let isNewTask: Bool
     public let added: Int
@@ -3071,6 +3113,9 @@ public struct DependencyUpdateSummary: Codable, Equatable, Sendable {
     public let dependentStatus: String
     public let dependentStatusName: String
     public let statusChanged: Bool
+    public let previousStatus: String
+    public let previousStatusName: String
+    public let blockedResidents: Int
 
     public init(
         dependentNote: String,
@@ -3082,9 +3127,16 @@ public struct DependencyUpdateSummary: Codable, Equatable, Sendable {
         prerequisites: [DependencyPrerequisite] = [],
         dependentStatus: String,
         dependentStatusName: String,
-        statusChanged: Bool
+        statusChanged: Bool,
+        role: String = "dependent",
+        dependentBlockID: String? = nil,
+        previousStatus: String = "",
+        previousStatusName: String = "",
+        blockedResidents: Int = 0
     ) {
+        self.role = role
         self.dependentNote = dependentNote
+        self.dependentBlockID = dependentBlockID
         self.dependentText = dependentText
         self.isNewTask = isNewTask
         self.added = added
@@ -3094,11 +3146,16 @@ public struct DependencyUpdateSummary: Codable, Equatable, Sendable {
         self.dependentStatus = dependentStatus
         self.dependentStatusName = dependentStatusName
         self.statusChanged = statusChanged
+        self.previousStatus = previousStatus
+        self.previousStatusName = previousStatusName
+        self.blockedResidents = blockedResidents
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        role = (try? container.decodeIfPresent(String.self, forKey: .role)) ?? "dependent"
         dependentNote = try container.decodeIfPresent(String.self, forKey: .dependentNote) ?? ""
+        dependentBlockID = (try? container.decodeIfPresent(String.self, forKey: .dependentBlockID)) ?? nil
         dependentText = try container.decodeIfPresent(String.self, forKey: .dependentText) ?? ""
         isNewTask = try container.decodeIfPresent(Bool.self, forKey: .isNewTask) ?? false
         added = try container.decodeIfPresent(Int.self, forKey: .added) ?? 0
@@ -3111,6 +3168,9 @@ public struct DependencyUpdateSummary: Codable, Equatable, Sendable {
         dependentStatus = try container.decodeIfPresent(String.self, forKey: .dependentStatus) ?? ""
         dependentStatusName = try container.decodeIfPresent(String.self, forKey: .dependentStatusName) ?? ""
         statusChanged = try container.decodeIfPresent(Bool.self, forKey: .statusChanged) ?? false
+        previousStatus = (try? container.decodeIfPresent(String.self, forKey: .previousStatus)) ?? ""
+        previousStatusName = (try? container.decodeIfPresent(String.self, forKey: .previousStatusName)) ?? ""
+        blockedResidents = (try? container.decodeIfPresent(Int.self, forKey: .blockedResidents)) ?? 0
     }
 
     /// Preview headline: `New task · depends on …` for created dependents,
@@ -3150,7 +3210,9 @@ public struct DependencyUpdateSummary: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
+        case role
         case dependentNote = "dependent_note"
+        case dependentBlockID = "dependent_block_id"
         case dependentText = "dependent_text"
         case isNewTask = "new_task"
         case added
@@ -3160,6 +3222,151 @@ public struct DependencyUpdateSummary: Codable, Equatable, Sendable {
         case dependentStatus = "dependent_status"
         case dependentStatusName = "dependent_status_name"
         case statusChanged = "status_changed"
+        case previousStatus = "previous_status"
+        case previousStatusName = "previous_status_name"
+        case blockedResidents = "blocked_residents"
+    }
+}
+
+/// One capture-consumed Task Link and the Pomodoro it came from. Every field
+/// is additive to schema version 1, so malformed rows are dropped by the
+/// enclosing capture decoder instead of hiding the capture preview.
+public struct CaptureConsumedLink: Codable, Equatable, Sendable {
+    public let dayFile: String
+    public let line: Int
+    public let link: String
+    public let note: String
+    public let blockID: String
+    public let text: String
+    /// `removed`, `token_removed`, or `notes_kept`; retained as a string so a
+    /// future Bob action remains displayable without breaking decoding.
+    public let action: String
+    public let pomodoro: CaptureConsumedLinkPomodoro
+
+    public init(
+        dayFile: String = "",
+        line: Int = 0,
+        link: String = "",
+        note: String = "",
+        blockID: String = "",
+        text: String = "",
+        action: String = "removed",
+        pomodoro: CaptureConsumedLinkPomodoro = CaptureConsumedLinkPomodoro()
+    ) {
+        self.dayFile = dayFile
+        self.line = line
+        self.link = link
+        self.note = note
+        self.blockID = blockID
+        self.text = text
+        self.action = action
+        self.pomodoro = pomodoro
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        dayFile = (try? container.decodeIfPresent(String.self, forKey: .dayFile)) ?? ""
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+        link = (try? container.decodeIfPresent(String.self, forKey: .link)) ?? ""
+        note = (try? container.decodeIfPresent(String.self, forKey: .note)) ?? ""
+        blockID = (try? container.decodeIfPresent(String.self, forKey: .blockID)) ?? ""
+        text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? ""
+        action = (try? container.decodeIfPresent(String.self, forKey: .action)) ?? "removed"
+        pomodoro = (try? container.decodeIfPresent(CaptureConsumedLinkPomodoro.self, forKey: .pomodoro))
+            ?? CaptureConsumedLinkPomodoro()
+    }
+
+    /// Mirrors §5's human output. The server's session name, time range,
+    /// status, and removal flag are the only inputs to this copy.
+    public func previewText(dryRun: Bool) -> String {
+        let name = pomodoro.name.flatMap { $0.isEmpty ? nil : $0 } ?? "line \(pomodoro.line)"
+        let range = pomodoro.timeRange.flatMap { $0.isEmpty ? nil : " \($0)" } ?? ""
+        let status = pomodoro.status.lowercased()
+        if action == "notes_kept" {
+            return "− \(dryRun ? "would keep" : "kept") its notes under \(name)\(range) as plain text"
+        }
+        let verb = dryRun ? "would remove" : "removed"
+        var line = "− \(verb) its Task Link from \(name)\(range) (\(status))"
+        if pomodoro.removed {
+            line += " · \(dryRun ? "would delete" : "deleted") the empty Pomodoro"
+        }
+        return line
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case dayFile = "day_file"
+        case line
+        case link
+        case note
+        case blockID = "block_id"
+        case text
+        case action
+        case pomodoro
+    }
+}
+
+public struct CaptureConsumedLinkPomodoro: Codable, Equatable, Sendable {
+    public let line: Int
+    public let name: String?
+    public let timeRange: String?
+    public let status: String
+    public let removed: Bool
+
+    public init(
+        line: Int = 0,
+        name: String? = nil,
+        timeRange: String? = nil,
+        status: String = "queued",
+        removed: Bool = false
+    ) {
+        self.line = line
+        self.name = name
+        self.timeRange = timeRange
+        self.status = status
+        self.removed = removed
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+        name = (try? container.decodeIfPresent(String.self, forKey: .name)) ?? nil
+        timeRange = (try? container.decodeIfPresent(String.self, forKey: .timeRange)) ?? nil
+        status = (try? container.decodeIfPresent(String.self, forKey: .status)) ?? "queued"
+        removed = (try? container.decodeIfPresent(Bool.self, forKey: .removed)) ?? false
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case line
+        case name
+        case timeRange = "time_range"
+        case status
+        case removed
+    }
+}
+
+/// The ID Bob minted for the task that becomes another task's prerequisite.
+public struct CaptureMintedBlockID: Codable, Equatable, Sendable {
+    public let path: String
+    public let line: Int
+    public let blockID: String
+
+    public init(path: String = "", line: Int = 0, blockID: String = "") {
+        self.path = path
+        self.line = line
+        self.blockID = blockID
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = (try? container.decodeIfPresent(String.self, forKey: .path)) ?? ""
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+        blockID = (try? container.decodeIfPresent(String.self, forKey: .blockID)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path
+        case line
+        case blockID = "block_id"
     }
 }
 
@@ -4067,6 +4274,8 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
     /// splice on a successful Complete picker ID assignment. Older Bob
     /// omits it; decode as nil.
     public let completeReplacement: String?
+    /// Backend-formatted `*note:id` for a successful Blocks picker ID assignment.
+    public let blockedTaskReplacement: String?
 
     public init(
         ok: Bool,
@@ -4081,7 +4290,8 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
         notePath: String? = nil,
         dependencyReplacement: String? = nil,
         parentReplacement: String? = nil,
-        completeReplacement: String? = nil
+        completeReplacement: String? = nil,
+        blockedTaskReplacement: String? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -4096,6 +4306,7 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
         self.dependencyReplacement = dependencyReplacement
         self.parentReplacement = parentReplacement
         self.completeReplacement = completeReplacement
+        self.blockedTaskReplacement = blockedTaskReplacement
     }
 
     public init(from decoder: Decoder) throws {
@@ -4115,6 +4326,7 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
         dependencyReplacement = try container.decodeIfPresent(String.self, forKey: .dependencyReplacement)
         parentReplacement = try container.decodeIfPresent(String.self, forKey: .parentReplacement)
         completeReplacement = try container.decodeIfPresent(String.self, forKey: .completeReplacement)
+        blockedTaskReplacement = (try? container.decodeIfPresent(String.self, forKey: .blockedTaskReplacement)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -4131,6 +4343,7 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
         case dependencyReplacement = "dependency_replacement"
         case parentReplacement = "parent_replacement"
         case completeReplacement = "complete_replacement"
+        case blockedTaskReplacement = "blocked_task_replacement"
     }
 }
 
@@ -4587,14 +4800,14 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     /// is `pomodoro_block_id` or `task_block_id`. Older Bob binaries omit it;
     /// the Block ID picker treats that as Link intent without New ID rows.
     public let blockID: CaptureBlockIDField?
-    /// Decoded `task_dependency` query (sigil stripped, one opening quote
-    /// stripped, `\"`/`\\` resolved), so the app never parses quoted note
-    /// components itself. Set only for that context; omitted elsewhere so
-    /// every older payload stays byte-identical.
+    /// Decoded `task_dependency` or `blocked_task` query (sigil stripped,
+    /// one opening quote stripped, `\"`/`\\` resolved), so the app never
+    /// parses quoted note components itself. Omitted elsewhere and by older
+    /// Bob payloads.
     public let query: String?
-    /// Lexical owner of the `task_dependency` modifier under the cursor
-    /// (the capture-parse `dependency_target` for the cursor's item), so the
-    /// app never derives the dependent itself. Set only for that context.
+    /// Lexical owner of the `task_dependency` or `blocked_task` modifier
+    /// under the cursor (the capture-parse `dependency_target` for the
+    /// cursor's item), so the app never derives the dependent itself.
     public let owner: DependencyOwner?
     /// Additive parent-task picker descriptor on `task` and `task_parent`
     /// responses. Older Bob omits it; scoped `task` without one keeps the
@@ -4956,6 +5169,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let notePath: String?
     public let locator: String?
     public let alreadyDependency: Bool
+    /// Additive `blocked_task` state: the candidate is already on the
+    /// owner's Depends-On line. Missing means false for older Bob.
+    public let alreadyBlocked: Bool
     public let disabledReason: String?
     public let hidden: Bool
     // Additive `task_complete` fields from Bob's completable-task scanner:
@@ -5039,6 +5255,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         notePath: String? = nil,
         locator: String? = nil,
         alreadyDependency: Bool = false,
+        alreadyBlocked: Bool = false,
         disabledReason: String? = nil,
         hidden: Bool = false,
         recurring: Bool = false,
@@ -5091,6 +5308,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.notePath = notePath
         self.locator = locator
         self.alreadyDependency = alreadyDependency
+        self.alreadyBlocked = alreadyBlocked
         self.disabledReason = disabledReason
         self.hidden = hidden
         self.recurring = recurring
@@ -5146,6 +5364,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         notePath = try container.decodeIfPresent(String.self, forKey: .notePath)
         locator = try container.decodeIfPresent(String.self, forKey: .locator)
         alreadyDependency = try container.decodeIfPresent(Bool.self, forKey: .alreadyDependency) ?? false
+        alreadyBlocked = (try? container.decodeIfPresent(Bool.self, forKey: .alreadyBlocked)) ?? false
         disabledReason = try container.decodeIfPresent(String.self, forKey: .disabledReason)
         hidden = try container.decodeIfPresent(Bool.self, forKey: .hidden) ?? false
         recurring = try container.decodeIfPresent(Bool.self, forKey: .recurring) ?? false
@@ -5200,6 +5419,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case notePath = "note_path"
         case locator
         case alreadyDependency = "already_dependency"
+        case alreadyBlocked = "already_blocked"
         case disabledReason = "disabled_reason"
         case hidden
         case recurring

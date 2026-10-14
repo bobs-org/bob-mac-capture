@@ -18,6 +18,7 @@ public struct CapturePomodoroBlockPresentation: Equatable, Sendable {
     public static let maxDepth = 8
 
     public let status: CapturePomodoroBlockStatus
+    public let isRemoved: Bool
     /// The SF Symbol for the caption row: `play.circle.fill` while running,
     /// `checkmark.circle.fill` when completed, `circle.dashed` otherwise.
     public let statusSymbolName: String
@@ -32,20 +33,26 @@ public struct CapturePomodoroBlockPresentation: Equatable, Sendable {
 
     public init(block: CapturePomodoroBlock, dryRun: Bool) {
         status = block.status
+        isRemoved = block.removed
         let statusText: String
-        switch block.status {
-        case .running:
-            statusText = "Running"
-            statusSymbolName = "play.circle.fill"
-        case .completed:
-            statusText = "Completed"
-            statusSymbolName = "checkmark.circle.fill"
-        case .queued:
-            statusText = "Queued"
-            statusSymbolName = "circle.dashed"
-        case .other:
-            statusText = "Pomodoro"
-            statusSymbolName = "circle.dashed"
+        if block.removed {
+            statusText = "Removed"
+            statusSymbolName = "trash.fill"
+        } else {
+            switch block.status {
+            case .running:
+                statusText = "Running"
+                statusSymbolName = "play.circle.fill"
+            case .completed:
+                statusText = "Completed"
+                statusSymbolName = "checkmark.circle.fill"
+            case .queued:
+                statusText = "Queued"
+                statusSymbolName = "circle.dashed"
+            case .other:
+                statusText = "Pomodoro"
+                statusSymbolName = "circle.dashed"
+            }
         }
         captionText = "\(statusText) · line \(block.line)"
         badgeText = block.created ? (dryRun ? "New" : "Created") : nil

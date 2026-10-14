@@ -1,6 +1,29 @@
 import Foundation
 
-/// One fetched `task_dependency` snapshot in Bob order, with display text and
+/// The shared dependency picker can add prerequisites (`&`) or make an
+/// existing task depend on the current item (`*`).
+public enum DependencyPickerDirection: Equatable, Sendable {
+    case prerequisite
+    case blocks
+
+    public var leadingSigil: Character {
+        self == .blocks ? "*" : "&"
+    }
+
+    public var insertionPrefix: String {
+        String(leadingSigil)
+    }
+
+    public var scopeCaption: String {
+        self == .blocks ? "Blocks" : "Depends On"
+    }
+
+    public var alreadyBadge: String {
+        self == .blocks ? "Already blocked" : "Already added"
+    }
+}
+
+/// One fetched `task_dependency` or `blocked_task` snapshot in Bob order, with display text and
 /// weighted search fields precomputed so every keystroke filters locally.
 /// Presents `CapturePickerPresentation` values for the source-agnostic card.
 /// Rows are keyed by `"note_path|ref"` (never by `replacement`, which Bob
@@ -14,8 +37,13 @@ import Foundation
 /// empty-query (Bob) order breaks ties.
 public struct DependencyPickerIndex: Sendable {
     private let entries: [DependencyPickerIndexEntry]
+    public let direction: DependencyPickerDirection
 
-    public init(candidates: [CaptureCompletionCandidate]) {
+    public init(
+        candidates: [CaptureCompletionCandidate],
+        direction: DependencyPickerDirection = .prerequisite
+    ) {
+        self.direction = direction
         var seen: Set<String> = []
         var entries: [DependencyPickerIndexEntry] = []
         for candidate in candidates {
@@ -55,7 +83,7 @@ public struct DependencyPickerIndex: Sendable {
             budget = min(max(groupedRowCount + groupedSections.count, 4), 11)
         }
 
-        let query = FuzzyQuery(filter, leadingSigil: "&")
+        let query = FuzzyQuery(filter, leadingSigil: direction.leadingSigil)
         if query.isEmpty {
             let ids = groupedSections.flatMap { $0.rows.map { $0.id } }
             let byID = Dictionary(uniqueKeysWithValues: groupedSections.flatMap { $0.rows }.map { ($0.id, $0) })
@@ -244,6 +272,8 @@ public struct DependencyPickerIndex: Sendable {
         let pending: CapturePickerPendingBlockID?
         let insertion: String?
         let badge: String?
+        let alreadyPresent = direction == .blocks
+            ? candidate.alreadyBlocked : candidate.alreadyDependency
         if candidate.disabledReason != nil {
             // Guarded rows never supply an insertable replacement and never
             // open the Add block ID flow: accepting one changes nothing and
@@ -266,9 +296,9 @@ public struct DependencyPickerIndex: Sendable {
             pending = nil
             // Bob still sends the replacement for an already-present row, so
             // drop it here: a redundant accept must never splice a duplicate.
-            insertion = candidate.replacement.isEmpty || candidate.alreadyDependency
+            insertion = candidate.replacement.isEmpty || alreadyPresent
                 ? nil : candidate.replacement
-            badge = candidate.alreadyDependency ? "Already added" : nil
+            badge = alreadyPresent ? direction.alreadyBadge : nil
         }
         // Accepting an already-present or guarded row is a harmless no-op:
         // both carry a nil insertion above, so the accept keeps the draft
@@ -297,7 +327,7 @@ public struct DependencyPickerIndex: Sendable {
                 route: candidate.locator ?? candidate.route,
                 section: candidate.section,
                 summary: summary(for: entry),
-                insertionPrefix: "&"
+                insertionPrefix: direction.insertionPrefix
             ),
             accessibilityLabel: accessibilityLabel(for: entry)
         )
@@ -310,12 +340,12 @@ public struct DependencyPickerIndex: Sendable {
     /// for disabled rows.
     public func actionLine(for row: CapturePickerRow) -> String {
         if let insertion = row.insertion {
-            return "↩ inserts \(insertion) · space adds another &"
+            return "↩ inserts \(insertion) · space adds another \(direction.leadingSigil)"
         }
         if let pending = row.pendingBlockID {
             if let first = pending.suggestions.first {
                 let locator = row.route ?? pending.route
-                return "↩ adds ^\(first), then inserts &\(locator):\(first)"
+                return "↩ adds ^\(first), then inserts \(direction.insertionPrefix)\(locator):\(first)"
             }
             return "↩ names this task, then inserts its link"
         }
@@ -326,7 +356,10 @@ public struct DependencyPickerIndex: Sendable {
     }
 
     private func chipText(for entry: DependencyPickerIndexEntry) -> String? {
-        if entry.candidate.alreadyDependency {
+        if direction == .blocks, entry.candidate.alreadyBlocked {
+            return "Already blocked"
+        }
+        if direction == .prerequisite, entry.candidate.alreadyDependency {
             return "Already added"
         }
         if entry.candidate.hidden {
@@ -344,14 +377,19 @@ public struct DependencyPickerIndex: Sendable {
         if let reason = entry.candidate.disabledReason, !reason.isEmpty {
             return reason
         }
-        if entry.candidate.alreadyDependency {
+        if direction == .blocks, entry.candidate.alreadyBlocked {
+            return "Already blocked — accepting changes nothing"
+        }
+        if direction == .prerequisite, entry.candidate.alreadyDependency {
             return "Already a prerequisite — accepting changes nothing"
         }
         switch entry.group {
         case .completed:
             return "Completed history — selecting never blocks"
         case .inProgress, .next, .open:
-            return "Open · will block the dependent until finished"
+            return direction == .blocks
+                ? "Becomes Blocked until this is done"
+                : "Open · will block the dependent until finished"
         }
     }
 
@@ -380,18 +418,26 @@ public struct DependencyPickerIndex: Sendable {
     /// Picker header for the dependent: `For: <text>` when the draft names
     /// one, else the ownerless prompt. Choosing a prerequisite stays allowed
     /// before the dependent exists.
-    public static func headerTitle(owner: DependencyOwner?, dependentText: String?) -> String {
+    public static func headerTitle(
+        owner: DependencyOwner?,
+        dependentText: String?,
+        direction: DependencyPickerDirection = .prerequisite
+    ) -> String {
         if let dependentText, !dependentText.isEmpty {
             return "For: \(dependentText)"
         }
         if let header = owner?.headerText {
             return "For: \(header)"
         }
-        return "Choose a prerequisite"
+        return direction == .blocks ? "Choose a task to block" : "Choose a prerequisite"
     }
 
     /// Ownerless subtitle shown under the header when no dependent exists.
-    public static func headerSubtitle(owner: DependencyOwner?, dependentText: String?) -> String? {
+    public static func headerSubtitle(
+        owner: DependencyOwner?,
+        dependentText: String?,
+        direction: DependencyPickerDirection = .prerequisite
+    ) -> String? {
         if let dependentText, !dependentText.isEmpty {
             return nil
         }

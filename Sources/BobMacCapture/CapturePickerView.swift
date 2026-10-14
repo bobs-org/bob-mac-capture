@@ -172,7 +172,7 @@ struct CapturePickerCard: View {
             CapturePickerFilterBar(model: model)
                 .frame(height: CapturePanelLayout.pickerFilterBarHeight)
 
-            if source == .dependency {
+            if source == .dependency || source == .blockedTask {
                 dependencyHeader
             }
 
@@ -253,23 +253,30 @@ struct CapturePickerCard: View {
         }
     }
 
-    /// Dependent header for the `&` source: the owner Bob reported, or the
-    /// ownerless prompt. Choosing a prerequisite stays allowed before the
-    /// dependent exists.
+    /// Direction-aware header for dependency and blocks picks.
     @ViewBuilder
     private var dependencyHeader: some View {
         let owner = model.picker?.dependencyOwner
+        let direction = source.dependencyDirection ?? .prerequisite
         VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 6) {
                 Image(systemName: "link")
                     .foregroundStyle(CaptureEditorPalette.color(for: .blockID))
                     .accessibilityHidden(true)
-                Text(DependencyPickerIndex.headerTitle(owner: owner, dependentText: nil))
+                Text(DependencyPickerIndex.headerTitle(
+                    owner: owner,
+                    dependentText: nil,
+                    direction: direction
+                ))
                     .font(.callout.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-            if let subtitle = DependencyPickerIndex.headerSubtitle(owner: owner, dependentText: nil) {
+            if let subtitle = DependencyPickerIndex.headerSubtitle(
+                owner: owner,
+                dependentText: nil,
+                direction: direction
+            ) {
                 Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -281,9 +288,11 @@ struct CapturePickerCard: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            DependencyPickerIndex.headerSubtitle(owner: owner, dependentText: nil)
-                .map { "\(DependencyPickerIndex.headerTitle(owner: owner, dependentText: nil)). \($0)" }
-                ?? DependencyPickerIndex.headerTitle(owner: owner, dependentText: nil)
+            DependencyPickerIndex.headerSubtitle(owner: owner, dependentText: nil, direction: direction)
+                .map {
+                    "\(DependencyPickerIndex.headerTitle(owner: owner, dependentText: nil, direction: direction)). \($0)"
+                }
+                ?? DependencyPickerIndex.headerTitle(owner: owner, dependentText: nil, direction: direction)
         )
     }
 
@@ -959,8 +968,8 @@ private struct CapturePickerDetailStrip: View {
             return nil
         case .taskGoto:
             return "Pick a task to open it in Obsidian — nothing is written"
-        case .dependency:
-            // The detail strip already teaches "space adds another &".
+        case .dependency, .blockedTask:
+            // The detail strip teaches the direction-specific insertion token.
             return nil
         case .taskComplete:
             return nil
@@ -998,6 +1007,11 @@ private struct CapturePickerDetailStrip: View {
         }
         if source == .taskComplete {
             return Text(TaskCompletePickerIndex.actionLine(for: row)).foregroundColor(.secondary)
+        }
+        if source == .dependency || source == .blockedTask,
+           let actionLine = model.pickerActionLine(for: row)
+        {
+            return Text(actionLine).foregroundColor(.secondary)
         }
         if case .parentTask = source {
             return Text(parentTaskActionLine(for: row)).foregroundColor(.secondary)

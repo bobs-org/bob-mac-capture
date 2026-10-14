@@ -13,6 +13,9 @@ struct PomodoroBlockView: View {
     }
 
     private var statusTint: Color {
+        if presentation.isRemoved {
+            return .red
+        }
         switch presentation.status {
         case .running:
             return CaptureEditorPalette.color(for: .pomodoroStart)

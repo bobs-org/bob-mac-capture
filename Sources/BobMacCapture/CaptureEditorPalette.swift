@@ -79,6 +79,8 @@ enum CaptureEditorPalette {
             return .secondary
         case .explicitToggle:
             return .yellow
+        case .blockedTaskSigil:
+            return .teal
         case .pomodoroStart:
             return .pink
         case .pomodoroCloseInProgress:

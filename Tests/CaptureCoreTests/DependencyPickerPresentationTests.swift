@@ -360,4 +360,59 @@ final class DependencyPickerPresentationTests: XCTestCase {
         )
         XCTAssertNil(DependencyPickerIndex.headerSubtitle(owner: owner, dependentText: nil))
     }
+
+    func testBlocksDirectionUsesStarCopyAndAlreadyBlockedState() throws {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "*job:cleanup",
+            taskRef: "4:aaaa1111",
+            blockID: "cleanup",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            statusType: "TODO",
+            text: "Clean up",
+            section: "Tasks",
+            group: "open",
+            notePath: "job.md",
+            locator: "job"
+        )
+        let alreadyBlocked = CaptureCompletionCandidate(
+            replacement: "*job:cleanup",
+            taskRef: "5:bbbb2222",
+            blockID: "cleanup",
+            requiresBlockID: false,
+            statusSymbol: "?",
+            statusName: "Blocked",
+            statusType: "BLOCKED",
+            text: "Clean up",
+            section: "Tasks",
+            group: "open",
+            notePath: "job.md",
+            locator: "job",
+            alreadyBlocked: true
+        )
+        let index = DependencyPickerIndex(
+            candidates: [candidate, alreadyBlocked],
+            direction: .blocks
+        )
+        let presentation = index.presentation(filter: "*cleanup")
+        let row = try XCTUnwrap(presentation.rowsByID["job.md|4:aaaa1111"])
+        XCTAssertEqual(row.insertion, "*job:cleanup")
+        XCTAssertEqual(row.detail.insertionPrefix, "*")
+        XCTAssertEqual(row.detail.summary, "Becomes Blocked until this is done")
+        XCTAssertEqual(index.actionLine(for: row), "↩ inserts *job:cleanup · space adds another *")
+
+        let duplicate = try XCTUnwrap(presentation.rowsByID["job.md|5:bbbb2222"])
+        XCTAssertNil(duplicate.insertion)
+        XCTAssertEqual(duplicate.badgeText, "Already blocked")
+        XCTAssertEqual(duplicate.detail.summary, "Already blocked — accepting changes nothing")
+        XCTAssertEqual(index.actionLine(for: duplicate), "Already blocked")
+    }
+
+    func testBlocksOwnerlessHeader() {
+        XCTAssertEqual(
+            DependencyPickerIndex.headerTitle(owner: nil, dependentText: nil, direction: .blocks),
+            "Choose a task to block"
+        )
+    }
 }

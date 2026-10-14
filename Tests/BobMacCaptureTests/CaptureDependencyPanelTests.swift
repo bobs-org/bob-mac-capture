@@ -56,6 +56,38 @@ final class CaptureDependencyPanelTests: XCTestCase {
         )
     }
 
+    private func blockedCandidate() -> CaptureCompletionCandidate {
+        CaptureCompletionCandidate(
+            replacement: "*job:cleanup",
+            taskRef: "4:aaaa1111",
+            blockID: "cleanup",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            statusType: "TODO",
+            text: "Clean up",
+            section: "Tasks",
+            group: "open",
+            notePath: "job.md",
+            locator: "job"
+        )
+    }
+
+    private func blockedIDlessCandidate() -> CaptureCompletionCandidate {
+        CaptureCompletionCandidate(
+            replacement: "",
+            taskRef: "3:fe1ef85f",
+            requiresBlockID: true,
+            statusSymbol: " ",
+            statusName: "Todo",
+            text: "Call the bank",
+            blockIDSuggestions: ["call-bank"],
+            group: "open",
+            notePath: "job.md",
+            locator: "job"
+        )
+    }
+
     private func installTerminalPicker(owner: DependencyOwner? = DependencyOwner(kind: "new_task")) -> CapturePanelModel {
         let model = CapturePanelModel()
         model.installDependencyPickerForPreviews(
@@ -64,6 +96,18 @@ final class CaptureDependencyPanelTests: XCTestCase {
             draft: "Buy Groceries! &",
             replacement: CaptureRange(start: 15, end: 16),
             owner: owner
+        )
+        return model
+    }
+
+    private func installBlocksPicker() -> CapturePanelModel {
+        let model = CapturePanelModel()
+        model.installBlockedTaskPickerForPreviews(
+            candidates: [blockedCandidate(), blockedIDlessCandidate()],
+            filter: "",
+            draft: "Ask Kelly *",
+            replacement: CaptureRange(start: 10, end: 11),
+            owner: DependencyOwner(kind: "existing_task", route: "mac_inbox", blockID: "ask-kelly")
         )
         return model
     }
@@ -152,6 +196,74 @@ final class CaptureDependencyPanelTests: XCTestCase {
         XCTAssertEqual(range, CaptureRange(start: 15, end: 20))
     }
 
+    func testBlocksPickerInsertsStarReplacement() {
+        let model = installBlocksPicker()
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertTrue(model.pickerSourceIsBlockedTask)
+        model.acceptPickerRow(id: "job.md|4:aaaa1111", submitAfterInsert: false)
+        XCTAssertEqual(model.plainDraft, "Ask Kelly *job:cleanup ")
+        XCTAssertEqual(model.statusText, "Inserted *job:cleanup ")
+        XCTAssertFalse(model.pickerVisible)
+    }
+
+    func testBlocksPickerIDlessPromptReturnsToBlocksPicker() {
+        let model = installBlocksPicker()
+        model.acceptPickerRow(id: "job.md|3:fe1ef85f", submitAfterInsert: false)
+        XCTAssertTrue(model.taskIDPromptVisible)
+        XCTAssertTrue(model.taskIDPromptIsDependency)
+        XCTAssertEqual(model.taskIDPrompt?.authoredID, "call-bank")
+        model.cancelTaskIDPrompt()
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertTrue(model.pickerSourceIsBlockedTask)
+    }
+
+    func testRemoveBlocksPickerTriggerDeletesStarToken() {
+        let model = installBlocksPicker()
+        model.removePickerTrigger()
+        XCTAssertEqual(model.plainDraft, "Ask Kelly ")
+        XCTAssertFalse(model.pickerVisible)
+    }
+
+    func testBlocksIDAssignmentSplicesBobReplacement() async throws {
+        let model = try liveModel()
+        model.installBlockedTaskPickerForPreviews(
+            candidates: [blockedIDlessCandidate()],
+            filter: "",
+            draft: "Ask Kelly *",
+            replacement: CaptureRange(start: 10, end: 11),
+            owner: DependencyOwner(kind: "new_task")
+        )
+        model.acceptPickerRow(id: "job.md|3:fe1ef85f", submitAfterInsert: false)
+        XCTAssertTrue(model.taskIDPromptVisible)
+        XCTAssertEqual(model.taskIDPrompt?.authoredID, "call-bank")
+
+        model.submitTaskIDPrompt()
+        await waitUntil { !model.taskIDPromptVisible }
+        XCTAssertEqual(model.plainDraft, "Ask Kelly *job:call-bank")
+    }
+
+    func testOldBobBlocksIDAssignmentShowsExactUpdateMessage() async throws {
+        let model = try liveModel()
+        model.installBlockedTaskPickerForPreviews(
+            candidates: [blockedIDlessCandidate()],
+            filter: "",
+            draft: "Ask Kelly *",
+            replacement: CaptureRange(start: 10, end: 11),
+            owner: DependencyOwner(kind: "new_task")
+        )
+        model.acceptPickerRow(id: "job.md|3:fe1ef85f", submitAfterInsert: false)
+        model.updateTaskIDPromptBlockID("call-bank-old")
+        model.submitTaskIDPrompt()
+        await waitUntil { model.taskIDPrompt?.errorMessage != nil }
+
+        XCTAssertEqual(
+            model.taskIDPrompt?.errorMessage,
+            "This Bob is too old for blocked-task picks. Update Bob first."
+        )
+        XCTAssertTrue(model.taskIDPromptVisible)
+        XCTAssertEqual(model.plainDraft, "Ask Kelly *")
+    }
+
     func testRouterShiftReturnConsumedForDependency() {
         let router = CaptureKeyCommandRouter()
         let context = CaptureKeyRoutingContext(
@@ -205,5 +317,39 @@ final class CaptureDependencyPanelTests: XCTestCase {
             isARepeat: false,
             keyCode: keyCode
         )!
+    }
+
+    private func liveModel() throws -> CapturePanelModel {
+        CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+    }
+
+    private func fakeBobPath() throws -> String {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return packageRoot.appendingPathComponent("Tests/Fixtures/fake-bob").path
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ condition: @escaping () -> Bool
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline {
+                XCTFail("Condition not met before timeout", file: file, line: line)
+                return
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
     }
 }
