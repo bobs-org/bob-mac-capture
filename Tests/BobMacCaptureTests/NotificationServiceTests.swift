@@ -1441,6 +1441,15 @@ final class NotificationServiceTests: XCTestCase {
         )
     }
 
+    func testTaskDependencyNotificationNamesOwnerAndRelationship() throws {
+        let success = try closeSuccessFixture("task-dependency-preview-existing-owner-consumed.json")
+        let content = NotificationService.successContent(captures: [success])
+
+        XCTAssertEqual(content.title, "⛓ Exercise now depends on Buy shoes")
+        XCTAssertEqual(content.subtitle, "body.md")
+        XCTAssertTrue(content.body.contains("would remove its Task Link from FOCUS"))
+    }
+
     private func capture(
         kind: String,
         routeLabel: String,

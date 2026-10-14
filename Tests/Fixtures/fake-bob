@@ -3546,7 +3546,21 @@ JSON
       fi
     done
     draft="${*: -1}"
-    if [[ "${draft}" == "Ask Kelly *job:pack" ]]; then
+    if [[ "${draft}" == "@body+excercise &foo:bar" && "${FAKE_BOB_CAPTURE_FIXTURE:-}" == "task-dependency-preview-existing-owner-consumed.json" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-dependency-preview-existing-owner-consumed.json"
+    elif [[ "${draft}" == "@body+excercise &foo:bar *job:cleanup" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-dependency-preview-existing-owner-mixed.json"
+    elif [[ "${draft}" == "^body:excercise &foo:bar" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-dependency-preview-existing-owner-alias.json"
+    elif [[ "${draft}" == "@body+excercise &foo:bar" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-dependency-preview-existing-owner.json"
+    elif [[ "${draft}" == "@body+excercise *job:cleanup" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-dependency-preview-existing-owner-blocks.json"
+    elif [[ "${draft}" == "Buy milk &foo:bar" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-dependency-preview-new-task.json"
+    elif [[ "${draft}" == "Waiting @body+excercise &foo:bar" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-dependency-preview-sub-bullet.json"
+    elif [[ "${draft}" == "Ask Kelly *job:pack" ]]; then
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/blocked-task-preview-new.json"
     elif [[ "${draft}" == "Ask Kelly *job:cleanup" ]]; then
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/blocked-task-preview-running-removed.json"

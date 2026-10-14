@@ -692,15 +692,22 @@ and splice Bob's `complete_replacement` verbatim; Swift never builds the
 token. The prompt previews `!<locator>:<id>` from Bob's candidate locator,
 never the file name. The buttons read Add ID & Insert and Add ID & Complete.
 
-Preview shows Bob's ordered `dependency_updates[]` (falling back to the legacy
-singular `dependency_update`): prerequisite effects keep the existing waiting
-summary, while `blocked_task` effects show `🧱 Blocks "T" · [/] → [?] Blocked`
-and the count of newly blocked project tasks. Consumed links use Bob's session
-name, time, state, action, and removal flag; deleted sessions render red, and
-removed Pomodoro lines keep the red diff style. A dependency-only action is
-never labeled "Create task". The `&` and `*` editor spans are supplied by Bob;
-Swift never scans either sigil to parse capture grammar. Older Bob payloads
-without the additive fields keep decoding and previewing as before.
+Preview shows one `⛓ depends on · Buy shoes · foo.md ^bar · Todo` or
+`🧱 blocks · Do cleanup tasks · job.md ^cleanup · Next → Blocked` row per
+relationship, in Bob's `dependency_updates[]` order. Already-present rows say
+`already depends on` or `already blocks`; project-resident counts remain on the
+block row. Managed Depends-On/Blocks Markdown is omitted from task cards while
+these rows are present. A `task_dependency` item uses an owner header with its
+text, note and block ID, and resulting status; the owner task card appears
+before related task cards, and its repeated task line is omitted when the card
+covers it. Success notifications name the owner and relationship, use the route
+label as their subtitle, and include consumed-link detail when Bob reports one.
+Consumed links use Bob's session name, time, state, action, and removal flag;
+deleted sessions render red, and removed Pomodoro lines keep the red diff style.
+A dependency-only action is never labeled "Create task". The `&` and `*` editor
+spans are supplied by Bob; Swift never scans either sigil to parse capture
+grammar. Older Bob payloads without resolved relationship details keep their
+legacy preview and notification copy.
 - Typing the right-hand side of `@route:` or `@route^` anywhere those markers are
   valid opens the Block ID Picker (`pomodoro_block_id` / `task_block_id` contexts),
   and typing a trailing ` :` / ` ^` on a project-note bullet opens the Project task

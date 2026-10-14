@@ -68,7 +68,11 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
     public let identity: Identity
     public let accessibilitySummary: String
 
-    public init(block: CaptureTaskBlock, dryRun: Bool) {
+    public init(
+        block: CaptureTaskBlock,
+        dryRun: Bool,
+        suppressRelationshipLines: Bool = false
+    ) {
         let symbol = block.statusSymbol.isEmpty ? nil : block.statusSymbol
         status = CapturePickerTaskStatus(symbol: symbol, name: block.statusName)
         if block.statusName.isEmpty || block.statusName == "Unknown" {
@@ -83,7 +87,10 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
             line: block.line,
             blockID: block.blockID
         )
-        rows = block.lines.enumerated().map { index, line in
+        let visibleLines = suppressRelationshipLines
+            ? block.lines.filter { !Self.isManagedRelationshipLine($0.text) }
+            : block.lines
+        rows = visibleLines.enumerated().map { index, line in
             let content = Self.stripped(line.text)
             let depth = min(max(line.depth, 0), CapturePomodoroBlockPresentation.maxDepth)
             let isHeadline = index == 0
@@ -124,6 +131,10 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
             summary += ": " + spokenRows.joined(separator: "; ")
         }
         accessibilitySummary = summary
+    }
+
+    private static func isManagedRelationshipLine(_ line: String) -> Bool {
+        line.contains("**DEPENDS ON:**") || line.contains("**BLOCKS:**")
     }
 
     /// Rows and folds to render: the task line, every non-`unchanged`

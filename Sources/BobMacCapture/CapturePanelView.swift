@@ -1872,6 +1872,13 @@ struct PreviewPane: View {
     @ViewBuilder
     private func previewContent(_ success: CaptureCommandSuccess) -> some View {
         let captures = success.normalizedCaptures
+        let orderedTaskBlocks = taskBlocksForPreview(
+            captures: captures,
+            blocks: success.taskBlocks
+        )
+        let suppressRelationshipLines = captures.contains {
+            !$0.dependencyUpdates.isEmpty
+        }
         if captures.count > 1 {
             Text("\(captures.count) captures")
                 .fontWeight(.semibold)
@@ -1904,7 +1911,7 @@ struct PreviewPane: View {
                 total: captures.count,
                 globalDestination: success.globalDestination,
                 blocks: success.pomodoroBlocks,
-                taskBlocks: success.taskBlocks
+                taskBlocks: orderedTaskBlocks
             )
         }
 
@@ -1913,10 +1920,14 @@ struct PreviewPane: View {
         // state with Bob's cumulative diff. They dim together with the close
         // card while a close-list selection dangles. An older Bob omits
         // `task_blocks` and the pane renders exactly as before.
-        if !success.taskBlocks.isEmpty {
+        if !orderedTaskBlocks.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(success.taskBlocks.enumerated()), id: \.offset) { _, block in
-                    TaskBlockView(block: block, dryRun: success.dryRun) {
+                ForEach(Array(orderedTaskBlocks.enumerated()), id: \.offset) { _, block in
+                    TaskBlockView(
+                        block: block,
+                        dryRun: success.dryRun,
+                        suppressRelationshipLines: suppressRelationshipLines
+                    ) {
                         model.requestFocus(.editor)
                     }
                 }
@@ -1969,6 +1980,19 @@ struct PreviewPane: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Destination: \(text)")
         }
+    }
+
+    private func taskBlocksForPreview(
+        captures: [CaptureCommandSuccess],
+        blocks: [CaptureTaskBlock]
+    ) -> [CaptureTaskBlock] {
+        guard captures.count == 1, let capture = captures.first else {
+            return blocks
+        }
+        return CaptureRelationshipPresentation.ownerFirstTaskBlocks(
+            for: capture,
+            blocks: blocks
+        )
     }
 
     @ViewBuilder
@@ -3003,6 +3027,38 @@ struct PreviewPane: View {
         .lineLimit(1)
     }
 
+    private func taskDependencyHeader(
+        _ owner: CaptureTaskDependencyOwnerHeader,
+        index: Int,
+        total: Int,
+        isLocalOverride: Bool
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if total > 1 {
+                Text("\(index + 1)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Text(owner.text)
+                .fontWeight(.semibold)
+            if !owner.locationText.isEmpty {
+                Text(owner.locationText)
+                    .foregroundStyle(.secondary)
+            }
+            if !owner.statusText.isEmpty {
+                Text(owner.statusText)
+                    .foregroundStyle(.secondary)
+            }
+            if isLocalOverride {
+                Text("local override")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .lineLimit(1)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(owner.accessibilitySummary)
+    }
+
     @ViewBuilder
     private func standardPreviewItem(
         _ success: CaptureCommandSuccess,
@@ -3012,6 +3068,7 @@ struct PreviewPane: View {
         blocks: [CapturePomodoroBlock],
         taskBlocks: [CaptureTaskBlock] = []
     ) -> some View {
+        let relationship = CaptureRelationshipPresentation(capture: success)
         // When the batch blocks already show every verbatim preview line,
         // the item omits its `previewBlockLines` stack so the headline never
         // prints twice. VoiceOver still announces the item summary once,
@@ -3023,7 +3080,15 @@ struct PreviewPane: View {
         let taskCovered = CaptureTaskBlockPresentation.covers(success, blocks: taskBlocks)
         let subBullet = CaptureSubBulletPresentation(capture: success)
         let compactSubBullet = taskCovered && subBullet != nil
-        if compactSubBullet, let subBullet {
+        let taskDependencyCovered = relationship.ownerHeader != nil && taskCovered
+        if let owner = relationship.ownerHeader {
+            taskDependencyHeader(
+                owner,
+                index: index,
+                total: total,
+                isLocalOverride: isLocalOverride
+            )
+        } else if compactSubBullet, let subBullet {
             subBulletHeader(
                 subBullet,
                 success: success,
@@ -3153,7 +3218,20 @@ struct PreviewPane: View {
 
         // Dependency effects come from Bob's ordered `dependency_updates[]`;
         // the normalized model falls back to the legacy singular key.
-        if !success.dependencyUpdates.isEmpty {
+        if !relationship.rows.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(relationship.rows.enumerated()), id: \.offset) { _, row in
+                    Text(row.text)
+                        .font(.system(.callout, design: .monospaced))
+                        .textSelection(.enabled)
+                        .accessibilityLabel(row.accessibilityLabel)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if !success.dependencyUpdates.isEmpty {
+            // Older Bob versions may send the summary without the resolved
+            // relationship rows. Keep their previous copy as a tolerant
+            // fallback until the CLI supplies the additive details.
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(success.dependencyUpdates.enumerated()), id: \.offset) { _, dependency in
                     if dependency.role == "blocked_task" {
@@ -3224,7 +3302,7 @@ struct PreviewPane: View {
         // already cover are omitted: the block view below shows them.
         // Covered sub-bullet items omit the stack too: the task card shows
         // where the bullet landed.
-        if !covered, !compactSubBullet {
+        if !covered, !compactSubBullet, !taskDependencyCovered {
             let blockLines = success.previewBlockLines
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(Array(blockLines.enumerated()), id: \.offset) { _, line in
@@ -3245,7 +3323,7 @@ struct PreviewPane: View {
 
         // Covered sub-bullet items drop the trailing `relativeTarget` line:
         // the task card caption already names the note.
-        if !compactSubBullet {
+        if !compactSubBullet, !taskDependencyCovered {
             Text(success.relativeTarget)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)

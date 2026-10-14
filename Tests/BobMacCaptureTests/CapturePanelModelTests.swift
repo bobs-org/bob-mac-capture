@@ -6248,6 +6248,97 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(model.statusText.contains("sase.md \u{203A} ^capture"))
     }
 
+    func testRelationshipPreviewFixturesCoverAllOwnerKinds() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        let cases: [(draft: String, kind: String, rows: [String])] = [
+            (
+                "@body+excercise &foo:bar",
+                "task_dependency",
+                ["⛓ depends on · Buy shoes · foo.md ^bar · Todo"]
+            ),
+            (
+                "@body+excercise *job:cleanup",
+                "task_dependency",
+                ["🧱 blocks · Do cleanup tasks · job.md ^cleanup · Next → Blocked"]
+            ),
+            (
+                "@body+excercise &foo:bar *job:cleanup",
+                "task_dependency",
+                [
+                    "⛓ depends on · Buy shoes · foo.md ^bar · Todo",
+                    "🧱 blocks · Do cleanup tasks · job.md ^cleanup · Next → Blocked",
+                ]
+            ),
+            (
+                "^body:excercise &foo:bar",
+                "task_dependency",
+                ["⛓ depends on · Buy shoes · foo.md ^bar · Todo"]
+            ),
+            (
+                "Buy milk &foo:bar",
+                "task",
+                ["⛓ depends on · Buy shoes · foo.md ^bar · Todo"]
+            ),
+            (
+                "Waiting @body+excercise &foo:bar",
+                "sub_bullet",
+                ["⛓ depends on · Buy shoes · foo.md ^bar · Todo"]
+            ),
+        ]
+
+        for testCase in cases {
+            model.plainDraft = testCase.draft
+            model.editorTextDidChange(cursorUTF8Offset: testCase.draft.utf8.count)
+            await waitUntil {
+                guard case .ready(let preview) = model.previewState else {
+                    return false
+                }
+                return preview.kind == testCase.kind
+                    && CaptureRelationshipPresentation(capture: preview).rows.map(\.text)
+                    == testCase.rows
+            }
+
+            let capture = try XCTUnwrap(model.previewResult)
+            XCTAssertEqual(capture.kind, testCase.kind, testCase.draft)
+            XCTAssertEqual(
+                CaptureRelationshipPresentation(capture: capture).rows.map(\.text),
+                testCase.rows,
+                testCase.draft
+            )
+        }
+    }
+
+    func testConsumedRelationshipFixtureCanPreviewThroughFakeBob() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_CAPTURE_FIXTURE": "task-dependency-preview-existing-owner-consumed.json",
+            ]
+        )
+        let draft = "@body+excercise &foo:bar"
+        model.plainDraft = draft
+        model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            guard case .ready = model.previewState else {
+                return false
+            }
+            return model.previewResult != nil
+        }
+
+        let capture = try XCTUnwrap(model.previewResult)
+        let notification = try XCTUnwrap(
+            CaptureRelationshipPresentation(capture: capture).notification
+        )
+        XCTAssertTrue(notification.body.contains("would remove its Task Link from FOCUS"))
+    }
+
     func testLivePreviewStaleFailureClearsToReadyOnSubBulletSuccess() async throws {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(

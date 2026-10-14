@@ -496,6 +496,14 @@ final class NotificationService: NSObject, ObservableObject {
                     targetPaths: targetPaths
                 )
             }
+            if let relationship = CaptureRelationshipPresentation(capture: capture).notification {
+                return CaptureNotificationPresentation(
+                    title: relationship.title,
+                    subtitle: relationship.subtitle,
+                    body: relationship.body,
+                    targetPaths: targetPaths
+                )
+            }
             let kind = friendlyKindLabel(capture.kind)
             return CaptureNotificationPresentation(
                 title: "\(kind) captured",

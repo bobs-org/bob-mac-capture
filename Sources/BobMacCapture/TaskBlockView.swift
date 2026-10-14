@@ -19,9 +19,14 @@ struct TaskBlockView: View {
     init(
         block: CaptureTaskBlock,
         dryRun: Bool,
+        suppressRelationshipLines: Bool = false,
         onExpandFold: @escaping () -> Void = {}
     ) {
-        presentation = CaptureTaskBlockPresentation(block: block, dryRun: dryRun)
+        presentation = CaptureTaskBlockPresentation(
+            block: block,
+            dryRun: dryRun,
+            suppressRelationshipLines: suppressRelationshipLines
+        )
         self.onExpandFold = onExpandFold
     }
 
