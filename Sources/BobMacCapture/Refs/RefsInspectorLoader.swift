@@ -445,6 +445,11 @@ public final class RefsInspectorLoader: ObservableObject {
     private let intrinsics: RefsPDFIntrinsicsProviding
     private var current: Task<Void, Never>?
     private var showCache: [(key: String, row: RefsShowRow)] = []
+    /// In-flight `ref show` fetches, keyed like `showCache`. The task
+    /// is unstructured so canceling one waiter never cancels the
+    /// fetch: the `refs-show` lane would otherwise kill the inspector's
+    /// in-flight call.
+    private var inFlightShows: [String: Task<RefsShowRow?, Never>] = [:]
     /// Insertion order of the published content, so it stays bounded
     /// by the same LRU capacity as the show cache.
     private var contentOrder: [String] = []
@@ -506,7 +511,7 @@ public final class RefsInspectorLoader: ObservableObject {
 
     private func load(_ item: RefItem) async {
         async let intrinsicsValue = loadIntrinsics(for: item)
-        async let showValue = cachedShowRow(for: item)
+        async let showValue = showRow(for: item)
         let (intrinsicsResult, showRow) = await (intrinsicsValue, showValue)
         guard !Task.isCancelled else {
             return
@@ -581,25 +586,60 @@ public final class RefsInspectorLoader: ObservableObject {
         }
     }
 
-    private func cachedShowRow(for item: RefItem) async -> RefsShowRow? {
-        let key = "\(item.id)|\(library.snapshotFetchedAt?.timeIntervalSince1970 ?? 0)"
-        if let cached = showCache.first(where: { $0.key == key }) {
-            return cached.row
+    /// Cached `ref show` row for an item, or nil when the cache missed
+    /// or the last fetch failed. Failures are never stored.
+    public func cachedShowRow(for item: RefItem) -> RefsShowRow? {
+        let key = showCacheKey(for: item)
+        return showCache.first(where: { $0.key == key })?.row
+    }
+
+    /// Single-flight `ref show` for an item: concurrent callers share
+    /// one unstructured fetch, and only an exact `path` match counts.
+    public func showRow(for item: RefItem) async -> RefsShowRow? {
+        if let cached = cachedShowRow(for: item) {
+            return cached
         }
-        do {
-            let response = try await library.showDetail(path: item.id)
-            guard let row = response.refs.first(where: { $0.path == item.id })
-                ?? response.refs.first
-            else {
-                return nil
+        return await showTask(for: item).value
+    }
+
+    private func showCacheKey(for item: RefItem) -> String {
+        "\(item.id)|\(library.snapshotFetchedAt?.timeIntervalSince1970 ?? 0)"
+    }
+
+    /// Creates the fetch in a synchronous MainActor method so the
+    /// `Task` is unstructured: it is not a child of the awaiting
+    /// caller.
+    private func showTask(for item: RefItem) -> Task<RefsShowRow?, Never> {
+        let key = showCacheKey(for: item)
+        if let existing = inFlightShows[key] {
+            return existing
+        }
+        let path = item.id
+        let library = self.library
+        let task = Task { [weak self] in
+            let row: RefsShowRow?
+            do {
+                let response = try await library.showDetail(path: path)
+                row = response.refs.first(where: { $0.path == path })
+            } catch {
+                row = nil
             }
-            showCache.append((key: key, row: row))
-            while showCache.count > Self.showCacheCapacity {
-                showCache.removeFirst()
-            }
+            self?.finishShow(key: key, row: row)
             return row
-        } catch {
-            return nil
+        }
+        inFlightShows[key] = task
+        return task
+    }
+
+    private func finishShow(key: String, row: RefsShowRow?) {
+        inFlightShows.removeValue(forKey: key)
+        guard let row else {
+            return
+        }
+        showCache.removeAll { $0.key == key }
+        showCache.append((key: key, row: row))
+        while showCache.count > Self.showCacheCapacity {
+            showCache.removeFirst()
         }
     }
 }

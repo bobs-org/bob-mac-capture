@@ -98,6 +98,8 @@ final class RefsPanelGeometryTests: XCTestCase {
         XCTAssertEqual(RefsVisualTokens.sectionHeaderHeight, 26)
         XCTAssertEqual(RefsVisualTokens.rowHeight, 44)
         XCTAssertEqual(RefsVisualTokens.footerHeight, 30)
+        XCTAssertEqual(RefsVisualTokens.copyCardRowHeight, 24)
+        XCTAssertEqual(RefsVisualTokens.copyHUDMaxValueWidth, 380)
     }
 
     func testActionsAnchorSitsBelowSelectedRow() {

@@ -99,15 +99,38 @@ public enum RefsActionsMenu {
 
 /// The pasteboard behind the copy actions, so tests inject a fake.
 public protocol RefsPasteboardWriting: Sendable {
-    func copy(_ string: String)
+    func write(_ payload: RefsClipboardPayload) -> Bool
 }
 
-/// The live pasteboard: the general pasteboard's string slot.
+extension RefsPasteboardWriting {
+    /// Diagnostic and legacy copy sites write a plain string.
+    public func copy(_ string: String) {
+        _ = write(.text(string))
+    }
+}
+
+/// The live pasteboard: one clear, then a checked text or file-URL write.
 public struct SystemRefsPasteboard: RefsPasteboardWriting, Sendable {
+    public static let sourceType = NSPasteboard.PasteboardType(
+        "org.nspasteboard.source"
+    )
+
     public init() {}
 
-    public func copy(_ string: String) {
-        NSPasteboard.general.clearContents()
-        _ = NSPasteboard.general.setString(string, forType: .string)
+    public func write(_ payload: RefsClipboardPayload) -> Bool {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        let wrote: Bool
+        switch payload {
+        case .text(let string):
+            wrote = pasteboard.setString(string, forType: .string)
+        case .fileURL(let url):
+            wrote = pasteboard.writeObjects([url as NSURL])
+        }
+        pasteboard.setString(
+            Bundle.main.bundleIdentifier ?? "org.bobs.bob-mac-capture",
+            forType: Self.sourceType
+        )
+        return wrote
     }
 }

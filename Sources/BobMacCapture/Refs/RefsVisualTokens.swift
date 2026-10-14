@@ -52,6 +52,32 @@ enum RefsVisualTokens {
     /// of the previous page stays visible.
     static let inspectorRevealContext: CGFloat = 24
 
+    // MARK: - Copy card
+
+    static let copyCardHeaderHeight: CGFloat = 44
+    static let copyCardRowHeight: CGFloat = 24
+    static let copyCardSeparatorHeight: CGFloat = 9
+    static let copyCardNotesHeaderHeight: CGFloat = 22
+    static let copyCardMessageLineHeight: CGFloat = 20
+    static let copyCardVerticalPadding: CGFloat = 36
+    static let copyCardKeycapSize: CGFloat = 18
+    static let copyCardKeycapCornerRadius: CGFloat = 4.5
+    static let copyCardLabelWidth: CGFloat = 92
+    static let copyCardRowCornerRadius: CGFloat = 8
+    static let copyHUDMaxValueWidth: CGFloat = 380
+
+    /// Metrics the Copy card feeds `RefsCopyCardLayout`.
+    static var copyCardMetrics: RefsCopyCardMetrics {
+        RefsCopyCardMetrics(
+            headerHeight: Double(copyCardHeaderHeight),
+            rowHeight: Double(copyCardRowHeight),
+            separatorHeight: Double(copyCardSeparatorHeight),
+            notesHeaderHeight: Double(copyCardNotesHeaderHeight),
+            messageLineHeight: Double(copyCardMessageLineHeight),
+            verticalPadding: Double(copyCardVerticalPadding)
+        )
+    }
+
     // MARK: - Geometry
 
     /// The clamped panel size for a visible frame.

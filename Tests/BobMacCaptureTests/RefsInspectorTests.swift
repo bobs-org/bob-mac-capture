@@ -144,6 +144,60 @@ final class RefsInspectorLoaderTests: XCTestCase {
         )
     }
 
+    func testShowRowRequiresExactPathMatch() async throws {
+        let fixtures = makeFixtures()
+        fixtures.fetcher.showRowPath = "ref/papers/other.md"
+        let loader = RefsInspectorLoader(
+            library: fixtures.library,
+            intrinsics: fixtures.intrinsics
+        )
+
+        let row = await loader.showRow(for: fixtures.paper)
+        XCTAssertNil(row)
+        XCTAssertNil(loader.cachedShowRow(for: fixtures.paper))
+
+        loader.request(fixtures.paper)
+        await waitForContent(loader, id: fixtures.paper.id)
+        let content = try XCTUnwrap(loader.content(for: fixtures.paper.id))
+        XCTAssertTrue(content.showFailed)
+        XCTAssertEqual(content.notes, [])
+    }
+
+    func testShowRowIsSingleFlightForConcurrentCallers() async throws {
+        let fixtures = makeFixtures()
+        fixtures.fetcher.showDelayNanoseconds = 200_000_000
+        let loader = RefsInspectorLoader(
+            library: fixtures.library,
+            intrinsics: fixtures.intrinsics
+        )
+
+        async let first = loader.showRow(for: fixtures.paper)
+        async let second = loader.showRow(for: fixtures.paper)
+        let (a, b) = await (first, second)
+
+        XCTAssertEqual(a?.path, fixtures.paper.id)
+        XCTAssertEqual(a, b)
+        XCTAssertEqual(fixtures.fetcher.showPaths, [fixtures.paper.id])
+        XCTAssertEqual(loader.cachedShowRow(for: fixtures.paper)?.path, fixtures.paper.id)
+    }
+
+    func testCachedShowRowAccessorHitsAfterFetch() async throws {
+        let fixtures = makeFixtures()
+        let loader = RefsInspectorLoader(
+            library: fixtures.library,
+            intrinsics: fixtures.intrinsics
+        )
+
+        XCTAssertNil(loader.cachedShowRow(for: fixtures.paper))
+        let row = try XCTUnwrap(await loader.showRow(for: fixtures.paper))
+        XCTAssertEqual(loader.cachedShowRow(for: fixtures.paper), row)
+        XCTAssertEqual(fixtures.fetcher.showPaths.count, 1)
+
+        let cached = try XCTUnwrap(await loader.showRow(for: fixtures.paper))
+        XCTAssertEqual(cached, row)
+        XCTAssertEqual(fixtures.fetcher.showPaths.count, 1)
+    }
+
     func testShowFailureKeepsBasicContent() async throws {
         let fixtures = makeFixtures()
         fixtures.fetcher.showError = RefsTestError.boom
@@ -506,6 +560,9 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
     private(set) var showPaths: [String] = []
     var showError: Error?
     var showDelayNanoseconds: UInt64 = 50_000_000
+    /// When set, the returned row uses this path instead of the
+    /// requested one, so exact-path matching can fail.
+    var showRowPath: String?
 
     func list(gitDates: Bool) async throws -> RefsListResponse {
         RefsListResponse(schemaVersion: 1)
@@ -532,7 +589,7 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
             throw showError
         }
         return RefsShowResponse(schemaVersion: 1, refs: [RefsShowRow(
-            path: path,
+            path: showRowPath ?? path,
             annotations: [RefsShowAnnotation(
                 pageLabel: "3",
                 kind: "highlight",
@@ -563,9 +620,20 @@ final class StubIntrinsics: RefsPDFIntrinsicsProviding, @unchecked Sendable {
 final class FakePasteboard: RefsPasteboardWriting, @unchecked Sendable {
     private let lock = NSLock()
     private(set) var strings: [String] = []
+    private(set) var payloads: [RefsClipboardPayload] = []
+    var failWrites = false
 
-    func copy(_ string: String) {
-        lock.withLock { strings.append(string) }
+    func write(_ payload: RefsClipboardPayload) -> Bool {
+        lock.withLock {
+            if failWrites {
+                return false
+            }
+            payloads.append(payload)
+            if case .text(let string) = payload {
+                strings.append(string)
+            }
+            return true
+        }
     }
 }
 
