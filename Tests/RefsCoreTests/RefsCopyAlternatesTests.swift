@@ -53,7 +53,7 @@ final class RefsCopyAlternatesTests: XCTestCase {
             XCTAssertEqual(copying.handle(.key(key, alternate: true)), .write(alternate))
         }
         XCTAssertEqual(card.catalog.row(for: .pdfFile)?.resolved(alternate: true).preview, "a.m4a")
-        for key in [RefsCopyKey.title, .note(2), .note(3), .allNotes] {
+        for key in [RefsCopyKey.title, .note(2), .allNotes] {
             let row = try XCTUnwrap(card.catalog.row(for: key))
             XCTAssertNil(row.alternate)
             XCTAssertEqual(row.resolved(alternate: true), row)
@@ -85,7 +85,7 @@ final class RefsCopyAlternatesTests: XCTestCase {
             catalog.rows.map(\.key),
             [
                 .title, .wikiLink, .notePath, .obsidianLink, .pdfPath, .pdfFile,
-                .note(1), .note(2), .note(3), .allNotes, .highlightPicker,
+                .note(1), .note(2), .allNotes, .highlightPicker,
             ])
         let row = try XCTUnwrap(catalog.row(for: .obsidianLink))
         XCTAssertEqual(row.payload, .text(row.preview))

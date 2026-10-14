@@ -98,6 +98,65 @@ final class RefsCopyTests: XCTestCase {
         )
     }
 
+    func testDigitRowsUseCommentedHighlightsWhileAllNotesIncludesStandaloneNotes() throws {
+        let item = makeItem(markerID: .absent)
+        let row = RefsShowRow(path: item.id, annotations: [
+            RefsShowAnnotation(kind: "highlight", quote: "First", comment: "First comment"),
+            RefsShowAnnotation(kind: "note", comment: "Standalone"),
+            RefsShowAnnotation(kind: "highlight", quote: "Second", comment: "Second comment"),
+        ])
+        let catalog = RefsCopyCatalog(
+            item: item, absolutePDFPath: nil, pdfExists: false,
+            notes: .loaded(row), noteCapacity: 9
+        )
+
+        XCTAssertEqual(catalog.noteCount, 2)
+        XCTAssertEqual(catalog.allNotesCount, 3)
+        XCTAssertEqual(
+            catalog.rows.filter { if case .note = $0.key { true } else { false } }.map(\.key),
+            [.note(1), .note(2)]
+        )
+        XCTAssertEqual(
+            catalog.row(for: .note(1))?.payload,
+            .text("> First\n\nComment: First comment")
+        )
+        XCTAssertEqual(
+            catalog.row(for: .note(2))?.payload,
+            .text("> Second\n\nComment: Second comment")
+        )
+        let allNotes = try XCTUnwrap(catalog.row(for: .allNotes))
+        XCTAssertEqual(allNotes.preview, "3 notes · Markdown")
+        XCTAssertEqual(allNotes.payload, .text(
+            "> First\n\nComment: First comment\n\nNote: Standalone\n\n> Second\n\nComment: Second comment"
+        ))
+    }
+
+    func testAllNotesConfirmationTitlesUseTheActualNoteCount() throws {
+        let item = makeItem(markerID: .absent)
+        func title(annotations: [RefsShowAnnotation], ownNotes: String = "") throws -> String? {
+            let catalog = RefsCopyCatalog(
+                item: item, absolutePDFPath: nil, pdfExists: false,
+                notes: .loaded(RefsShowRow(
+                    path: item.id, annotations: annotations, ownNotes: ownNotes
+                )), noteCapacity: 9
+            )
+            return catalog.row(for: .allNotes)?.confirmationTitle
+        }
+
+        XCTAssertEqual(
+            try title(annotations: [RefsShowAnnotation(kind: "highlight", comment: "One")]),
+            "Copied 1 Note"
+        )
+        XCTAssertEqual(
+            try title(annotations: [
+                RefsShowAnnotation(kind: "highlight", comment: "One"),
+                RefsShowAnnotation(kind: "note", comment: "Two"),
+            ]),
+            "Copied 2 Notes"
+        )
+        XCTAssertEqual(try title(annotations: [], ownNotes: "Own notes"), "Copied Your Notes")
+    }
+
     func testChatCatalogHasFixedLettersAndMarkerDefault() {
         let item = makeItem(markerID: .present("real-id"), task: RefTask(path: "sase.md", link: "[[sase#^task]]"))
         let catalog = RefsCopyCatalog(
@@ -135,10 +194,11 @@ final class RefsCopyTests: XCTestCase {
             absolutePDFPath: "/vault/ref/papers/paper.pdf",
             pdfExists: false,
             notes: .loaded(notes),
-            noteCapacity: 4
+            noteCapacity: 4,
+            absoluteNotePath: "/vault/ref/papers/paper.md"
         )
 
-        XCTAssertEqual(catalog.rows.map { $0.key.glyph }, ["I", "T", "W", "U", "L", "X", "D", "N", "P", "R", "S", "1", "A", "H"])
+        XCTAssertEqual(catalog.rows.map { $0.key.glyph }, ["I", "T", "W", "U", "L", "X", "D", "N", "O", "P", "R", "S", "1", "A", "H"])
         XCTAssertEqual(catalog.defaultKey, .markerID)
         XCTAssertEqual(catalog.row(for: .markdownLink)?.preview, "[A title](https://example.test/a%20%28b%29)")
         XCTAssertEqual(catalog.row(for: .pdfPath)?.tag, .missing)
@@ -156,6 +216,17 @@ final class RefsCopyTests: XCTestCase {
             catalog.row(for: .allNotes)?.payload,
             .text("> Quoted\n\nComment: First line\nSecond line\n\n— Page 28 · [[paper#^h-1]]\n\n### Notes\n\nMy own notes")
         )
+        let valueKeys: [RefsCopyKey] = [
+            .markerID, .title, .wikiLink, .sourceURL, .markdownLink, .arxiv,
+            .doi, .notePath, .obsidianLink, .pdfPath, .readingTask, .researchRef,
+        ]
+        for key in valueKeys {
+            guard let row = catalog.row(for: key), case .text(let payload) = row.payload else {
+                XCTFail("Expected text value row for \(key)")
+                continue
+            }
+            XCTAssertEqual(row.preview, payload, "Preview must equal \(key)'s payload")
+        }
     }
 
     func testMissingRowsExplainAbsenceAndOlderBob() {
@@ -224,6 +295,14 @@ final class RefsCopyTests: XCTestCase {
         )
         XCTAssertEqual(RefsCopyFormat.shortPageLabel("Page 11"), "p. 11")
         XCTAssertEqual(RefsCopyFormat.shortPageLabel("Appendix A"), "Appendix A")
+        XCTAssertEqual(
+            RefsCopyFormat.noteBlock(RefsShowAnnotation(quote: "  \n ", comment: "Kept")),
+            "Comment: Kept"
+        )
+        XCTAssertEqual(
+            RefsCopyFormat.noteBlock(RefsShowAnnotation(quote: "Quote", comment: " \t\n ")),
+            "> Quote"
+        )
     }
 
     func testKeyMapNormalizesLettersAndRoutesControlKeys() {
@@ -232,8 +311,13 @@ final class RefsCopyTests: XCTestCase {
         XCTAssertEqual(RefsCopyKeyMap.command(characters: nil, keyCode: 125, modifiers: [.numericPad, .function]), .move(1))
         XCTAssertEqual(RefsCopyKeyMap.command(characters: nil, keyCode: 126, modifiers: [.numericPad, .function]), .move(-1))
         XCTAssertEqual(RefsCopyKeyMap.command(characters: "n", keyCode: 45, modifiers: [.control]), .move(1))
+        XCTAssertEqual(RefsCopyKeyMap.command(characters: "j", keyCode: 38, modifiers: [.control]), .move(1))
         XCTAssertEqual(RefsCopyKeyMap.command(characters: "p", keyCode: 35, modifiers: [.control]), .move(-1))
+        XCTAssertEqual(RefsCopyKeyMap.command(characters: "k", keyCode: 40, modifiers: [.control]), .move(-1))
+        XCTAssertEqual(RefsCopyKeyMap.command(characters: nil, keyCode: 36, modifiers: []), .copySelected)
+        XCTAssertEqual(RefsCopyKeyMap.command(characters: "\u{F700}", keyCode: 123, modifiers: [.shift]), .consume)
         XCTAssertEqual(RefsCopyKeyMap.command(characters: nil, keyCode: 53, modifiers: []), .close)
+        XCTAssertEqual(RefsCopyKeyMap.command(characters: "[", keyCode: 33, modifiers: []), .unknown("["))
         XCTAssertEqual(RefsCopyKeyMap.command(characters: "[", keyCode: 33, modifiers: [.control]), .close)
         XCTAssertEqual(RefsCopyKeyMap.command(characters: "y", keyCode: 16, modifiers: [.control]), .copySelected)
         XCTAssertEqual(RefsCopyKeyMap.command(characters: nil, keyCode: 76, modifiers: [.numericPad]), .copySelected)
@@ -249,6 +333,10 @@ final class RefsCopyTests: XCTestCase {
         )
         XCTAssertEqual(card.handle(.key(.note(1))), .none)
         XCTAssertEqual(card.pending, .note(1))
+        XCTAssertEqual(card.message?.text, "Waiting for notes… esc cancels")
+        _ = card.handle(.move(1))
+        XCTAssertEqual(card.message?.text, "Waiting for notes… esc cancels")
+        card.clearTransientMessage()
         XCTAssertEqual(card.message?.text, "Waiting for notes… esc cancels")
         XCTAssertEqual(
             card.notesLoaded(path: "ref/chat/other.md", row: RefsShowRow(path: "ref/chat/other.md")),
@@ -271,6 +359,19 @@ final class RefsCopyTests: XCTestCase {
         XCTAssertEqual(closing.handle(.close), .close)
         XCTAssertEqual(closing.notesLoaded(path: item.id, row: loaded), .none)
         XCTAssertNil(closing.pending)
+    }
+
+    func testPendingTimeoutShowsErrorAndClearsQueuedCopy() {
+        let item = makeItem(markerID: .absent)
+        var card = RefsCopyCard(
+            token: 11, item: item, absolutePDFPath: nil, pdfExists: false,
+            notes: .loading, noteCapacity: 5
+        )
+        XCTAssertEqual(card.handle(.key(.note(1))), .none)
+        card.pendingTimedOut()
+        XCTAssertNil(card.pending)
+        XCTAssertEqual(card.message?.text, "Notes didn't load — nothing copied")
+        XCTAssertTrue(card.message?.isError == true)
     }
 
     func testCardLoadFailureAndTransientMessageState() {

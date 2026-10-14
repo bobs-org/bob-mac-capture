@@ -183,9 +183,12 @@ public enum RefsCopyNotesState: Equatable, Sendable {
 public struct RefsCopyCatalog: Equatable, Sendable {
     public let rows: [RefsCopyRow]
     public let defaultKey: RefsCopyKey
+    /// Commented highlights available on the 1–9 rows.
     public let noteCount: Int
     public let visibleNoteCount: Int
     public let noteOverflowCount: Int
+    /// All notes copied by A, including standalone notes.
+    public let allNotesCount: Int
     public let notesState: RefsCopyNotesState
 
     private let item: RefItem
@@ -219,7 +222,8 @@ public struct RefsCopyCatalog: Equatable, Sendable {
         } else {
             notesRow = nil
         }
-        noteCount = notesRow?.yourNotes.count ?? 0
+        noteCount = notesRow?.commentedHighlights.count ?? 0
+        allNotesCount = notesRow?.yourNotes.count ?? 0
         let visible: Int
         if notesRow == nil {
             visible = 0
@@ -390,7 +394,7 @@ public struct RefsCopyCatalog: Equatable, Sendable {
         }
 
         if let notesRow {
-            let notes = notesRow.yourNotes
+            let notes = notesRow.commentedHighlights
             for (offset, annotation) in notes.prefix(visible).enumerated() {
                 let key = RefsCopyKey.note(offset + 1)
                 let payload = RefsCopyFormat.noteBlock(annotation)
@@ -411,17 +415,25 @@ public struct RefsCopyCatalog: Equatable, Sendable {
             let ownNotesAvailable = !notesRow.ownNotes.trimmingCharacters(
                 in: .whitespacesAndNewlines
             ).isEmpty
-            if !notes.isEmpty || ownNotesAvailable {
+            if !notesRow.yourNotes.isEmpty || ownNotesAvailable {
                 let suffix = ownNotesAvailable ? " + your notes" : ""
-                let noteWord = notes.count == 1 ? "note" : "notes"
+                let noteWord = allNotesCount == 1 ? "note" : "notes"
+                let confirmationTitle: String
+                if allNotesCount == 0 {
+                    confirmationTitle = "Copied Your Notes"
+                } else if allNotesCount == 1 {
+                    confirmationTitle = "Copied 1 Note"
+                } else {
+                    confirmationTitle = "Copied \(allNotesCount) Notes"
+                }
                 built.append(RefsCopyRow(
                     key: .allNotes,
                     group: .notes,
                     label: "All your notes",
                     payload: .text(RefsCopyFormat.allNotes(from: notesRow)),
-                    preview: "\(notes.count) \(noteWord) · Markdown\(suffix)",
+                    preview: "\(allNotesCount) \(noteWord) · Markdown\(suffix)",
                     truncation: .tail,
-                    confirmationTitle: "Copied \(notes.count) Notes"
+                    confirmationTitle: confirmationTitle
                 ))
             }
             let highlightCount = notesRow.highlightPickerEntries.count
@@ -591,12 +603,16 @@ public enum RefsCopyFormat {
 
     public static func noteBlock(_ annotation: RefsShowAnnotation) -> String {
         var lines: [String] = []
-        if let quote = annotation.quote {
+        if let quote = annotation.quote,
+            !quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
             lines.append(quote.components(separatedBy: "\n").map {
                 $0.isEmpty ? ">" : "> \($0)"
             }.joined(separator: "\n"))
         }
-        if let comment = annotation.comment, !comment.isEmpty {
+        if let comment = annotation.comment,
+            !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
             var commentLines = comment.components(separatedBy: "\n")
             commentLines[0] = "Comment: \(commentLines[0])"
             lines.append(commentLines.joined(separator: "\n"))
@@ -781,7 +797,7 @@ public enum RefsCopyKeyMap {
             return flags.isEmpty ? .close : .consume
         }
         if keyCode == 33 {
-            return flags == .control ? .close : .consume
+            if flags == .control { return .close }
         }
         if keyCode == 16, flags == .control || flags == [.control, .option] {
             return .copySelected
@@ -805,6 +821,11 @@ public enum RefsCopyKeyMap {
         guard flags.subtracting([.shift, .option]).isEmpty,
               let text = characters,
               let character = text.first else {
+            return .consume
+        }
+        if character.unicodeScalars.contains(where: {
+            (0xF700...0xF8FF).contains($0.value)
+        }) {
             return .consume
         }
         if let key = RefsCopyKey.parse(character) {
@@ -960,7 +981,9 @@ public struct RefsCopyCard: Equatable, Sendable {
             let current = rows.firstIndex(where: { $0.key == selectedKey }) ?? 0
             let next = (current + delta % rows.count + rows.count) % rows.count
             selectedKey = rows[next].key
-            message = nil
+            message = pending == nil
+                ? nil
+                : RefsCopyMessage(text: "Waiting for notes… esc cancels")
             return .none
         case .close:
             pending = nil
@@ -1047,6 +1070,10 @@ public struct RefsCopyCard: Equatable, Sendable {
     }
 
     public mutating func clearTransientMessage() {
+        if pending != nil {
+            message = RefsCopyMessage(text: "Waiting for notes… esc cancels")
+            return
+        }
         guard message?.isTransient == true else { return }
         message = nil
     }

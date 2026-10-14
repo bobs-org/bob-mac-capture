@@ -96,6 +96,7 @@ final class RefsKeyRouterTests: XCTestCase {
 
     func testControlYOpensCopyCardAndPassesThroughWhileComposing() {
         XCTAssertEqual(route(KeyCode.y, .control), .showCopyCard)
+        XCTAssertEqual(route(KeyCode.y, [.control, .capsLock]), .showCopyCard)
         XCTAssertNil(route(KeyCode.y))
         XCTAssertNil(route(KeyCode.y, [.control, .shift]))
         XCTAssertNil(route(

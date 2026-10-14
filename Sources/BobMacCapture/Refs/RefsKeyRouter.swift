@@ -136,7 +136,7 @@ public enum RefsKeyRouter {
             }
             return nil
         case KeyCode.y:
-            if flags == .control {
+            if flags.subtracting(.capsLock) == .control {
                 return context.markedTextPresent ? nil : .showCopyCard
             }
             return nil

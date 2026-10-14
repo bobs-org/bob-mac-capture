@@ -257,7 +257,9 @@ public final class RefsPanelModel: ObservableObject {
 
     /// Flags only affect an open card (including its picker layer).
     public func updateCopyModifiers(_ modifiers: RefsCopyKeyModifiers) {
-        copyAlternatesActive = copyCard != nil && modifiers.contains(.option)
+        let active = copyCard != nil && modifiers.contains(.option)
+        guard copyAlternatesActive != active else { return }
+        copyAlternatesActive = active
     }
     /// The measured note capacity of the copy card. The card keeps this
     /// value when its size changes and drops note rows that no longer fit.
@@ -347,6 +349,8 @@ public final class RefsPanelModel: ObservableObject {
     private var copyCardSequence: UInt64 = 0
     private var copyNotesTask: Task<Void, Never>?
     private var pendingCopyTimeoutTask: Task<Void, Never>?
+    private var pendingCopyTimeoutKey: RefsCopyKey?
+    private var pendingCopyTimeoutToken: UInt64?
     private var copyMessageTask: Task<Void, Never>?
     private var selectionAtScanStart: String?
     private var pendingScanBanner: RefsBanner?
@@ -493,6 +497,10 @@ public final class RefsPanelModel: ObservableObject {
             rerankSelectingFirst()
             return true
         case .escape:
+            if copyCard != nil {
+                closeCopyCard()
+                return true
+            }
             if banner != nil {
                 banner = nil
                 return true
@@ -931,14 +939,22 @@ public final class RefsPanelModel: ObservableObject {
     }
 
     private func updateCopyCardTimers(token: UInt64) {
-        pendingCopyTimeoutTask?.cancel()
-        pendingCopyTimeoutTask = nil
-        if copyCard?.pending != nil {
-            pendingCopyTimeoutTask = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                guard !Task.isCancelled else { return }
-                self?.copyCardPendingTimedOut(token: token)
+        if let pending = copyCard?.pending {
+            if pendingCopyTimeoutKey != pending || pendingCopyTimeoutToken != token {
+                pendingCopyTimeoutTask?.cancel()
+                pendingCopyTimeoutKey = pending
+                pendingCopyTimeoutToken = token
+                pendingCopyTimeoutTask = Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    guard !Task.isCancelled else { return }
+                    self?.copyCardPendingTimedOut(token: token)
+                }
             }
+        } else if pendingCopyTimeoutTask != nil || pendingCopyTimeoutKey != nil {
+            pendingCopyTimeoutTask?.cancel()
+            pendingCopyTimeoutTask = nil
+            pendingCopyTimeoutKey = nil
+            pendingCopyTimeoutToken = nil
         }
 
         copyMessageTask?.cancel()
@@ -957,6 +973,8 @@ public final class RefsPanelModel: ObservableObject {
         card.pendingTimedOut()
         copyCard = card
         pendingCopyTimeoutTask = nil
+        pendingCopyTimeoutKey = nil
+        pendingCopyTimeoutToken = nil
     }
 
     private func clearTransientCopyMessage(token: UInt64) {
@@ -1011,6 +1029,8 @@ public final class RefsPanelModel: ObservableObject {
         copyNotesTask = nil
         pendingCopyTimeoutTask?.cancel()
         pendingCopyTimeoutTask = nil
+        pendingCopyTimeoutKey = nil
+        pendingCopyTimeoutToken = nil
         copyMessageTask?.cancel()
         copyMessageTask = nil
         copyCard = nil

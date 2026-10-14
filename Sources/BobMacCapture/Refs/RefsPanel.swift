@@ -326,7 +326,9 @@ public final class RefsPanelController: NSObject {
             return event
         }
         if event.type == .flagsChanged {
-            model.updateCopyModifiers(Self.copyModifiers(event.modifierFlags))
+            if model.copyCard != nil {
+                model.updateCopyModifiers(Self.copyModifiers(event.modifierFlags))
+            }
             return event
         }
         if model.copyCard != nil {

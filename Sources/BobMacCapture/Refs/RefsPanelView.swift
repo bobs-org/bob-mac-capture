@@ -144,11 +144,15 @@ public struct RefsPanelView: View {
                 inspector
             }
         } else {
-            if model.copyCard != nil {
-                copyCard
-            } else {
-                RefsListView(model: model, previewMode: previewMode)
+            Group {
+                if model.copyCard != nil {
+                    copyCard
+                } else {
+                    RefsListView(model: model, previewMode: previewMode)
+                        .transition(.opacity)
+                }
             }
+            .animation(copyCardAnimation, value: model.copyCard != nil)
         }
     }
 
@@ -160,29 +164,34 @@ public struct RefsPanelView: View {
 
     @ViewBuilder
     private var inspector: some View {
-        if model.copyCard != nil {
-            copyCard
-        } else if let selected = model.selectedID,
-           let content = model.rowContent(for: selected)
-        {
-            RefsInspectorView(
-                content: content,
-                signals: model.signals,
-                inspector: model.inspectorContent(for: selected),
-                thumbnail: model.inspectorThumbnail(for: selected),
-                previewMode: previewMode,
-                notesPage: model.inspectorNotesPage(for: selected),
-                onRevealMoreNotes: { model.revealMoreInspectorNotes() }
-            )
-            .id("\(selected)#\(model.presentationCount)")
-            .onAppear { model.inspectorRequested() }
-            .onChange(of: selected) { _, _ in model.inspectorRequested() }
-        } else {
-            Text("Select a reference")
-                .font(.callout)
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        Group {
+            if model.copyCard != nil {
+                copyCard
+            } else if let selected = model.selectedID,
+               let content = model.rowContent(for: selected)
+            {
+                RefsInspectorView(
+                    content: content,
+                    signals: model.signals,
+                    inspector: model.inspectorContent(for: selected),
+                    thumbnail: model.inspectorThumbnail(for: selected),
+                    previewMode: previewMode,
+                    notesPage: model.inspectorNotesPage(for: selected),
+                    onRevealMoreNotes: { model.revealMoreInspectorNotes() }
+                )
+                .id("\(selected)#\(model.presentationCount)")
+                .onAppear { model.inspectorRequested() }
+                .onChange(of: selected) { _, _ in model.inspectorRequested() }
+                .transition(.opacity)
+            } else {
+                Text("Select a reference")
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity)
+            }
         }
+        .animation(copyCardAnimation, value: model.copyCard != nil)
     }
 
     private var copyCard: some View {
@@ -193,7 +202,7 @@ public struct RefsPanelView: View {
                     alternatesActive: model.copyAlternatesActive,
                     previewMode: previewMode,
                     onMeasuredHeight: {
-                        model.copyCardNoteCapacity = copyCardNoteCapacity(
+                        model.copyCardNoteCapacity = Self.copyCardNoteCapacity(
                             for: card,
                             height: $0
                         )
@@ -213,7 +222,10 @@ public struct RefsPanelView: View {
                 .transition(copyCardTransition)
             }
         }
-        .animation(.easeOut(duration: 0.14), value: model.copyCard != nil)
+    }
+
+    private var copyCardAnimation: Animation {
+        .easeOut(duration: 0.14)
     }
 
     private var copyCardTransition: AnyTransition {
@@ -226,11 +238,11 @@ public struct RefsPanelView: View {
         )
     }
 
-    private func copyCardNoteCapacity(
+    static func copyCardNoteCapacity(
         for card: RefsCopyCard,
         height: CGFloat
     ) -> Int {
-        var groups = Set(card.rows.filter { $0.group != .notes }.map(\.group))
+        var groups = Set(card.rows.map(\.group))
         let hasNotesSection: Bool
         if card.rows.contains(where: { $0.group == .notes }) {
             hasNotesSection = true
@@ -250,7 +262,10 @@ public struct RefsPanelView: View {
         }
         return RefsCopyCardLayout.noteCapacity(
             cardHeight: Double(height),
-            nonNoteRowCount: card.rows.filter { $0.group != .notes }.count,
+            nonNoteRowCount: card.rows.filter { row in
+                if case .note = row.key { return false }
+                return true
+            }.count,
             groupCount: groups.count,
             metrics: RefsVisualTokens.copyCardMetrics
         )

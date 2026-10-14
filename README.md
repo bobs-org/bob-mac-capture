@@ -1333,7 +1333,7 @@ Diagnostic for hard failures.
 | Command-K | Actions menu for the selected row |
 | Control-Y | Open the Copy card for the selected row |
 | Backspace on an empty query | Remove the scope token |
-| Esc, Ctrl-[ | Copy card, then banner, query, scope, then close |
+| Esc, Ctrl-[ | Copy card, then banner, then query, then scope, then close |
 | Shift-Tab | Consumed (no-op) |
 
 Return while IME-composing passes through to the text system. Ctrl-D
@@ -1352,12 +1352,13 @@ copy `I` marker ID, `T` title, `W` wiki link, `U` source URL, `L` Markdown
 link, `X` arXiv ID, `D` DOI, `N` note path, `O` Obsidian link, `P` PDF path,
 `F` the PDF file,
 `R` reading-task link, and `S` research reference. `1`–`9` copy the visible
-note blocks, including their page and block-link provenance; `A` copies all
-reference notes and Bob's own notes; `H` opens a highlight picker for every
-highlight and standalone note (digits copy the visible window, arrows scroll
-the rest, `A` copies all highlights). Rows that do not apply are hidden without
-moving the other keys. Return or Control-Y copies the selected row (marker ID
-when available, otherwise wiki link); Up/Down and Ctrl-P/N/J/K move the
+commented highlights, including their page and block-link provenance; `A`
+copies all commented highlights and standalone notes plus Bob's own notes; `H`
+opens a highlight picker for every highlight and standalone note (digits copy
+the visible window, arrows scroll the rest, `A` copies all highlights). Rows
+that do not apply are hidden without moving the other keys. Return or Control-Y
+copies the selected row (marker ID when available, otherwise wiki link); Up/Down
+and Ctrl-P/N/J/K move the
 selection, and Escape returns to the inspector. From the picker, Escape
 returns to the card.
 

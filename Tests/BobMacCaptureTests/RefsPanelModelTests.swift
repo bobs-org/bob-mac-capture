@@ -106,6 +106,92 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertNil(harness.model.copyCard)
     }
 
+    func testQueuedDigitCopiesWhenTheShowLoaderReturns() async throws {
+        let showFixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("json")
+        let showJSON = #"{"ok":true,"schema_version":1,"command":"ref show","generated_at":"2026-10-14T00:00:00","refs":[{"path":"ref/chat/small_reading.md","annotations":[{"kind":"highlight","quote":"Loaded quote","comment":"Loaded comment"}]}]}"#
+        try Data(showJSON.utf8).write(to: showFixture)
+        defer { try? FileManager.default.removeItem(at: showFixture) }
+
+        let harness = try makeHarness(environment: [
+            "FAKE_BOB_REFS_SHOW_FIXTURE": showFixture.path,
+        ])
+        await harness.waitForSnapshot()
+        let id = "ref/chat/small_reading.md"
+        XCTAssertTrue(harness.model.perform(.select(id: id)))
+        var completions: [RefsCopyRow] = []
+        harness.model.copyCompletion = { completions.append($0) }
+
+        harness.model.openCopyCard()
+        XCTAssertEqual(harness.model.copyCard?.notes, .loading)
+        harness.model.handleCopyCardKey(characters: "1", keyCode: 18, modifiers: [])
+        XCTAssertEqual(harness.model.copyCard?.pending, .note(1))
+        XCTAssertEqual(
+            harness.model.copyCard?.message?.text,
+            "Waiting for notes… esc cancels"
+        )
+
+        await harness.waitForModel { $0.copyCard == nil && harness.pasteboard.strings.count == 1 }
+        XCTAssertTrue(harness.pasteboard.strings[0].contains("Comment: Loaded comment"))
+        XCTAssertEqual(completions.map(\.confirmationTitle), ["Copied Note 1"])
+        XCTAssertEqual(harness.pasteboard.strings.count, 1)
+    }
+
+    func testCommandKFromCopyCardClosesItAndPresentsActions() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let item = Self.twoPreviewItems()[0]
+        harness.model.installForPreviews(
+            items: [item], signals: harness.model.signals, query: "", scope: .all,
+            selectedID: item.id, banner: nil, refreshState: .idle
+        )
+        var actionsPresented = 0
+        harness.model.actionsPresenter = { actionsPresented += 1 }
+        harness.model.openCopyCard()
+
+        harness.model.handleCopyCardKey(characters: "k", keyCode: 40, modifiers: .command)
+
+        XCTAssertNil(harness.model.copyCard)
+        XCTAssertEqual(actionsPresented, 1)
+    }
+
+    func testModelEscapeClosesCopyCardBeforeBannerQueryAndScope() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let item = Self.twoPreviewItems()[0]
+        let banner = RefsBanner(kind: .error, message: "boom", actions: [.tryAgain])
+        harness.model.installForPreviews(
+            items: [item], signals: harness.model.signals, query: "alpha",
+            scope: .chats, selectedID: item.id, banner: banner, refreshState: .idle
+        )
+        harness.model.openCopyCard()
+
+        XCTAssertTrue(harness.model.perform(.escape))
+
+        XCTAssertNil(harness.model.copyCard)
+        XCTAssertEqual(harness.model.banner, banner)
+        XCTAssertEqual(harness.model.query, "alpha")
+        XCTAssertEqual(harness.model.scope, .chats)
+        XCTAssertEqual(harness.dismissed, 0)
+    }
+
+    func testCopyCardNoteCapacityBudgetsAllNotesGroupRows() {
+        let item = Self.twoPreviewItems()[0]
+        let card = RefsCopyCard(
+            token: 1, item: item, absolutePDFPath: nil, pdfExists: false,
+            notes: .loaded(RefsShowRow(path: item.id, annotations: [
+                RefsShowAnnotation(kind: "highlight", comment: "One"),
+                RefsShowAnnotation(kind: "note", comment: "Standalone"),
+            ])),
+            noteCapacity: 0
+        )
+
+        XCTAssertNotNil(card.catalog.row(for: .allNotes))
+        XCTAssertNotNil(card.catalog.row(for: .highlightPicker))
+        XCTAssertEqual(RefsPanelView.copyCardNoteCapacity(for: card, height: 300), 1)
+    }
+
     func testCopyCardWriteFailureKeepsCardOpenAndEscapeClosesOnlyCard() async throws {
         let harness = try makeHarness()
         await harness.waitForSnapshot()
@@ -286,6 +372,23 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertEqual(copied, row.resolved(alternate: true))
         XCTAssertEqual(harness.pasteboard.strings.count, 1)
         XCTAssertNil(harness.model.copyCard)
+    }
+
+    func testFlagsChangedWhileCopyCardIsClosedDoesNotPublish() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let controller = RefsPanelController(model: harness.model)
+        var published = 0
+        let subscription = harness.model.objectWillChange.sink { published += 1 }
+        let flags = try XCTUnwrap(NSEvent.keyEvent(
+            with: .flagsChanged, location: .zero, modifierFlags: .option,
+            timestamp: 0, windowNumber: 0, context: nil,
+            characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 58
+        ))
+
+        XCTAssertTrue(controller.processKeyEvent(flags) === flags)
+        XCTAssertEqual(published, 0)
+        withExtendedLifetime(subscription) {}
     }
 
     func testOptionPickerClickCopiesQuote() async throws {

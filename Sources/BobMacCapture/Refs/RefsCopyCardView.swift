@@ -18,6 +18,7 @@ struct RefsCopyCardView: View {
     @Environment(\.colorSchemeContrast) private var contrast
     @State private var hoveredKey: RefsCopyKey?
     @State private var hoveredPickerPosition: Int?
+    @State private var measuredHeight: CGFloat = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -36,8 +37,20 @@ struct RefsCopyCardView: View {
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.height
         } action: { height in
+            measuredHeight = height
             onMeasuredHeight(height)
         }
+        .onChange(of: card.notes) { _, _ in
+            reportMeasuredHeightIfAvailable()
+        }
+        .onChange(of: card.rows) { _, _ in
+            reportMeasuredHeightIfAvailable()
+        }
+    }
+
+    private func reportMeasuredHeightIfAvailable() {
+        guard measuredHeight > 0 else { return }
+        onMeasuredHeight(measuredHeight)
     }
 
     private var header: some View {
@@ -86,7 +99,7 @@ struct RefsCopyCardView: View {
                 separator
             }
             if group.group == .notes {
-                notesHeader(loadedCount: group.rows.filter(\.isNoteRow).count)
+                notesHeader(loadedCount: card.catalog.allNotesCount)
             }
             ForEach(group.rows, id: \.key) { row in
                 rowView(row)
@@ -415,12 +428,5 @@ private struct RefsCopyKeycap: View {
                         lineWidth: increased ? 1 : 0.5
                     )
             )
-    }
-}
-
-private extension RefsCopyRow {
-    var isNoteRow: Bool {
-        if case .note = key { return true }
-        return false
     }
 }
