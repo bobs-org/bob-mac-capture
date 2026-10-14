@@ -546,6 +546,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             hideRefs: { [weak self] in self?.refsPanelController?.hide() }
         )
+        controller.copyDismisser = { [weak self] in
+            self?.panelCoordinator?.dismissRefsAfterCopy()
+        }
         // Open-error re-shows keep the panel state and go through the
         // coordinator, so a visible Capture draft is retained.
         model.panelRepresenter = { [weak self] in self?.panelCoordinator?.representRefs() }

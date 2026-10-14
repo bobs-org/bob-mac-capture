@@ -807,6 +807,17 @@ public struct RefsCopyCard: Equatable, Sendable {
         message = RefsCopyMessage(text: "Couldn't copy — ↵ tries again", isError: true)
     }
 
+    public mutating func writeUnavailable(key: RefsCopyKey) {
+        guard !isClosed else { return }
+        if rows.contains(where: { $0.key == key }) {
+            selectedKey = key
+        }
+        message = RefsCopyMessage(
+            text: "Nothing to copy — this value is unavailable",
+            isError: true
+        )
+    }
+
     public mutating func select(_ key: RefsCopyKey) {
         guard !isClosed, rows.contains(where: { $0.key == key }) else { return }
         selectedKey = key

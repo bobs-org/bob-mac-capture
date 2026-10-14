@@ -41,6 +41,193 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertNil(harness.model.selectedRowRect)
     }
 
+    func testShowCopyCardConsumesTheCommandWithoutASelection() async throws {
+        let harness = try makeHarness()
+        harness.model.installForPreviews(
+            items: [],
+            signals: RefsSignals(),
+            query: "",
+            scope: .all,
+            selectedID: nil,
+            banner: nil,
+            refreshState: .idle
+        )
+
+        XCTAssertTrue(harness.model.perform(.showCopyCard))
+        XCTAssertNil(harness.model.copyCard)
+    }
+
+    func testCopyCardKeepsItsFrozenItemAndCompletesAfterOneWrite() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let original = Self.twoPreviewItems()[0]
+        harness.model.installForPreviews(
+            items: [original],
+            signals: harness.model.signals,
+            query: "",
+            scope: .all,
+            selectedID: original.id,
+            banner: nil,
+            refreshState: .idle
+        )
+        var completions: [RefsCopyRow] = []
+        harness.model.copyCompletion = { completions.append($0) }
+
+        XCTAssertTrue(harness.model.perform(.showCopyCard))
+        XCTAssertEqual(harness.model.copyCard?.item.rawTitle, "Alpha")
+        let changed = RefItem(
+            id: original.id,
+            link: original.link,
+            rawTitle: "Changed after opening",
+            stem: original.stem,
+            kind: original.kind,
+            state: original.state,
+            isBlocked: original.isBlocked,
+            pdfPath: original.pdfPath
+        )
+        harness.model.installForPreviews(
+            items: [changed],
+            signals: harness.model.signals,
+            query: "",
+            scope: .all,
+            selectedID: original.id,
+            banner: nil,
+            refreshState: .idle
+        )
+
+        harness.model.handleCopyCardKey(
+            characters: "t",
+            keyCode: 17,
+            modifiers: []
+        )
+
+        XCTAssertEqual(harness.pasteboard.strings, ["Alpha"])
+        XCTAssertEqual(completions.map(\.confirmationTitle), ["Copied Title"])
+        XCTAssertNil(harness.model.copyCard)
+    }
+
+    func testCopyCardWriteFailureKeepsCardOpenAndEscapeClosesOnlyCard() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let item = Self.twoPreviewItems()[0]
+        harness.model.installForPreviews(
+            items: [item],
+            signals: harness.model.signals,
+            query: "",
+            scope: .all,
+            selectedID: item.id,
+            banner: nil,
+            refreshState: .idle
+        )
+        harness.pasteboard.failWrites = true
+        var completions = 0
+        harness.model.copyCompletion = { _ in completions += 1 }
+        harness.model.openCopyCard()
+        harness.model.handleCopyCardKey(
+            characters: "w",
+            keyCode: 13,
+            modifiers: []
+        )
+
+        XCTAssertNotNil(harness.model.copyCard)
+        XCTAssertEqual(
+            harness.model.copyCard?.message?.text,
+            "Couldn't copy — ↵ tries again"
+        )
+        XCTAssertEqual(harness.pasteboard.strings, [])
+        XCTAssertEqual(completions, 0)
+        let dismissedBefore = harness.dismissed
+        harness.model.handleCopyCardKey(
+            characters: nil,
+            keyCode: 53,
+            modifiers: []
+        )
+        XCTAssertNil(harness.model.copyCard)
+        XCTAssertEqual(harness.dismissed, dismissedBefore)
+    }
+
+    func testCopyCardIsRevokedByHideAndSelectionChange() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let items = Self.twoPreviewItems()
+        harness.model.installForPreviews(
+            items: items,
+            signals: harness.model.signals,
+            query: "",
+            scope: .all,
+            selectedID: items[0].id,
+            banner: nil,
+            refreshState: .idle
+        )
+        harness.model.openCopyCard()
+        harness.model.handleCopyCardKey(
+            characters: "1",
+            keyCode: 18,
+            modifiers: []
+        )
+        XCTAssertEqual(harness.model.copyCard?.pending, .note(1))
+
+        harness.model.panelDidHide()
+        XCTAssertNil(harness.model.copyCard)
+        harness.model.openCopyCard()
+
+        harness.model.handleCopyCardKey(
+            characters: "1",
+            keyCode: 18,
+            modifiers: []
+        )
+        harness.model.prepareForPresentation()
+        XCTAssertNil(harness.model.copyCard)
+
+        harness.model.installForPreviews(
+            items: items,
+            signals: harness.model.signals,
+            query: "",
+            scope: .all,
+            selectedID: items[0].id,
+            banner: nil,
+            refreshState: .idle
+        )
+        harness.model.openCopyCard()
+        XCTAssertTrue(harness.model.perform(.select(id: items[1].id)))
+        XCTAssertNil(harness.model.copyCard)
+    }
+
+    func testControllerConsumesCardKeysAndCopiesTheRequestedRow() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let item = Self.twoPreviewItems()[0]
+        harness.model.installForPreviews(
+            items: [item],
+            signals: harness.model.signals,
+            query: "",
+            scope: .all,
+            selectedID: item.id,
+            banner: nil,
+            refreshState: .idle
+        )
+        harness.model.openCopyCard()
+        // Keep the test focused on event routing; the live controller's
+        // copy callback is covered by the app's HUD path.
+        harness.model.copyCompletion = { _ in }
+        let controller = RefsPanelController(model: harness.model)
+        let event = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "w",
+            charactersIgnoringModifiers: "w",
+            isARepeat: false,
+            keyCode: 13
+        ))
+
+        XCTAssertNil(controller.processKeyEvent(event))
+        XCTAssertEqual(harness.pasteboard.strings, ["[[ref/chat/alpha]]"])
+    }
+
     func testQueryEditRanksAndSelectsFirst() async throws {
         let harness = try makeHarness()
         await harness.waitForSnapshot()

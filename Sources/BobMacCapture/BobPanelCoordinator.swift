@@ -12,6 +12,7 @@ final class BobPanelCoordinator {
     private let presentRefs: () -> Void
     private let presentRefsPreservingState: () -> Void
     private let hideRefs: () -> Void
+    private var returnToCaptureAfterCopy = false
 
     init(
         isCaptureVisible: @escaping () -> Bool,
@@ -33,6 +34,7 @@ final class BobPanelCoordinator {
 
     /// Shows Capture, hiding Refs first when it is visible.
     func showCapture() {
+        returnToCaptureAfterCopy = false
         if isRefsVisible() {
             hideRefs()
         }
@@ -42,10 +44,20 @@ final class BobPanelCoordinator {
     /// Shows Refs, retaining the capture draft first when Capture
     /// is visible.
     func showRefs() {
-        if isCaptureVisible() {
+        returnToCaptureAfterCopy = isCaptureVisible()
+        if returnToCaptureAfterCopy {
             closeCaptureRetainingDraft()
         }
         presentRefs()
+    }
+
+    /// Hides Refs after a copy and restores Capture only when Refs was
+    /// opened over a visible Capture draft.
+    func dismissRefsAfterCopy() {
+        hideRefs()
+        guard returnToCaptureAfterCopy else { return }
+        returnToCaptureAfterCopy = false
+        presentCapture()
     }
 
     /// Re-shows Refs after an open error without resetting it, retaining

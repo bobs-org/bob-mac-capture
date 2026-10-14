@@ -333,6 +333,37 @@ final class RefsEntryPointsTests: XCTestCase {
         XCTAssertEqual(capture.plainDraft, "keep me")
     }
 
+    func testDismissRefsAfterCopyRestoresCaptureOnlyWhenItWasOpen() {
+        let fromCapture = EventLog()
+        let returningCoordinator = BobPanelCoordinator(
+            isCaptureVisible: { true },
+            isRefsVisible: { false },
+            closeCaptureRetainingDraft: { fromCapture.events.append("retain") },
+            presentCapture: { fromCapture.events.append("show-capture") },
+            presentRefs: { fromCapture.events.append("show-refs") },
+            hideRefs: { fromCapture.events.append("hide-refs") }
+        )
+        returningCoordinator.showRefs()
+        returningCoordinator.dismissRefsAfterCopy()
+        XCTAssertEqual(
+            fromCapture.events,
+            ["retain", "show-refs", "hide-refs", "show-capture"]
+        )
+
+        let fromOtherApp = EventLog()
+        let stayingCoordinator = BobPanelCoordinator(
+            isCaptureVisible: { false },
+            isRefsVisible: { false },
+            closeCaptureRetainingDraft: {},
+            presentCapture: { fromOtherApp.events.append("show-capture") },
+            presentRefs: { fromOtherApp.events.append("show-refs") },
+            hideRefs: { fromOtherApp.events.append("hide-refs") }
+        )
+        stayingCoordinator.showRefs()
+        stayingCoordinator.dismissRefsAfterCopy()
+        XCTAssertEqual(fromOtherApp.events, ["show-refs", "hide-refs"])
+    }
+
     // MARK: - Live settings
 
     func testTogglingRefsHotkeyEnabledRegistersLive() {

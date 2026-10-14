@@ -1,9 +1,8 @@
 import RefsCore
 import SwiftUI
 
-/// The inspector turned over: a fixed-letter Copy card. ⌃Y wiring lives
-/// in the next phase; this view only renders a `RefsCopyCard` and
-/// reports height, hover, and taps.
+/// The inspector turned over: a fixed-letter Copy card that reports its
+/// measured height, hover state, and row taps to the panel.
 @available(macOS 26.0, *)
 struct RefsCopyCardView: View {
     let card: RefsCopyCard

@@ -26,6 +26,7 @@ public enum RefsCommand: Equatable, Sendable {
     case select(id: String)
     case activate(id: String)
     case showActions
+    case showCopyCard
     case scan
     /// Scroll the right-hand inspector by half its viewport.
     case scrollInspector(RefsInspectorScrollDirection)
@@ -213,6 +214,9 @@ public final class RefsPanelModel: ObservableObject {
             if oldValue != selectedID {
                 revealedPageID = nil
                 revealedPage = nil
+                if copyCard?.frozenItemID != selectedID {
+                    closeCopyCard()
+                }
             }
         }
     }
@@ -247,8 +251,21 @@ public final class RefsPanelModel: ObservableObject {
     @Published public var selectedRowRect: CGRect? = nil
     /// The visible row count from the list geometry; pages move by one less.
     @Published public var visibleRowBudget: Int = 10
-    /// A transient copy confirmation the footer shows for 1.5 s.
-    @Published public private(set) var toast: String?
+    /// The active fixed-letter copy card, if one is open.
+    @Published public private(set) var copyCard: RefsCopyCard?
+    /// The measured note capacity of the copy card. The card keeps this
+    /// value when its size changes and drops note rows that no longer fit.
+    @Published public var copyCardNoteCapacity = 0 {
+        didSet {
+            guard oldValue != copyCardNoteCapacity,
+                  var card = copyCard
+            else {
+                return
+            }
+            card.setNoteCapacity(copyCardNoteCapacity)
+            copyCard = card
+        }
+    }
     /// The last scan outcome the footer reads, or nil when no scan has
     /// finished since the last explicit clear or hide-after-seen.
     @Published public private(set) var scanNotice: RefsScanOutcome?
@@ -276,6 +293,9 @@ public final class RefsPanelModel: ObservableObject {
     /// Presents the ⌘K actions menu for the selected row. The panel
     /// controller sets this; it pops the menu over the panel.
     public var actionsPresenter: () -> Void = {}
+    /// Called after one checked pasteboard write succeeds. The controller
+    /// hides Refs and presents the confirmation HUD from this callback.
+    public var copyCompletion: (RefsCopyRow) -> Void = { _ in }
     /// Whether the panel is currently visible. The controller sets this;
     /// the scan completion path reads it to decide between a live
     /// re-rank and a hidden notification.
@@ -305,7 +325,10 @@ public final class RefsPanelModel: ObservableObject {
     /// every fresh listing prunes rows the library no longer has.
     private var knownItems: [String: RefItem] = [:]
     private var lastDiagnostic = ""
-    private var toastTask: Task<Void, Never>?
+    private var copyCardSequence: UInt64 = 0
+    private var copyNotesTask: Task<Void, Never>?
+    private var pendingCopyTimeoutTask: Task<Void, Never>?
+    private var copyMessageTask: Task<Void, Never>?
     private var selectionAtScanStart: String?
     private var pendingScanBanner: RefsBanner?
     private var scanNoticeSeen = false
@@ -364,6 +387,7 @@ public final class RefsPanelModel: ObservableObject {
     /// Called by the controller from `hide()`, after `orderOut`.
     /// Clears the scan notice once it has been seen.
     public func panelDidHide() {
+        closeCopyCard()
         if scanNoticeSeen {
             scanNotice = nil
             scanNoticeSeen = false
@@ -395,6 +419,7 @@ public final class RefsPanelModel: ObservableObject {
     /// includes Just scanned through `signals.scan`, so its first row
     /// selects that section's first row.
     public func prepareForPresentation() {
+        closeCopyCard()
         presentationCount += 1
         selectedRowRect = nil
         query = ""
@@ -479,22 +504,28 @@ public final class RefsPanelModel: ObservableObject {
             library.refresh(reason: .manual)
             return true
         case .select(let id):
+            closeCopyCard()
             guard listing.orderedIDs.contains(id) else {
                 return false
             }
             selectedID = id
             return true
         case .activate(let id):
+            closeCopyCard()
             guard listing.orderedIDs.contains(id) else {
                 return false
             }
             selectedID = id
             return openSelected(.highlights)
         case .showActions:
+            closeCopyCard()
             guard selectedID != nil, selectedItem != nil else {
                 return false
             }
             actionsPresenter()
+            return true
+        case .showCopyCard:
+            openCopyCard()
             return true
         case .scan:
             if isScanning {
@@ -754,10 +785,8 @@ public final class RefsPanelModel: ObservableObject {
             _ = openSelected(.note)
         case .reveal:
             _ = openSelected(.reveal)
-        case .copyWikiLink:
-            copyWikiLink()
-        case .copyPDFPath:
-            copyPDFPath()
+        case .copy:
+            openCopyCard()
         case .openSourceURL(let url):
             _ = NSWorkspace.shared.open(url)
         case .openNarration(let url):
@@ -771,40 +800,179 @@ public final class RefsPanelModel: ObservableObject {
         }
     }
 
-    /// Copies bob's `link` field verbatim and toasts for 1.5 s.
-    public func copyWikiLink() {
-        guard let item = selectedItem else {
-            return
-        }
-        pasteboard.copy(item.link)
-        showToast("Copied wiki link")
-    }
-
-    /// Copies the absolute PDF path and toasts for 1.5 s.
-    public func copyPDFPath() {
+    /// Opens the in-panel copy card for the selected available reference.
+    /// The target and filesystem facts are frozen until the card closes.
+    public func openCopyCard() {
+        closeCopyCard()
         guard let item = selectedItem,
-              let pdf = library.pdfURL(for: item)
+              listing.orderedIDs.contains(item.id),
+              !unavailableIDs.contains(item.id)
         else {
             return
         }
-        pasteboard.copy(pdf.path)
-        showToast("Copied PDF path")
-    }
-
-    private func showToast(_ message: String) {
-        toastTask?.cancel()
-        toast = message
-        toastTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            guard !Task.isCancelled else {
-                return
+        copyCardSequence &+= 1
+        let token = copyCardSequence
+        let pdfURL = library.pdfURL(for: item)
+        let notes = inspectorLoader.cachedShowRow(for: item)
+            .map(RefsCopyNotesState.loaded) ?? .loading
+        copyCard = RefsCopyCard(
+            token: token,
+            item: item,
+            absolutePDFPath: pdfURL?.path,
+            pdfExists: pdfURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false,
+            notes: notes,
+            noteCapacity: copyCardNoteCapacity
+        )
+        AccessibilityNotification.Announcement(
+            "Copy menu. Press a letter or number."
+        ).post()
+        guard case .loading = notes else {
+            return
+        }
+        let loader = inspectorLoader
+        copyNotesTask = Task { [weak self, loader] in
+            let row = await loader.showRow(for: item)
+            guard let self else { return }
+            if let row {
+                self.copyCardNotesLoaded(token: token, path: item.id, row: row)
+            } else {
+                self.copyCardNotesFailed(token: token, path: item.id)
             }
-            await self?.clearToast()
         }
     }
 
-    private func clearToast() {
-        toast = nil
+    /// Feeds one key captured by the controller to the card state machine.
+    public func handleCopyCardKey(
+        characters: String?,
+        keyCode: UInt16,
+        modifiers: RefsCopyKeyModifiers
+    ) {
+        guard var card = copyCard else { return }
+        let token = card.token
+        let command = RefsCopyKeyMap.command(
+            characters: characters,
+            keyCode: keyCode,
+            modifiers: modifiers
+        )
+        let effect = card.handle(command)
+        copyCard = card
+        updateCopyCardTimers(token: token)
+        applyCopyCardEffect(effect, token: token)
+    }
+
+    /// A row tap copies that row immediately, matching its printed key.
+    public func copyCardRowTapped(_ row: RefsCopyRow) {
+        guard let card = copyCard,
+              card.rows.contains(where: { $0.key == row.key && $0 == row })
+        else {
+            return
+        }
+        handleCopyCardKey(
+            characters: row.key.glyph,
+            keyCode: 0,
+            modifiers: []
+        )
+    }
+
+    private func copyCardNotesLoaded(token: UInt64, path: String, row: RefsShowRow) {
+        guard var card = copyCard, card.token == token else { return }
+        let effect = card.notesLoaded(path: path, row: row)
+        copyCard = card
+        updateCopyCardTimers(token: token)
+        applyCopyCardEffect(effect, token: token)
+    }
+
+    private func copyCardNotesFailed(token: UInt64, path: String) {
+        guard var card = copyCard, card.token == token else { return }
+        card.notesFailed(path: path)
+        copyCard = card
+        updateCopyCardTimers(token: token)
+    }
+
+    private func updateCopyCardTimers(token: UInt64) {
+        pendingCopyTimeoutTask?.cancel()
+        pendingCopyTimeoutTask = nil
+        if copyCard?.pending != nil {
+            pendingCopyTimeoutTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard !Task.isCancelled else { return }
+                self?.copyCardPendingTimedOut(token: token)
+            }
+        }
+
+        copyMessageTask?.cancel()
+        copyMessageTask = nil
+        if copyCard?.message?.isTransient == true {
+            copyMessageTask = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                guard !Task.isCancelled else { return }
+                self?.clearTransientCopyMessage(token: token)
+            }
+        }
+    }
+
+    private func copyCardPendingTimedOut(token: UInt64) {
+        guard var card = copyCard, card.token == token else { return }
+        card.pendingTimedOut()
+        copyCard = card
+        pendingCopyTimeoutTask = nil
+    }
+
+    private func clearTransientCopyMessage(token: UInt64) {
+        guard var card = copyCard, card.token == token else { return }
+        card.clearTransientMessage()
+        copyCard = card
+        copyMessageTask = nil
+    }
+
+    private func applyCopyCardEffect(_ effect: RefsCopyEffect, token: UInt64) {
+        switch effect {
+        case .none:
+            break
+        case .write(let row):
+            guard var card = copyCard, card.token == token else { return }
+            guard copyPayloadIsAvailable(row.payload) else {
+                card.writeUnavailable(key: row.key)
+                copyCard = card
+                updateCopyCardTimers(token: token)
+                return
+            }
+            if pasteboard.write(row.payload) {
+                closeCopyCard()
+                copyCompletion(row)
+            } else {
+                card.writeFailed(key: row.key)
+                copyCard = card
+                updateCopyCardTimers(token: token)
+            }
+        case .close:
+            closeCopyCard()
+        case .closeThenActions:
+            closeCopyCard()
+            actionsPresenter()
+        }
+    }
+
+    private func copyPayloadIsAvailable(_ payload: RefsClipboardPayload) -> Bool {
+        switch payload {
+        case .text(let value):
+            return !value.isEmpty
+        case .fileURL(let url):
+            return FileManager.default.fileExists(atPath: url.path)
+        }
+    }
+
+    private func closeCopyCard() {
+        if var card = copyCard {
+            _ = card.handle(.close)
+        }
+        copyNotesTask?.cancel()
+        copyNotesTask = nil
+        pendingCopyTimeoutTask?.cancel()
+        pendingCopyTimeoutTask = nil
+        copyMessageTask?.cancel()
+        copyMessageTask = nil
+        copyCard = nil
     }
 
     private func rerankSelectingFirst() {

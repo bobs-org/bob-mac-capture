@@ -28,10 +28,14 @@ struct RefsFooter: View {
 
     private var hints: some View {
         Group {
-            if let toast = model.toast {
-                Text(toast)
+            if model.copyCard != nil {
+                Text("Copy — press a key")
             } else {
-                Text(hintsText)
+                ViewThatFits(in: .horizontal) {
+                    ForEach(Self.hintVariants(openHint: openHint), id: \.self) {
+                        Text($0)
+                    }
+                }
             }
         }
         .font(.caption)
@@ -41,20 +45,26 @@ struct RefsFooter: View {
     }
 
     static func hintsText(openHint: String) -> String {
-        "\(openHint)  ⌘↵ Note  ⌥↵ Reveal  ⌘K Actions  ⌘S Scan  ⌘1–5 Scope  esc Close"
+        hintVariants(openHint: openHint)[0]
     }
 
-    private var hintsText: String {
-        let openHint: String = {
-            guard let selected = model.selectedID,
-                  let content = model.rowContent(for: selected),
-                  content.isMissingPDF
-            else {
-                return "↵ Open in Highlights"
-            }
-            return "↵ Open note"
-        }()
-        return Self.hintsText(openHint: openHint)
+    static func hintVariants(openHint: String) -> [String] {
+        let core = "\(openHint)  ⌘↵ Note  ⌥↵ Reveal  ⌃Y Copy  ⌘K Actions"
+        return [
+            "\(core)  ⌘S Scan  ⌘1–5 Scope  esc Close",
+            "\(core)  ⌘S Scan  esc Close",
+            "\(core)  esc Close",
+        ]
+    }
+
+    private var openHint: String {
+        guard let selected = model.selectedID,
+              let content = model.rowContent(for: selected),
+              content.isMissingPDF
+        else {
+            return "↵ Open in Highlights"
+        }
+        return "↵ Open note"
     }
 
     private var searchMode: Bool {

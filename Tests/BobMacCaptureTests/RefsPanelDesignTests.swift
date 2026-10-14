@@ -50,6 +50,8 @@ final class RefsPanelDesignTests: XCTestCase {
         try await renderUnavailable(model: model, now: now)
         try renderStemMatch(model: model, now: now)
         try renderReduceTransparency(model: model, now: now)
+        try renderCopyCard(model: model, now: now, width: 880)
+        try renderCopyCard(model: model, now: now, width: 700)
     }
 
     // MARK: - Renders
@@ -850,6 +852,31 @@ final class RefsPanelDesignTests: XCTestCase {
             width: 880,
             reduceTransparency: true
         )
+    }
+
+    private func renderCopyCard(
+        model: RefsPanelModel,
+        now: Date,
+        width: CGFloat
+    ) throws {
+        let fixture = makeFixture(now: now)
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: "ref/chat/today_report.md",
+            banner: nil,
+            refreshState: .idle
+        )
+        model.openCopyCard()
+        XCTAssertNotNil(model.copyCard)
+        try write(
+            model: model,
+            name: width >= 760 ? "refs-copy-card-wide-880" : "refs-copy-card-narrow-700",
+            width: width
+        )
+        model.panelDidHide()
     }
 
     private func write(

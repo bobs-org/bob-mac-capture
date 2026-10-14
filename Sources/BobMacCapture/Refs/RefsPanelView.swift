@@ -144,7 +144,11 @@ public struct RefsPanelView: View {
                 inspector
             }
         } else {
-            RefsListView(model: model, previewMode: previewMode)
+            if model.copyCard != nil {
+                copyCard
+            } else {
+                RefsListView(model: model, previewMode: previewMode)
+            }
         }
     }
 
@@ -156,7 +160,9 @@ public struct RefsPanelView: View {
 
     @ViewBuilder
     private var inspector: some View {
-        if let selected = model.selectedID,
+        if model.copyCard != nil {
+            copyCard
+        } else if let selected = model.selectedID,
            let content = model.rowContent(for: selected)
         {
             RefsInspectorView(
@@ -177,5 +183,61 @@ public struct RefsPanelView: View {
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    private var copyCard: some View {
+        Group {
+            if let card = model.copyCard {
+                RefsCopyCardView(
+                    card: card,
+                    previewMode: previewMode,
+                    onMeasuredHeight: {
+                        model.copyCardNoteCapacity = copyCardNoteCapacity(
+                            for: card,
+                            height: $0
+                        )
+                    },
+                    onRowTap: { model.copyCardRowTapped($0) }
+                )
+                .id(card.token)
+                .transition(copyCardTransition)
+            }
+        }
+        .animation(.easeOut(duration: 0.14), value: model.copyCard != nil)
+    }
+
+    private var copyCardTransition: AnyTransition {
+        if reduceMotion {
+            return .opacity
+        }
+        return .asymmetric(
+            insertion: .offset(x: 0, y: 6).combined(with: .opacity),
+            removal: .opacity
+        )
+    }
+
+    private func copyCardNoteCapacity(
+        for card: RefsCopyCard,
+        height: CGFloat
+    ) -> Int {
+        var groups = Set(card.rows.filter { $0.group != .notes }.map(\.group))
+        let hasNotesSection: Bool
+        switch card.notes {
+        case .loading:
+            hasNotesSection = card.item.annotationCount > 0 || card.item.commentCount > 0
+        case .loaded(let row):
+            hasNotesSection = !row.yourNotes.isEmpty
+        case .unavailable:
+            hasNotesSection = true
+        }
+        if hasNotesSection {
+            groups.insert(.notes)
+        }
+        return RefsCopyCardLayout.noteCapacity(
+            cardHeight: Double(height),
+            nonNoteRowCount: card.rows.filter { $0.group != .notes }.count,
+            groupCount: groups.count,
+            metrics: RefsVisualTokens.copyCardMetrics
+        )
     }
 }

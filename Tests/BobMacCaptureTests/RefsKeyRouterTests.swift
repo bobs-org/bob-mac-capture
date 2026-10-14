@@ -15,6 +15,7 @@ final class RefsKeyRouterTests: XCTestCase {
         static let five: UInt16 = 23
         static let a: UInt16 = 0
         static let r: UInt16 = 15
+        static let y: UInt16 = 16
         static let s: UInt16 = 1
         static let d: UInt16 = 2
         static let u: UInt16 = 32
@@ -91,6 +92,17 @@ final class RefsKeyRouterTests: XCTestCase {
 
     func testCommandKMasksActionsMenu() {
         XCTAssertEqual(route(KeyCode.k, .command), .showActions)
+    }
+
+    func testControlYOpensCopyCardAndPassesThroughWhileComposing() {
+        XCTAssertEqual(route(KeyCode.y, .control), .showCopyCard)
+        XCTAssertNil(route(KeyCode.y))
+        XCTAssertNil(route(KeyCode.y, [.control, .shift]))
+        XCTAssertNil(route(
+            KeyCode.y,
+            .control,
+            context: RefsKeyContext(markedTextPresent: true)
+        ))
     }
 
     func testPagingAndEnds() {

@@ -6,16 +6,26 @@ import XCTest
 /// decision keeps its priority order — scanning, refresh failed, the
 /// scan notice, updating, updated.
 final class RefsFooterTests: XCTestCase {
-    func testHintsCarryScanShortcut() {
+    func testHintsCarryCopyAndScanShortcuts() {
         XCTAssertEqual(
             RefsFooter.hintsText(openHint: "↵ Open in Highlights"),
-            "↵ Open in Highlights  ⌘↵ Note  ⌥↵ Reveal  ⌘K Actions  "
+            "↵ Open in Highlights  ⌘↵ Note  ⌥↵ Reveal  ⌃Y Copy  ⌘K Actions  "
                 + "⌘S Scan  ⌘1–5 Scope  esc Close"
         )
         XCTAssertEqual(
             RefsFooter.hintsText(openHint: "↵ Open note"),
-            "↵ Open note  ⌘↵ Note  ⌥↵ Reveal  ⌘K Actions  ⌘S Scan  "
+            "↵ Open note  ⌘↵ Note  ⌥↵ Reveal  ⌃Y Copy  ⌘K Actions  ⌘S Scan  "
                 + "⌘1–5 Scope  esc Close"
+        )
+        XCTAssertEqual(
+            RefsFooter.hintVariants(openHint: "↵ Open note").map {
+                $0.contains("⌘1–5 Scope")
+            },
+            [true, false, false]
+        )
+        XCTAssertFalse(
+            RefsFooter.hintVariants(openHint: "↵ Open note")[2]
+                .contains("⌘S Scan")
         )
     }
 

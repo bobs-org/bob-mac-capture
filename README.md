@@ -1264,8 +1264,8 @@ The target is never bundled: `Scripts/bundle.sh` copies only the
 ### The panel
 
 `RefsPanelController` owns a borderless non-activating glass panel
-(`RefsPanel`, 880 × 560 pt clamped to the screen, inspector below
-760 pt wide is list-only). The SwiftUI content sits in an
+(`RefsPanel`, 880 × 560 pt clamped to the screen; the Copy card covers
+the list below 760 pt wide). The SwiftUI content sits in an
 `NSGlassEffectView` (corner radius 20); the SwiftUI root itself
 carries no glass modifier so the `ImageRenderer` design fixtures
 stay reviewable. Under Reduce Transparency an opaque window
@@ -1331,8 +1331,9 @@ Diagnostic for hard failures.
 | Command-R | Refresh library, Today, and git dates now; re-rank |
 | Command-S | Scan for new references now (`bob ref scan -w` in the background); a second ⌘S while one runs does nothing |
 | Command-K | Actions menu for the selected row |
+| Control-Y | Open the Copy card for the selected row |
 | Backspace on an empty query | Remove the scope token |
-| Esc, Ctrl-[ | Banner, then query, then scope, then close |
+| Esc, Ctrl-[ | Copy card, then banner, query, scope, then close |
 | Shift-Tab | Consumed (no-op) |
 
 Return while IME-composing passes through to the text system. Ctrl-D
@@ -1343,6 +1344,26 @@ your notes (clicking the disclosure row does the same); when nothing is
 hidden it is still consumed and does nothing. Printable keys fall
 through to the search field. Result counts are announced 600 ms after
 typing stops, never on every keystroke.
+
+### Copy card
+
+Control-Y opens an in-panel card for the selected reference. The fixed keys
+copy `I` marker ID, `T` title, `W` wiki link, `U` source URL, `L` Markdown
+link, `X` arXiv ID, `D` DOI, `N` note path, `P` PDF path, `F` the PDF file,
+`R` reading-task link, and `S` research reference. `1`–`9` copy the visible
+note blocks, including their page and block-link provenance; `A` copies all
+reference notes and Bob's own notes. Rows that do not apply are hidden without
+moving the other keys. Return or Control-Y copies the selected row (marker ID
+when available, otherwise wiki link); Up/Down and Ctrl-P/N/J/K move the
+selection, and Escape returns to the inspector.
+
+Each row previews the exact value it copies. A shared marker ID shows its
+`shared ×N` count; press `N` to copy this note's path. If the installed Bob
+does not report `marker_id`, `I` explains that a newer Bob is needed and the
+other rows still work. A successful copy checks the pasteboard write, hides
+Refs, and shows a glass HUD. When Refs was opened over a Capture draft,
+Capture returns with that draft ready for ⌘V. A failed write leaves the card
+open so Return can retry.
 
 ### Opening Bob Refs
 
@@ -1421,12 +1442,10 @@ outline headings feed back into the ranking signals, so rows gain
 
 The ⌘K actions menu pops up below the selected row (at the list's
 center when the row frame is unknown): Open in Highlights (↵), Open
-Note (⌘↵), Reveal in Finder (⌥↵), Copy Wiki Link (bob's `link`,
-verbatim), Copy PDF Path, Open Source URL (only with `urls`), Open
-Narration (only with `audio`, in the default app), Open in Default
-App, Refresh Library (⌘R), and Scan for New References (⌘S, last;
-disabled while a scan runs). A copy toasts the footer for 1.5 s
-("Copied wiki link").
+Note (⌘↵), Reveal in Finder (⌥↵), Copy… (⌃Y), Open Source URL (only
+with `urls`), Open Narration (only with `audio`, in the default app),
+Open in Default App, Refresh Library (⌘R), and Scan for New References
+(⌘S, last; disabled while a scan runs). Copy… opens the same Copy card.
 
 ### Privacy
 

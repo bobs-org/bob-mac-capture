@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import RefsCore
 import SwiftUI
 
 /// The accessibility identifier of the Refs search field, so the panel
@@ -37,6 +38,7 @@ public final class RefsPanelController: NSObject {
     private let model: RefsPanelModel
     private var panel: RefsPanel?
     private var localMonitor: Any?
+    private let copyHUD = RefsCopyHUDController()
     private var inspectorScrollCancellable: AnyCancellable?
     private var inspectorRevealCancellable: AnyCancellable?
     private var revealFollowTask: Task<Void, Never>?
@@ -47,6 +49,9 @@ public final class RefsPanelController: NSObject {
     /// While true, a resign-key does not hide the panel. The ⌘K
     /// actions menu sets this while it tracks.
     var suspendHideOnResign = false
+    /// Refs hides through the coordinator after a successful copy, which
+    /// may restore the retained Capture draft.
+    var copyDismisser: () -> Void = {}
 
     public init(model: RefsPanelModel) {
         self.model = model
@@ -54,6 +59,10 @@ public final class RefsPanelController: NSObject {
         model.panelDismisser = { [weak self] in self?.hide() }
         model.panelPresenter = { [weak self] in self?.show() }
         model.actionsPresenter = { [weak self] in self?.showActionsMenu() }
+        copyDismisser = { [weak self] in self?.hide() }
+        model.copyCompletion = { [weak self] row in
+            self?.copySucceeded(row)
+        }
         model.panelIsVisible = { [weak self] in self?.isVisible == true }
         inspectorScrollCancellable = model.inspectorScrolls.sink { [weak self] direction in
             self?.scrollInspector(direction)
@@ -86,6 +95,7 @@ public final class RefsPanelController: NSObject {
     public func show() {
         let token = CaptureSignpost.begin("refs-panel-show")
         defer { CaptureSignpost.end(token) }
+        copyHUD.dismiss()
         model.prepareForPresentation()
         model.refreshForOpen()
         orderFront()
@@ -98,6 +108,7 @@ public final class RefsPanelController: NSObject {
     public func represent() {
         let token = CaptureSignpost.begin("refs-panel-reshow")
         defer { CaptureSignpost.end(token) }
+        copyHUD.dismiss()
         orderFront()
     }
 
@@ -124,8 +135,20 @@ public final class RefsPanelController: NSObject {
     /// frontmost app on its own. The model clears a seen scan notice
     /// here, so a finished scan's footer text does not linger.
     public func hide() {
+        copyHUD.dismiss()
         panel?.orderOut(nil)
         model.panelDidHide()
+    }
+
+    private func copySucceeded(_ row: RefsCopyRow) {
+        let formerFrame = panel?.frame ?? .zero
+        copyDismisser()
+        copyHUD.show(
+            title: row.confirmationTitle,
+            value: row.preview,
+            centeredOn: formerFrame
+        )
+        AccessibilityNotification.Announcement(row.confirmationTitle).post()
     }
 
     /// Pops the ⌘K actions menu below the selected row, or at the
@@ -299,11 +322,38 @@ public final class RefsPanelController: NSObject {
     /// Focus repair plus router plus model. The local monitor calls this
     /// only while the panel is key.
     func processKeyEvent(_ event: NSEvent) -> NSEvent? {
+        if suspendHideOnResign {
+            return event
+        }
+        if model.copyCard != nil {
+            model.handleCopyCardKey(
+                characters: event.charactersIgnoringModifiers,
+                keyCode: event.keyCode,
+                modifiers: Self.copyModifiers(event.modifierFlags)
+            )
+            return nil
+        }
         repairFilterFocusIfNeeded()
         guard let command = command(for: event) else {
             return event
         }
         return model.perform(command) ? nil : event
+    }
+
+    private static func copyModifiers(
+        _ flags: NSEvent.ModifierFlags
+    ) -> RefsCopyKeyModifiers {
+        let flags = flags.intersection(.deviceIndependentFlagsMask)
+        var result: RefsCopyKeyModifiers = []
+        if flags.contains(.shift) { result.insert(.shift) }
+        if flags.contains(.control) { result.insert(.control) }
+        if flags.contains(.command) { result.insert(.command) }
+        if flags.contains(.option) { result.insert(.option) }
+        if flags.contains(.capsLock) { result.insert(.capsLock) }
+        if flags.contains(.numericPad) { result.insert(.numericPad) }
+        if flags.contains(.function) { result.insert(.function) }
+        if flags.contains(.help) { result.insert(.help) }
+        return result
     }
 
     private func command(for event: NSEvent) -> RefsCommand? {

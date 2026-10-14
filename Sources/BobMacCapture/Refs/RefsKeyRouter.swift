@@ -26,7 +26,7 @@ public struct RefsKeyContext: Equatable, Sendable {
     }
 }
 
-/// The §12 keyboard table as a pure function over a key code and
+/// The README keyboard table as a pure function over a key code and
 /// modifiers, so the router tests never build an `NSEvent`. The panel
 /// controller adapts live events into this form and funnels the result
 /// through `RefsPanelModel.perform`. A nil result passes the key
@@ -39,6 +39,7 @@ public enum RefsKeyRouter {
         static let four: UInt16 = 21
         static let five: UInt16 = 23
         static let r: UInt16 = 15
+        static let y: UInt16 = 16
         static let s: UInt16 = 1
         static let d: UInt16 = 2
         static let u: UInt16 = 32
@@ -132,6 +133,11 @@ public enum RefsKeyRouter {
             }
             if flags == .command {
                 return .showActions
+            }
+            return nil
+        case KeyCode.y:
+            if flags == .control {
+                return context.markedTextPresent ? nil : .showCopyCard
             }
             return nil
         case KeyCode.j:

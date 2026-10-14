@@ -283,6 +283,14 @@ final class RefsCopyTests: XCTestCase {
         XCTAssertTrue(card.message?.isTransient == true)
         card.clearTransientMessage()
         XCTAssertNil(card.message)
+
+        card.writeUnavailable(key: .wikiLink)
+        XCTAssertEqual(card.selectedKey, .wikiLink)
+        XCTAssertEqual(
+            card.message?.text,
+            "Nothing to copy — this value is unavailable"
+        )
+        XCTAssertTrue(card.message?.isError == true)
     }
 
     func testCardMoveWrapsAndCapacityKeepsOrResetsSelection() {

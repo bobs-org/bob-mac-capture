@@ -301,7 +301,7 @@ final class RefsInspectorLoaderTests: XCTestCase {
         XCTAssertEqual(chatSections.count, 3)
         XCTAssertEqual(
             chatSections[1],
-            [.copyWikiLink, .copyPDFPath]
+            [.copy]
         )
 
         let paperURL = fixtures.library.audioURL(for: fixtures.paper)
@@ -310,8 +310,7 @@ final class RefsInspectorLoaderTests: XCTestCase {
             for: fixtures.paper,
             audioURL: paperURL
         )
-        XCTAssertTrue(paperSections[1].contains(.copyWikiLink))
-        XCTAssertTrue(paperSections[1].contains(.copyPDFPath))
+        XCTAssertTrue(paperSections[1].contains(.copy))
         XCTAssertTrue(paperSections[1].contains(
             .openSourceURL(URL(string: "https://example.com/post")!)
         ))
@@ -336,7 +335,7 @@ final class RefsInspectorLoaderTests: XCTestCase {
         )
     }
 
-    func testCopyWritesPasteboardStringsAndToasts() throws {
+    func testCopyActionOpensCardAndCopiesItsSelectedRow() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let vault = root.appendingPathComponent("vault")
@@ -382,16 +381,19 @@ final class RefsInspectorLoaderTests: XCTestCase {
             refreshState: .idle
         )
 
-        model.copyWikiLink()
-        XCTAssertEqual(pasteboard.strings, ["[[ref/chat/today_report]]"])
-        XCTAssertEqual(model.toast, "Copied wiki link")
+        XCTAssertEqual(RefsAction.copy.title, "Copy…")
+        XCTAssertEqual(RefsAction.copy.keyEquivalent, "y")
+        XCTAssertEqual(RefsAction.copy.keyEquivalentModifierMask, .control)
+        model.performAction(.copy)
+        XCTAssertNotNil(model.copyCard)
 
-        model.copyPDFPath()
-        XCTAssertEqual(
-            pasteboard.strings.last,
-            vault.appendingPathComponent("lib/chat/team_fit_review.pdf").path
+        model.handleCopyCardKey(
+            characters: "w",
+            keyCode: 13,
+            modifiers: []
         )
-        XCTAssertEqual(model.toast, "Copied PDF path")
+        XCTAssertEqual(pasteboard.strings, ["[[ref/chat/today_report]]"])
+        XCTAssertNil(model.copyCard)
     }
 
     func testShowActionsPresentsWhenARowIsSelected() throws {
