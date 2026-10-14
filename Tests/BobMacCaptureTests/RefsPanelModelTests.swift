@@ -228,6 +228,89 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertEqual(harness.pasteboard.strings, ["[[ref/chat/alpha]]"])
     }
 
+    func testCopyCardHOpensPickerAndEscapeReturnsToCard() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let item = Self.twoPreviewItems()[0]
+        harness.model.installForPreviews(
+            items: [item],
+            signals: harness.model.signals,
+            query: "",
+            scope: .all,
+            selectedID: item.id,
+            banner: nil,
+            refreshState: .idle
+        )
+        harness.model.inspectorLoader.installShowRowForPreviews(
+            RefsShowRow(path: item.id, annotations: Self.pickerAnnotations()),
+            for: item
+        )
+        harness.model.openCopyCard()
+
+        harness.model.handleCopyCardKey(characters: "h", keyCode: 4, modifiers: [])
+        XCTAssertEqual(harness.model.copyCard?.highlightPicker?.entries.count, 3)
+        XCTAssertNotNil(harness.model.copyCard)
+
+        harness.model.handleCopyCardKey(characters: nil, keyCode: 53, modifiers: [])
+        XCTAssertNil(harness.model.copyCard?.highlightPicker)
+        XCTAssertNotNil(harness.model.copyCard)
+        XCTAssertEqual(harness.pasteboard.strings, [])
+    }
+
+    func testCopyCardPickerDigitAndAllCopy() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let item = Self.twoPreviewItems()[0]
+        harness.model.installForPreviews(
+            items: [item],
+            signals: harness.model.signals,
+            query: "",
+            scope: .all,
+            selectedID: item.id,
+            banner: nil,
+            refreshState: .idle
+        )
+        harness.model.inspectorLoader.installShowRowForPreviews(
+            RefsShowRow(path: item.id, annotations: Self.pickerAnnotations()),
+            for: item
+        )
+        var completions: [RefsCopyRow] = []
+        harness.model.copyCompletion = { completions.append($0) }
+        harness.model.openCopyCard()
+        harness.model.handleCopyCardKey(characters: "h", keyCode: 4, modifiers: [])
+        harness.model.handleCopyCardKey(characters: "1", keyCode: 18, modifiers: [])
+
+        XCTAssertEqual(completions.map(\.confirmationTitle), ["Copied Highlight · p. 11"])
+        XCTAssertEqual(harness.pasteboard.strings.count, 1)
+        XCTAssertTrue(harness.pasteboard.strings[0].contains("> Uncommented quote"))
+        XCTAssertNil(harness.model.copyCard)
+
+        harness.model.installForPreviews(
+            items: [item],
+            signals: harness.model.signals,
+            query: "",
+            scope: .all,
+            selectedID: item.id,
+            banner: nil,
+            refreshState: .idle
+        )
+        harness.model.inspectorLoader.installShowRowForPreviews(
+            RefsShowRow(path: item.id, annotations: Self.pickerAnnotations()),
+            for: item
+        )
+        completions = []
+        harness.model.copyCompletion = { completions.append($0) }
+        harness.model.openCopyCard()
+        harness.model.handleCopyCardKey(characters: "h", keyCode: 4, modifiers: [])
+        harness.model.handleCopyCardKey(characters: "a", keyCode: 0, modifiers: [])
+
+        XCTAssertEqual(completions.map(\.confirmationTitle), ["Copied 3 Highlights"])
+        XCTAssertEqual(harness.pasteboard.strings.count, 2)
+        XCTAssertTrue(harness.pasteboard.strings[1].contains("Note: Standalone"))
+        XCTAssertTrue(harness.pasteboard.strings[1].contains("Comment: Keep this"))
+        XCTAssertNil(harness.model.copyCard)
+    }
+
     func testQueryEditRanksAndSelectsFirst() async throws {
         let harness = try makeHarness()
         await harness.waitForSnapshot()
@@ -1199,6 +1282,30 @@ final class RefsPanelModelTests: XCTestCase {
                 comment: "Comment \(index)"
             )
         }
+    }
+
+    private static func pickerAnnotations() -> [RefsShowAnnotation] {
+        [
+            RefsShowAnnotation(
+                pageLabel: "Page 11",
+                kind: "highlight",
+                quote: "Uncommented quote",
+                link: "[[ref/chat/alpha#^h-1]]"
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 12",
+                kind: "highlight",
+                quote: "Commented quote",
+                comment: "Keep this",
+                link: "[[ref/chat/alpha#^h-2]]"
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 13",
+                kind: "note",
+                comment: "Standalone",
+                link: "[[ref/chat/alpha#^n-1]]"
+            ),
+        ]
     }
 
     private static func twoNotes() -> [RefsShowAnnotation] {

@@ -17,6 +17,7 @@ final class RefsCopyCardDesignTests: XCTestCase {
         try write(card: overflowCard(), name: "refs-copy-card-notes-overflow")
         try write(card: loadingQueuedCard(), name: "refs-copy-card-notes-loading")
         try write(card: errorCard(), name: "refs-copy-card-error")
+        try write(card: highlightPickerCard(), name: "refs-copy-highlight-picker")
         try writeHUD()
     }
 
@@ -182,6 +183,49 @@ final class RefsCopyCardDesignTests: XCTestCase {
     private func errorCard() -> RefsCopyCard {
         var card = chatCard()
         card.writeFailed(key: .wikiLink)
+        return card
+    }
+
+    private func highlightPickerCard() -> RefsCopyCard {
+        let item = makeItem(
+            id: "ref/papers/harness_buy.md",
+            link: "[[ref/papers/harness_buy]]",
+            markerID: .present("paper-id"),
+            title: "What Does a Harness Buy You?",
+            kind: .paper,
+            commentCount: 8
+        )
+        let annotations: [RefsShowAnnotation] = (1...29).map { index in
+            if index == 7 {
+                return RefsShowAnnotation(
+                    pageLabel: "Page \(index)",
+                    kind: "note",
+                    comment: "Standalone note \(index)",
+                    link: "[[ref/papers/harness_buy#^n-\(index)]]"
+                )
+            }
+            let commented = index.isMultiple(of: 3)
+            return RefsShowAnnotation(
+                pageLabel: "Page \(index)",
+                kind: "highlight",
+                quote: "Quote \(index) that is long enough to truncate in the picker window",
+                comment: commented ? "Comment \(index) on this highlight" : nil,
+                link: "[[ref/papers/harness_buy#^h-\(index)]]"
+            )
+        }
+        var card = RefsCopyCard(
+            token: 6,
+            item: item,
+            absolutePDFPath: "/vault/lib/papers/harness_buy.pdf",
+            pdfExists: true,
+            notes: .loaded(RefsShowRow(path: item.id, annotations: annotations)),
+            noteCapacity: 4,
+            pickerWindowSize: 9
+        )
+        _ = card.handle(.key(.highlightPicker))
+        for _ in 0..<14 {
+            _ = card.handle(.move(1))
+        }
         return card
     }
 

@@ -45,7 +45,7 @@ public final class BobRefsFetcher: RefsFetching, @unchecked Sendable {
 
     public func show(path: String) async throws -> RefsShowResponse {
         try await client.decode(
-            arguments: ["ref", "show", path, "-f", "json", "-c"],
+            arguments: ["ref", "show", path, "-f", "json"],
             expectedSchema: 1,
             lane: "refs-show"
         )

@@ -509,6 +509,14 @@ public final class RefsInspectorLoader: ObservableObject {
         self.thumbnails = thumbnails
     }
 
+    /// Seeds the `ref show` cache so Copy card tests can open H without
+    /// waiting on a fetch.
+    public func installShowRowForPreviews(_ row: RefsShowRow, for item: RefItem) {
+        let key = showCacheKey(for: item)
+        showCache.removeAll { $0.key == key }
+        showCache.append((key: key, row: row))
+    }
+
     private func load(_ item: RefItem) async {
         async let intrinsicsValue = loadIntrinsics(for: item)
         async let showValue = showRow(for: item)

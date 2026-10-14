@@ -1352,10 +1352,13 @@ copy `I` marker ID, `T` title, `W` wiki link, `U` source URL, `L` Markdown
 link, `X` arXiv ID, `D` DOI, `N` note path, `P` PDF path, `F` the PDF file,
 `R` reading-task link, and `S` research reference. `1`–`9` copy the visible
 note blocks, including their page and block-link provenance; `A` copies all
-reference notes and Bob's own notes. Rows that do not apply are hidden without
+reference notes and Bob's own notes; `H` opens a highlight picker for every
+highlight and standalone note (digits copy the visible window, arrows scroll
+the rest, `A` copies all highlights). Rows that do not apply are hidden without
 moving the other keys. Return or Control-Y copies the selected row (marker ID
 when available, otherwise wiki link); Up/Down and Ctrl-P/N/J/K move the
-selection, and Escape returns to the inspector.
+selection, and Escape returns to the inspector. From the picker, Escape
+returns to the card.
 
 Each row previews the exact value it copies. A shared marker ID shows its
 `shared ×N` count; press `N` to copy this note's path. If the installed Bob
@@ -1399,7 +1402,7 @@ open so Return can retry.
 
 The inspector fills instantly from the list item, then upgrades
 lazily: after the selection settles for 120 ms it loads the PDF's
-intrinsics and `bob ref show <note path> -f json -c` concurrently,
+intrinsics and `bob ref show <note path> -f json` concurrently,
 canceling the previous load on every move. `ref show` results keep an
 LRU of 32 keyed by note path and snapshot time; intrinsics cache by
 file path, size, and mtime in memory (64) and under

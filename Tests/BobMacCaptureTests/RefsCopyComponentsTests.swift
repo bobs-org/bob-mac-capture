@@ -64,6 +64,7 @@ final class RefsCopyComponentsTests: XCTestCase {
         XCTAssertEqual(metrics.notesHeaderHeight, 22)
         XCTAssertEqual(metrics.messageLineHeight, 20)
         XCTAssertEqual(metrics.verticalPadding, 36)
+        XCTAssertEqual(RefsVisualTokens.copyCardPickerRowHeight, 36)
         XCTAssertEqual(RefsVisualTokens.copyCardKeycapSize, 18)
         XCTAssertEqual(RefsVisualTokens.copyCardLabelWidth, 92)
         XCTAssertEqual(RefsVisualTokens.copyHUDMaxValueWidth, 380)

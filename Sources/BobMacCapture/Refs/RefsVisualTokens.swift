@@ -56,6 +56,7 @@ enum RefsVisualTokens {
 
     static let copyCardHeaderHeight: CGFloat = 44
     static let copyCardRowHeight: CGFloat = 24
+    static let copyCardPickerRowHeight: CGFloat = 36
     static let copyCardSeparatorHeight: CGFloat = 9
     static let copyCardNotesHeaderHeight: CGFloat = 22
     static let copyCardMessageLineHeight: CGFloat = 20

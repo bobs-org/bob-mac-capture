@@ -7,7 +7,7 @@ import XCTest
 /// Tests for the inspector's RefsCore slice: the `ref show` envelope,
 /// the Bottom-line/Abstract extractors, reading-time estimates, and
 /// outline cleaning. Text fixtures are modeled on pandoc report page
-/// text; the show payload mirrors real `bob ref show -c` output.
+/// text; the show payload mirrors real `bob ref show` output.
 final class RefsInspectorTests: XCTestCase {
     // MARK: - Show decoding
 
@@ -267,7 +267,7 @@ final class RefsInspectorTests: XCTestCase {
         XCTAssertEqual(response.refs.count, 1)
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains(
-            "argv=ref show ref/chat/small_reading.md -f json -c"
+            "argv=ref show ref/chat/small_reading.md -f json"
         ))
     }
 

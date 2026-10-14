@@ -30,6 +30,7 @@ public enum RefsCopyKey: Equatable, Hashable, Sendable {
     case researchRef
     case note(Int)
     case allNotes
+    case highlightPicker
 
     public var glyph: String {
         switch self {
@@ -47,6 +48,7 @@ public enum RefsCopyKey: Equatable, Hashable, Sendable {
         case .researchRef: "S"
         case .note(let number): String(number)
         case .allNotes: "A"
+        case .highlightPicker: "H"
         }
     }
 
@@ -65,6 +67,7 @@ public enum RefsCopyKey: Equatable, Hashable, Sendable {
         case "r": .readingTask
         case "s": .researchRef
         case "a": .allNotes
+        case "h": .highlightPicker
         case "1"..."9": Int(String(character)).map(RefsCopyKey.note)
         default: nil
         }
@@ -337,6 +340,19 @@ public struct RefsCopyCatalog: Equatable, Sendable {
                     confirmationTitle: "Copied \(notes.count) Notes"
                 ))
             }
+            let highlightCount = notesRow.highlightPickerEntries.count
+            if highlightCount > 0 {
+                let highlightWord = highlightCount == 1 ? "highlight" : "highlights"
+                built.append(RefsCopyRow(
+                    key: .highlightPicker,
+                    group: .notes,
+                    label: "Pick a highlight…",
+                    payload: .text(""),
+                    preview: "\(highlightCount) \(highlightWord)",
+                    truncation: .tail,
+                    confirmationTitle: "Copied Highlight"
+                ))
+            }
         }
         rows = built
     }
@@ -388,7 +404,7 @@ public struct RefsCopyCatalog: Equatable, Sendable {
                     return "No note \(index)"
                 }
                 if index > visibleNoteCount {
-                    return "Note \(index) doesn't fit — A copies all"
+                    return "Note \(index) doesn't fit — A copies all · H picks one"
                 }
                 return nil
             }
@@ -405,7 +421,23 @@ public struct RefsCopyCatalog: Equatable, Sendable {
                 ).isEmpty
                 return hasNotes || hasOwnNotes ? nil : "No notes on this reference"
             }
+        case .highlightPicker:
+            switch notesState {
+            case .loading:
+                return nil
+            case .unavailable:
+                return "Notes unavailable — nothing copied"
+            case .loaded(let row):
+                return row.highlightPickerEntries.isEmpty
+                    ? "No highlights on this reference" : nil
+            }
         }
+    }
+
+    /// Overflow line under the visible note rows, or nil when they all fit.
+    public var notesOverflowText: String? {
+        guard noteOverflowCount > 0 else { return nil }
+        return "+\(noteOverflowCount) more — A copies all · H picks one"
     }
 
     public static func visibleNoteCount(total: Int, cap: Int) -> Int {
@@ -477,6 +509,22 @@ public enum RefsCopyFormat {
             blocks.append("### Notes\n\n\(ownNotes)")
         }
         return blocks.joined(separator: "\n\n")
+    }
+
+    /// One picker entry: a commented highlight, an uncommented quote
+    /// plus provenance, or a standalone note.
+    public static func highlightBlock(_ annotation: RefsShowAnnotation) -> String {
+        annotation.isStandaloneNote ? standaloneNote(annotation) : noteBlock(annotation)
+    }
+
+    /// Every picker entry as blocks, joined by a blank line. `own_notes`
+    /// is omitted: A on the card copies those, A in the picker does not.
+    public static func allHighlights(from row: RefsShowRow) -> String {
+        allHighlights(row.highlightPickerEntries)
+    }
+
+    public static func allHighlights(_ annotations: [RefsShowAnnotation]) -> String {
+        annotations.map(highlightBlock).filter { !$0.isEmpty }.joined(separator: "\n\n")
     }
 
     public static func markdownLink(title: String, url: String) -> String {
@@ -553,6 +601,20 @@ public enum RefsCopyCardLayout {
 
     public static func visibleNoteCount(total: Int, cap: Int) -> Int {
         RefsCopyCatalog.visibleNoteCount(total: total, cap: cap)
+    }
+
+    /// How many 36 pt picker rows fit under the card header and message
+    /// line, capped at 9.
+    public static func highlightWindowSize(
+        cardHeight: Double,
+        metrics: RefsCopyCardMetrics,
+        rowHeight: Double
+    ) -> Int {
+        let fixedHeight = metrics.headerHeight
+            + metrics.messageLineHeight
+            + metrics.verticalPadding
+        guard rowHeight > 0 else { return 0 }
+        return min(9, max(0, Int(floor((cardHeight - fixedHeight) / rowHeight))))
     }
 }
 
@@ -671,6 +733,8 @@ public struct RefsCopyCard: Equatable, Sendable {
     public private(set) var pending: RefsCopyKey?
     public private(set) var message: RefsCopyMessage?
     public private(set) var isClosed: Bool
+    public private(set) var pickerWindowSize: Int
+    public private(set) var highlightPicker: RefsHighlightPicker?
 
     public init(
         token: UInt64,
@@ -678,7 +742,8 @@ public struct RefsCopyCard: Equatable, Sendable {
         absolutePDFPath: String?,
         pdfExists: Bool,
         notes: RefsCopyNotesState,
-        noteCapacity: Int
+        noteCapacity: Int,
+        pickerWindowSize: Int = 9
     ) {
         self.token = token
         frozenItemID = item.id
@@ -687,6 +752,7 @@ public struct RefsCopyCard: Equatable, Sendable {
         self.pdfExists = pdfExists
         self.notes = notes
         self.noteCapacity = max(0, noteCapacity)
+        self.pickerWindowSize = min(9, max(0, pickerWindowSize))
         let catalog = RefsCopyCatalog(
             item: item,
             absolutePDFPath: absolutePDFPath,
@@ -699,6 +765,7 @@ public struct RefsCopyCard: Equatable, Sendable {
         pending = nil
         message = nil
         isClosed = false
+        highlightPicker = nil
     }
 
     public var catalog: RefsCopyCatalog {
@@ -714,6 +781,9 @@ public struct RefsCopyCard: Equatable, Sendable {
     @discardableResult
     public mutating func handle(_ command: RefsCopyCommand) -> RefsCopyEffect {
         guard !isClosed else { return .none }
+        if highlightPicker != nil {
+            return handlePicker(command)
+        }
         switch command {
         case .key(let key):
             if case .loading = notes, isNotesKey(key) {
@@ -722,6 +792,9 @@ public struct RefsCopyCard: Equatable, Sendable {
                 return .none
             }
             pending = nil
+            if key == .highlightPicker {
+                return openHighlightPicker()
+            }
             if let row = rows.first(where: { $0.key == key }) {
                 selectedKey = key
                 message = nil
@@ -732,6 +805,9 @@ public struct RefsCopyCard: Equatable, Sendable {
             }
             return .none
         case .copySelected:
+            if selectedKey == .highlightPicker {
+                return openHighlightPicker()
+            }
             guard let row = rows.first(where: { $0.key == selectedKey }) else {
                 return .none
             }
@@ -770,6 +846,9 @@ public struct RefsCopyCard: Equatable, Sendable {
         refreshRows()
         guard let pending else { return .none }
         self.pending = nil
+        if pending == .highlightPicker {
+            return openHighlightPicker()
+        }
         if let value = rows.first(where: { $0.key == pending }) {
             message = nil
             selectedKey = pending
@@ -801,7 +880,7 @@ public struct RefsCopyCard: Equatable, Sendable {
 
     public mutating func writeFailed(key: RefsCopyKey) {
         guard !isClosed else { return }
-        if rows.contains(where: { $0.key == key }) {
+        if highlightPicker == nil, rows.contains(where: { $0.key == key }) {
             selectedKey = key
         }
         message = RefsCopyMessage(text: "Couldn't copy — ↵ tries again", isError: true)
@@ -836,9 +915,118 @@ public struct RefsCopyCard: Equatable, Sendable {
         refreshRows()
         if rows.contains(where: { $0.key == previousSelection }) {
             selectedKey = previousSelection
-        } else {
+        } else if highlightPicker == nil {
             selectedKey = catalog.defaultKey
         }
+    }
+
+    public mutating func setPickerWindowSize(_ size: Int) {
+        guard !isClosed else { return }
+        pickerWindowSize = min(9, max(0, size))
+        guard var picker = highlightPicker else { return }
+        picker.setWindowSize(max(1, pickerWindowSize))
+        highlightPicker = picker
+    }
+
+    private mutating func handlePicker(_ command: RefsCopyCommand) -> RefsCopyEffect {
+        switch command {
+        case .key(let key):
+            switch key {
+            case .note(let number):
+                return copyPickerWindowRow(number)
+            case .allNotes:
+                return copyAllHighlights()
+            default:
+                pending = nil
+                message = RefsCopyMessage(
+                    text: "Nothing on ‘\(key.glyph.lowercased())’",
+                    isTransient: true
+                )
+                return .none
+            }
+        case .copySelected:
+            return copyPickerSelection()
+        case .move(let delta):
+            guard var picker = highlightPicker else { return .none }
+            picker.move(delta)
+            highlightPicker = picker
+            message = nil
+            return .none
+        case .close:
+            highlightPicker = nil
+            message = nil
+            return .none
+        case .showActions:
+            highlightPicker = nil
+            pending = nil
+            message = nil
+            isClosed = true
+            return .closeThenActions
+        case .unknown(let character):
+            pending = nil
+            message = RefsCopyMessage(
+                text: "Nothing on ‘\(character)’",
+                isTransient: true
+            )
+            return .none
+        case .consume:
+            return .none
+        }
+    }
+
+    private mutating func openHighlightPicker() -> RefsCopyEffect {
+        guard case .loaded(let row) = notes else {
+            if let reason = catalog.hiddenReason(for: .highlightPicker) {
+                message = RefsCopyMessage(
+                    text: reason,
+                    isError: reason.hasPrefix("Notes unavailable")
+                )
+            }
+            return .none
+        }
+        let entries = RefsHighlightPicker.entries(from: row)
+        guard !entries.isEmpty else {
+            message = RefsCopyMessage(text: "No highlights on this reference")
+            return .none
+        }
+        selectedKey = .highlightPicker
+        highlightPicker = RefsHighlightPicker(
+            entries: entries,
+            windowSize: max(1, pickerWindowSize)
+        )
+        message = nil
+        return .none
+    }
+
+    private mutating func copyPickerWindowRow(_ number: Int) -> RefsCopyEffect {
+        guard var picker = highlightPicker else { return .none }
+        guard let entry = picker.selectWindowPosition(number) else {
+            message = RefsCopyMessage(text: "No highlight \(number)")
+            return .none
+        }
+        highlightPicker = picker
+        message = nil
+        return .write(entry.copyRow(key: .note(number)))
+    }
+
+    private mutating func copyPickerSelection() -> RefsCopyEffect {
+        guard let picker = highlightPicker,
+              let entry = picker.selectedEntry
+        else {
+            return .none
+        }
+        message = nil
+        let position = picker.selectedIndex - picker.windowStart + 1
+        return .write(entry.copyRow(key: .note(max(1, position))))
+    }
+
+    private mutating func copyAllHighlights() -> RefsCopyEffect {
+        guard let picker = highlightPicker, !picker.entries.isEmpty else {
+            message = RefsCopyMessage(text: "No highlights on this reference")
+            return .none
+        }
+        message = nil
+        return .write(picker.allHighlightsRow())
     }
 
     private mutating func refreshRows() {
@@ -846,13 +1034,13 @@ public struct RefsCopyCard: Equatable, Sendable {
         rows = catalog.rows
         if rows.contains(where: { $0.key == previousSelection }) {
             selectedKey = previousSelection
-        } else {
+        } else if highlightPicker == nil {
             selectedKey = catalog.defaultKey
         }
     }
 
     private func isNotesKey(_ key: RefsCopyKey) -> Bool {
         if case .note = key { return true }
-        return key == .allNotes
+        return key == .allNotes || key == .highlightPicker
     }
 }

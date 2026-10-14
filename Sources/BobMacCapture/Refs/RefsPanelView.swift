@@ -196,8 +196,17 @@ public struct RefsPanelView: View {
                             for: card,
                             height: $0
                         )
+                        model.copyCardPickerWindowSize =
+                            RefsCopyCardLayout.highlightWindowSize(
+                                cardHeight: Double($0),
+                                metrics: RefsVisualTokens.copyCardMetrics,
+                                rowHeight: Double(
+                                    RefsVisualTokens.copyCardPickerRowHeight
+                                )
+                            )
                     },
-                    onRowTap: { model.copyCardRowTapped($0) }
+                    onRowTap: { model.copyCardRowTapped($0) },
+                    onPickerRowTap: { model.copyCardPickerRowTapped($0) }
                 )
                 .id(card.token)
                 .transition(copyCardTransition)
@@ -222,13 +231,18 @@ public struct RefsPanelView: View {
     ) -> Int {
         var groups = Set(card.rows.filter { $0.group != .notes }.map(\.group))
         let hasNotesSection: Bool
-        switch card.notes {
-        case .loading:
-            hasNotesSection = card.item.annotationCount > 0 || card.item.commentCount > 0
-        case .loaded(let row):
-            hasNotesSection = !row.yourNotes.isEmpty
-        case .unavailable:
+        if card.rows.contains(where: { $0.group == .notes }) {
             hasNotesSection = true
+        } else {
+            switch card.notes {
+            case .loading:
+                hasNotesSection = card.item.annotationCount > 0
+                    || card.item.commentCount > 0
+            case .loaded:
+                hasNotesSection = false
+            case .unavailable:
+                hasNotesSection = true
+            }
         }
         if hasNotesSection {
             groups.insert(.notes)

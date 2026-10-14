@@ -92,6 +92,10 @@ final class RefsCopyTests: XCTestCase {
         XCTAssertEqual(row.commentedHighlights.map(\.comment), ["First highlight", "Second highlight"])
         XCTAssertEqual(row.standaloneNotes.map(\.comment), ["Standalone"])
         XCTAssertEqual(row.yourNotes.map(\.comment), ["First highlight", "Standalone", "Second highlight"])
+        XCTAssertEqual(
+            row.highlightPickerEntries.map { $0.comment ?? $0.quote },
+            ["First highlight", "Standalone", "Uncommented", "Second highlight"]
+        )
     }
 
     func testChatCatalogHasFixedLettersAndMarkerDefault() {
@@ -134,7 +138,7 @@ final class RefsCopyTests: XCTestCase {
             noteCapacity: 4
         )
 
-        XCTAssertEqual(catalog.rows.map { $0.key.glyph }, ["I", "T", "W", "U", "L", "X", "D", "N", "P", "R", "S", "1", "A"])
+        XCTAssertEqual(catalog.rows.map { $0.key.glyph }, ["I", "T", "W", "U", "L", "X", "D", "N", "P", "R", "S", "1", "A", "H"])
         XCTAssertEqual(catalog.defaultKey, .markerID)
         XCTAssertEqual(catalog.row(for: .markdownLink)?.preview, "[A title](https://example.test/a%20%28b%29)")
         XCTAssertEqual(catalog.row(for: .pdfPath)?.tag, .missing)
@@ -168,6 +172,7 @@ final class RefsCopyTests: XCTestCase {
         XCTAssertEqual(absent.hiddenReason(for: .researchRef), "No research ref for this reference")
         XCTAssertEqual(absent.hiddenReason(for: .note(1)), "No note 1")
         XCTAssertEqual(absent.hiddenReason(for: .allNotes), "No notes on this reference")
+        XCTAssertEqual(absent.hiddenReason(for: .highlightPicker), "No highlights on this reference")
 
         let oldBob = RefsCopyCatalog(
             item: makeItem(markerID: .unsupported), absolutePDFPath: nil, pdfExists: false,
@@ -189,7 +194,10 @@ final class RefsCopyTests: XCTestCase {
         XCTAssertEqual(catalog.row(for: .markerID)?.tag, .shared(3))
         XCTAssertEqual(catalog.rows.filter { if case .note = $0.key { true } else { false } }.count, 2)
         XCTAssertEqual(catalog.noteOverflowCount, 2)
-        XCTAssertEqual(catalog.hiddenReason(for: .note(3)), "Note 3 doesn't fit — A copies all")
+        XCTAssertEqual(catalog.hiddenReason(for: .note(3)), "Note 3 doesn't fit — A copies all · H picks one")
+        XCTAssertEqual(catalog.notesOverflowText, "+2 more — A copies all · H picks one")
+        XCTAssertEqual(catalog.row(for: .highlightPicker)?.preview, "4 highlights")
+        XCTAssertEqual(catalog.hiddenReason(for: .highlightPicker), nil)
         XCTAssertEqual(catalog.hiddenReason(for: .note(5)), "No note 5")
         XCTAssertEqual(RefsCopyCatalog.visibleNoteCount(total: 9, cap: 0), 0)
         XCTAssertEqual(RefsCopyCatalog.visibleNoteCount(total: 9, cap: 1), 0)
@@ -333,6 +341,157 @@ final class RefsCopyTests: XCTestCase {
             3
         )
         XCTAssertEqual(RefsCopyCardLayout.visibleNoteCount(total: 5, cap: 3), 2)
+        XCTAssertEqual(
+            RefsCopyCardLayout.highlightWindowSize(
+                cardHeight: 424, metrics: metrics, rowHeight: 36
+            ),
+            9
+        )
+        XCTAssertEqual(
+            RefsCopyCardLayout.highlightWindowSize(
+                cardHeight: 208, metrics: metrics, rowHeight: 36
+            ),
+            3
+        )
+    }
+
+    func testHighlightPickerEntriesExcludeImagesAndEmptyQuotes() {
+        let row = RefsShowRow(path: "ref/papers/a.md", annotations: [
+            RefsShowAnnotation(kind: "highlight", quote: "Keep this quote"),
+            RefsShowAnnotation(kind: "highlight", quote: "   "),
+            RefsShowAnnotation(kind: "image", quote: "a figure"),
+            RefsShowAnnotation(kind: "highlight", comment: "Commented only"),
+            RefsShowAnnotation(kind: "note", comment: "Standalone"),
+            RefsShowAnnotation(kind: "note", comment: "  "),
+        ])
+
+        XCTAssertEqual(
+            row.highlightPickerEntries.map { $0.quote ?? $0.comment },
+            ["Keep this quote", "Commented only", "Standalone"]
+        )
+    }
+
+    func testUncommentedHighlightsShowHWithoutNoteRows() {
+        let item = makeItem(markerID: .absent)
+        let notes = RefsShowRow(path: item.id, annotations: [
+            RefsShowAnnotation(
+                pageLabel: "11", kind: "highlight", quote: "Uncommented",
+                link: "[[paper#^h-1]]"
+            ),
+        ])
+        let catalog = RefsCopyCatalog(
+            item: item, absolutePDFPath: nil, pdfExists: false,
+            notes: .loaded(notes), noteCapacity: 5
+        )
+
+        XCTAssertNil(catalog.row(for: .note(1)))
+        XCTAssertNil(catalog.row(for: .allNotes))
+        XCTAssertEqual(catalog.row(for: .highlightPicker)?.preview, "1 highlight")
+        XCTAssertEqual(
+            RefsCopyFormat.highlightBlock(notes.annotations[0]),
+            "> Uncommented\n\n— Page 11 · [[paper#^h-1]]"
+        )
+    }
+
+    func testPickerWindowsAndCopiesDigitsAndAll() {
+        let item = makeItem(markerID: .absent)
+        let annotations = (1...12).map { index in
+            RefsShowAnnotation(
+                pageLabel: "Page \(index)",
+                kind: "highlight",
+                quote: "Quote \(index)",
+                comment: index.isMultiple(of: 4) ? "Comment \(index)" : nil,
+                link: "[[paper#^h-\(index)]]"
+            )
+        }
+        var card = RefsCopyCard(
+            token: 3, item: item, absolutePDFPath: nil, pdfExists: false,
+            notes: .loaded(RefsShowRow(path: item.id, annotations: annotations)),
+            noteCapacity: 4,
+            pickerWindowSize: 9
+        )
+
+        XCTAssertEqual(card.handle(.key(.highlightPicker)), .none)
+        XCTAssertEqual(card.highlightPicker?.entries.count, 12)
+        XCTAssertEqual(card.highlightPicker?.windowStart, 0)
+        XCTAssertEqual(card.highlightPicker?.windowSize, 9)
+        XCTAssertEqual(card.highlightPicker?.selectedIndex, 0)
+
+        for _ in 0..<10 {
+            XCTAssertEqual(card.handle(.move(1)), .none)
+        }
+        XCTAssertEqual(card.highlightPicker?.selectedIndex, 10)
+        XCTAssertEqual(card.highlightPicker?.windowStart, 2)
+
+        let digit = card.handle(.key(.note(1)))
+        guard case .write(let firstVisible) = digit else {
+            return XCTFail("Expected window digit write")
+        }
+        XCTAssertEqual(firstVisible.confirmationTitle, "Copied Highlight · p. 3")
+        XCTAssertTrue(
+            {
+                if case .text(let value) = firstVisible.payload {
+                    return value.contains("> Quote 3")
+                }
+                return false
+            }()
+        )
+
+        XCTAssertEqual(card.handle(.close), .none)
+        XCTAssertNil(card.highlightPicker)
+        XCTAssertFalse(card.isClosed)
+        XCTAssertEqual(card.selectedKey, .highlightPicker)
+
+        XCTAssertEqual(card.handle(.key(.highlightPicker)), .none)
+        let all = card.handle(.key(.allNotes))
+        guard case .write(let allRow) = all else {
+            return XCTFail("Expected all-highlights write")
+        }
+        XCTAssertEqual(allRow.confirmationTitle, "Copied 12 Highlights")
+        if case .text(let value) = allRow.payload {
+            XCTAssertTrue(value.contains("> Quote 1"))
+            XCTAssertTrue(value.contains("Comment: Comment 4"))
+            XCTAssertFalse(value.contains("### Notes"))
+        } else {
+            XCTFail("Expected text payload")
+        }
+    }
+
+    func testPickerEscKeepsCardAndUnknownKeysStayTransient() {
+        let item = makeItem()
+        var card = RefsCopyCard(
+            token: 4, item: item, absolutePDFPath: nil, pdfExists: false,
+            notes: .loaded(RefsShowRow(path: item.id, annotations: [
+                RefsShowAnnotation(kind: "highlight", quote: "Only quote"),
+            ])),
+            noteCapacity: 4
+        )
+        _ = card.handle(.key(.highlightPicker))
+        XCTAssertEqual(card.handle(.unknown("q")), .none)
+        XCTAssertEqual(card.message?.text, "Nothing on ‘q’")
+        XCTAssertEqual(card.handle(.key(.title)), .none)
+        XCTAssertEqual(card.message?.text, "Nothing on ‘t’")
+        XCTAssertEqual(card.handle(.key(.note(9))), .none)
+        XCTAssertEqual(card.message?.text, "No highlight 9")
+        XCTAssertEqual(card.handle(.close), .none)
+        XCTAssertNil(card.highlightPicker)
+        XCTAssertFalse(card.isClosed)
+    }
+
+    func testQueuedHOpensPickerWhenNotesLoad() {
+        let item = makeItem(markerID: .absent)
+        var card = RefsCopyCard(
+            token: 5, item: item, absolutePDFPath: nil, pdfExists: false,
+            notes: .loading, noteCapacity: 5
+        )
+        XCTAssertEqual(card.handle(.key(.highlightPicker)), .none)
+        XCTAssertEqual(card.pending, .highlightPicker)
+        let loaded = RefsShowRow(path: item.id, annotations: [
+            RefsShowAnnotation(kind: "highlight", quote: "Later"),
+        ])
+        XCTAssertEqual(card.notesLoaded(path: item.id, row: loaded), .none)
+        XCTAssertNil(card.pending)
+        XCTAssertEqual(card.highlightPicker?.entries.count, 1)
     }
 
     private func makeItem(

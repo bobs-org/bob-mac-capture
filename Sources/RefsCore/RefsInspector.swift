@@ -1,12 +1,14 @@
 import CaptureCore
 import Foundation
 
-/// The `bob ref show <path> -f json -c` envelope (schema version 1) the
+/// The `bob ref show <path> -f json` envelope (schema version 1) the
 /// inspector hydrates from. Only the note path, the parsed annotations,
 /// the `## Tasks` lines, and the annotations status matter here; every
 /// other key is ignored. All three inspector fields are lossy and use
 /// `decodeIfPresent`, and undecodable rows are skipped instead of
-/// failing the whole response.
+/// failing the whole response. The inspector still projects
+/// `commentedHighlights` for "Your notes"; the Copy card's H picker
+/// reads the unfiltered annotation list.
 public struct RefsShowResponse: Decodable, Equatable, Sendable, SchemaVersioned {
     public let schemaVersion: Int
     public let refs: [RefsShowRow]
@@ -99,6 +101,12 @@ public struct RefsShowRow: Decodable, Equatable, Sendable {
         annotations.filter { $0.hasComment || $0.isStandaloneNote }
     }
 
+    /// Highlights and standalone notes the H picker can copy, in stored
+    /// order. Images and empty highlights are excluded.
+    public var highlightPickerEntries: [RefsShowAnnotation] {
+        annotations.filter(\.isHighlightPickerEntry)
+    }
+
     /// Open `## Tasks` lines, for the "N open" fact.
     public var openTasks: [RefsShowTask] {
         tasks.filter { !$0.checked }
@@ -175,6 +183,25 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
             return false
         }
         return true
+    }
+
+    /// A highlight with a non-empty quote or comment, or a standalone
+    /// note. The Copy card's H picker uses this; images never qualify.
+    public var isHighlightPickerEntry: Bool {
+        if isStandaloneNote {
+            return true
+        }
+        guard kind == "highlight" else {
+            return false
+        }
+        return hasNonEmptyQuote || hasComment
+    }
+
+    private var hasNonEmptyQuote: Bool {
+        guard let quote else {
+            return false
+        }
+        return !quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// The page label as the inspector shows it: nil for nil or blank;

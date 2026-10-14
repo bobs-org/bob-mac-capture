@@ -12,9 +12,11 @@ struct RefsCopyCardView: View {
     var onMeasuredHeight: (CGFloat) -> Void = { _ in }
     var onRowTap: (RefsCopyRow) -> Void = { _ in }
     var onRowHover: (RefsCopyKey?) -> Void = { _ in }
+    var onPickerRowTap: (Int) -> Void = { _ in }
 
     @Environment(\.colorSchemeContrast) private var contrast
     @State private var hoveredKey: RefsCopyKey?
+    @State private var hoveredPickerPosition: Int?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -45,9 +47,15 @@ struct RefsCopyCardView: View {
             )
             .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
-                Text("COPY")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                if let picker = card.highlightPicker {
+                    Text("HIGHLIGHTS \(picker.entries.count)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("COPY")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
                 Text(card.item.rawTitle)
                     .font(.headline)
                     .lineLimit(1)
@@ -56,12 +64,21 @@ struct RefsCopyCardView: View {
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("COPY, \(card.item.rawTitle)")
+        .accessibilityLabel(headerAccessibilityLabel)
         .accessibilityAddTraits(.isHeader)
     }
 
     @ViewBuilder
     private var rowsBlock: some View {
+        if let picker = card.highlightPicker {
+            pickerRows(picker)
+        } else {
+            catalogRows
+        }
+    }
+
+    @ViewBuilder
+    private var catalogRows: some View {
         let groups = groupedRows
         ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
             if index > 0 {
@@ -83,6 +100,74 @@ struct RefsCopyCardView: View {
             }
             notesPlaceholder
         }
+    }
+
+    @ViewBuilder
+    private func pickerRows(_ picker: RefsHighlightPicker) -> some View {
+        ForEach(Array(picker.windowEntries.enumerated()), id: \.offset) { offset, entry in
+            let position = offset + 1
+            pickerRow(entry, position: position, picker: picker)
+        }
+    }
+
+    private func pickerRow(
+        _ entry: RefsHighlightPicker.Entry,
+        position: Int,
+        picker: RefsHighlightPicker
+    ) -> some View {
+        let selected = picker.windowStart + position - 1 == picker.selectedIndex
+        let hovering = hoveredPickerPosition == position
+        return HStack(alignment: .top, spacing: 8) {
+            RefsCopyKeycap(glyph: String(position), isSelected: selected)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    if let page = entry.pageLabel {
+                        Text(page)
+                            .font(.callout)
+                            .lineLimit(1)
+                    }
+                    Text(entry.line1)
+                        .font(.callout.italic())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if !entry.line2.isEmpty {
+                    Text(entry.line2)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+        }
+        .padding(.horizontal, 6)
+        .frame(height: RefsVisualTokens.copyCardPickerRowHeight, alignment: .top)
+        .background(rowBackground(selected: selected, hovering: hovering))
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            hoveredPickerPosition = hovering ? position : nil
+        }
+        .onTapGesture {
+            onPickerRowTap(position)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(pickerAccessibilityLabel(entry, position: position))
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction {
+            onPickerRowTap(position)
+        }
+        .help(entry.payload)
+    }
+
+    private func pickerAccessibilityLabel(
+        _ entry: RefsHighlightPicker.Entry,
+        position: Int
+    ) -> String {
+        let page = entry.pageLabel.map { ", \($0)" } ?? ""
+        return "Highlight\(page), \(entry.line1), key \(position)"
     }
 
     private var separator: some View {
@@ -142,7 +227,7 @@ struct RefsCopyCardView: View {
     }
 
     private var overflowLine: some View {
-        Text("+\(card.catalog.noteOverflowCount) more — A copies all")
+        Text(card.catalog.notesOverflowText ?? "")
             .font(.caption)
             .foregroundStyle(.tertiary)
             .frame(
@@ -150,7 +235,7 @@ struct RefsCopyCardView: View {
                 alignment: .leading
             )
             .accessibilityLabel(
-                "\(card.catalog.noteOverflowCount) more, A copies all"
+                "\(card.catalog.noteOverflowCount) more, A copies all, H picks one"
             )
     }
 
@@ -245,6 +330,9 @@ struct RefsCopyCardView: View {
     }
 
     private var hintText: String {
+        if card.highlightPicker != nil {
+            return "↵ copies · 1–9 pick · A copies all · esc back"
+        }
         let label = card.rows.first { $0.key == card.selectedKey }?.label
             ?? "selection"
         return "↵ copies \(label) · ↑↓ choose · esc back"
@@ -274,8 +362,18 @@ struct RefsCopyCardView: View {
         }
     }
 
+    private var headerAccessibilityLabel: String {
+        if let picker = card.highlightPicker {
+            return "HIGHLIGHTS \(picker.entries.count), \(card.item.rawTitle)"
+        }
+        return "COPY, \(card.item.rawTitle)"
+    }
+
     private var cardAccessibilityLabel: String {
-        "Copy menu for \(card.item.rawTitle), \(card.rows.count) options"
+        if let picker = card.highlightPicker {
+            return "Highlight picker for \(card.item.rawTitle), \(picker.entries.count) highlights"
+        }
+        return "Copy menu for \(card.item.rawTitle), \(card.rows.count) options"
     }
 }
 

@@ -266,6 +266,19 @@ public final class RefsPanelModel: ObservableObject {
             copyCard = card
         }
     }
+    /// How many highlight-picker rows fit in the card. The picker
+    /// window scrolls inside this budget.
+    @Published public var copyCardPickerWindowSize = 9 {
+        didSet {
+            guard oldValue != copyCardPickerWindowSize,
+                  var card = copyCard
+            else {
+                return
+            }
+            card.setPickerWindowSize(copyCardPickerWindowSize)
+            copyCard = card
+        }
+    }
     /// The last scan outcome the footer reads, or nil when no scan has
     /// finished since the last explicit clear or hide-after-seen.
     @Published public private(set) var scanNotice: RefsScanOutcome?
@@ -821,7 +834,8 @@ public final class RefsPanelModel: ObservableObject {
             absolutePDFPath: pdfURL?.path,
             pdfExists: pdfURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false,
             notes: notes,
-            noteCapacity: copyCardNoteCapacity
+            noteCapacity: copyCardNoteCapacity,
+            pickerWindowSize: copyCardPickerWindowSize
         )
         AccessibilityNotification.Announcement(
             "Copy menu. Press a letter or number."
@@ -863,12 +877,23 @@ public final class RefsPanelModel: ObservableObject {
     /// A row tap copies that row immediately, matching its printed key.
     public func copyCardRowTapped(_ row: RefsCopyRow) {
         guard let card = copyCard,
+              card.highlightPicker == nil,
               card.rows.contains(where: { $0.key == row.key && $0 == row })
         else {
             return
         }
         handleCopyCardKey(
             characters: row.key.glyph,
+            keyCode: 0,
+            modifiers: []
+        )
+    }
+
+    /// A picker-row tap copies that window position, matching its digit.
+    public func copyCardPickerRowTapped(_ windowPosition: Int) {
+        guard copyCard?.highlightPicker != nil else { return }
+        handleCopyCardKey(
+            characters: String(windowPosition),
             keyCode: 0,
             modifiers: []
         )
