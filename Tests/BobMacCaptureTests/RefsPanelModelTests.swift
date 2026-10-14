@@ -228,6 +228,125 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertEqual(harness.pasteboard.strings, ["[[ref/chat/alpha]]"])
     }
 
+    func testCopyAlternatesSeedFlagsClickAndResetOnHide() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        let item = try XCTUnwrap(harness.model.selectedItem)
+        harness.model.openCopyCard(optionHeld: true)
+        XCTAssertTrue(harness.model.copyAlternatesActive)
+        let card = try XCTUnwrap(harness.model.copyCard)
+        let row = try XCTUnwrap(card.catalog.row(for: .wikiLink))
+        let keys = card.rows.map(\.key)
+        harness.model.updateCopyModifiers([])
+        XCTAssertFalse(harness.model.copyAlternatesActive)
+        harness.model.updateCopyModifiers([.option, .shift])
+        XCTAssertEqual(harness.model.copyCard?.rows.map(\.key), keys)
+        XCTAssertEqual(harness.model.copyCard?.selectedKey, card.selectedKey)
+        var copied: RefsCopyRow?
+        harness.model.copyCompletion = { copied = $0 }
+        harness.model.copyCardRowTapped(row)
+        XCTAssertEqual(copied, row.resolved(alternate: true))
+        XCTAssertEqual(
+            harness.pasteboard.strings,
+            [RefsCopyFormat.titledWikiLink(link: item.link, title: item.rawTitle)])
+        XCTAssertFalse(harness.model.copyAlternatesActive)
+        harness.model.updateCopyModifiers(.option)
+        XCTAssertFalse(harness.model.copyAlternatesActive)
+        harness.model.openCopyCard(optionHeld: true)
+        harness.model.panelDidHide()
+        XCTAssertFalse(harness.model.copyAlternatesActive)
+    }
+
+    func testControllerFlagsAreGatedAndFailedAlternateRetriesAfterRelease() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        harness.model.openCopyCard(optionHeld: false)
+        let controller = RefsPanelController(model: harness.model)
+        // No key panel: a flags event must pass through without changing the model.
+        let flags = try XCTUnwrap(
+            NSEvent.keyEvent(
+                with: .flagsChanged, location: .zero, modifierFlags: .option,
+                timestamp: 0, windowNumber: 0, context: nil,
+                characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 58
+            ))
+        XCTAssertTrue(controller.handleKeyDown(flags) === flags)
+        XCTAssertFalse(harness.model.copyAlternatesActive)
+        XCTAssertTrue(controller.processKeyEvent(flags) === flags)
+        XCTAssertTrue(harness.model.copyAlternatesActive)
+        let row = try XCTUnwrap(harness.model.copyCard?.catalog.row(for: .wikiLink))
+        harness.pasteboard.failWrites = true
+        harness.model.handleCopyCardKey(characters: "w", keyCode: 13, modifiers: .option)
+        harness.model.updateCopyModifiers([])
+        harness.pasteboard.failWrites = false
+        var copied: RefsCopyRow?
+        harness.model.copyCompletion = { copied = $0 }
+        harness.model.handleCopyCardKey(characters: nil, keyCode: 36, modifiers: [])
+        XCTAssertEqual(copied, row.resolved(alternate: true))
+        XCTAssertEqual(harness.pasteboard.strings.count, 1)
+        XCTAssertNil(harness.model.copyCard)
+    }
+
+    func testOptionPickerClickCopiesQuote() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        let item = try XCTUnwrap(harness.model.selectedItem)
+        harness.model.inspectorLoader.installShowRowForPreviews(
+            RefsShowRow(
+                path: item.id,
+                annotations: [
+                    RefsShowAnnotation(
+                        kind: "highlight", quote: "Raw\nquote", comment: "My comment")
+                ]), for: item
+        )
+        harness.model.openCopyCard(optionHeld: false)
+        harness.model.handleCopyCardKey(characters: "h", keyCode: 4, modifiers: [])
+        harness.model.updateCopyModifiers(.option)
+        harness.model.copyCardPickerRowTapped(1)
+        XCTAssertEqual(harness.pasteboard.strings, ["Raw\nquote"])
+    }
+
+    func testCardFreezesResolvedNoteAndExistingNarrationPaths() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let item = RefItem(
+            id: "ref/chat/alpha.md", link: "[[ref/chat/alpha]]", rawTitle: "Alpha",
+            stem: "alpha", kind: .chat, state: .ready, isBlocked: false,
+            pdfPath: "lib/alpha.pdf", audioPath: "lib/alpha.m4a"
+        )
+        harness.model.installForPreviews(
+            items: [item], signals: harness.model.signals, query: "", scope: .all,
+            selectedID: item.id, banner: nil, refreshState: .idle
+        )
+        let pdf = harness.vault.appendingPathComponent(item.pdfPath)
+        let audio = harness.vault.appendingPathComponent("lib/alpha.m4a")
+        try Data("pdf".utf8).write(to: pdf)
+        harness.model.openCopyCard(optionHeld: false)
+        XCTAssertNil(harness.model.copyCard?.catalog.row(for: .pdfFile)?.alternate)
+        try Data("audio".utf8).write(to: audio)
+        // Late filesystem changes do not change the frozen card.
+        XCTAssertNil(harness.model.copyCard?.catalog.row(for: .pdfFile)?.alternate)
+        harness.model.openCopyCard(optionHeld: true)
+        let card = try XCTUnwrap(harness.model.copyCard)
+        XCTAssertEqual(
+            card.catalog.row(for: .notePath)?.alternate?.payload,
+            .text(harness.vault.appendingPathComponent(item.id).path))
+        XCTAssertEqual(
+            card.catalog.row(for: .obsidianLink)?.payload,
+            ObsidianOpenURL.url(forAbsolutePath: harness.vault.appendingPathComponent(item.id).path)
+                .map { .text($0.absoluteString) })
+        XCTAssertEqual(card.catalog.row(for: .pdfFile)?.alternate?.payload, .fileURL(audio))
+        try FileManager.default.removeItem(at: audio)
+        var copies = 0
+        harness.model.copyCompletion = { _ in copies += 1 }
+        harness.model.handleCopyCardKey(characters: "f", keyCode: 3, modifiers: .option)
+        XCTAssertEqual(copies, 0)
+        XCTAssertTrue(harness.model.copyCard?.message?.isError == true)
+        XCTAssertNotNil(harness.model.copyCard)
+    }
+
     func testCopyCardHOpensPickerAndEscapeReturnsToCard() async throws {
         let harness = try makeHarness()
         await harness.waitForSnapshot()

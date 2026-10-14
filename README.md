@@ -1349,7 +1349,8 @@ typing stops, never on every keystroke.
 
 Control-Y opens an in-panel card for the selected reference. The fixed keys
 copy `I` marker ID, `T` title, `W` wiki link, `U` source URL, `L` Markdown
-link, `X` arXiv ID, `D` DOI, `N` note path, `P` PDF path, `F` the PDF file,
+link, `X` arXiv ID, `D` DOI, `N` note path, `O` Obsidian link, `P` PDF path,
+`F` the PDF file,
 `R` reading-task link, and `S` research reference. `1`–`9` copy the visible
 note blocks, including their page and block-link provenance; `A` copies all
 reference notes and Bob's own notes; `H` opens a highlight picker for every
@@ -1359,6 +1360,15 @@ moving the other keys. Return or Control-Y copies the selected row (marker ID
 when available, otherwise wiki link); Up/Down and Ctrl-P/N/J/K move the
 selection, and Escape returns to the inspector. From the picker, Escape
 returns to the card.
+
+Hold Option (⌥) to swap previews in place. Option-W copies a titled wiki link,
+Option-P a `~`-abbreviated PDF path, Option-N the absolute note path, and
+Option-F the narration file when it exists. Option-1–9 copies the highlight's
+quote verbatim, without comment or provenance, on either the card or picker.
+Rows without an alternate keep their normal payload, including standalone notes.
+Option-click and Option-Return copy the displayed alternate too. A queued note
+copy remembers whether Option was held; Return retries the same payload after a
+failed write, even if Option has since been released.
 
 Each row previews the exact value it copies. A shared marker ID shows its
 `shared ×N` count; press `N` to copy this note's path. If the installed Bob

@@ -190,6 +190,7 @@ public struct RefsPanelView: View {
             if let card = model.copyCard {
                 RefsCopyCardView(
                     card: card,
+                    alternatesActive: model.copyAlternatesActive,
                     previewMode: previewMode,
                     onMeasuredHeight: {
                         model.copyCardNoteCapacity = copyCardNoteCapacity(

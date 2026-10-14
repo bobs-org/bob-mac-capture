@@ -1,3 +1,4 @@
+import CaptureCore
 import Foundation
 
 /// Whether bob supplied the `marker_id` field. Missing means the installed
@@ -24,6 +25,7 @@ public enum RefsCopyKey: Equatable, Hashable, Sendable {
     case arxiv
     case doi
     case notePath
+    case obsidianLink
     case pdfPath
     case pdfFile
     case readingTask
@@ -42,6 +44,7 @@ public enum RefsCopyKey: Equatable, Hashable, Sendable {
         case .arxiv: "X"
         case .doi: "D"
         case .notePath: "N"
+        case .obsidianLink: "O"
         case .pdfPath: "P"
         case .pdfFile: "F"
         case .readingTask: "R"
@@ -62,6 +65,7 @@ public enum RefsCopyKey: Equatable, Hashable, Sendable {
         case "x": .arxiv
         case "d": .doi
         case "n": .notePath
+        case "o": .obsidianLink
         case "p": .pdfPath
         case "f": .pdfFile
         case "r": .readingTask
@@ -92,6 +96,26 @@ public enum RefsCopyTag: Equatable, Sendable {
     case archived
 }
 
+/// A second payload for the same fixed key and row position.
+public struct RefsCopyAlternate: Equatable, Sendable {
+    public let label: String
+    public let payload: RefsClipboardPayload
+    public let preview: String
+    public let confirmationTitle: String
+
+    public init(
+        label: String,
+        payload: RefsClipboardPayload,
+        preview: String,
+        confirmationTitle: String
+    ) {
+        self.label = label
+        self.payload = payload
+        self.preview = preview
+        self.confirmationTitle = confirmationTitle
+    }
+}
+
 public struct RefsCopyRow: Equatable, Sendable {
     public let key: RefsCopyKey
     public let group: RefsCopyGroup
@@ -103,6 +127,7 @@ public struct RefsCopyRow: Equatable, Sendable {
     public let detail: String?
     public let help: String?
     public let confirmationTitle: String
+    public let alternate: RefsCopyAlternate?
 
     public init(
         key: RefsCopyKey,
@@ -114,7 +139,8 @@ public struct RefsCopyRow: Equatable, Sendable {
         tag: RefsCopyTag? = nil,
         detail: String? = nil,
         help: String? = nil,
-        confirmationTitle: String
+        confirmationTitle: String,
+        alternate: RefsCopyAlternate? = nil
     ) {
         self.key = key
         self.group = group
@@ -126,6 +152,23 @@ public struct RefsCopyRow: Equatable, Sendable {
         self.detail = detail
         self.help = help
         self.confirmationTitle = confirmationTitle
+        self.alternate = alternate
+    }
+
+    /// Rows without an alternate retain their primary payload, like native menus.
+    public func resolved(alternate active: Bool) -> RefsCopyRow {
+        guard active, let alternate else { return self }
+        let help: String
+        switch alternate.payload {
+        case .text(let value): help = value
+        case .fileURL(let url): help = url.path
+        }
+        return RefsCopyRow(
+            key: key, group: group, label: alternate.label,
+            payload: alternate.payload, preview: alternate.preview,
+            truncation: truncation, tag: tag, help: help,
+            confirmationTitle: alternate.confirmationTitle
+        )
     }
 }
 
@@ -155,7 +198,10 @@ public struct RefsCopyCatalog: Equatable, Sendable {
         absolutePDFPath: String?,
         pdfExists: Bool,
         notes: RefsCopyNotesState,
-        noteCapacity: Int
+        noteCapacity: Int,
+        absoluteNotePath: String? = nil,
+        homeDirectoryPath: String? = nil,
+        narrationFileURL: URL? = nil
     ) {
         self.item = item
         self.absolutePDFPath = absolutePDFPath
@@ -218,7 +264,14 @@ public struct RefsCopyCatalog: Equatable, Sendable {
             label: "Wiki link",
             value: item.link,
             truncation: .middle,
-            confirmationTitle: "Copied Wiki Link"
+            confirmationTitle: "Copied Wiki Link",
+            alternate: RefsCopyAlternate(
+                label: "Wiki link · titled",
+                payload: .text(
+                    RefsCopyFormat.titledWikiLink(link: item.link, title: item.rawTitle)),
+                preview: RefsCopyFormat.titledWikiLink(link: item.link, title: item.rawTitle),
+                confirmationTitle: "Copied Titled Wiki Link"
+            )
         ))
 
         if let sourceURL = item.urls.first(where: { !$0.isEmpty }) {
@@ -262,8 +315,23 @@ public struct RefsCopyCatalog: Equatable, Sendable {
             group: .files,
             label: "Note path",
             value: item.id,
-            confirmationTitle: "Copied Note Path"
+            confirmationTitle: "Copied Note Path",
+            alternate: absoluteNotePath.map {
+                RefsCopyAlternate(
+                    label: "Note path · absolute", payload: .text($0), preview: $0,
+                    confirmationTitle: "Copied Absolute Note Path"
+                )
+            }
         ))
+        if let absoluteNotePath,
+            let url = ObsidianOpenURL.url(forAbsolutePath: absoluteNotePath)
+        {
+            built.append(
+                Self.valueRow(
+                    key: .obsidianLink, group: .files, label: "Obsidian link",
+                    value: url.absoluteString, confirmationTitle: "Copied Obsidian Link"
+                ))
+        }
         if let absolutePDFPath {
             built.append(Self.valueRow(
                 key: .pdfPath,
@@ -271,7 +339,15 @@ public struct RefsCopyCatalog: Equatable, Sendable {
                 label: "PDF path",
                 value: absolutePDFPath,
                 tag: pdfExists ? nil : .missing,
-                confirmationTitle: "Copied PDF Path"
+                confirmationTitle: "Copied PDF Path",
+                alternate: homeDirectoryPath.map {
+                    let path = RefsCopyFormat.abbreviatedPath(
+                        absolutePDFPath, homeDirectoryPath: $0)
+                    return RefsCopyAlternate(
+                        label: "PDF path · ~", payload: .text(path), preview: path,
+                        confirmationTitle: "Copied PDF Path · ~"
+                    )
+                }
             ))
             if pdfExists {
                 let fileURL = URL(fileURLWithPath: absolutePDFPath)
@@ -282,7 +358,14 @@ public struct RefsCopyCatalog: Equatable, Sendable {
                     payload: .fileURL(fileURL),
                     preview: fileURL.lastPathComponent,
                     truncation: .middle,
-                    confirmationTitle: "Copied PDF File"
+                    confirmationTitle: "Copied PDF File",
+                    alternate: narrationFileURL.map {
+                        RefsCopyAlternate(
+                            label: "Narration file", payload: .fileURL($0),
+                            preview: $0.lastPathComponent,
+                            confirmationTitle: "Copied Narration File"
+                        )
+                    }
                 ))
             }
         }
@@ -321,7 +404,8 @@ public struct RefsCopyCatalog: Equatable, Sendable {
                     truncation: .tail,
                     detail: RefsCopyFormat.shortPageLabel(annotation.displayPageLabel),
                     help: payload,
-                    confirmationTitle: "Copied Note \(offset + 1)"
+                    confirmationTitle: "Copied Note \(offset + 1)",
+                    alternate: RefsCopyFormat.quoteAlternate(annotation)
                 ))
             }
             let ownNotesAvailable = !notesRow.ownNotes.trimmingCharacters(
@@ -381,6 +465,8 @@ public struct RefsCopyCatalog: Equatable, Sendable {
             return item.arxivID?.isEmpty != false ? "No arXiv ID for this reference" : nil
         case .doi:
             return item.doi?.isEmpty != false ? "No DOI for this reference" : nil
+        case .obsidianLink:
+            return row(for: key) == nil ? "No Obsidian link for this reference" : nil
         case .pdfPath:
             return absolutePDFPath == nil ? "No PDF path for this reference" : nil
         case .pdfFile:
@@ -454,7 +540,8 @@ public struct RefsCopyCatalog: Equatable, Sendable {
         truncation: RefsCopyTruncation = .middle,
         tag: RefsCopyTag? = nil,
         help: String? = nil,
-        confirmationTitle: String
+        confirmationTitle: String,
+        alternate: RefsCopyAlternate? = nil
     ) -> RefsCopyRow {
         RefsCopyRow(
             key: key,
@@ -465,12 +552,43 @@ public struct RefsCopyCatalog: Equatable, Sendable {
             truncation: truncation,
             tag: tag,
             help: help,
-            confirmationTitle: confirmationTitle
+            confirmationTitle: confirmationTitle,
+            alternate: alternate
         )
     }
 }
 
 public enum RefsCopyFormat {
+    public static func titledWikiLink(link: String, title: String) -> String {
+        let alias = title.filter { !"[]|".contains($0) }
+        guard !alias.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            link.hasPrefix("[["), link.hasSuffix("]]")
+        else { return link }
+        let target = link.dropFirst(2).dropLast(2).split(separator: "|", maxSplits: 1).first ?? ""
+        return "[[\(target)|\(alias)]]"
+    }
+
+    public static func abbreviatedPath(_ path: String, homeDirectoryPath: String) -> String {
+        let home =
+            homeDirectoryPath.hasSuffix("/")
+            ? String(homeDirectoryPath.dropLast()) : homeDirectoryPath
+        guard !home.isEmpty else { return path }
+        if path == home { return "~" }
+        guard path.hasPrefix(home + "/") else { return path }
+        return "~" + path.dropFirst(home.count)
+    }
+
+    public static func quoteAlternate(_ annotation: RefsShowAnnotation) -> RefsCopyAlternate? {
+        guard !annotation.isStandaloneNote,
+            let quote = annotation.quote,
+            !quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
+        return RefsCopyAlternate(
+            label: "Quote only", payload: .text(quote), preview: quote,
+            confirmationTitle: "Copied Quote"
+        )
+    }
+
     public static func noteBlock(_ annotation: RefsShowAnnotation) -> String {
         var lines: [String] = []
         if let quote = annotation.quote {
@@ -640,7 +758,7 @@ public struct RefsCopyKeyModifiers: OptionSet, Equatable, Sendable {
 }
 
 public enum RefsCopyCommand: Equatable, Sendable {
-    case key(RefsCopyKey)
+    case key(RefsCopyKey, alternate: Bool = false)
     case copySelected
     case move(Int)
     case close
@@ -657,7 +775,7 @@ public enum RefsCopyKeyMap {
     ) -> RefsCopyCommand {
         let flags = modifiers.normalized
         if keyCode == 36 || keyCode == 76 {
-            return flags.isEmpty ? .copySelected : .consume
+            return flags.isEmpty || flags == .option ? .copySelected : .consume
         }
         if keyCode == 53 {
             return flags.isEmpty ? .close : .consume
@@ -665,7 +783,7 @@ public enum RefsCopyKeyMap {
         if keyCode == 33 {
             return flags == .control ? .close : .consume
         }
-        if keyCode == 16, flags == .control {
+        if keyCode == 16, flags == .control || flags == [.control, .option] {
             return .copySelected
         }
         if keyCode == 40, flags == .command {
@@ -684,13 +802,13 @@ public enum RefsCopyKeyMap {
             default: break
             }
         }
-        guard flags.isEmpty || flags == .shift,
+        guard flags.subtracting([.shift, .option]).isEmpty,
               let text = characters,
               let character = text.first else {
             return .consume
         }
         if let key = RefsCopyKey.parse(character) {
-            return .key(key)
+            return .key(key, alternate: flags.contains(.option))
         }
         let isControlCharacter = character.unicodeScalars.allSatisfy {
             CharacterSet.controlCharacters.contains($0)
@@ -726,6 +844,11 @@ public struct RefsCopyCard: Equatable, Sendable {
     public let item: RefItem
     public let absolutePDFPath: String?
     public let pdfExists: Bool
+    public let absoluteNotePath: String?
+    public let homeDirectoryPath: String?
+    public let narrationFileURL: URL?
+    private var pendingAlternate = false
+    private var retryRow: RefsCopyRow?
     public private(set) var notes: RefsCopyNotesState
     public private(set) var noteCapacity: Int
     public private(set) var rows: [RefsCopyRow]
@@ -743,13 +866,19 @@ public struct RefsCopyCard: Equatable, Sendable {
         pdfExists: Bool,
         notes: RefsCopyNotesState,
         noteCapacity: Int,
-        pickerWindowSize: Int = 9
+        pickerWindowSize: Int = 9,
+        absoluteNotePath: String? = nil,
+        homeDirectoryPath: String? = nil,
+        narrationFileURL: URL? = nil
     ) {
         self.token = token
         frozenItemID = item.id
         self.item = item
         self.absolutePDFPath = absolutePDFPath
         self.pdfExists = pdfExists
+        self.absoluteNotePath = absoluteNotePath
+        self.homeDirectoryPath = homeDirectoryPath
+        self.narrationFileURL = narrationFileURL
         self.notes = notes
         self.noteCapacity = max(0, noteCapacity)
         self.pickerWindowSize = min(9, max(0, pickerWindowSize))
@@ -758,7 +887,10 @@ public struct RefsCopyCard: Equatable, Sendable {
             absolutePDFPath: absolutePDFPath,
             pdfExists: pdfExists,
             notes: notes,
-            noteCapacity: noteCapacity
+            noteCapacity: noteCapacity,
+            absoluteNotePath: absoluteNotePath,
+            homeDirectoryPath: homeDirectoryPath,
+            narrationFileURL: narrationFileURL
         )
         rows = catalog.rows
         selectedKey = catalog.defaultKey
@@ -774,20 +906,30 @@ public struct RefsCopyCard: Equatable, Sendable {
             absolutePDFPath: absolutePDFPath,
             pdfExists: pdfExists,
             notes: notes,
-            noteCapacity: noteCapacity
+            noteCapacity: noteCapacity,
+            absoluteNotePath: absoluteNotePath,
+            homeDirectoryPath: homeDirectoryPath,
+            narrationFileURL: narrationFileURL
         )
     }
 
     @discardableResult
-    public mutating func handle(_ command: RefsCopyCommand) -> RefsCopyEffect {
+    public mutating func handle(
+        _ command: RefsCopyCommand, alternatesActive: Bool = false
+    ) -> RefsCopyEffect {
         guard !isClosed else { return .none }
+        if command == .copySelected, let retryRow {
+            return .write(retryRow)
+        }
+        if command != .consume { retryRow = nil }
         if highlightPicker != nil {
-            return handlePicker(command)
+            return handlePicker(command, alternatesActive: alternatesActive)
         }
         switch command {
-        case .key(let key):
+        case .key(let key, let alternate):
             if case .loading = notes, isNotesKey(key) {
                 pending = key
+                pendingAlternate = alternate
                 message = RefsCopyMessage(text: "Waiting for notes… esc cancels")
                 return .none
             }
@@ -798,7 +940,7 @@ public struct RefsCopyCard: Equatable, Sendable {
             if let row = rows.first(where: { $0.key == key }) {
                 selectedKey = key
                 message = nil
-                return .write(row)
+                return .write(row.resolved(alternate: alternate))
             }
             message = catalog.hiddenReason(for: key).map {
                 RefsCopyMessage(text: $0, isError: $0.hasPrefix("Notes unavailable"))
@@ -812,7 +954,7 @@ public struct RefsCopyCard: Equatable, Sendable {
                 return .none
             }
             message = nil
-            return .write(row)
+            return .write(row.resolved(alternate: alternatesActive))
         case .move(let delta):
             guard !rows.isEmpty, delta != 0 else { return .none }
             let current = rows.firstIndex(where: { $0.key == selectedKey }) ?? 0
@@ -852,7 +994,7 @@ public struct RefsCopyCard: Equatable, Sendable {
         if let value = rows.first(where: { $0.key == pending }) {
             message = nil
             selectedKey = pending
-            return .write(value)
+            return .write(value.resolved(alternate: pendingAlternate))
         }
         let reason = catalog.hiddenReason(for: pending) ?? "No notes on this reference"
         message = RefsCopyMessage(text: reason, isError: reason.hasPrefix("Notes unavailable"))
@@ -878,11 +1020,12 @@ public struct RefsCopyCard: Equatable, Sendable {
         message = RefsCopyMessage(text: "Notes didn't load — nothing copied", isError: true)
     }
 
-    public mutating func writeFailed(key: RefsCopyKey) {
+    public mutating func writeFailed(key: RefsCopyKey, attemptedRow: RefsCopyRow? = nil) {
         guard !isClosed else { return }
         if highlightPicker == nil, rows.contains(where: { $0.key == key }) {
             selectedKey = key
         }
+        retryRow = attemptedRow ?? rows.first { $0.key == key }
         message = RefsCopyMessage(text: "Couldn't copy — ↵ tries again", isError: true)
     }
 
@@ -928,12 +1071,14 @@ public struct RefsCopyCard: Equatable, Sendable {
         highlightPicker = picker
     }
 
-    private mutating func handlePicker(_ command: RefsCopyCommand) -> RefsCopyEffect {
+    private mutating func handlePicker(
+        _ command: RefsCopyCommand, alternatesActive: Bool
+    ) -> RefsCopyEffect {
         switch command {
-        case .key(let key):
+        case .key(let key, let alternate):
             switch key {
             case .note(let number):
-                return copyPickerWindowRow(number)
+                return copyPickerWindowRow(number, alternate: alternate)
             case .allNotes:
                 return copyAllHighlights()
             default:
@@ -945,7 +1090,7 @@ public struct RefsCopyCard: Equatable, Sendable {
                 return .none
             }
         case .copySelected:
-            return copyPickerSelection()
+            return copyPickerSelection(alternate: alternatesActive)
         case .move(let delta):
             guard var picker = highlightPicker else { return .none }
             picker.move(delta)
@@ -998,7 +1143,7 @@ public struct RefsCopyCard: Equatable, Sendable {
         return .none
     }
 
-    private mutating func copyPickerWindowRow(_ number: Int) -> RefsCopyEffect {
+    private mutating func copyPickerWindowRow(_ number: Int, alternate: Bool) -> RefsCopyEffect {
         guard var picker = highlightPicker else { return .none }
         guard let entry = picker.selectWindowPosition(number) else {
             message = RefsCopyMessage(text: "No highlight \(number)")
@@ -1006,10 +1151,10 @@ public struct RefsCopyCard: Equatable, Sendable {
         }
         highlightPicker = picker
         message = nil
-        return .write(entry.copyRow(key: .note(number)))
+        return .write(entry.copyRow(key: .note(number)).resolved(alternate: alternate))
     }
 
-    private mutating func copyPickerSelection() -> RefsCopyEffect {
+    private mutating func copyPickerSelection(alternate: Bool) -> RefsCopyEffect {
         guard let picker = highlightPicker,
               let entry = picker.selectedEntry
         else {
@@ -1017,7 +1162,7 @@ public struct RefsCopyCard: Equatable, Sendable {
         }
         message = nil
         let position = picker.selectedIndex - picker.windowStart + 1
-        return .write(entry.copyRow(key: .note(max(1, position))))
+        return .write(entry.copyRow(key: .note(max(1, position))).resolved(alternate: alternate))
     }
 
     private mutating func copyAllHighlights() -> RefsCopyEffect {

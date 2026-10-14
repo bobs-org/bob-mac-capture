@@ -253,6 +253,12 @@ public final class RefsPanelModel: ObservableObject {
     @Published public var visibleRowBudget: Int = 10
     /// The active fixed-letter copy card, if one is open.
     @Published public private(set) var copyCard: RefsCopyCard?
+    @Published public private(set) var copyAlternatesActive = false
+
+    /// Flags only affect an open card (including its picker layer).
+    public func updateCopyModifiers(_ modifiers: RefsCopyKeyModifiers) {
+        copyAlternatesActive = copyCard != nil && modifiers.contains(.option)
+    }
     /// The measured note capacity of the copy card. The card keeps this
     /// value when its size changes and drops note rows that no longer fit.
     @Published public var copyCardNoteCapacity = 0 {
@@ -815,7 +821,9 @@ public final class RefsPanelModel: ObservableObject {
 
     /// Opens the in-panel copy card for the selected available reference.
     /// The target and filesystem facts are frozen until the card closes.
-    public func openCopyCard() {
+    public func openCopyCard(
+        optionHeld: Bool = NSEvent.modifierFlags.contains(.option)
+    ) {
         closeCopyCard()
         guard let item = selectedItem,
               listing.orderedIDs.contains(item.id),
@@ -826,6 +834,9 @@ public final class RefsPanelModel: ObservableObject {
         copyCardSequence &+= 1
         let token = copyCardSequence
         let pdfURL = library.pdfURL(for: item)
+        let audioURL = library.audioURL(for: item).flatMap {
+            FileManager.default.fileExists(atPath: $0.path) ? $0 : nil
+        }
         let notes = inspectorLoader.cachedShowRow(for: item)
             .map(RefsCopyNotesState.loaded) ?? .loading
         copyCard = RefsCopyCard(
@@ -835,8 +846,12 @@ public final class RefsPanelModel: ObservableObject {
             pdfExists: pdfURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false,
             notes: notes,
             noteCapacity: copyCardNoteCapacity,
-            pickerWindowSize: copyCardPickerWindowSize
+            pickerWindowSize: copyCardPickerWindowSize,
+            absoluteNotePath: library.noteURL(for: item).path,
+            homeDirectoryPath: FileManager.default.homeDirectoryForCurrentUser.path,
+            narrationFileURL: audioURL
         )
+        copyAlternatesActive = optionHeld
         AccessibilityNotification.Announcement(
             "Copy menu. Press a letter or number."
         ).post()
@@ -862,13 +877,14 @@ public final class RefsPanelModel: ObservableObject {
         modifiers: RefsCopyKeyModifiers
     ) {
         guard var card = copyCard else { return }
+        updateCopyModifiers(modifiers)
         let token = card.token
         let command = RefsCopyKeyMap.command(
             characters: characters,
             keyCode: keyCode,
             modifiers: modifiers
         )
-        let effect = card.handle(command)
+        let effect = card.handle(command, alternatesActive: copyAlternatesActive)
         copyCard = card
         updateCopyCardTimers(token: token)
         applyCopyCardEffect(effect, token: token)
@@ -885,7 +901,7 @@ public final class RefsPanelModel: ObservableObject {
         handleCopyCardKey(
             characters: row.key.glyph,
             keyCode: 0,
-            modifiers: []
+            modifiers: copyAlternatesActive ? .option : []
         )
     }
 
@@ -895,7 +911,7 @@ public final class RefsPanelModel: ObservableObject {
         handleCopyCardKey(
             characters: String(windowPosition),
             keyCode: 0,
-            modifiers: []
+            modifiers: copyAlternatesActive ? .option : []
         )
     }
 
@@ -966,7 +982,7 @@ public final class RefsPanelModel: ObservableObject {
                 closeCopyCard()
                 copyCompletion(row)
             } else {
-                card.writeFailed(key: row.key)
+                card.writeFailed(key: row.key, attemptedRow: row)
                 copyCard = card
                 updateCopyCardTimers(token: token)
             }
@@ -998,6 +1014,7 @@ public final class RefsPanelModel: ObservableObject {
         copyMessageTask?.cancel()
         copyMessageTask = nil
         copyCard = nil
+        copyAlternatesActive = false
     }
 
     private func rerankSelectingFirst() {

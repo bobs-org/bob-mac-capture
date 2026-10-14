@@ -18,12 +18,15 @@ final class RefsCopyCardDesignTests: XCTestCase {
         try write(card: loadingQueuedCard(), name: "refs-copy-card-notes-loading")
         try write(card: errorCard(), name: "refs-copy-card-error")
         try write(card: highlightPickerCard(), name: "refs-copy-highlight-picker")
+        try write(card: alternatesCard(), name: "refs-copy-card-alternates", alternates: true)
+        try write(
+            card: highlightPickerCard(), name: "refs-copy-picker-alternates", alternates: true)
         try writeHUD()
     }
 
-    private func write(card: RefsCopyCard, name: String) throws {
+    private func write(card: RefsCopyCard, name: String, alternates: Bool = false) throws {
         let width = inspectorColumnWidth
-        let view = RefsCopyCardView(card: card, previewMode: true)
+        let view = RefsCopyCardView(card: card, alternatesActive: alternates, previewMode: true)
             .frame(width: width, height: 480, alignment: .top)
         for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
             try RenderFixtureWriter.write(
@@ -81,11 +84,11 @@ final class RefsCopyCardDesignTests: XCTestCase {
             markerID: .present("paper-id"),
             title: "What Does a Harness Buy You?",
             kind: .paper,
+            commentCount: 2,
             urls: ["https://arxiv.org/abs/2501.01234"],
             arxivID: "2501.01234",
             doi: "10.1000/example",
-            researchRef: "research:papers/harness_buy.md",
-            commentCount: 2
+            researchRef: "research:papers/harness_buy.md"
         )
         let notes = RefsShowRow(
             path: item.id,
@@ -227,6 +230,26 @@ final class RefsCopyCardDesignTests: XCTestCase {
             _ = card.handle(.move(1))
         }
         return card
+    }
+
+    private func alternatesCard() -> RefsCopyCard {
+        let item = makeItem(markerID: .present("marker-chat-1"), title: "Team Fit Review")
+        return RefsCopyCard(
+            token: 7, item: item,
+            absolutePDFPath: "/Users/bryan/bob/lib/chat/team_fit_review.pdf", pdfExists: true,
+            notes: .loaded(
+                RefsShowRow(
+                    path: item.id,
+                    annotations: [
+                        RefsShowAnnotation(
+                            pageLabel: "Page 11", kind: "highlight", quote: "Keep the exact quote.",
+                            comment: "A comment that Option hides.",
+                            link: "[[ref/chat/example#^h-1]]"
+                        )
+                    ])), noteCapacity: 3,
+            absoluteNotePath: "/Users/bryan/bob/" + item.id, homeDirectoryPath: "/Users/bryan",
+            narrationFileURL: URL(fileURLWithPath: "/Users/bryan/bob/lib/chat/team_fit_review.m4a")
+        )
     }
 
     private func makeItem(

@@ -52,7 +52,8 @@ public struct RefsHighlightPicker: Equatable, Sendable {
                 truncation: .tail,
                 detail: pageLabel,
                 help: payload,
-                confirmationTitle: confirmationTitle
+                confirmationTitle: confirmationTitle,
+                alternate: RefsCopyFormat.quoteAlternate(annotation)
             )
         }
     }

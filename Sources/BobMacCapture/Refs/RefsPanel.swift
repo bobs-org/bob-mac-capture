@@ -299,7 +299,7 @@ public final class RefsPanelController: NSObject {
     private func installMonitorsIfNeeded() {
         if localMonitor == nil {
             localMonitor = NSEvent.addLocalMonitorForEvents(
-                matching: .keyDown
+                matching: [.keyDown, .flagsChanged]
             ) { [weak self] event in
                 guard let self else {
                     return event
@@ -323,6 +323,10 @@ public final class RefsPanelController: NSObject {
     /// only while the panel is key.
     func processKeyEvent(_ event: NSEvent) -> NSEvent? {
         if suspendHideOnResign {
+            return event
+        }
+        if event.type == .flagsChanged {
+            model.updateCopyModifiers(Self.copyModifiers(event.modifierFlags))
             return event
         }
         if model.copyCard != nil {

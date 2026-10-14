@@ -189,11 +189,13 @@ final class RefsInspectorLoaderTests: XCTestCase {
         )
 
         XCTAssertNil(loader.cachedShowRow(for: fixtures.paper))
-        let row = try XCTUnwrap(await loader.showRow(for: fixtures.paper))
+        let fetchedRow = await loader.showRow(for: fixtures.paper)
+        let row = try XCTUnwrap(fetchedRow)
         XCTAssertEqual(loader.cachedShowRow(for: fixtures.paper), row)
         XCTAssertEqual(fixtures.fetcher.showPaths.count, 1)
 
-        let cached = try XCTUnwrap(await loader.showRow(for: fixtures.paper))
+        let cachedRow = await loader.showRow(for: fixtures.paper)
+        let cached = try XCTUnwrap(cachedRow)
         XCTAssertEqual(cached, row)
         XCTAssertEqual(fixtures.fetcher.showPaths.count, 1)
     }

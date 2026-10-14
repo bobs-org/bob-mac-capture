@@ -6,6 +6,7 @@ import SwiftUI
 @available(macOS 26.0, *)
 struct RefsCopyCardView: View {
     let card: RefsCopyCard
+    var alternatesActive = false
     /// Design fixtures lay the column out statically:
     /// `ImageRenderer` snapshots `ScrollView` content blank.
     var previewMode = false
@@ -115,6 +116,8 @@ struct RefsCopyCardView: View {
         position: Int,
         picker: RefsHighlightPicker
     ) -> some View {
+        let alternate = alternatesActive ? RefsCopyFormat.quoteAlternate(entry.annotation) : nil
+        let quoteLines = alternate?.preview.components(separatedBy: "\n")
         let selected = picker.windowStart + position - 1 == picker.selectedIndex
         let hovering = hoveredPickerPosition == position
         return HStack(alignment: .top, spacing: 8) {
@@ -127,15 +130,16 @@ struct RefsCopyCardView: View {
                             .font(.callout)
                             .lineLimit(1)
                     }
-                    Text(entry.line1)
+                    Text(quoteLines?.first ?? entry.line1)
                         .font(.callout.italic())
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                if !entry.line2.isEmpty {
-                    Text(entry.line2)
+                let line2 = quoteLines.map { $0.dropFirst().joined(separator: "\n") } ?? entry.line2
+                if !line2.isEmpty {
+                    Text(line2)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -159,7 +163,7 @@ struct RefsCopyCardView: View {
         .accessibilityAction {
             onPickerRowTap(position)
         }
-        .help(entry.payload)
+        .help(alternate?.preview ?? entry.payload)
     }
 
     private func pickerAccessibilityLabel(
@@ -167,7 +171,8 @@ struct RefsCopyCardView: View {
         position: Int
     ) -> String {
         let page = entry.pageLabel.map { ", \($0)" } ?? ""
-        return "Highlight\(page), \(entry.line1), key \(position)"
+        let row = entry.copyRow(key: .note(position)).resolved(alternate: alternatesActive)
+        return "\(row.label)\(page), \(row.preview), key \(position)"
     }
 
     private var separator: some View {
@@ -185,7 +190,7 @@ struct RefsCopyCardView: View {
             Text("\(loadedCount)")
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.tertiary)
-            Text("· quote + comment + link")
+            Text(alternatesActive ? "· quote only when available" : "· quote + comment + link")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
@@ -239,7 +244,8 @@ struct RefsCopyCardView: View {
             )
     }
 
-    private func rowView(_ row: RefsCopyRow) -> some View {
+    private func rowView(_ primary: RefsCopyRow) -> some View {
+        let row = primary.resolved(alternate: alternatesActive)
         let selected = row.key == card.selectedKey
         let hovering = row.key == hoveredKey
         return HStack(spacing: 8) {
@@ -270,7 +276,7 @@ struct RefsCopyCardView: View {
             onRowHover(hovering ? row.key : nil)
         }
         .onTapGesture {
-            onRowTap(row)
+            onRowTap(primary)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
@@ -278,7 +284,7 @@ struct RefsCopyCardView: View {
         )
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction {
-            onRowTap(row)
+            onRowTap(primary)
         }
         .help(row.help ?? "")
     }
@@ -333,7 +339,9 @@ struct RefsCopyCardView: View {
         if card.highlightPicker != nil {
             return "↵ copies · 1–9 pick · A copies all · esc back"
         }
-        let label = card.rows.first { $0.key == card.selectedKey }?.label
+        let label =
+            card.rows.first { $0.key == card.selectedKey }?
+            .resolved(alternate: alternatesActive).label
             ?? "selection"
         return "↵ copies \(label) · ↑↓ choose · esc back"
     }
