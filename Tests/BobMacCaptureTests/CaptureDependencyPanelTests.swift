@@ -106,7 +106,7 @@ final class CaptureDependencyPanelTests: XCTestCase {
             candidates: [blockedCandidate(), blockedIDlessCandidate()],
             filter: "",
             draft: "@mac_inbox+ask-kelly *",
-            replacement: CaptureRange(start: 22, end: 23),
+            replacement: CaptureRange(start: 21, end: 22),
             owner: DependencyOwner(
                 kind: "existing_task",
                 route: "mac_inbox",

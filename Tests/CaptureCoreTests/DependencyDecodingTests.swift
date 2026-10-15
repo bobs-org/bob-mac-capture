@@ -111,6 +111,47 @@ final class DependencyDecodingTests: XCTestCase {
         XCTAssertEqual(update.managedLineText, "**DEPENDS ON:** [[cash#^find-real-id-number]]")
         XCTAssertEqual(update.waitingText, "Waiting on 1 open prerequisite · Blocked")
         XCTAssertTrue(update.prerequisites[0].isOpen)
+        XCTAssertNil(update.prerequisites[0].alreadyPresent)
+        XCTAssertNil(update.prerequisites[0].previousStatus)
+        XCTAssertNil(update.prerequisites[0].previousStatusName)
+    }
+
+    func testPrerequisiteAlreadyPresentAndPreviousStatusDecodeAdditively() throws {
+        let update = try JSONDecoder().decode(
+            DependencyUpdateSummary.self,
+            from: Data("""
+            {
+              "dependent_note": "body.md",
+              "dependent_text": "Exercise",
+              "new_task": false,
+              "added": 1, "already_present": 1, "open_prerequisites": 2,
+              "prerequisites": [
+                {
+                  "note": "foo.md", "block_id": "bar",
+                  "link": "[[foo#^bar]]",
+                  "status_symbol": "/", "status_name": "In Progress",
+                  "text": "Buy shoes", "open": true,
+                  "already_present": true
+                },
+                {
+                  "note": "foo.md", "block_id": "socks",
+                  "link": "[[foo#^socks]]",
+                  "status_symbol": "/", "status_name": "In Progress",
+                  "previous_status": " ", "previous_status_name": "Ready",
+                  "text": "Buy socks", "open": true
+                }
+              ],
+              "dependent_status": "?",
+              "dependent_status_name": "Blocked",
+              "status_changed": true
+            }
+            """.utf8)
+        )
+        XCTAssertEqual(update.prerequisites[0].alreadyPresent, true)
+        XCTAssertNil(update.prerequisites[0].previousStatus)
+        XCTAssertEqual(update.prerequisites[1].alreadyPresent, nil)
+        XCTAssertEqual(update.prerequisites[1].previousStatus, " ")
+        XCTAssertEqual(update.prerequisites[1].previousStatusName, "Ready")
     }
 
     func testDependencyUpdateHeadlineForExistingDependent() {

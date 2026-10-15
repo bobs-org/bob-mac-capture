@@ -109,16 +109,25 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
             return [CaptureRelationshipRow(text: parts.joined(separator: " · "))]
         }
 
-        let verb = update.added == 0 ? "already depends on" : "depends on"
         return update.prerequisites.map { prerequisite in
+            let already = prerequisite.alreadyPresent ?? (update.added == 0)
+            let verb = already ? "already depends on" : "depends on"
             var parts = ["⛓ \(verb)", prerequisite.text]
             let location = locationText(note: prerequisite.note, blockID: prerequisite.blockID)
             if !location.isEmpty {
                 parts.append(location)
             }
-            let status = statusName(prerequisite.statusSymbol, name: prerequisite.statusName)
-            if !status.isEmpty {
-                parts.append(status)
+            let current = statusName(prerequisite.statusSymbol, name: prerequisite.statusName)
+            let previous = statusName(
+                prerequisite.previousStatus,
+                name: prerequisite.previousStatusName
+            )
+            let transition =
+                prerequisite.previousStatus != nil && !previous.isEmpty && !current.isEmpty
+                ? "\(previous) → \(current)"
+                : current
+            if !transition.isEmpty {
+                parts.append(transition)
             }
             return CaptureRelationshipRow(text: parts.joined(separator: " · "))
         }

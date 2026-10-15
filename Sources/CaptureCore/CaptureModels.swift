@@ -3145,6 +3145,12 @@ public struct DependencyPrerequisite: Codable, Equatable, Sendable {
     public let statusName: String
     public let text: String
     public let isOpen: Bool
+    /// Present on newer Bob; omitted when this prerequisite was not already
+    /// on the Depends-On line. Older Bob omits the key entirely.
+    public let alreadyPresent: Bool?
+    /// Present only when this write changed the prerequisite's status.
+    public let previousStatus: String?
+    public let previousStatusName: String?
 
     public init(
         note: String,
@@ -3153,7 +3159,10 @@ public struct DependencyPrerequisite: Codable, Equatable, Sendable {
         statusSymbol: String,
         statusName: String,
         text: String,
-        isOpen: Bool
+        isOpen: Bool,
+        alreadyPresent: Bool? = nil,
+        previousStatus: String? = nil,
+        previousStatusName: String? = nil
     ) {
         self.note = note
         self.blockID = blockID
@@ -3162,6 +3171,9 @@ public struct DependencyPrerequisite: Codable, Equatable, Sendable {
         self.statusName = statusName
         self.text = text
         self.isOpen = isOpen
+        self.alreadyPresent = alreadyPresent
+        self.previousStatus = previousStatus
+        self.previousStatusName = previousStatusName
     }
 
     public init(from decoder: Decoder) throws {
@@ -3173,6 +3185,9 @@ public struct DependencyPrerequisite: Codable, Equatable, Sendable {
         statusName = try container.decodeIfPresent(String.self, forKey: .statusName) ?? ""
         text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
         isOpen = try container.decodeIfPresent(Bool.self, forKey: .isOpen) ?? false
+        alreadyPresent = try container.decodeIfPresent(Bool.self, forKey: .alreadyPresent)
+        previousStatus = try container.decodeIfPresent(String.self, forKey: .previousStatus)
+        previousStatusName = try container.decodeIfPresent(String.self, forKey: .previousStatusName)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -3183,6 +3198,9 @@ public struct DependencyPrerequisite: Codable, Equatable, Sendable {
         case statusName = "status_name"
         case text
         case isOpen = "open"
+        case alreadyPresent = "already_present"
+        case previousStatus = "previous_status"
+        case previousStatusName = "previous_status_name"
     }
 }
 

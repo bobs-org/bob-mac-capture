@@ -8,23 +8,23 @@ final class CaptureRelationshipPresentationTests: XCTestCase {
         let cases: [(String, [String])] = [
             (
                 "task-dependency-preview-existing-owner.json",
-                ["⛓ depends on · Buy shoes · foo.md ^bar · Todo"]
+                ["⛓ depends on · Buy shoes · foo.md ^bar · Ready → In Progress"]
             ),
             (
                 "task-dependency-preview-existing-owner-alias.json",
-                ["⛓ depends on · Buy shoes · foo.md ^bar · Todo"]
+                ["⛓ depends on · Buy shoes · foo.md ^bar · Ready → In Progress"]
             ),
             (
                 "task-dependency-preview-existing-owner-consumed.json",
-                ["⛓ depends on · Buy shoes · foo.md ^bar · Todo"]
+                ["⛓ depends on · Buy shoes · foo.md ^bar · Ready → In Progress"]
             ),
             (
                 "task-dependency-preview-new-task.json",
-                ["⛓ depends on · Buy shoes · foo.md ^bar · Todo"]
+                ["⛓ depends on · Buy shoes · foo.md ^bar · Ready"]
             ),
             (
                 "task-dependency-preview-sub-bullet.json",
-                ["⛓ depends on · Buy shoes · foo.md ^bar · Todo"]
+                ["⛓ depends on · Buy shoes · foo.md ^bar · Ready → In Progress"]
             ),
             (
                 "task-dependency-preview-existing-owner-blocks.json",
@@ -33,7 +33,7 @@ final class CaptureRelationshipPresentationTests: XCTestCase {
             (
                 "task-dependency-preview-existing-owner-mixed.json",
                 [
-                    "⛓ depends on · Buy shoes · foo.md ^bar · Todo",
+                    "⛓ depends on · Buy shoes · foo.md ^bar · Ready → In Progress",
                     "🧱 blocks · Do cleanup tasks · job.md ^cleanup · Next → Blocked",
                 ]
             ),
@@ -54,7 +54,7 @@ final class CaptureRelationshipPresentationTests: XCTestCase {
             capture: try captureFixture("task-dependency-preview-existing-owner-mixed.json")
         )
         XCTAssertEqual(mixed.rows.map(\.text), [
-            "⛓ depends on · Buy shoes · foo.md ^bar · Todo",
+            "⛓ depends on · Buy shoes · foo.md ^bar · Ready → In Progress",
             "🧱 blocks · Do cleanup tasks · job.md ^cleanup · Next → Blocked",
         ])
     }
@@ -116,7 +116,7 @@ final class CaptureRelationshipPresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             CaptureRelationshipPresentation(capture: dependency).rows.map(\.text),
-            ["⛓ already depends on · Buy shoes · foo.md ^bar · Todo"]
+            ["⛓ already depends on · Buy shoes · foo.md ^bar · In Progress"]
         )
 
         let blocked = try captureWithAddedCount(
@@ -129,6 +129,61 @@ final class CaptureRelationshipPresentationTests: XCTestCase {
             ["🧱 already blocks · Do cleanup tasks · job.md ^cleanup · Blocked"]
         )
         XCTAssertEqual(presentation.ownerHeader?.statusText, "In Progress")
+    }
+
+    func testPerPrerequisiteAlreadyPresentAndStatusArrow() throws {
+        let capture = try decodeSuccess(
+            Data(
+                """
+                {
+                  "ok": true, "dry_run": true, "routed": true,
+                  "route_label": "body.md", "relative_target": "body.md",
+                  "target": "/tmp/vault/body.md", "text": "Exercise",
+                  "task_line": "- [?] #task Exercise", "kind": "task_dependency",
+                  "created": "2026-10-14", "placement": "updated",
+                  "dependency_updates": [{
+                    "role": "dependent", "added": 1, "already_present": 1,
+                    "dependent_text": "Exercise",
+                    "prerequisites": [
+                      {
+                        "note": "foo.md", "block_id": "bar", "link": "[[foo#^bar]]",
+                        "status_symbol": "/", "status_name": "In Progress",
+                        "text": "Buy shoes", "open": true, "already_present": true
+                      },
+                      {
+                        "note": "foo.md", "block_id": "socks", "link": "[[foo#^socks]]",
+                        "status_symbol": "/", "status_name": "In Progress",
+                        "previous_status": " ", "previous_status_name": "Ready",
+                        "text": "Buy socks", "open": true
+                      }
+                    ]
+                  }]
+                }
+                """.utf8
+            )
+        )
+        XCTAssertEqual(
+            CaptureRelationshipPresentation(capture: capture).rows.map(\.text),
+            [
+                "⛓ already depends on · Buy shoes · foo.md ^bar · In Progress",
+                "⛓ depends on · Buy socks · foo.md ^socks · Ready → In Progress",
+            ]
+        )
+    }
+
+    func testUnchangedOwnerLineIsCoveredForTaskDependency() throws {
+        let capture = try captureFixture("task-dependency-preview-existing-owner-unchanged.json")
+        let owner = try XCTUnwrap(
+            capture.taskBlocks.first(where: {
+                $0.relativeTarget == capture.relativeTarget && $0.blockID == capture.blockID
+            })
+        )
+        XCTAssertEqual(owner.lines.first?.change, .unchanged)
+        XCTAssertTrue(CaptureTaskBlockPresentation.covers(capture, blocks: capture.taskBlocks))
+        XCTAssertEqual(
+            CaptureRelationshipPresentation(capture: capture).rows.map(\.text),
+            ["🧱 blocks · Do cleanup tasks · job.md ^cleanup · Next → Blocked"]
+        )
     }
 
     func testNotificationUsesOwnerAndRelationshipAndConsumedLinkSummary() throws {
@@ -165,6 +220,13 @@ final class CaptureRelationshipPresentationTests: XCTestCase {
         updates[0]["added"] = added
         if fixture == "task-dependency-preview-existing-owner-blocks.json" {
             updates[0]["status_changed"] = false
+        }
+        if var prerequisites = updates[0]["prerequisites"] as? [[String: Any]] {
+            for index in prerequisites.indices {
+                prerequisites[index]["previous_status"] = nil
+                prerequisites[index]["previous_status_name"] = nil
+            }
+            updates[0]["prerequisites"] = prerequisites
         }
         json["dependency_updates"] = updates
         return try decodeSuccess(JSONSerialization.data(withJSONObject: json))

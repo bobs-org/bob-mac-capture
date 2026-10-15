@@ -692,7 +692,7 @@ and splice Bob's `complete_replacement` verbatim; Swift never builds the
 token. The prompt previews `!<locator>:<id>` from Bob's candidate locator,
 never the file name. The buttons read Add ID & Insert and Add ID & Complete.
 
-Preview shows one `⛓ depends on · Buy shoes · foo.md ^bar · Todo` or
+Preview shows one `⛓ depends on · Buy shoes · foo.md ^bar · Ready → In Progress` or
 `🧱 blocks · Do cleanup tasks · job.md ^cleanup · Next → Blocked` row per
 relationship, in Bob's `dependency_updates[]` order. Already-present rows say
 `already depends on` or `already blocks`; project-resident counts remain on the

@@ -3554,6 +3554,8 @@ JSON
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-dependency-preview-existing-owner-alias.json"
     elif [[ "${draft}" == "@body+excercise &foo:bar" ]]; then
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-dependency-preview-existing-owner.json"
+    elif [[ "${draft}" == "^body:excercise *job:cleanup" ]]; then
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-dependency-preview-existing-owner-unchanged.json"
     elif [[ "${draft}" == "@body+excercise *job:cleanup" ]]; then
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-dependency-preview-existing-owner-blocks.json"
     elif [[ "${draft}" == "Buy milk &foo:bar" ]]; then

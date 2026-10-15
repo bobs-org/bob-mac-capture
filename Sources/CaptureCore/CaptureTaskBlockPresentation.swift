@@ -211,10 +211,13 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
     /// `previewBlockLines` stack: blocks is non-empty and every preview
     /// line, with leading whitespace stripped, matches a distinct `added`
     /// or `changed` row, likewise stripped, of a task block filed under
-    /// the capture's own `relativeTarget`. Matching is one-to-one, so
-    /// duplicate bullets in one item each need their own row. Stripping
-    /// is required because Bob's `task_line` is unindented while the
-    /// block line carries the parent's child indentation.
+    /// the capture's own `relativeTarget`. A `task_dependency` also treats
+    /// every line of the owner block as covering, whatever its change
+    /// kind, so an unchanged owner line is not repeated under the owner
+    /// header. Matching is one-to-one, so duplicate bullets in one item
+    /// each need their own row. Stripping is required because Bob's
+    /// `task_line` is unindented while the block line carries the parent's
+    /// child indentation.
     public static func covers(
         _ capture: CaptureCommandSuccess,
         blocks: [CaptureTaskBlock]
@@ -222,10 +225,17 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
         guard !blocks.isEmpty else {
             return false
         }
+        let isTaskDependency = CaptureRelationshipPresentation.isTaskDependency(capture)
         var available: [(target: String, text: String)] = []
         for block in blocks {
-            for line in block.lines where line.change == .added || line.change == .changed {
-                available.append((block.relativeTarget, stripped(line.text)))
+            let isOwnerBlock = isTaskDependency
+                && block.relativeTarget == capture.relativeTarget
+                && block.blockID != nil
+                && block.blockID == capture.blockID
+            for line in block.lines {
+                if isOwnerBlock || line.change == .added || line.change == .changed {
+                    available.append((block.relativeTarget, stripped(line.text)))
+                }
             }
         }
         for preview in capture.previewBlockLines {

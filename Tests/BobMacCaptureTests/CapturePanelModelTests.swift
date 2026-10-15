@@ -6258,7 +6258,7 @@ final class CapturePanelModelTests: XCTestCase {
             (
                 "@body+excercise &foo:bar",
                 "task_dependency",
-                ["⛓ depends on · Buy shoes · foo.md ^bar · Todo"]
+                ["⛓ depends on · Buy shoes · foo.md ^bar · Ready → In Progress"]
             ),
             (
                 "@body+excercise *job:cleanup",
@@ -6269,24 +6269,29 @@ final class CapturePanelModelTests: XCTestCase {
                 "@body+excercise &foo:bar *job:cleanup",
                 "task_dependency",
                 [
-                    "⛓ depends on · Buy shoes · foo.md ^bar · Todo",
+                    "⛓ depends on · Buy shoes · foo.md ^bar · Ready → In Progress",
                     "🧱 blocks · Do cleanup tasks · job.md ^cleanup · Next → Blocked",
                 ]
             ),
             (
                 "^body:excercise &foo:bar",
                 "task_dependency",
-                ["⛓ depends on · Buy shoes · foo.md ^bar · Todo"]
+                ["⛓ depends on · Buy shoes · foo.md ^bar · Ready → In Progress"]
+            ),
+            (
+                "^body:excercise *job:cleanup",
+                "task_dependency",
+                ["🧱 blocks · Do cleanup tasks · job.md ^cleanup · Next → Blocked"]
             ),
             (
                 "Buy milk &foo:bar",
                 "task",
-                ["⛓ depends on · Buy shoes · foo.md ^bar · Todo"]
+                ["⛓ depends on · Buy shoes · foo.md ^bar · Ready"]
             ),
             (
                 "Waiting @body+excercise &foo:bar",
                 "sub_bullet",
-                ["⛓ depends on · Buy shoes · foo.md ^bar · Todo"]
+                ["⛓ depends on · Buy shoes · foo.md ^bar · Ready → In Progress"]
             ),
         ]
 
