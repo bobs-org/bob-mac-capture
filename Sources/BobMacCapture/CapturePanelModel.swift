@@ -1144,6 +1144,9 @@ final class CapturePanelModel: ObservableObject {
                     for: .NSSystemClockDidChange
                 )
             )
+            // Foundation posts day-change notifications in the background; keep agenda
+            // measurement on the main thread, matching CaptureAgendaStore's observers.
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.noteAgendaDayChanged()
             }

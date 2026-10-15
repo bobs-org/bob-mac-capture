@@ -44,6 +44,28 @@ final class RefsInspectorLoaderTests: XCTestCase {
         XCTAssertEqual(fixtures.fetcher.showPaths.count, 1)
     }
 
+    func testPreviewContentStaysPinnedWhileOtherItemsHydrate() async throws {
+        let fixtures = makeFixtures()
+        let loader = RefsInspectorLoader(
+            library: fixtures.library,
+            intrinsics: fixtures.intrinsics
+        )
+        let installed = RefsInspectorContent(
+            summary: RefsSummary(label: "SUMMARY", paragraph: "Pinned preview content")
+        )
+        loader.installContentForPreviews([fixtures.paper.id: installed])
+
+        loader.request(fixtures.paper)
+        try await Task.sleep(nanoseconds: 400_000_000)
+
+        XCTAssertEqual(loader.content(for: fixtures.paper.id), installed)
+        XCTAssertTrue(fixtures.fetcher.showPaths.isEmpty)
+
+        loader.request(fixtures.chat)
+        await waitForContent(loader, id: fixtures.chat.id)
+        XCTAssertEqual(fixtures.fetcher.showPaths, [fixtures.chat.id])
+    }
+
     func testLoaderFeedsSignalsBack() async throws {
         let fixtures = makeFixtures()
         let loader = RefsInspectorLoader(

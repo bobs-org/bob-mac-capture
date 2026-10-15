@@ -118,6 +118,7 @@ final class RefsPanelModelTests: XCTestCase {
             "FAKE_BOB_REFS_SHOW_FIXTURE": showFixture.path,
         ])
         await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
         let id = "ref/chat/small_reading.md"
         XCTAssertTrue(harness.model.perform(.select(id: id)))
         var completions: [RefsCopyRow] = []
@@ -133,7 +134,9 @@ final class RefsPanelModelTests: XCTestCase {
         )
 
         await harness.waitForModel { $0.copyCard == nil && harness.pasteboard.strings.count == 1 }
-        XCTAssertTrue(harness.pasteboard.strings[0].contains("Comment: Loaded comment"))
+        XCTAssertTrue(
+            harness.pasteboard.strings.first?.contains("Comment: Loaded comment") == true
+        )
         XCTAssertEqual(completions.map(\.confirmationTitle), ["Copied Note 1"])
         XCTAssertEqual(harness.pasteboard.strings.count, 1)
     }
@@ -504,7 +507,9 @@ final class RefsPanelModelTests: XCTestCase {
 
         XCTAssertEqual(completions.map(\.confirmationTitle), ["Copied Highlight · p. 11"])
         XCTAssertEqual(harness.pasteboard.strings.count, 1)
-        XCTAssertTrue(harness.pasteboard.strings[0].contains("> Uncommented quote"))
+        XCTAssertTrue(
+            harness.pasteboard.strings.first?.contains("> Uncommented quote") == true
+        )
         XCTAssertNil(harness.model.copyCard)
 
         harness.model.installForPreviews(
@@ -528,8 +533,12 @@ final class RefsPanelModelTests: XCTestCase {
 
         XCTAssertEqual(completions.map(\.confirmationTitle), ["Copied 3 Highlights"])
         XCTAssertEqual(harness.pasteboard.strings.count, 2)
-        XCTAssertTrue(harness.pasteboard.strings[1].contains("Note: Standalone"))
-        XCTAssertTrue(harness.pasteboard.strings[1].contains("Comment: Keep this"))
+        XCTAssertTrue(
+            harness.pasteboard.strings.dropFirst().first?.contains("Note: Standalone") == true
+        )
+        XCTAssertTrue(
+            harness.pasteboard.strings.dropFirst().first?.contains("Comment: Keep this") == true
+        )
         XCTAssertNil(harness.model.copyCard)
     }
 
@@ -694,7 +703,9 @@ final class RefsPanelModelTests: XCTestCase {
 
         harness.model.performBannerAction(.copyDiagnostic)
         XCTAssertEqual(harness.pasteboard.strings.count, 1)
-        XCTAssertTrue(harness.pasteboard.strings[0].contains("copy-me-busy"))
+        XCTAssertTrue(
+            harness.pasteboard.strings.first?.contains("copy-me-busy") == true
+        )
     }
 
     func testUnavailableRowKeepsTitleRefusesOpensAndKeepsNavigation() async throws {
@@ -1371,7 +1382,9 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertTrue(partial.model.banner?.message.contains("couldn't be scanned") ?? false)
         partial.model.performBannerAction(.copyDiagnostic)
         XCTAssertFalse(partial.pasteboard.strings.isEmpty)
-        XCTAssertTrue(partial.pasteboard.strings[0].contains("bob ref scan"))
+        XCTAssertTrue(
+            partial.pasteboard.strings.first?.contains("bob ref scan") == true
+        )
 
         let dirtyURL = try harnessFixtureURL("refs-scan-dirty.json").path
         let failed = try makeHarness(environment: [

@@ -451,6 +451,8 @@ public final class RefsInspectorLoader: ObservableObject {
     private let library: RefsLibrary
     private let intrinsics: RefsPDFIntrinsicsProviding
     private var current: Task<Void, Never>?
+    /// Preview-installed ids stay pinned until reset or another install.
+    private var previewContentIDs: Set<String> = []
     private var showCache: [(key: String, row: RefsShowRow)] = []
     /// In-flight `ref show` fetches, keyed like `showCache`. The task
     /// is unstructured so canceling one waiter never cancels the
@@ -483,6 +485,10 @@ public final class RefsInspectorLoader: ObservableObject {
     /// movement: the previous load cancels.
     public func request(_ item: RefItem) {
         current?.cancel()
+        guard !previewContentIDs.contains(item.id) else {
+            current = nil
+            return
+        }
         current = Task { [weak self] in
             try? await Task.sleep(nanoseconds: Self.settleDelayNanoseconds)
             guard !Task.isCancelled else {
@@ -503,10 +509,12 @@ public final class RefsInspectorLoader: ObservableObject {
         cancel()
         content = [:]
         thumbnails = [:]
+        previewContentIDs = []
     }
 
     /// Installs canned content for design tests and previews, skipping
-    /// every process.
+    /// every process. Installed ids stay pinned across later requests
+    /// until reset or the next install.
     public func installContentForPreviews(
         _ content: [String: RefsInspectorContent],
         thumbnails: [String: NSImage] = [:]
@@ -514,6 +522,7 @@ public final class RefsInspectorLoader: ObservableObject {
         cancel()
         self.content = content
         self.thumbnails = thumbnails
+        previewContentIDs = Set(content.keys)
     }
 
     /// Seeds the `ref show` cache so Copy card tests can open H without
