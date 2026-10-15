@@ -4515,7 +4515,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertFalse(record.contains("capture-complete"))
     }
 
-    func testGlobalRouteSpanUsesCachedRouteCompletionWithoutBobComplete() async throws {
+    func testGlobalRouteSpanSkipsCacheAndUsesBobComplete() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
@@ -4550,7 +4550,38 @@ final class CapturePanelModelTests: XCTestCase {
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture-parse --format json -- \(draft)"))
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"))
-        XCTAssertFalse(record.contains("capture-complete"))
+        XCTAssertTrue(record.contains("capture-complete"))
+    }
+
+    func testTemplateHeaderCandidateReachableWithPrimedCache() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        installTargetCache(
+            on: model,
+            targets: [
+                CaptureTarget(
+                    route: "mac_inbox",
+                    name: "mac_inbox",
+                    label: "mac_inbox.md",
+                    kind: "inbox",
+                    relativePath: "mac_inbox.md"
+                ),
+            ]
+        )
+        model.plainDraft = "@@te"
+        model.editorTextDidChange(cursorUTF8Offset: "@@te".utf8.count)
+        await waitUntil { model.completionResponse?.candidates.first?.kind == "template" }
+
+        XCTAssertEqual(model.completionResponse?.candidates.first?.kind, "template")
+        XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "template:")
     }
 
     func testGlobalSubBulletTaskCompletionAndMissingIDPromptUseHeaderRange() async throws {

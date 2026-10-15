@@ -1691,7 +1691,7 @@ including the next panel show.
 | Return | Capture, then close the panel | Accept the selected completion | Add the ID and select the task | Name the Pomodoro and select it |
 | Command-Return | Capture, open the target in Obsidian, then close the panel | Accept, then submit | Consume the key; do not capture | Consume the key; do not capture |
 | Shift-Return / Option-Return | Insert a newline | Insert a newline | Add the ID and select the task | Name the Pomodoro and select it |
-| Ctrl-J | Insert a new indentation-aware `- ` row; anywhere before a populated dash bullet's body, remove the prefix into a blank separator and keep its body | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
+| Ctrl-J | Insert a new indentation-aware `- ` row; anywhere before a populated dash bullet's body, remove the prefix into a blank separator and keep its body; in a template draft, as reported by bob's parse, insert a plain newline | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-Shift-O | Insert a blank physical line immediately above the current line and move the caret onto it | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-U | Delete from the caret to the beginning of the current physical line; when the caret is already at that start, delete the previous line instead, stopping on the first line | Same deletion, closing completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-A | Move to the beginning of the current physical line; when the caret is already there, move to the beginning of the previous line, stopping on the first line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
@@ -1958,6 +1958,8 @@ keeps the normal new-row insertion behavior. On a line that
 contains only optional whitespace plus one `-`, `*`, or `+` marker, Ctrl-J replaces the
 placeholder with exactly one blank item separator and puts the caret at the beginning of
 the following line, reusing an existing line terminator when one is already there.
+In a template draft, as reported by bob's parse, Ctrl-J inserts a plain newline
+everywhere in the draft with no indentation and no `-`.
 macOS smart-dash substitution is disabled in the draft editor so `--3` and `-2`
 stay literal ASCII hyphens; smart quotes are unchanged. Plain Tab first checks
 for a local editor snippet: with a collapsed caret immediately after `--`, it

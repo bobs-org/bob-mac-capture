@@ -41,7 +41,7 @@ final class CompletionRowContentTests: XCTestCase {
     func testTemplateHeaderCandidateHasDirectivePresentationWithoutBadges() {
         let candidate = CaptureCompletionCandidate(
             replacement: "@@template:",
-            label: "Bulk template",
+            label: "Bulk template: one capture per row below",
             kind: "template"
         )
 
@@ -51,7 +51,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.symbolName, "square.stack.3d.down.right")
         XCTAssertEqual(content.contextLabel, "Template")
         XCTAssertEqual(content.primaryText, "@@template:")
-        XCTAssertEqual(content.secondaryText, "Bulk template")
+        XCTAssertEqual(content.secondaryText, "Bulk template: one capture per row below")
         XCTAssertEqual(content.badges, [])
         XCTAssertEqual(content.accessibilityHint, "Starts a bulk template: one capture per row")
     }

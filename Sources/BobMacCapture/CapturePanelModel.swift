@@ -4570,8 +4570,8 @@ final class CapturePanelModel: ObservableObject {
     /// Precedence is `active_task`, then `task_link`, then `task_goto`, then
     /// `task_parent`, then `task_dependency`, then `blocked_task`, then
     /// `task_complete`, then `dependency_target`, then `pomodoro_id`, then
-    /// `block_id`, then the `=<X>#` named-start incomplete, checked
-    /// top-level or in any item.
+    /// `block_id`, then `template_row`, then the `=<X>#` named-start
+    /// incomplete, checked top-level or in any item.
     /// Suffix-only states such as `@sase:x#` (`pomodoro_name` without a
     /// `pomodoro_start` object) keep today's behavior.
     private static func pickerNeed(in parse: CaptureParseResponse) -> CapturePickerNeed? {
@@ -6909,7 +6909,7 @@ final class CapturePanelModel: ObservableObject {
                 }
             }
             if parse.template != nil {
-                for diagnostic in parse.diagnostics where diagnostic.severity != "info" {
+                for diagnostic in parse.diagnostics where diagnostic.severity != "info" && diagnostic.code != "template_missing_rows" {
                     guard let range = diagnostic.range,
                           let typedRange = stringRange(in: draft, byteRange: range),
                           let lower = AttributedString.Index(typedRange.lowerBound, within: text),
@@ -7019,6 +7019,12 @@ final class CapturePanelModel: ObservableObject {
         cursor: Int,
         draft: String
     ) -> CaptureCompletionResponse? {
+        // `@@` route completion always goes through bob so the `template:`
+        // header candidate appears. This filters on span kinds bob reported,
+        // not on local grammar.
+        if parse.spans.contains(where: { $0.kind == "global_route" && cursor >= $0.start && cursor <= $0.end }) {
+            return nil
+        }
         guard let targets = targetCacheSnapshot.targets?.targets, !targets.isEmpty else {
             return nil
         }

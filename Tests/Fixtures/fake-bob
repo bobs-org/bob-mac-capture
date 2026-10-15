@@ -114,7 +114,7 @@ close_log_chain_draft=$'=x =\n- 1 wired it'
 close_log_invalid_draft=$'=x\n- 1 see [[bob#^x]]'
 close_log_trimmed_draft=$'=x\n-'
 template_example_draft=$'@@template:\nApply to {0}! @job_2026_apply_29:{1}\n- **URL**: {2}\n\nFoobar foo http://foobar.com/career/some_foo_job\nBazbuz baz http://bazbuz.com/career/some_baz_job\n"Two Sigma" two-sigma https://www.twosigma.com/careers/some_role'
-template_one_row_draft=$'Task {0}\n\nvalue'
+template_one_row_draft=$'@@template:\nTask {0}\n\nvalue'
 template_header_draft='@@template:'
 template_no_rows_draft=$'@@template:\nRecord {0} @work:{1}\n\n'
 template_arity_draft=$'@@template:\nRecord {0} @work:{1}\n\nAcme abc extra'
@@ -1788,6 +1788,19 @@ JSON
     done
     if [[ "${draft}" == "@@te" ]]; then
       cat "${fixtures_dir}/capture-complete-template-header.json"
+    elif [[ "${draft}" == "@@ma" || "${draft}" == $'@@ma\nFirst task' ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 2, "end": 4 },
+  "context": "route",
+  "candidates": [
+    { "replacement": "mac_inbox", "route": "mac_inbox", "label": "mac_inbox.md", "kind": "inbox", "status": null }
+  ]
+}
+JSON
     elif [[ "${draft}" == *"[[AI"* ]]; then
       prefix="${draft%%"[[AI"*}"
       start=$((${#prefix} + 2))

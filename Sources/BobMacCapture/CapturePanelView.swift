@@ -1881,9 +1881,9 @@ struct PreviewPane: View {
         }
         if captures.count > 1 || success.template != nil {
             HStack(spacing: 6) {
-                Text("\(captures.count) captures")
+                Text(captures.count == 1 ? "1 capture" : "\(captures.count) captures")
                     .fontWeight(.semibold)
-                    .accessibilityLabel("\(captures.count) capture items")
+                    .accessibilityLabel(captures.count == 1 ? "1 capture item" : "\(captures.count) capture items")
                 if let template = success.template {
                     Text(template.previewChipTitle)
                         .font(.caption)

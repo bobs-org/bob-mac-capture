@@ -22,7 +22,7 @@ final class CaptureTemplatePresentationTests: XCTestCase {
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
-        model.plainDraft = "@@template:\n"
+        model.plainDraft = "@@template:"
         model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
 
         await waitUntil { model.parseDiagnostics.contains { $0.code == "template_missing_rows" } }
@@ -34,6 +34,10 @@ final class CaptureTemplatePresentationTests: XCTestCase {
         XCTAssertEqual(model.statusText, diagnostic.message)
         XCTAssertEqual(model.previewState, .idle)
         XCTAssertNil(model.errorMessage)
+        let underlined = model.attributedDraft.runs.contains { run in
+            run.underlineStyle == .single && run.underlineColor == .red
+        }
+        XCTAssertFalse(underlined, "header-only missing-rows state stays calm with no underline")
     }
 
     func testTemplateDiagnosticUnderlineUsesTypedRange() async throws {
@@ -83,6 +87,20 @@ final class CaptureTemplatePresentationTests: XCTestCase {
                 appearance: appearance
             )
         }
+    }
+
+    func testTemplateOneRowPreviewUsesBobsDiagnostic() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "@@template:\nTask {0}\n\nvalue"
+        model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+
+        await waitUntil { model.parsedTemplate != nil }
+        XCTAssertEqual(model.parsedTemplate?.rows.count, 1)
+        XCTAssertEqual(model.parsedTemplate?.rows.first?.row, 1)
     }
 
     private func modelForTemplateArityError() async throws -> CapturePanelModel {

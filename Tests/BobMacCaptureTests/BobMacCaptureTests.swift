@@ -2185,6 +2185,76 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(multilineSelection.selection, NSRange(location: "Parent\n \n  - ".utf16.count, length: 0))
     }
 
+    func testTemplatePlainNewlineInsertsOnlyNewline() throws {
+        func applyPlain(
+            text: String,
+            selectedRange: NSRange
+        ) throws -> (text: String, selection: NSRange) {
+            guard let edit = CaptureBulletNewlineEditResolver.resolvePlainNewline(
+                in: text,
+                selectedRange: selectedRange
+            ) else {
+                throw BulletEditTestError.unresolved
+            }
+            let result = NSMutableString(string: text)
+            result.replaceCharacters(in: edit.replacementRange, with: edit.replacementText)
+            return (String(result), edit.selectedRange)
+        }
+
+        let header = try applyPlain(
+            text: "@@template:",
+            selectedRange: NSRange(location: "@@template:".utf16.count, length: 0)
+        )
+        XCTAssertEqual(header.text, "@@template:\n")
+        XCTAssertEqual(header.selection, NSRange(location: "@@template:\n".utf16.count, length: 0))
+
+        let templateLine = try applyPlain(
+            text: "@@template:\nApply to {0}",
+            selectedRange: NSRange(location: "@@template:\nApply to {0}".utf16.count, length: 0)
+        )
+        XCTAssertEqual(templateLine.text, "@@template:\nApply to {0}\n")
+
+        let childBullet = try applyPlain(
+            text: "@@template:\nTask {0}\n- child",
+            selectedRange: NSRange(location: "@@template:\nTask {0}\n- child".utf16.count, length: 0)
+        )
+        XCTAssertEqual(childBullet.text, "@@template:\nTask {0}\n- child\n")
+
+        let placeholderRow = try applyPlain(
+            text: "@@template:\nTask {0}\n\n- ",
+            selectedRange: NSRange(location: "@@template:\nTask {0}\n\n- ".utf16.count, length: 0)
+        )
+        XCTAssertEqual(placeholderRow.text, "@@template:\nTask {0}\n\n- \n")
+
+        let selection = try applyPlain(
+            text: "@@template:\nTask {0}",
+            selectedRange: NSRange(location: 5, length: 4)
+        )
+        XCTAssertEqual(selection.text, "@@temp\nTask {0}")
+        XCTAssertEqual(selection.selection, NSRange(location: 6, length: 0))
+    }
+
+    @MainActor
+    func testInsertBulletNewlineUsesPlainNewlineInTemplateMode() {
+        let model = CapturePanelModel()
+        model.parsedTemplate = CaptureParseTemplate()
+        model.completionResponse = sampleCompletionResponse()
+
+        let textView = NSTextView()
+        textView.isEditable = true
+        textView.string = "@@template:\nTask {0}"
+        textView.setSelectedRange(NSRange(location: "@@template:\nTask {0}".utf16.count, length: 0))
+
+        XCTAssertTrue(
+            CapturePanelController.insertBulletNewlineInEditableTextView(
+                firstResponder: textView,
+                model: model
+            )
+        )
+        XCTAssertEqual(textView.string, "@@template:\nTask {0}\n")
+        XCTAssertNil(model.completionResponse)
+    }
+
     @MainActor
     func testInsertBulletNewlineRemovesPopulatedDashPrefixAndDismissesCompletion() {
         let model = CapturePanelModel()

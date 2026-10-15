@@ -71,6 +71,29 @@ private func preferredCaptureLineTerminator(in text: String) -> String {
 }
 
 enum CaptureBulletNewlineEditResolver {
+    /// Template drafts (as reported by bob's parse) never auto-insert a dash:
+    /// Ctrl-J replaces the selection with exactly one `\n` and puts the caret
+    /// after it. Pure and unit-testable; the controller passes
+    /// `model.parsedTemplate != nil`.
+    static func resolvePlainNewline(
+        in text: String,
+        selectedRange: NSRange
+    ) -> CaptureBulletNewlineEdit? {
+        let nsText = text as NSString
+        guard selectedRange.location >= 0,
+              selectedRange.length >= 0,
+              selectedRange.location + selectedRange.length <= nsText.length
+        else {
+            return nil
+        }
+        let finalLocation = selectedRange.location + 1
+        return CaptureBulletNewlineEdit(
+            replacementRange: selectedRange,
+            replacementText: "\n",
+            selectedRange: NSRange(location: finalLocation, length: 0)
+        )
+    }
+
     static func resolve(in text: String, selectedRange: NSRange) -> CaptureBulletNewlineEdit? {
         let nsText = text as NSString
         guard selectedRange.location >= 0,
@@ -754,11 +777,28 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         firstResponder: NSResponder?,
         model: CapturePanelModel
     ) -> Bool {
-        guard let textView = editableTextView(firstResponder),
-              let edit = CaptureBulletNewlineEditResolver.resolve(
+        guard let textView = editableTextView(firstResponder) else {
+            return false
+        }
+        // Template drafts (bob's parse only; ~50ms stale at most) get a plain
+        // newline everywhere in the draft: header, template block, and rows.
+        // Never decide template syntax locally.
+        if model.parsedTemplate != nil {
+            guard let edit = CaptureBulletNewlineEditResolver.resolvePlainNewline(
                 in: textView.string,
                 selectedRange: textView.selectedRange()
-              )
+            ) else {
+                return false
+            }
+            model.dismissCompletion()
+            textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
+            textView.setSelectedRange(edit.selectedRange)
+            return true
+        }
+        guard let edit = CaptureBulletNewlineEditResolver.resolve(
+            in: textView.string,
+            selectedRange: textView.selectedRange()
+        )
         else {
             return false
         }
