@@ -19,6 +19,7 @@ final class RefsCopyCardDesignTests: XCTestCase {
         try write(card: errorCard(), name: "refs-copy-card-error")
         try write(card: highlightPickerCard(), name: "refs-copy-highlight-picker")
         try write(card: alternatesCard(), name: "refs-copy-card-alternates", alternates: true)
+        try write(card: alternatesCard(), name: "refs-copy-card-home-paths")
         try write(
             card: highlightPickerCard(), name: "refs-copy-picker-alternates", alternates: true)
         try writeHUD()

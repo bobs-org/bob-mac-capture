@@ -102,17 +102,20 @@ public struct RefsCopyAlternate: Equatable, Sendable {
     public let payload: RefsClipboardPayload
     public let preview: String
     public let confirmationTitle: String
+    public let help: String?
 
     public init(
         label: String,
         payload: RefsClipboardPayload,
         preview: String,
-        confirmationTitle: String
+        confirmationTitle: String,
+        help: String? = nil
     ) {
         self.label = label
         self.payload = payload
         self.preview = preview
         self.confirmationTitle = confirmationTitle
+        self.help = help
     }
 }
 
@@ -159,9 +162,13 @@ public struct RefsCopyRow: Equatable, Sendable {
     public func resolved(alternate active: Bool) -> RefsCopyRow {
         guard active, let alternate else { return self }
         let help: String
-        switch alternate.payload {
-        case .text(let value): help = value
-        case .fileURL(let url): help = url.path
+        if let alternateHelp = alternate.help {
+            help = alternateHelp
+        } else {
+            switch alternate.payload {
+            case .text(let value): help = value
+            case .fileURL(let url): help = url.path
+            }
         }
         return RefsCopyRow(
             key: key, group: group, label: alternate.label,
@@ -321,9 +328,14 @@ public struct RefsCopyCatalog: Equatable, Sendable {
             value: item.id,
             confirmationTitle: "Copied Note Path",
             alternate: absoluteNotePath.map {
-                RefsCopyAlternate(
-                    label: "Note path · absolute", payload: .text($0), preview: $0,
-                    confirmationTitle: "Copied Absolute Note Path"
+                let path = RefsCopyFormat.homeAbbreviatedPath(
+                    $0, homeDirectoryPath: homeDirectoryPath)
+                let shortened = path != $0
+                return RefsCopyAlternate(
+                    label: shortened ? "Note path · ~" : "Note path · absolute",
+                    payload: .text(path), preview: path,
+                    confirmationTitle: shortened
+                        ? "Copied Note Path · ~" : "Copied Absolute Note Path"
                 )
             }
         ))
@@ -341,17 +353,20 @@ public struct RefsCopyCatalog: Equatable, Sendable {
                 key: .pdfPath,
                 group: .files,
                 label: "PDF path",
-                value: absolutePDFPath,
+                value: RefsCopyFormat.homeAbbreviatedPath(
+                    absolutePDFPath, homeDirectoryPath: homeDirectoryPath),
                 tag: pdfExists ? nil : .missing,
                 confirmationTitle: "Copied PDF Path",
-                alternate: homeDirectoryPath.map {
-                    let path = RefsCopyFormat.abbreviatedPath(
-                        absolutePDFPath, homeDirectoryPath: $0)
+                alternate: {
+                    let path = RefsCopyFormat.homeAbbreviatedPath(
+                        absolutePDFPath, homeDirectoryPath: homeDirectoryPath)
+                    guard path != absolutePDFPath else { return nil }
                     return RefsCopyAlternate(
-                        label: "PDF path · ~", payload: .text(path), preview: path,
-                        confirmationTitle: "Copied PDF Path · ~"
+                        label: "PDF path · absolute", payload: .text(absolutePDFPath),
+                        preview: absolutePDFPath,
+                        confirmationTitle: "Copied Absolute PDF Path"
                     )
-                }
+                }()
             ))
             if pdfExists {
                 let fileURL = URL(fileURLWithPath: absolutePDFPath)
@@ -367,7 +382,9 @@ public struct RefsCopyCatalog: Equatable, Sendable {
                         RefsCopyAlternate(
                             label: "Narration file", payload: .fileURL($0),
                             preview: $0.lastPathComponent,
-                            confirmationTitle: "Copied Narration File"
+                            confirmationTitle: "Copied Narration File",
+                            help: RefsCopyFormat.homeAbbreviatedPath(
+                                $0.path, homeDirectoryPath: homeDirectoryPath)
                         )
                     }
                 ))
@@ -588,6 +605,11 @@ public enum RefsCopyFormat {
         if path == home { return "~" }
         guard path.hasPrefix(home + "/") else { return path }
         return "~" + path.dropFirst(home.count)
+    }
+
+    public static func homeAbbreviatedPath(_ path: String, homeDirectoryPath: String?) -> String {
+        guard let homeDirectoryPath else { return path }
+        return abbreviatedPath(path, homeDirectoryPath: homeDirectoryPath)
     }
 
     public static func quoteAlternate(_ annotation: RefsShowAnnotation) -> RefsCopyAlternate? {

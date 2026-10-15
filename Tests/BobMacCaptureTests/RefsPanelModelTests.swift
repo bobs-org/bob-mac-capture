@@ -438,11 +438,18 @@ final class RefsPanelModelTests: XCTestCase {
         let card = try XCTUnwrap(harness.model.copyCard)
         XCTAssertEqual(
             card.catalog.row(for: .notePath)?.alternate?.payload,
-            .text(harness.vault.appendingPathComponent(item.id).path))
+            .text(RefsCopyFormat.abbreviatedPath(
+                harness.vault.appendingPathComponent(item.id).path,
+                homeDirectoryPath: FileManager.default.homeDirectoryForCurrentUser.path)))
         XCTAssertEqual(
             card.catalog.row(for: .obsidianLink)?.payload,
             ObsidianOpenURL.url(forAbsolutePath: harness.vault.appendingPathComponent(item.id).path)
                 .map { .text($0.absoluteString) })
+        XCTAssertEqual(
+            card.catalog.row(for: .pdfPath)?.payload,
+            .text(RefsCopyFormat.abbreviatedPath(
+                pdf.path,
+                homeDirectoryPath: FileManager.default.homeDirectoryForCurrentUser.path)))
         XCTAssertEqual(card.catalog.row(for: .pdfFile)?.alternate?.payload, .fileURL(audio))
         try FileManager.default.removeItem(at: audio)
         var copies = 0

@@ -1433,8 +1433,12 @@ and Ctrl-P/N/J/K move the
 selection, and Escape returns to the inspector. From the picker, Escape
 returns to the card.
 
+Paths under your home folder copy with `~` in place of it (for example,
+`~/bob/lib/…`). Only the Obsidian link and the PDF and narration file copies
+stay absolute, because they need a real path.
+
 Hold Option (⌥) to swap previews in place. Option-W copies a titled wiki link,
-Option-P a `~`-abbreviated PDF path, Option-N the absolute note path, and
+Option-P the absolute PDF path, Option-N the note's full `~` path, and
 Option-F the narration file when it exists. Option-1–9 copies the highlight's
 quote verbatim, without comment or provenance, on either the card or picker.
 Rows without an alternate keep their normal payload, including standalone notes.

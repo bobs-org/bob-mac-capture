@@ -39,8 +39,8 @@ final class RefsCopyAlternatesTests: XCTestCase {
         XCTAssertEqual(alternates.map(\.group), card.rows.map(\.group))
         let expected: [(RefsCopyKey, RefsClipboardPayload)] = [
             (.wikiLink, .text("[[ref/chat/a & b|A  B]]")),
-            (.pdfPath, .text("~/bob/lib/a.pdf")),
-            (.notePath, .text("/Users/test/bob/" + item.id)),
+            (.pdfPath, .text("/Users/test/bob/lib/a.pdf")),
+            (.notePath, .text("~/bob/" + item.id)),
             (.pdfFile, .fileURL(URL(fileURLWithPath: "/Users/test/bob/lib/a.m4a"))),
             (.note(1), .text(quote)),
         ]
@@ -53,6 +53,9 @@ final class RefsCopyAlternatesTests: XCTestCase {
             XCTAssertEqual(copying.handle(.key(key, alternate: true)), .write(alternate))
         }
         XCTAssertEqual(card.catalog.row(for: .pdfFile)?.resolved(alternate: true).preview, "a.m4a")
+        XCTAssertEqual(
+            card.catalog.row(for: .pdfPath)?.resolved(alternate: true).payload,
+            .text("/Users/test/bob/lib/a.pdf"))
         for key in [RefsCopyKey.title, .note(2), .allNotes] {
             let row = try XCTUnwrap(card.catalog.row(for: key))
             XCTAssertNil(row.alternate)
@@ -61,6 +64,62 @@ final class RefsCopyAlternatesTests: XCTestCase {
         let noAudio = try XCTUnwrap(makeCard(narration: false).catalog.row(for: .pdfFile))
         XCTAssertNil(noAudio.alternate)
         XCTAssertEqual(noAudio.resolved(alternate: true), noAudio)
+    }
+
+    func testHomePathsCopyWithTilde() throws {
+        let card = makeCard()
+        let pdfPath = try XCTUnwrap(card.catalog.row(for: .pdfPath))
+        XCTAssertEqual(pdfPath.payload, .text("~/bob/lib/a.pdf"))
+        XCTAssertEqual(pdfPath.preview, "~/bob/lib/a.pdf")
+        XCTAssertEqual(pdfPath.label, "PDF path")
+        XCTAssertEqual(pdfPath.confirmationTitle, "Copied PDF Path")
+        var copying = card
+        XCTAssertEqual(copying.handle(.key(.pdfPath)), .write(pdfPath))
+
+        let notePath = try XCTUnwrap(card.catalog.row(for: .notePath)?.alternate)
+        XCTAssertEqual(notePath.label, "Note path · ~")
+        XCTAssertEqual(notePath.payload, .text("~/bob/" + item.id))
+        XCTAssertEqual(notePath.confirmationTitle, "Copied Note Path · ~")
+        let pdfFile = try XCTUnwrap(card.catalog.row(for: .pdfFile))
+        XCTAssertEqual(pdfFile.payload, .fileURL(URL(fileURLWithPath: "/Users/test/bob/lib/a.pdf")))
+        XCTAssertEqual(
+            pdfFile.resolved(alternate: true).help, "~/bob/lib/a.m4a")
+        let obsidian = try XCTUnwrap(card.catalog.row(for: .obsidianLink))
+        XCTAssertEqual(
+            URLComponents(string: obsidian.preview)?.queryItems?.first(where: { $0.name == "path" })?.value,
+            "/Users/test/bob/" + item.id)
+
+        let absolutePDF = try XCTUnwrap(pdfPath.alternate)
+        XCTAssertEqual(absolutePDF.label, "PDF path · absolute")
+        XCTAssertEqual(absolutePDF.confirmationTitle, "Copied Absolute PDF Path")
+        XCTAssertEqual(absolutePDF.payload, .text("/Users/test/bob/lib/a.pdf"))
+    }
+
+    func testHomePathsStayAbsoluteWhenTheyCannotBeShortened() throws {
+        let cases: [(String, String?)] = [
+            ("/Volumes/vault/ref/chat/a.md", "/Users/test"),
+            ("/Users/test2/bob/ref/chat/a.md", "/Users/test"),
+            ("/Users/test/bob/ref/chat/a.md", nil),
+        ]
+        for (notePath, home) in cases {
+            let pdfPath = notePath.replacingOccurrences(of: "ref/chat/a.md", with: "lib/a.pdf")
+            let catalog = RefsCopyCatalog(
+                item: item, absolutePDFPath: pdfPath, pdfExists: true,
+                notes: .loaded(notes), noteCapacity: 5, absoluteNotePath: notePath,
+                homeDirectoryPath: home)
+            let pdf = try XCTUnwrap(catalog.row(for: .pdfPath))
+            XCTAssertEqual(pdf.payload, .text(pdfPath))
+            XCTAssertNil(pdf.alternate)
+            var card = RefsCopyCard(
+                token: 1, item: item, absolutePDFPath: pdfPath, pdfExists: true,
+                notes: .loaded(notes), noteCapacity: 5, absoluteNotePath: notePath,
+                homeDirectoryPath: home)
+            XCTAssertEqual(card.handle(.key(.pdfPath)), .write(pdf))
+            let note = try XCTUnwrap(catalog.row(for: .notePath)?.alternate)
+            XCTAssertEqual(note.payload, .text(notePath))
+            XCTAssertEqual(note.label, "Note path · absolute")
+            XCTAssertEqual(note.confirmationTitle, "Copied Absolute Note Path")
+        }
     }
 
     func testTitledLinksAndHomeAbbreviationBoundaries() {
@@ -77,6 +136,7 @@ final class RefsCopyAlternatesTests: XCTestCase {
                 RefsCopyFormat.abbreviatedPath(path, homeDirectoryPath: "/Users/test/"), expected)
         }
         XCTAssertEqual(RefsCopyFormat.abbreviatedPath("/a", homeDirectoryPath: ""), "/a")
+        XCTAssertEqual(RefsCopyFormat.homeAbbreviatedPath("/a", homeDirectoryPath: nil), "/a")
     }
 
     func testObsidianURLFollowsNotePathWithEncodingAndFixedPosition() throws {
