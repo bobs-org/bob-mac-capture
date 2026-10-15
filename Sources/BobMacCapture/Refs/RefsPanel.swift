@@ -7,6 +7,7 @@ import SwiftUI
 /// controller can find it in the view tree without a reference back
 /// into SwiftUI.
 let refsFilterFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.refs-filter"
+let refsRenameFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.refs-rename-stem"
 
 /// The borderless non-activating glass panel. `canBecomeKey` is true so
 /// the search field takes keystrokes; `canBecomeMain` stays false so
@@ -190,6 +191,9 @@ public final class RefsPanelController: NSObject {
                 if action == .scanLibrary, scanDisabled {
                     item.isEnabled = false
                 }
+                if action == .rename, model.isRenaming {
+                    item.isEnabled = false
+                }
                 menu.addItem(item)
             }
         }
@@ -331,6 +335,17 @@ public final class RefsPanelController: NSObject {
             }
             return event
         }
+        if model.renameCard != nil {
+            guard let command = model.renameCardKeyCommand(
+                keyCode: event.keyCode,
+                modifiers: Self.copyModifiers(event.modifierFlags),
+                hasMarkedText: markedTextInRenameField()
+            ) else {
+                return event
+            }
+            model.handleRenameCardKey(command)
+            return nil
+        }
         if model.copyCard != nil {
             model.handleCopyCardKey(
                 characters: event.charactersIgnoringModifiers,
@@ -391,6 +406,15 @@ public final class RefsPanelController: NSObject {
         return editor.hasMarkedText()
     }
 
+    private func markedTextInRenameField() -> Bool {
+        guard let field = Self.findRenameField(in: panel?.contentView),
+              let editor = field.currentEditor() as? NSTextView
+        else {
+            return false
+        }
+        return editor.hasMarkedText()
+    }
+
     /// Claims search-field focus when nothing else holds it, leaving
     /// focused controls such as banner buttons alone.
     private func repairFilterFocusIfNeeded() {
@@ -439,6 +463,23 @@ public final class RefsPanelController: NSObject {
         }
         for subview in view.subviews {
             if let found = findFilterField(in: subview) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    static func findRenameField(in view: NSView?) -> NSTextField? {
+        guard let view else {
+            return nil
+        }
+        if let field = view as? NSTextField,
+           field.accessibilityIdentifier() == refsRenameFieldAccessibilityIdentifier
+        {
+            return field
+        }
+        for subview in view.subviews {
+            if let found = findRenameField(in: subview) {
                 return found
             }
         }

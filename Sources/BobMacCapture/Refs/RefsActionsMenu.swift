@@ -10,6 +10,7 @@ public enum RefsAction: Equatable, Sendable {
     case openNote
     case reveal
     case copy
+    case rename
     case openSourceURL(URL)
     case openNarration(URL)
     case openDefaultApp
@@ -26,6 +27,8 @@ public enum RefsAction: Equatable, Sendable {
             return "Reveal in Finder"
         case .copy:
             return "Copy…"
+        case .rename:
+            return "Rename…"
         case .openSourceURL:
             return "Open Source URL"
         case .openNarration:
@@ -52,6 +55,8 @@ public enum RefsAction: Equatable, Sendable {
             return "s"
         case .copy:
             return "y"
+        case .rename:
+            return "r"
         case .openSourceURL, .openNarration, .openDefaultApp:
             return ""
         }
@@ -65,6 +70,8 @@ public enum RefsAction: Equatable, Sendable {
             return .option
         case .copy:
             return .command
+        case .rename:
+            return [.command, .shift]
         case .openHighlights, .openSourceURL, .openNarration, .openDefaultApp:
             return []
         }
@@ -84,7 +91,7 @@ public enum RefsActionsMenu {
         audioURL: URL?
     ) -> [[RefsAction]] {
         let opens: [RefsAction] = [.openHighlights, .openNote, .reveal]
-        var middle: [RefsAction] = [.copy]
+        var middle: [RefsAction] = [.copy, .rename]
         if let source = item.urls.compactMap(URL.init(string:)).first {
             middle.append(.openSourceURL(source))
         }

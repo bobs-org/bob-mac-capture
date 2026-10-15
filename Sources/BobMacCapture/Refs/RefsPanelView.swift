@@ -145,14 +145,16 @@ public struct RefsPanelView: View {
             }
         } else {
             Group {
-                if model.copyCard != nil {
+                if model.renameCard != nil {
+                    renameCard
+                } else if model.copyCard != nil {
                     copyCard
                 } else {
                     RefsListView(model: model, previewMode: previewMode)
                         .transition(.opacity)
                 }
             }
-            .animation(copyCardAnimation, value: model.copyCard != nil)
+            .animation(copyCardAnimation, value: model.copyCard != nil || model.renameCard != nil)
         }
     }
 
@@ -165,7 +167,9 @@ public struct RefsPanelView: View {
     @ViewBuilder
     private var inspector: some View {
         Group {
-            if model.copyCard != nil {
+            if model.renameCard != nil {
+                renameCard
+            } else if model.copyCard != nil {
                 copyCard
             } else if let selected = model.selectedID,
                let content = model.rowContent(for: selected)
@@ -191,7 +195,7 @@ public struct RefsPanelView: View {
                     .transition(.opacity)
             }
         }
-        .animation(copyCardAnimation, value: model.copyCard != nil)
+        .animation(copyCardAnimation, value: model.copyCard != nil || model.renameCard != nil)
     }
 
     private var copyCard: some View {
@@ -219,6 +223,20 @@ public struct RefsPanelView: View {
                     onPickerRowTap: { model.copyCardPickerRowTapped($0) }
                 )
                 .id(card.token)
+                .transition(copyCardTransition)
+            }
+        }
+    }
+
+    private var renameCard: some View {
+        Group {
+            if let card = model.renameCard {
+                RefsRenameCardView(
+                    card: card,
+                    focusSequence: model.renameCardGeneration,
+                    onDraftChange: { model.editRenameDraft($0) }
+                )
+                .id(model.renameCardGeneration)
                 .transition(copyCardTransition)
             }
         }

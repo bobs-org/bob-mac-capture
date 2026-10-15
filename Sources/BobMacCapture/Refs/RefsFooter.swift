@@ -108,23 +108,28 @@ struct RefsFooter: View {
 
     private var status: some View {
         Group {
-            switch Self.statusPriority(
-                isScanning: model.isScanning,
-                refreshFailed: isRefreshFailed,
-                hasScanNotice: model.scanNotice != nil,
-                refreshing: isRefreshing
-            ) {
-            case .scanning:
-                scanningStatus
-            case .refreshFailed:
-                Text("Update failed · ⌘R to retry")
-                    .foregroundStyle(.orange)
-            case .scan:
-                if let notice = model.scanNotice {
-                    scanStatus(notice)
+            if let renameStatus = model.renameStatus {
+                Text(renameStatus)
+                    .foregroundStyle(.secondary)
+            } else {
+                switch Self.statusPriority(
+                    isScanning: model.isScanning,
+                    refreshFailed: isRefreshFailed,
+                    hasScanNotice: model.scanNotice != nil,
+                    refreshing: isRefreshing
+                ) {
+                case .scanning:
+                    scanningStatus
+                case .refreshFailed:
+                    Text("Update failed · ⌘R to retry")
+                        .foregroundStyle(.orange)
+                case .scan:
+                    if let notice = model.scanNotice {
+                        scanStatus(notice)
+                    }
+                case .updating, .updated:
+                    refreshStatus
                 }
-            case .updating, .updated:
-                refreshStatus
             }
         }
         .font(.caption)
@@ -151,6 +156,9 @@ struct RefsFooter: View {
     }
 
     private var statusKey: String {
+        if let renameStatus = model.renameStatus {
+            return "rename-\(renameStatus)"
+        }
         if model.isScanning {
             return "scanning"
         }

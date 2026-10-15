@@ -27,6 +27,7 @@ public enum RefsCommand: Equatable, Sendable {
     case activate(id: String)
     case showActions
     case showCopyCard
+    case showRenameCard
     case scan
     /// Scroll the right-hand inspector by half its viewport.
     case scrollInspector(RefsInspectorScrollDirection)
@@ -217,6 +218,9 @@ public final class RefsPanelModel: ObservableObject {
                 if copyCard?.frozenItemID != selectedID {
                     closeCopyCard()
                 }
+                if renameCard?.frozenItemID != selectedID, !isRenaming {
+                    closeRenameCard()
+                }
             }
         }
     }
@@ -254,6 +258,17 @@ public final class RefsPanelModel: ObservableObject {
     /// The active fixed-letter copy card, if one is open.
     @Published public private(set) var copyCard: RefsCopyCard?
     @Published public private(set) var copyAlternatesActive = false
+    /// The editable filename card; Bob remains the authority for the
+    /// rename rules and the returned destination path.
+    @Published public private(set) var renameCard: RefsRenameCard?
+    @Published public private(set) var renameCardGeneration: UInt64 = 0
+    /// Last completed rename status, shown in the footer until the next
+    /// panel operation replaces it.
+    @Published public private(set) var renameStatus: String?
+
+    public var isRenaming: Bool {
+        renameCard?.phase == .running
+    }
 
     /// Flags only affect an open card (including its picker layer).
     public func updateCopyModifiers(_ modifiers: RefsCopyKeyModifiers) {
@@ -325,6 +340,8 @@ public final class RefsPanelModel: ObservableObject {
     /// hidden, unless it succeeded with nothing created. AppDelegate
     /// sets this to post the hidden-panel notification.
     public var scanNotifier: (RefsScanOutcome) -> Void = { _ in }
+    /// Called when a rename finishes after the panel was hidden.
+    public var renameNotifier: (RefsRenameResponse) -> Void = { _ in }
 
     private let library: RefsLibrary
     private let opener: RefsOpening
@@ -352,6 +369,7 @@ public final class RefsPanelModel: ObservableObject {
     private var pendingCopyTimeoutKey: RefsCopyKey?
     private var pendingCopyTimeoutToken: UInt64?
     private var copyMessageTask: Task<Void, Never>?
+    private var renameTask: Task<Void, Never>?
     private var selectionAtScanStart: String?
     private var pendingScanBanner: RefsBanner?
     private var scanNoticeSeen = false
@@ -411,6 +429,9 @@ public final class RefsPanelModel: ObservableObject {
     /// Clears the scan notice once it has been seen.
     public func panelDidHide() {
         closeCopyCard()
+        if !isRenaming {
+            closeRenameCard()
+        }
         if scanNoticeSeen {
             scanNotice = nil
             scanNoticeSeen = false
@@ -442,9 +463,13 @@ public final class RefsPanelModel: ObservableObject {
     /// includes Just scanned through `signals.scan`, so its first row
     /// selects that section's first row.
     public func prepareForPresentation() {
-        closeCopyCard()
         presentationCount += 1
         selectedRowRect = nil
+        if isRenaming {
+            return
+        }
+        closeCopyCard()
+        closeRenameCard()
         query = ""
         scope = .all
         banner = nil
@@ -497,6 +522,10 @@ public final class RefsPanelModel: ObservableObject {
             rerankSelectingFirst()
             return true
         case .escape:
+            if renameCard != nil, !isRenaming {
+                closeRenameCard()
+                return true
+            }
             if copyCard != nil {
                 closeCopyCard()
                 return true
@@ -531,6 +560,10 @@ public final class RefsPanelModel: ObservableObject {
             library.refresh(reason: .manual)
             return true
         case .select(let id):
+            if isRenaming {
+                return true
+            }
+            closeRenameCard()
             closeCopyCard()
             guard listing.orderedIDs.contains(id) else {
                 return false
@@ -538,6 +571,10 @@ public final class RefsPanelModel: ObservableObject {
             selectedID = id
             return true
         case .activate(let id):
+            if isRenaming {
+                return true
+            }
+            closeRenameCard()
             closeCopyCard()
             guard listing.orderedIDs.contains(id) else {
                 return false
@@ -545,6 +582,10 @@ public final class RefsPanelModel: ObservableObject {
             selectedID = id
             return openSelected(.highlights)
         case .showActions:
+            if isRenaming {
+                return true
+            }
+            closeRenameCard()
             closeCopyCard()
             guard selectedID != nil, selectedItem != nil else {
                 return false
@@ -553,6 +594,9 @@ public final class RefsPanelModel: ObservableObject {
             return true
         case .showCopyCard:
             openCopyCard()
+            return true
+        case .showRenameCard:
+            openRenameCard()
             return true
         case .scan:
             if isScanning {
@@ -814,6 +858,8 @@ public final class RefsPanelModel: ObservableObject {
             _ = openSelected(.reveal)
         case .copy:
             openCopyCard()
+        case .rename:
+            openRenameCard()
         case .openSourceURL(let url):
             _ = NSWorkspace.shared.open(url)
         case .openNarration(let url):
@@ -832,6 +878,8 @@ public final class RefsPanelModel: ObservableObject {
     public func openCopyCard(
         optionHeld: Bool = NSEvent.modifierFlags.contains(.option)
     ) {
+        guard !isRenaming else { return }
+        closeRenameCard()
         closeCopyCard()
         guard let item = selectedItem,
               listing.orderedIDs.contains(item.id),
@@ -876,6 +924,136 @@ public final class RefsPanelModel: ObservableObject {
                 self.copyCardNotesFailed(token: token, path: item.id)
             }
         }
+    }
+
+    /// Opens a rename card for the selected, available row. Its title
+    /// and note path stay frozen until the operation is cancelled or
+    /// Bob returns a result.
+    public func openRenameCard() {
+        guard !isRenaming,
+              let item = selectedItem,
+              listing.orderedIDs.contains(item.id),
+              !unavailableIDs.contains(item.id)
+        else {
+            return
+        }
+        closeCopyCard()
+        closeRenameCard()
+        renameStatus = nil
+        renameCardGeneration &+= 1
+        renameCard = RefsRenameCard(item: item)
+    }
+
+    /// The event monitor asks the pure key map first so keys it does not
+    /// own can continue into AppKit's editable text field.
+    public func renameCardKeyCommand(
+        keyCode: UInt16,
+        modifiers: RefsCopyKeyModifiers,
+        hasMarkedText: Bool
+    ) -> RefsRenameKeyCommand? {
+        guard let card = renameCard else { return nil }
+        return RefsRenameKeyMap.command(
+            keyCode: keyCode,
+            modifiers: modifiers,
+            isRunning: card.phase == .running,
+            hasMarkedText: hasMarkedText
+        )
+    }
+
+    /// Applies one rename-card key. Draft keys not claimed by the key
+    /// map never reach this method and remain native text editing.
+    public func handleRenameCardKey(_ command: RefsRenameKeyCommand) {
+        guard var card = renameCard else { return }
+        let path = card.notePath
+        let effect = card.handle(command)
+        renameCard = card
+        switch effect {
+        case .none:
+            break
+        case .cancel:
+            closeRenameCard()
+        case .submit(let name):
+            renameTask?.cancel()
+            renameTask = Task { [weak self] in
+                await self?.runRename(notePath: path, name: name)
+            }
+        }
+    }
+
+    /// Updates the editable stem. Bob will validate it and returns any
+    /// refusal inline without discarding the user's draft.
+    public func editRenameDraft(_ stem: String) {
+        guard var card = renameCard else { return }
+        card.editDraftStem(stem)
+        renameCard = card
+    }
+
+    private func closeRenameCard() {
+        guard !isRenaming else { return }
+        renameCard = nil
+        renameTask = nil
+    }
+
+    private func runRename(notePath: String, name: String) async {
+        do {
+            let response = try await library.rename(notePath: notePath, name: name)
+            guard let current = renameCard, current.notePath == notePath else {
+                renameTask = nil
+                return
+            }
+            guard response.error == nil, response.ok != false,
+                  let destination = response.to?.path
+            else {
+                let failure = response.error ?? RefsRenameFailure(
+                    code: "invalid_response",
+                    message: "Bob returned an incomplete rename response."
+                )
+                failRename(message: failure.message, hint: failure.hint)
+                libraryDidPublish()
+                return
+            }
+            let stem = response.to?.stem
+                ?? URL(fileURLWithPath: destination).deletingPathExtension().lastPathComponent
+            let wasVisible = panelIsVisible()
+            knownItems.removeValue(forKey: notePath)
+            unavailableIDs.remove(notePath)
+            unavailableIDs.remove(destination)
+            if revealedPageID == notePath {
+                revealedPageID = destination
+                revealedPage = nil
+            }
+            if selectedID == notePath {
+                selectedID = destination
+            }
+            await inspectorLoader.discard(id: notePath)
+            renameCard = nil
+            renameTask = nil
+            renameStatus = RefsRenamePresentation.footerStatus(
+                stem: stem,
+                rewrittenLinks: response.links?.rewritten ?? 0
+            )
+            freshListing(selecting: destination)
+            if wasVisible {
+                AccessibilityNotification.Announcement(
+                    RefsRenamePresentation.announcement(stem: stem)
+                ).post()
+            } else {
+                renameNotifier(response)
+            }
+        } catch {
+            failRename(
+                message: RefsRenameProblemMapping.transportProblem(for: error).message,
+                hint: RefsRenameProblemMapping.transportProblem(for: error).hint
+            )
+            libraryDidPublish()
+        }
+    }
+
+    private func failRename(message: String, hint: String?) {
+        guard var card = renameCard else { return }
+        card.fail(message: message, hint: hint)
+        renameCard = card
+        renameTask = nil
     }
 
     /// Feeds one key captured by the controller to the card state machine.
@@ -1070,6 +1248,33 @@ public final class RefsPanelModel: ObservableObject {
         }
     }
 
+    /// Rebuilds from Bob's post-rename list and follows the destination
+    /// that Bob reported, never a path inferred by the client.
+    private func freshListing(selecting id: String) {
+        pendingRefreshRerank = false
+        pruneKnownItems()
+        var fresh = RefsRanker.listing(
+            library.items,
+            query: query,
+            scope: scope,
+            signals: library.signals
+        )
+        if !fresh.orderedIDs.contains(id) {
+            query = ""
+            fresh = RefsRanker.listing(
+                library.items,
+                query: query,
+                scope: scope,
+                signals: library.signals
+            )
+        }
+        listing = fresh
+        unavailableIDs = []
+        selectedID = listing.orderedIDs.contains(id)
+            ? id
+            : RefsSelectionPolicy.initial(in: listing)
+    }
+
     /// Drops last-known items the library no longer has: a fresh listing
     /// drops vanished rows, so their titles go with them.
     private func pruneKnownItems() {
@@ -1077,6 +1282,12 @@ public final class RefsPanelModel: ObservableObject {
     }
 
     private func libraryDidPublish() {
+        // Keep the card's frozen listing intact while bob moves the bundle
+        // and the library performs its single post-rename refresh. On
+        // success, runRename installs a fresh listing at bob's `to.path`.
+        if isRenaming {
+            return
+        }
         for item in library.items {
             knownItems[item.id] = item
         }

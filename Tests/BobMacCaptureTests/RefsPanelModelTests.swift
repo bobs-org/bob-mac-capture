@@ -41,6 +41,179 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertNil(harness.model.selectedRowRect)
     }
 
+    func testRenameUsesBobDestinationMigratesHistoryAndNotifiesWhenHidden() async throws {
+        let oldPath = "ref/blogs/old_stem.md"
+        let newPath = "ref/blogs/new_stem.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: oldPath, stem: "old_stem")]
+        )
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [oldPath])
+        let openedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        harness.openLogStore.append(RefsOpenEvent(path: oldPath, at: openedAt))
+        fetcher.renameResponse = RefsRenameResponse(
+            schemaVersion: 1,
+            ok: true,
+            from: RefsRenameLocation(path: oldPath, stem: "old_stem"),
+            to: RefsRenameLocation(path: newPath, stem: "new_stem"),
+            links: RefsRenameLinks(rewritten: 1, files: ["sase.md"]),
+            outcome: "renamed",
+            changed: true
+        )
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: newPath, stem: "new_stem")]
+        )
+        harness.model.panelIsVisible = { false }
+        var notifications: [RefsRenameResponse] = []
+        harness.model.renameNotifier = { notifications.append($0) }
+
+        harness.model.openRenameCard()
+        XCTAssertEqual(harness.model.renameCard?.draftStem, "old_stem")
+        harness.model.editRenameDraft("new_stem")
+        harness.model.handleRenameCardKey(.submit)
+        harness.model.panelDidHide()
+
+        await harness.waitForModel { $0.renameCard == nil && $0.selectedID == newPath }
+        XCTAssertEqual(fetcher.renameCalls.map(\.notePath), [oldPath])
+        XCTAssertEqual(fetcher.renameCalls.map(\.name), ["new_stem"])
+        XCTAssertEqual(harness.library.items.map(\.id), [newPath])
+        XCTAssertEqual(harness.model.renameStatus, "Renamed → new_stem.pdf · 1 link updated")
+        XCTAssertEqual(harness.library.signals.opens.count(newPath), 1)
+        XCTAssertEqual(harness.library.signals.opens.count(oldPath), 0)
+        XCTAssertEqual(notifications, [fetcher.renameResponse])
+    }
+
+    func testRenameKeepsRunningWhenHiddenAndShowsBobErrorsInline() async throws {
+        let oldPath = "ref/blogs/old_stem.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: oldPath, stem: "old_stem")]
+        )
+        fetcher.renameDelayNanoseconds = 100_000_000
+        fetcher.renameResponse = RefsRenameResponse(
+            schemaVersion: 1,
+            ok: false,
+            error: RefsRenameFailure(
+                code: "name_taken",
+                message: "That filename is already in use.",
+                hint: "Choose a different filename."
+            )
+        )
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [oldPath])
+        harness.model.openRenameCard()
+        harness.model.editRenameDraft("taken")
+        harness.model.handleRenameCardKey(.submit)
+        harness.model.panelDidHide()
+
+        XCTAssertTrue(harness.model.isRenaming)
+        await harness.waitForModel {
+            if case .failed(let message, let hint) = $0.renameCard?.phase {
+                return message == "That filename is already in use."
+                    && hint == "Choose a different filename."
+            }
+            return false
+        }
+        XCTAssertEqual(harness.model.renameCard?.draftStem, "taken")
+        XCTAssertEqual(harness.model.selectedID, oldPath)
+
+        harness.model.prepareForPresentation()
+        XCTAssertNil(harness.model.renameCard)
+    }
+
+    func testRenameMapsOlderBobFailureToInlineUpdateMessage() async throws {
+        let oldPath = "ref/blogs/old_stem.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: oldPath, stem: "old_stem")]
+        )
+        fetcher.renameError = BobClientError.processFailed(
+            command: ["bob", "ref", "rename"],
+            exitStatus: 2,
+            stderr: "unknown command"
+        )
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [oldPath])
+        harness.model.openRenameCard()
+        harness.model.handleRenameCardKey(.submit)
+
+        await harness.waitForModel {
+            if case .failed(let message, _) = $0.renameCard?.phase {
+                return message == "This bob can't rename references yet — update bob on this Mac"
+            }
+            return false
+        }
+    }
+
+    func testRenameTextEditingKeysPassThroughControllerAndEscapeClosesCardFirst() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let item = try XCTUnwrap(harness.model.selectedItem)
+        harness.model.installForPreviews(
+            items: [item], signals: harness.model.signals, query: "", scope: .all,
+            selectedID: item.id,
+            banner: RefsBanner(kind: .error, message: "boom", actions: []),
+            refreshState: .idle
+        )
+        harness.model.openRenameCard()
+        let controller = RefsPanelController(model: harness.model)
+        let textEvent = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "x",
+            charactersIgnoringModifiers: "x",
+            isARepeat: false,
+            keyCode: 7
+        ))
+        XCTAssertTrue(controller.processKeyEvent(textEvent) === textEvent)
+
+        XCTAssertTrue(harness.model.perform(.escape))
+        XCTAssertNil(harness.model.renameCard)
+        XCTAssertEqual(harness.model.banner?.message, "boom")
+        XCTAssertEqual(harness.model.selectedID, item.id)
+    }
+
+    func testRenameFieldPrefillsStemAndTakesFirstResponderWithTextSelected() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let controller = RefsPanelController(model: harness.model)
+        controller.prewarm()
+        controller.show()
+        let item = try XCTUnwrap(harness.model.selectedItem)
+        harness.model.openRenameCard()
+
+        let deadline = Date().addingTimeInterval(1)
+        var field: NSTextField?
+        while Date() < deadline {
+            controller.makePanelIfNeeded().contentView?.layoutSubtreeIfNeeded()
+            field = RefsPanelController.findRenameField(
+                in: controller.makePanelIfNeeded().contentView
+            )
+            if field?.currentEditor() != nil {
+                break
+            }
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
+
+        let renameField = try XCTUnwrap(field)
+        let editor = try XCTUnwrap(renameField.currentEditor() as? NSTextView)
+        XCTAssertEqual(renameField.stringValue, item.stem)
+        XCTAssertEqual(
+            editor.selectedRange(),
+            NSRange(location: 0, length: item.stem.utf16.count)
+        )
+        controller.hide()
+    }
+
     func testShowCopyCardConsumesTheCommandWithoutASelection() async throws {
         let harness = try makeHarness()
         harness.model.installForPreviews(
@@ -1515,6 +1688,18 @@ final class RefsPanelModelTests: XCTestCase {
         ]
     }
 
+    private static func renameRecord(path: String, stem: String) -> RefRecord {
+        RefRecord(
+            path: path,
+            link: "[[\(path.replacingOccurrences(of: ".md", with: ""))]]",
+            title: "Rename test reference",
+            refType: "blogs",
+            status: "ready",
+            readingState: "queued",
+            sourcePDF: "lib/blogs/\(stem).pdf"
+        )
+    }
+
     private static func eightNotes() -> [RefsShowAnnotation] {
         (1...8).map { index in
             RefsShowAnnotation(
@@ -1569,6 +1754,7 @@ final class RefsPanelModelTests: XCTestCase {
         let model: RefsPanelModel
         let opener: FakeOpener
         let pasteboard: FakePasteboard
+        let openLogStore: RefsOpenLogStore
         let vault: URL
         let highlightsURL: URL?
         nonisolated(unsafe) var dismissed = 0
@@ -1580,6 +1766,7 @@ final class RefsPanelModelTests: XCTestCase {
             model: RefsPanelModel,
             opener: FakeOpener,
             pasteboard: FakePasteboard,
+            openLogStore: RefsOpenLogStore,
             vault: URL,
             highlightsURL: URL?
         ) {
@@ -1587,6 +1774,7 @@ final class RefsPanelModelTests: XCTestCase {
             self.model = model
             self.opener = opener
             self.pasteboard = pasteboard
+            self.openLogStore = openLogStore
             self.vault = vault
             self.highlightsURL = highlightsURL
         }
@@ -1669,14 +1857,15 @@ final class RefsPanelModelTests: XCTestCase {
             at: vault.appendingPathComponent("lib"),
             withIntermediateDirectories: true
         )
+        let openLogStore = RefsOpenLogStore(
+            fileURL: root.appendingPathComponent("refs-open-log.json")
+        )
         let library = RefsLibrary(
             fetcher: BobRefsFetcher(client: try bobClient(environment: environment)),
             snapshotStore: RefsSnapshotStore(
                 fileURL: root.appendingPathComponent("refs-snapshot.json")
             ),
-            openLogStore: RefsOpenLogStore(
-                fileURL: root.appendingPathComponent("refs-open-log.json")
-            ),
+            openLogStore: openLogStore,
             vaultRoot: { vault },
             fileExists: { url in !missing.contains(where: { url.path.hasSuffix($0) }) },
             spotlight: FakeSpotlight(),
@@ -1696,6 +1885,7 @@ final class RefsPanelModelTests: XCTestCase {
             model: model,
             opener: opener,
             pasteboard: pasteboard,
+            openLogStore: openLogStore,
             vault: vault,
             highlightsURL: highlightsURL
         )
@@ -1706,6 +1896,53 @@ final class RefsPanelModelTests: XCTestCase {
         model.panelRepresenter = { [weak harness] in harness?.represented += 1 }
         // Kick off the snapshot refresh every test waits for: nothing in the
         // model triggers one on its own.
+        library.refresh(reason: .manual)
+        return harness
+    }
+
+    private func makeRenameHarness(fetcher: FakeRefsFetcher) throws -> Harness {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let vault = root.appendingPathComponent("vault")
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent("ref"),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent("lib"),
+            withIntermediateDirectories: true
+        )
+        let openLogStore = RefsOpenLogStore(
+            fileURL: root.appendingPathComponent("refs-open-log.json")
+        )
+        let library = RefsLibrary(
+            fetcher: fetcher,
+            snapshotStore: RefsSnapshotStore(
+                fileURL: root.appendingPathComponent("refs-snapshot.json")
+            ),
+            openLogStore: openLogStore,
+            vaultRoot: { vault },
+            fileExists: { _ in true },
+            spotlight: FakeSpotlight(),
+            now: { Date() }
+        )
+        let opener = FakeOpener()
+        let pasteboard = FakePasteboard()
+        let model = RefsPanelModel(
+            library: library,
+            opener: opener,
+            highlights: FakeLocator(appURL: nil),
+            pasteboard: pasteboard
+        )
+        let harness = Harness(
+            library: library,
+            model: model,
+            opener: opener,
+            pasteboard: pasteboard,
+            openLogStore: openLogStore,
+            vault: vault,
+            highlightsURL: nil
+        )
         library.refresh(reason: .manual)
         return harness
     }

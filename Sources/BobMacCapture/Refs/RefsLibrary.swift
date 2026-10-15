@@ -104,6 +104,7 @@ private let refsMaxErrorMessageLength = 200
 /// Why the inspector's detail load failed before it reached `bob`.
 public enum RefsLibraryError: Error, Sendable {
     case unavailable
+    case busy
 }
 
 /// The Refs library refresh service: the cached snapshot, the git-date
@@ -150,6 +151,7 @@ public final class RefsLibrary: ObservableObject {
     private var gitFollowUp = false
     private var scanTask: Task<Void, Never>?
     private var scanInFlight = false
+    private var renameInFlight = false
     private var deferredWatcherRefresh = false
 
     private var watcher: VaultTargetWatcher?
@@ -269,7 +271,7 @@ public final class RefsLibrary: ObservableObject {
     /// A scan never cancels another lane, and no other lane cancels it.
     @discardableResult
     public func scan() -> Bool {
-        guard scanTask == nil, !scanInFlight else {
+        guard scanTask == nil, !scanInFlight, !renameInFlight else {
             return false
         }
         scanState = .scanning(startedAt: now())
@@ -284,7 +286,7 @@ public final class RefsLibrary: ObservableObject {
     /// one happened; it does not refresh. The post-scan refresh covers
     /// every deferred change in one pass.
     func handleWatcherChange() {
-        if scanInFlight {
+        if scanInFlight || renameInFlight {
             deferredWatcherRefresh = true
         } else {
             refresh(reason: .watcher)
@@ -354,6 +356,55 @@ public final class RefsLibrary: ObservableObject {
             throw RefsLibraryError.unavailable
         }
         return try await fetcher.show(path: path)
+    }
+
+    /// Runs Bob's whole-file rename on its independent, non-cancelling
+    /// lane. Watcher churn from the move is held until Bob returns, then
+    /// one fresh listing replaces the old path before this method ends.
+    public func rename(notePath: String, name: String) async throws -> RefsRenameResponse {
+        guard !scanInFlight, !renameInFlight else {
+            throw RefsLibraryError.busy
+        }
+        guard let fetcher else {
+            throw RefsLibraryError.unavailable
+        }
+        renameInFlight = true
+        deferredWatcherRefresh = false
+        defer {
+            renameInFlight = false
+            deferredWatcherRefresh = false
+        }
+
+        do {
+            let response = try await fetcher.rename(notePath: notePath, name: name)
+            let succeeded = response.error == nil && response.ok != false
+            if succeeded {
+                if let destination = response.to?.path {
+                    openLogStore.rename(from: notePath, to: destination)
+                    openEvents = openLogStore.load()
+                    publishOpenSignals()
+                }
+                await refreshSnapshotAfterRename()
+            } else if deferredWatcherRefresh {
+                await refreshSnapshotAfterRename()
+            }
+            return response
+        } catch {
+            if deferredWatcherRefresh {
+                await refreshSnapshotAfterRename()
+            }
+            throw error
+        }
+    }
+
+    private func refreshSnapshotAfterRename() async {
+        while let current = snapshotTask {
+            await current.value
+        }
+        refreshSnapshot(reason: .manual)
+        while let current = snapshotTask {
+            await current.value
+        }
     }
 
     /// Merges inspector-discovered facts into the signals: intrinsics

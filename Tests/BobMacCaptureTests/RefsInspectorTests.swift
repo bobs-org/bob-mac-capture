@@ -461,7 +461,7 @@ final class RefsInspectorLoaderTests: XCTestCase {
     XCTAssertEqual(chatSections.count, 3)
     XCTAssertEqual(
       chatSections[1],
-      [.copy]
+      [.copy, .rename]
     )
 
     let paperURL = fixtures.library.audioURL(for: fixtures.paper)
@@ -545,6 +545,10 @@ final class RefsInspectorLoaderTests: XCTestCase {
     XCTAssertEqual(RefsAction.copy.title, "Copy…")
     XCTAssertEqual(RefsAction.copy.keyEquivalent, "y")
     XCTAssertEqual(RefsAction.copy.keyEquivalentModifierMask, .command)
+    XCTAssertEqual(RefsAction.rename.title, "Rename…")
+    XCTAssertEqual(RefsAction.rename.keyEquivalent, "r")
+    XCTAssertEqual(RefsAction.rename.keyEquivalentModifierMask, [.command, .shift])
+    XCTAssertTrue(model.actionsSections()[1].contains(.rename))
     model.performAction(.copy)
     XCTAssertNotNil(model.copyCard)
 
@@ -554,6 +558,10 @@ final class RefsInspectorLoaderTests: XCTestCase {
       modifiers: []
     )
     XCTAssertEqual(pasteboard.strings, ["[[ref/chat/today_report]]"])
+    XCTAssertNil(model.copyCard)
+
+    model.performAction(.rename)
+    XCTAssertEqual(model.renameCard?.draftStem, "today_report")
     XCTAssertNil(model.copyCard)
   }
 
@@ -777,7 +785,9 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
   var showError: Error?
   var renameError: Error?
   var renameResponse = RefsRenameResponse()
+  var listResponse = RefsListResponse(schemaVersion: 1)
   var showDelayNanoseconds: UInt64 = 50_000_000
+  var renameDelayNanoseconds: UInt64 = 0
   /// When set, the returned row uses this path instead of the
   /// requested one, so exact-path matching can fail.
   var showRowPath: String?
@@ -785,7 +795,7 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
   var showResponse: RefsShowResponse?
 
   func list(gitDates: Bool) async throws -> RefsListResponse {
-    RefsListResponse(schemaVersion: 1)
+    listResponse
   }
 
   func plan() async throws -> RefsPlanResponse {
@@ -804,6 +814,9 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
 
   func rename(notePath: String, name: String) async throws -> RefsRenameResponse {
     lock.withLock { renameCalls.append((notePath, name)) }
+    if renameDelayNanoseconds > 0 {
+      try await Task.sleep(nanoseconds: renameDelayNanoseconds)
+    }
     if let renameError {
       throw renameError
     }

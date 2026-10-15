@@ -54,6 +54,11 @@ public struct RefsPDFIntrinsics: Equatable, Sendable {
 /// Loads PDF intrinsics behind a protocol so tests inject a stub.
 public protocol RefsPDFIntrinsicsProviding: Sendable {
     func intrinsics(for pdfURL: URL, id: String) async -> RefsPDFIntrinsics
+    func discard(id: String) async
+}
+
+public extension RefsPDFIntrinsicsProviding {
+    func discard(id: String) async {}
 }
 
 /// The two sides of an intrinsics load race: the first `finish`
@@ -122,6 +127,7 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
     private let reader: @Sendable (URL) async -> RefsPDFIntrinsics
     private var memory: [Key: RefsPDFIntrinsics] = [:]
     private var memoryOrder: [Key] = []
+    private var discardedPaths: Set<String> = []
 
     public init(
         cacheDirectory: URL? = nil,
@@ -159,11 +165,43 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
         let loaded = await loadWithTimeout(url: pdfURL)
         // A failure never caches: the timeout abandons its read, and a
         // later selection retries instead of pinning the miss.
-        if !loaded.failed {
+        if !loaded.failed, !discardedPaths.contains(id) {
             remember(key: key, value: loaded)
             writeDisk(key: key, value: loaded)
         }
         return loaded
+    }
+
+    /// Removes every cached value and thumbnail derived for a moved
+    /// reference path from both the memory and disk caches.
+    public func discard(id: String) {
+        discardedPaths.insert(id)
+        let keys = memory.keys.filter { $0.path == id }
+        for key in keys {
+            memory.removeValue(forKey: key)
+            memoryOrder.removeAll { $0 == key }
+        }
+        guard let data = try? Data(contentsOf: diskFile()),
+              var entries = try? JSONDecoder().decode([String: DiskEntry].self, from: data)
+        else {
+            return
+        }
+        let prefix = "\(id)|"
+        let staleKeys = entries.keys.filter { $0.hasPrefix(prefix) }
+        for key in staleKeys {
+            if let removed = entries.removeValue(forKey: key),
+               let sha = removed.thumbSHA
+            {
+                try? FileManager.default.removeItem(at: thumbFile(sha: sha))
+            }
+        }
+        guard !staleKeys.isEmpty,
+              let updated = try? JSONEncoder().encode(entries)
+        else {
+            return
+        }
+        try? updated.write(to: diskFile(), options: .atomic)
+        protect(diskFile())
     }
 
     private func remember(key: Key, value: RefsPDFIntrinsics) {
@@ -459,6 +497,7 @@ public final class RefsInspectorLoader: ObservableObject {
     /// fetch: the `refs-show` lane would otherwise kill the inspector's
     /// in-flight call.
     private var inFlightShows: [String: Task<RefsShowRow?, Never>] = [:]
+    private var discardedPaths: Set<String> = []
     /// Insertion order of the published content, so it stays bounded
     /// by the same LRU capacity as the show cache.
     private var contentOrder: [String] = []
@@ -510,6 +549,30 @@ public final class RefsInspectorLoader: ObservableObject {
         content = [:]
         thumbnails = [:]
         previewContentIDs = []
+        showCache = []
+        inFlightShows.values.forEach { $0.cancel() }
+        inFlightShows = [:]
+        contentOrder = []
+    }
+
+    /// Drops inspector state for a renamed note before its destination
+    /// row is selected.
+    public func discard(id: String) async {
+        discardedPaths.insert(id)
+        current?.cancel()
+        if content[id] != nil {
+            content.removeValue(forKey: id)
+        }
+        thumbnails.removeValue(forKey: id)
+        previewContentIDs.remove(id)
+        contentOrder.removeAll { $0 == id }
+        let prefix = "\(id)|"
+        showCache.removeAll { $0.key.hasPrefix(prefix) }
+        let staleKeys = inFlightShows.keys.filter { $0.hasPrefix(prefix) }
+        for key in staleKeys {
+            inFlightShows.removeValue(forKey: key)?.cancel()
+        }
+        await intrinsics.discard(id: id)
     }
 
     /// Installs canned content for design tests and previews, skipping
@@ -658,7 +721,9 @@ public final class RefsInspectorLoader: ObservableObject {
 
     private func finishShow(key: String, row: RefsShowRow?) {
         inFlightShows.removeValue(forKey: key)
-        guard let row else {
+        guard let row,
+              !discardedPaths.contains(where: { key.hasPrefix("\($0)|") })
+        else {
             return
         }
         showCache.removeAll { $0.key == key }

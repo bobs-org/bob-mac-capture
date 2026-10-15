@@ -163,6 +163,9 @@ public enum RefsKeyRouter {
         case KeyCode.five:
             return flags == .command ? .setScope(.docs) : nil
         case KeyCode.r:
+            if flags == [.command, .shift] {
+                return .showRenameCard
+            }
             return flags == .command ? .refresh : nil
         case KeyCode.s:
             return flags == .command ? .scan : nil

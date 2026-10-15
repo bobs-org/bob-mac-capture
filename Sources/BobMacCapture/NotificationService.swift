@@ -135,6 +135,16 @@ final class NotificationService: NSObject, ObservableObject {
         }
     }
 
+    /// Confirms a rename that completed while Bob Refs was hidden.
+    /// Permission denial remains silent, matching the other notification
+    /// paths.
+    func notifyRefsRename(_ response: RefsRenameResponse) {
+        guard let stem = response.to?.stem else { return }
+        Task {
+            try? await add(Self.refsRenameContent(stem: stem))
+        }
+    }
+
     func sendTestNotification() async throws {
         try await add(Self.testContent())
     }
@@ -304,6 +314,14 @@ final class NotificationService: NSObject, ObservableObject {
         content.body = presentation.body
         content.sound = .default
         content.categoryIdentifier = refsScanCategoryIdentifier
+        return content
+    }
+
+    nonisolated static func refsRenameContent(stem: String) -> UNMutableNotificationContent {
+        let text = RefsRenamePresentation.notification(stem: stem)
+        let content = UNMutableNotificationContent()
+        content.title = text.title
+        content.body = text.body
         return content
     }
 

@@ -528,6 +528,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.scanNotifier = { [weak self] outcome in
             self?.notificationService.notifyRefsScan(outcome)
         }
+        model.renameNotifier = { [weak self] response in
+            self?.notificationService.notifyRefsRename(response)
+        }
         let controller = RefsPanelController(model: model)
         refsLibrary = library
         refsPanelModel = model

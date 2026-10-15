@@ -180,7 +180,9 @@ final class RefsKeyRouterTests: XCTestCase {
 
     func testRefresh() {
         XCTAssertEqual(route(KeyCode.r, .command), .refresh)
+        XCTAssertEqual(route(KeyCode.r, [.command, .shift]), .showRenameCard)
         XCTAssertNil(route(KeyCode.r))
+        XCTAssertNil(route(KeyCode.r, [.command, .option]))
     }
 
     func testCommandSMapsToScanAndOtherModifiersPassThrough() {
