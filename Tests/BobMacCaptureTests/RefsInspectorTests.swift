@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import XCTest
 
@@ -214,10 +215,137 @@ final class RefsInspectorLoaderTests: XCTestCase {
         let content = try XCTUnwrap(loader.content(for: fixtures.paper.id))
         XCTAssertTrue(content.showFailed)
         XCTAssertEqual(content.notes, [])
+        XCTAssertEqual(content.highlights, [])
         // The basic column still fills: pages and the outline land even
         // when `ref show` fails.
         XCTAssertEqual(content.pageCount, 22)
         XCTAssertEqual(content.outline, ["Method", "Results"])
+    }
+
+    func testLoaderHydratesNotesAndHighlightsFromShowFixture() async throws {
+        let fixtures = makeFixtures()
+        let decoded = try JSONDecoder().decode(
+            RefsShowResponse.self,
+            from: fixtureData("refs-show-highlights.json")
+        )
+        let row = try XCTUnwrap(decoded.refs.first)
+        fixtures.fetcher.showResponse = RefsShowResponse(
+            schemaVersion: 1,
+            refs: [RefsShowRow(
+                path: fixtures.paper.id,
+                annotations: row.annotations,
+                tasks: row.tasks,
+                annotationsStatus: row.annotationsStatus
+            )]
+        )
+        let loader = RefsInspectorLoader(
+            library: fixtures.library,
+            intrinsics: fixtures.intrinsics
+        )
+
+        loader.request(fixtures.paper)
+        await waitForContent(loader, id: fixtures.paper.id)
+        let content = try XCTUnwrap(loader.content(for: fixtures.paper.id))
+
+        XCTAssertEqual(
+            content.notes.map(\.comment),
+            ["Keep this in the notes section."]
+        )
+        XCTAssertEqual(
+            content.highlights.map(\.quote),
+            [
+                "Uncommented highlights belong under Highlights.",
+                "A whitespace-only comment still counts as uncommented.",
+                "Same-page highlights share one page label.",
+                "The second highlight on this page has no extra label.",
+            ]
+        )
+        XCTAssertFalse(content.showFailed)
+    }
+
+    func testShowFailureLeavesHighlightsEmpty() async throws {
+        let fixtures = makeFixtures()
+        fixtures.fetcher.showError = RefsTestError.boom
+        let loader = RefsInspectorLoader(
+            library: fixtures.library,
+            intrinsics: fixtures.intrinsics
+        )
+
+        loader.request(fixtures.paper)
+        await waitForContent(loader, id: fixtures.paper.id)
+        let content = try XCTUnwrap(loader.content(for: fixtures.paper.id))
+
+        XCTAssertTrue(content.showFailed)
+        XCTAssertEqual(content.highlights, [])
+    }
+
+    func testRevealMoreWithOnlyHighlightsEmitsRange() {
+        let model = makePreviewModel()
+        let item = previewChat()
+        let highlights = (1...5).map { index in
+            RefsShowAnnotation(
+                pageLabel: "\(index)",
+                kind: "highlight",
+                quote: "Quote \(index)"
+            )
+        }
+        model.installForPreviews(
+            items: [item],
+            signals: RefsSignals(),
+            query: "",
+            scope: .all,
+            selectedID: item.id,
+            banner: nil,
+            refreshState: .idle,
+            inspector: [item.id: RefsInspectorContent(highlights: highlights)]
+        )
+        var received: [RefsInspectorNotesReveal] = []
+        let cancellable = model.inspectorNoteReveals.sink {
+            received.append($0)
+        }
+
+        XCTAssertTrue(model.revealMoreInspectorNotes())
+        XCTAssertEqual(received.count, 1)
+        XCTAssertEqual(received[0].range, 3..<5)
+        XCTAssertEqual(received[0].id, item.id)
+        _ = cancellable
+    }
+
+    func testRevealMoreWhenFeedFitsThePageReturnsFalse() {
+        let model = makePreviewModel()
+        let item = previewChat()
+        model.installForPreviews(
+            items: [item],
+            signals: RefsSignals(),
+            query: "",
+            scope: .all,
+            selectedID: item.id,
+            banner: nil,
+            refreshState: .idle,
+            inspector: [item.id: RefsInspectorContent(
+                notes: [
+                    RefsShowAnnotation(
+                        pageLabel: "1",
+                        kind: "highlight",
+                        quote: "One",
+                        comment: "Note one"
+                    ),
+                    RefsShowAnnotation(
+                        pageLabel: "2",
+                        kind: "highlight",
+                        quote: "Two",
+                        comment: "Note two"
+                    ),
+                ],
+                highlights: [RefsShowAnnotation(
+                    pageLabel: "3",
+                    kind: "highlight",
+                    quote: "Three"
+                )]
+            )]
+        )
+
+        XCTAssertFalse(model.revealMoreInspectorNotes())
     }
 
     func testSlowIntrinsicsReadTimesOutNearThreeSeconds() async throws {
@@ -540,6 +668,56 @@ final class RefsInspectorLoaderTests: XCTestCase {
         XCTFail("inspector content not ready before timeout")
     }
 
+    private func makePreviewModel() -> RefsPanelModel {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let vault = root.appendingPathComponent("vault")
+        let library = RefsLibrary(
+            fetcher: nil,
+            snapshotStore: RefsSnapshotStore(
+                fileURL: root.appendingPathComponent("refs-snapshot.json")
+            ),
+            openLogStore: RefsOpenLogStore(
+                fileURL: root.appendingPathComponent("refs-open-log.json")
+            ),
+            vaultRoot: { vault },
+            fileExists: { _ in true },
+            spotlight: StubSpotlight(),
+            now: { Date() }
+        )
+        return RefsPanelModel(
+            library: library,
+            opener: StubOpener(),
+            highlights: StubLocator()
+        )
+    }
+
+    private func previewChat() -> RefItem {
+        RefItem(
+            id: "ref/chat/today_report.md",
+            link: "[[ref/chat/today_report]]",
+            rawTitle: "Team Fit Review",
+            stem: "team_fit_review",
+            kind: .chat,
+            state: .reading,
+            isBlocked: false,
+            pdfPath: "lib/chat/team_fit_review.pdf",
+            parentLabel: "sase",
+            isAgentReport: true
+        )
+    }
+
+    private func fixtureData(_ name: String) throws -> Data {
+        let source = URL(fileURLWithPath: #filePath)
+        let packageRoot = source
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        return try Data(
+            contentsOf: packageRoot.appendingPathComponent("Tests/Fixtures/\(name)")
+        )
+    }
+
     private func waitForCalls(
         _ intrinsics: StubIntrinsics,
         count: Int
@@ -567,6 +745,8 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
     /// When set, the returned row uses this path instead of the
     /// requested one, so exact-path matching can fail.
     var showRowPath: String?
+    /// When set, `show` returns this envelope instead of the default row.
+    var showResponse: RefsShowResponse?
 
     func list(gitDates: Bool) async throws -> RefsListResponse {
         RefsListResponse(schemaVersion: 1)
@@ -591,6 +771,9 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
         try await Task.sleep(nanoseconds: showDelayNanoseconds)
         if let showError {
             throw showError
+        }
+        if let showResponse {
+            return showResponse
         }
         return RefsShowResponse(schemaVersion: 1, refs: [RefsShowRow(
             path: showRowPath ?? path,

@@ -44,7 +44,7 @@ struct SettingsView: View {
                     )
                 }
                 Text(
-                    "The preview shows this many of your notes at first; "
+                    "The preview shows this many of your notes and highlights at first; "
                         + "Control-D at the bottom of the preview shows this many more."
                 )
                 .font(.caption)

@@ -7,8 +7,9 @@ import Foundation
 /// other key is ignored. All three inspector fields are lossy and use
 /// `decodeIfPresent`, and undecodable rows are skipped instead of
 /// failing the whole response. The inspector still projects
-/// `commentedHighlights` for "Your notes"; the Copy card's H picker
-/// reads the unfiltered annotation list.
+/// `commentedHighlights` for "Your notes" and `uncommentedHighlights`
+/// for "Highlights"; the Copy card's H picker reads the unfiltered
+/// annotation list.
 public struct RefsShowResponse: Decodable, Equatable, Sendable, SchemaVersioned {
     public let schemaVersion: Int
     public let refs: [RefsShowRow]
@@ -91,6 +92,14 @@ public struct RefsShowRow: Decodable, Equatable, Sendable {
         annotations.filter(\.hasComment)
     }
 
+    /// Every uncommented highlight with a non-empty quote, in note
+    /// order: the inspector's "Highlights" block pages through these.
+    /// A whitespace-only comment still counts as uncommented. Images,
+    /// standalone notes, and empty quotes never appear here.
+    public var uncommentedHighlights: [RefsShowAnnotation] {
+        annotations.filter(\.isUncommentedHighlight)
+    }
+
     /// Standalone user notes in annotation order. Blank notes are ignored.
     public var standaloneNotes: [RefsShowAnnotation] {
         annotations.filter(\.isStandaloneNote)
@@ -157,6 +166,16 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
         comment = try container.decodeIfPresent(String.self, forKey: .comment)
         blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
         link = try container.decodeIfPresent(String.self, forKey: .link)
+    }
+
+    /// A highlight with no user comment and a non-empty quote: the
+    /// inspector's "Highlights" block shows these. A whitespace-only
+    /// comment counts as uncommented.
+    public var isUncommentedHighlight: Bool {
+        guard kind == "highlight", !hasComment else {
+            return false
+        }
+        return hasNonEmptyQuote
     }
 
     /// A highlight carrying a user comment: the only annotation kind the
@@ -307,6 +326,292 @@ public struct RefsNotesPage: Equatable, Sendable {
             return "+\(hidden) more · ⌃D shows \(nextBatch) more"
         }
         return "+\(hidden) more · ⌃D shows the rest"
+    }
+}
+
+/// The inspector's annotation feed: commented highlights first, then
+/// uncommented highlights, paged as one sequence.
+public struct RefsInspectorFeed: Equatable, Sendable {
+    public let notes: [RefsShowAnnotation]
+    public let highlights: [RefsShowAnnotation]
+
+    public var total: Int { notes.count + highlights.count }
+
+    public init(
+        notes: [RefsShowAnnotation],
+        highlights: [RefsShowAnnotation]
+    ) {
+        self.notes = notes
+        self.highlights = highlights
+    }
+
+    public enum Section: Equatable, Sendable {
+        case notes
+        case highlights
+    }
+
+    public struct Entry: Equatable, Sendable {
+        public let index: Int
+        public let section: Section
+        public let annotation: RefsShowAnnotation
+        public let showsPageLabel: Bool
+    }
+
+    /// The first `visible` entries in feed order (notes first), clamped
+    /// to `0...total`. `showsPageLabel` follows the page-run rule
+    /// within each section and is false when `displayPageLabel` is nil.
+    public func entries(visible: Int) -> [Entry] {
+        let clamped = min(max(visible, 0), total)
+        guard clamped > 0 else {
+            return []
+        }
+        var result: [Entry] = []
+        result.reserveCapacity(clamped)
+        let noteCount = min(clamped, notes.count)
+        appendEntries(
+            from: notes,
+            count: noteCount,
+            section: .notes,
+            indexOffset: 0,
+            into: &result
+        )
+        let highlightCount = clamped - noteCount
+        if highlightCount > 0 {
+            appendEntries(
+                from: highlights,
+                count: highlightCount,
+                section: .highlights,
+                indexOffset: notes.count,
+                into: &result
+            )
+        }
+        return result
+    }
+
+    /// The disclosure-row text for hidden entries, or nil when none
+    /// are hidden. Named kinds appear only when both sections still
+    /// hide entries, or when only highlights are hidden and none of
+    /// them are visible yet. Every other case reuses
+    /// `RefsNotesPage.moreText`.
+    public func moreText(visible: Int, nextBatch: Int) -> String? {
+        let counts = hiddenCounts(visible: visible)
+        let hidden = counts.notes + counts.highlights
+        guard hidden > 0 else {
+            return nil
+        }
+        let clause = revealClause(hidden: hidden, nextBatch: nextBatch)
+        if counts.notes > 0, counts.highlights > 0 {
+            return "+\(Self.counted(counts.notes, "note")) · "
+                + "\(Self.counted(counts.highlights, "highlight")) · \(clause)"
+        }
+        if counts.highlights > 0, visibleHighlightCount(visible: visible) == 0 {
+            return "+\(Self.counted(counts.highlights, "highlight")) · \(clause)"
+        }
+        return RefsNotesPage.moreText(hidden: hidden, nextBatch: nextBatch)
+    }
+
+    /// VoiceOver label for the disclosure row, or nil when nothing is
+    /// hidden.
+    public func hiddenAccessibilityLabel(visible: Int) -> String? {
+        let counts = hiddenCounts(visible: visible)
+        if counts.notes > 0, counts.highlights > 0 {
+            return "\(Self.counted(counts.notes, "more note")) and "
+                + "\(Self.counted(counts.highlights, "highlight"))"
+        }
+        if counts.notes > 0 {
+            return "\(counts.notes) more \(counts.notes == 1 ? "note" : "notes")"
+        }
+        if counts.highlights > 0 {
+            return "\(counts.highlights) more "
+                + "\(counts.highlights == 1 ? "highlight" : "highlights")"
+        }
+        return nil
+    }
+
+    /// VoiceOver announcement after a reveal.
+    public func revealAnnouncement(visible: Int) -> String {
+        let clamped = min(max(visible, 0), total)
+        if highlights.isEmpty {
+            return "Showing \(clamped) of \(notes.count) notes"
+        }
+        if notes.isEmpty {
+            return "Showing \(clamped) of \(highlights.count) highlights"
+        }
+        return "Showing \(clamped) of \(total) notes and highlights"
+    }
+
+    public enum RevealAnchor: Equatable, Sendable {
+        case entry(Int)
+        case highlightsHeader
+    }
+
+    /// Where the follow-tail scroll should pin. The HIGHLIGHTS header
+    /// when the batch starts on the first highlight; otherwise the
+    /// entry at `batchStart`.
+    public func revealAnchor(batchStart: Int) -> RevealAnchor {
+        if batchStart == notes.count, !highlights.isEmpty {
+            return .highlightsHeader
+        }
+        return .entry(batchStart)
+    }
+
+    private func appendEntries(
+        from annotations: [RefsShowAnnotation],
+        count: Int,
+        section: Section,
+        indexOffset: Int,
+        into result: inout [Entry]
+    ) {
+        var previousLabel: String?
+        for offset in 0..<count {
+            let annotation = annotations[offset]
+            let label = annotation.displayPageLabel
+            let showsPageLabel: Bool
+            if label == nil {
+                showsPageLabel = false
+            } else if offset == 0 {
+                showsPageLabel = true
+            } else {
+                showsPageLabel = label != previousLabel
+            }
+            previousLabel = label
+            result.append(Entry(
+                index: indexOffset + offset,
+                section: section,
+                annotation: annotation,
+                showsPageLabel: showsPageLabel
+            ))
+        }
+    }
+
+    private func hiddenCounts(visible: Int) -> (notes: Int, highlights: Int) {
+        let clamped = min(max(visible, 0), total)
+        let visibleNotes = min(clamped, notes.count)
+        let visibleHighlights = clamped - visibleNotes
+        return (
+            notes.count - visibleNotes,
+            highlights.count - visibleHighlights
+        )
+    }
+
+    private func visibleHighlightCount(visible: Int) -> Int {
+        let clamped = min(max(visible, 0), total)
+        return max(clamped - notes.count, 0)
+    }
+
+    private func revealClause(hidden: Int, nextBatch: Int) -> String {
+        if hidden == 1 {
+            return "⌃D shows it"
+        }
+        if hidden > nextBatch {
+            return "⌃D shows \(nextBatch) more"
+        }
+        return "⌃D shows the rest"
+    }
+
+    private static func counted(_ count: Int, _ singular: String) -> String {
+        "\(count) \(count == 1 ? singular : "\(singular)s")"
+    }
+}
+
+/// Splits a quote into plain and strong runs by pairing `**`
+/// delimiters from left to right. Unpaired markers stay literal;
+/// empty pairs disappear. Single `*`, `_`, `__`, and backticks are
+/// never emphasis.
+public enum RefsQuoteEmphasis {
+    public static func runs(_ text: String) -> [RefsTextRun] {
+        guard !text.isEmpty else {
+            return []
+        }
+        var collected: [RefsTextRun] = []
+        var current = ""
+        var index = text.startIndex
+        while index < text.endIndex {
+            if let close = pairedClose(in: text, openingAt: index) {
+                if !current.isEmpty {
+                    collected.append(RefsTextRun(text: current, isStrong: false))
+                    current = ""
+                }
+                let innerStart = text.index(index, offsetBy: 2)
+                let inner = String(text[innerStart..<close])
+                if !inner.isEmpty {
+                    collected.append(RefsTextRun(text: inner, isStrong: true))
+                }
+                index = text.index(close, offsetBy: 2)
+                continue
+            }
+            if delimiterStart(in: text, at: index) != nil {
+                current.append(contentsOf: text[index...])
+                break
+            }
+            current.append(text[index])
+            index = text.index(after: index)
+        }
+        if !current.isEmpty {
+            collected.append(RefsTextRun(text: current, isStrong: false))
+        }
+        return compacted(collected)
+    }
+
+    private static func pairedClose(
+        in text: String,
+        openingAt index: String.Index
+    ) -> String.Index? {
+        guard delimiterStart(in: text, at: index) != nil else {
+            return nil
+        }
+        return nextDelimiter(in: text, from: text.index(index, offsetBy: 2))
+    }
+
+    private static func delimiterStart(
+        in text: String,
+        at index: String.Index
+    ) -> String.Index? {
+        let next = text.index(after: index)
+        guard next < text.endIndex, text[index] == "*", text[next] == "*" else {
+            return nil
+        }
+        return index
+    }
+
+    private static func nextDelimiter(
+        in text: String,
+        from start: String.Index
+    ) -> String.Index? {
+        var index = start
+        while index < text.endIndex {
+            if let found = delimiterStart(in: text, at: index) {
+                return found
+            }
+            index = text.index(after: index)
+        }
+        return nil
+    }
+
+    private static func compacted(_ runs: [RefsTextRun]) -> [RefsTextRun] {
+        var result: [RefsTextRun] = []
+        for run in runs where !run.text.isEmpty {
+            if let last = result.last, last.isStrong == run.isStrong {
+                result[result.count - 1] = RefsTextRun(
+                    text: last.text + run.text,
+                    isStrong: last.isStrong
+                )
+            } else {
+                result.append(run)
+            }
+        }
+        return result
+    }
+}
+
+/// One run of quote text, with or without strong emphasis.
+public struct RefsTextRun: Equatable, Sendable {
+    public let text: String
+    public let isStrong: Bool
+
+    public init(text: String, isStrong: Bool) {
+        self.text = text
+        self.isStrong = isStrong
     }
 }
 

@@ -1,0 +1,112 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "command": "ref show",
+  "generated_at": "2026-10-08T09:00:00",
+  "library": {"notes": 1},
+  "refs": [
+    {
+      "path": "ref/articles/highlights_preview.md",
+      "link": "[[ref/articles/highlights_preview]]",
+      "title": "Synthetic Highlights Preview",
+      "origin": "web",
+      "ref_type": "article",
+      "era": "modern",
+      "status": "wip",
+      "status_sync": "ok",
+      "legacy_status": null,
+      "reading_state": "started",
+      "reading_state_source": "ref_task:[/]",
+      "blocked": false,
+      "parent": "obsidian_ref",
+      "urls": [],
+      "identity": {"keys": [], "arxiv": null, "doi": null},
+      "author": null,
+      "published": null,
+      "captured": null,
+      "added": "2026-09-20",
+      "added_source": "created",
+      "finished": null,
+      "finished_source": null,
+      "source_pdf": "lib/articles/highlights_preview.pdf",
+      "audio": null,
+      "annotation_count": 7,
+      "comment_count": 1,
+      "snapshot": null,
+      "research_ref": null,
+      "superseded_by": null,
+      "diagnostics": [],
+      "annotations_status": "parsed",
+      "annotations": [
+        {
+          "page_label": "Page 1",
+          "kind": "highlight",
+          "quote": "Commented highlights keep their place in Your notes.",
+          "comment": "Keep this in the notes section.",
+          "block_id": "^c1",
+          "link": "[[ref/articles/highlights_preview#^c1]]"
+        },
+        {
+          "page_label": "Page 2",
+          "kind": "highlight",
+          "quote": "Uncommented highlights belong under Highlights.",
+          "comment": null,
+          "block_id": "^h1",
+          "link": "[[ref/articles/highlights_preview#^h1]]"
+        },
+        {
+          "page_label": "Page 3",
+          "kind": "highlight",
+          "quote": "A whitespace-only comment still counts as uncommented.",
+          "comment": "  \n\t",
+          "block_id": "^h2",
+          "link": "[[ref/articles/highlights_preview#^h2]]"
+        },
+        {
+          "page_label": "Page 3",
+          "kind": "highlight",
+          "quote": "",
+          "comment": null,
+          "block_id": "^empty",
+          "link": "[[ref/articles/highlights_preview#^empty]]"
+        },
+        {
+          "page_label": null,
+          "kind": "note",
+          "quote": null,
+          "comment": "A standalone note stays out of the inspector.",
+          "block_id": "^n1",
+          "link": "[[ref/articles/highlights_preview#^n1]]"
+        },
+        {
+          "page_label": "Page 4",
+          "kind": "image",
+          "quote": "a figure",
+          "comment": null,
+          "block_id": "^img",
+          "link": "[[ref/articles/highlights_preview#^img]]"
+        },
+        {
+          "page_label": "Page 5",
+          "kind": "highlight",
+          "quote": "Same-page highlights share one page label.",
+          "comment": null,
+          "block_id": "^h3",
+          "link": "[[ref/articles/highlights_preview#^h3]]"
+        },
+        {
+          "page_label": "Page 5",
+          "kind": "highlight",
+          "quote": "The second highlight on this page has no extra label.",
+          "comment": null,
+          "block_id": "^h4",
+          "link": "[[ref/articles/highlights_preview#^h4]]"
+        }
+      ],
+      "excluded": {"marker_mirrors": 0, "preamble": 0, "removed": 0},
+      "own_notes": "- A short synthetic note.",
+      "tasks": [],
+      "also": []
+    }
+  ]
+}

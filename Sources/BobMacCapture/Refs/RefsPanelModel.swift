@@ -761,11 +761,11 @@ public final class RefsPanelModel: ObservableObject {
         return RefsNotesPage(size: notesPageSize)
     }
 
-    /// Reveals the next page of the selected row's notes. Returns false
-    /// unless the selected id has hydrated content that still hides
-    /// notes. On success it stores the page, announces the new count,
-    /// and emits on `inspectorNoteReveals` for the controller's
-    /// follow-tail scroll.
+    /// Reveals the next page of the selected row's notes and
+    /// highlights. Returns false unless the selected id has hydrated
+    /// content that still hides entries. On success it stores the
+    /// page, announces the new count, and emits on
+    /// `inspectorNoteReveals` for the controller's follow-tail scroll.
     @discardableResult
     public func revealMoreInspectorNotes() -> Bool {
         guard let id = selectedID,
@@ -774,14 +774,14 @@ public final class RefsPanelModel: ObservableObject {
             return false
         }
         var page = inspectorNotesPage(for: id)
-        guard let range = page.reveal(total: content.notes.count) else {
+        guard let range = page.reveal(total: content.feed.total) else {
             return false
         }
         revealedPageID = id
         revealedPage = page
-        let visible = page.visibleCount(total: content.notes.count)
+        let visible = page.visibleCount(total: content.feed.total)
         AccessibilityNotification.Announcement(
-            "Showing \(visible) of \(content.notes.count) notes"
+            content.feed.revealAnnouncement(visible: visible)
         ).post()
         inspectorNoteRevealsSubject.send(RefsInspectorNotesReveal(
             id: id,

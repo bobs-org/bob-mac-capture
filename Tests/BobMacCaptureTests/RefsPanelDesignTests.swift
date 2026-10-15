@@ -17,6 +17,16 @@ import XCTest
 /// occlusion.
 @MainActor
 final class RefsPanelDesignTests: XCTestCase {
+    /// Long enough to overflow four callout lines at the inspector
+    /// width, so the highlight truncates with a trailing ellipsis.
+    private static let longHighlightQuote =
+        "Agents that write down what they know, and then read it back "
+        + "before they act, stay consistent across a long session. The "
+        + "median uncommented highlight is about one hundred thirty "
+        + "characters, and this excerpt is longer still so the four-line "
+        + "cap has to clip it and end in an ellipsis the reader can "
+        + "recover from the hover tooltip."
+
     func testRefsPanelStatesToPNG() async throws {
         let now = fixedNow()
         let library = makeLibrary(now: now)
@@ -47,6 +57,9 @@ final class RefsPanelDesignTests: XCTestCase {
         try renderInspectorNotesRevealed(model: model, now: now)
         try renderInspectorPaper(model: model, now: now)
         try renderInspectorEncrypted(model: model, now: now)
+        try renderInspectorHighlights(model: model, now: now)
+        try renderInspectorNotesAndHighlights(model: model, now: now)
+        try renderInspectorHighlightsPending(model: model, now: now)
         try await renderUnavailable(model: model, now: now)
         try renderStemMatch(model: model, now: now)
         try renderReduceTransparency(model: model, now: now)
@@ -736,6 +749,229 @@ final class RefsPanelDesignTests: XCTestCase {
             "Preview unavailable: encrypted"
         )
         try write(model: model, name: "refs-inspector-encrypted-880", width: 880)
+    }
+
+    /// Zero notes and seven highlights: the HIGHLIGHTS header, a bold
+    /// run, a four-line truncation, and the first-page disclosure.
+    private func renderInspectorHighlights(
+        model: RefsPanelModel,
+        now: Date
+    ) throws {
+        let fixture = makeFixture(now: now)
+        let id = "ref/blogs/harness_engineering_article.md"
+        let highlights = [
+            RefsShowAnnotation(
+                pageLabel: "Page 1",
+                kind: "highlight",
+                quote: "**Factual memory tells the agent what it knows.**"
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 2",
+                kind: "highlight",
+                quote: Self.longHighlightQuote
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 3",
+                kind: "highlight",
+                quote: "A short highlight on a later page."
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 4",
+                kind: "highlight",
+                quote: "Fourth highlight, still hidden on the first page."
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 5",
+                kind: "highlight",
+                quote: "Fifth highlight waits behind the disclosure row."
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 6",
+                kind: "highlight",
+                quote: "Sixth highlight is also still hidden."
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 7",
+                kind: "highlight",
+                quote: "Seventh highlight closes the stack."
+            ),
+        ]
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: id,
+            banner: nil,
+            refreshState: .idle,
+            inspector: [id: RefsInspectorContent(highlights: highlights)]
+        )
+        let feed = try XCTUnwrap(model.inspectorContent(for: id)?.feed)
+        XCTAssertEqual(
+            feed.moreText(visible: 3, nextBatch: 3),
+            "+4 more · ⌃D shows 3 more"
+        )
+        try write(model: model, name: "refs-inspector-highlights-880", width: 880)
+    }
+
+    /// Two notes and six highlights after one reveal: both headers,
+    /// grouped page labels, and the rest disclosure.
+    private func renderInspectorNotesAndHighlights(
+        model: RefsPanelModel,
+        now: Date
+    ) throws {
+        let fixture = makeFixture(now: now)
+        let id = "ref/chat/today_report.md"
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: id,
+            banner: nil,
+            refreshState: .idle,
+            inspector: [id: RefsInspectorContent(
+                notes: [
+                    RefsShowAnnotation(
+                        pageLabel: "Page 2",
+                        kind: "highlight",
+                        quote: "The pipeline drains while the child runs.",
+                        comment: "Key insight for the fetcher."
+                    ),
+                    RefsShowAnnotation(
+                        pageLabel: "Page 6",
+                        kind: "highlight",
+                        quote: "A weak fuzzy match never beats a title word.",
+                        comment: "Keep the tier invariant."
+                    ),
+                ],
+                highlights: [
+                    RefsShowAnnotation(
+                        pageLabel: "Page 3",
+                        kind: "highlight",
+                        quote: "**Factual memory tells the agent what it knows.**"
+                    ),
+                    RefsShowAnnotation(
+                        pageLabel: "Page 3",
+                        kind: "highlight",
+                        quote: "Same-page highlights share one page label."
+                    ),
+                    RefsShowAnnotation(
+                        pageLabel: "Page 3",
+                        kind: "highlight",
+                        quote: "The third highlight on this page has no extra label."
+                    ),
+                    RefsShowAnnotation(
+                        pageLabel: "Page 4",
+                        kind: "highlight",
+                        quote: Self.longHighlightQuote
+                    ),
+                    RefsShowAnnotation(
+                        pageLabel: "Page 5",
+                        kind: "highlight",
+                        quote: "A later highlight still waits behind the row."
+                    ),
+                    RefsShowAnnotation(
+                        pageLabel: "Page 7",
+                        kind: "highlight",
+                        quote: "The last highlight is also still hidden."
+                    ),
+                ]
+            )]
+        )
+        XCTAssertTrue(model.revealMoreInspectorNotes())
+        let content = try XCTUnwrap(model.inspectorContent(for: id))
+        let page = model.inspectorNotesPage(for: id)
+        XCTAssertEqual(
+            content.feed.moreText(
+                visible: page.visibleCount(total: content.feed.total),
+                nextBatch: page.nextBatchCount(total: content.feed.total)
+            ),
+            "+2 more · ⌃D shows the rest"
+        )
+        try write(
+            model: model,
+            name: "refs-inspector-notes-and-highlights-880",
+            width: 880
+        )
+    }
+
+    /// Three notes fill the first page, so HIGHLIGHTS is still pending
+    /// behind a named disclosure row.
+    private func renderInspectorHighlightsPending(
+        model: RefsPanelModel,
+        now: Date
+    ) throws {
+        let fixture = makeFixture(now: now)
+        let id = "ref/chat/omni_review.md"
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: id,
+            banner: nil,
+            refreshState: .idle,
+            inspector: [id: RefsInspectorContent(
+                notes: [
+                    RefsShowAnnotation(
+                        pageLabel: "Page 1",
+                        kind: "highlight",
+                        quote: "Omnigent keeps the capture draft.",
+                        comment: "First note on the opening page."
+                    ),
+                    RefsShowAnnotation(
+                        pageLabel: "Page 2",
+                        kind: "highlight",
+                        quote: "A second comment stays in Your notes.",
+                        comment: "Second note, still on the first page."
+                    ),
+                    RefsShowAnnotation(
+                        pageLabel: "Page 4",
+                        kind: "highlight",
+                        quote: "The third note fills the preview.",
+                        comment: "Third note, last of the first page."
+                    ),
+                ],
+                highlights: [
+                    RefsShowAnnotation(
+                        pageLabel: "Page 5",
+                        kind: "highlight",
+                        quote: "**Factual memory tells the agent what it knows.**"
+                    ),
+                    RefsShowAnnotation(
+                        pageLabel: "Page 5",
+                        kind: "highlight",
+                        quote: "Same-page highlights share one page label."
+                    ),
+                    RefsShowAnnotation(
+                        pageLabel: "Page 5",
+                        kind: "highlight",
+                        quote: Self.longHighlightQuote
+                    ),
+                    RefsShowAnnotation(
+                        pageLabel: "Page 6",
+                        kind: "highlight",
+                        quote: "A later highlight is still hidden."
+                    ),
+                    RefsShowAnnotation(
+                        pageLabel: "Page 8",
+                        kind: "highlight",
+                        quote: "The last pending highlight waits too."
+                    ),
+                ]
+            )]
+        )
+        let feed = try XCTUnwrap(model.inspectorContent(for: id)?.feed)
+        XCTAssertEqual(
+            feed.moreText(visible: 3, nextBatch: 3),
+            "+5 highlights · ⌃D shows 3 more"
+        )
+        try write(
+            model: model,
+            name: "refs-inspector-highlights-pending-880",
+            width: 880
+        )
     }
 
     /// A solid thumbnail stand-in: `ImageRenderer` never hosts PDFKit,

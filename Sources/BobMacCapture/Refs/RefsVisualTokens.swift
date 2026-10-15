@@ -51,6 +51,13 @@ enum RefsVisualTokens {
     /// Context kept above a newly revealed notes page, so the last line
     /// of the previous page stays visible.
     static let inspectorRevealContext: CGFloat = 24
+    static let inspectorQuoteRuleWidth: CGFloat = 2
+    static let inspectorQuoteInset: CGFloat = 10
+    static let inspectorNoteQuoteLineLimit = 3
+    static let inspectorHighlightLineLimit = 4
+    static let inspectorPageRunGap: CGFloat = 4
+    /// Vertical spacing inside a YOUR NOTES or HIGHLIGHTS block.
+    static let inspectorEntrySpacing: CGFloat = 8
 
     // MARK: - Copy card
 
