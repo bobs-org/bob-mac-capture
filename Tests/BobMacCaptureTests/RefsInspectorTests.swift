@@ -451,6 +451,41 @@ final class RefsInspectorLoaderTests: XCTestCase {
     XCTAssertEqual(try permissions(of: thumbs[0]), 0o600)
   }
 
+  func testIntrinsicsDiscardDropsInFlightAndAllowsFutureLoads() async throws {
+    final class CallCounter: @unchecked Sendable {
+      private let lock = NSLock()
+      private(set) var count = 0
+      func increment() {
+        lock.withLock { count += 1 }
+      }
+    }
+    let counter = CallCounter()
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    let loader = await RefsPDFIntrinsicsLoader(
+      cacheDirectory: root,
+      reader: { @Sendable _ in
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        counter.increment()
+        return RefsPDFIntrinsics(pageCount: 7)
+      }
+    )
+    try FileManager.default.createDirectory(
+      at: root, withIntermediateDirectories: true
+    )
+    let pdf = root.appendingPathComponent("note.pdf")
+    FileManager.default.createFile(
+      atPath: pdf.path, contents: Data("fake".utf8)
+    )
+    async let first = loader.intrinsics(for: pdf, id: "roundtrip")
+    try? await Task.sleep(nanoseconds: 20_000_000)
+    await loader.discard(id: "roundtrip")
+    XCTAssertEqual(await first.pageCount, 7)
+    XCTAssertEqual(await loader.intrinsics(for: pdf, id: "roundtrip").pageCount, 7)
+    XCTAssertEqual(await loader.intrinsics(for: pdf, id: "roundtrip").pageCount, 7)
+    XCTAssertEqual(counter.count, 2)
+  }
+
   func testActionsMenuVariesWithURLsAndAudio() throws {
     let fixtures = makeFixtures()
 
@@ -804,8 +839,12 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
 
   var scanResult: RefsScanResponse = RefsScanResponse(schemaVersion: 1)
   var scanError: Error?
+  var scanDelayNanoseconds: UInt64 = 0
 
   func scan() async throws -> RefsScanResponse {
+    if scanDelayNanoseconds > 0 {
+      try await Task.sleep(nanoseconds: scanDelayNanoseconds)
+    }
     if let scanError {
       throw scanError
     }

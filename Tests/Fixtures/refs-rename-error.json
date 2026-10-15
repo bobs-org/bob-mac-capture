@@ -1,1 +1,1 @@
-{"ok":false,"schema_version":1,"command":"ref rename","error":{"code":"not_found","message":"Reference not found","hint":"Check the reference path and try again."},"candidates":null}
+{"ok":false,"schema_version":1,"command":"ref rename","error":{"code":"unknown_reference","message":"no reference note matches missing_ref_xyz"}}

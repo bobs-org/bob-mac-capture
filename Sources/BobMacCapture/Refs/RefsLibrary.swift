@@ -105,6 +105,17 @@ private let refsMaxErrorMessageLength = 200
 public enum RefsLibraryError: Error, Sendable {
     case unavailable
     case busy
+
+    /// Human message for the rename card when a rename is submitted
+    /// during a scan.
+    public var message: String {
+        switch self {
+        case .unavailable:
+            return "Bob is not available."
+        case .busy:
+            return "A library scan is running — try again when it finishes."
+        }
+    }
 }
 
 /// The Refs library refresh service: the cached snapshot, the git-date

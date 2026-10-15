@@ -218,7 +218,10 @@ public final class RefsPanelModel: ObservableObject {
                 if copyCard?.frozenItemID != selectedID {
                     closeCopyCard()
                 }
-                if renameCard?.frozenItemID != selectedID, !isRenaming {
+                // A failed rename card survives selection changes so the
+                // next presentation can re-show its inline error.
+                if renameCard?.frozenItemID != selectedID, !isRenaming,
+                   renameCard?.isFailed != true {
                     closeRenameCard()
                 }
             }
@@ -342,6 +345,9 @@ public final class RefsPanelModel: ObservableObject {
     public var scanNotifier: (RefsScanOutcome) -> Void = { _ in }
     /// Called when a rename finishes after the panel was hidden.
     public var renameNotifier: (RefsRenameResponse) -> Void = { _ in }
+    /// Called with the inline message when a rename fails after the
+    /// panel was hidden.
+    public var renameFailureNotifier: (String, String?) -> Void = { _, _ in }
 
     private let library: RefsLibrary
     private let opener: RefsOpening
@@ -407,6 +413,9 @@ public final class RefsPanelModel: ObservableObject {
         library.$scanState.sink { [weak self] _ in
             Task { await self?.scanStateDidChange() }
         }.store(in: &subscriptions)
+        library.$refreshState.sink { [weak self] _ in
+            Task { await self?.refreshStateDidChange() }
+        }.store(in: &subscriptions)
     }
 
     /// Whether a scan is running on the library lane.
@@ -429,7 +438,9 @@ public final class RefsPanelModel: ObservableObject {
     /// Clears the scan notice once it has been seen.
     public func panelDidHide() {
         closeCopyCard()
-        if !isRenaming {
+        // A failed rename card survives hiding so the next presentation
+        // can re-show its inline error.
+        if !isRenaming, renameCard?.isFailed != true {
             closeRenameCard()
         }
         if scanNoticeSeen {
@@ -465,11 +476,18 @@ public final class RefsPanelModel: ObservableObject {
     public func prepareForPresentation() {
         presentationCount += 1
         selectedRowRect = nil
+        renameStatus = nil
         if isRenaming {
             return
         }
         closeCopyCard()
-        closeRenameCard()
+        // A failed rename card is re-presented with its inline error and
+        // draft instead of closed; refocus its field.
+        if renameCard?.isFailed == true {
+            renameCardGeneration &+= 1
+        } else {
+            closeRenameCard()
+        }
         query = ""
         scope = .all
         banner = nil
@@ -1018,19 +1036,19 @@ public final class RefsPanelModel: ObservableObject {
             knownItems.removeValue(forKey: notePath)
             unavailableIDs.remove(notePath)
             unavailableIDs.remove(destination)
-            if revealedPageID == notePath {
-                revealedPageID = destination
-                revealedPage = nil
-            }
+            // The selection change below clears the revealed page through
+            // `selectedID`'s `didSet` (reveal_memory = reset), so there is
+            // no remap to preserve here.
             if selectedID == notePath {
                 selectedID = destination
             }
             await inspectorLoader.discard(id: notePath)
             renameCard = nil
             renameTask = nil
-            renameStatus = RefsRenamePresentation.footerStatus(
+            renameStatus = RefsRenamePresentation.status(
                 stem: stem,
-                rewrittenLinks: response.links?.rewritten ?? 0
+                rewrittenLinks: response.links?.rewritten ?? 0,
+                outcome: response.outcome
             )
             freshListing(selecting: destination)
             if wasVisible {
@@ -1041,19 +1059,27 @@ public final class RefsPanelModel: ObservableObject {
                 renameNotifier(response)
             }
         } catch {
-            failRename(
-                message: RefsRenameProblemMapping.transportProblem(for: error).message,
-                hint: RefsRenameProblemMapping.transportProblem(for: error).hint
-            )
+            if let libraryError = error as? RefsLibraryError,
+               libraryError == .busy {
+                failRename(message: libraryError.message, hint: nil)
+            } else {
+                let problem = RefsRenameProblemMapping.transportProblem(for: error)
+                failRename(message: problem.message, hint: problem.hint)
+            }
             libraryDidPublish()
         }
     }
 
     private func failRename(message: String, hint: String?) {
-        guard var card = renameCard else { return }
+        guard var card = renameCard, card.phase == .running else { return }
         card.fail(message: message, hint: hint)
         renameCard = card
         renameTask = nil
+        // Refocus the rename field on the running-to-failed transition.
+        renameCardGeneration &+= 1
+        if !panelIsVisible() {
+            renameFailureNotifier(message, hint)
+        }
     }
 
     /// Feeds one key captured by the controller to the card state machine.
@@ -1309,7 +1335,22 @@ public final class RefsPanelModel: ObservableObject {
         }
     }
 
+    /// A refresh that just started clears a stale rename status so it
+    /// never masks the refresh-failure state.
+    private func refreshStateDidChange() {
+        if case .refreshing = library.refreshState {
+            renameStatus = nil
+        }
+    }
+
+    /// A finished scan installs its notice or banner; a scan that just
+    /// started clears a stale rename status so it never masks the
+    /// scanning state.
     private func scanStateDidChange() {
+        if case .scanning = library.scanState {
+            renameStatus = nil
+            return
+        }
         guard case .finished(let outcome) = library.scanState else {
             return
         }

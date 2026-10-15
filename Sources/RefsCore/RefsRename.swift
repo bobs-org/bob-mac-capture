@@ -284,7 +284,7 @@ public enum RefsRenameProblemMapping {
     }
     return RefsRenameFailure(
       code: "transport",
-      message: boundedProcessText(error.localizedDescription)
+      message: boundedProcessText(String(describing: error))
     )
   }
 }
@@ -308,12 +308,21 @@ public enum RefsRenameKeyMap {
     let flags = modifiers.subtracting([.capsLock, .numericPad, .function, .help])
 
     if keyCode == 36 || keyCode == 76, flags.isEmpty {
-      return isRunning || hasMarkedText ? .ignore : .submit
+      if hasMarkedText {
+        return nil
+      }
+      return isRunning ? .ignore : .submit
     }
     if keyCode == 53, flags.isEmpty {
+      if hasMarkedText {
+        return nil
+      }
       return isRunning ? .ignore : .cancel
     }
     if keyCode == 33, flags == .control {
+      if hasMarkedText {
+        return nil
+      }
       return isRunning ? .ignore : .cancel
     }
     return nil
@@ -383,6 +392,13 @@ public struct RefsRenameCard: Equatable, Sendable {
     guard phase == .running else { return }
     phase = .failed(message: message, hint: hint)
   }
+
+  public var isFailed: Bool {
+    if case .failed = phase {
+      return true
+    }
+    return false
+  }
 }
 
 public enum RefsRenamePresentation {
@@ -398,11 +414,34 @@ public enum RefsRenamePresentation {
     return "Renamed → \(fileName) · \(rewrittenLinks) \(noun) updated"
   }
 
+  public static func alreadyNamedStatus(stem: String) -> String {
+    "Already named \(stem + RefsRenameCard.pdfSuffix)"
+  }
+
+  public static func alreadyRenamedStatus(stem: String) -> String {
+    "Already renamed → \(stem + RefsRenameCard.pdfSuffix)"
+  }
+
+  public static func status(stem: String, rewrittenLinks: Int, outcome: String?) -> String {
+    switch outcome {
+    case "unchanged":
+      return alreadyNamedStatus(stem: stem)
+    case "already_renamed":
+      return alreadyRenamedStatus(stem: stem)
+    default:
+      return footerStatus(stem: stem, rewrittenLinks: rewrittenLinks)
+    }
+  }
+
   public static func announcement(stem: String) -> String {
     "Reference renamed to \(stem)\(RefsRenameCard.pdfSuffix)"
   }
 
   public static func notification(stem: String) -> (title: String, body: String) {
     (title: "Reference renamed", body: stem + RefsRenameCard.pdfSuffix)
+  }
+
+  public static func failureNotification(message: String) -> (title: String, body: String) {
+    (title: "Reference rename failed", body: message)
   }
 }

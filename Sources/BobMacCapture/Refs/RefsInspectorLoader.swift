@@ -127,7 +127,10 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
     private let reader: @Sendable (URL) async -> RefsPDFIntrinsics
     private var memory: [Key: RefsPDFIntrinsics] = [:]
     private var memoryOrder: [Key] = []
-    private var discardedPaths: Set<String> = []
+    /// Rename discard generations by path: a discard bumps the counter
+    /// so in-flight loads that started before it are not cached, while
+    /// future loads of the same path cache normally again.
+    private var discardGenerations: [String: UInt64] = [:]
 
     public init(
         cacheDirectory: URL? = nil,
@@ -162,10 +165,13 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
             remember(key: key, value: cached)
             return cached
         }
+        let generation = discardGenerations[id, default: 0]
         let loaded = await loadWithTimeout(url: pdfURL)
         // A failure never caches: the timeout abandons its read, and a
-        // later selection retries instead of pinning the miss.
-        if !loaded.failed, !discardedPaths.contains(id) {
+        // later selection retries instead of pinning the miss. A load
+        // that started before a rename discard is dropped the same way,
+        // without blocking future loads of that path.
+        if !loaded.failed, discardGenerations[id, default: 0] == generation {
             remember(key: key, value: loaded)
             writeDisk(key: key, value: loaded)
         }
@@ -173,9 +179,10 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
     }
 
     /// Removes every cached value and thumbnail derived for a moved
-    /// reference path from both the memory and disk caches.
+    /// reference path from both the memory and disk caches. This is a
+    /// one-shot invalidation: later loads of the same path cache again.
     public func discard(id: String) {
-        discardedPaths.insert(id)
+        discardGenerations[id, default: 0] &+= 1
         let keys = memory.keys.filter { $0.path == id }
         for key in keys {
             memory.removeValue(forKey: key)
@@ -497,7 +504,10 @@ public final class RefsInspectorLoader: ObservableObject {
     /// fetch: the `refs-show` lane would otherwise kill the inspector's
     /// in-flight call.
     private var inFlightShows: [String: Task<RefsShowRow?, Never>] = [:]
-    private var discardedPaths: Set<String> = []
+    /// Rename discard generations by path: a discard bumps the counter
+    /// so in-flight `ref show` results that started before it are not
+    /// cached, while future loads of the same path cache normally again.
+    private var discardGenerations: [String: UInt64] = [:]
     /// Insertion order of the published content, so it stays bounded
     /// by the same LRU capacity as the show cache.
     private var contentOrder: [String] = []
@@ -556,9 +566,10 @@ public final class RefsInspectorLoader: ObservableObject {
     }
 
     /// Drops inspector state for a renamed note before its destination
-    /// row is selected.
+    /// row is selected. This is a one-shot invalidation: later loads of
+    /// the same path cache again.
     public func discard(id: String) async {
-        discardedPaths.insert(id)
+        discardGenerations[id, default: 0] &+= 1
         current?.cancel()
         if content[id] != nil {
             content.removeValue(forKey: id)
@@ -703,6 +714,7 @@ public final class RefsInspectorLoader: ObservableObject {
             return existing
         }
         let path = item.id
+        let generation = discardGenerations[path, default: 0]
         let library = self.library
         let task = Task { [weak self] in
             let row: RefsShowRow?
@@ -712,17 +724,17 @@ public final class RefsInspectorLoader: ObservableObject {
             } catch {
                 row = nil
             }
-            self?.finishShow(key: key, row: row)
+            self?.finishShow(key: key, path: path, generation: generation, row: row)
             return row
         }
         inFlightShows[key] = task
         return task
     }
 
-    private func finishShow(key: String, row: RefsShowRow?) {
+    private func finishShow(key: String, path: String, generation: UInt64, row: RefsShowRow?) {
         inFlightShows.removeValue(forKey: key)
         guard let row,
-              !discardedPaths.contains(where: { key.hasPrefix("\($0)|") })
+              discardGenerations[path, default: 0] == generation
         else {
             return
         }

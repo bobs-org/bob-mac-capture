@@ -105,7 +105,10 @@ final class RefsPanelModelTests: XCTestCase {
         )
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [oldPath])
+        var failures: [(message: String, hint: String?)] = []
+        harness.model.renameFailureNotifier = { failures.append(($0, $1)) }
         harness.model.openRenameCard()
+        let openedGeneration = harness.model.renameCardGeneration
         harness.model.editRenameDraft("taken")
         harness.model.handleRenameCardKey(.submit)
         harness.model.panelDidHide()
@@ -120,9 +123,24 @@ final class RefsPanelModelTests: XCTestCase {
         }
         XCTAssertEqual(harness.model.renameCard?.draftStem, "taken")
         XCTAssertEqual(harness.model.selectedID, oldPath)
+        // The failure lands while hidden, so it notifies, and the
+        // running-to-failed transition refocuses the field.
+        XCTAssertEqual(failures.count, 1)
+        XCTAssertEqual(failures[0].message, "That filename is already in use.")
+        XCTAssertEqual(failures[0].hint, "Choose a different filename.")
+        XCTAssertEqual(harness.model.renameCardGeneration, openedGeneration + 1)
 
         harness.model.prepareForPresentation()
-        XCTAssertNil(harness.model.renameCard)
+        // The failed card is re-presented with its inline error and
+        // draft instead of closed, and refocused.
+        if case .failed(let message, let hint) = harness.model.renameCard?.phase {
+            XCTAssertEqual(message, "That filename is already in use.")
+            XCTAssertEqual(hint, "Choose a different filename.")
+        } else {
+            XCTFail("failed rename card was closed by prepareForPresentation")
+        }
+        XCTAssertEqual(harness.model.renameCard?.draftStem, "taken")
+        XCTAssertEqual(harness.model.renameCardGeneration, openedGeneration + 2)
     }
 
     func testRenameMapsOlderBobFailureToInlineUpdateMessage() async throws {
@@ -148,6 +166,154 @@ final class RefsPanelModelTests: XCTestCase {
             }
             return false
         }
+    }
+
+    func testRenameDuringScanFailsWithHumanBusyMessage() async throws {
+        let oldPath = "ref/blogs/old_stem.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: oldPath, stem: "old_stem")]
+        )
+        fetcher.scanDelayNanoseconds = 500_000_000
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [oldPath])
+        XCTAssertTrue(harness.model.perform(.scan))
+        await harness.waitForScanStart()
+        harness.model.openRenameCard()
+        harness.model.handleRenameCardKey(.submit)
+
+        await harness.waitForModel {
+            if case .failed(let message, let hint) = $0.renameCard?.phase {
+                return message == "A library scan is running — try again when it finishes."
+                    && hint == nil
+            }
+            return false
+        }
+    }
+
+    func testRenameUnchangedShowsAlreadyNamedStatus() async throws {
+        let oldPath = "ref/blogs/old_stem.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: oldPath, stem: "old_stem")]
+        )
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [oldPath])
+        fetcher.renameResponse = RefsRenameResponse(
+            schemaVersion: 1,
+            ok: true,
+            from: RefsRenameLocation(path: oldPath, stem: "old_stem"),
+            to: RefsRenameLocation(path: oldPath, stem: "old_stem"),
+            links: RefsRenameLinks(rewritten: 0, files: []),
+            outcome: "unchanged",
+            changed: false
+        )
+
+        harness.model.openRenameCard()
+        harness.model.handleRenameCardKey(.submit)
+
+        await harness.waitForModel { $0.renameCard == nil && $0.renameStatus != nil }
+        XCTAssertEqual(harness.model.renameStatus, "Already named old_stem.pdf")
+        XCTAssertEqual(harness.model.selectedID, oldPath)
+    }
+
+    func testRenameStatusClearsOnNextPresentation() async throws {
+        let oldPath = "ref/blogs/old_stem.md"
+        let newPath = "ref/blogs/new_stem.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: oldPath, stem: "old_stem")]
+        )
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [oldPath])
+        await succeedRename(
+            harness: harness,
+            fetcher: fetcher,
+            oldPath: oldPath,
+            newPath: newPath,
+            oldStem: "old_stem",
+            newStem: "new_stem"
+        )
+
+        harness.model.prepareForPresentation()
+        XCTAssertNil(harness.model.renameStatus)
+    }
+
+    func testRenameStatusClearsWhenRefreshStarts() async throws {
+        let oldPath = "ref/blogs/old_stem.md"
+        let newPath = "ref/blogs/new_stem.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: oldPath, stem: "old_stem")]
+        )
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [oldPath])
+        await succeedRename(
+            harness: harness,
+            fetcher: fetcher,
+            oldPath: oldPath,
+            newPath: newPath,
+            oldStem: "old_stem",
+            newStem: "new_stem"
+        )
+
+        harness.library.refresh(reason: .manual)
+        await harness.waitForModel { $0.renameStatus == nil }
+    }
+
+    func testRenameStatusClearsWhenScanStarts() async throws {
+        let oldPath = "ref/blogs/old_stem.md"
+        let newPath = "ref/blogs/new_stem.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: oldPath, stem: "old_stem")]
+        )
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [oldPath])
+        await succeedRename(
+            harness: harness,
+            fetcher: fetcher,
+            oldPath: oldPath,
+            newPath: newPath,
+            oldStem: "old_stem",
+            newStem: "new_stem"
+        )
+
+        fetcher.scanDelayNanoseconds = 500_000_000
+        XCTAssertTrue(harness.model.perform(.scan))
+        await harness.waitForModel { $0.renameStatus == nil && $0.isScanning }
+    }
+
+    private func succeedRename(
+        harness: Harness,
+        fetcher: FakeRefsFetcher,
+        oldPath: String,
+        newPath: String,
+        oldStem: String,
+        newStem: String
+    ) async {
+        fetcher.renameResponse = RefsRenameResponse(
+            schemaVersion: 1,
+            ok: true,
+            from: RefsRenameLocation(path: oldPath, stem: oldStem),
+            to: RefsRenameLocation(path: newPath, stem: newStem),
+            links: RefsRenameLinks(rewritten: 1, files: ["sase.md"]),
+            outcome: "renamed",
+            changed: true
+        )
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: newPath, stem: newStem)]
+        )
+        harness.model.openRenameCard()
+        harness.model.editRenameDraft(newStem)
+        harness.model.handleRenameCardKey(.submit)
+        await harness.waitForModel { $0.renameStatus != nil }
     }
 
     func testRenameTextEditingKeysPassThroughControllerAndEscapeClosesCardFirst() async throws {

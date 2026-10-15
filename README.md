@@ -1502,6 +1502,18 @@ Refs, and shows a glass HUD. When Refs was opened over a Capture draft,
 Capture returns with that draft ready for ⌘V. A failed write leaves the card
 open so Return can retry.
 
+### Rename card
+
+Command-Shift-R or Rename… in the ⌘K menu opens a card for the selected
+reference. Edit the filename stem; the `.pdf` suffix stays fixed. Return
+runs `bob ref rename` for the selected note, and Escape closes the card.
+Ordinary typing and editing shortcuts stay in the filename field. Bob's
+refusal message and hint appear inline, and the draft stays editable for
+another attempt. The card explains that the note and inbound links move
+with the PDF while the reading task keeps its identity. Close the PDF in
+Highlights first. Hiding the panel does not cancel a rename already in
+progress; completion while hidden posts a notification.
+
 ### Opening Bob Refs
 
 - From anywhere on the Mac, Control-Shift-Command-O toggles the panel.
@@ -1589,18 +1601,6 @@ Source URL (only with `urls`), Open Narration (only with `audio`, in
 the default app), Open in Default App, Refresh Library (⌘R), and Scan
 for New References (⌘S, last; disabled while a scan runs). Copy… and
 Rename… open their matching cards.
-
-### Rename card
-
-Command-Shift-R or Rename… in the ⌘K menu opens a card for the selected
-reference. Edit the filename stem; the `.pdf` suffix stays fixed. Return
-runs `bob ref rename` for the selected note, and Escape closes the card.
-Ordinary typing and editing shortcuts stay in the filename field. Bob's
-refusal message and hint appear inline, and the draft stays editable for
-another attempt. The card explains that the note and inbound links move
-with the PDF while the reading task keeps its identity. Close the PDF in
-Highlights first. Hiding the panel does not cancel a rename already in
-progress; completion while hidden posts a notification.
 
 ### Privacy
 

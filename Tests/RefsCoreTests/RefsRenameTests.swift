@@ -30,11 +30,38 @@ final class RefsRenameTests: XCTestCase {
     XCTAssertEqual(response.links?.files, ["sase.md"])
     XCTAssertEqual(response.outcome, "renamed")
     XCTAssertEqual(response.changed, true)
-    XCTAssertNil(response.commit)
-    XCTAssertEqual(response.sync?.pre, "skipped")
-    XCTAssertEqual(response.sync?.post, "skipped")
+    XCTAssertEqual(
+      response.commit,
+      .object([
+        "sha": .string("c4b6f81a2d4e4f8a1b3c5d6e7f8090a1b2c3d4e5"),
+        "subject": .string(
+          "bob ref rename: 442a6bf555914893e9891c11519de94f → karpathy_llm_wiki"
+        ),
+      ])
+    )
+    XCTAssertEqual(response.sync?.pre, "ok")
+    XCTAssertEqual(response.sync?.post, "ok")
     XCTAssertEqual(response.warnings, [])
     XCTAssertNil(response.error)
+  }
+
+  func testUnchangedAndAlreadyRenamedOutcomesDecode() throws {
+    for outcome in ["unchanged", "already_renamed"] {
+      let response = try JSONDecoder().decode(
+        RefsRenameResponse.self,
+        from: Data(
+          """
+          {"schema_version":1,"ok":true,"mode":"write","changed":false,\
+          "outcome":"\(outcome)",\
+          "from":{"path":"ref/blogs/old_stem.md","stem":"old_stem"},\
+          "to":{"path":"ref/blogs/old_stem.md","stem":"old_stem"}}
+          """.utf8)
+      )
+      XCTAssertEqual(response.outcome, outcome)
+      XCTAssertEqual(response.changed, false)
+      XCTAssertEqual(response.to?.stem, "old_stem")
+      XCTAssertNil(response.error)
+    }
   }
 
   func testMissingOptionalFieldsAndUnknownFieldsDecode() throws {
@@ -65,9 +92,9 @@ final class RefsRenameTests: XCTestCase {
     XCTAssertEqual(
       response.error,
       RefsRenameFailure(
-        code: "not_found",
-        message: "Reference not found",
-        hint: "Check the reference path and try again."
+        code: "unknown_reference",
+        message: "no reference note matches missing_ref_xyz",
+        hint: nil
       ))
     XCTAssertEqual(RefsRenameProblemMapping.responseProblem(response), response.error)
   }
@@ -84,6 +111,10 @@ final class RefsRenameTests: XCTestCase {
     XCTAssertEqual(
       RefsRenameProblemMapping.transportProblem(for: TestRenameError.broken).code,
       "transport"
+    )
+    XCTAssertEqual(
+      RefsRenameProblemMapping.transportProblem(for: TestRenameError.broken).message,
+      "broken"
     )
   }
 
@@ -107,8 +138,10 @@ final class RefsRenameTests: XCTestCase {
 
     card.fail(message: "Name is taken", hint: "Choose another stem.")
     XCTAssertEqual(card.phase, .failed(message: "Name is taken", hint: "Choose another stem."))
+    XCTAssertTrue(card.isFailed)
     card.editDraftStem("available")
     XCTAssertEqual(card.phase, .idle)
+    XCTAssertFalse(card.isFailed)
     XCTAssertEqual(card.handle(.cancel), .cancel)
   }
 
@@ -122,10 +155,22 @@ final class RefsRenameTests: XCTestCase {
       RefsRenameKeyMap.command(
         keyCode: 76, modifiers: noModifiers, isRunning: true
       ), .ignore)
-    XCTAssertEqual(
+    XCTAssertNil(
       RefsRenameKeyMap.command(
         keyCode: 36, modifiers: noModifiers, isRunning: false, hasMarkedText: true
-      ), .ignore)
+      ))
+    XCTAssertNil(
+      RefsRenameKeyMap.command(
+        keyCode: 36, modifiers: noModifiers, isRunning: true, hasMarkedText: true
+      ))
+    XCTAssertNil(
+      RefsRenameKeyMap.command(
+        keyCode: 53, modifiers: noModifiers, isRunning: false, hasMarkedText: true
+      ))
+    XCTAssertNil(
+      RefsRenameKeyMap.command(
+        keyCode: 33, modifiers: .control, isRunning: false, hasMarkedText: true
+      ))
     XCTAssertEqual(
       RefsRenameKeyMap.command(
         keyCode: 53, modifiers: noModifiers, isRunning: false
@@ -167,12 +212,39 @@ final class RefsRenameTests: XCTestCase {
       "Renamed → paper.pdf · no links updated"
     )
     XCTAssertEqual(
+      RefsRenamePresentation.alreadyNamedStatus(stem: "paper"),
+      "Already named paper.pdf"
+    )
+    XCTAssertEqual(
+      RefsRenamePresentation.alreadyRenamedStatus(stem: "paper"),
+      "Already renamed → paper.pdf"
+    )
+    XCTAssertEqual(
+      RefsRenamePresentation.status(stem: "paper", rewrittenLinks: 0, outcome: "unchanged"),
+      "Already named paper.pdf"
+    )
+    XCTAssertEqual(
+      RefsRenamePresentation.status(stem: "paper", rewrittenLinks: 0, outcome: "already_renamed"),
+      "Already renamed → paper.pdf"
+    )
+    XCTAssertEqual(
+      RefsRenamePresentation.status(stem: "paper", rewrittenLinks: 2, outcome: "renamed"),
+      "Renamed → paper.pdf · 2 links updated"
+    )
+    XCTAssertEqual(
+      RefsRenamePresentation.status(stem: "paper", rewrittenLinks: 2, outcome: nil),
+      "Renamed → paper.pdf · 2 links updated"
+    )
+    XCTAssertEqual(
       RefsRenamePresentation.announcement(stem: "paper"),
       "Reference renamed to paper.pdf"
     )
     let notification = RefsRenamePresentation.notification(stem: "paper")
     XCTAssertEqual(notification.title, "Reference renamed")
     XCTAssertEqual(notification.body, "paper.pdf")
+    let failure = RefsRenamePresentation.failureNotification(message: "Name is taken")
+    XCTAssertEqual(failure.title, "Reference rename failed")
+    XCTAssertEqual(failure.body, "Name is taken")
   }
 
   private func item() -> RefItem {

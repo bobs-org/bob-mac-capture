@@ -6,7 +6,7 @@ import SwiftUI
 /// missing, the first hint reads "Return opens the note".
 ///
 /// Status priority, top wins: scanning, refresh failed, the scan
-/// notice, updating, updated.
+/// notice, rename status, updating, updated.
 @available(macOS 26.0, *)
 struct RefsFooter: View {
     @ObservedObject var model: RefsPanelModel
@@ -85,6 +85,27 @@ struct RefsFooter: View {
         case updated
     }
 
+    /// Whether the rename status shows: only when set and no
+    /// higher-priority state (scanning, refresh failure, scan notice)
+    /// is active. Pure so tests pin the precedence without building
+    /// the view.
+    static func showsRenameStatus(
+        renameStatus: String?,
+        isScanning: Bool,
+        refreshFailed: Bool,
+        hasScanNotice: Bool
+    ) -> Bool {
+        guard renameStatus != nil else {
+            return false
+        }
+        return statusPriority(
+            isScanning: isScanning,
+            refreshFailed: refreshFailed,
+            hasScanNotice: hasScanNotice,
+            refreshing: false
+        ) == .updated
+    }
+
     static func statusPriority(
         isScanning: Bool,
         refreshFailed: Bool,
@@ -108,7 +129,12 @@ struct RefsFooter: View {
 
     private var status: some View {
         Group {
-            if let renameStatus = model.renameStatus {
+            if Self.showsRenameStatus(
+                renameStatus: model.renameStatus,
+                isScanning: model.isScanning,
+                refreshFailed: isRefreshFailed,
+                hasScanNotice: model.scanNotice != nil
+            ), let renameStatus = model.renameStatus {
                 Text(renameStatus)
                     .foregroundStyle(.secondary)
             } else {
@@ -156,21 +182,24 @@ struct RefsFooter: View {
     }
 
     private var statusKey: String {
-        if let renameStatus = model.renameStatus {
-            return "rename-\(renameStatus)"
-        }
         if model.isScanning {
             return "scanning"
         }
         if case .failed = model.refreshState {
             return "refresh-failed"
         }
-        if let notice = model.scanNotice {
-            let text = RefsScanPresentation.footerText(
-                notice,
-                searchMode: searchMode
-            )
-            return "scan-\(notice.kind)-\(text)"
+        if model.scanNotice != nil {
+            if let notice = model.scanNotice {
+                let text = RefsScanPresentation.footerText(
+                    notice,
+                    searchMode: searchMode
+                )
+                return "scan-\(notice.kind)-\(text)"
+            }
+            return "scan"
+        }
+        if let renameStatus = model.renameStatus {
+            return "rename-\(renameStatus)"
         }
         return "refresh-\(String(describing: model.refreshState))"
     }

@@ -238,12 +238,12 @@ final class RefsFetchingTests: XCTestCase {
     let response = try await fetcher.rename(notePath: "ref/blogs/old.md", name: "new")
 
     XCTAssertEqual(response.ok, false)
-    XCTAssertEqual(response.error?.code, "not_found")
-    XCTAssertEqual(response.error?.message, "Reference not found")
+    XCTAssertEqual(response.error?.code, "unknown_reference")
     XCTAssertEqual(
-      RefsRenameProblemMapping.responseProblem(response)?.hint,
-      "Check the reference path and try again."
+      response.error?.message,
+      "no reference note matches missing_ref_xyz"
     )
+    XCTAssertNil(RefsRenameProblemMapping.responseProblem(response)?.hint)
   }
 
   func testOlderBobFailureMapsToUpdateMessage() async throws {

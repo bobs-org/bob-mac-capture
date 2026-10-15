@@ -531,6 +531,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.renameNotifier = { [weak self] response in
             self?.notificationService.notifyRefsRename(response)
         }
+        model.renameFailureNotifier = { [weak self] message, _ in
+            self?.notificationService.notifyRefsRenameFailure(message: message)
+        }
         let controller = RefsPanelController(model: model)
         refsLibrary = library
         refsPanelModel = model

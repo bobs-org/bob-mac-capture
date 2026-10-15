@@ -76,4 +76,47 @@ final class RefsFooterTests: XCTestCase {
             .updated
         )
     }
+
+    func testRenameStatusYieldsToScanningRefreshFailureAndScanNotice() {
+        XCTAssertFalse(
+            RefsFooter.showsRenameStatus(
+                renameStatus: nil,
+                isScanning: false,
+                refreshFailed: false,
+                hasScanNotice: false
+            )
+        )
+        XCTAssertTrue(
+            RefsFooter.showsRenameStatus(
+                renameStatus: "Renamed → paper.pdf · no links updated",
+                isScanning: false,
+                refreshFailed: false,
+                hasScanNotice: false
+            )
+        )
+        XCTAssertFalse(
+            RefsFooter.showsRenameStatus(
+                renameStatus: "Renamed → paper.pdf · no links updated",
+                isScanning: true,
+                refreshFailed: false,
+                hasScanNotice: false
+            )
+        )
+        XCTAssertFalse(
+            RefsFooter.showsRenameStatus(
+                renameStatus: "Renamed → paper.pdf · no links updated",
+                isScanning: false,
+                refreshFailed: true,
+                hasScanNotice: false
+            )
+        )
+        XCTAssertFalse(
+            RefsFooter.showsRenameStatus(
+                renameStatus: "Renamed → paper.pdf · no links updated",
+                isScanning: false,
+                refreshFailed: false,
+                hasScanNotice: true
+            )
+        )
+    }
 }

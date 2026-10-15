@@ -145,6 +145,14 @@ final class NotificationService: NSObject, ObservableObject {
         }
     }
 
+    /// Reports a rename that failed while Bob Refs was hidden, carrying
+    /// the same inline message the card shows.
+    func notifyRefsRenameFailure(message: String) {
+        Task {
+            try? await add(Self.refsRenameFailureContent(message: message))
+        }
+    }
+
     func sendTestNotification() async throws {
         try await add(Self.testContent())
     }
@@ -319,6 +327,16 @@ final class NotificationService: NSObject, ObservableObject {
 
     nonisolated static func refsRenameContent(stem: String) -> UNMutableNotificationContent {
         let text = RefsRenamePresentation.notification(stem: stem)
+        let content = UNMutableNotificationContent()
+        content.title = text.title
+        content.body = text.body
+        return content
+    }
+
+    nonisolated static func refsRenameFailureContent(
+        message: String
+    ) -> UNMutableNotificationContent {
+        let text = RefsRenamePresentation.failureNotification(message: message)
         let content = UNMutableNotificationContent()
         content.title = text.title
         content.body = text.body
