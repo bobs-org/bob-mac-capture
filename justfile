@@ -32,7 +32,10 @@ typecheck-tests:
 bundle identity="-":
     ./Scripts/bundle.sh --identity "{{identity}}"
 
-install target="~/Applications" identity="-":
+# An empty identity means "resolve": install.sh signs with the stable
+# "Bob Mac Capture Local" identity when the keychain holds it, and falls back
+# to ad-hoc with a loud warning otherwise. bundle keeps its ad-hoc default.
+install target="~/Applications" identity="":
     ./Scripts/install.sh --target "{{target}}" --identity "{{identity}}"
 
 all: format-lint build test bundle

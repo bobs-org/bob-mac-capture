@@ -11,7 +11,7 @@ enum BundleSigningState: Equatable {
         case .unsigned:
             return "Unsigned — notification verification requires the installed signed bundle, not swift run"
         case .adHoc:
-            return "Ad-hoc signed — notification permissions may not persist across a reinstall with a different identity"
+            return "Ad-hoc signed — notification and Accessibility grants reset on each reinstall; see README › Signing"
         case .signed(let identity):
             return "Signed: \(identity)"
         case .unknown(let detail):

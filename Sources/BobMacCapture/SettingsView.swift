@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import ServiceManagement
 import SwiftUI
 import UniformTypeIdentifiers
@@ -12,6 +13,8 @@ struct SettingsView: View {
     @State private var testNotificationStatus = ""
     @State private var isConfirmingStashClear = false
     @State private var isConfirmingRefsReset = false
+    @State private var highlightsTabsAllowed = false
+    @State private var isAdHocBuild = false
 
     var body: some View {
         Form {
@@ -68,6 +71,15 @@ struct SettingsView: View {
                     Button("Use Default") {
                         settings.refsHighlightsAppPath = ""
                     }
+                }
+                LabeledContent(
+                    "Highlights tabs",
+                    value: AccessibilityTrust.statusText(isTrusted: highlightsTabsAllowed)
+                )
+                if let caption = AccessibilityTrust.adHocCaption(isAdHocBuild: isAdHocBuild) {
+                    Text(caption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 Button("Reset Open History…", role: .destructive) {
                     isConfirmingRefsReset = true
@@ -203,8 +215,23 @@ struct SettingsView: View {
             Text("This clears recently-opened rows and frecency.")
         }
         .task {
+            refreshHighlightsTabsStatus()
             await notificationService.refreshAuthorizationStatus()
         }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: NSApplication.didBecomeActiveNotification
+            )
+        ) { _ in
+            refreshHighlightsTabsStatus()
+        }
+    }
+
+    /// Re-reads the Accessibility grant and the ad-hoc build state for the
+    /// "Highlights tabs" row. Never prompts.
+    private func refreshHighlightsTabsStatus() {
+        highlightsTabsAllowed = AccessibilityTrust.isTrusted()
+        isAdHocBuild = BundleSigningInspector.currentBundleState() == .adHoc
     }
 
     /// The resolved Highlights app's name, version, and path, or

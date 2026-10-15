@@ -37,6 +37,13 @@ final class BundleSigningInspectorTests: XCTestCase {
         XCTAssertEqual(state, .signed(identity: "Apple Development: Name (TEAMID)"))
     }
 
+    func testAdHocDiagnosticMentionsAccessibilityAndSigningDocs() {
+        let text = BundleSigningState.adHoc.diagnosticText
+
+        XCTAssertTrue(text.contains("Accessibility"), "ad-hoc text should warn about Accessibility: \(text)")
+        XCTAssertTrue(text.contains("README"), "ad-hoc text should point at README › Signing: \(text)")
+    }
+
     func testUnknownOutputFallsBackWithoutCrashing() {
         let state = BundleSigningInspector.state(fromCodesignOutput: "")
 

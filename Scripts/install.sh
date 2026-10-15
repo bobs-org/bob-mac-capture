@@ -4,25 +4,53 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage: Scripts/install.sh [--identity IDENTITY] [--target /Applications|~/Applications]
+       [--print-resolved-identity]
 
 Builds a staged signed app bundle, replaces only the target Bob Mac Capture.app,
 verifies the installed bundle identifier and signature, and restarts a copy that
 was already running from that exact install path.
+
+--print-resolved-identity prints the signing identity that would be used and
+exits without touching anything. Useful for read-only verification on the Mac.
 USAGE
 }
 
-identity="${CODESIGN_IDENTITY:--}"
+# Name of the stable self-signed code-signing identity (see README › Signing).
+# Signing with it keeps the Accessibility and notification grants across
+# reinstalls. Created once by Bryan in Keychain Access; never by this script.
+stable_identity_name="Bob Mac Capture Local"
+
+# Prints the identity `security find-identity` resolves to: the stable identity
+# when the keychain holds it, "-" (ad-hoc) otherwise. Takes no action.
+# Kept as a standalone function so it can be exercised on its own.
+find_stored_signing_identity() {
+  if /usr/bin/security find-identity -p codesigning 2>/dev/null \
+    | grep -q "\"${stable_identity_name}\""; then
+    printf '%s\n' "${stable_identity_name}"
+  else
+    printf '%s\n' "-"
+  fi
+}
+
+# A non-empty --identity wins, including "-". Otherwise a non-empty
+# CODESIGN_IDENTITY wins. Empty in both places means "resolve".
+cli_identity=""
+print_resolved_identity_only=false
 target_dir="${HOME}/Applications"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --identity)
-      identity="${2:?missing identity}"
+      cli_identity="${2-}"
       shift 2
       ;;
     --target)
       target_dir="${2:?missing target}"
       shift 2
+      ;;
+    --print-resolved-identity)
+      print_resolved_identity_only=true
+      shift
       ;;
     -h|--help)
       usage
@@ -35,6 +63,33 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+identity="${cli_identity}"
+if [[ -z "${identity}" && -n "${CODESIGN_IDENTITY:-}" ]]; then
+  identity="${CODESIGN_IDENTITY}"
+fi
+
+# Resolve a still-empty identity against the keychain: the stable identity when
+# it exists, ad-hoc with a loud warning otherwise. bundle.sh keeps its own
+# ad-hoc default for agent scratch builds; only `just install` resolves.
+resolved_from_keychain=false
+if [[ -z "${identity}" ]]; then
+  identity="$(find_stored_signing_identity)"
+  resolved_from_keychain=true
+fi
+
+if [[ "${print_resolved_identity_only}" == "true" ]]; then
+  printf '%s\n' "${identity}"
+  exit 0
+fi
+
+if [[ "${resolved_from_keychain}" == "true" && "${identity}" == "-" ]]; then
+  cat >&2 <<'WARNING'
+WARNING: signing ad-hoc because the "Bob Mac Capture Local" identity was not
+found in the keychain. Notification and Accessibility grants will reset on this
+install. See README › Signing to create the stable identity.
+WARNING
+fi
 
 case "${target_dir}" in
   "~/"*) target_dir="${HOME}/${target_dir#"~/"}" ;;

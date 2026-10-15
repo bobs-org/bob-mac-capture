@@ -270,10 +270,13 @@ On a host without Xcode, only CaptureCore, RefsCore, and refs-rank build; `just 
 `just typecheck-tests` type-checks all test targets on a Mac with only Command Line Tools.
 
 `just bundle` creates `.build/bundle/Bob Mac Capture.app` and signs it with the ad-hoc
-identity `-`. Release installs should prefer an Apple Development identity:
+identity `-`, which is the right default for agent scratch builds. `just install`
+instead resolves its identity: an explicit `--identity` or `CODESIGN_IDENTITY` wins
+(including `-`), otherwise it signs with the stable "Bob Mac Capture Local" identity
+when the login keychain holds it, and falls back to ad-hoc with a loud warning:
 
 ```sh
-just bundle "Apple Development: Name (TEAMID)"
+just install ~/Applications
 just install ~/Applications "Apple Development: Name (TEAMID)"
 ```
 
@@ -281,9 +284,53 @@ just install ~/Applications "Apple Development: Name (TEAMID)"
 copy if it was already running, and leaves it stopped otherwise. See "Updating,
 Reinstalling, and Rollback" below.
 
-Ad-hoc signatures are useful for local development, but notification permissions and
-launch-at-login trust are tied to the installed signed bundle. Reinstalling with a new
-or expired certificate can require reauthorizing those system permissions.
+Ad-hoc signatures are useful for local development, but notification permissions,
+Accessibility grants, and launch-at-login trust are tied to the installed signed
+bundle. Reinstalling with a new or expired certificate can require reauthorizing
+those system permissions.
+
+### Signing
+
+Bob Mac Capture needs an Accessibility grant to read Highlights tabs, and macOS ties
+an ad-hoc app's grant to its exact `cdhash` — so every ad-hoc `just install`
+silently revokes the grant while System Settings still shows it on. Signing every
+install with one stable self-signed identity ("Bob Mac Capture Local") keeps the
+grant across reinstalls. Settings › References shows the grant as
+"Highlights tabs: Allowed / Not allowed".
+
+Create the identity once in Keychain Access:
+
+1. Open Keychain Access and select the **login** keychain.
+2. Choose Keychain Access › Certificate Assistant › Create a Certificate.
+3. Name it exactly `Bob Mac Capture Local`.
+4. Set Identity Type to **Self-Signed Root** and Certificate Type to **Code Signing**.
+5. Give it a long validity period (ten years) and finish the assistant, storing the
+   certificate in the login keychain.
+
+`just install` picks the identity up automatically on the next install — no flags
+needed. On the first signed install, `codesign` prompts for keychain access: choose
+**Always Allow** so future installs stay unattended.
+
+Always run `just install` from a GUI Terminal session on the Mac. Over SSH the login
+keychain is locked, so the stable identity is unreachable and the install falls back
+to ad-hoc.
+
+Verify an install with:
+
+```sh
+codesign -d -r- ~/Applications/"Bob Mac Capture.app"
+```
+
+A stable install shows `certificate leaf = H"…"`; an ad-hoc one shows a `cdhash`
+designated requirement instead.
+
+If a stale ad-hoc grant lingers in the Accessibility list, clear it with:
+
+```sh
+tccutil reset Accessibility org.bobs.bob-mac-capture
+```
+
+then re-grant the freshly installed app when macOS prompts.
 
 ## Menu-Bar Icon
 
@@ -2173,10 +2220,12 @@ Do not restore the old binding while the app still owns the production shortcut.
 
 Reinstalling with a **different** signing identity (for example, moving from ad-hoc `-`
 to a real Apple Development certificate, or renewing an expired certificate) resets
-notification-authorization and launch-at-login trust: macOS ties both to the exact
-code-signing identity, not just the bundle identifier. Expect to re-approve notifications
-and re-enable launch at login after such a change, and prefer keeping one certificate for
-the lifetime of an install rather than alternating between ad-hoc and signed builds.
+notification-authorization, Accessibility grants, and launch-at-login trust: macOS ties
+all three to the exact code-signing identity, not just the bundle identifier. Expect to
+re-approve notifications, re-grant Accessibility, and re-enable launch at login after
+such a change, and prefer keeping one certificate for the lifetime of an install rather
+than alternating between ad-hoc and signed builds. That is what the stable
+"Bob Mac Capture Local" identity (see Development › Signing) is for.
 
 ## Uninstalling
 
