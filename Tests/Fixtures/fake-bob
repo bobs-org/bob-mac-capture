@@ -4952,6 +4952,20 @@ JSON
         cat "${fixtures_dir}/${scan_fixture}"
       fi
       exit "${FAKE_BOB_REFS_SCAN_EXIT:-0}"
+    elif [[ "${subcommand}" == "rename" ]]; then
+      # `bob ref rename -f json -- <note> <name>`. Exit 2 models an older
+      # bob that rejects the command before it can print a JSON envelope.
+      rename_exit="${FAKE_BOB_REFS_RENAME_EXIT:-0}"
+      if [[ "${rename_exit}" == "2" ]]; then
+        exit 2
+      fi
+      rename_fixture="${FAKE_BOB_REFS_RENAME_FIXTURE:-refs-rename.json}"
+      if [[ "${rename_fixture}" == */* ]]; then
+        cat "${rename_fixture}"
+      else
+        cat "${fixtures_dir}/${rename_fixture}"
+      fi
+      exit "${rename_exit}"
     else
       printf 'unknown fake ref command: %s\n' "${subcommand}" >&2
       exit 64
