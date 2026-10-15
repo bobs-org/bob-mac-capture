@@ -3388,4 +3388,95 @@ final class CaptureModelTests: XCTestCase {
         )
         XCTAssertEqual(mistypedElement.taskBlocks, [])
     }
+
+    func testTemplateParseFixtureDecodesRangesRowsFieldsAndSlotSpans() throws {
+        let data = try Data(contentsOf: fixtureURL("capture-parse-template-example.json"))
+        let parse = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        let template = try XCTUnwrap(parse.template)
+        XCTAssertEqual(template.header.line, 1)
+        XCTAssertEqual(template.fieldCount, 3)
+        XCTAssertEqual(template.rows.count, 3)
+        XCTAssertEqual(template.rows[0].row, 1)
+        XCTAssertEqual(template.rows[0].mode, "pomodoro_task")
+        XCTAssertEqual(template.rows[0].body, "Apply to Foobar!")
+        XCTAssertEqual(template.rows[0].fields.map(\.value), ["Foobar", "foo", "http://foobar.com/career/some_foo_job"])
+        XCTAssertEqual(parse.items.last?.mode, "template_row")
+        XCTAssertEqual(parse.items.last?.templateRow?.row, 3)
+        XCTAssertEqual(parse.spans.filter { $0.kind == "template_placeholder" }.map(\.field), [0, 1, 2])
+        XCTAssertEqual(parse.spans.filter { $0.kind == "template_field" }.first?.field, 0)
+    }
+
+    func testTemplateParseStateFixturesDecodeHeaderOnlyNoRowsAndArityError() throws {
+        let headerOnly = try decodeParseFixture("capture-parse-template-header-only.json")
+        XCTAssertNotNil(headerOnly.template)
+        XCTAssertTrue(headerOnly.needs.contains("template_row"))
+        XCTAssertTrue(headerOnly.diagnostics.contains { $0.code == "template_missing_rows" })
+
+        let noRows = try decodeParseFixture("capture-parse-template-no-rows.json")
+        XCTAssertNotNil(noRows.template)
+        XCTAssertTrue(noRows.needs.contains("template_row"))
+        XCTAssertTrue(noRows.diagnostics.contains { $0.code == "template_missing_rows" })
+
+        let arity = try decodeParseFixture("capture-parse-template-arity-error.json")
+        XCTAssertNotNil(arity.template)
+        XCTAssertTrue(arity.diagnostics.contains { $0.code == "template_row_arity" })
+    }
+
+    func testTemplateExecutionFixturesDecodeSummaryAndOneRowLegacyShape() throws {
+        let batch = try decodeCaptureSuccess(
+            String(contentsOf: fixtureURL("capture-template-example.json"), encoding: .utf8)
+        )
+        XCTAssertEqual(batch.template?.fieldCount, 3)
+        XCTAssertEqual(batch.template?.rowCount, 3)
+        XCTAssertEqual(batch.captures.map(\.templateRow?.row), [1, 2, 3])
+        XCTAssertEqual(batch.template?.previewChipTitle, "Template · 3 rows")
+        XCTAssertEqual(batch.template?.previewAccessibilityLabel, "3 capture items from a template")
+
+        let one = try decodeCaptureSuccess(
+            String(contentsOf: fixtureURL("capture-template-one-row.json"), encoding: .utf8)
+        )
+        XCTAssertEqual(one.template?.rowCount, 1)
+        XCTAssertEqual(one.templateRow?.row, 1)
+        XCTAssertEqual(one.template?.previewChipTitle, "Template · 1 row")
+        XCTAssertEqual(one.template?.previewAccessibilityLabel, "1 capture items from a template")
+    }
+
+    func testOlderCapturePayloadKeepsTemplateFieldsAbsent() throws {
+        let success = try decodeFixture("pomodoro-close-worked.json")
+        XCTAssertNil(success.template)
+        XCTAssertNil(success.templateRow)
+        let parse = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(
+                #"{"ok":true,"schema_version":1,"input":"Write","body":"Write","mode":"task","needs":[],"spans":[],"diagnostics":[]}"#.utf8
+            )
+        )
+        XCTAssertNil(parse.template)
+        XCTAssertNil(parse.items.first?.templateRow)
+    }
+
+    func testMalformedTemplateObjectDoesNotFailCaptureParseDecoding() throws {
+        let parse = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(
+                #"{"ok":true,"schema_version":1,"input":"@@template:","body":"","mode":"task","needs":[],"spans":[],"diagnostics":[],"template":42}"#.utf8
+            )
+        )
+
+        XCTAssertNil(parse.template)
+    }
+
+    private func fixtureURL(_ name: String) -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+            .appendingPathComponent(name)
+    }
+
+    private func decodeParseFixture(_ name: String) throws -> CaptureParseResponse {
+        let data = try Data(contentsOf: fixtureURL(name))
+        return try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+    }
 }

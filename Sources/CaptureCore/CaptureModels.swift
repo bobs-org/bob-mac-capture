@@ -1,5 +1,185 @@
 import Foundation
 
+/// Compact execution summary for a declared bulk template. Older Bob omits
+/// the object, so clients can safely treat nil as an ordinary capture.
+public struct CaptureTemplateSummary: Codable, Equatable {
+    public let line: Int
+    public let fieldCount: Int
+    public let rowCount: Int
+
+    public init(line: Int = 0, fieldCount: Int = 0, rowCount: Int = 0) {
+        self.line = line
+        self.fieldCount = fieldCount
+        self.rowCount = rowCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+        fieldCount = (try? container.decodeIfPresent(Int.self, forKey: .fieldCount)) ?? 0
+        rowCount = (try? container.decodeIfPresent(Int.self, forKey: .rowCount)) ?? 0
+    }
+
+    public var previewChipTitle: String {
+        "Template · \(rowCount) \(rowCount == 1 ? "row" : "rows")"
+    }
+
+    public var previewAccessibilityLabel: String {
+        "\(rowCount) capture items from a template"
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case line
+        case fieldCount = "field_count"
+        case rowCount = "row_count"
+    }
+}
+
+/// One row field from Bob's template-aware editor parse. Ranges are UTF-8
+/// byte offsets into the typed draft, including quotes where present.
+public struct CaptureTemplateField: Codable, Equatable {
+    public let field: Int
+    public let value: String
+    public let range: CaptureRange
+
+    public init(field: Int = 0, value: String = "", range: CaptureRange = CaptureRange(start: 0, end: 0)) {
+        self.field = field
+        self.value = value
+        self.range = range
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        field = (try? container.decodeIfPresent(Int.self, forKey: .field)) ?? 0
+        value = (try? container.decodeIfPresent(String.self, forKey: .value)) ?? ""
+        range = (try? container.decodeIfPresent(CaptureRange.self, forKey: .range))
+            ?? CaptureRange(start: 0, end: 0)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case field
+        case value
+        case range
+    }
+}
+
+/// A template row as returned by `capture-parse` and `capture`. Parse-only
+/// details are optional so the same type decodes execution's compact
+/// `{row,line}` object without rejecting older or partial payloads.
+public struct CaptureTemplateRow: Codable, Equatable {
+    public let row: Int
+    public let line: Int
+    public let range: CaptureRange?
+    public let mode: String?
+    public let body: String?
+    public let fields: [CaptureTemplateField]
+
+    public init(
+        row: Int = 0,
+        line: Int = 0,
+        range: CaptureRange? = nil,
+        mode: String? = nil,
+        body: String? = nil,
+        fields: [CaptureTemplateField] = []
+    ) {
+        self.row = row
+        self.line = line
+        self.range = range
+        self.mode = mode
+        self.body = body
+        self.fields = fields
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        row = (try? container.decodeIfPresent(Int.self, forKey: .row)) ?? 0
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+        range = (try? container.decodeIfPresent(CaptureRange.self, forKey: .range)) ?? nil
+        mode = (try? container.decodeIfPresent(String.self, forKey: .mode)) ?? nil
+        body = (try? container.decodeIfPresent(String.self, forKey: .body)) ?? nil
+        fields = (try? container.decodeIfPresent([CaptureTemplateField].self, forKey: .fields)) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case row
+        case line
+        case range
+        case mode
+        case body
+        case fields
+    }
+}
+
+public struct CaptureTemplateHeader: Codable, Equatable {
+    public let range: CaptureRange
+    public let line: Int
+
+    public init(range: CaptureRange = CaptureRange(start: 0, end: 0), line: Int = 0) {
+        self.range = range
+        self.line = line
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        range = (try? container.decodeIfPresent(CaptureRange.self, forKey: .range))
+            ?? CaptureRange(start: 0, end: 0)
+        line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case range
+        case line
+    }
+}
+
+/// Template-specific parse metadata. Row ranges and field ranges index the
+/// original editor draft; the expanded instance is only used for preview.
+public struct CaptureParseTemplate: Codable, Equatable {
+    public let header: CaptureTemplateHeader
+    public let range: CaptureRange
+    public let lineStart: Int
+    public let lineEnd: Int
+    public let fieldCount: Int
+    public let rows: [CaptureTemplateRow]
+
+    public init(
+        header: CaptureTemplateHeader = CaptureTemplateHeader(),
+        range: CaptureRange = CaptureRange(start: 0, end: 0),
+        lineStart: Int = 0,
+        lineEnd: Int = 0,
+        fieldCount: Int = 0,
+        rows: [CaptureTemplateRow] = []
+    ) {
+        self.header = header
+        self.range = range
+        self.lineStart = lineStart
+        self.lineEnd = lineEnd
+        self.fieldCount = fieldCount
+        self.rows = rows
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        header = (try? container.decodeIfPresent(CaptureTemplateHeader.self, forKey: .header))
+            ?? CaptureTemplateHeader()
+        range = (try? container.decodeIfPresent(CaptureRange.self, forKey: .range))
+            ?? CaptureRange(start: 0, end: 0)
+        lineStart = (try? container.decodeIfPresent(Int.self, forKey: .lineStart)) ?? 0
+        lineEnd = (try? container.decodeIfPresent(Int.self, forKey: .lineEnd)) ?? 0
+        fieldCount = (try? container.decodeIfPresent(Int.self, forKey: .fieldCount)) ?? 0
+        rows = (try? container.decodeIfPresent([CaptureTemplateRow].self, forKey: .rows)) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case header
+        case range
+        case lineStart = "line_start"
+        case lineEnd = "line_end"
+        case fieldCount = "field_count"
+        case rows
+    }
+}
+
 public struct CaptureParseResponse: Codable, Equatable {
     public let ok: Bool
     public let schemaVersion: Int
@@ -40,6 +220,8 @@ public struct CaptureParseResponse: Codable, Equatable {
     public let dependencies: [CaptureParseRelationshipMarker]
     public let blockedTasks: [CaptureParseRelationshipMarker]
     public let dependencyTarget: DependencyOwner?
+    /// Additive template parse contract; absent in older Bob and for ordinary drafts.
+    public let template: CaptureParseTemplate?
 
     public init(
         ok: Bool,
@@ -65,7 +247,8 @@ public struct CaptureParseResponse: Codable, Equatable {
         pomodoroClose: PomodoroCloseSpec? = nil,
         dependencies: [CaptureParseRelationshipMarker] = [],
         blockedTasks: [CaptureParseRelationshipMarker] = [],
-        dependencyTarget: DependencyOwner? = nil
+        dependencyTarget: DependencyOwner? = nil,
+        template: CaptureParseTemplate? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -94,6 +277,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         self.dependencies = dependencies
         self.blockedTasks = blockedTasks
         self.dependencyTarget = dependencyTarget
+        self.template = template
     }
 
     public init(from decoder: Decoder) throws {
@@ -151,6 +335,7 @@ public struct CaptureParseResponse: Codable, Equatable {
             DependencyOwner.self,
             forKey: .dependencyTarget
         )
+        template = (try? container.decodeIfPresent(CaptureParseTemplate.self, forKey: .template)) ?? nil
     }
 
     private static func normalizedSubBulletDepths(
@@ -194,6 +379,7 @@ public struct CaptureParseResponse: Codable, Equatable {
         case dependencies
         case blockedTasks = "blocked_tasks"
         case dependencyTarget = "dependency_target"
+        case template
     }
 }
 
@@ -252,6 +438,8 @@ public struct CaptureParseItem: Codable, Equatable {
     public let dependencies: [CaptureParseRelationshipMarker]
     public let blockedTasks: [CaptureParseRelationshipMarker]
     public let dependencyTarget: DependencyOwner?
+    /// Additive row metadata for template parse items; omitted by older Bob.
+    public let templateRow: CaptureTemplateRow?
 
     public init(
         index: Int,
@@ -274,7 +462,8 @@ public struct CaptureParseItem: Codable, Equatable {
         pomodoroClose: PomodoroCloseSpec? = nil,
         dependencies: [CaptureParseRelationshipMarker] = [],
         blockedTasks: [CaptureParseRelationshipMarker] = [],
-        dependencyTarget: DependencyOwner? = nil
+        dependencyTarget: DependencyOwner? = nil,
+        templateRow: CaptureTemplateRow? = nil
     ) {
         self.index = index
         self.range = range
@@ -297,6 +486,7 @@ public struct CaptureParseItem: Codable, Equatable {
         self.dependencies = dependencies
         self.blockedTasks = blockedTasks
         self.dependencyTarget = dependencyTarget
+        self.templateRow = templateRow
     }
 
     public init(from decoder: Decoder) throws {
@@ -340,6 +530,7 @@ public struct CaptureParseItem: Codable, Equatable {
             DependencyOwner.self,
             forKey: .dependencyTarget
         )
+        templateRow = (try? container.decodeIfPresent(CaptureTemplateRow.self, forKey: .templateRow)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -364,6 +555,7 @@ public struct CaptureParseItem: Codable, Equatable {
         case dependencies
         case blockedTasks = "blocked_tasks"
         case dependencyTarget = "dependency_target"
+        case templateRow = "template_row"
     }
 }
 
@@ -502,11 +694,29 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
     public let start: Int
     public let end: Int
     public let kind: String
+    /// Slot index on additive `template_placeholder` and `template_field` spans.
+    public let field: Int?
 
-    public init(start: Int, end: Int, kind: String) {
+    public init(start: Int, end: Int, kind: String, field: Int? = nil) {
         self.start = start
         self.end = end
         self.kind = kind
+        self.field = field
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        start = try container.decode(Int.self, forKey: .start)
+        end = try container.decode(Int.self, forKey: .end)
+        kind = try container.decode(String.self, forKey: .kind)
+        field = (try? container.decodeIfPresent(Int.self, forKey: .field)) ?? nil
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case start
+        case end
+        case kind
+        case field
     }
 }
 
@@ -2733,6 +2943,9 @@ public struct CaptureCommandSuccess: Codable, Equatable {
     public let captures: [CaptureCommandSuccess]
     public let globalDestination: CaptureGlobalDestination?
     public let warnings: [String]
+    /// Additive template execution summary and row metadata.
+    public let template: CaptureTemplateSummary?
+    public let templateRow: CaptureTemplateRow?
 
     public init(
         ok: Bool,
@@ -2799,7 +3012,9 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         pomodoroBlocks: [CapturePomodoroBlock] = [],
         taskBlocks: [CaptureTaskBlock] = [],
         droppedDependencies: [CaptureDroppedDependency] = [],
-        linkGuard: CaptureLinkGuard? = nil
+        linkGuard: CaptureLinkGuard? = nil,
+        template: CaptureTemplateSummary? = nil,
+        templateRow: CaptureTemplateRow? = nil
     ) {
         self.ok = ok
         self.dryRun = dryRun
@@ -2866,6 +3081,8 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         self.captures = captures
         self.globalDestination = globalDestination
         self.warnings = warnings
+        self.template = template
+        self.templateRow = templateRow
     }
 
     public init(from decoder: Decoder) throws {
@@ -2999,6 +3216,8 @@ public struct CaptureCommandSuccess: Codable, Equatable {
             forKey: .globalDestination
         )
         warnings = try container.decodeIfPresent([String].self, forKey: .warnings) ?? []
+        template = (try? container.decodeIfPresent(CaptureTemplateSummary.self, forKey: .template)) ?? nil
+        templateRow = (try? container.decodeIfPresent(CaptureTemplateRow.self, forKey: .templateRow)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -3067,6 +3286,8 @@ public struct CaptureCommandSuccess: Codable, Equatable {
         case captures
         case globalDestination = "global_destination"
         case warnings
+        case template
+        case templateRow = "template_row"
     }
 
     /// The exact Markdown block `bob capture` writes beneath the destination, in the

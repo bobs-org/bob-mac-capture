@@ -1879,10 +1879,22 @@ struct PreviewPane: View {
         let suppressRelationshipLines = captures.contains {
             !$0.dependencyUpdates.isEmpty
         }
-        if captures.count > 1 {
-            Text("\(captures.count) captures")
-                .fontWeight(.semibold)
-                .accessibilityLabel("\(captures.count) capture items")
+        if captures.count > 1 || success.template != nil {
+            HStack(spacing: 6) {
+                Text("\(captures.count) captures")
+                    .fontWeight(.semibold)
+                    .accessibilityLabel("\(captures.count) capture items")
+                if let template = success.template {
+                    Text(template.previewChipTitle)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(.quaternary, in: Capsule())
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(template.previewAccessibilityLabel)
+                }
+            }
         }
         if let globalDestination = success.globalDestination {
             Text("All items \u{2192} \(globalDestination.scopeSummary)")

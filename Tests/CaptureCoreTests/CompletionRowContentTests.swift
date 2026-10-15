@@ -38,6 +38,66 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertNil(content.primaryMatchRange)
     }
 
+    func testTemplateHeaderCandidateHasDirectivePresentationWithoutBadges() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "@@template:",
+            label: "Bulk template",
+            kind: "template"
+        )
+
+        let content = completionRowContent(for: candidate, context: "route", query: "te")
+
+        XCTAssertEqual(content.category, .route)
+        XCTAssertEqual(content.symbolName, "square.stack.3d.down.right")
+        XCTAssertEqual(content.contextLabel, "Template")
+        XCTAssertEqual(content.primaryText, "@@template:")
+        XCTAssertEqual(content.secondaryText, "Bulk template")
+        XCTAssertEqual(content.badges, [])
+        XCTAssertEqual(content.accessibilityHint, "Starts a bulk template: one capture per row")
+    }
+
+    func testTemplateHeaderFixturePreservesBobReplacementAndLabel() throws {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let data = try Data(contentsOf: fixtures.appendingPathComponent("capture-complete-template-header.json"))
+        let response = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+        let candidate = try XCTUnwrap(response.candidates.first)
+        let content = completionRowContent(for: candidate, context: response.context, query: "te")
+
+        XCTAssertEqual(response.context, "route")
+        XCTAssertEqual(candidate.replacement, "template:")
+        XCTAssertEqual(response.replacement.start, 2)
+        XCTAssertEqual(response.replacement.end, 4)
+        XCTAssertEqual(content.primaryText, "@@template:")
+        XCTAssertEqual(content.secondaryText, candidate.label)
+        XCTAssertEqual(content.badges, [])
+    }
+
+    func testTemplateSpansMapToHeaderAndMatchingSlotCategories() {
+        XCTAssertEqual(
+            captureSemanticCategory(forSpan: CaptureSpan(start: 0, end: 11, kind: "template_header")),
+            .route
+        )
+        XCTAssertEqual(
+            captureSemanticCategory(
+                forSpan: CaptureSpan(start: 12, end: 15, kind: "template_placeholder", field: 2)
+            ),
+            .templateSlot(2)
+        )
+        XCTAssertEqual(
+            captureSemanticCategory(
+                forSpan: CaptureSpan(start: 20, end: 24, kind: "template_field", field: 2)
+            ),
+            .templateSlot(2)
+        )
+        XCTAssertEqual(
+            captureSemanticCategory(forSpan: CaptureSpan(start: 0, end: 2, kind: "template_field")),
+            .neutral
+        )
+    }
+
     func testRouteContextShowsTheMatchedAliasBesideTheCanonicalRoute() {
         let candidate = CaptureCompletionCandidate(
             replacement: "bob",

@@ -193,6 +193,8 @@ final class CapturePanelModel: ObservableObject {
         }
     }
     @Published var parseDiagnostics: [CaptureDiagnostic] = []
+    /// Bob's additive template parse object for the current draft, if any.
+    @Published var parsedTemplate: CaptureParseTemplate?
     @Published var completionResponse: CaptureCompletionResponse?
     @Published var selectedCompletionIndex = 0
     /// True while the visible inline completion list is the File-under
@@ -1457,6 +1459,9 @@ final class CapturePanelModel: ObservableObject {
         else {
             return false
         }
+        guard selectedCompletion?.kind != "template" else {
+            return false
+        }
 
         let r = completionResponse.replacement
         guard let typedRange = stringRange(in: snapshot, byteRange: r) else {
@@ -2093,6 +2098,7 @@ final class CapturePanelModel: ObservableObject {
         invalidateRewrite()
         cancelInFlightExplicitPreview()
         parseDiagnostics = []
+        parsedTemplate = nil
         completionResponse = nil
         completionDraftSnapshot = nil
         fileUnderActive = false
@@ -4603,6 +4609,9 @@ final class CapturePanelModel: ObservableObject {
         if needs("block_id") {
             return .blockID
         }
+        if needs("template_row") {
+            return .templateRow
+        }
         // A `=<X>#` draft (or chain token) is `incomplete` with a
         // `pomodoro_name` need and a partial `pomodoro_start` spec. It keeps
         // the completion list open while the preview stays calm.
@@ -4630,6 +4639,9 @@ final class CapturePanelModel: ObservableObject {
         errorMessage = nil
         errorCode = nil
         switch need {
+        case .templateRow:
+            statusText = parse.diagnostics.first(where: { $0.code == "template_missing_rows" })?.message
+                ?? need.statusText
         case .dependencyTarget:
             statusText = CaptureRelationshipCopy.dependencyTargetHint(
                 parse: parse,
@@ -6035,6 +6047,7 @@ final class CapturePanelModel: ObservableObject {
             suppressedCompletionAcceptanceDraft = nil
             priorityRollSeed = nil
             parseDiagnostics = []
+            parsedTemplate = nil
             completionResponse = nil
             completionDraftSnapshot = nil
             fileUnderActive = false
@@ -6850,6 +6863,7 @@ final class CapturePanelModel: ObservableObject {
     private func applyParse(_ parse: CaptureParseResponse, draft: String) {
         lastAnalysisNeedsTaskGoto = Self.pickerNeed(in: parse) == .taskGoto
         parseDiagnostics = parse.diagnostics
+        parsedTemplate = parse.template
         if plainDraft == draft {
             closeListParseSnapshot = CaptureParseSnapshot(
                 draft: draft,
@@ -6879,6 +6893,7 @@ final class CapturePanelModel: ObservableObject {
         attributedDraft.transform(updating: &editorSelection) { text in
             text.foregroundColor = nil
             text.underlineStyle = nil
+            text.underlineColor = nil
             for item in ranges {
                 guard let lower = AttributedString.Index(item.range.lowerBound, within: text),
                       let upper = AttributedString.Index(item.range.upperBound, within: text)
@@ -6887,10 +6902,24 @@ final class CapturePanelModel: ObservableObject {
                     return
                 }
 
-                let category = captureSemanticCategory(forSpanKind: item.span.kind)
+                let category = captureSemanticCategory(forSpan: item.span)
                 text[lower..<upper].foregroundColor = CaptureEditorPalette.color(for: category)
                 if category.isUnderlined {
                     text[lower..<upper].underlineStyle = .single
+                }
+            }
+            if parse.template != nil {
+                for diagnostic in parse.diagnostics where diagnostic.severity != "info" {
+                    guard let range = diagnostic.range,
+                          let typedRange = stringRange(in: draft, byteRange: range),
+                          let lower = AttributedString.Index(typedRange.lowerBound, within: text),
+                          let upper = AttributedString.Index(typedRange.upperBound, within: text),
+                          lower < upper
+                    else {
+                        continue
+                    }
+                    text[lower..<upper].underlineStyle = .single
+                    text[lower..<upper].underlineColor = .red
                 }
             }
         }

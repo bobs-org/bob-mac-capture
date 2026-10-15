@@ -11,6 +11,16 @@ import SwiftUI
 /// semantic hues already used elsewhere in the app) so they carry correct contrast in light,
 /// dark, and increased-contrast appearances without bespoke handling here.
 enum CaptureEditorPalette {
+    private static let templateSlotColors: [Color] = [
+        .orange, .teal, .pink, .green, .purple, .brown,
+    ]
+
+    static func templateSlotColor(field: Int) -> Color {
+        let index = ((field % templateSlotColors.count) + templateSlotColors.count)
+            % templateSlotColors.count
+        return templateSlotColors[index]
+    }
+
     /// Status glyph and color for a capture picker row, so the card and any
     /// future surface share one mapping.
     static func taskStatus(_ status: CapturePickerTaskStatus) -> (symbol: String, color: Color) {
@@ -97,6 +107,8 @@ enum CaptureEditorPalette {
             return .gray
         case .link:
             return Color(nsColor: .linkColor)
+        case .templateSlot(let field):
+            return templateSlotColor(field: field)
         case .neutral:
             return .primary
         }

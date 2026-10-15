@@ -113,11 +113,24 @@ close_log_dangling_draft=$'=x\n- 1'
 close_log_chain_draft=$'=x =\n- 1 wired it'
 close_log_invalid_draft=$'=x\n- 1 see [[bob#^x]]'
 close_log_trimmed_draft=$'=x\n-'
+template_example_draft=$'@@template:\nApply to {0}! @job_2026_apply_29:{1}\n- **URL**: {2}\n\nFoobar foo http://foobar.com/career/some_foo_job\nBazbuz baz http://bazbuz.com/career/some_baz_job\n"Two Sigma" two-sigma https://www.twosigma.com/careers/some_role'
+template_one_row_draft=$'Task {0}\n\nvalue'
+template_header_draft='@@template:'
+template_no_rows_draft=$'@@template:\nRecord {0} @work:{1}\n\n'
+template_arity_draft=$'@@template:\nRecord {0} @work:{1}\n\nAcme abc extra'
 
 case "${command}" in
   capture-parse)
     draft="${*: -1}"
-    if [[ "${draft}" == "=x" ]]; then
+    if [[ "${draft}" == "${template_example_draft}" ]]; then
+      cat "${fixtures_dir}/capture-parse-template-example.json"
+    elif [[ "${draft}" == "${template_header_draft}" ]]; then
+      cat "${fixtures_dir}/capture-parse-template-header-only.json"
+    elif [[ "${draft}" == "${template_no_rows_draft}" ]]; then
+      cat "${fixtures_dir}/capture-parse-template-no-rows.json"
+    elif [[ "${draft}" == "${template_arity_draft}" ]]; then
+      cat "${fixtures_dir}/capture-parse-template-arity-error.json"
+    elif [[ "${draft}" == "=x" ]]; then
       cat "${fixtures_dir}/pomodoro-close-parse-session.json"
     elif [[ "${draft}" == "=x1" ]]; then
       cat <<'JSON'
@@ -1773,7 +1786,9 @@ JSON
         all_tasks="true"
       fi
     done
-    if [[ "${draft}" == *"[[AI"* ]]; then
+    if [[ "${draft}" == "@@te" ]]; then
+      cat "${fixtures_dir}/capture-complete-template-header.json"
+    elif [[ "${draft}" == *"[[AI"* ]]; then
       prefix="${draft%%"[[AI"*}"
       start=$((${#prefix} + 2))
       end=$((start + 2))
@@ -3546,7 +3561,11 @@ JSON
       fi
     done
     draft="${*: -1}"
-    if [[ "${draft}" == "@body+excercise &foo:bar" && "${FAKE_BOB_CAPTURE_FIXTURE:-}" == "task-dependency-preview-existing-owner-consumed.json" ]]; then
+    if [[ "${draft}" == "${template_example_draft}" ]]; then
+      cat "${fixtures_dir}/capture-template-example.json"
+    elif [[ "${draft}" == "${template_one_row_draft}" ]]; then
+      cat "${fixtures_dir}/capture-template-one-row.json"
+    elif [[ "${draft}" == "@body+excercise &foo:bar" && "${FAKE_BOB_CAPTURE_FIXTURE:-}" == "task-dependency-preview-existing-owner-consumed.json" ]]; then
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-dependency-preview-existing-owner-consumed.json"
     elif [[ "${draft}" == "@body+excercise &foo:bar *job:cleanup" ]]; then
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/task-dependency-preview-existing-owner-mixed.json"

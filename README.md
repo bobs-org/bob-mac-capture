@@ -92,6 +92,9 @@ mutation.
   ` ^id` project-task tokens (`project_task_block_id` completion context with
   intent `new`, `project_task_link_marker` / `project_task_block_id` parse
   spans, and the additive `project_note.task_links` capture object).
+  Bulk templates require Bob's additive `template` / `template_row` parse and capture
+  objects, field-indexed `template_placeholder` and `template_field` spans, the
+  `template_row` incomplete need, and the `template` route-completion candidate.
   Go To also requires bob-plugins **bob-navigation-hotkeys ≥ 2.32.0** (or the version
   that shipped `obsidian://bob-goto-task`), deployed to the vault with
   `bob plugins sync`.
@@ -396,6 +399,10 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
   `global_sub_bullet_block_id`) reuse the existing destination and block-ID colors, so
   the editor and the completion list never disagree about what color represents what
   syntax.
+  `template_header` shares the route color; each `template_placeholder` and
+  `template_field` uses the same slot hue, selected by `field % 6` from orange, teal,
+  pink, green, purple, and brown. Template diagnostics underline their typed ranges in
+  red; ordinary drafts keep their existing highlighting.
 - A `==` override restart or swap previews on the same start card with reworded
   titles, status, badges, footer action, and notifications, built only from Bob's
   additive `pomodoro_start.override` object (`action` restart/swap/start, `ledger`
@@ -416,6 +423,9 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
   complete `@@` sigil just like Bob's server response. The authored ID side never
   uses the inline list: the right-hand side of `@route:` and `@route^` opens the
   Block ID Picker instead (see below).
+  A Bob `template` candidate for `@@te` or `@@` is shown as the `@@template:` directive
+  with Bob's label beneath it; accepting inserts Bob's replacement verbatim. The `+`
+  shortcut does not accept this header candidate.
   While route completion is visible, typing `+` directly after the route text accepts
   the selected route and keeps the `+`: an exact typed route (case-insensitive) is kept
   as typed, otherwise the selected candidate's route is spliced in, and the task picker
@@ -905,10 +915,18 @@ legacy preview and notification copy.
   An older Bob that reports no
   `pomodoro_start_name` context offers no rows there; the panel simply shows
   no completion until Bob is upgraded.
+  Template fields decode tolerantly: an older Bob omits them and keeps ordinary drafts
+  working. A new Bob with an older app exposes unknown template span kinds as neutral
+  text. An older Bob refuses `@@template:` before writing anything, so upgrade Bob before
+  submitting a template draft.
 - Live preview calls `bob capture --dry-run --no-clip --format json -- <draft>` through
   a dedicated process-client API that asserts `--no-clip`. Bob's admitted URL `%`
   listen marker remains a reference request in continuous preview; ordinary clipboard
   spans stay literal until the separate explicit clipboard-resolving preview.
+  Template previews show a `Template · N rows` capsule beside the capture count. When
+  Bob reports the `template_row` need, the panel keeps the preview calm and shows Bob's
+  `template_missing_rows` message. Non-info template diagnostics underline the matching
+  typed text in the editor.
 - The additive `sub_bullets` field on `capture` output is the exact rendered authored
   child lines, including Bob's target-selected indentation, and is omitted entirely when
   a draft has no authored bullets. `capture-parse` keeps `sub_bullets` as normalized
@@ -919,6 +937,10 @@ legacy preview and notification copy.
   authored-child depths. Its additive `global_destination` object is decoded
   tolerantly; absent metadata means the connected `bob` binary predates global
   destination declarations.
+  Template parsing adds a nullable header/range/field/row object and per-row items with
+  UTF-8 source ranges. Template rows never open pickers; a row-incomplete need keeps the
+  dry-run preview idle until a row is added. Capture responses add a template summary and
+  per-capture row numbers, including the legacy one-result response shape.
 - `bob capture --format json` keeps the legacy top-level first result for a single
   capture or compatibility fallback, and may add an ordered `captures` array for a batch.
   The app normalizes both shapes to one collection before updating preview, status,
@@ -1628,7 +1650,7 @@ including the next panel show.
 | Command-V | Insert the clipboard's plain text, discarding source formatting; when an empty bullet row receives a Markdown bullet list, consume the first pasted marker and align the list to that row | Same paste edit, and close completion | Native text-field paste | Native text-field paste |
 | Backspace | Remove an auto-inserted `,<digit>` pair together, else remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace | Native text-field Backspace |
 | 1–9 | Right after a task number in a close task list (`=x`, `=*`, `=!`, and their `*`/`!`/`~` groups, including link closes), insert `,` before the digit (`=x1` + `2` → `=x1,2`) when the running Pomodoro has fewer than 10 numbered Task Links; otherwise the digit types normally | Native text-field behavior | Native text-field behavior | Native text-field behavior |
-| + | Insert `+` | While route completion is visible, directly after the route being completed: accept the selected route, keep the `+`, and open task completion | Native text-field behavior | Native text-field behavior |
+| + | Insert `+` | While route completion is visible, directly after the route being completed: accept the selected route, keep the `+`, and open task completion; the `@@template:` candidate is excluded | Native text-field behavior | Native text-field behavior |
 | Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion | In link mode cycle suggestions; in the `@route+` prompt consume the key | Consume the key; do not expand, indent, or capture |
 | Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion | In link mode cycle suggestions backward; in the `@route+` prompt consume the key | Consume the key; do not outdent or capture |
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion | Consume the key; do not move completion selection | Consume the key; do not move completion selection |

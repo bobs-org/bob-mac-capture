@@ -26,6 +26,7 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case pomodoroCloseLog
     case pomodoroStartDrop
     case link
+    case templateSlot(Int)
     case neutral
 }
 
@@ -42,7 +43,7 @@ extension CaptureSemanticCategory {
 public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemanticCategory {
     switch kind {
     case "route", "task_block_id_route", "pomodoro_route", "sub_bullet_route",
-         "global_route", "global_sub_bullet_route", "task_toggle_route",
+         "global_route", "global_sub_bullet_route", "task_toggle_route", "template_header",
          "active_task_route":
         return .route
     case "section", "sub_bullet_section", "pomodoro_name", "task_toggle_pomodoro_name":
@@ -144,6 +145,23 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .link
     default:
         return .neutral
+    }
+}
+
+/// Maps a typed span while retaining the template slot index carried by Bob.
+/// Template spans without a field index remain neutral; every older span kind
+/// follows the established kind-only mapping.
+public func captureSemanticCategory(forSpan span: CaptureSpan) -> CaptureSemanticCategory {
+    switch span.kind {
+    case "template_header":
+        return .route
+    case "template_placeholder", "template_field":
+        guard let field = span.field else {
+            return .neutral
+        }
+        return .templateSlot(field)
+    default:
+        return captureSemanticCategory(forSpanKind: span.kind)
     }
 }
 
@@ -262,20 +280,28 @@ public func completionRowContent(
     switch context {
     case .route:
         category = .route
-        symbolName = "signpost.right"
-        contextLabel = "Destination"
-        if let alias = candidate.alias, !alias.isEmpty,
-           let route = candidate.route, !route.isEmpty
-        {
-            primaryText = "\(route) · aka \(alias)"
+        if candidate.kind == "template" {
+            symbolName = "square.stack.3d.down.right"
+            contextLabel = "Template"
+            primaryText = "@@template:"
+            secondaryText = candidate.label
+            accessibilityHint = "Starts a bulk template: one capture per row"
         } else {
-            primaryText = candidate.route ?? candidate.label ?? candidate.replacement
+            symbolName = "signpost.right"
+            contextLabel = "Destination"
+            if let alias = candidate.alias, !alias.isEmpty,
+               let route = candidate.route, !route.isEmpty
+            {
+                primaryText = "\(route) · aka \(alias)"
+            } else {
+                primaryText = candidate.route ?? candidate.label ?? candidate.replacement
+            }
+            if let label = candidate.label, label != primaryText {
+                secondaryText = label
+            }
+            badges = [candidate.kind, candidate.status].compactMap { $0 }.filter { !$0.isEmpty }
+            accessibilityHint = "Sets the capture destination."
         }
-        if let label = candidate.label, label != primaryText {
-            secondaryText = label
-        }
-        badges = [candidate.kind, candidate.status].compactMap { $0 }.filter { !$0.isEmpty }
-        accessibilityHint = "Sets the capture destination."
 
     case .section:
         category = .section
