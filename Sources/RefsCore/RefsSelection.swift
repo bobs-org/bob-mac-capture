@@ -21,6 +21,27 @@ public enum RefsSelectionPolicy {
         listing.orderedIDs.first
     }
 
+    /// After removing `id`, selects the next id in `orderedIDs`, else the
+    /// previous one, else nil. It never wraps. An id not in the listing
+    /// returns the listing's first id.
+    public static func afterRemoving(_ id: String, in listing: RefsListing) -> String? {
+        let ids = listing.orderedIDs
+        guard !ids.isEmpty else {
+            return nil
+        }
+        guard let index = ids.firstIndex(of: id) else {
+            return ids.first
+        }
+        let next = ids.index(after: index)
+        if next < ids.endIndex {
+            return ids[next]
+        }
+        if index > ids.startIndex {
+            return ids[ids.index(before: index)]
+        }
+        return nil
+    }
+
     /// Moves `step` from `id`: up/down wraps, paging clamps, section
     /// jumps land on the first row of the next or previous section in
     /// browse mode and are a no-op in search. An unknown or missing

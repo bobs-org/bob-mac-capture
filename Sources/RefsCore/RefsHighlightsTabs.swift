@@ -47,6 +47,11 @@ public struct HighlightsTabsSnapshot: Equatable, Sendable {
         self.highlightsIsFrontmost = highlightsIsFrontmost
     }
 
+    /// The total number of tabs across all windows.
+    public var documentCount: Int {
+        windows.reduce(0) { $0 + $1.tabs.count }
+    }
+
     /// The selected tab of the main window, or the first window if none is main.
     var currentTab: Tab? {
         guard let window = windows.first(where: \.isMain) ?? windows.first else {
@@ -117,6 +122,43 @@ public enum HighlightsTabSelectResult: Equatable, Sendable {
     case failed(String)
 }
 
+/// The reader's answer to a tab close request.
+public enum HighlightsTabCloseResult: Equatable, Sendable {
+    /// The close was verified. The payload is the post-close snapshot,
+    /// which is empty when Highlights exited.
+    case closed(HighlightsTabsSnapshot)
+    /// No tab with that title remains.
+    case notFound
+    /// Highlights is not running.
+    case notRunning
+    /// Accessibility permission is unavailable.
+    case notTrusted
+    /// Highlights showed a sheet on that window instead of closing it.
+    /// The reader has already brought Highlights forward.
+    case needsAttention
+    /// The close failed for a bounded, name-free reason.
+    case failed(String)
+}
+
+/// The session's answer to a tab close request.
+public enum HighlightsTabCloseOutcome: Equatable, Sendable {
+    /// The close was verified and tabs remain.
+    case closed(remaining: HighlightsTabsSnapshot)
+    /// The close left no documents. The payload records whether
+    /// Highlights then exited.
+    case closedLast(highlightsQuit: Bool)
+    /// The tab was already gone; the row stays gone.
+    case alreadyClosed
+    /// Highlights is not running.
+    case notRunning
+    /// Accessibility permission is unavailable.
+    case notTrusted
+    /// Highlights showed a save sheet instead of closing.
+    case needsAttention
+    /// The close failed for a bounded, name-free reason.
+    case failed(String)
+}
+
 /// Reads and selects Highlights tabs without exposing Accessibility types to RefsCore.
 public protocol HighlightsTabsReading: Sendable {
     /// Checks Accessibility permission without prompting.
@@ -130,6 +172,28 @@ public protocol HighlightsTabsReading: Sendable {
 
     /// Selects a tab using its fresh-snapshot identity.
     func select(_ target: HighlightsTabTarget) async -> HighlightsTabSelectResult
+
+    /// Closes a tab using its fresh-snapshot identity.
+    func close(_ target: HighlightsTabTarget) async -> HighlightsTabCloseResult
+
+    /// Quits Highlights when no documents remain. True means Highlights
+    /// is not running afterwards. Implementations must re-check that no
+    /// documents are open before quitting.
+    func quitIfNoDocuments() async -> Bool
+}
+
+public extension HighlightsTabsReading {
+    /// Reports that tab closing is unavailable in this build, so every
+    /// existing conformer keeps compiling until it overrides `close`.
+    func close(_ target: HighlightsTabTarget) async -> HighlightsTabCloseResult {
+        .failed("Closing Highlights tabs isn't available in this build")
+    }
+
+    /// Reports that Highlights is still running, so every existing
+    /// conformer keeps compiling until it overrides `quitIfNoDocuments`.
+    func quitIfNoDocuments() async -> Bool {
+        false
+    }
 }
 
 /// Placeholder reader used until the app wires the live Highlights reader.
@@ -424,6 +488,9 @@ public final class HighlightsTabsSession {
     /// Last-active times keyed by tab file name.
     public private(set) var recency = RefsTabRecency()
 
+    /// The most recently closed tabs, newest last, for ⇧⌘T reopen.
+    public private(set) var closedTabs = RefsClosedTabs()
+
     private let now: @Sendable () -> Date
     private var generation: UInt64 = 0
 
@@ -474,6 +541,42 @@ public final class HighlightsTabsSession {
             recordSwitch(fileName: tab.fileName)
         }
         return result
+    }
+
+    /// Closes a tab, pushing `reopen` for ⇧⌘T when the close is verified.
+    /// Bumps the refresh generation first, so a read that started earlier
+    /// can never overwrite the close's result. When the close leaves no
+    /// documents, quits Highlights and reports whether it exited.
+    public func close(_ tab: RefsOpenTab, reopen: RefsClosedTab?) async -> HighlightsTabCloseOutcome {
+        generation &+= 1
+        switch await reader.close(tab.target) {
+        case let .closed(snapshot):
+            lastSnapshot = snapshot
+            touchCurrentTab(in: snapshot)
+            if let reopen {
+                closedTabs.push(reopen)
+            }
+            if snapshot.documentCount == 0 {
+                let highlightsQuit = await reader.quitIfNoDocuments()
+                return .closedLast(highlightsQuit: highlightsQuit)
+            }
+            return .closed(remaining: snapshot)
+        case .notFound:
+            return .alreadyClosed
+        case .notRunning:
+            return .notRunning
+        case .notTrusted:
+            return .notTrusted
+        case .needsAttention:
+            return .needsAttention
+        case let .failed(reason):
+            return .failed(reason)
+        }
+    }
+
+    /// Pops the newest closed tab for ⇧⌘T reopen, or nil when the stack is empty.
+    public func popClosedTab() -> RefsClosedTab? {
+        closedTabs.popLast()
     }
 
     private func touchCurrentTab(in snapshot: HighlightsTabsSnapshot) {
