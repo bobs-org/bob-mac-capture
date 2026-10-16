@@ -26,17 +26,24 @@ final class AccessibilityTrustTests: XCTestCase {
         )
     }
 
+    func testResetArgumentsTargetTheAppAccessibilityGrant() {
+        XCTAssertEqual(
+            AccessibilityTrust.resetArguments,
+            ["reset", "Accessibility", "org.bobs.bob-mac-capture"]
+        )
+    }
+
     func testPermissionHintExplainsAdHocRecovery() {
         XCTAssertEqual(
             AccessibilityTrust.permissionHint(isAdHocBuild: true),
-            "Grants reset when an ad-hoc build is reinstalled. Re-add the app, or run `tccutil reset Accessibility org.bobs.bob-mac-capture`."
+            "Grants reset when an ad-hoc build is reinstalled. Open Accessibility Settings clears the stale grant; then switch Bob Mac Capture on."
         )
     }
 
     func testPermissionHintExplainsSignedBuildRecovery() {
         XCTAssertEqual(
             AccessibilityTrust.permissionHint(isAdHocBuild: false),
-            "Already on in System Settings? Remove Bob Mac Capture there and add it again."
+            "Open Accessibility Settings clears any stale grant; then switch Bob Mac Capture on."
         )
     }
 }

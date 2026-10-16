@@ -1,11 +1,16 @@
 import AppKit
 import ApplicationServices
+import Foundation
 
-/// The only home for Accessibility trust checks.
+/// The only home for Accessibility trust checks and gesture-only grant repair.
 ///
-/// `isTrusted()` never prompts. Call `requestPrompt()` only from explicit user
-/// gestures such as the Tabs permission card. Nothing calls either at launch.
+/// `isTrusted()` never prompts. Call `resetGrant()` and `requestPrompt()` only
+/// from an explicit user gesture while untrusted, such as the Tabs permission
+/// card. Nothing calls them at launch.
 enum AccessibilityTrust {
+    static let bundleIdentifier = "org.bobs.bob-mac-capture"
+    static let resetArguments = ["reset", "Accessibility", bundleIdentifier]
+
     /// Opens the macOS Accessibility privacy pane in System Settings.
     static let settingsURL = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
 
@@ -13,6 +18,25 @@ enum AccessibilityTrust {
     /// without prompting.
     static func isTrusted() -> Bool {
         AXIsProcessTrusted()
+    }
+
+    /// Clears a stale Accessibility grant. Call only from an explicit user
+    /// gesture, and only while the app is untrusted.
+    @discardableResult
+    static func resetGrant() -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        process.arguments = resetArguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+        } catch {
+            return false
+        }
+        process.waitUntilExit()
+        return process.terminationStatus == 0
     }
 
     /// Re-checks trust with a system prompt when the grant is missing.
@@ -44,8 +68,8 @@ enum AccessibilityTrust {
     /// Explains how to recover a missing or stale Accessibility grant.
     static func permissionHint(isAdHocBuild: Bool) -> String {
         if isAdHocBuild {
-            return "Grants reset when an ad-hoc build is reinstalled. Re-add the app, or run `tccutil reset Accessibility org.bobs.bob-mac-capture`."
+            return "Grants reset when an ad-hoc build is reinstalled. Open Accessibility Settings clears the stale grant; then switch Bob Mac Capture on."
         }
-        return "Already on in System Settings? Remove Bob Mac Capture there and add it again."
+        return "Open Accessibility Settings clears any stale grant; then switch Bob Mac Capture on."
     }
 }

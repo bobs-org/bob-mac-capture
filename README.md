@@ -295,10 +295,12 @@ Bob Mac Capture needs an Accessibility grant to read Highlights tabs, and macOS 
 an ad-hoc app's grant to its exact `cdhash` — so every ad-hoc `just install`
 silently revokes the grant while System Settings still shows it on. Signing every
 install with one stable self-signed identity ("Bob Mac Capture Local") keeps the
-grant across reinstalls. Settings › References shows the grant as
-"Highlights tabs: Allowed / Not allowed".
+grant across reinstalls. The first `just install` from a GUI Terminal creates this
+identity automatically when it is missing; bob-cli's `just install-all` does the
+same. Settings › References shows the grant as "Highlights tabs: Allowed / Not
+allowed".
 
-Create the identity once in Keychain Access:
+If automatic setup is unavailable, create the identity manually in Keychain Access:
 
 1. Open Keychain Access and select the **login** keychain.
 2. Choose Keychain Access › Certificate Assistant › Create a Certificate.
@@ -307,14 +309,11 @@ Create the identity once in Keychain Access:
 5. Give it a long validity period (ten years) and finish the assistant, storing the
    certificate in the login keychain.
 
-`just install` picks the identity up automatically on the next install — no flags
-needed. bob-cli's `just install-all` installs the same way, passing no identity so
-the installer resolves the login keychain identity. On the first signed install,
-`codesign` prompts for keychain access: choose
+On the first signed install, `codesign` prompts for keychain access: choose
 **Always Allow** so future installs stay unattended.
 
 Always run `just install` from a GUI Terminal session on the Mac. Over SSH the login
-keychain is locked, so the stable identity is unreachable and the install falls back
+keychain is locked, so automatic identity setup cannot run and the install falls back
 to ad-hoc.
 
 Verify an install with:
@@ -326,13 +325,9 @@ codesign -d -r- ~/Applications/"Bob Mac Capture.app"
 A stable install shows `certificate leaf = H"…"`; an ad-hoc one shows a `cdhash`
 designated requirement instead.
 
-If a stale ad-hoc grant lingers in the Accessibility list, clear it with:
-
-```sh
-tccutil reset Accessibility org.bobs.bob-mac-capture
-```
-
-then re-grant the freshly installed app when macOS prompts.
+When an install changes the code signature, the installer clears the stale
+Accessibility row. Grant the app again from Bob Refs › Tabs › Open Accessibility
+Settings; later installs with the stable identity keep that grant.
 
 ## Menu-Bar Icon
 
@@ -1664,13 +1659,12 @@ only and is never written to disk.
   in Default App, or Choose Highlights… to point at the app in
   Settings › References.
 - "Bob Refs needs Accessibility access to see Highlights' tabs": use
-  Open Accessibility Settings from the Tabs card and grant access to Bob
-  Mac Capture. The button opens the Accessibility pane. Tabs never asks for
+  Open Accessibility Settings from the Tabs card to clear a stale grant and
+  bring up the system prompt, then allow Bob Mac Capture. Tabs never asks for
   permission at launch.
-- If the switch already looks on after a signing identity change, remove Bob
-  Mac Capture from System Settings › Privacy & Security › Accessibility and
-  add it again, or reset the stored grant with
-  `tccutil reset Accessibility org.bobs.bob-mac-capture` and grant it again.
+- If the switch looks on but does nothing, its row is pinned to an older build.
+  The button repairs it, or run
+  `tccutil reset Accessibility org.bobs.bob-mac-capture` and grant the app again.
   A stable signing identity keeps the grant across reinstalls.
 - To reset open history (recently-opened rows and frecency), use
   Reset Open History… in Settings › References behind its

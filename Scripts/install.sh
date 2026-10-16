@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+package_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 usage() {
   cat <<'USAGE'
 Usage: Scripts/install.sh [--identity IDENTITY] [--target /Applications|~/Applications]
@@ -17,7 +19,7 @@ USAGE
 
 # Name of the stable self-signed code-signing identity (see README › Signing).
 # Signing with it keeps the Accessibility and notification grants across
-# reinstalls. Created once by Bryan in Keychain Access; never by this script.
+# reinstalls. The install script creates it when missing from a GUI Terminal.
 stable_identity_name="Bob Mac Capture Local"
 
 # Prints the identity `security find-identity` resolves to: the stable identity
@@ -84,15 +86,21 @@ if [[ "${print_resolved_identity_only}" == "true" ]]; then
 fi
 
 if [[ "${resolved_from_keychain}" == "true" && "${identity}" == "-" ]]; then
+  if "${package_root}/Scripts/create-signing-identity.sh" >&2; then
+    identity="$(find_stored_signing_identity)"
+  fi
+fi
+
+if [[ "${resolved_from_keychain}" == "true" && "${identity}" == "-" ]]; then
   cat >&2 <<'WARNING'
 WARNING: signing ad-hoc because the "Bob Mac Capture Local" identity was not
-found in the keychain. Notification and Accessibility grants will reset on this
-install. See README › Signing to create the stable identity.
+found in the keychain. The Accessibility grant resets on this install. Run
+install again from a GUI Terminal on the Mac to create the identity.
 WARNING
 fi
 
 case "${target_dir}" in
-  "~/"*) target_dir="${HOME}/${target_dir#"~/"}" ;;
+  \~/*) target_dir="${HOME}/${target_dir#\~/}" ;;
 esac
 
 if [[ "${target_dir}" != "/Applications" && "${target_dir}" != "${HOME}/Applications" ]]; then
@@ -100,7 +108,6 @@ if [[ "${target_dir}" != "/Applications" && "${target_dir}" != "${HOME}/Applicat
   exit 64
 fi
 
-package_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 xcode_swift="${package_root}/Scripts/xcode-swift.sh"
 bundle_root="${package_root}/.build/install-bundle"
 app_name="Bob Mac Capture.app"
@@ -108,6 +115,25 @@ staged_app="${bundle_root}/${app_name}"
 install_path="${target_dir}/${app_name}"
 tmp_path="${target_dir}/.${app_name}.$$"
 backup_path="${target_dir}/.${app_name}.previous.$$"
+previous_requirement=""
+
+designated_requirement() {
+  local output line requirement
+  output="$(/usr/bin/codesign -d -r- "$1" 2>&1 || true)"
+  while IFS= read -r line; do
+    if [[ "${line}" == *"designated => "* ]]; then
+      requirement="${line#*designated => }"
+      requirement="${requirement#\# }"
+      printf '%s\n' "${requirement}"
+      return 0
+    fi
+  done <<< "${output}"
+  return 0
+}
+
+if [[ -e "${install_path}" ]]; then
+  previous_requirement="$(designated_requirement "${install_path}")"
+fi
 
 "${package_root}/Scripts/bundle.sh" --identity "${identity}" --output "${bundle_root}" >&2
 
@@ -182,6 +208,15 @@ if ! /usr/bin/codesign --verify --deep --strict "${install_path}"; then
 fi
 
 rm -rf "${backup_path}" "${tmp_path}"
+
+new_requirement="$(designated_requirement "${install_path}")"
+if [[ -n "${previous_requirement}" && -n "${new_requirement}" && "${previous_requirement}" != "${new_requirement}" ]]; then
+  if /usr/bin/tccutil reset Accessibility org.bobs.bob-mac-capture >&2; then
+    printf 'Cleared the Accessibility grant because the code signature changed. Grant it again from Bob Refs › Tabs › Open Accessibility Settings.\n' >&2
+  else
+    printf 'The Accessibility grant could not be cleared automatically. Run: tccutil reset Accessibility org.bobs.bob-mac-capture\n' >&2
+  fi
+fi
 
 # Restart only after the new copy has verified and the backup is gone. A handoff
 # failure must not roll back that verified bundle: the install itself succeeded.
