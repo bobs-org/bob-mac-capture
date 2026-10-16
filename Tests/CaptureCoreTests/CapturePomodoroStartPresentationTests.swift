@@ -830,6 +830,26 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         XCTAssertEqual(incomplete.pomodoroStart?.isOverride, true)
     }
 
+    func testTaskRowDisplayTitleHidesWikilinkAndCodeMarkup() throws {
+        let rawText = "[[ref/chat/x|Alias Title]] and `code`"
+        let rowJSON = """
+        {"block_link":"[[bob#^ready]]","embedded":false,"ledger_line":6,
+         "resolved":true,"relative_target":"bob.md","block_id":"ready",
+         "text":"[[ref/chat/x|Alias Title]] and `code`","status_symbol":" ",
+         "status_name":"Ready","warning":null}
+        """
+        let presentation = try XCTUnwrap(
+            CapturePomodoroStartPresentation(
+                capture: decodeCaptureSuccess(
+                    sessionStartJSON(dryRun: true, name: "CAPTURE", tasks: "[\(rowJSON)]")
+                )
+            )
+        )
+        let row = try XCTUnwrap(presentation.taskRows.first)
+        XCTAssertEqual(row.taskText, rawText)
+        XCTAssertEqual(row.displayTitle.text, "Alias Title and code")
+    }
+
     private func sessionStartJSON(dryRun: Bool, name: String?, tasks: String) -> String {
         let nameValue = name.map { "\"\($0)\"" } ?? "null"
         return """

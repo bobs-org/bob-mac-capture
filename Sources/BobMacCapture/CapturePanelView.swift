@@ -2585,8 +2585,8 @@ struct PreviewPane: View {
     ) -> some View {
         // The close card renders Bob's resolved `pomodoro_close` object exactly
         // as the presentation words it: no Swift-side clock or ledger math.
-        // The locator truncates first at narrow widths, so the task text and
-        // transition always stay legible.
+        // The badge, transition, and tag never shrink; at narrow widths the
+        // locator truncates first, then the one-line task title.
         let sessionTint = CaptureEditorPalette.color(for: .pomodoroStart)
         let logTint = CaptureEditorPalette.color(for: .pomodoroCloseLog)
         // A pending list previews the trimmed draft: the card stays live but
@@ -2669,7 +2669,7 @@ struct PreviewPane: View {
                                     closeNumberBadge(for: row)
                                 }
                                 closeTaskGlyph(for: row)
-                                Text(row.taskText)
+                                Text(row.displayTitle.text)
                                     .strikethrough(row.isStruck)
                                     .layoutPriority(1)
                                     .lineLimit(1)
@@ -2678,6 +2678,8 @@ struct PreviewPane: View {
                                     Text(tag)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
                                 }
                                 Spacer(minLength: 4)
                                 Text(row.locatorText)
@@ -2996,6 +2998,8 @@ struct PreviewPane: View {
         case .transition:
             Text(row.transitionText)
                 .font(.system(.callout, design: .monospaced))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .textSelection(.enabled)
         case .deferred:
             Image(systemName: "arrow.uturn.forward")
@@ -3186,7 +3190,7 @@ struct PreviewPane: View {
                                     startNumberBadge(for: row)
                                 }
                                 startTaskGlyph(for: row)
-                                Text(row.taskText)
+                                Text(row.displayTitle.text)
                                     .strikethrough(row.isStruck)
                                     .layoutPriority(1)
                                     .lineLimit(1)

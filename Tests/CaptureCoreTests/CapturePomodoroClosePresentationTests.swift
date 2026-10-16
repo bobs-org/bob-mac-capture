@@ -1537,6 +1537,31 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertEqual(unmatchedRow.workLogPreviews, ["Same"])
     }
 
+    func testTaskRowDisplayTitleHidesWikilinkAndCodeMarkup() throws {
+        let rawText = "[[ref/chat/x|Alias Title]] and `code`"
+        let summary = PomodoroCloseSummary(
+            raw: "=x",
+            pomodoroLine: 5,
+            pomodoroName: "CAPTURE",
+            tasks: [
+                PomodoroCloseTask(
+                    role: "worked",
+                    blockLink: "[[bob#^ready]]",
+                    resolved: true,
+                    relativeTarget: "bob.md",
+                    blockID: "ready",
+                    text: rawText
+                ),
+            ]
+        )
+        let presentation = try XCTUnwrap(
+            CapturePomodoroClosePresentation(capture: closeCapture(summary: summary))
+        )
+        let row = try XCTUnwrap(presentation.taskRows.first)
+        XCTAssertEqual(row.taskText, rawText)
+        XCTAssertEqual(row.displayTitle.text, "Alias Title and code")
+    }
+
     // MARK: - Helpers
 
     private func closeCapture(summary: PomodoroCloseSummary) -> CaptureCommandSuccess {

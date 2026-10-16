@@ -230,6 +230,74 @@ final class CapturePreviewFullHeightTests: XCTestCase {
 
     @MainActor
     @available(macOS 26.0, *)
+    func testCloseRowLongTitleDoesNotGrowPreviewHeightWorked() throws {
+        let original = try closeSuccessFixture("pomodoro-close-worked.json")
+        let long = try closeSuccessLengtheningTaskText(in: "pomodoro-close-worked.json") {
+            ($0["index"] as? NSNumber)?.intValue == 1
+        }
+        for width in [620, 760] as [CGFloat] {
+            let originalHeight = hostedPreviewHeight(for: readyModel(for: original), width: width)
+            let longHeight = hostedPreviewHeight(for: readyModel(for: long), width: width)
+            XCTAssertEqual(
+                longHeight,
+                originalHeight,
+                accuracy: 1.0,
+                "long worked title should truncate, not wrap the transition at width \(width)"
+            )
+        }
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
+    func testCloseRowLongTitleDoesNotGrowPreviewHeightLinked() throws {
+        let original = try closeSuccessFixture("pomodoro-close-link.json")
+        let long = try closeSuccessLengtheningTaskText(in: "pomodoro-close-link.json") {
+            ($0["block_id"] as? String) == "ready"
+        }
+        for width in [620, 760] as [CGFloat] {
+            let originalHeight = hostedPreviewHeight(for: readyModel(for: original), width: width)
+            let longHeight = hostedPreviewHeight(for: readyModel(for: long), width: width)
+            XCTAssertEqual(
+                longHeight,
+                originalHeight,
+                accuracy: 1.0,
+                "long linked title should truncate, not wrap the transition at width \(width)"
+            )
+        }
+    }
+
+    private func closeSuccessLengtheningTaskText(
+        in fixture: String,
+        matching matches: ([String: Any]) -> Bool
+    ) throws -> CaptureCommandSuccess {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let data = try Data(contentsOf: fixtures.appendingPathComponent(fixture))
+        guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+            var close = object["pomodoro_close"] as? [String: Any],
+            var tasks = close["tasks"] as? [[String: Any]]
+        else {
+            throw NSError(domain: "CapturePreviewFullHeightTests", code: 5)
+        }
+        let longTitle = String(repeating: "Long task title ", count: 20)
+        guard let index = tasks.firstIndex(where: matches) else {
+            throw NSError(domain: "CapturePreviewFullHeightTests", code: 6)
+        }
+        tasks[index]["text"] = longTitle
+        close["tasks"] = tasks
+        object["pomodoro_close"] = close
+        let mutated = try JSONSerialization.data(withJSONObject: object)
+        let response = try JSONDecoder().decode(CaptureCommandResponse.self, from: mutated)
+        guard case .success(let success) = response else {
+            throw NSError(domain: "CapturePreviewFullHeightTests", code: 7)
+        }
+        return success
+    }
+
+    @MainActor
+    @available(macOS 26.0, *)
     private func hostedPreviewHeight(for model: CapturePanelModel, width: CGFloat) -> CGFloat {
         let hostingView = NSHostingView(rootView: PreviewPane(model: model).frame(width: width))
         hostingView.layoutSubtreeIfNeeded()

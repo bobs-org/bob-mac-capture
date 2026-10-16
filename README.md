@@ -1042,6 +1042,9 @@ legacy preview and notification copy.
   or a `plus.circle` row for new-task closes, up to six task rows with per-role
   glyphs, transitions (`[*] → [/]`, `[*] deferred`, `[x] closed`, `[x]`), text
   with strikethrough on struck rows, trailing locators, and Work Log previews —
+  badges, transitions, and tags never wrap or shrink, and at narrow widths the
+  locator truncates first, then the one-line task title; row titles show wikilink
+  display text (`[[path|Alias]]` reads `Alias`), like the pickers —
   each row shows its `typed_work_log` entries first, all of them, with the date
   stripped, a `square.and.pencil` glyph in the cyan log tint, and primary text,
   each followed by its `typed_work_log_details` lines in secondary callout
@@ -1099,7 +1102,8 @@ legacy preview and notification copy.
   status glyphs (`circle` Ready, `circle.inset.filled` Next,
   `circle.lefthalf.filled` In Progress, `questionmark.circle` other,
   `minus.circle` dropped, `exclamationmark.triangle` unresolved with the warning
-  as help text), task text with a truncating `note ^id` locator; dropped rows
+  as help text), task text (wikilink display text, like the pickers) with a
+  truncating `note ^id` locator; dropped rows
   render struck and dimmed with a
   caption joining `stays <status>` and `with N nested line(s)`. Numbered rows never
   hide under `+N more`; rows without numbers (older Bob) render exactly like

@@ -139,6 +139,10 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         /// the transition text for unnumbered rows. Dropped rows read
         /// "drops from today".
         public let accessibilityLabel: String
+        /// Wikilink display text for the card title (`[[path|Alias]]` reads
+        /// `Alias`), matching the pickers. Computed, so `Equatable` and the
+        /// memberwise init are unchanged.
+        public var displayTitle: TaskDisplayText { TaskDisplayText(parsing: taskText) }
     }
 
     /// One dependent the close unblocked, built by the shared successor

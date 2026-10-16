@@ -105,6 +105,10 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         /// `"Task 2, <text>, drops from today"` for numbered dropped rows;
         /// the task text for unnumbered rows.
         public let accessibilityLabel: String
+        /// Wikilink display text for the card title (`[[path|Alias]]` reads
+        /// `Alias`), matching the pickers. Computed, so `Equatable` and the
+        /// memberwise init are unchanged.
+        public var displayTitle: TaskDisplayText { TaskDisplayText(parsing: taskText) }
     }
 
     /// At most this many task rows render in the card before a "+N more" line —
