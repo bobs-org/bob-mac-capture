@@ -109,6 +109,17 @@ final class SavedTemplateShelf: ObservableObject {
         }
     }
 
+    /// Clears bob's saved templates and refreshes the shared cache after the
+    /// mutation. `nil` means the app does not currently have a resolved bob.
+    func clearSavedTemplates() async throws -> CaptureTemplateClearResponse? {
+        guard let processClient else {
+            return nil
+        }
+        let response = try await processClient.clearSavedTemplates()
+        refresh(reason: .mutation)
+        return response
+    }
+
     /// Optimistic local removal used by two-press delete. The caller then
     /// asks bob to delete and refreshes; a failed delete restores from the
     /// snapshot the caller kept.

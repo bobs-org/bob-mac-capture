@@ -159,7 +159,10 @@ case "${command}" in
     ;;
   capture-parse)
     draft="${*: -1}"
-    if [[ "${draft}" == "${template_example_draft}" ]]; then
+    if [[ -n "${FAKE_BOB_PARSE_FIXTURE:-}" ]]; then
+      cat "${fixtures_dir}/${FAKE_BOB_PARSE_FIXTURE}"
+      exit 0
+    elif [[ "${draft}" == "${template_example_draft}" ]]; then
       cat "${fixtures_dir}/capture-parse-template-example.json"
     elif [[ "${draft}" == "${template_header_draft}" ]]; then
       cat "${fixtures_dir}/capture-parse-template-header-only.json"
@@ -3622,7 +3625,10 @@ JSON
         break
       fi
     done
-    if [[ -n "${FAKE_BOB_CAPTURE_TEMPLATE_FIXTURE:-}" ]]; then
+    if [[ -n "${FAKE_BOB_CAPTURE_STDOUT:-}" ]]; then
+      printf '%s\n' "${FAKE_BOB_CAPTURE_STDOUT}"
+      exit "${FAKE_BOB_CAPTURE_EXIT:-0}"
+    elif [[ -n "${FAKE_BOB_CAPTURE_TEMPLATE_FIXTURE:-}" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/g" \
         "${fixtures_dir}/${FAKE_BOB_CAPTURE_TEMPLATE_FIXTURE}"
     elif [[ "${draft}" == "${template_example_draft}" ]]; then

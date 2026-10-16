@@ -242,6 +242,15 @@ final class CapturePanelModel: ObservableObject {
     @Published var isTemplateShelfPresented = false
     @Published var selectedTemplateIndex = 0
     @Published var armedDeleteTemplateID: String?
+    @Published var templateOrigin: String? {
+        didSet {
+            guard oldValue != templateOrigin else {
+                return
+            }
+            clampTemplateSelection(templates: templateEntries)
+        }
+    }
+    @Published private(set) var isSavingTemplate = false
     @Published var taskIDPrompt: CaptureTaskIDPromptState?
     @Published var pomodoroNamePrompt: CapturePomodoroNamePromptState?
     @Published var pullInChoice: CapturePullInChoiceState?
@@ -751,7 +760,7 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
             self.objectWillChange.send()
-            self.clampTemplateSelection(templates: templates)
+            self.clampTemplateSelection(templates: self.visibleTemplateEntries(from: templates))
         }
     }
 
@@ -965,15 +974,18 @@ final class CapturePanelModel: ObservableObject {
     }
 
     var templateEntries: [CaptureSavedTemplate] {
-        savedTemplateShelf.templates
+        visibleTemplateEntries(from: savedTemplateShelf.templates)
     }
 
     var templateShelfCount: Int {
-        savedTemplateShelf.count
+        templateEntries.count
     }
 
     var selectedTemplateEntry: CaptureSavedTemplate? {
-        savedTemplateShelf.template(at: selectedTemplateIndex)
+        guard templateEntries.indices.contains(selectedTemplateIndex) else {
+            return nil
+        }
+        return templateEntries[selectedTemplateIndex]
     }
 
     var savedTemplatesFooterVisible: Bool {
@@ -1340,6 +1352,9 @@ final class CapturePanelModel: ObservableObject {
         }
 
         let draft = plainDraft
+        if draft.isEmpty {
+            templateOrigin = nil
+        }
         if let pullInChoice, pullInChoice.draftSnapshot != draft {
             cancelPullInChoiceFromKeyboard()
         }
@@ -1641,7 +1656,8 @@ final class CapturePanelModel: ObservableObject {
                         priorityRollSeed: seed,
                         pullInSelection: selection,
                         requirePullInChoice: selection == nil,
-                        pullInCapabilityAdvertised: capabilityAdvertised
+                        pullInCapabilityAdvertised: capabilityAdvertised,
+                        templateOrigin: currentDraftHasTemplate ? templateOrigin : nil
                     )
                 }
                 await MainActor.run {
@@ -1979,6 +1995,7 @@ final class CapturePanelModel: ObservableObject {
         dismissStashPicker()
         dismissTemplateShelf()
         clearInlinePrompts()
+        templateOrigin = nil
         setPlainDraft("")
         suppressedCompletionAcceptanceDraft = nil
         priorityRollSeed = nil
@@ -1988,12 +2005,21 @@ final class CapturePanelModel: ObservableObject {
     func stashDraftAndClose() {
         if hasDraft {
             let draft = plainDraft
+            let keptTemplate = templateOrigin != nil
             let discardGoto = picker?.source == .taskGoto
                 || pickerChip?.source == .taskGoto
                 || lastAnalysisNeedsTaskGoto
             let stashed = discardGoto ? false : canceledDraftStash.push(draft) != nil
             discardDraft()
-            announceStatus(stashed ? "Canceled draft stashed" : "Canceled draft discarded")
+            let status: String
+            if stashed && keptTemplate {
+                status = "Canceled draft stashed · template kept"
+            } else if stashed {
+                status = "Canceled draft stashed"
+            } else {
+                status = "Canceled draft discarded"
+            }
+            announceStatus(status)
         } else {
             discardDraft()
         }
@@ -2162,7 +2188,8 @@ final class CapturePanelModel: ObservableObject {
         case .available:
             break
         }
-        guard !savedTemplateShelf.isEmpty else {
+        let entries = templateEntries
+        guard !entries.isEmpty else {
             announceStatus(
                 "No saved templates yet — capture an @@template: draft and it lands here"
             )
@@ -2172,7 +2199,7 @@ final class CapturePanelModel: ObservableObject {
         dismissCompletion()
         dismissStashPicker()
         selectedTemplateIndex = 0
-        rememberedSelectedTemplateID = savedTemplateShelf.templates.first?.id
+        rememberedSelectedTemplateID = entries.first?.id
         armedDeleteTemplateID = nil
         isTemplateShelfPresented = true
         announceStatus("Saved templates opened")
@@ -2202,7 +2229,7 @@ final class CapturePanelModel: ObservableObject {
         disarmTemplateDeleteIfNeeded()
         selectedTemplateIndex = CapturePickerHelpers.nextSelectionIndex(
             after: selectedTemplateIndex,
-            entryCount: savedTemplateShelf.count
+            entryCount: templateEntries.count
         )
         rememberedSelectedTemplateID = selectedTemplateEntry?.id
     }
@@ -2211,7 +2238,7 @@ final class CapturePanelModel: ObservableObject {
         disarmTemplateDeleteIfNeeded()
         selectedTemplateIndex = CapturePickerHelpers.previousSelectionIndex(
             before: selectedTemplateIndex,
-            entryCount: savedTemplateShelf.count
+            entryCount: templateEntries.count
         )
         rememberedSelectedTemplateID = selectedTemplateEntry?.id
     }
@@ -2226,10 +2253,10 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func useTemplate(at index: Int) {
-        guard let entry = savedTemplateShelf.template(at: index) else {
+        guard templateEntries.indices.contains(index) else {
             return
         }
-        useTemplate(id: entry.id)
+        useTemplate(id: templateEntries[index].id)
     }
 
     func useTemplate(id: String) {
@@ -2237,9 +2264,9 @@ final class CapturePanelModel: ObservableObject {
             announceStatus("This draft already has a template")
             return
         }
-        guard let template = savedTemplateShelf.template(id: id) else {
+        guard let template = templateEntries.first(where: { $0.id == id }) else {
             announceStatus("Saved template is no longer available")
-            clampTemplateSelection(templates: savedTemplateShelf.templates)
+            clampTemplateSelection(templates: templateEntries)
             return
         }
         guard let edit = templateInsertEdit(for: template) else {
@@ -2250,6 +2277,7 @@ final class CapturePanelModel: ObservableObject {
         dismissTemplateShelf()
         suppressedCompletionAcceptanceDraft = nil
         if applyTemplateInsert?(edit) == true {
+            templateOrigin = template.id
             requestFocus(.editor)
             return
         }
@@ -2258,6 +2286,7 @@ final class CapturePanelModel: ObservableObject {
             cursorUTF8Offset: edit.cursorUTF8Offset,
             suppressSelectionCallbacks: true
         )
+        templateOrigin = template.id
         scheduleAnalysis(
             cursorUTF8Offset: edit.cursorUTF8Offset,
             requestCompletion: false,
@@ -2335,6 +2364,86 @@ final class CapturePanelModel: ObservableObject {
             announceStatus("Only @@template: drafts can be saved as templates")
             return
         }
+        guard !isSavingTemplate else {
+            return
+        }
+        guard !savedTemplateShelf.isUnsupported else {
+            announceStatus("Update bob to use saved templates")
+            return
+        }
+        guard let processClient else {
+            announceStatus("Bob is not resolved")
+            return
+        }
+
+        let draft = plainDraft
+        let origin = templateOrigin
+        isSavingTemplate = true
+        Task { [weak self, processClient] in
+            do {
+                let response = try await processClient.saveTemplate(draft, origin: origin)
+                await MainActor.run {
+                    guard let self else {
+                        return
+                    }
+                    self.isSavingTemplate = false
+                    self.savedTemplateShelf.refresh(reason: .mutation)
+                    guard response.ok, let saved = response.saved else {
+                        if self.plainDraft == draft {
+                            self.announceStatus(response.error ?? "Template could not be saved")
+                        }
+                        return
+                    }
+                    if self.plainDraft == draft {
+                        self.templateOrigin = saved.id
+                    } else if let origin, self.templateOrigin == origin {
+                        // Keep an active checkout pointed at the replacement id if
+                        // the user edited again while this save was in flight.
+                        self.templateOrigin = saved.id
+                    }
+                    guard self.plainDraft == draft else {
+                        return
+                    }
+                    let status: String
+                    switch saved.status {
+                    case .new:
+                        status = "Template saved — ⌃T to reuse"
+                    case .updated:
+                        status = "Template already saved"
+                    case .replaced:
+                        status = "Template updated"
+                    case .unknown:
+                        status = "Template saved"
+                    }
+                    self.announceStatus(status)
+                }
+            } catch let error as BobClientError {
+                await MainActor.run {
+                    guard let self else {
+                        return
+                    }
+                    self.isSavingTemplate = false
+                    if case .unsupportedCommand = error {
+                        self.savedTemplateShelf.refresh(reason: .recheck)
+                        if self.plainDraft == draft {
+                            self.announceStatus("Update bob to use saved templates")
+                        }
+                    } else if self.plainDraft == draft {
+                        self.announceStatus(error.description)
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    guard let self else {
+                        return
+                    }
+                    self.isSavingTemplate = false
+                    if self.plainDraft == draft {
+                        self.announceStatus(String(describing: error))
+                    }
+                }
+            }
+        }
     }
 
     func setParsedTemplateForTests(_ template: CaptureParseTemplate?, draft: String) {
@@ -2346,12 +2455,13 @@ final class CapturePanelModel: ObservableObject {
         armedDeleteTemplateID = nil
         let snapshot = savedTemplateShelf.templates
         let remaining = savedTemplateShelf.removeLocally(id: id)
-        rememberedSelectedTemplateID = remaining.first?.id
+        let visibleRemaining = visibleTemplateEntries(from: remaining)
+        rememberedSelectedTemplateID = visibleRemaining.first?.id
         selectedTemplateIndex = CapturePickerHelpers.clampedSelectionIndex(
             selectedTemplateIndex,
-            entryCount: remaining.count
+            entryCount: visibleRemaining.count
         )
-        if remaining.isEmpty {
+        if visibleRemaining.isEmpty {
             isTemplateShelfPresented = false
             announceStatus("Template deleted · shelf is empty")
             requestFocus(.editor)
@@ -2367,7 +2477,7 @@ final class CapturePanelModel: ObservableObject {
         guard let client = processClient else {
             await MainActor.run {
                 self.savedTemplateShelf.restoreLocally(snapshot)
-                self.clampTemplateSelection(templates: snapshot)
+                self.clampTemplateSelection(templates: self.visibleTemplateEntries(from: snapshot))
                 self.announceStatus("Bob is not resolved")
             }
             return
@@ -2380,14 +2490,14 @@ final class CapturePanelModel: ObservableObject {
                     return
                 }
                 self.savedTemplateShelf.restoreLocally(snapshot)
-                self.clampTemplateSelection(templates: snapshot)
+                self.clampTemplateSelection(templates: self.visibleTemplateEntries(from: snapshot))
                 self.announceStatus(response.error ?? "Template not deleted")
                 self.savedTemplateShelf.refresh(reason: .mutation)
             }
         } catch {
             await MainActor.run {
                 self.savedTemplateShelf.restoreLocally(snapshot)
-                self.clampTemplateSelection(templates: snapshot)
+                self.clampTemplateSelection(templates: self.visibleTemplateEntries(from: snapshot))
                 self.announceStatus(String(describing: error))
                 self.savedTemplateShelf.refresh(reason: .mutation)
             }
@@ -2418,6 +2528,31 @@ final class CapturePanelModel: ObservableObject {
         }
         if let armed = armedDeleteTemplateID, !templates.contains(where: { $0.id == armed }) {
             armedDeleteTemplateID = nil
+        }
+    }
+
+    private func visibleTemplateEntries(
+        from templates: [CaptureSavedTemplate]
+    ) -> [CaptureSavedTemplate] {
+        let available = templates.filter { $0.id != templateOrigin }
+        guard templateOrigin != nil else {
+            return available
+        }
+        return available.enumerated().map { offset, entry in
+            CaptureSavedTemplate(
+                index: offset + 1,
+                id: entry.id,
+                text: entry.text,
+                draft: entry.draft,
+                cursor: entry.cursor,
+                fieldCount: entry.fieldCount,
+                lineCount: entry.lineCount,
+                route: entry.route,
+                spans: entry.spans,
+                firstSavedAt: entry.firstSavedAt,
+                lastUsedAt: entry.lastUsedAt,
+                useCount: entry.useCount
+            )
         }
     }
 
@@ -6439,6 +6574,10 @@ final class CapturePanelModel: ObservableObject {
                     globalDestination: success.globalDestination
                 )
             }
+            if let templateStatus = Self.templateCaptureStatus(success.template) {
+                statusText += templateStatus
+            }
+            templateOrigin = nil
             successAnnouncementTick += 1
             savedTemplateShelf.refresh(reason: .submit)
             notificationService?.notifyCaptureSuccess(
@@ -6625,6 +6764,28 @@ final class CapturePanelModel: ObservableObject {
         return CaptureTogglePresentation(capture: captures[0])
     }
 
+    private static func templateCaptureStatus(_ template: CaptureTemplateSummary?) -> String? {
+        guard let template else {
+            return nil
+        }
+        if let reason = template.notSaved {
+            return " · Template not saved: \(reason)"
+        }
+        guard let saved = template.saved else {
+            return nil
+        }
+        switch saved.status {
+        case .new:
+            return " · Template saved — ⌃T to reuse"
+        case .replaced:
+            return " · Template updated"
+        case .updated:
+            return nil
+        case .unknown:
+            return " · Template saved"
+        }
+    }
+
     /// A batch's task-complete presentation, only when it is exactly one
     /// `task_complete` item — the same single-item gate as the toggle
     /// presentation.
@@ -6731,6 +6892,9 @@ final class CapturePanelModel: ObservableObject {
         suppressSelectionCallbacks: Bool = false
     ) {
         let previousDraft = plainDraft
+        if text.isEmpty {
+            templateOrigin = nil
+        }
         if previousDraft != text {
             if let pullInChoice, pullInChoice.draftSnapshot != text {
                 self.pullInChoice = nil
@@ -7229,6 +7393,9 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func applyParse(_ parse: CaptureParseResponse, draft: String) {
+        if plainDraft == draft, parse.template == nil {
+            templateOrigin = nil
+        }
         lastAnalysisNeedsTaskGoto = Self.pickerNeed(in: parse) == .taskGoto
         parseDiagnostics = parse.diagnostics
         parsedTemplate = parse.template

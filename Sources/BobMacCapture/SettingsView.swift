@@ -8,10 +8,14 @@ struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var notificationService: NotificationService
     @ObservedObject var canceledDraftStash: CanceledDraftStash
+    @ObservedObject var savedTemplateShelf: SavedTemplateShelf
     var onResetOpenHistory: (() -> Void)? = nil
     @State private var launchStatus = LaunchAtLoginController().state()
     @State private var testNotificationStatus = ""
     @State private var isConfirmingStashClear = false
+    @State private var isConfirmingTemplateClear = false
+    @State private var isClearingTemplates = false
+    @State private var templateClearStatus = ""
     @State private var isConfirmingRefsReset = false
     @State private var highlightsTabsAllowed = false
     @State private var isAdHocBuild = false
@@ -139,6 +143,69 @@ struct SettingsView: View {
                 .accessibilityHint("Permanently removes retained canceled drafts.")
             }
 
+            Section("Saved Templates") {
+                switch savedTemplateShelf.availability {
+                case .unknown:
+                    Text("Loading saved templates…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .failed(let message):
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .unsupported:
+                    Text("Update bob to use saved templates")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                case .available:
+                    LabeledContent(
+                        "Saved",
+                        value: "\(savedTemplateShelf.count) \(savedTemplateShelf.count == 1 ? "template" : "templates") · up to \(savedTemplateShelf.capacity)"
+                    )
+                    if !savedTemplateShelf.saving {
+                        Text("Saving is off (capture.max_saved_templates: 0)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if !savedTemplateShelf.file.isEmpty {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("File")
+                                .foregroundStyle(.secondary)
+                            Text(savedTemplateShelf.file)
+                                .font(.system(.caption, design: .monospaced))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .textSelection(.enabled)
+                            Spacer(minLength: 8)
+                            Button("Reveal in Finder") {
+                                NSWorkspace.shared.activateFileViewerSelecting([
+                                    URL(fileURLWithPath: savedTemplateShelf.file)
+                                ])
+                            }
+                        }
+                    }
+                }
+
+                Text("bob saves the template block after each successful @@template: capture. Rows are never saved.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Button("Clear Templates…", role: .destructive) {
+                    isConfirmingTemplateClear = true
+                }
+                .disabled(
+                    savedTemplateShelf.count == 0
+                        || savedTemplateShelf.isUnsupported
+                        || isClearingTemplates
+                )
+                .accessibilityHint("Permanently removes saved templates and their quarantine copy.")
+                if !templateClearStatus.isEmpty {
+                    Text(templateClearStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("Launch") {
                 Toggle(
                     "Launch at login",
@@ -215,6 +282,17 @@ struct SettingsView: View {
             Text("This removes retained canceled drafts.")
         }
         .confirmationDialog(
+            "Clear saved templates?",
+            isPresented: $isConfirmingTemplateClear
+        ) {
+            Button("Clear Templates", role: .destructive) {
+                clearSavedTemplates()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes every saved template and its quarantine copy.")
+        }
+        .confirmationDialog(
             "Reset Bob Refs open history?",
             isPresented: $isConfirmingRefsReset
         ) {
@@ -243,6 +321,35 @@ struct SettingsView: View {
     private func refreshHighlightsTabsStatus() {
         highlightsTabsAllowed = AccessibilityTrust.isTrusted()
         isAdHocBuild = BundleSigningInspector.currentBundleState() == .adHoc
+    }
+
+    private func clearSavedTemplates() {
+        guard !isClearingTemplates else {
+            return
+        }
+        isClearingTemplates = true
+        templateClearStatus = ""
+        Task { @MainActor in
+            defer { isClearingTemplates = false }
+            do {
+                guard let response = try await savedTemplateShelf.clearSavedTemplates() else {
+                    templateClearStatus = "Bob is not resolved"
+                    return
+                }
+                templateClearStatus = response.ok
+                    ? "Templates cleared"
+                    : (response.error ?? "Templates could not be cleared")
+            } catch let error as BobClientError {
+                if case .unsupportedCommand = error {
+                    savedTemplateShelf.refresh(reason: .recheck)
+                    templateClearStatus = "Update bob to use saved templates"
+                } else {
+                    templateClearStatus = error.description
+                }
+            } catch {
+                templateClearStatus = String(describing: error)
+            }
+        }
     }
 
     /// The resolved Highlights app's name, version, and path, or

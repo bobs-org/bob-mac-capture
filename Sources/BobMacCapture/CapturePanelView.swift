@@ -932,7 +932,11 @@ private struct CapturePanelFooter: View {
                 } label: {
                     Label("Templates \(model.templateShelfCount)", systemImage: "square.stack.3d.down.right")
                 }
-                .help("Reuse a saved @@template: draft (Control-T)")
+                .help(
+                    model.templateOrigin == nil
+                        ? "Reuse a saved @@template: draft (Control-T)"
+                        : "1 template is in this draft; it returns when you capture or discard"
+                )
                 .disabled(model.isSubmitting || model.inlinePromptVisible || model.pickerVisible)
             }
             Button {

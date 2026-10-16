@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var hotKeyRegistry: HotKeyRegistry?
     private var panelController: CapturePanelController?
     private var panelModel: CapturePanelModel?
+    private var savedTemplateShelf: SavedTemplateShelf?
     private var agendaStore: CaptureAgendaStore?
     private var agendaCancellables: Set<AnyCancellable> = []
     private var vaultWatcher: VaultTargetWatcher?
@@ -57,12 +58,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settings = settings
         let notificationService = notificationService
         let canceledDraftStash = canceledDraftStash
+        let savedTemplateShelf = SavedTemplateShelf()
+        self.savedTemplateShelf = savedTemplateShelf
         observeCanceledDraftStashCapacity()
         let representation = NSHostingSceneRepresentation {
             BobSettingsScene(
                 settings: settings,
                 notificationService: notificationService,
                 canceledDraftStash: canceledDraftStash,
+                savedTemplateShelf: savedTemplateShelf,
                 onResetOpenHistory: { [weak self] in self?.refsLibrary?.resetOpenHistory() }
             )
         }
@@ -79,7 +83,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureStatusItem()
         configureProcessClient()
 
-        let savedTemplateShelf = SavedTemplateShelf(processClient: processClient)
+        let savedTemplateShelf = self.savedTemplateShelf ?? SavedTemplateShelf()
+        savedTemplateShelf.processClient = processClient
         let model = CapturePanelModel(
             processClient: processClient,
             canceledDraftStash: canceledDraftStash,
@@ -809,6 +814,7 @@ private struct BobSettingsScene: Scene {
     let settings: AppSettings
     let notificationService: NotificationService
     let canceledDraftStash: CanceledDraftStash
+    let savedTemplateShelf: SavedTemplateShelf
     let onResetOpenHistory: (() -> Void)?
 
     var body: some Scene {
@@ -817,6 +823,7 @@ private struct BobSettingsScene: Scene {
                 settings: settings,
                 notificationService: notificationService,
                 canceledDraftStash: canceledDraftStash,
+                savedTemplateShelf: savedTemplateShelf,
                 onResetOpenHistory: onResetOpenHistory
             )
         }

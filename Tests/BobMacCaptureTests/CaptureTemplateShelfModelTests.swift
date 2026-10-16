@@ -105,6 +105,8 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
 
         XCTAssertEqual(model.plainDraft, first.draft)
         XCTAssertEqual(model.collapsedSelectionUTF8Offset(), first.cursor)
+        XCTAssertEqual(model.templateOrigin, first.id)
+        XCTAssertEqual(model.templateShelfCount, Self.threeTemplates.count - 1)
         XCTAssertFalse(model.isTemplateShelfPresented)
 
         let rowsModel = CapturePanelModel(savedTemplateShelf: shelf)
@@ -251,16 +253,300 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
         XCTAssertEqual(model.selectedTemplateIndex, 0)
     }
 
-    func testCommandSConsumesWithoutSavingUntilCheckoutPhase() {
+    func testCheckoutCountHidesOriginAndDiscardMakesItVisibleAgain() {
+        let shelf = SavedTemplateShelf()
+        shelf.replaceCacheForTests(templates: Self.threeTemplates)
+        let model = CapturePanelModel(savedTemplateShelf: shelf)
+        model.plainDraft = Self.threeTemplates[0].draft
+        model.templateOrigin = Self.threeTemplates[0].id
+
+        XCTAssertEqual(model.templateShelfCount, 2)
+        XCTAssertEqual(model.templateEntries.map(\.id), ["reading", "grocery"])
+        XCTAssertEqual(model.templateEntries.map(\.index), [1, 2])
+
+        model.discardDraft()
+
+        XCTAssertNil(model.templateOrigin)
+        XCTAssertEqual(model.templateShelfCount, 3)
+        XCTAssertEqual(model.templateEntries.map(\.id), ["job", "reading", "grocery"])
+    }
+
+    func testEscapeAndFailedCaptureKeepCheckoutAndSubmitCarriesOrigin() async throws {
+        let shelf = SavedTemplateShelf()
+        let recordURL = temporaryURL("capture-template-failure-record")
+        defer { try? FileManager.default.removeItem(at: recordURL) }
+        let model = CapturePanelModel(savedTemplateShelf: shelf)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_CAPTURE_STDOUT": #"{"ok":false,"error":"capture failed","code":"capture_failed"}"#,
+                "FAKE_BOB_CAPTURE_EXIT": "1",
+            ]
+        )
+        await waitUntil { shelf.availability == .available }
+        model.plainDraft = Self.threeTemplates[0].draft
+        model.templateOrigin = Self.threeTemplates[0].id
+        model.setParsedTemplateForTests(CaptureParseTemplate(fieldCount: 3), draft: model.plainDraft)
+
+        model.closeRetainingDraft()
+        XCTAssertEqual(model.templateOrigin, Self.threeTemplates[0].id)
+        XCTAssertEqual(model.plainDraft, Self.threeTemplates[0].draft)
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.templateOrigin, Self.threeTemplates[0].id)
+        XCTAssertEqual(model.plainDraft, Self.threeTemplates[0].draft)
+        let record = try String(contentsOf: recordURL, encoding: .utf8)
+        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice --template-origin job --"))
+    }
+
+    func testCurrentFreshParseWithoutTemplateReleasesCheckoutButPendingParseDoesNot() async throws {
+        let shelf = SavedTemplateShelf()
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_PARSE_FIXTURE": "capture-parse-not-template.json",
+            ]
+        )
+        let pendingModel = CapturePanelModel(
+            debounceNanoseconds: 10_000_000_000,
+            savedTemplateShelf: shelf
+        )
+        pendingModel.processClient = client
+        await waitUntil { shelf.availability == .available }
+        pendingModel.plainDraft = Self.threeTemplates[0].draft
+        pendingModel.templateOrigin = Self.threeTemplates[0].id
+        pendingModel.setParsedTemplateForTests(
+            CaptureParseTemplate(fieldCount: 3),
+            draft: pendingModel.plainDraft
+        )
+
+        pendingModel.plainDraft = "Buy milk @grocery"
+        pendingModel.editorTextDidChange()
+        XCTAssertEqual(pendingModel.templateOrigin, Self.threeTemplates[0].id)
+
+        let currentModel = CapturePanelModel(debounceNanoseconds: 0, savedTemplateShelf: shelf)
+        currentModel.processClient = client
+        await waitUntil { shelf.availability == .available }
+        currentModel.plainDraft = "Buy milk @grocery"
+        currentModel.templateOrigin = Self.threeTemplates[0].id
+        currentModel.editorTextDidChange()
+
+        await waitUntil { currentModel.templateOrigin == nil }
+    }
+
+    func testControlCStashesDraftWithoutCheckoutAndRestoringDoesNotRestoreOrigin() throws {
+        let stash = CanceledDraftStash(capacity: 10)
+        let shelf = SavedTemplateShelf()
+        shelf.replaceCacheForTests(templates: Self.threeTemplates)
+        let model = CapturePanelModel(canceledDraftStash: stash, savedTemplateShelf: shelf)
+        model.plainDraft = Self.threeTemplates[0].draft
+        model.templateOrigin = Self.threeTemplates[0].id
+
+        model.stashDraftAndClose()
+
+        XCTAssertNil(model.templateOrigin)
+        XCTAssertEqual(model.statusText, "Canceled draft stashed · template kept")
+        XCTAssertEqual(stash.entries.first?.text, Self.threeTemplates[0].draft)
+
+        model.presentStashPicker()
+        model.restoreStashEntry(id: try XCTUnwrap(stash.entries.first?.id))
+        XCTAssertEqual(model.plainDraft, Self.threeTemplates[0].draft)
+        XCTAssertNil(model.templateOrigin)
+    }
+
+    func testCommandSavesTemplateChecksItOutAndUsesOriginOnEdits() async throws {
+        let shelf = SavedTemplateShelf()
+        let recordURL = temporaryURL("capture-template-save-record")
+        defer { try? FileManager.default.removeItem(at: recordURL) }
+        let model = CapturePanelModel(savedTemplateShelf: shelf)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_TEMPLATES_SAVE_FIXTURE": "capture-templates-save-new.json",
+            ]
+        )
+        await waitUntil { shelf.availability == .available }
+        model.plainDraft = Self.threeTemplates[0].draft
+        model.setParsedTemplateForTests(CaptureParseTemplate(fieldCount: 3), draft: model.plainDraft)
+
+        model.saveTemplateFromKeyboard()
+        await waitUntil { !model.isSavingTemplate }
+
+        XCTAssertEqual(model.plainDraft, Self.threeTemplates[0].draft)
+        XCTAssertEqual(model.templateOrigin, "6cd8000f52eb")
+        XCTAssertEqual(model.statusText, "Template saved — ⌃T to reuse")
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.templateShelfCount, 2)
+        let record = try String(contentsOf: recordURL, encoding: .utf8)
+        XCTAssertTrue(record.contains("argv=capture-templates save --format json -- @@template:"))
+        XCTAssertFalse(record.contains("argv=capture-templates save --format json --template-origin"))
+
+        model.templateOrigin = "6cd8000f52eb"
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_TEMPLATES_SAVE_FIXTURE": "capture-templates-save-replaced.json",
+            ]
+        )
+        await waitUntil {
+            let output = try? String(contentsOf: recordURL, encoding: .utf8)
+            return (output?.components(separatedBy: "argv=capture-templates --format json").count ?? 0) >= 2
+        }
+        model.setParsedTemplateForTests(CaptureParseTemplate(fieldCount: 3), draft: model.plainDraft)
+        model.saveTemplateFromKeyboard()
+        await waitUntil { !model.isSavingTemplate && model.templateOrigin == "6cd8000f52eb" }
+        XCTAssertEqual(model.statusText, "Template updated")
+        let updatedRecord = try String(contentsOf: recordURL, encoding: .utf8)
+        XCTAssertTrue(updatedRecord.contains("argv=capture-templates save --format json --template-origin 6cd8000f52eb --"))
+    }
+
+    func testCommandSRefusalStaysInStatusAndOldBobDoesNotAttemptSave() async throws {
+        let shelf = SavedTemplateShelf()
+        let model = CapturePanelModel(savedTemplateShelf: shelf)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_TEMPLATES_SAVE_FIXTURE": "capture-templates-save-invalid.json",
+            ]
+        )
+        await waitUntil { shelf.availability == .available }
+        model.plainDraft = Self.threeTemplates[0].draft
+        model.setParsedTemplateForTests(CaptureParseTemplate(fieldCount: 3), draft: model.plainDraft)
+
+        model.saveTemplateFromKeyboard()
+        await waitUntil { !model.isSavingTemplate }
+        XCTAssertTrue(model.statusText.contains("template"))
+        XCTAssertNil(model.errorMessage)
+
+        let oldShelf = SavedTemplateShelf()
+        let oldModel = CapturePanelModel(savedTemplateShelf: oldShelf)
+        oldModel.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_TEMPLATES_UNSUPPORTED": "1",
+            ]
+        )
+        await waitUntil { oldShelf.isUnsupported }
+        oldModel.plainDraft = Self.threeTemplates[0].draft
+        oldModel.setParsedTemplateForTests(CaptureParseTemplate(fieldCount: 3), draft: oldModel.plainDraft)
+        oldModel.saveTemplateFromKeyboard()
+        XCTAssertEqual(oldModel.statusText, "Update bob to use saved templates")
+        XCTAssertFalse(oldModel.isSavingTemplate)
+    }
+
+    func testSuccessfulTemplateCaptureStatusAndCheckoutSettlementAcrossOutcomes() async throws {
+        let cases: [(String, String)] = [
+            ("capture-template-saved-new.json", " · Template saved — ⌃T to reuse"),
+            ("capture-template-saved-replaced.json", " · Template updated"),
+            ("capture-template-saved-updated.json", ""),
+            ("capture-template-not-saved.json", " · Template not saved: write shelf: File exists (os error 17)"),
+        ]
+        for (fixture, expectedSuffix) in cases {
+            let shelf = SavedTemplateShelf()
+            let recordURL = temporaryURL("capture-template-submit-\(fixture)")
+            defer { try? FileManager.default.removeItem(at: recordURL) }
+            let model = CapturePanelModel(savedTemplateShelf: shelf)
+            model.processClient = BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                    "FAKE_BOB_CAPTURE_TEMPLATE_FIXTURE": fixture,
+                ]
+            )
+            await waitUntil { shelf.availability == .available }
+            model.plainDraft = Self.threeTemplates[0].draft
+            model.templateOrigin = Self.threeTemplates[0].id
+            model.setParsedTemplateForTests(CaptureParseTemplate(fieldCount: 3), draft: model.plainDraft)
+
+            model.submit(openAfterCapture: false)
+            await waitUntil { !model.isSubmitting }
+
+            XCTAssertEqual(model.plainDraft, "")
+            XCTAssertNil(model.templateOrigin)
+            if expectedSuffix.isEmpty {
+                XCTAssertFalse(model.statusText.contains("Template saved"))
+            } else {
+                XCTAssertTrue(model.statusText.hasSuffix(expectedSuffix), model.statusText)
+            }
+            let record = try String(contentsOf: recordURL, encoding: .utf8)
+            XCTAssertTrue(record.contains("--template-origin job --"))
+        }
+    }
+
+    func testEditorEmptyingReleasesCheckoutAndSettingsCanClearShelf() async throws {
+        let shelf = SavedTemplateShelf()
+        shelf.replaceCacheForTests(templates: Self.threeTemplates)
+        let model = CapturePanelModel(savedTemplateShelf: shelf)
+        model.plainDraft = Self.threeTemplates[0].draft
+        model.templateOrigin = Self.threeTemplates[0].id
+        model.attributedDraft = AttributedString()
+        model.editorTextDidChange()
+        XCTAssertNil(model.templateOrigin)
+
+        let recordURL = temporaryURL("capture-template-clear-record")
+        defer { try? FileManager.default.removeItem(at: recordURL) }
+        shelf.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_TEMPLATES_CLEAR_FIXTURE": "capture-templates-clear.json",
+                "FAKE_BOB_TEMPLATES_LIST_FIXTURE": "capture-templates-list-empty.json",
+            ]
+        )
+        let response = try await shelf.clearSavedTemplates()
+        await waitUntil { shelf.templates.isEmpty }
+        XCTAssertEqual(response?.ok, true)
+        let record = try String(contentsOf: recordURL, encoding: .utf8)
+        XCTAssertTrue(record.contains("argv=capture-templates clear --format json"))
+    }
+
+    func testCommandSRejectsNonTemplateAndDoublePressDoesNotStartSecondSave() async throws {
         let model = CapturePanelModel()
         model.saveTemplateFromKeyboard()
         XCTAssertEqual(model.statusText, "Only @@template: drafts can be saved as templates")
 
-        model.plainDraft = "@@template:\nBuy {0}\n\n"
-        model.setParsedTemplateForTests(CaptureParseTemplate(fieldCount: 1), draft: model.plainDraft)
-        let tick = model.statusAnnouncementTick
-        model.saveTemplateFromKeyboard()
-        XCTAssertEqual(model.statusAnnouncementTick, tick)
+        let shelf = SavedTemplateShelf()
+        let recordURL = temporaryURL("capture-template-double-save-record")
+        defer { try? FileManager.default.removeItem(at: recordURL) }
+        let savingModel = CapturePanelModel(savedTemplateShelf: shelf)
+        savingModel.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_DELAY_SECONDS": "0.1",
+            ]
+        )
+        await waitUntil { shelf.availability == .available }
+        savingModel.plainDraft = Self.threeTemplates[0].draft
+        savingModel.setParsedTemplateForTests(CaptureParseTemplate(fieldCount: 3), draft: savingModel.plainDraft)
+        savingModel.saveTemplateFromKeyboard()
+        savingModel.saveTemplateFromKeyboard()
+        await waitUntil { !savingModel.isSavingTemplate }
+        let record = try String(contentsOf: recordURL, encoding: .utf8)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-templates save ").count - 1, 1)
     }
 
     func testPrepareForDismissalClosesTheShelf() {
@@ -338,6 +624,11 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
             throw NSError(domain: "CaptureTemplateShelfModelTests", code: 1)
         }
         return url.path
+    }
+
+    private func temporaryURL(_ name: String) -> URL {
+        URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("bob-mac-capture-\(name)-\(UUID().uuidString)")
     }
 
     private func waitUntil(

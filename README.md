@@ -1769,6 +1769,8 @@ Bob Refs shortcuts:
 | Up / Ctrl-P | (normal focus traversal) | Select the previous completion | Consume the key; do not move completion selection | Consume the key; do not move completion selection |
 | Escape / Ctrl-[ | Close the panel, retaining a nonempty draft without confirmation | Close completion | Cancel back to the task list | Cancel back to the Pomodoro list |
 | Control-S | Open the canceled-draft stash picker | Open the canceled-draft stash picker | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
+| Control-T | Open the saved-template shelf | Open the shelf and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
+| Command-S | Save the current `@@template:` draft | Save the current `@@template:` draft | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-C | Stash a nonempty draft, then clear and close. A Go To (`/`) draft is discarded instead of stashed | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close |
 
 When a current Bob preview reports successor offers for `!` completion or `=x` close,
@@ -1831,10 +1833,27 @@ that non-modal workflow.
 | Up / Ctrl-P | Select the previous row, wrapping at the top |
 | Escape / Ctrl-[ | Close only the stash picker |
 | Control-S | Close the stash picker |
+| Control-T | Close the stash and open the saved-template shelf |
 
 The 36-entry upper bound exists so every retained row always has a unique one-key
 accelerator while reserving `D` for Delete All: `1` through `9`, then `0`, then `A`
 through `C`, `-`, and `E` through `Z`.
+
+### Saved-template shelf keys
+
+| Key while the shelf is open | Behavior |
+| --- | --- |
+| `1–9 0 A–C - E–Z` | Use that visible template |
+| Return | Use the selected template |
+| Down / Ctrl-N, Up / Ctrl-P | Move the selection, wrapping at either end |
+| Backspace twice | Arm, then delete the selected template |
+| Control-S | Close the shelf and open the stash |
+| Control-T | Close the shelf |
+| Escape / Ctrl-[ | Disarm deletion, or close the shelf |
+
+Control-T replaces AppKit's transpose-characters shortcut in the capture editor. Inside
+capture pickers, prompts, and successor choices it is consumed so it never edits or
+transposes text.
 
 A draft is one or more capture items separated by one or more blank or whitespace-only
 physical lines, with an optional global destination declaration token anywhere in the
@@ -2092,6 +2111,43 @@ Plan rollout
 
 Every other clipboard shape, selection, caret position, and unsupported indentation
 still follows ordinary plain-text insertion.
+
+## Saved templates
+
+Bob Mac Capture's Control-T shelf reuses saved `@@template:` blocks. Picking a row
+inserts bob's draft at the start of the editor as one undoable edit and checks out that
+template in app memory. The original remains on disk. While it is checked out, the
+Templates count and shelf omit it. Escape, hiding the panel, and a failed capture keep
+the checkout. A successful capture moves the used block to the top; if you edited it,
+the new block replaces the checked-out one. Command-S saves the current template block
+without clearing the draft, and the next successful capture settles that checkout.
+
+Discard releases the checkout and returns the original to the shelf. Removing the
+template header and receiving a fresh parse without a template, emptying the editor, or
+using Command-Z to undo the insert also releases it. Control-C stashes the full draft
+without checkout metadata and reports "Canceled draft stashed · template kept"; restoring
+that draft does not check out the template again. Quitting or crashing loses the draft
+and its in-memory checkout, while the shelf remains unchanged.
+
+The shelf stores the template block, never the capture rows. It lives at
+`${XDG_STATE_HOME:-~/.local/state}/bob-cli/capture/templates.json` with mode `0600`;
+`BOB_CAPTURE_TEMPLATES_FILE` can override the file path. The default capacity is 36,
+configured with `capture.max_saved_templates`; setting it to 0 turns off automatic and
+Command-S saves while leaving existing templates available. Forced `-r`, `-s`, and `-t`
+destinations are not saved. Settings shows the count and file path, can reveal the file
+in Finder, and has a confirmed **Clear Templates…** action that also removes the
+quarantine copy.
+
+An older bob that does not know `capture-templates` hides the shelf and asks you to
+update bob. The app only sends `--template-origin` after a successful template-list
+request from that same bob executable. This identity check matters because an older
+`bob capture` can swallow an unknown option as capture text instead of rejecting it.
+If bob changes after the list request, an edited template is saved as a separate entry
+and the original stays safe.
+
+Required bob features are `capture-templates list`, `capture-templates save`, and
+`capture --template-origin`. The list endpoint supplies the draft, caret, parse spans,
+and identity evidence; the app renders those results without parsing capture grammar.
 
 ## Wikilink Completion
 
