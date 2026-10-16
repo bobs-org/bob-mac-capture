@@ -1,4 +1,5 @@
 import AppKit
+import CaptureCore
 import Combine
 import ServiceManagement
 import SwiftUI
