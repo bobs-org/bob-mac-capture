@@ -4,15 +4,16 @@ import Foundation
 /// What the panel knows about the key event's context: whether the
 /// query is empty, whether the scope is All, whether the Highlights
 /// Tabs filter is on, whether the field editor holds marked
-/// (IME-composing) text, and whether the listing is in browse mode. A
-/// banner in flight needs no router flag: the model's Esc ladder
-/// dismisses the banner first. Printable keys always fall through to
-/// the search field.
+/// (IME-composing) text, whether the selection is an open tab, and
+/// whether the listing is in browse mode. A banner in flight needs no
+/// router flag: the model's Esc ladder dismisses it first. Printable keys
+/// always fall through to the search field.
 public struct RefsKeyContext: Equatable, Sendable {
     public var queryIsEmpty: Bool
     public var scopeIsAll: Bool
     public var tabsFilterOn: Bool
     public var markedTextPresent: Bool
+    public var selectionIsOpenTab: Bool
     public var listModeIsBrowse: Bool
 
     public init(
@@ -20,12 +21,14 @@ public struct RefsKeyContext: Equatable, Sendable {
         scopeIsAll: Bool = true,
         tabsFilterOn: Bool = false,
         markedTextPresent: Bool = false,
+        selectionIsOpenTab: Bool = false,
         listModeIsBrowse: Bool = true
     ) {
         self.queryIsEmpty = queryIsEmpty
         self.scopeIsAll = scopeIsAll
         self.tabsFilterOn = tabsFilterOn
         self.markedTextPresent = markedTextPresent
+        self.selectionIsOpenTab = selectionIsOpenTab
         self.listModeIsBrowse = listModeIsBrowse
     }
 }
@@ -67,6 +70,8 @@ public enum RefsKeyRouter {
     }
 
     /// Maps one key press to a panel command, or nil to pass it through.
+    /// Control-D closes a selected Tabs row and scrolls elsewhere;
+    /// Shift-Command-T reopens the newest closed tab.
     public static func command(
         keyCode: UInt16,
         modifiers: NSEvent.ModifierFlags,
@@ -153,7 +158,12 @@ public enum RefsKeyRouter {
             return flags == .control ? .move(.next) : nil
         case KeyCode.d:
             if flags == .control {
-                return context.markedTextPresent ? nil : .scrollInspector(.down)
+                if context.markedTextPresent {
+                    return nil
+                }
+                return context.selectionIsOpenTab
+                    ? .closeSelectedTab
+                    : .scrollInspector(.down)
             }
             return nil
         case KeyCode.u:
@@ -179,13 +189,17 @@ public enum RefsKeyRouter {
         case KeyCode.s:
             return flags == .command ? .scan : nil
         case KeyCode.t:
-            // ⌘T toggles the Tabs filter. While IME-composing the key
-            // belongs to the text system. Caps Lock never blocks it,
-            // matching ⌘Y below.
+            // Shift-⌘T reopens a closed tab; plain ⌘T toggles the Tabs
+            // filter. While IME-composing either key belongs to the text
+            // system. Caps Lock never blocks the shortcuts.
             if context.markedTextPresent {
                 return nil
             }
-            return flags.subtracting(.capsLock) == .command ? .toggleTabs : nil
+            let commandFlags = flags.subtracting(.capsLock)
+            if commandFlags == [.command, .shift] {
+                return .reopenClosedTab
+            }
+            return commandFlags == .command ? .toggleTabs : nil
         case KeyCode.delete:
             // Only unmodified Backspace on an empty query removes a
             // token: the Tabs filter first (even under scope All), then

@@ -8,12 +8,14 @@ enum RefsGlassToastStyle: Equatable {
     case moved
     case already
     case guarded
+    case closedTab
 
     var symbolName: String {
         switch self {
         case .copy: "checkmark.circle.fill"
         case .linked, .moved, .already: "timer"
         case .guarded: "lock.fill"
+        case .closedTab: "xmark.square.fill"
         }
     }
 
@@ -23,6 +25,7 @@ enum RefsGlassToastStyle: Equatable {
         case .linked, .moved: .pink
         case .already: .pink.opacity(0.6)
         case .guarded: .orange
+        case .closedTab: .secondary
         }
     }
 
@@ -43,9 +46,9 @@ final class RefsGlassToastPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
-/// Reusable glass toast for copy and Today-link confirmations. Copy is
-/// centered over the panel's former frame; Today is anchored just above
-/// the visible panel footer.
+/// Reusable glass toast for copy, Today-link, and tab-close confirmations.
+/// Copy and last-tab toasts are centered over the panel's former frame;
+/// Today-link and ordinary close toasts sit above the visible footer.
 @MainActor
 public final class RefsGlassToastController {
     public static let fadeInDuration: TimeInterval = 0.1
@@ -146,6 +149,43 @@ public final class RefsGlassToastController {
             value: value,
             detail: detail,
             style: .today(style),
+            holdDuration: holdDuration,
+            fadeIn: Self.todayFadeInDuration,
+            rises: true,
+            frame: { Self.frame(aboveFooterOf: host, size: $0) }
+        )
+    }
+
+    public func show(
+        title: String,
+        value: String,
+        detail: String?,
+        centeredOn host: NSRect
+    ) {
+        present(
+            title: title,
+            value: value,
+            detail: detail,
+            style: .closedTab,
+            holdDuration: RefsTabClosePresentation.toastHoldDuration,
+            fadeIn: Self.todayFadeInDuration,
+            rises: false,
+            frame: { Self.frame(centeredOn: host, size: $0) }
+        )
+    }
+
+    public func show(
+        title: String,
+        value: String,
+        detail: String?,
+        holdDuration: TimeInterval,
+        aboveFooterOf host: NSRect
+    ) {
+        present(
+            title: title,
+            value: value,
+            detail: detail,
+            style: .closedTab,
             holdDuration: holdDuration,
             fadeIn: Self.todayFadeInDuration,
             rises: true,

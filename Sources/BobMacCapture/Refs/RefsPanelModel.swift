@@ -52,6 +52,13 @@ public enum RefsCommand: Equatable, Sendable {
     case setTabsFilter(Bool)
     /// Requests Accessibility access after an explicit card action.
     case requestTabsPermission
+    /// Closes the selected Highlights tab, falling back to inspector scroll
+    /// if the selected row is no longer an open tab.
+    case closeSelectedTab
+    /// Closes the identified Highlights tab row.
+    case closeTab(id: String)
+    /// Reopens the most recently closed Highlights tab, when one is available.
+    case reopenClosedTab
     case escape
     case deleteBackwardOnEmpty
     case refresh
@@ -257,6 +264,16 @@ public final class RefsPanelModel: ObservableObject {
     @Published public private(set) var tabsState: RefsTabsState = .off
     /// The latest ranked tab rows, keyed by listing row id.
     @Published public private(set) var tabsListing: RefsTabsListing?
+    /// Whether the selected row is an open tab that can be closed.
+    public var canCloseSelectedTab: Bool {
+        guard let selectedID else { return false }
+        return canCloseTab(id: selectedID)
+    }
+
+    /// Whether id is an open tab row in the Tabs listing.
+    public func canCloseTab(id: String) -> Bool {
+        tabsFilter && tabsListing?.tabs[id] != nil
+    }
     @Published public private(set) var selectedID: String? {
         didSet {
             if oldValue != selectedID {
@@ -398,6 +415,12 @@ public final class RefsPanelModel: ObservableObject {
     /// Called after a visible-panel Today link succeeds. The controller
     /// renders the shared glass toast without closing the panel.
     public var todayLinkCompletion: (RefsTodayLinkToast, String) -> Void = { _, _ in }
+    /// Dismisses Refs through the coordinator path used by Copy after the
+    /// final tab closes.
+    public var tabCloseDismisser: () -> Void = {}
+    /// Presents a verified tab-close toast. Last-tab toasts are shown even
+    /// when Refs is hidden.
+    public var tabCloseCompletion: (RefsTabCloseToast) -> Void = { _ in }
     /// Whether the panel is currently visible. The controller sets this;
     /// the scan completion path reads it to decide between a live
     /// re-rank and a hidden notification.
@@ -428,6 +451,15 @@ public final class RefsPanelModel: ObservableObject {
     /// update row content without changing which tabs are listed.
     private var matchedTabs: [RefsOpenTab] = []
     private var tabsHighlightsIsFrontmost = false
+    private var closingRowIDs: Set<String> = []
+    private struct PendingTabClose {
+        let tab: RefsOpenTab
+        let title: String
+        let reopen: RefsClosedTab?
+    }
+    private var closeQueue: [PendingTabClose] = []
+    private var closeWorker: Task<Void, Never>?
+    private var pendingClosedTab: RefsClosedTab?
     private var tabsRefreshGeneration: UInt64 = 0
     private var preserveTabsSelectionOnNextSnapshot = false
     private var heldTabsOpen = false
@@ -619,6 +651,7 @@ public final class RefsPanelModel: ObservableObject {
         tabsFilter = source == .highlightsTabs
         tabsState = tabsFilter ? .loading : .off
         heldTabsOpen = false
+        pendingClosedTab = nil
         preserveTabsSelectionOnNextSnapshot = false
         banner = nil
         pendingOpen = nil
@@ -683,6 +716,22 @@ public final class RefsPanelModel: ObservableObject {
             tabsSession.reader.requestTrust()
             beginTabsRefresh(preservingSelection: false)
             return true
+        case .closeSelectedTab:
+            guard canCloseSelectedTab, let selectedID else {
+                inspectorScrollSubject.send(.down)
+                return true
+            }
+            return closeTab(id: selectedID)
+        case .closeTab(let id):
+            return closeTab(id: id)
+        case .reopenClosedTab:
+            if let pendingClosedTab {
+                return reopenClosedTab(pendingClosedTab)
+            }
+            guard let closed = tabsSession.popClosedTab() else {
+                return true
+            }
+            return reopenClosedTab(closed)
         case .escape:
             if todayLinkCard != nil {
                 if !isLinkingToday {
@@ -949,7 +998,7 @@ public final class RefsPanelModel: ObservableObject {
     private func rebuildTabsListing(preservingSelection: Bool) {
         let keep = preservingSelection ? selectedID : nil
         let ranked = RefsTabsRanker.listing(
-            tabs: matchedTabs,
+            tabs: matchedTabs.filter { !closingRowIDs.contains($0.rowID) },
             items: library.items,
             query: query,
             scope: scope,
@@ -965,6 +1014,204 @@ public final class RefsPanelModel: ObservableObject {
         } else {
             selectedID = ranked.preselectedID
         }
+    }
+
+    private func closeTab(id: String) -> Bool {
+        guard canCloseTab(id: id),
+              listing.orderedIDs.contains(id),
+              let tab = tabsListing?.tabs[id]
+        else {
+            return false
+        }
+
+        let nextSelection = RefsSelectionPolicy.afterRemoving(id, in: listing)
+        let title = rowContent(for: id)?.title ?? tab.fileName
+        let reopen: RefsClosedTab?
+        if let itemID = tab.itemID,
+           let item = library.items.first(where: { $0.id == itemID }),
+           let url = library.pdfURL(for: item)
+        {
+            reopen = RefsClosedTab(
+                title: item.title.text,
+                fileName: tab.fileName,
+                url: url,
+                itemID: item.id
+            )
+        } else if let path = tab.documentPath {
+            reopen = RefsClosedTab(
+                title: tab.fileName,
+                fileName: tab.fileName,
+                url: URL(fileURLWithPath: path),
+                itemID: nil
+            )
+        } else {
+            reopen = nil
+        }
+
+        closingRowIDs.insert(id)
+        let updateListing = {
+            self.rebuildTabsListing(preservingSelection: false)
+            if let nextSelection,
+               self.listing.orderedIDs.contains(nextSelection)
+            {
+                self.selectedID = nextSelection
+            }
+        }
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            updateListing()
+        } else {
+            withAnimation(.snappy(duration: 0.2)) {
+                updateListing()
+            }
+        }
+        AccessibilityNotification.Announcement(
+            RefsTabClosePresentation.announcement(
+                title: title,
+                countText: tabsCountText
+            )
+        ).post()
+
+        closeQueue.append(PendingTabClose(tab: tab, title: title, reopen: reopen))
+        startCloseWorkerIfNeeded()
+        return true
+    }
+
+    private func startCloseWorkerIfNeeded() {
+        guard closeWorker == nil else { return }
+        closeWorker = Task { [weak self] in
+            guard let self else { return }
+            while let next = self.takeNextClose() {
+                let outcome = await self.tabsSession.close(
+                    next.tab,
+                    reopen: next.reopen
+                )
+                self.finishClose(next, outcome: outcome)
+            }
+            if self.tabsFilter, self.tabsState == .loading {
+                self.tabsState = self.matchedTabs.isEmpty ? .noDocuments : .loaded
+            }
+            self.closeWorker = nil
+            self.startCloseWorkerIfNeeded()
+        }
+    }
+
+    private func takeNextClose() -> PendingTabClose? {
+        guard !closeQueue.isEmpty else { return nil }
+        return closeQueue.removeFirst()
+    }
+
+    private func finishClose(
+        _ pending: PendingTabClose,
+        outcome: HighlightsTabCloseOutcome
+    ) {
+        closingRowIDs.remove(pending.tab.rowID)
+        switch outcome {
+        case .closed(let snapshot):
+            applyCloseSnapshot(snapshot)
+            let toast = RefsTabClosePresentation.toast(
+                title: pending.title,
+                canReopen: pending.reopen != nil
+            )
+            if panelIsVisible() {
+                tabCloseCompletion(toast)
+            }
+        case .closedLast(let highlightsQuit):
+            matchedTabs = []
+            tabsHighlightsIsFrontmost = false
+            closingRowIDs.removeAll()
+            tabsState = .noDocuments
+            if tabsFilter {
+                rebuildTabsListing(preservingSelection: false)
+            }
+            AccessibilityNotification.Announcement(
+                RefsTabClosePresentation.lastAnnouncement(
+                    title: pending.title,
+                    highlightsQuit: highlightsQuit
+                )
+            ).post()
+            if panelIsVisible() {
+                tabCloseDismisser()
+            }
+            tabCloseCompletion(
+                RefsTabClosePresentation.lastToast(
+                    title: pending.title,
+                    highlightsQuit: highlightsQuit
+                )
+            )
+        case .alreadyClosed:
+            matchedTabs.removeAll { $0.rowID == pending.tab.rowID }
+            if tabsFilter {
+                beginTabsRefresh(preservingSelection: true)
+            }
+        case .notRunning:
+            matchedTabs = []
+            tabsHighlightsIsFrontmost = false
+            heldTabsOpen = false
+            tabsState = .notRunning
+            if tabsFilter {
+                rebuildTabsListing(preservingSelection: false)
+            }
+        case .notTrusted:
+            matchedTabs = []
+            tabsHighlightsIsFrontmost = false
+            heldTabsOpen = false
+            tabsState = .needsPermission(adHoc: isAdHocSigned())
+            if tabsFilter {
+                rebuildTabsListing(preservingSelection: false)
+            }
+        case .needsAttention:
+            if panelIsVisible() {
+                hidePanel()
+            }
+            if tabsFilter {
+                beginTabsRefresh(preservingSelection: true)
+            }
+        case .failed:
+            if tabsFilter {
+                rebuildTabsListing(preservingSelection: false)
+                if listing.orderedIDs.contains(pending.tab.rowID) {
+                    selectedID = pending.tab.rowID
+                }
+                if panelIsVisible() {
+                    banner = RefsBanner(
+                        kind: .error,
+                        message: RefsTabClosePresentation.failureMessage(
+                            title: pending.title
+                        ),
+                        actions: []
+                    )
+                }
+                beginTabsRefresh(preservingSelection: true)
+            }
+        }
+    }
+
+    private func applyCloseSnapshot(_ snapshot: HighlightsTabsSnapshot) {
+        tabsHighlightsIsFrontmost = snapshot.highlightsIsFrontmost
+        matchedTabs = HighlightsTabMatcher.match(
+            snapshot,
+            items: library.items,
+            vaultRoot: library.vaultRootURL
+        )
+        tabsState = matchedTabs.isEmpty ? .noDocuments : .loaded
+        heldTabsOpen = false
+        if tabsFilter {
+            rebuildTabsListing(preservingSelection: true)
+        }
+    }
+
+    private var tabsCountText: String {
+        let isSearch: Bool
+        if case .search = listing.mode {
+            isSearch = true
+        } else {
+            isSearch = false
+        }
+        return RefsTabsCount.text(
+            shown: listing.orderedIDs.count,
+            total: listing.totalCount,
+            isSearch: isSearch
+        )
     }
 
     private func isSynthetic(_ tab: RefsOpenTab) -> Bool {
@@ -1100,11 +1347,19 @@ public final class RefsPanelModel: ObservableObject {
     public func performBannerAction(_ action: RefsBanner.Action) {
         switch action {
         case .tryAgain:
+            if let pendingClosedTab {
+                _ = openClosedTab(pendingClosedTab)
+                return
+            }
             guard let pending = pendingOpen else {
                 return
             }
             openStored(pending)
         case .openInDefaultApp:
+            if let pendingClosedTab {
+                openClosedTabInDefaultApp(pendingClosedTab)
+                return
+            }
             guard let pending = pendingOpen,
                 let item = library.items.first(where: { $0.id == pending.id })
             else {
@@ -1172,16 +1427,20 @@ public final class RefsPanelModel: ObservableObject {
     }
 
     /// Installs a canned tab snapshot and state for previews without invoking a reader.
+    /// `closingIDs` hides those rows the same way an in-flight ⌃D does, so
+    /// close-views can render a list mid-close.
     public func installTabsForPreviews(
         snapshot: HighlightsTabsSnapshot?,
         state: RefsTabsState,
-        frontmost: Bool
+        frontmost: Bool,
+        closingIDs: Set<String> = []
     ) {
         tabsFilter = true
         tabsState = state
         tabsHighlightsIsFrontmost = frontmost
         heldTabsOpen = false
         preserveTabsSelectionOnNextSnapshot = false
+        closingRowIDs = closingIDs
         if let snapshot {
             matchedTabs = HighlightsTabMatcher.match(
                 snapshot,
@@ -1262,7 +1521,8 @@ public final class RefsPanelModel: ObservableObject {
         }
         return RefsActionsMenu.sections(
             for: item,
-            audioURL: library.audioURL(for: item)
+            audioURL: library.audioURL(for: item),
+            canCloseTab: canCloseTab(id: item.id)
         )
     }
 
@@ -1281,6 +1541,9 @@ public final class RefsPanelModel: ObservableObject {
             openRenameCard()
         case .linkToday:
             openTodayLinkCard()
+        case .closeTab:
+            guard let selectedID else { return }
+            _ = perform(.closeTab(id: selectedID))
         case .openSourceURL(let url):
             _ = NSWorkspace.shared.open(url)
         case .openNarration(let url):
@@ -2304,6 +2567,82 @@ public final class RefsPanelModel: ObservableObject {
             openWithDefaultApp(item)
         case .note, .reveal:
             openSelected(pending.target)
+        }
+    }
+
+    private func reopenClosedTab(_ closed: RefsClosedTab) -> Bool {
+        if let itemID = closed.itemID,
+           let item = library.items.first(where: { $0.id == itemID })
+        {
+            pendingClosedTab = nil
+            return openInHighlights(
+                item,
+                recordsOpen: false,
+                switchedFileName: closed.fileName
+            )
+        }
+        return openClosedTab(closed)
+    }
+
+    private func openClosedTab(_ closed: RefsClosedTab) -> Bool {
+        guard let app = highlights.highlightsAppURL() else {
+            pendingClosedTab = closed
+            banner = RefsBanner(
+                kind: .error,
+                message: "Highlights isn’t installed where Bob Refs can find it.",
+                actions: [.openInDefaultApp, .chooseHighlights]
+            )
+            return true
+        }
+        pendingClosedTab = nil
+        hidePanel()
+        opener.openInHighlights(closed.url, app: app) { [weak self] error in
+            Task {
+                await self?.finishClosedTabOpen(closed, error: error)
+            }
+        }
+        return true
+    }
+
+    private func finishClosedTabOpen(_ closed: RefsClosedTab, error: Error?) {
+        if let error {
+            lastDiagnostic = RefsLibrary.boundedMessage(for: error)
+            pendingClosedTab = closed
+            panelRepresenter()
+            banner = RefsBanner(
+                kind: .error,
+                message: "Highlights couldn’t open “\(closed.title)”.\n\(lastDiagnostic)",
+                actions: [.tryAgain, .openInDefaultApp]
+            )
+        } else {
+            pendingClosedTab = nil
+            banner = nil
+        }
+    }
+
+    private func openClosedTabInDefaultApp(_ closed: RefsClosedTab) {
+        pendingClosedTab = nil
+        hidePanel()
+        opener.openWithDefaultApp(closed.url) { [weak self] error in
+            Task {
+                await self?.finishClosedTabDefaultAppOpen(closed, error: error)
+            }
+        }
+    }
+
+    private func finishClosedTabDefaultAppOpen(_ closed: RefsClosedTab, error: Error?) {
+        if let error {
+            lastDiagnostic = RefsLibrary.boundedMessage(for: error)
+            pendingClosedTab = closed
+            panelRepresenter()
+            banner = RefsBanner(
+                kind: .error,
+                message: "Couldn’t open “\(closed.title)”.\n\(lastDiagnostic)",
+                actions: [.tryAgain, .copyDiagnostic]
+            )
+        } else {
+            pendingClosedTab = nil
+            banner = nil
         }
     }
 

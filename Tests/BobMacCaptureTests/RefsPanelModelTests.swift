@@ -2689,6 +2689,457 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertEqual(reader.readCount, 2)
     }
 
+    func testCloseRemovesRowSelectsItsNeighbourAndReopensWithoutRecordingOpen() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let items = Array(harness.library.items.prefix(3))
+        guard items.count == 3 else {
+            XCTFail("fixture needs three references")
+            return
+        }
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            items,
+            vault: harness.vault,
+            frontmost: false
+        )))
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel { $0.tabsState == .loaded }
+
+        let orderedIDs = harness.model.listing.orderedIDs
+        let targetID = orderedIDs[1]
+        let neighbour = RefsSelectionPolicy.afterRemoving(
+            targetID,
+            in: harness.model.listing
+        )
+        let target = try XCTUnwrap(items.first { $0.id == targetID })
+        reader.setNextCloseResults([
+            .closed(Self.tabsSnapshot(
+                items.filter { $0.id != targetID },
+                vault: harness.vault,
+                frontmost: false
+            )),
+        ])
+        var toasts: [RefsTabCloseToast] = []
+        harness.model.panelIsVisible = { true }
+        harness.model.tabCloseCompletion = { toasts.append($0) }
+
+        XCTAssertTrue(harness.model.perform(.select(id: targetID)))
+        XCTAssertTrue(harness.model.canCloseSelectedTab)
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        XCTAssertFalse(harness.model.listing.orderedIDs.contains(targetID))
+        XCTAssertEqual(harness.model.selectedID, neighbour)
+        await harness.waitForModel {
+            $0.tabsState == .loaded && reader.closeTargets.count == 1
+        }
+
+        XCTAssertEqual(reader.closeTargets, [HighlightsTabTarget(
+            fileName: URL(fileURLWithPath: target.pdfPath).lastPathComponent,
+            windowOrdinal: 0
+        )])
+        XCTAssertEqual(harness.model.tabsSession.closedTabs.count, 1)
+        XCTAssertTrue(harness.openLogStore.load().isEmpty)
+        XCTAssertEqual(harness.library.signals.opens.count(targetID), 0)
+        XCTAssertEqual(toasts.first?.title, "Closed tab")
+
+        XCTAssertTrue(harness.model.perform(.reopenClosedTab))
+        await harness.waitForModel { _ in !harness.opener.highlightsOpens.isEmpty }
+        XCTAssertEqual(harness.opener.highlightsOpens.map { $0.pdf }, [
+            harness.vault.appendingPathComponent(target.pdfPath),
+        ])
+        XCTAssertTrue(harness.openLogStore.load().isEmpty)
+        XCTAssertEqual(harness.library.signals.opens.count(targetID), 0)
+    }
+
+    func testRapidClosesReachReaderOneAtATimeInPressOrder() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        reader.setCloseDelay(30_000_000)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let items = Array(harness.library.items.prefix(3))
+        guard items.count == 3 else {
+            XCTFail("fixture needs three references")
+            return
+        }
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            items,
+            vault: harness.vault,
+            frontmost: false
+        )))
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel { $0.tabsState == .loaded }
+
+        let firstID = try XCTUnwrap(harness.model.listing.orderedIDs.first)
+        let secondID = try XCTUnwrap(
+            RefsSelectionPolicy.afterRemoving(firstID, in: harness.model.listing)
+        )
+        let firstItem = try XCTUnwrap(items.first { $0.id == firstID })
+        let secondItem = try XCTUnwrap(items.first { $0.id == secondID })
+        reader.setNextCloseResults([
+            .closed(Self.tabsSnapshot(
+                items.filter { $0.id != firstID },
+                vault: harness.vault,
+                frontmost: false
+            )),
+            .closed(Self.tabsSnapshot([], vault: harness.vault, frontmost: false)),
+        ])
+        var toasts: [RefsTabCloseToast] = []
+        harness.model.tabCloseCompletion = { toasts.append($0) }
+
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        XCTAssertEqual(harness.model.selectedID, secondID)
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        XCTAssertFalse(harness.model.listing.orderedIDs.contains(firstID))
+        XCTAssertFalse(harness.model.listing.orderedIDs.contains(secondID))
+
+        await harness.waitForModel { $0.tabsState == .noDocuments }
+        XCTAssertEqual(reader.closeTargets.map(\.fileName), [
+            URL(fileURLWithPath: firstItem.pdfPath).lastPathComponent,
+            URL(fileURLWithPath: secondItem.pdfPath).lastPathComponent,
+        ])
+        XCTAssertEqual(reader.maxConcurrentCloses, 1)
+        XCTAssertEqual(reader.quitCount, 1)
+        XCTAssertEqual(harness.model.tabsSession.closedTabs.count, 2)
+        XCTAssertEqual(toasts.map(\.title), ["Closed the last tab"])
+        XCTAssertTrue(harness.model.perform(.reopenClosedTab))
+        XCTAssertTrue(harness.model.perform(.reopenClosedTab))
+        XCTAssertEqual(harness.opener.highlightsOpens.map { $0.pdf }, [
+            harness.vault.appendingPathComponent(secondItem.pdfPath),
+            harness.vault.appendingPathComponent(firstItem.pdfPath),
+        ])
+        XCTAssertTrue(harness.openLogStore.load().isEmpty)
+        XCTAssertEqual(toasts.last?.title, "Closed the last tab")
+    }
+
+    func testFailedCloseRestoresAndSelectsRowWithFailureBanner() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let item = try XCTUnwrap(harness.library.items.first)
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            [item],
+            vault: harness.vault,
+            frontmost: false
+        )))
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel { $0.tabsState == .loaded }
+        reader.setNextCloseResults([.failed("close failed")])
+
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        await harness.waitForModel {
+            $0.listing.orderedIDs.contains(item.id)
+                && $0.selectedID == item.id
+                && $0.banner?.message
+                    == RefsTabClosePresentation.failureMessage(title: item.title.text)
+                && $0.tabsState != .loading
+        }
+        XCTAssertTrue(harness.model.perform(.reopenClosedTab))
+        XCTAssertTrue(harness.opener.highlightsOpens.isEmpty)
+    }
+
+    func testAlreadyClosedRemovesRowAndRefreshesWithoutBanner() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let item = try XCTUnwrap(harness.library.items.first)
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            [item],
+            vault: harness.vault,
+            frontmost: false
+        )))
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel { $0.tabsState == .loaded }
+        reader.setNextCloseResults([.notFound])
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            [],
+            vault: harness.vault,
+            frontmost: false
+        )))
+
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        await harness.waitForModel {
+            $0.tabsState == .noDocuments
+                && !$0.listing.orderedIDs.contains(item.id)
+        }
+        XCTAssertNil(harness.model.banner)
+        XCTAssertFalse(harness.model.listing.orderedIDs.contains(item.id))
+    }
+
+    func testSyntheticTabClosesWithoutNoteWarningAndReopensKnownPath() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let url = URL(fileURLWithPath: "/tmp/outside_library.pdf")
+        let snapshot = HighlightsTabsSnapshot(
+            windows: [HighlightsTabsSnapshot.Window(
+                isMain: true,
+                tabs: [HighlightsTabsSnapshot.Tab(
+                    fileName: url.lastPathComponent,
+                    documentPath: url.path,
+                    isSelected: true
+                )]
+            )],
+            highlightsIsFrontmost: false
+        )
+        harness.model.installTabsForPreviews(
+            snapshot: snapshot,
+            state: .loaded,
+            frontmost: false
+        )
+        let rowID = "highlights-tab:\(url.lastPathComponent)"
+        reader.setNextCloseResults([.closed(Self.tabsSnapshot(
+            [],
+            vault: harness.vault,
+            frontmost: false
+        ))])
+
+        XCTAssertTrue(harness.model.canCloseTab(id: rowID))
+        XCTAssertTrue(harness.model.perform(.closeTab(id: rowID)))
+        await harness.waitForModel { $0.tabsState == .noDocuments }
+        XCTAssertNil(harness.model.banner)
+
+        XCTAssertTrue(harness.model.perform(.reopenClosedTab))
+        await harness.waitForModel { _ in !harness.opener.highlightsOpens.isEmpty }
+        XCTAssertEqual(harness.opener.highlightsOpens.first?.pdf, url)
+        XCTAssertTrue(harness.openLogStore.load().isEmpty)
+    }
+
+    func testCloseTabActionsAppearOnlyForMatchedTabsRows() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let item = try XCTUnwrap(harness.library.items.first)
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            [item],
+            vault: harness.vault,
+            frontmost: false
+        )))
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel { $0.tabsState == .loaded }
+
+        XCTAssertEqual(
+            Array(harness.model.actionsSections()[0].prefix(2)),
+            [.openHighlights, .closeTab]
+        )
+        XCTAssertEqual(RefsAction.closeTab.title, "Close Tab")
+        XCTAssertEqual(RefsAction.closeTab.keyEquivalent, "d")
+        XCTAssertEqual(RefsAction.closeTab.keyEquivalentModifierMask, .control)
+
+        reader.setNextCloseResults([.closed(Self.tabsSnapshot(
+            [],
+            vault: harness.vault,
+            frontmost: false
+        ))])
+        harness.model.performAction(.closeTab)
+        await harness.waitForModel { $0.tabsState == .noDocuments }
+        XCTAssertEqual(reader.closeTargets.count, 1)
+
+        XCTAssertTrue(harness.model.perform(.setTabsFilter(false)))
+        XCTAssertFalse(harness.model.actionsSections().flatMap { $0 }.contains(.closeTab))
+
+        var scrolls: [RefsInspectorScrollDirection] = []
+        let scrollSubscription = harness.model.inspectorScrolls.sink {
+            scrolls.append($0)
+        }
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        XCTAssertEqual(scrolls, [.down])
+        withExtendedLifetime(scrollSubscription) {}
+    }
+
+    func testCloseSelectsPreviousNeighbourOnLastRowAndClearsOnlyRow() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let items = Array(harness.library.items.prefix(2))
+        guard items.count == 2 else {
+            XCTFail("fixture needs two references")
+            return
+        }
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            items,
+            vault: harness.vault,
+            frontmost: false
+        )))
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel { $0.tabsState == .loaded }
+
+        let lastID = try XCTUnwrap(harness.model.listing.orderedIDs.last)
+        let previous = RefsSelectionPolicy.afterRemoving(
+            lastID,
+            in: harness.model.listing
+        )
+        XCTAssertTrue(harness.model.perform(.select(id: lastID)))
+        reader.setNextCloseResults([
+            .closed(Self.tabsSnapshot(
+                items.filter { $0.id != lastID },
+                vault: harness.vault,
+                frontmost: false
+            )),
+            .closed(Self.tabsSnapshot([], vault: harness.vault, frontmost: false)),
+        ])
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        XCTAssertEqual(harness.model.selectedID, previous)
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        await harness.waitForModel { $0.tabsState == .noDocuments }
+        XCTAssertTrue(harness.model.listing.orderedIDs.isEmpty)
+        XCTAssertNil(harness.model.selectedID)
+        XCTAssertEqual(reader.quitCount, 1)
+    }
+
+    func testClosedLastHidesPanelAndShowsLastToast() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let item = try XCTUnwrap(harness.library.items.first)
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            [item],
+            vault: harness.vault,
+            frontmost: false
+        )))
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel { $0.tabsState == .loaded }
+        reader.setNextCloseResults([
+            .closed(Self.tabsSnapshot([], vault: harness.vault, frontmost: false)),
+        ])
+        var toasts: [RefsTabCloseToast] = []
+        harness.model.panelIsVisible = { true }
+        harness.model.tabCloseCompletion = { toasts.append($0) }
+
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        await harness.waitForModel { $0.tabsState == .noDocuments }
+        XCTAssertEqual(harness.dismissed, 1)
+        XCTAssertEqual(toasts.map(\.title), ["Closed the last tab"])
+        XCTAssertEqual(toasts.first?.isLast, true)
+        XCTAssertEqual(reader.quitCount, 1)
+        XCTAssertTrue(harness.openLogStore.load().isEmpty)
+        XCTAssertEqual(harness.library.signals.opens.count(item.id), 0)
+    }
+
+    func testNeedsAttentionHidesPanelWithoutBanner() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let item = try XCTUnwrap(harness.library.items.first)
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            [item],
+            vault: harness.vault,
+            frontmost: false
+        )))
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel { $0.tabsState == .loaded }
+        reader.setNextCloseResults([.needsAttention])
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            [item],
+            vault: harness.vault,
+            frontmost: true
+        )))
+        harness.model.panelIsVisible = { true }
+
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        await harness.waitForModel { $0.tabsSession.lastSnapshot?.highlightsIsFrontmost == true }
+        XCTAssertEqual(harness.dismissed, 1)
+        XCTAssertNil(harness.model.banner)
+    }
+
+    func testNotTrustedCloseShowsPermissionState() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let item = try XCTUnwrap(harness.library.items.first)
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            [item],
+            vault: harness.vault,
+            frontmost: false
+        )))
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel { $0.tabsState == .loaded }
+        reader.setNextCloseResults([.notTrusted])
+
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        await harness.waitForModel {
+            if case .needsPermission = $0.tabsState { return true }
+            return false
+        }
+        XCTAssertTrue(harness.model.listing.orderedIDs.isEmpty)
+    }
+
+    func testClosingRowIsNotResurrectedByInFlightRefresh() async throws {
+        let reader = FakeTabsReader(
+            isTrusted: true,
+            readDelayNanoseconds: 80_000_000
+        )
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let items = Array(harness.library.items.prefix(2))
+        guard items.count == 2 else {
+            XCTFail("fixture needs two references")
+            return
+        }
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            items,
+            vault: harness.vault,
+            frontmost: false
+        )))
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel { $0.tabsState == .loaded }
+
+        let targetID = try XCTUnwrap(harness.model.listing.orderedIDs.first)
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            items,
+            vault: harness.vault,
+            frontmost: true
+        )))
+        XCTAssertTrue(harness.model.perform(.refresh))
+        reader.setNextCloseResults([
+            .closed(Self.tabsSnapshot(
+                items.filter { $0.id != targetID },
+                vault: harness.vault,
+                frontmost: false
+            )),
+        ])
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        XCTAssertFalse(harness.model.listing.orderedIDs.contains(targetID))
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        XCTAssertFalse(harness.model.listing.orderedIDs.contains(targetID))
+        await harness.waitForModel {
+            $0.tabsState == .loaded && !$0.listing.orderedIDs.contains(targetID)
+        }
+    }
+
+    func testReopenOnEmptyStackIsANoOp() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        XCTAssertTrue(harness.model.perform(.reopenClosedTab))
+        XCTAssertTrue(harness.opener.highlightsOpens.isEmpty)
+        XCTAssertTrue(harness.openLogStore.load().isEmpty)
+    }
+
+    func testInstallTabsForPreviewsCanHideClosingRows() async throws {
+        let harness = try makeHarness(tabsReader: FakeTabsReader(isTrusted: true))
+        await harness.waitForSnapshot()
+        let item = try XCTUnwrap(harness.library.items.first)
+        let snapshot = Self.tabsSnapshot(
+            [item],
+            vault: harness.vault,
+            frontmost: false
+        )
+        harness.model.installTabsForPreviews(
+            snapshot: snapshot,
+            state: .loaded,
+            frontmost: false
+        )
+        XCTAssertTrue(harness.model.canCloseTab(id: item.id))
+        harness.model.installTabsForPreviews(
+            snapshot: snapshot,
+            state: .loaded,
+            frontmost: false,
+            closingIDs: [item.id]
+        )
+        XCTAssertFalse(harness.model.listing.orderedIDs.contains(item.id))
+        XCTAssertFalse(harness.model.canCloseTab(id: item.id))
+    }
+
     private static func tabsSnapshot(
         _ items: [RefItem],
         vault: URL,
@@ -3147,6 +3598,13 @@ final class FakeTabsReader: HighlightsTabsReading, @unchecked Sendable {
     private var defaultResult: HighlightsTabsReadResult = .failed("No fake result")
     private var selectResult: HighlightsTabSelectResult
     private var readDelayNanoseconds: UInt64
+    private var closeResults: [HighlightsTabCloseResult] = []
+    private var closeDelayNanoseconds: UInt64 = 0
+    private var closedTargets: [HighlightsTabTarget] = []
+    private var activeCloses = 0
+    private var maxCloses = 0
+    private var quitResult = true
+    private var quits = 0
     private var reads = 0
     private var targets: [HighlightsTabTarget] = []
 
@@ -3168,6 +3626,18 @@ final class FakeTabsReader: HighlightsTabsReading, @unchecked Sendable {
         lock.withLock { targets }
     }
 
+    var closeTargets: [HighlightsTabTarget] {
+        lock.withLock { closedTargets }
+    }
+
+    var maxConcurrentCloses: Int {
+        lock.withLock { maxCloses }
+    }
+
+    var quitCount: Int {
+        lock.withLock { quits }
+    }
+
     func setNextResult(_ result: HighlightsTabsReadResult) {
         lock.withLock {
             nextResult = result
@@ -3177,6 +3647,18 @@ final class FakeTabsReader: HighlightsTabsReading, @unchecked Sendable {
     func setReadDelay(_ delay: UInt64) {
         lock.withLock {
             readDelayNanoseconds = delay
+        }
+    }
+
+    func setNextCloseResults(_ results: [HighlightsTabCloseResult]) {
+        lock.withLock {
+            closeResults = results
+        }
+    }
+
+    func setCloseDelay(_ delay: UInt64) {
+        lock.withLock {
+            closeDelayNanoseconds = delay
         }
     }
 
@@ -3207,6 +3689,32 @@ final class FakeTabsReader: HighlightsTabsReading, @unchecked Sendable {
         lock.withLock {
             targets.append(target)
             return selectResult
+        }
+    }
+
+    func close(_ target: HighlightsTabTarget) async -> HighlightsTabCloseResult {
+        let (result, delay) = lock.withLock { () -> (HighlightsTabCloseResult, UInt64) in
+            closedTargets.append(target)
+            activeCloses += 1
+            maxCloses = max(maxCloses, activeCloses)
+            let result = closeResults.isEmpty
+                ? HighlightsTabCloseResult.failed("No fake close result")
+                : closeResults.removeFirst()
+            return (result, closeDelayNanoseconds)
+        }
+        if delay > 0 {
+            try? await Task.sleep(nanoseconds: delay)
+        }
+        lock.withLock {
+            activeCloses -= 1
+        }
+        return result
+    }
+
+    func quitIfNoDocuments() async -> Bool {
+        lock.withLock {
+            quits += 1
+            return quitResult
         }
     }
 }

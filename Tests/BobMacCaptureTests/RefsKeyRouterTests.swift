@@ -165,6 +165,18 @@ final class RefsKeyRouterTests: XCTestCase {
         XCTAssertNil(route(KeyCode.u, .control, context: composing))
     }
 
+    func testControlDClosesOnlyWhenAnOpenTabRowIsSelected() {
+        let tabsRow = RefsKeyContext(selectionIsOpenTab: true)
+        let otherRow = RefsKeyContext(tabsFilterOn: true)
+        XCTAssertEqual(route(KeyCode.d, .control, context: tabsRow), .closeSelectedTab)
+        XCTAssertEqual(route(KeyCode.d, .control, context: otherRow), .scrollInspector(.down))
+        XCTAssertNil(route(
+            KeyCode.d,
+            .control,
+            context: RefsKeyContext(markedTextPresent: true, selectionIsOpenTab: true)
+        ))
+    }
+
     func testOptionArrowsJumpSectionsInBrowseOnly() {
         let browse = RefsKeyContext(listModeIsBrowse: true)
         XCTAssertEqual(
@@ -224,11 +236,25 @@ final class RefsKeyRouterTests: XCTestCase {
         )
         XCTAssertNil(route(KeyCode.t))
         XCTAssertNil(route(KeyCode.t, .control))
-        XCTAssertNil(route(KeyCode.t, [.command, .shift]))
         XCTAssertNil(route(KeyCode.t, [.command, .option]))
         XCTAssertNil(route(
             KeyCode.t,
             .command,
+            context: RefsKeyContext(markedTextPresent: true)
+        ))
+    }
+
+    func testShiftCommandTReopensAndCommandTRemainsTabsToggle() {
+        XCTAssertEqual(route(KeyCode.t, [.command, .shift]), .reopenClosedTab)
+        XCTAssertEqual(
+            route(KeyCode.t, [.command, .shift, .capsLock]),
+            .reopenClosedTab
+        )
+        XCTAssertEqual(route(KeyCode.t, .command), .toggleTabs)
+        XCTAssertNil(route(KeyCode.t, [.command, .shift, .option]))
+        XCTAssertNil(route(
+            KeyCode.t,
+            [.command, .shift],
             context: RefsKeyContext(markedTextPresent: true)
         ))
     }

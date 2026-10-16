@@ -64,6 +64,12 @@ public final class RefsPanelController: NSObject {
         model.copyCompletion = { [weak self] row in
             self?.copySucceeded(row)
         }
+        model.tabCloseDismisser = { [weak self] in
+            self?.copyDismisser()
+        }
+        model.tabCloseCompletion = { [weak self] toast in
+            self?.tabCloseSucceeded(toast)
+        }
         model.todayLinkCompletion = { [weak self] toast, title in
             self?.todayLinkSucceeded(toast, title: title)
         }
@@ -163,6 +169,27 @@ public final class RefsPanelController: NSObject {
             detail: toast.detail,
             style: toast.style,
             holdDuration: RefsTodayLinkPresentation.toastHoldDuration,
+            aboveFooterOf: panel.frame
+        )
+    }
+
+    private func tabCloseSucceeded(_ toast: RefsTabCloseToast) {
+        if toast.isLast {
+            let formerFrame = panel?.frame ?? .zero
+            glassToast.show(
+                title: toast.title,
+                value: toast.value,
+                detail: toast.detail,
+                centeredOn: formerFrame
+            )
+            return
+        }
+        guard let panel, panel.isVisible else { return }
+        glassToast.show(
+            title: toast.title,
+            value: toast.value,
+            detail: toast.detail,
+            holdDuration: RefsTabClosePresentation.toastHoldDuration,
             aboveFooterOf: panel.frame
         )
     }
@@ -417,6 +444,7 @@ public final class RefsPanelController: NSObject {
                 scopeIsAll: model.scope == .all,
                 tabsFilterOn: model.tabsFilter,
                 markedTextPresent: markedTextInFilterField(),
+                selectionIsOpenTab: model.canCloseSelectedTab,
                 listModeIsBrowse: {
                     if case .browse = model.listing.mode {
                         return true

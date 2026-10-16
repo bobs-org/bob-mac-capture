@@ -7,6 +7,7 @@ import RefsCore
 /// an `NSMenu`.
 public enum RefsAction: Equatable, Sendable {
     case openHighlights
+    case closeTab
     case openNote
     case reveal
     case copy
@@ -22,6 +23,8 @@ public enum RefsAction: Equatable, Sendable {
         switch self {
         case .openHighlights:
             return "Open in Highlights"
+        case .closeTab:
+            return "Close Tab"
         case .openNote:
             return "Open Note"
         case .reveal:
@@ -46,12 +49,14 @@ public enum RefsAction: Equatable, Sendable {
     }
 
     /// The shortcut hint the menu shows, mirroring the panel keys:
-    /// the opens carry ↵, ⌘↵, and ⌥↵, Refresh carries ⌘R, and Scan
-    /// carries ⌘S.
+    /// the opens carry ↵, ⌘↵, and ⌥↵, Close Tab carries ⌃D, Refresh
+    /// carries ⌘R, and Scan carries ⌘S.
     public var keyEquivalent: String {
         switch self {
         case .openHighlights, .openNote, .reveal:
             return "\r"
+        case .closeTab:
+            return "d"
         case .refreshLibrary:
             return "r"
         case .scanLibrary:
@@ -79,6 +84,8 @@ public enum RefsAction: Equatable, Sendable {
             return [.command, .shift]
         case .linkToday:
             return .command
+        case .closeTab:
+            return .control
         case .openHighlights, .openSourceURL, .openNarration, .openDefaultApp:
             return []
         }
@@ -95,9 +102,14 @@ public enum RefsActionsMenu {
     /// section, after Refresh Library.
     public static func sections(
         for item: RefItem,
-        audioURL: URL?
+        audioURL: URL?,
+        canCloseTab: Bool = false
     ) -> [[RefsAction]] {
-        let opens: [RefsAction] = [.openHighlights, .openNote, .reveal]
+        var opens: [RefsAction] = [.openHighlights]
+        if canCloseTab {
+            opens.append(.closeTab)
+        }
+        opens += [.openNote, .reveal]
         var middle: [RefsAction] = [.copy, .rename, .linkToday]
         if let source = item.urls.compactMap(URL.init(string:)).first {
             middle.append(.openSourceURL(source))

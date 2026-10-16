@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 import XCTest
 
 @testable import BobMacCapture
@@ -54,6 +55,11 @@ final class RefsCopyComponentsTests: XCTestCase {
         XCTAssertTrue(panel.collectionBehavior.contains(.ignoresCycle))
         XCTAssertFalse(panel.isOpaque)
         XCTAssertFalse(panel.hasShadow)
+    }
+
+    func testClosedTabToastStyleUsesCloseGlyph() {
+        XCTAssertEqual(RefsGlassToastStyle.closedTab.symbolName, "xmark.square.fill")
+        XCTAssertEqual(RefsGlassToastStyle.closedTab.color, .secondary)
     }
 
     func testCopyCardMetricsMatchTokens() {
