@@ -3,7 +3,7 @@ import ApplicationServices
 import Foundation
 import RefsCore
 
-/// Reads and selects tabs from the configured Highlights process only.
+/// Reads, selects, and closes tabs from the configured Highlights process only.
 /// Accessibility elements stay on one serial queue and tab names stay in memory.
 final class AXHighlightsTabsReader: HighlightsTabsReading, @unchecked Sendable {
     private struct WindowRecord {
@@ -16,10 +16,14 @@ final class AXHighlightsTabsReader: HighlightsTabsReading, @unchecked Sendable {
         let reason: String
     }
 
+    private struct CloseNotFound: Error {}
+
     private let bundleIdentifier: @Sendable () -> String
     private let queue = DispatchQueue(label: "org.bobs.bob-mac-capture.highlights-tabs")
     private let messagingTimeout: Float = 0.4
     private let timeBudgetNanoseconds: UInt64 = 1_000_000_000
+    private let closeBudgetNanoseconds: UInt64 = 2_000_000_000
+    private let pollInterval: TimeInterval = 0.05
 
     /// Creates a reader for the resolved Highlights bundle identifier.
     init(bundleIdentifier: @escaping @Sendable () -> String = { HighlightsLocator.bundleIdentifier }) {
@@ -51,6 +55,16 @@ final class AXHighlightsTabsReader: HighlightsTabsReading, @unchecked Sendable {
     /// Selects a tab only after locating and rechecking it in a fresh snapshot.
     func select(_ target: HighlightsTabTarget) async -> HighlightsTabSelectResult {
         await onQueue { self.selectOnQueue(target) }
+    }
+
+    /// Closes a tab through the close-button ladder and verifies it is gone.
+    func close(_ target: HighlightsTabTarget) async -> HighlightsTabCloseResult {
+        await onQueue { self.closeOnQueue(target) }
+    }
+
+    /// Quits Highlights only after a fresh read shows no documents remain.
+    func quitIfNoDocuments() async -> Bool {
+        await onQueue { self.quitIfNoDocumentsOnQueue() }
     }
 
     private func onQueue<Value: Sendable>(_ operation: @escaping @Sendable () -> Value) async -> Value {
@@ -128,6 +142,264 @@ final class AXHighlightsTabsReader: HighlightsTabsReading, @unchecked Sendable {
             return .failed(failure.reason)
         } catch {
             return .failed("Couldn't switch to that tab in Highlights")
+        }
+    }
+
+    private func closeOnQueue(_ target: HighlightsTabTarget) -> HighlightsTabCloseResult {
+        guard AccessibilityTrust.isTrusted() else {
+            return .notTrusted
+        }
+        guard let application = runningHighlightsApplication() else {
+            return .notRunning
+        }
+
+        do {
+            let deadline = DispatchTime.now().uptimeNanoseconds + closeBudgetNanoseconds
+            let initial = try readSnapshot(application, deadline: deadline)
+            let beforeCount = titleCount(target.fileName, in: initial.snapshot)
+            if let location = HighlightsTabLocator.locate(target, in: initial.snapshot),
+                initial.windows.indices.contains(location.window),
+                initial.windows[location.window].value.tabs.indices.contains(location.tab)
+            {
+                try closeLocatedTab(
+                    target,
+                    at: location,
+                    in: initial,
+                    application: application,
+                    deadline: deadline
+                )
+                if let verified = verifyClosed(
+                    fileName: target.fileName,
+                    beforeCount: beforeCount,
+                    application: application,
+                    deadline: deadline
+                ) {
+                    return verified
+                }
+                return needsAttentionOrFailed(
+                    target: target,
+                    application: application,
+                    deadline: deadline
+                )
+            }
+
+            if beforeCount == 0 {
+                return .notFound
+            }
+            return .failed("That tab's name is ambiguous")
+        } catch is CloseNotFound {
+            return .notFound
+        } catch let failure as ReadFailure {
+            if highlightsExited(application) {
+                return .closed(emptySnapshot())
+            }
+            return .failed(failure.reason)
+        } catch {
+            if highlightsExited(application) {
+                return .closed(emptySnapshot())
+            }
+            return .failed("Highlights didn't close that tab")
+        }
+    }
+
+    private func closeLocatedTab(
+        _ target: HighlightsTabTarget,
+        at location: (window: Int, tab: Int),
+        in initial: (snapshot: HighlightsTabsSnapshot, windows: [WindowRecord]),
+        application: NSRunningApplication,
+        deadline: UInt64
+    ) throws {
+        let window = initial.windows[location.window]
+        let tab = window.value.tabs[location.tab]
+        guard window.tabButtons.indices.contains(location.tab) else {
+            CaptureSignpost.event("refs-tabs-close-window-button")
+            try pressWindowClose(window.element, deadline: deadline)
+            return
+        }
+
+        let button = window.tabButtons[location.tab]
+        guard try title(of: button, deadline: deadline) == target.fileName else {
+            throw CloseNotFound()
+        }
+
+        if let closeButton = try tabCloseButton(of: button, deadline: deadline) {
+            CaptureSignpost.event("refs-tabs-close-tab-button")
+            _ = try press(closeButton, deadline: deadline)
+            return
+        }
+
+        if tab.isSelected {
+            CaptureSignpost.event("refs-tabs-close-window-button")
+            try pressWindowClose(window.element, deadline: deadline)
+            return
+        }
+
+        try closeBySelecting(
+            target: target,
+            tabButton: button,
+            rememberedTitle: window.value.tabs.first(where: \.isSelected)?.fileName,
+            application: application,
+            deadline: deadline
+        )
+    }
+
+    private func closeBySelecting(
+        target: HighlightsTabTarget,
+        tabButton: AXUIElement,
+        rememberedTitle: String?,
+        application: NSRunningApplication,
+        deadline: UInt64
+    ) throws {
+        CaptureSignpost.event("refs-tabs-close-select-fallback")
+        guard try press(tabButton, deadline: deadline) else {
+            throw ReadFailure(reason: "Highlights didn't close that tab")
+        }
+
+        var selectedWindow: AXUIElement?
+        while DispatchTime.now().uptimeNanoseconds < deadline {
+            if highlightsExited(application) {
+                return
+            }
+            let current = try readSnapshot(application, deadline: deadline)
+            if let loc = HighlightsTabLocator.locate(target, in: current.snapshot),
+                current.windows.indices.contains(loc.window),
+                current.snapshot.windows[loc.window].tabs.indices.contains(loc.tab),
+                current.snapshot.windows[loc.window].tabs[loc.tab].isSelected
+            {
+                selectedWindow = current.windows[loc.window].element
+                break
+            }
+            Thread.sleep(forTimeInterval: pollInterval)
+        }
+
+        guard let selectedWindow else {
+            throw ReadFailure(reason: "Highlights didn't close that tab")
+        }
+        try pressWindowClose(selectedWindow, deadline: deadline)
+        restoreTab(titled: rememberedTitle, application: application, deadline: deadline)
+    }
+
+    private func restoreTab(
+        titled remembered: String?,
+        application: NSRunningApplication,
+        deadline: UInt64
+    ) {
+        guard let remembered,
+            DispatchTime.now().uptimeNanoseconds < deadline,
+            !highlightsExited(application)
+        else {
+            return
+        }
+        guard let current = try? readSnapshot(application, deadline: deadline) else {
+            return
+        }
+        for window in current.windows {
+            for (index, tab) in window.value.tabs.enumerated() where tab.fileName == remembered {
+                guard window.tabButtons.indices.contains(index) else {
+                    continue
+                }
+                setMessagingTimeout(on: window.tabButtons[index])
+                _ = AXUIElementPerformAction(
+                    window.tabButtons[index],
+                    kAXPressAction as CFString
+                )
+                return
+            }
+        }
+    }
+
+    private func verifyClosed(
+        fileName: String,
+        beforeCount: Int,
+        application: NSRunningApplication,
+        deadline: UInt64
+    ) -> HighlightsTabCloseResult? {
+        while DispatchTime.now().uptimeNanoseconds < deadline {
+            if highlightsExited(application) {
+                return .closed(emptySnapshot())
+            }
+            do {
+                let current = try readSnapshot(application, deadline: deadline)
+                if titleCount(fileName, in: current.snapshot) < beforeCount {
+                    return .closed(current.snapshot)
+                }
+            } catch {
+                if highlightsExited(application) {
+                    return .closed(emptySnapshot())
+                }
+            }
+            Thread.sleep(forTimeInterval: pollInterval)
+        }
+        return nil
+    }
+
+    private func needsAttentionOrFailed(
+        target: HighlightsTabTarget,
+        application: NSRunningApplication,
+        deadline: UInt64
+    ) -> HighlightsTabCloseResult {
+        if highlightsExited(application) {
+            return .closed(emptySnapshot())
+        }
+        do {
+            let current = try readSnapshot(application, deadline: deadline)
+            let sheetWindow: AXUIElement?
+            if let location = HighlightsTabLocator.locate(target, in: current.snapshot),
+                current.windows.indices.contains(location.window),
+                try windowHasSheet(
+                    current.windows[location.window].element,
+                    deadline: deadline
+                )
+            {
+                sheetWindow = current.windows[location.window].element
+            } else {
+                sheetWindow = try firstWindowWithSheet(
+                    in: current.windows,
+                    deadline: deadline
+                )
+            }
+
+            if let sheetWindow {
+                CaptureSignpost.event("refs-tabs-close-needs-attention")
+                _ = application.activate(options: [])
+                setMessagingTimeout(on: sheetWindow)
+                _ = AXUIElementPerformAction(sheetWindow, kAXRaiseAction as CFString)
+                return .needsAttention
+            }
+        } catch {
+            if highlightsExited(application) {
+                return .closed(emptySnapshot())
+            }
+        }
+        CaptureSignpost.event("refs-tabs-close-unverified")
+        return .failed("Highlights didn't close that tab")
+    }
+
+    private func quitIfNoDocumentsOnQueue() -> Bool {
+        guard let application = runningHighlightsApplication() else {
+            return true
+        }
+        guard AccessibilityTrust.isTrusted() else {
+            return false
+        }
+
+        do {
+            let deadline = DispatchTime.now().uptimeNanoseconds + closeBudgetNanoseconds
+            let snapshot = try readSnapshot(application, deadline: deadline).snapshot
+            guard snapshot.documentCount == 0 else {
+                return false
+            }
+            _ = application.terminate()
+            let quitDeadline = DispatchTime.now().uptimeNanoseconds + closeBudgetNanoseconds
+            while DispatchTime.now().uptimeNanoseconds < quitDeadline {
+                if application.isTerminated {
+                    return true
+                }
+                Thread.sleep(forTimeInterval: pollInterval)
+            }
+            return application.isTerminated
+        } catch {
+            return false
         }
     }
 
@@ -315,6 +587,158 @@ final class AXHighlightsTabsReader: HighlightsTabsReading, @unchecked Sendable {
         let result = AXUIElementCopyAttributeValue(element, name, &value)
         try checkDeadline(deadline)
         return result == .success ? value : nil
+    }
+
+    private func tabCloseButton(of tabButton: AXUIElement, deadline: UInt64) throws -> AXUIElement? {
+        setMessagingTimeout(on: tabButton)
+        if let close = axElement(
+            from: try optionalAttribute(
+                tabButton,
+                kAXCloseButtonAttribute as CFString,
+                deadline: deadline
+            )
+        ) {
+            return close
+        }
+        return try findCloseButton(in: tabButton, depth: 0, deadline: deadline)
+    }
+
+    private func findCloseButton(
+        in element: AXUIElement,
+        depth: Int,
+        deadline: UInt64
+    ) throws -> AXUIElement? {
+        guard depth < 2 else {
+            return nil
+        }
+        guard let children = try optionalAttribute(
+            element,
+            kAXChildrenAttribute as CFString,
+            deadline: deadline
+        ) as? [AXUIElement]
+        else {
+            return nil
+        }
+
+        for child in children {
+            try checkDeadline(deadline)
+            setMessagingTimeout(on: child)
+            if let close = axElement(
+                from: try optionalAttribute(
+                    child,
+                    kAXCloseButtonAttribute as CFString,
+                    deadline: deadline
+                )
+            ) {
+                return close
+            }
+            let role = try optionalAttribute(
+                child,
+                kAXRoleAttribute as CFString,
+                deadline: deadline
+            ) as? String
+            let subrole = try optionalAttribute(
+                child,
+                kAXSubroleAttribute as CFString,
+                deadline: deadline
+            ) as? String
+            // Highlights exposes each tab's close control as an AXButton
+            // with no subrole until hover; the close subrole is the
+            // documented fallback.
+            if role == (kAXButtonRole as String),
+                subrole == nil || subrole == (kAXCloseButtonSubrole as String)
+            {
+                return child
+            }
+            if let found = try findCloseButton(
+                in: child,
+                depth: depth + 1,
+                deadline: deadline
+            ) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    private func pressWindowClose(_ window: AXUIElement, deadline: UInt64) throws {
+        setMessagingTimeout(on: window)
+        guard let closeButton = axElement(
+            from: try optionalAttribute(
+                window,
+                kAXCloseButtonAttribute as CFString,
+                deadline: deadline
+            )
+        ) else {
+            throw ReadFailure(reason: "Highlights didn't close that tab")
+        }
+        guard try press(closeButton, deadline: deadline) else {
+            throw ReadFailure(reason: "Highlights didn't close that tab")
+        }
+    }
+
+    private func axElement(from value: CFTypeRef?) -> AXUIElement? {
+        guard let value, CFGetTypeID(value) == AXUIElementGetTypeID() else {
+            return nil
+        }
+        return (value as! AXUIElement)
+    }
+
+    private func press(_ element: AXUIElement, deadline: UInt64) throws -> Bool {
+        try checkDeadline(deadline)
+        setMessagingTimeout(on: element)
+        return AXUIElementPerformAction(element, kAXPressAction as CFString) == .success
+    }
+
+    private func windowHasSheet(_ window: AXUIElement, deadline: UInt64) throws -> Bool {
+        setMessagingTimeout(on: window)
+        guard let children = try optionalAttribute(
+            window,
+            kAXChildrenAttribute as CFString,
+            deadline: deadline
+        ) as? [AXUIElement]
+        else {
+            return false
+        }
+        for child in children {
+            try checkDeadline(deadline)
+            setMessagingTimeout(on: child)
+            let role = try optionalAttribute(
+                child,
+                kAXRoleAttribute as CFString,
+                deadline: deadline
+            ) as? String
+            if role == (kAXSheetRole as String) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private func firstWindowWithSheet(
+        in records: [WindowRecord],
+        deadline: UInt64
+    ) throws -> AXUIElement? {
+        for record in records {
+            if try windowHasSheet(record.element, deadline: deadline) {
+                return record.element
+            }
+        }
+        return nil
+    }
+
+    private func titleCount(_ fileName: String, in snapshot: HighlightsTabsSnapshot) -> Int {
+        snapshot.windows.reduce(0) { partial, window in
+            partial + window.tabs.filter { $0.fileName == fileName }.count
+        }
+    }
+
+    private func emptySnapshot() -> HighlightsTabsSnapshot {
+        HighlightsTabsSnapshot(windows: [], highlightsIsFrontmost: false)
+    }
+
+    private func highlightsExited(_ application: NSRunningApplication) -> Bool {
+        application.isTerminated || runningHighlightsApplication() == nil
     }
 
     private func title(of element: AXUIElement, deadline: UInt64) throws -> String? {
