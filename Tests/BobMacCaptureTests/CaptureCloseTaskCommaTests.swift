@@ -139,6 +139,16 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
             router.command(
                 for: digit,
                 context: CaptureKeyRoutingContext(
+                    templateShelfVisible: true,
+                    templateEntryCount: 3,
+                    closeTaskCommaArmed: true
+                )
+            )
+        )
+        assertNotCloseTaskNumber(
+            router.command(
+                for: digit,
+                context: CaptureKeyRoutingContext(
                     taskIDPromptVisible: true,
                     closeTaskCommaArmed: true
                 )

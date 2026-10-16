@@ -60,6 +60,16 @@ struct CaptureNativeRewriteEdit: Equatable {
     let resultingDraft: String
 }
 
+/// One native `NSTextView` insert of a saved template block. Ranges are
+/// UTF-16; `cursorUTF8Offset` is bob's caret after the insert.
+struct CaptureTemplateInsertEdit: Equatable {
+    let replacementRange: NSRange
+    let replacementText: String
+    let resultingSelection: NSRange
+    let resultingDraft: String
+    let cursorUTF8Offset: Int
+}
+
 private func preferredCaptureLineTerminator(in text: String) -> String {
     if text.contains("\r\n") {
         return "\r\n"
@@ -289,6 +299,16 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 firstResponder: self.panel?.firstResponder
             )
         }
+        model.applyTemplateInsert = { [weak self] edit in
+            guard let self else {
+                return false
+            }
+            return Self.insertSavedTemplateInEditableTextView(
+                edit,
+                firstResponder: self.panel?.firstResponder,
+                model: self.model
+            )
+        }
     }
 
     deinit {
@@ -315,6 +335,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         // `capture-pomodoros` spawn, so a show costs at most one agenda
         // fetch however it is entered.
         model.agendaStore?.refresh(reason: .show)
+        model.savedTemplateShelf.refresh(reason: .show)
         let panel = makePanelIfNeeded()
         replayLatestContentMetricsForPresentation()
         panel.makeKeyAndOrderFront(nil)
@@ -806,6 +827,25 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         model.dismissCompletion()
         textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
         textView.setSelectedRange(edit.selectedRange)
+        return true
+    }
+
+    /// Control-T pick: insert the saved template as one native, undoable
+    /// `NSTextView` edit. Empty drafts take bob's `cursor`; a draft that
+    /// already has rows keeps the caret, shifted by the insertion.
+    static func insertSavedTemplateInEditableTextView(
+        _ edit: CaptureTemplateInsertEdit,
+        firstResponder: NSResponder?,
+        model: CapturePanelModel
+    ) -> Bool {
+        guard let textView = editableTextView(firstResponder) else {
+            return false
+        }
+        model.dismissCompletion()
+        textView.breakUndoCoalescing()
+        textView.insertText(edit.replacementText, replacementRange: edit.replacementRange)
+        textView.setSelectedRange(edit.resultingSelection)
+        textView.scrollRangeToVisible(edit.resultingSelection)
         return true
     }
 
@@ -1597,7 +1637,35 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .restoreStashEntry(let index):
             model.restoreStashEntry(at: index)
             return true
+        case .toggleTemplateShelf:
+            model.toggleTemplateShelf()
+            return true
+        case .dismissTemplateShelf:
+            model.escapeTemplateShelf()
+            return true
+        case .nextTemplateEntry:
+            model.selectNextTemplateEntry()
+            return true
+        case .previousTemplateEntry:
+            model.selectPreviousTemplateEntry()
+            return true
+        case .useSelectedTemplate:
+            model.useSelectedTemplate()
+            return true
+        case .useTemplate(let index):
+            model.useTemplate(at: index)
+            return true
+        case .armOrConfirmTemplateDelete:
+            model.armOrConfirmTemplateDelete()
+            return true
+        case .switchTemplateShelfToStash:
+            model.switchTemplateShelfToStash()
+            return true
+        case .saveTemplate:
+            model.saveTemplateFromKeyboard()
+            return true
         case .consumeKey:
+            model.disarmTemplateDeleteIfNeeded()
             return true
         case .acceptCompletion:
             model.acceptSelectedCompletion()
@@ -1680,6 +1748,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     completionVisible: self.model.completionVisible,
                     stashPickerVisible: self.model.isStashPickerPresented,
                     stashEntryCount: self.model.stashCount,
+                    templateShelfVisible: self.model.isTemplateShelfPresented,
+                    templateEntryCount: self.model.templateShelfCount,
                     taskIDPromptVisible: self.model.taskIDPromptVisible,
                     taskIDPromptIsTaskLink: self.model.taskIDPromptIsTaskLink,
                     taskIDPromptIsDependency: self.model.taskIDPromptIsDependency,
@@ -1734,6 +1804,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 || model.taskIDPromptVisible
                 || model.pomodoroNamePromptVisible
                 || model.isStashPickerPresented
+                || model.isTemplateShelfPresented
                 || model.editorInputLocked
         )
     }

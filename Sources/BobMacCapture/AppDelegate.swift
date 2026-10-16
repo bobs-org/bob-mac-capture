@@ -79,12 +79,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureStatusItem()
         configureProcessClient()
 
+        let savedTemplateShelf = SavedTemplateShelf(processClient: processClient)
         let model = CapturePanelModel(
             processClient: processClient,
-            canceledDraftStash: canceledDraftStash
+            canceledDraftStash: canceledDraftStash,
+            savedTemplateShelf: savedTemplateShelf
         )
         model.notificationService = notificationService
         panelModel = model
+        savedTemplateShelf.refresh(reason: .launch)
         let agendaStore = CaptureAgendaStore(
             processClient: processClient,
             vaultRootPath: Self.vaultRootURL(bobDirectory: settings.bobDirectory).path

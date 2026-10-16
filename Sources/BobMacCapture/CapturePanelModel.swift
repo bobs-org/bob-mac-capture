@@ -239,6 +239,9 @@ final class CapturePanelModel: ObservableObject {
     @Published var statusAnnouncementTick = 0
     @Published var isStashPickerPresented = false
     @Published var selectedStashIndex = 0
+    @Published var isTemplateShelfPresented = false
+    @Published var selectedTemplateIndex = 0
+    @Published var armedDeleteTemplateID: String?
     @Published var taskIDPrompt: CaptureTaskIDPromptState?
     @Published var pomodoroNamePrompt: CapturePomodoroNamePromptState?
     @Published var pullInChoice: CapturePullInChoiceState?
@@ -277,6 +280,8 @@ final class CapturePanelModel: ObservableObject {
             if pullInChoice != nil {
                 cancelPullInChoiceFromKeyboard()
             }
+            savedTemplateShelf.processClient = processClient
+            savedTemplateShelf.refresh(reason: .recheck)
         }
     }
     var notificationService: NotificationService?
@@ -302,12 +307,20 @@ final class CapturePanelModel: ObservableObject {
     /// through the focused `NSTextView` so Undo stays native. Nil in tests
     /// that do not wire a text view; those results are left as typed.
     var applyNativeRewriteEdit: ((CaptureNativeRewriteEdit) -> Bool)?
+    /// Narrow controller bridge: insert a saved template through the
+    /// focused `NSTextView` so Undo stays native. Nil in tests that do
+    /// not wire a text view; those apply `setPlainDraft` as a fallback.
+    var applyTemplateInsert: ((CaptureTemplateInsertEdit) -> Bool)?
     let canceledDraftStash: CanceledDraftStash
+    let savedTemplateShelf: SavedTemplateShelf
 
     private let debounceNanoseconds: UInt64
     private var analysisTask: Task<Void, Never>?
     private var rewriteTask: Task<Void, Never>?
     private var stashCancellable: AnyCancellable?
+    private var templateShelfCancellable: AnyCancellable?
+    private var rememberedSelectedTemplateID: String?
+    private var lastAppliedParseDraft: String?
     private var analysisGeneration: UInt64 = 0
     private var rewriteGeneration: UInt64 = 0
     private var rewriteExpectedCursorUTF8: Int?
@@ -477,7 +490,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private var auxiliaryOwnedByOther: Bool {
-        isStashPickerPresented || inlinePromptVisible || pickerVisible
+        isStashPickerPresented || isTemplateShelfPresented || inlinePromptVisible || pickerVisible
             || pickerChipVisible || completionVisible
             || destinationSummary != nil || errorMessage != nil
             || taskIDPromptVisible || pomodoroNamePromptVisible
@@ -717,18 +730,28 @@ final class CapturePanelModel: ObservableObject {
     init(
         processClient: BobProcessClient? = nil,
         debounceNanoseconds: UInt64 = 50_000_000,
-        canceledDraftStash: CanceledDraftStash? = nil
+        canceledDraftStash: CanceledDraftStash? = nil,
+        savedTemplateShelf: SavedTemplateShelf? = nil
     ) {
         self.processClient = processClient
         self.debounceNanoseconds = debounceNanoseconds
         let canceledDraftStash = canceledDraftStash ?? CanceledDraftStash()
         self.canceledDraftStash = canceledDraftStash
+        let savedTemplateShelf = savedTemplateShelf ?? SavedTemplateShelf(processClient: processClient)
+        self.savedTemplateShelf = savedTemplateShelf
         stashCancellable = canceledDraftStash.$entries.sink { [weak self] entries in
             guard let self else {
                 return
             }
             self.objectWillChange.send()
             self.clampStashSelection(afterEntriesChange: entries)
+        }
+        templateShelfCancellable = savedTemplateShelf.$templates.sink { [weak self] templates in
+            guard let self else {
+                return
+            }
+            self.objectWillChange.send()
+            self.clampTemplateSelection(templates: templates)
         }
     }
 
@@ -748,6 +771,7 @@ final class CapturePanelModel: ObservableObject {
 
     var completionVisible: Bool {
         !isStashPickerPresented
+            && !isTemplateShelfPresented
             && !inlinePromptVisible
             && completionResponse?.candidates.isEmpty == false
     }
@@ -775,6 +799,7 @@ final class CapturePanelModel: ObservableObject {
     var pickerChipVisible: Bool {
         pickerChip != nil
             && !isStashPickerPresented
+            && !isTemplateShelfPresented
             && !inlinePromptVisible
             && !completionVisible
     }
@@ -937,6 +962,26 @@ final class CapturePanelModel: ObservableObject {
 
     var selectedStashEntry: CanceledDraftEntry? {
         canceledDraftStash.entry(at: selectedStashIndex)
+    }
+
+    var templateEntries: [CaptureSavedTemplate] {
+        savedTemplateShelf.templates
+    }
+
+    var templateShelfCount: Int {
+        savedTemplateShelf.count
+    }
+
+    var selectedTemplateEntry: CaptureSavedTemplate? {
+        savedTemplateShelf.template(at: selectedTemplateIndex)
+    }
+
+    var savedTemplatesFooterVisible: Bool {
+        !savedTemplateShelf.isUnsupported
+    }
+
+    var currentDraftHasTemplate: Bool {
+        parsedTemplate != nil && lastAppliedParseDraft == plainDraft
     }
 
     var destinationSummary: String? {
@@ -1912,6 +1957,7 @@ final class CapturePanelModel: ObservableObject {
         panelVisible = false
         previewPullInSnapshot = nil
         dismissStashPicker()
+        dismissTemplateShelf()
         clearInlinePrompts()
         agendaExpanded = []
         if hasDraft {
@@ -1931,6 +1977,7 @@ final class CapturePanelModel: ObservableObject {
 
     func discardDraft() {
         dismissStashPicker()
+        dismissTemplateShelf()
         clearInlinePrompts()
         setPlainDraft("")
         suppressedCompletionAcceptanceDraft = nil
@@ -1955,6 +2002,10 @@ final class CapturePanelModel: ObservableObject {
 
     func toggleStashPicker() {
         if picker != nil {
+            return
+        }
+        if isTemplateShelfPresented {
+            switchTemplateShelfToStash()
             return
         }
         if isStashPickerPresented {
@@ -2058,6 +2109,318 @@ final class CapturePanelModel: ObservableObject {
         announceStatus("Canceled draft stash cleared")
     }
 
+    func toggleTemplateShelf() {
+        if isStashPickerPresented {
+            dismissStashPicker()
+            presentTemplateShelf()
+            return
+        }
+        if isTemplateShelfPresented {
+            dismissTemplateShelf()
+        } else {
+            presentTemplateShelf()
+        }
+    }
+
+    func presentTemplateShelf() {
+        if picker != nil {
+            announceStatus("Finish or cancel the picker before opening templates")
+            return
+        }
+        if taskIDPrompt != nil {
+            announceStatus("Finish or cancel the block ID prompt before opening templates")
+            requestFocus(.taskIDPromptBlockID)
+            return
+        }
+        if pomodoroNamePrompt != nil {
+            announceStatus("Finish or cancel the Pomodoro name prompt before opening templates")
+            requestFocus(.pomodoroNamePromptName)
+            return
+        }
+        if pullInChoice != nil {
+            announceStatus("Finish or cancel the successor choice before opening templates")
+            return
+        }
+        if currentDraftHasTemplate {
+            announceStatus("This draft already has a template")
+            return
+        }
+        switch savedTemplateShelf.availability {
+        case .unsupported:
+            announceStatus("Update bob to use saved templates")
+            return
+        case .unknown:
+            announceStatus("Loading saved templates…")
+            savedTemplateShelf.refresh(reason: .show)
+            return
+        case .failed(let message):
+            if savedTemplateShelf.isEmpty {
+                announceStatus(message)
+                savedTemplateShelf.refresh(reason: .show)
+                return
+            }
+        case .available:
+            break
+        }
+        guard !savedTemplateShelf.isEmpty else {
+            announceStatus(
+                "No saved templates yet — capture an @@template: draft and it lands here"
+            )
+            return
+        }
+
+        dismissCompletion()
+        dismissStashPicker()
+        selectedTemplateIndex = 0
+        rememberedSelectedTemplateID = savedTemplateShelf.templates.first?.id
+        armedDeleteTemplateID = nil
+        isTemplateShelfPresented = true
+        announceStatus("Saved templates opened")
+    }
+
+    func dismissTemplateShelf() {
+        guard isTemplateShelfPresented || selectedTemplateIndex != 0 || armedDeleteTemplateID != nil
+        else {
+            return
+        }
+        isTemplateShelfPresented = false
+        selectedTemplateIndex = 0
+        rememberedSelectedTemplateID = nil
+        armedDeleteTemplateID = nil
+        requestFocus(.editor)
+    }
+
+    func escapeTemplateShelf() {
+        if armedDeleteTemplateID != nil {
+            armedDeleteTemplateID = nil
+            return
+        }
+        dismissTemplateShelf()
+    }
+
+    func selectNextTemplateEntry() {
+        disarmTemplateDeleteIfNeeded()
+        selectedTemplateIndex = CapturePickerHelpers.nextSelectionIndex(
+            after: selectedTemplateIndex,
+            entryCount: savedTemplateShelf.count
+        )
+        rememberedSelectedTemplateID = selectedTemplateEntry?.id
+    }
+
+    func selectPreviousTemplateEntry() {
+        disarmTemplateDeleteIfNeeded()
+        selectedTemplateIndex = CapturePickerHelpers.previousSelectionIndex(
+            before: selectedTemplateIndex,
+            entryCount: savedTemplateShelf.count
+        )
+        rememberedSelectedTemplateID = selectedTemplateEntry?.id
+    }
+
+    func useSelectedTemplate() {
+        guard let entry = selectedTemplateEntry else {
+            announceStatus("No saved templates yet — capture an @@template: draft and it lands here")
+            dismissTemplateShelf()
+            return
+        }
+        useTemplate(id: entry.id)
+    }
+
+    func useTemplate(at index: Int) {
+        guard let entry = savedTemplateShelf.template(at: index) else {
+            return
+        }
+        useTemplate(id: entry.id)
+    }
+
+    func useTemplate(id: String) {
+        if currentDraftHasTemplate {
+            announceStatus("This draft already has a template")
+            return
+        }
+        guard let template = savedTemplateShelf.template(id: id) else {
+            announceStatus("Saved template is no longer available")
+            clampTemplateSelection(templates: savedTemplateShelf.templates)
+            return
+        }
+        guard let edit = templateInsertEdit(for: template) else {
+            announceStatus("Could not insert saved template")
+            return
+        }
+
+        dismissTemplateShelf()
+        suppressedCompletionAcceptanceDraft = nil
+        if applyTemplateInsert?(edit) == true {
+            requestFocus(.editor)
+            return
+        }
+        setPlainDraft(
+            edit.resultingDraft,
+            cursorUTF8Offset: edit.cursorUTF8Offset,
+            suppressSelectionCallbacks: true
+        )
+        scheduleAnalysis(
+            cursorUTF8Offset: edit.cursorUTF8Offset,
+            requestCompletion: false,
+            trigger: .edit
+        )
+        requestFocus(.editor)
+    }
+
+    func templateInsertEdit(for template: CaptureSavedTemplate) -> CaptureTemplateInsertEdit? {
+        let existing = plainDraft
+        let insertion = template.draft
+        if existing.isEmpty {
+            let cursor = min(max(template.cursor, 0), insertion.utf8.count)
+            guard let selection = utf16Range(in: insertion, start: cursor, end: cursor) else {
+                return nil
+            }
+            return CaptureTemplateInsertEdit(
+                replacementRange: NSRange(location: 0, length: 0),
+                replacementText: insertion,
+                resultingSelection: selection,
+                resultingDraft: insertion,
+                cursorUTF8Offset: cursor
+            )
+        }
+
+        let resulting = insertion + existing
+        let caretUTF8 = (collapsedSelectionUTF8Offset() ?? 0) + insertion.utf8.count
+        guard caretUTF8 <= resulting.utf8.count,
+            let selection = utf16Range(in: resulting, start: caretUTF8, end: caretUTF8)
+        else {
+            return nil
+        }
+        return CaptureTemplateInsertEdit(
+            replacementRange: NSRange(location: 0, length: 0),
+            replacementText: insertion,
+            resultingSelection: selection,
+            resultingDraft: resulting,
+            cursorUTF8Offset: caretUTF8
+        )
+    }
+
+    func armOrConfirmTemplateDelete() {
+        guard isTemplateShelfPresented, let entry = selectedTemplateEntry else {
+            return
+        }
+        if armedDeleteTemplateID == entry.id {
+            confirmTemplateDelete(id: entry.id)
+            return
+        }
+        armedDeleteTemplateID = entry.id
+        announceStatus("Press Delete again to delete template \(entry.index)")
+    }
+
+    func disarmTemplateDeleteIfNeeded() {
+        armedDeleteTemplateID = nil
+    }
+
+    func switchTemplateShelfToStash() {
+        guard isTemplateShelfPresented else {
+            return
+        }
+        isTemplateShelfPresented = false
+        armedDeleteTemplateID = nil
+        presentStashPicker()
+        if !isStashPickerPresented {
+            isTemplateShelfPresented = true
+        } else {
+            selectedTemplateIndex = 0
+            rememberedSelectedTemplateID = nil
+        }
+    }
+
+    func saveTemplateFromKeyboard() {
+        guard currentDraftHasTemplate else {
+            announceStatus("Only @@template: drafts can be saved as templates")
+            return
+        }
+    }
+
+    func setParsedTemplateForTests(_ template: CaptureParseTemplate?, draft: String) {
+        parsedTemplate = template
+        lastAppliedParseDraft = draft
+    }
+
+    private func confirmTemplateDelete(id: String) {
+        armedDeleteTemplateID = nil
+        let snapshot = savedTemplateShelf.templates
+        let remaining = savedTemplateShelf.removeLocally(id: id)
+        rememberedSelectedTemplateID = remaining.first?.id
+        selectedTemplateIndex = CapturePickerHelpers.clampedSelectionIndex(
+            selectedTemplateIndex,
+            entryCount: remaining.count
+        )
+        if remaining.isEmpty {
+            isTemplateShelfPresented = false
+            announceStatus("Template deleted · shelf is empty")
+            requestFocus(.editor)
+        } else {
+            announceStatus("Template deleted")
+        }
+        Task { [weak self] in
+            await self?.finishTemplateDelete(id: id, snapshot: snapshot)
+        }
+    }
+
+    private func finishTemplateDelete(id: String, snapshot: [CaptureSavedTemplate]) async {
+        guard let client = processClient else {
+            await MainActor.run {
+                self.savedTemplateShelf.restoreLocally(snapshot)
+                self.clampTemplateSelection(templates: snapshot)
+                self.announceStatus("Bob is not resolved")
+            }
+            return
+        }
+        do {
+            let response = try await client.deleteSavedTemplates(ids: [id])
+            await MainActor.run {
+                if response.ok {
+                    self.savedTemplateShelf.refresh(reason: .mutation)
+                    return
+                }
+                self.savedTemplateShelf.restoreLocally(snapshot)
+                self.clampTemplateSelection(templates: snapshot)
+                self.announceStatus(response.error ?? "Template not deleted")
+                self.savedTemplateShelf.refresh(reason: .mutation)
+            }
+        } catch {
+            await MainActor.run {
+                self.savedTemplateShelf.restoreLocally(snapshot)
+                self.clampTemplateSelection(templates: snapshot)
+                self.announceStatus(String(describing: error))
+                self.savedTemplateShelf.refresh(reason: .mutation)
+            }
+        }
+    }
+
+    private func clampTemplateSelection(templates: [CaptureSavedTemplate]) {
+        guard !templates.isEmpty else {
+            selectedTemplateIndex = 0
+            rememberedSelectedTemplateID = nil
+            armedDeleteTemplateID = nil
+            if isTemplateShelfPresented {
+                isTemplateShelfPresented = false
+                requestFocus(.editor)
+            }
+            return
+        }
+        if let id = rememberedSelectedTemplateID,
+            let index = templates.firstIndex(where: { $0.id == id })
+        {
+            selectedTemplateIndex = index
+        } else {
+            selectedTemplateIndex = CapturePickerHelpers.clampedSelectionIndex(
+                selectedTemplateIndex,
+                entryCount: templates.count
+            )
+            rememberedSelectedTemplateID = templates[selectedTemplateIndex].id
+        }
+        if let armed = armedDeleteTemplateID, !templates.contains(where: { $0.id == armed }) {
+            armedDeleteTemplateID = nil
+        }
+    }
+
     // Called before the panel is (re)shown. A retained draft (from Escape or a failed
     // capture) must reopen exactly as the user left it, error and all; only a panel with
     // no draft — i.e. one that just dismissed after a success — needs its leftover
@@ -2067,6 +2430,7 @@ final class CapturePanelModel: ObservableObject {
     func prepareForPresentation() {
         panelVisible = true
         dismissStashPicker()
+        dismissTemplateShelf()
         guard !hasDraft else {
             editorTextDidChange()
             return
@@ -2082,6 +2446,7 @@ final class CapturePanelModel: ObservableObject {
         panelVisible = false
         previewPullInSnapshot = nil
         dismissStashPicker()
+        dismissTemplateShelf()
         closePickerForDismissal()
         clearInlinePrompts()
         agendaExpanded = []
@@ -2099,6 +2464,7 @@ final class CapturePanelModel: ObservableObject {
         cancelInFlightExplicitPreview()
         parseDiagnostics = []
         parsedTemplate = nil
+        lastAppliedParseDraft = nil
         completionResponse = nil
         completionDraftSnapshot = nil
         fileUnderActive = false
@@ -6048,6 +6414,7 @@ final class CapturePanelModel: ObservableObject {
             priorityRollSeed = nil
             parseDiagnostics = []
             parsedTemplate = nil
+            lastAppliedParseDraft = nil
             completionResponse = nil
             completionDraftSnapshot = nil
             fileUnderActive = false
@@ -6073,6 +6440,7 @@ final class CapturePanelModel: ObservableObject {
                 )
             }
             successAnnouncementTick += 1
+            savedTemplateShelf.refresh(reason: .submit)
             notificationService?.notifyCaptureSuccess(
                 captures: captures,
                 globalDestination: success.globalDestination
@@ -6864,6 +7232,7 @@ final class CapturePanelModel: ObservableObject {
         lastAnalysisNeedsTaskGoto = Self.pickerNeed(in: parse) == .taskGoto
         parseDiagnostics = parse.diagnostics
         parsedTemplate = parse.template
+        lastAppliedParseDraft = draft
         if plainDraft == draft {
             closeListParseSnapshot = CaptureParseSnapshot(
                 draft: draft,

@@ -1,4 +1,5 @@
 import AppKit
+import CaptureCore
 
 enum CaptureKeyCommand: Equatable {
     case submit
@@ -22,6 +23,15 @@ enum CaptureKeyCommand: Equatable {
     case previousStashEntry
     case restoreSelectedStashEntry
     case restoreStashEntry(Int)
+    case toggleTemplateShelf
+    case dismissTemplateShelf
+    case nextTemplateEntry
+    case previousTemplateEntry
+    case useSelectedTemplate
+    case useTemplate(Int)
+    case armOrConfirmTemplateDelete
+    case switchTemplateShelfToStash
+    case saveTemplate
     case consumeKey
     case acceptCompletion
     case nextCompletion
@@ -62,6 +72,8 @@ struct CaptureKeyRoutingContext: Equatable {
     var completionVisible = false
     var stashPickerVisible = false
     var stashEntryCount = 0
+    var templateShelfVisible = false
+    var templateEntryCount = 0
     var taskIDPromptVisible = false
     var taskIDPromptIsTaskLink = false
     var taskIDPromptIsDependency = false
@@ -102,6 +114,7 @@ struct CaptureKeyCommandRouter {
         static let j: UInt16 = 38
         static let k: UInt16 = 40
         static let s: UInt16 = 1
+        static let t: UInt16 = 17
         static let c: UInt16 = 8
         static let e: UInt16 = 14
         static let n: UInt16 = 45
@@ -116,6 +129,10 @@ struct CaptureKeyCommandRouter {
         context: CaptureKeyRoutingContext = CaptureKeyRoutingContext()
     ) -> CaptureKeyCommand? {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+        if context.templateShelfVisible {
+            return templateShelfCommand(for: event, modifiers: modifiers, context: context)
+        }
 
         if context.stashPickerVisible {
             return stashPickerCommand(for: event, modifiers: modifiers, context: context)
@@ -148,6 +165,14 @@ struct CaptureKeyCommandRouter {
 
         if event.keyCode == KeyCode.s, modifiers == .control {
             return .toggleStashPicker
+        }
+
+        if event.keyCode == KeyCode.t, modifiers == .control {
+            return .toggleTemplateShelf
+        }
+
+        if event.keyCode == KeyCode.s, modifiers == .command {
+            return .saveTemplate
         }
 
         switch event.keyCode {
@@ -272,6 +297,8 @@ struct CaptureKeyCommandRouter {
             return (!filterFocused || filterIsEmpty) ? .togglePullInOffer : nil
         case KeyCode.a:
             return modifiers == .command ? .markAllPullInOffers : nil
+        case KeyCode.t:
+            return modifiers == .control ? .consumeKey : nil
         default:
             return nil
         }
@@ -406,6 +433,8 @@ struct CaptureKeyCommandRouter {
             return modifiers == .control ? .previousPickerRow : nil
         case KeyCode.s:
             return modifiers == .control ? .consumeKey : nil
+        case KeyCode.t:
+            return modifiers == .control ? .consumeKey : nil
         case KeyCode.c:
             return modifiers == .control ? .stashDraftAndClose : nil
         default:
@@ -446,6 +475,8 @@ struct CaptureKeyCommandRouter {
             return modifiers == .control ? .consumeKey : nil
         case KeyCode.s:
             return modifiers == .control ? .consumeKey : nil
+        case KeyCode.t:
+            return modifiers == .control ? .consumeKey : nil
         default:
             return nil
         }
@@ -456,6 +487,10 @@ struct CaptureKeyCommandRouter {
         modifiers: NSEvent.ModifierFlags,
         context: CaptureKeyRoutingContext
     ) -> CaptureKeyCommand? {
+        if event.keyCode == KeyCode.t, modifiers == .control {
+            return .toggleTemplateShelf
+        }
+
         if isClearStashShortcut(for: event, modifiers: modifiers) {
             return .clearCanceledDraftStash
         }
@@ -486,6 +521,51 @@ struct CaptureKeyCommandRouter {
             return modifiers == .control ? .nextStashEntry : printableModalCommand(for: event, modifiers: modifiers)
         case KeyCode.p:
             return modifiers == .control ? .previousStashEntry : printableModalCommand(for: event, modifiers: modifiers)
+        default:
+            return printableModalCommand(for: event, modifiers: modifiers)
+        }
+    }
+
+    private func templateShelfCommand(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags,
+        context: CaptureKeyRoutingContext
+    ) -> CaptureKeyCommand? {
+        if event.keyCode == KeyCode.t, modifiers == .control {
+            return .toggleTemplateShelf
+        }
+        if event.keyCode == KeyCode.s, modifiers == .control {
+            return .switchTemplateShelfToStash
+        }
+
+        if modifiers.isEmpty,
+           let index = CapturePickerHelpers.acceleratorIndex(
+            for: event.characters ?? "",
+            entryCount: context.templateEntryCount
+           )
+        {
+            return .useTemplate(index)
+        }
+
+        switch event.keyCode {
+        case KeyCode.return, KeyCode.keypadEnter:
+            return modifiers.isEmpty ? .useSelectedTemplate : nil
+        case KeyCode.escape:
+            return .dismissTemplateShelf
+        case KeyCode.leftBracket:
+            return modifiers == .control ? .dismissTemplateShelf : printableModalCommand(for: event, modifiers: modifiers)
+        case KeyCode.delete:
+            return modifiers.intersection([.command, .option, .control, .shift]).isEmpty
+                ? .armOrConfirmTemplateDelete
+                : printableModalCommand(for: event, modifiers: modifiers)
+        case KeyCode.arrowDown:
+            return modifiers.isEmpty ? .nextTemplateEntry : nil
+        case KeyCode.arrowUp:
+            return modifiers.isEmpty ? .previousTemplateEntry : nil
+        case KeyCode.n:
+            return modifiers == .control ? .nextTemplateEntry : printableModalCommand(for: event, modifiers: modifiers)
+        case KeyCode.p:
+            return modifiers == .control ? .previousTemplateEntry : printableModalCommand(for: event, modifiers: modifiers)
         default:
             return printableModalCommand(for: event, modifiers: modifiers)
         }

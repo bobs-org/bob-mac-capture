@@ -531,6 +531,8 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertNil(router.command(for: keyEvent(keyCode: 8, modifiers: [.control, .shift])))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 8, modifiers: [.control, .command])))
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 1, modifiers: .control)), .toggleStashPicker)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 17, modifiers: .control)), .toggleTemplateShelf)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 1, modifiers: .command)), .saveTemplate)
         XCTAssertNil(router.command(for: keyEvent(keyCode: 1)))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 1, modifiers: [.control, .shift])))
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), completionVisible: true), .acceptCompletion)
@@ -805,6 +807,10 @@ final class BobMacCaptureTests: XCTestCase {
             router.command(for: keyEvent(keyCode: 1, modifiers: .control), context: context),
             .toggleStashPicker
         )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 17, modifiers: .control, characters: "t"), context: context),
+            .toggleTemplateShelf
+        )
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 125), context: context), .nextStashEntry)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 126), context: context), .previousStashEntry)
         XCTAssertEqual(
@@ -863,6 +869,95 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 35, characters: "p"), context: context),
             .restoreStashEntry(25)
+        )
+    }
+
+    func testKeyRouterMatchesTemplateShelfModalCommands() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(
+            completionVisible: true,
+            templateShelfVisible: true,
+            templateEntryCount: 36
+        )
+
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), context: context), .useSelectedTemplate)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 53), context: context), .dismissTemplateShelf)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 33, modifiers: .control), context: context),
+            .dismissTemplateShelf
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 17, modifiers: .control), context: context),
+            .toggleTemplateShelf
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 1, modifiers: .control), context: context),
+            .switchTemplateShelfToStash
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 51), context: context), .armOrConfirmTemplateDelete)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 125), context: context), .nextTemplateEntry)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 126), context: context), .previousTemplateEntry)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 45, modifiers: .control), context: context),
+            .nextTemplateEntry
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 35, modifiers: .control), context: context),
+            .previousTemplateEntry
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 18, characters: "1"), context: context),
+            .useTemplate(0)
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 17, characters: "t"), context: context),
+            .useTemplate(29)
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 2, characters: "d"), context: context),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 2, modifiers: .shift, characters: "D"), context: context),
+            .consumeKey
+        )
+    }
+
+    func testKeyRouterControlTNeverReachesStashTAccelerator() {
+        let router = CaptureKeyCommandRouter()
+        let stash = CaptureKeyRoutingContext(stashPickerVisible: true, stashEntryCount: 36)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 17, modifiers: .control, characters: "t"), context: stash),
+            .toggleTemplateShelf
+        )
+        XCTAssertNotEqual(
+            router.command(for: keyEvent(keyCode: 17, modifiers: .control, characters: "t"), context: stash),
+            .restoreStashEntry(29)
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 17, characters: "t"), context: stash),
+            .restoreStashEntry(29)
+        )
+    }
+
+    func testKeyRouterConsumesControlTInPickersPromptsAndSuccessorChoice() {
+        let router = CaptureKeyCommandRouter()
+        let controlT = keyEvent(keyCode: 17, modifiers: .control, characters: "t")
+        XCTAssertEqual(
+            router.command(for: controlT, context: CaptureKeyRoutingContext(pickerVisible: true)),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(for: controlT, context: CaptureKeyRoutingContext(taskIDPromptVisible: true)),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(for: controlT, context: CaptureKeyRoutingContext(pomodoroNamePromptVisible: true)),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(for: controlT, context: CaptureKeyRoutingContext(pullInChoiceVisible: true)),
+            .consumeKey
         )
     }
 

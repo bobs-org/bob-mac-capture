@@ -32,6 +32,15 @@ enum CapturePanelLayout {
     static let stashClearButtonHorizontalPadding: CGFloat = 8
     static let stashClearButtonVerticalPadding: CGFloat = 5
     static let stashClearButtonHeight = stashClearButtonKeyHeight + stashClearButtonVerticalPadding * 2
+    /// Template rows show a parent line, optional child, and metadata, so they
+    /// are taller than stash rows. Five visible rows, then scroll.
+    static let templateShelfRowContentMinimumHeight: CGFloat = 72
+    static let templateShelfRowHeight = templateShelfRowContentMinimumHeight + stashRowVerticalPadding * 2
+    static let templateShelfViewportHeight = stashListPadding * 2
+        + templateShelfRowHeight * CGFloat(stashVisibleRows)
+        + stashRowSpacing * CGFloat(stashVisibleRows - 1)
+    static let templateShelfHintKeyHeight: CGFloat = 22
+    static let templateShelfSlotDotSize: CGFloat = 7
     /// Floor for the live-preview card. The pane always takes its natural height;
     /// this only keeps a tiny preview or the loading spinner from collapsing.
     static let previewMinimumHeight: CGFloat = 92
@@ -127,6 +136,51 @@ struct CanceledDraftStashPickerHeightPolicy: Equatable {
     var rowViewportHeight: CGFloat {
         let rows = visibleRowCount
         let rowHeight = CapturePanelLayout.stashRowHeight * CGFloat(rows)
+        let spacingHeight = CapturePanelLayout.stashRowSpacing * CGFloat(max(rows - 1, 0))
+        return roundedToPixel(CapturePanelLayout.stashListPadding * 2 + rowHeight + spacingHeight)
+    }
+
+    var actionChromeHeight: CGFloat {
+        roundedToPixel(
+            CapturePanelLayout.stashPickerPadding * 2
+                + CapturePanelLayout.stashPickerContentSpacing
+                + CapturePanelLayout.stashClearButtonHeight
+        )
+    }
+
+    var idealHeight: CGFloat {
+        roundedToPixel(rowViewportHeight + actionChromeHeight)
+    }
+
+    var minimumVisibleHeight: CGFloat {
+        actionChromeHeight
+    }
+
+    var auxiliaryHeight: CapturePanelAuxiliaryHeight {
+        CapturePanelAuxiliaryHeight(
+            idealHeight: idealHeight,
+            minimumVisibleHeight: minimumVisibleHeight
+        )
+    }
+
+    private func roundedToPixel(_ value: CGFloat) -> CGFloat {
+        let scale = max(displayScale, 1)
+        return (value * scale).rounded(.up) / scale
+    }
+}
+
+struct SavedTemplateShelfPickerHeightPolicy: Equatable {
+    var entryCount: Int
+    var visibleRowLimit: Int = CapturePanelLayout.stashVisibleRows
+    var displayScale: CGFloat = 1
+
+    var visibleRowCount: Int {
+        min(max(entryCount, 0), max(visibleRowLimit, 0))
+    }
+
+    var rowViewportHeight: CGFloat {
+        let rows = visibleRowCount
+        let rowHeight = CapturePanelLayout.templateShelfRowHeight * CGFloat(rows)
         let spacingHeight = CapturePanelLayout.stashRowSpacing * CGFloat(max(rows - 1, 0))
         return roundedToPixel(CapturePanelLayout.stashListPadding * 2 + rowHeight + spacingHeight)
     }
@@ -328,6 +382,10 @@ struct CapturePanelView: View {
                 measuredAuxiliaryContentHeight = 0
                 reportContentMetrics()
             }
+            .onChange(of: model.isTemplateShelfPresented) { _, _ in
+                measuredAuxiliaryContentHeight = 0
+                reportContentMetrics()
+            }
             .onChange(of: model.pickerVisible) { _, _ in
                 measuredAuxiliaryContentHeight = 0
                 reportContentMetrics()
@@ -337,6 +395,9 @@ struct CapturePanelView: View {
                 reportContentMetrics()
             }
             .onChange(of: model.stashCount) { _, _ in
+                reportContentMetrics()
+            }
+            .onChange(of: model.templateShelfCount) { _, _ in
                 reportContentMetrics()
             }
             .onChange(of: displayScale) { _, _ in
@@ -472,6 +533,7 @@ struct CapturePanelView: View {
 
     private var hasAuxiliaryContent: Bool {
         model.isStashPickerPresented
+            || model.isTemplateShelfPresented
             || model.inlinePromptVisible
             || model.pickerVisible
             || model.pickerChipVisible
@@ -505,6 +567,18 @@ struct CapturePanelView: View {
                 }
         } else if model.isStashPickerPresented {
             CanceledDraftStashPicker(model: model)
+                .frame(width: 520)
+                .padding(.leading, 14)
+                .layoutPriority(0)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Capture details")
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    updateMeasuredAuxiliaryContentHeight(height)
+                }
+        } else if model.isTemplateShelfPresented {
+            SavedTemplateShelfPicker(model: model)
                 .frame(width: 520)
                 .padding(.leading, 14)
                 .layoutPriority(0)
@@ -772,6 +846,17 @@ struct CapturePanelView: View {
             )
         }
 
+        if model.isTemplateShelfPresented {
+            let explicit = SavedTemplateShelfPickerHeightPolicy(
+                entryCount: model.templateShelfCount,
+                displayScale: displayScale
+            ).auxiliaryHeight
+            return CapturePanelAuxiliaryHeight(
+                idealHeight: max(explicit.idealHeight, measuredAuxiliaryContentHeight),
+                minimumVisibleHeight: explicit.minimumVisibleHeight
+            )
+        }
+
         if model.pickerVisible {
             let explicit = CapturePickerHeightPolicy(
                 visibleRowBudget: model.picker?.visibleRowBudget ?? 4,
@@ -812,6 +897,7 @@ struct CapturePanelView: View {
 
     private enum AuxiliarySection: Hashable {
         case stash
+        case templateShelf
         case taskIDPrompt
         case pomodoroNamePrompt
         case completion
@@ -840,6 +926,15 @@ private struct CapturePanelFooter: View {
                     statusIsFocused = true
                 }
             Spacer(minLength: 12)
+            if model.savedTemplatesFooterVisible {
+                Button {
+                    model.toggleTemplateShelf()
+                } label: {
+                    Label("Templates \(model.templateShelfCount)", systemImage: "square.stack.3d.down.right")
+                }
+                .help("Reuse a saved @@template: draft (Control-T)")
+                .disabled(model.isSubmitting || model.inlinePromptVisible || model.pickerVisible)
+            }
             Button {
                 model.toggleStashPicker()
             } label: {
@@ -1574,6 +1669,270 @@ private struct CanceledDraftStashRow: View {
     }
 
     private var selectionFill: Color {
+        guard selected else {
+            return .clear
+        }
+        return Color.accentColor.opacity(colorSchemeContrast == .increased ? 0.32 : 0.18)
+    }
+}
+
+@available(macOS 26.0, *)
+struct SavedTemplateShelfPicker: View {
+    @ObservedObject var model: CapturePanelModel
+    @Environment(\.displayScale) private var displayScale
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: CapturePanelLayout.stashPickerContentSpacing) {
+            ScrollViewReader { proxy in
+                ScrollView(.vertical) {
+                    LazyVStack(alignment: .leading, spacing: CapturePanelLayout.stashRowSpacing) {
+                        ForEach(Array(model.templateEntries.enumerated()), id: \.element.id) {
+                            index, template in
+                            SavedTemplateShelfRow(
+                                template: template,
+                                accelerator: CapturePickerHelpers.accelerator(for: index) ?? "",
+                                selected: index == model.selectedTemplateIndex,
+                                armed: model.armedDeleteTemplateID == template.id,
+                                now: Date()
+                            )
+                            .id(template.id)
+                            .onTapGesture {
+                                model.useTemplate(id: template.id)
+                            }
+                        }
+                    }
+                    .padding(CapturePanelLayout.stashListPadding)
+                }
+                .frame(
+                    minHeight: 0,
+                    idealHeight: sizing.rowViewportHeight,
+                    maxHeight: sizing.rowViewportHeight,
+                    alignment: .top
+                )
+                .layoutPriority(0)
+                .onAppear {
+                    scrollSelectionIntoView(proxy)
+                }
+                .onChange(of: model.selectedTemplateIndex) { _, _ in
+                    scrollSelectionIntoView(proxy)
+                }
+            }
+
+            hintRow
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(2)
+        }
+        .padding(CapturePanelLayout.stashPickerPadding)
+        .frame(
+            minHeight: sizing.minimumVisibleHeight,
+            idealHeight: sizing.idealHeight,
+            maxHeight: sizing.idealHeight,
+            alignment: .topLeading
+        )
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .shadow(radius: 12, y: 6)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(listAccessibilityLabel)
+        .accessibilityHint(
+            "Use arrows, Control-N, Control-P, Return, or a shown key to use a template. "
+                + "Press Delete twice to delete it."
+        )
+    }
+
+    @ViewBuilder
+    private var hintRow: some View {
+        if model.armedDeleteTemplateID != nil {
+            Text("⌫ again deletes · any other key keeps it")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, CapturePanelLayout.stashClearButtonHorizontalPadding)
+                .padding(.vertical, CapturePanelLayout.stashClearButtonVerticalPadding)
+                .frame(height: CapturePanelLayout.stashClearButtonHeight, alignment: .leading)
+        } else {
+            HStack(spacing: 10) {
+                hintKeycap("↩", action: "use")
+                hintKeycap("⌫", action: "delete")
+                hintKeycap("⌃S", action: "stash")
+                hintKeycap("esc", action: "close")
+                Spacer(minLength: 8)
+                Text(capacityCaption)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, CapturePanelLayout.stashClearButtonHorizontalPadding)
+            .padding(.vertical, CapturePanelLayout.stashClearButtonVerticalPadding)
+            .frame(height: CapturePanelLayout.stashClearButtonHeight, alignment: .leading)
+        }
+    }
+
+    private func hintKeycap(_ keys: String, action: String) -> some View {
+        HStack(spacing: 4) {
+            Text(keys)
+                .font(.system(.caption, design: .monospaced).weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(height: CapturePanelLayout.templateShelfHintKeyHeight)
+                .padding(.horizontal, 6)
+                .background(.secondary.opacity(0.14), in: RoundedRectangle(cornerRadius: 5))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .strokeBorder(.secondary.opacity(0.28), lineWidth: 0.5)
+                )
+            Text(action)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(keys) \(action)")
+    }
+
+    private var capacityCaption: String {
+        if !model.savedTemplateShelf.saving {
+            return "saving off"
+        }
+        return "\(model.templateShelfCount) of \(model.savedTemplateShelf.capacity)"
+    }
+
+    private var sizing: SavedTemplateShelfPickerHeightPolicy {
+        SavedTemplateShelfPickerHeightPolicy(
+            entryCount: model.templateShelfCount,
+            displayScale: displayScale
+        )
+    }
+
+    private var listAccessibilityLabel: String {
+        let count = model.templateShelfCount
+        return "Saved templates, \(count) \(count == 1 ? "entry" : "entries")"
+    }
+
+    private func scrollSelectionIntoView(_ proxy: ScrollViewProxy) {
+        guard let entry = model.selectedTemplateEntry else {
+            return
+        }
+        proxy.scrollTo(entry.id, anchor: .center)
+    }
+}
+
+@available(macOS 26.0, *)
+struct SavedTemplateShelfRow: View {
+    let template: CaptureSavedTemplate
+    let accelerator: String
+    let selected: Bool
+    let armed: Bool
+    let now: Date
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+
+    private var presentation: CaptureSavedTemplatePresentation {
+        CaptureSavedTemplatePresentation(template: template, now: now)
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(accelerator)
+                .font(.system(.caption, design: .monospaced).weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 24, height: 22)
+                .background(.secondary.opacity(0.14), in: RoundedRectangle(cornerRadius: 5))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .strokeBorder(.secondary.opacity(0.28), lineWidth: 0.5)
+                )
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(attributedLine(presentation.parentLine, secondary: false))
+                    .font(.system(.callout, design: .monospaced))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let child = presentation.firstChildLine {
+                    Text(attributedLine(child, secondary: true))
+                        .font(.system(.caption, design: .monospaced))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if presentation.moreLinesCount > 0 {
+                    Text("+\(presentation.moreLinesCount) more lines")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                Text(presentation.metadataText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            trailingAccessory
+        }
+        .frame(
+            minHeight: CapturePanelLayout.templateShelfRowContentMinimumHeight,
+            alignment: .topLeading
+        )
+        .padding(.horizontal, CapturePanelLayout.stashRowHorizontalPadding)
+        .padding(.vertical, CapturePanelLayout.stashRowVerticalPadding)
+        .background(rowFill)
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(presentation.accessibilityLabel)
+        .accessibilityHint(presentation.accessibilityHint)
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    @ViewBuilder
+    private var trailingAccessory: some View {
+        if armed {
+            Text("Delete?")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.red)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(.red.opacity(colorSchemeContrast == .increased ? 0.24 : 0.12), in: Capsule())
+        } else {
+            HStack(spacing: 3) {
+                ForEach(presentation.slotDotFields, id: \.self) { field in
+                    Circle()
+                        .fill(CaptureEditorPalette.templateSlotColor(field: field))
+                        .frame(
+                            width: CapturePanelLayout.templateShelfSlotDotSize,
+                            height: CapturePanelLayout.templateShelfSlotDotSize
+                        )
+                }
+                if presentation.slotOverflowCount > 0 {
+                    Text("+\(presentation.slotOverflowCount)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .accessibilityHidden(true)
+        }
+    }
+
+    private func attributedLine(
+        _ segments: [CaptureSavedTemplateSegment],
+        secondary: Bool
+    ) -> AttributedString {
+        var result = AttributedString()
+        for segment in segments {
+            var part = AttributedString(segment.text)
+            if segment.category == .neutral && secondary {
+                part.foregroundColor = .secondary
+            } else {
+                part.foregroundColor = CaptureEditorPalette.color(for: segment.category)
+            }
+            if segment.category.isUnderlined {
+                part.underlineStyle = .single
+            }
+            result.append(part)
+        }
+        return result
+    }
+
+    private var rowFill: Color {
+        if armed {
+            return Color.red.opacity(colorSchemeContrast == .increased ? 0.24 : 0.12)
+        }
         guard selected else {
             return .clear
         }
