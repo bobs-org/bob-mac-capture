@@ -1593,6 +1593,8 @@ to the open log. Control-X closes the selected tab, including collision
 and unmatched rows: the row folds out, the next row is selected, and the
 panel stays up so Control-X Control-X Control-X clears several tabs.
 Hovered and selected Tabs rows also show a Close Tab button (⌃X).
+A background tab closes by briefly switching Highlights to it, closing it
+with the window's close button, and switching back.
 Closing the last open document also quits Highlights, and the panel
 hides. Shift-Command-T reopens the most recently closed tab (up to 20,
 kept in memory for the app's lifetime). A matched row reopens its library
@@ -1610,7 +1612,7 @@ permission is needed, Highlights is not running, no documents are open,
 or a read fails.
 
 Accessibility reads Highlights' window and tab attributes, selects a
-tab through its button, and presses a tab's or window's close button.
+tab through its button, and presses a window's close button.
 Names stay in memory. Highlights exposes the
 visible tab's full path; background tabs match by filename only. Tabs in
 other Spaces and full-screen windows are untested.
@@ -1688,7 +1690,7 @@ binding flag, the Highlights-frontmost open key, the Highlights Tabs
 key (`refsHighlightsTabsKey`, default `shiftCmdO`), the Highlights
 override path, and the preview notes page size). Accessibility is used
 only against Highlights: it reads window and tab attributes, selects a
-tab button, and presses a tab's or window's close button. Bob Refs quits
+tab button, and presses a window's close button. Bob Refs quits
 Highlights only after closing its last document. Tab names and closed-tab
 entries stay in memory and are never persisted. Signposts
 carry event names only, never note text.

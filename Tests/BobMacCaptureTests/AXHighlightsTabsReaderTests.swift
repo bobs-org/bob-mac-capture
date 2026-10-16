@@ -33,6 +33,56 @@ final class AXHighlightsTabsReaderTests: XCTestCase {
         )
     }
 
+    func testCloseLadderUsesWindowCloseForCurrentTabWithTabBar() {
+        XCTAssertEqual(
+            CloseLadder.rung(hasTabButton: true, isSelected: true),
+            .windowCloseButton
+        )
+    }
+
+    func testCloseLadderUsesWindowCloseWithoutTabBar() {
+        XCTAssertEqual(
+            CloseLadder.rung(hasTabButton: false, isSelected: true),
+            .windowCloseButton
+        )
+        XCTAssertEqual(
+            CloseLadder.rung(hasTabButton: false, isSelected: false),
+            .windowCloseButton
+        )
+    }
+
+    func testCloseLadderSelectsBackgroundTabBeforeWindowClose() {
+        XCTAssertEqual(
+            CloseLadder.rung(hasTabButton: true, isSelected: false),
+            .selectThenWindowClose
+        )
+    }
+
+    func testCloseLadderRestoresAfterVerifiedCloseWithDocumentsRemaining() {
+        let remaining = HighlightsTabsSnapshot(
+            windows: [HighlightsTabsSnapshot.Window(
+                isMain: true,
+                tabs: [HighlightsTabsSnapshot.Tab(fileName: "a.pdf", isSelected: true)]
+            )],
+            highlightsIsFrontmost: false
+        )
+        XCTAssertTrue(CloseLadder.shouldRestore(after: .closed(remaining)))
+    }
+
+    func testCloseLadderDoesNotRestoreAfterLastDocumentCloses() {
+        let empty = HighlightsTabsSnapshot(windows: [], highlightsIsFrontmost: false)
+        XCTAssertFalse(CloseLadder.shouldRestore(after: .closed(empty)))
+    }
+
+    func testCloseLadderDoesNotRestoreWithoutVerifiedClose() {
+        let results: [HighlightsTabCloseResult?] = [
+            .needsAttention, .failed("x"), .notFound, .notRunning, .notTrusted, nil,
+        ]
+        for result in results {
+            XCTAssertFalse(CloseLadder.shouldRestore(after: result), "\(String(describing: result))")
+        }
+    }
+
     func testCloseVerificationSucceedsAfterPolls() {
         let closed = HighlightsTabsSnapshot(windows: [], highlightsIsFrontmost: false)
         let staying = HighlightsTabsSnapshot(
@@ -47,10 +97,10 @@ final class AXHighlightsTabsReaderTests: XCTestCase {
         var activations = 0
         let result = CloseVerification.run(
             beforeCount: 1,
-            deadline: 100,
+            deadline: 200,
             now: { now },
             hasExited: { false },
-            read: () -> (
+            read: { () -> (
                 snapshot: HighlightsTabsSnapshot, titleCount: Int, hasSheet: Bool
             ) in
                 reads += 1
