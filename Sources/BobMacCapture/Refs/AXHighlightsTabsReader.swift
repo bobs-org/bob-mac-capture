@@ -171,9 +171,9 @@ final class AXHighlightsTabsReader: HighlightsTabsReading, @unchecked Sendable {
             ) as? String
             let pageCaption = windowTitle.flatMap(HighlightsWindowTitle.pageCaption(fromTitle:))
             let tabGroup = try findTabGroup(in: window, depth: 0, deadline: deadline)
-            let tabButtons = try tabGroup.flatMap {
-                setMessagingTimeout(on: $0)
-                try optionalAttribute($0, "AXTabs" as CFString, deadline: deadline)
+            let tabButtons: [AXUIElement] = try tabGroup.flatMap { group in
+                setMessagingTimeout(on: group)
+                return try optionalAttribute(group, "AXTabs" as CFString, deadline: deadline)
                     as? [AXUIElement]
             } ?? []
 

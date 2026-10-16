@@ -480,9 +480,12 @@ final class RefsInspectorLoaderTests: XCTestCase {
     async let first = loader.intrinsics(for: pdf, id: "roundtrip")
     try? await Task.sleep(nanoseconds: 20_000_000)
     await loader.discard(id: "roundtrip")
-    XCTAssertEqual(await first.pageCount, 7)
-    XCTAssertEqual(await loader.intrinsics(for: pdf, id: "roundtrip").pageCount, 7)
-    XCTAssertEqual(await loader.intrinsics(for: pdf, id: "roundtrip").pageCount, 7)
+    let firstPageCount = await first.pageCount
+    XCTAssertEqual(firstPageCount, 7)
+    let secondPageCount = await loader.intrinsics(for: pdf, id: "roundtrip").pageCount
+    XCTAssertEqual(secondPageCount, 7)
+    let thirdPageCount = await loader.intrinsics(for: pdf, id: "roundtrip").pageCount
+    XCTAssertEqual(thirdPageCount, 7)
     XCTAssertEqual(counter.count, 2)
   }
 

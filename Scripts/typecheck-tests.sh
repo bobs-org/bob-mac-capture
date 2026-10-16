@@ -32,13 +32,14 @@ readonly target_triple="$(uname -m)-apple-macosx26.0"
 unset TOOLCHAINS
 unset SDKROOT
 readonly swiftc_path="$(/usr/bin/xcrun --sdk macosx --toolchain default --find swiftc)"
+readonly sdk_path="$(/usr/bin/xcrun --sdk macosx --toolchain default --show-sdk-path)"
 
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 probe_file="${tmp_dir}/import-xctest.swift"
 printf 'import XCTest\n' > "${probe_file}"
 
-if "${swiftc_path}" -typecheck -swift-version 5 -target "${target_triple}" \
+if "${swiftc_path}" -typecheck -swift-version 5 -sdk "${sdk_path}" -target "${target_triple}" \
   "${probe_file}" >/dev/null 2>&1; then
   ./Scripts/xcode-swift.sh build --build-tests
   exit $?
@@ -51,6 +52,7 @@ mkdir -p "${stub_dir}"
   -parse-as-library \
   -module-name XCTest \
   -swift-version 5 \
+  -sdk "${sdk_path}" \
   -target "${target_triple}" \
   -emit-module-path "${stub_dir}/XCTest.swiftmodule" \
   "${script_dir}/typecheck/XCTest.swift"
@@ -68,6 +70,7 @@ typecheck_target() {
   if "${swiftc_path}" \
     -typecheck \
     -swift-version 5 \
+    -sdk "${sdk_path}" \
     -module-name "${target_name}" \
     -target "${target_triple}" \
     -I "${stub_dir}" \
@@ -84,6 +87,7 @@ typecheck_target() {
     if "${swiftc_path}" \
       -typecheck \
       -swift-version 5 \
+      -sdk "${sdk_path}" \
       -module-name "${target_name}" \
       -target "${target_triple}" \
       -I "${stub_dir}" \
