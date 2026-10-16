@@ -31,7 +31,7 @@ final class CaptureTemplateShelfDesignTests: XCTestCase {
 
         let empty = SavedTemplateShelfPickerHeightPolicy(entryCount: 0, displayScale: 1)
         XCTAssertEqual(empty.visibleRowCount, 0)
-        XCTAssertEqual(empty.idealHeight, empty.actionChromeHeight)
+        XCTAssertEqual(empty.idealHeight, CapturePanelLayout.stashListPadding * 2 + empty.actionChromeHeight)
     }
 
     func testShelfHeightPolicyPixelRounds() {

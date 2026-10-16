@@ -126,7 +126,17 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
         shelf.replaceCacheForTests(templates: Self.threeTemplates)
         let first = Self.threeTemplates[0]
 
+        let emptyWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 80),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        emptyWindow.isReleasedWhenClosed = false
+        defer { emptyWindow.close() }
         let emptyView = makeTextView("")
+        emptyWindow.contentView?.addSubview(emptyView)
+        emptyWindow.makeFirstResponder(emptyView)
         let emptyModel = CapturePanelModel(savedTemplateShelf: shelf)
         wireInsert(emptyModel, textView: emptyView)
         emptyModel.presentTemplateShelf()
@@ -139,7 +149,17 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
         XCTAssertEqual(emptyView.selectedRange(), NSRange(location: 0, length: 0))
 
         let existing = "Acme acme https://example.com"
+        let rowsWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 80),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        rowsWindow.isReleasedWhenClosed = false
+        defer { rowsWindow.close() }
         let rowsView = makeTextView(existing)
+        rowsWindow.contentView?.addSubview(rowsView)
+        rowsWindow.makeFirstResponder(rowsView)
         let rowsModel = CapturePanelModel(savedTemplateShelf: shelf)
         rowsModel.plainDraft = existing
         rowsModel.setParsedTemplateForTests(nil, draft: existing)
