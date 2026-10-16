@@ -112,6 +112,7 @@ public enum RefsSectionKind: Equatable, CaseIterable, Sendable {
     case ready
     case recentlyOpened
     case library
+    case inHighlights
 
     /// The pinned uppercase header title. Never "NEW": the review walk
     /// owns that chip, so the section is "Just added".
@@ -133,6 +134,8 @@ public enum RefsSectionKind: Equatable, CaseIterable, Sendable {
             return "Recently opened"
         case .library:
             return "Library"
+        case .inHighlights:
+            return "In Highlights"
         }
     }
 }
@@ -270,6 +273,11 @@ public struct RefsListing: Equatable, Sendable {
     /// can still draw its title. Keyed by id; empty when the caller did
     /// not pass last-known items.
     public let unavailableItems: [String: RefItem]
+    /// Rows that represent the selected tab in the main (or first) Highlights window.
+    /// This is empty for ordinary library listings.
+    public let highlightsCurrentIDs: Set<String>
+    /// Rows in a Highlights Tabs listing, including search mode's nil-kind section.
+    public let highlightsTabIDs: Set<String>
 
     public init(
         mode: Mode,
@@ -280,7 +288,9 @@ public struct RefsListing: Equatable, Sendable {
         totalCount: Int,
         openCount: Int,
         unavailableIDs: Set<String> = [],
-        unavailableItems: [String: RefItem] = [:]
+        unavailableItems: [String: RefItem] = [:],
+        highlightsCurrentIDs: Set<String> = [],
+        highlightsTabIDs: Set<String> = []
     ) {
         self.mode = mode
         self.scope = scope
@@ -291,6 +301,8 @@ public struct RefsListing: Equatable, Sendable {
         self.openCount = openCount
         self.unavailableIDs = unavailableIDs
         self.unavailableItems = unavailableItems
+        self.highlightsCurrentIDs = highlightsCurrentIDs
+        self.highlightsTabIDs = highlightsTabIDs
     }
 
     /// A content-only refresh of a frozen listing: late data changes row
@@ -319,7 +331,9 @@ public struct RefsListing: Equatable, Sendable {
                 totalCount: totalCount,
                 openCount: openCount,
                 unavailableIDs: unavailable,
-                unavailableItems: mergedUnavailableItems
+                unavailableItems: mergedUnavailableItems,
+                highlightsCurrentIDs: highlightsCurrentIDs,
+                highlightsTabIDs: highlightsTabIDs
             ),
             unavailable
         )

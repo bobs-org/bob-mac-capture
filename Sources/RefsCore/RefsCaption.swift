@@ -109,7 +109,7 @@ public enum RefsCaption {
                 return "opened \(when)"
             }
             return addedPhrase(item, signals: signals)
-        case .today, .library:
+        case .today, .library, .inHighlights:
             if item.state == .read, let finished = item.finished {
                 return "read \(absoluteDay(finished, now: signals.now, calendar: signals.calendar))"
             }
@@ -298,6 +298,11 @@ public enum RefsExplanation {
         listing: RefsListing,
         signals: RefsSignals
     ) -> String {
+        if listing.highlightsTabIDs.contains(item.id) {
+            return listing.highlightsCurrentIDs.contains(item.id)
+                ? "Current tab in Highlights"
+                : "Open in Highlights"
+        }
         if case let .search(query) = listing.mode {
             return searchWhyHere(item, query: query, listing: listing, signals: signals)
         }
@@ -353,6 +358,10 @@ public enum RefsExplanation {
                 return "Opened \(when)"
             }
             return "Opened"
+        case .inHighlights:
+            return listing.highlightsCurrentIDs.contains(item.id)
+                ? "Current tab in Highlights"
+                : "Open in Highlights"
         case .library, nil:
             if let activity = latestActivityDay(item, signals: signals) {
                 let day = RefsCaption.absoluteMonthDay(
