@@ -2,25 +2,29 @@ import AppKit
 import Foundation
 
 /// What the panel knows about the key event's context: whether the
-/// query is empty, whether the scope is All, whether the field editor
-/// holds marked (IME-composing) text, and whether the listing is in
-/// browse mode. A banner in flight needs no router flag: the model's
-/// Esc ladder dismisses the banner first. Printable keys always fall
-/// through to the search field.
+/// query is empty, whether the scope is All, whether the Highlights
+/// Tabs filter is on, whether the field editor holds marked
+/// (IME-composing) text, and whether the listing is in browse mode. A
+/// banner in flight needs no router flag: the model's Esc ladder
+/// dismisses the banner first. Printable keys always fall through to
+/// the search field.
 public struct RefsKeyContext: Equatable, Sendable {
     public var queryIsEmpty: Bool
     public var scopeIsAll: Bool
+    public var tabsFilterOn: Bool
     public var markedTextPresent: Bool
     public var listModeIsBrowse: Bool
 
     public init(
         queryIsEmpty: Bool = true,
         scopeIsAll: Bool = true,
+        tabsFilterOn: Bool = false,
         markedTextPresent: Bool = false,
         listModeIsBrowse: Bool = true
     ) {
         self.queryIsEmpty = queryIsEmpty
         self.scopeIsAll = scopeIsAll
+        self.tabsFilterOn = tabsFilterOn
         self.markedTextPresent = markedTextPresent
         self.listModeIsBrowse = listModeIsBrowse
     }
@@ -39,6 +43,7 @@ public enum RefsKeyRouter {
         static let four: UInt16 = 21
         static let five: UInt16 = 23
         static let r: UInt16 = 15
+        static let t: UInt16 = 17
         static let y: UInt16 = 16
         static let s: UInt16 = 1
         static let d: UInt16 = 2
@@ -169,11 +174,22 @@ public enum RefsKeyRouter {
             return flags == .command ? .refresh : nil
         case KeyCode.s:
             return flags == .command ? .scan : nil
+        case KeyCode.t:
+            // ⌘T toggles the Tabs filter. While IME-composing the key
+            // belongs to the text system. Caps Lock never blocks it,
+            // matching ⌘Y below.
+            if context.markedTextPresent {
+                return nil
+            }
+            return flags.subtracting(.capsLock) == .command ? .toggleTabs : nil
         case KeyCode.delete:
-            // Only unmodified Backspace on an empty query removes the
-            // scope token; `perform` re-checks the scope, so a non-All
-            // scope is required for a non-nil result here too.
-            if flags.isEmpty, context.queryIsEmpty, !context.scopeIsAll {
+            // Only unmodified Backspace on an empty query removes a
+            // token: the Tabs filter first (even under scope All), then
+            // the scope. `perform` re-checks, so a token must be on for
+            // a non-nil result here too.
+            if flags.isEmpty, context.queryIsEmpty,
+               context.tabsFilterOn || !context.scopeIsAll
+            {
                 return .deleteBackwardOnEmpty
             }
             return nil

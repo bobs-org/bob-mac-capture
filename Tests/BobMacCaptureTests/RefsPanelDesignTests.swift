@@ -65,6 +65,15 @@ final class RefsPanelDesignTests: XCTestCase {
         try renderReduceTransparency(model: model, now: now)
         try renderCopyCard(model: model, now: now, width: 880)
         try renderCopyCard(model: model, now: now, width: 700)
+        try renderTabsLoaded(model: model, now: now)
+        try renderTabsCollisionSelected(model: model, now: now)
+        try renderTabsSearch(model: model, now: now)
+        try renderTabsPermission(now: now, adHoc: false)
+        try renderTabsPermission(now: now, adHoc: true)
+        try renderTabsNotRunning(now: now)
+        try renderTabsNoDocuments(now: now)
+        try renderTabsFailedStale(model: model, now: now)
+        try renderTabsWithoutLibrarySnapshot(now: now)
     }
 
     // MARK: - Renders
@@ -1113,6 +1122,264 @@ final class RefsPanelDesignTests: XCTestCase {
             width: width
         )
         model.panelDidHide()
+    }
+
+    // MARK: - Tabs
+
+    /// Nine open tabs against the fixture library: seven unique file
+    /// names, one `harness_engineering.pdf` collision, and one
+    /// unmatched `cv.pdf`. The first tab is current with a page
+    /// caption, so the Current pill renders.
+    private func makeTabsSnapshot(frontmost: Bool) -> HighlightsTabsSnapshot {
+        func tab(_ fileName: String, selected: Bool = false)
+            -> HighlightsTabsSnapshot.Tab
+        {
+            HighlightsTabsSnapshot.Tab(
+                fileName: fileName,
+                isSelected: selected
+            )
+        }
+        return HighlightsTabsSnapshot(
+            windows: [HighlightsTabsSnapshot.Window(
+                isMain: true,
+                pageCaption: "p. 5/25",
+                tabs: [
+                    tab("team_fit_review.pdf", selected: true),
+                    tab("morning_notes.pdf"),
+                    tab("harness_buy.pdf"),
+                    tab("omni_review.pdf"),
+                    tab("harness_engineering.pdf"),
+                    tab("teacher_notes.pdf"),
+                    tab("next_blocked.pdf"),
+                    tab("ready_blocked.pdf"),
+                    tab("cv.pdf"),
+                ]
+            )],
+            highlightsIsFrontmost: frontmost
+        )
+    }
+
+    /// Installs the fixture library, then the 9-tab snapshot, for a
+    /// Tabs render.
+    private func installTabs(
+        model: RefsPanelModel,
+        now: Date,
+        state: RefsTabsState,
+        frontmost: Bool,
+        query: String = ""
+    ) {
+        let fixture = makeFixture(now: now)
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: query,
+            scope: .all,
+            selectedID: nil,
+            banner: nil,
+            refreshState: .idle
+        )
+        model.installTabsForPreviews(
+            snapshot: makeTabsSnapshot(frontmost: frontmost),
+            state: state,
+            frontmost: frontmost
+        )
+    }
+
+    /// The loaded 9-row list: the current pill on row 1 and, with
+    /// Highlights frontmost, row 2 pre-selected.
+    private func renderTabsLoaded(model: RefsPanelModel, now: Date) throws {
+        installTabs(model: model, now: now, state: .loaded, frontmost: true)
+        XCTAssertTrue(model.tabsFilter)
+        XCTAssertEqual(model.tabsState, .loaded)
+        XCTAssertEqual(model.listing.orderedIDs.count, 9)
+        XCTAssertEqual(model.listing.totalCount, 9)
+        XCTAssertEqual(
+            model.selectedID,
+            "ref/chat/morning_notes.md"
+        )
+        let current = try XCTUnwrap(model.rowContent(
+            for: "ref/chat/team_fit_review.md"
+        ))
+        XCTAssertEqual(current.openTab?.isCurrent, true)
+        XCTAssertEqual(current.openTab?.pageCaption, "p. 5/25")
+        let unmatched = try XCTUnwrap(model.rowContent(
+            for: "highlights-tab:cv.pdf"
+        ))
+        XCTAssertEqual(unmatched.caption, "Not in your library")
+        try write(model: model, name: "refs-tabs-loaded-880", width: 880)
+    }
+
+    /// A selected collision row with its minimal inspector card naming
+    /// both candidate notes.
+    private func renderTabsCollisionSelected(
+        model: RefsPanelModel,
+        now: Date
+    ) throws {
+        installTabs(model: model, now: now, state: .loaded, frontmost: true)
+        let collisionID = "highlights-tab:harness_engineering.pdf"
+        XCTAssertTrue(model.perform(.select(id: collisionID)))
+        XCTAssertEqual(model.selectedID, collisionID)
+        let content = try XCTUnwrap(model.rowContent(for: collisionID))
+        XCTAssertEqual(content.openTab?.match, .collision)
+        XCTAssertEqual(content.candidateItems.count, 2)
+        try write(
+            model: model,
+            name: "refs-tabs-collision-880",
+            width: 880
+        )
+    }
+
+    /// A Tabs search naming two of nine tabs: the count reads
+    /// "2 of 9 tabs".
+    private func renderTabsSearch(model: RefsPanelModel, now: Date) throws {
+        installTabs(model: model, now: now, state: .loaded, frontmost: false)
+        model.setQuery("notes")
+        guard case .search = model.listing.mode else {
+            XCTFail("expected search mode")
+            return
+        }
+        XCTAssertEqual(model.listing.orderedIDs.count, 2)
+        XCTAssertEqual(model.listing.totalCount, 9)
+        XCTAssertEqual(
+            RefsTabsCount.text(shown: 2, total: 9, isSearch: true),
+            "2 of 9 tabs"
+        )
+        try write(model: model, name: "refs-tabs-search-880", width: 880)
+    }
+
+    /// The permission card, signed and ad-hoc variants.
+    private func renderTabsPermission(now: Date, adHoc: Bool) throws {
+        let fixture = makeFixture(now: now)
+        let model = RefsPanelModel(
+            library: makeLibrary(now: now),
+            opener: StubOpener(),
+            highlights: StubLocator()
+        )
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: nil,
+            banner: nil,
+            refreshState: .idle
+        )
+        model.installTabsForPreviews(
+            snapshot: nil,
+            state: .needsPermission(adHoc: adHoc),
+            frontmost: false
+        )
+        XCTAssertEqual(
+            model.tabsState,
+            .needsPermission(adHoc: adHoc)
+        )
+        try write(
+            model: model,
+            name: adHoc
+                ? "refs-tabs-permission-adhoc-880"
+                : "refs-tabs-permission-880",
+            width: 880
+        )
+    }
+
+    /// The card when Highlights is not running.
+    private func renderTabsNotRunning(now: Date) throws {
+        let fixture = makeFixture(now: now)
+        let model = RefsPanelModel(
+            library: makeLibrary(now: now),
+            opener: StubOpener(),
+            highlights: StubLocator()
+        )
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: nil,
+            banner: nil,
+            refreshState: .idle
+        )
+        model.installTabsForPreviews(
+            snapshot: nil,
+            state: .notRunning,
+            frontmost: false
+        )
+        XCTAssertEqual(model.tabsState, .notRunning)
+        try write(model: model, name: "refs-tabs-not-running-880", width: 880)
+    }
+
+    /// The card when Highlights runs with no open documents.
+    private func renderTabsNoDocuments(now: Date) throws {
+        let fixture = makeFixture(now: now)
+        let model = RefsPanelModel(
+            library: makeLibrary(now: now),
+            opener: StubOpener(),
+            highlights: StubLocator()
+        )
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: nil,
+            banner: nil,
+            refreshState: .idle
+        )
+        model.installTabsForPreviews(
+            snapshot: nil,
+            state: .noDocuments,
+            frontmost: false
+        )
+        XCTAssertEqual(model.tabsState, .noDocuments)
+        try write(model: model, name: "refs-tabs-no-documents-880", width: 880)
+    }
+
+    /// A failed re-read with stale rows: the rows stay listed under
+    /// the retry notice.
+    private func renderTabsFailedStale(
+        model: RefsPanelModel,
+        now: Date
+    ) throws {
+        installTabs(
+            model: model,
+            now: now,
+            state: .failed(message: "timed out", hasStaleRows: true),
+            frontmost: false
+        )
+        guard case .failed(_, let hasStaleRows) = model.tabsState else {
+            XCTFail("expected failed state")
+            return
+        }
+        XCTAssertTrue(hasStaleRows)
+        XCTAssertEqual(model.listing.orderedIDs.count, 9)
+        try write(model: model, name: "refs-tabs-failed-stale-880", width: 880)
+    }
+
+    /// Tabs mode without a library snapshot yet: every tab reads
+    /// unmatched instead of the library skeleton.
+    private func renderTabsWithoutLibrarySnapshot(now: Date) throws {
+        let model = RefsPanelModel(
+            library: makeLibrary(now: now),
+            opener: StubOpener(),
+            highlights: StubLocator()
+        )
+        XCTAssertFalse(model.hasSnapshot)
+        model.installTabsForPreviews(
+            snapshot: makeTabsSnapshot(frontmost: false),
+            state: .loaded,
+            frontmost: false
+        )
+        XCTAssertTrue(model.tabsFilter)
+        XCTAssertEqual(model.listing.orderedIDs.count, 9)
+        XCTAssertEqual(
+            model.rowContent(for: "highlights-tab:team_fit_review.pdf")?.caption,
+            "Not in your library"
+        )
+        try write(
+            model: model,
+            name: "refs-tabs-no-library-880",
+            width: 880
+        )
     }
 
     private func write(

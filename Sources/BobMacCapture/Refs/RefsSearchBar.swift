@@ -96,6 +96,9 @@ struct RefsSearchBar: View {
                 makeFilterField()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            if model.tabsFilter {
+                tabsToken
+            }
             if model.scope != .all {
                 scopeToken
             }
@@ -107,6 +110,29 @@ struct RefsSearchBar: View {
         }
         .padding(.horizontal, 14)
         .frame(height: RefsVisualTokens.searchBarHeight)
+    }
+
+    /// The Tabs filter token, drawn before the scope token in the
+    /// same capsule style. Activating it leaves Tabs mode.
+    private var tabsToken: some View {
+        Button {
+            model.perform(.setTabsFilter(false))
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "square.on.square")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Tabs")
+                    .font(.callout.weight(.semibold))
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .foregroundStyle(Color.accentColor)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.accentColor.opacity(0.16), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Tabs filter. Activate to clear.")
     }
 
     private var scopeToken: some View {
@@ -136,26 +162,50 @@ struct RefsSearchBar: View {
         Text(countText)
             .font(.callout.monospacedDigit())
             .foregroundStyle(.secondary)
-            .accessibilityLabel("\(model.listing.totalCount) references")
+            .accessibilityLabel(countAccessibilityLabel)
             .onChange(of: model.query) { _, _ in
-                announcer.schedule(
-                    shown: model.listing.orderedIDs.count,
-                    total: model.listing.totalCount
-                )
+                announcer.schedule(countAnnouncement)
             }
             .onChange(of: model.listing.orderedIDs.count) { _, _ in
-                announcer.schedule(
-                    shown: model.listing.orderedIDs.count,
-                    total: model.listing.totalCount
-                )
+                announcer.schedule(countAnnouncement)
+            }
+            .onChange(of: model.tabsFilter) { _, _ in
+                announcer.schedule(countAnnouncement)
             }
     }
 
     private var countText: String {
+        if model.tabsFilter {
+            let isSearch: Bool
+            if case .search = model.listing.mode {
+                isSearch = true
+            } else {
+                isSearch = false
+            }
+            return RefsTabsCount.text(
+                shown: model.listing.orderedIDs.count,
+                total: model.listing.totalCount,
+                isSearch: isSearch
+            )
+        }
         if case .search = model.listing.mode {
             return "\(model.listing.orderedIDs.count) of \(model.listing.totalCount)"
         }
         return "\(model.listing.openCount) open · \(model.listing.totalCount)"
+    }
+
+    private var countAccessibilityLabel: String {
+        if model.tabsFilter {
+            return countText
+        }
+        return "\(model.listing.totalCount) references"
+    }
+
+    private var countAnnouncement: String {
+        if model.tabsFilter {
+            return countText
+        }
+        return "\(model.listing.orderedIDs.count) of \(model.listing.totalCount) references"
     }
 }
 
@@ -166,7 +216,7 @@ struct RefsSearchBar: View {
 private final class RefsCountAnnouncer: ObservableObject {
     private var generation = 0
 
-    func schedule(shown: Int, total: Int) {
+    func schedule(_ message: String) {
         generation += 1
         let current = generation
         Task { [weak self] in
@@ -174,9 +224,7 @@ private final class RefsCountAnnouncer: ObservableObject {
             guard let self, current == self.generation else {
                 return
             }
-            AccessibilityNotification.Announcement(
-                "\(shown) of \(total) references"
-            ).post()
+            AccessibilityNotification.Announcement(message).post()
         }
     }
 }

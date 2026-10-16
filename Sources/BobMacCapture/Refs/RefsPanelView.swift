@@ -108,7 +108,11 @@ public struct RefsPanelView: View {
 
     @ViewBuilder
     private var content: some View {
-        if !model.hasSnapshot {
+        if model.tabsFilter {
+            // Tabs mode never waits for the library snapshot: every
+            // tab simply reads unmatched until library data exists.
+            tabsContent
+        } else if !model.hasSnapshot {
             switch model.refreshState {
             case .refreshing:
                 RefsSkeletonList()
@@ -119,8 +123,49 @@ public struct RefsPanelView: View {
             }
         } else if model.listing.orderedIDs.isEmpty {
             RefsEmptyStateView(model: model)
-        } else if let previewWidth {
-            columns(panelWidth: previewWidth)
+        } else {
+            listContent()
+        }
+    }
+
+    /// The Tabs-mode well, driven by the published tab read state.
+    @ViewBuilder
+    private var tabsContent: some View {
+        switch model.tabsState {
+        case .off, .loaded:
+            if model.listing.orderedIDs.isEmpty {
+                RefsTabsEmptyView(query: model.query, scope: model.scope)
+            } else {
+                listContent()
+            }
+        case .loading:
+            if model.listing.orderedIDs.isEmpty {
+                RefsTabsDelayedSkeleton(previewMode: previewMode)
+            } else {
+                listContent()
+            }
+        case .needsPermission(let adHoc):
+            RefsTabsPermissionCard(model: model, adHoc: adHoc)
+        case .notRunning:
+            RefsTabsNotRunningCard()
+        case .noDocuments:
+            RefsTabsNoDocumentsCard()
+        case .failed(_, let hasStaleRows):
+            if hasStaleRows, !model.listing.orderedIDs.isEmpty {
+                VStack(spacing: 0) {
+                    RefsTabsFailedNotice()
+                    listContent(dimRows: true)
+                }
+            } else {
+                RefsTabsFailedCard()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func listContent(dimRows: Bool = false) -> some View {
+        if let previewWidth {
+            columns(panelWidth: previewWidth, dimRows: dimRows)
         } else {
             GeometryReader { geometry in
                 // The geometry width is post-padding: add the outer
@@ -128,17 +173,18 @@ public struct RefsPanelView: View {
                 // width measure the panel width (§6).
                 columns(
                     panelWidth: geometry.size.width
-                        + RefsVisualTokens.outerPadding * 2
+                        + RefsVisualTokens.outerPadding * 2,
+                    dimRows: dimRows
                 )
             }
         }
     }
 
     @ViewBuilder
-    private func columns(panelWidth: CGFloat) -> some View {
+    private func columns(panelWidth: CGFloat, dimRows: Bool = false) -> some View {
         if RefsVisualTokens.showsInspector(width: panelWidth) {
             HStack(spacing: 0) {
-                RefsListView(model: model, previewMode: previewMode)
+                RefsListView(model: model, previewMode: previewMode, dimRows: dimRows)
                     .frame(width: RefsVisualTokens.listWidth(panelWidth: panelWidth))
                 inspectorDivider
                 inspector
@@ -150,7 +196,7 @@ public struct RefsPanelView: View {
                 } else if model.copyCard != nil {
                     copyCard
                 } else {
-                    RefsListView(model: model, previewMode: previewMode)
+                    RefsListView(model: model, previewMode: previewMode, dimRows: dimRows)
                         .transition(.opacity)
                 }
             }

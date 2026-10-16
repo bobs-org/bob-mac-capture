@@ -386,6 +386,7 @@ public final class RefsPanelController: NSObject {
             context: RefsKeyContext(
                 queryIsEmpty: model.query.isEmpty,
                 scopeIsAll: model.scope == .all,
+                tabsFilterOn: model.tabsFilter,
                 markedTextPresent: markedTextInFilterField(),
                 listModeIsBrowse: {
                     if case .browse = model.listing.mode {

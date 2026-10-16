@@ -32,7 +32,13 @@ struct RefsFooter: View {
                 Text("Copy — press a key")
             } else {
                 ViewThatFits(in: .horizontal) {
-                    ForEach(Self.hintVariants(openHint: openHint), id: \.self) {
+                    ForEach(
+                        Self.hintVariants(
+                            openHint: openHint,
+                            tabsFilter: model.tabsFilter
+                        ),
+                        id: \.self
+                    ) {
                         Text($0)
                     }
                 }
@@ -44,20 +50,31 @@ struct RefsFooter: View {
         .truncationMode(.tail)
     }
 
-    static func hintsText(openHint: String) -> String {
-        hintVariants(openHint: openHint)[0]
+    static func hintsText(openHint: String, tabsFilter: Bool = false) -> String {
+        hintVariants(openHint: openHint, tabsFilter: tabsFilter)[0]
     }
 
-    static func hintVariants(openHint: String) -> [String] {
+    static func hintVariants(openHint: String, tabsFilter: Bool = false) -> [String] {
+        if tabsFilter {
+            let core = "\(openHint)  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘K Actions"
+            return [
+                "\(core)  ⌘T Library  ⌘1–5 Scope  esc Close",
+                "\(core)  ⌘T Library  esc Close",
+                "\(core)  ⌘T Library",
+            ]
+        }
         let core = "\(openHint)  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘K Actions"
         return [
-            "\(core)  ⌘S Scan  ⌘1–5 Scope  esc Close",
+            "\(core)  ⌘S Scan  ⌘1–5 Scope  ⌘T Tabs  esc Close",
             "\(core)  ⌘S Scan  esc Close",
             "\(core)  esc Close",
         ]
     }
 
     private var openHint: String {
+        if model.tabsFilter {
+            return "↵ Switch"
+        }
         guard let selected = model.selectedID,
               let content = model.rowContent(for: selected),
               content.isMissingPDF

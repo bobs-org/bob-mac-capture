@@ -15,6 +15,7 @@ final class RefsKeyRouterTests: XCTestCase {
         static let five: UInt16 = 23
         static let a: UInt16 = 0
         static let r: UInt16 = 15
+        static let t: UInt16 = 17
         static let y: UInt16 = 16
         static let s: UInt16 = 1
         static let d: UInt16 = 2
@@ -203,6 +204,44 @@ final class RefsKeyRouterTests: XCTestCase {
         let unscoped = RefsKeyContext(queryIsEmpty: true, scopeIsAll: true)
         XCTAssertNil(route(KeyCode.delete, [], context: unscoped))
         XCTAssertNil(route(KeyCode.delete, .shift, context: scoped))
+    }
+
+    func testCommandTTogglesTabsUnlessComposing() {
+        XCTAssertEqual(route(KeyCode.t, .command), .toggleTabs)
+        XCTAssertEqual(
+            route(KeyCode.t, [.command, .capsLock]),
+            .toggleTabs
+        )
+        XCTAssertNil(route(KeyCode.t))
+        XCTAssertNil(route(KeyCode.t, .control))
+        XCTAssertNil(route(KeyCode.t, [.command, .shift]))
+        XCTAssertNil(route(KeyCode.t, [.command, .option]))
+        XCTAssertNil(route(
+            KeyCode.t,
+            .command,
+            context: RefsKeyContext(markedTextPresent: true)
+        ))
+    }
+
+    func testDeleteBackwardOnEmptyRemovesTabsBeforeScope() {
+        // Tabs on under scope All still removes the Tabs filter first,
+        // matching A2's "removes it first".
+        let tabsOn = RefsKeyContext(
+            queryIsEmpty: true,
+            scopeIsAll: true,
+            tabsFilterOn: true
+        )
+        XCTAssertEqual(
+            route(KeyCode.delete, [], context: tabsOn),
+            .deleteBackwardOnEmpty
+        )
+        // A non-empty query keeps Backspace with the field editor.
+        let typing = RefsKeyContext(
+            queryIsEmpty: false,
+            scopeIsAll: true,
+            tabsFilterOn: true
+        )
+        XCTAssertNil(route(KeyCode.delete, [], context: typing))
     }
 
     func testEscapeChain() {

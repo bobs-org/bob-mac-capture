@@ -65,6 +65,9 @@ struct RefsListView: View {
     /// `ImageRenderer` snapshots `ScrollView` content blank, so the
     /// live scroll view never appears in a fixture.
     var previewMode = false
+    /// Dims every row for stale Tabs rows after a failed re-read, on
+    /// top of each row's own treatment.
+    var dimRows = false
 
     var body: some View {
         if previewMode {
@@ -165,6 +168,7 @@ struct RefsListView: View {
                     model.perform(.activate(id: id))
                 }
             )
+            .opacity(dimRows ? 0.6 : 1)
             .onGeometryChange(for: CGRect?.self) { proxy in
                 model.selectedID == id
                     ? proxy.frame(in: .named("refsPanel")) : nil

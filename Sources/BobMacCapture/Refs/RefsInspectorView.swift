@@ -126,6 +126,8 @@ struct RefsInspectorView: View {
                     missingCallout(for: item)
                 }
                 footer(for: item)
+            } else if let openTab = content.openTab {
+                tabFallbackCard(for: openTab)
             } else if content.isUnavailable {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(content.title)
@@ -146,6 +148,53 @@ struct RefsInspectorView: View {
         }
         .padding(RefsVisualTokens.inspectorPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The minimal card for collision and unmatched Tabs rows: the
+    /// file name with the neutral tile, the library verdict, the
+    /// candidate notes with their note paths (plus the Highlights
+    /// document path when known), and the switch hint. Matched rows
+    /// keep the full inspector above.
+    private func tabFallbackCard(for tab: RefsOpenTab) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                RefsTabDocTile(size: RefsVisualTokens.heroTileSize)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(content.title)
+                        .font(.title3.weight(.semibold))
+                        .lineLimit(4)
+                    Text(content.caption)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(
+                "\(content.title), \(content.caption), open in Highlights"
+            )
+            ForEach(content.candidateItems, id: \.id) { candidate in
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(candidate.title.text)
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(2)
+                    Text(candidate.id)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+            if let documentPath = tab.documentPath {
+                Text(documentPath)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+            }
+            Text("↵ switches to this tab")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private func hero(for item: RefItem) -> some View {
