@@ -17,11 +17,16 @@ final class HotKeyRegistryTests: XCTestCase {
             .refsHighlightsOpen,
             configuration: .highlightsCommandO
         )
+        try registry.register(
+            .refsHighlightsTabs,
+            configuration: .highlightsShiftCommandO
+        )
 
         XCTAssertEqual(
             registrar.identifiers.map { $0.id },
             [HotKeyAction.capture.rawValue, HotKeyAction.refs.rawValue,
-                HotKeyAction.refsHighlightsOpen.rawValue]
+                HotKeyAction.refsHighlightsOpen.rawValue,
+                HotKeyAction.refsHighlightsTabs.rawValue]
         )
         XCTAssertTrue(
             registrar.identifiers.allSatisfy {
@@ -31,6 +36,7 @@ final class HotKeyRegistryTests: XCTestCase {
         XCTAssertTrue(registry.isRegistered(.capture))
         XCTAssertTrue(registry.isRegistered(.refs))
         XCTAssertTrue(registry.isRegistered(.refsHighlightsOpen))
+        XCTAssertTrue(registry.isRegistered(.refsHighlightsTabs))
     }
 
     func testHandleRoutesEachActionByID() {
@@ -193,6 +199,22 @@ final class HotKeyRegistryTests: XCTestCase {
             HotKeyConfiguration.highlightsControlO.modifiers,
             UInt32(controlKey)
         )
+        XCTAssertEqual(
+            HotKeyConfiguration.highlightsShiftCommandO.keyCode,
+            UInt32(kVK_ANSI_O)
+        )
+        XCTAssertEqual(
+            HotKeyConfiguration.highlightsShiftCommandO.modifiers,
+            UInt32(cmdKey | shiftKey)
+        )
+        XCTAssertEqual(
+            HotKeyConfiguration.highlightsCommandE.keyCode,
+            UInt32(kVK_ANSI_E)
+        )
+        XCTAssertEqual(
+            HotKeyConfiguration.highlightsCommandE.modifiers,
+            UInt32(cmdKey)
+        )
     }
 
     func testCapturePresetsDoNotCollideWithRefs() {
@@ -203,6 +225,13 @@ final class HotKeyRegistryTests: XCTestCase {
             XCTAssertFalse(
                 claimsRefsChord,
                 "\(capture.displayName) must not claim the Refs chord"
+            )
+            let claimsTabsChord =
+                capture.keyCode == HotKeyConfiguration.highlightsShiftCommandO.keyCode
+                && capture.modifiers == HotKeyConfiguration.highlightsShiftCommandO.modifiers
+            XCTAssertFalse(
+                claimsTabsChord,
+                "\(capture.displayName) must not claim the Highlights Tabs chord"
             )
         }
     }

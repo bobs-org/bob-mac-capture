@@ -63,6 +63,17 @@ struct SettingsView: View {
                     Text(RefsHighlightsOpenKey.ctrlO.displayName)
                         .tag(RefsHighlightsOpenKey.ctrlO)
                 }
+                Picker(
+                    "In Highlights, show open tabs with",
+                    selection: $settings.refsHighlightsTabsKey
+                ) {
+                    Text(RefsHighlightsTabsKey.shiftCmdO.displayName)
+                        .tag(RefsHighlightsTabsKey.shiftCmdO)
+                    Text(RefsHighlightsTabsKey.cmdE.displayName)
+                        .tag(RefsHighlightsTabsKey.cmdE)
+                    Text(RefsHighlightsTabsKey.off.displayName)
+                        .tag(RefsHighlightsTabsKey.off)
+                }
                 LabeledContent("Highlights app", value: highlightsAppDescription)
                 HStack {
                     Button("Choose…") {

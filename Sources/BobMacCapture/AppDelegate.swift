@@ -147,14 +147,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in
                     self?.panelCoordinator?.toggleRefs()
                 }
+            case .refsHighlightsTabs:
+                CaptureSignpost.event("refs-tabs-hotkey-received")
+                Task { @MainActor in
+                    self?.panelCoordinator?.toggleRefsTabs()
+                }
             }
         }
         registerHotKey()
-        configureRefsStack()
+        let signingState = BundleSigningInspector.currentBundleState()
+        settings.signingDiagnostic = signingState.diagnosticText
+        configureRefsStack(signingState: signingState)
         configureVaultWatcher()
         observeBobSettings()
         refreshTargetsWhenPossible()
-        settings.signingDiagnostic = BundleSigningInspector.currentBundleState().diagnosticText
         CaptureSignpost.event("launch-complete")
         if BobMacCaptureLaunchContext.requestsInstallRestartNotification(
             ProcessInfo.processInfo.arguments
@@ -461,7 +467,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The bundle id of the Settings override Highlights app, or nil when
     /// no override is set or it is not an app bundle. The takeover matches
     /// the override app's id so a moved copy still takes over.
-    static func highlightsOverrideBundleID(path: String) -> String? {
+    nonisolated static func highlightsOverrideBundleID(path: String) -> String? {
         guard !path.isEmpty else {
             return nil
         }
@@ -474,7 +480,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// takeover. Launch never blocks — the library refreshes in the
     /// background — and stays healthy when `bob` is absent: a nil fetcher
     /// paints the cached snapshot with a "Bob is not available" footer.
-    private func configureRefsStack() {
+    private func configureRefsStack(signingState: BundleSigningState) {
         let snapshotStore: RefsSnapshotStore
         let openLogStore: RefsOpenLogStore
         do {
@@ -516,10 +522,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             spotlight: SpotlightRefsSignals(),
             now: { Date() }
         )
+        let tabsReader = AXHighlightsTabsReader(bundleIdentifier: {
+            let path = AppDelegate.storedHighlightsAppPath()
+            return AppDelegate.highlightsOverrideBundleID(path: path)
+                ?? HighlightsLocator.bundleIdentifier
+        })
+        let tabsSession = HighlightsTabsSession(reader: tabsReader)
         let model = RefsPanelModel(
             library: library,
             opener: WorkspaceRefsOpener(),
-            highlights: HighlightsLocator(overridePath: Self.storedHighlightsAppPath)
+            highlights: HighlightsLocator(overridePath: Self.storedHighlightsAppPath),
+            tabs: tabsSession,
+            isAdHocSigned: { signingState == .adHoc }
         )
         model.notesPageSize = settings.refsInspectorNotesPageSize
         model.settingsPresenter = { [weak self] in self?.openSettings() }
@@ -550,6 +564,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             presentRefsPreservingState: { [weak self] in
                 self?.refsPanelController?.represent()
             },
+            presentRefsWithSource: { [weak self] source in
+                self?.refsPanelController?.show(source: source)
+            },
+            isRefsInTabs: { model.tabsFilter },
+            setRefsTabsFilter: { enabled in
+                model.perform(.setTabsFilter(enabled))
+            },
             hideRefs: { [weak self] in self?.refsPanelController?.hide() }
         )
         controller.copyDismisser = { [weak self] in
@@ -564,8 +585,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             registry: hotKeyRegistry,
             frontmostBundleID: { NSWorkspace.shared.frontmostApplication?.bundleIdentifier },
             openKey: { settings.refsHighlightsOpenKey },
+            tabsKey: { settings.refsHighlightsTabsKey },
             overrideBundleID: {
                 Self.highlightsOverrideBundleID(path: settings.refsHighlightsAppPath)
+            },
+            onHighlightsDeactivated: {
+                Task { await tabsSession.sampleCurrentTab() }
             },
             onError: { [weak self] message in self?.settings.diagnosticStatus = message }
         )
@@ -586,9 +611,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak self] enabled in self?.registerRefsHotKey(enabled: enabled) }
             .store(in: &refsCancellables)
         settings.$refsHighlightsOpenKey
+            .combineLatest(settings.$refsHighlightsTabsKey)
             .combineLatest(settings.$refsHighlightsAppPath)
-            .sink { [weak self] key, path in
-                self?.highlightsTakeover?.sync(key: key, appPath: path)
+            .sink { [weak self] keys, path in
+                self?.highlightsTakeover?.sync(
+                    openKey: keys.0,
+                    tabsKey: keys.1,
+                    appPath: path
+                )
             }
             .store(in: &refsCancellables)
         settings.$refsInspectorNotesPageSize

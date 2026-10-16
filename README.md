@@ -1347,7 +1347,9 @@ capped at 5), then the Library by last activity. Day counts use the
 panel calendar, so Just added, Recently opened, recency, and Library
 activity never shift by a day in US evenings. Each item appears in the
 first section that admits it; over-cap rows fall through; empty sections
-are omitted; the final tie-break everywhere is the note path. A typed
+are omitted; the final tie-break everywhere is the note path. Tabs mode
+orders the current tab first, then recent tabs, with tab-bar order as the
+tie-break and unmatched tabs last. A typed
 query collapses the sections into one ranked list with tiers that never
 cross: T0 exact (title/stem equality or a pasted arXiv id, DOI, or URL),
 T1 title/stem word prefix (any length; a 2-character prefix counts),
@@ -1526,6 +1528,10 @@ progress; completion while hidden posts a notification.
   Highlights' File › Open… still opens its own dialog. The panel never
   activates, so Highlights stays frontmost and the same key closes the
   panel again.
+- While Highlights is frontmost, Shift-Command-O opens Bob Refs in Tabs
+  (default). Settings › References can change this key to Command-E or
+  Off. It registers only for Highlights or the override app; the global
+  Control-Shift-Command-O and Command-O library flows are unchanged.
 - The menu-bar item offers Bob Refs… directly below Capture, with the
   same shortcut shown for display.
 - Only one Bob panel is ever visible: opening Refs while Capture is
@@ -1544,6 +1550,31 @@ progress; completion while hidden posts a notification.
 - Diagnostics: a failed global or takeover registration reports
   "Refs hotkey conflict: …"; free the shortcut and use Recheck Bob.
   Toggling the References settings re-registers immediately.
+
+### Tabs
+
+Tabs lists every document open in Highlights. A matched tab uses its
+reference note row. A collision or a file outside the library stays in
+the list as a dim row with its filename and a clear match status.
+
+Press Shift-Command-O while Highlights is frontmost to open Tabs, or
+Command-T in Bob Refs to toggle the filter. The filter combines with the
+kind scopes and keeps the current query. The current tab comes first;
+the rest follow most-recently-active order, with tab-bar order as the
+tie-break and unmatched tabs last. When Highlights is frontmost, the
+previous tab is preselected.
+
+Return, Tab, or double-click switches to the existing tab. Switching
+keeps its page, does not change reading state, and does not add an entry
+to the open log. Tabs refreshes on panel show, Command-T, or Command-R;
+it does not poll in the background. The panel explains when Accessibility
+permission is needed, Highlights is not running, no documents are open,
+or a read fails.
+
+Accessibility reads Highlights' window and tab attributes and selects a
+tab through its button. Names stay in memory. Highlights exposes the
+visible tab's full path; background tabs match by filename only. Tabs in
+other Spaces and full-screen windows are untested.
 
 ### Inspector
 
@@ -1612,8 +1643,12 @@ intrinsics cache (`intrinsics.json`) with thumbnails
 (`thumbs/<sha256>.png`) under
 `~/Library/Caches/org.bobs.bob-mac-capture/refs/`. The References
 settings persist a small set of `UserDefaults` keys (the ⌃⇧⌘R
-binding flag, the Highlights-frontmost open key, the Highlights
-override path, and the preview notes page size). Signposts carry event names only, never note text.
+binding flag, the Highlights-frontmost open key, the Highlights Tabs
+key (`refsHighlightsTabsKey`, default `shiftCmdO`), the Highlights
+override path, and the preview notes page size). Accessibility is used
+only against Highlights to read window and tab attributes and select a
+tab button; tab names stay in memory and are never persisted. Signposts
+carry event names only, never note text.
 Scan notifications may show reference titles, as capture notifications
 already show task text; the Just scanned mark itself lives in memory
 only and is never written to disk.
@@ -1626,6 +1661,14 @@ only and is never written to disk.
 - "Highlights isn't installed where Bob Refs can find it": use Open
   in Default App, or Choose Highlights… to point at the app in
   Settings › References.
+- "Bob Refs needs Accessibility access to see Highlights' tabs": use
+  Open Accessibility Settings from the Tabs card and grant access to Bob
+  Mac Capture. Tabs never asks for permission at launch.
+- If an ad-hoc reinstall makes that grant stop working, re-add Bob Mac
+  Capture in System Settings › Privacy & Security › Accessibility, or
+  reset the stored grant with
+  `tccutil reset Accessibility org.bobs.bob-mac-capture` and grant it
+  again. A stable signing identity keeps the grant across reinstalls.
 - To reset open history (recently-opened rows and frecency), use
   Reset Open History… in Settings › References behind its
   confirmation dialog.
@@ -1699,6 +1742,13 @@ including the next panel show.
   metadata only (see Diagnostics and Signposts).
 
 ## Keyboard
+
+Bob Refs shortcuts:
+
+| Key | Action |
+| --- | --- |
+| Command-T | Toggle the Tabs filter; the query and kind scope stay in place |
+| Shift-Command-O | While Highlights is frontmost, open Bob Refs in Tabs; configurable to Command-E or Off |
 
 | Key | In the editor | While completion is visible | While Add block ID is open | While Name Pomodoro is open |
 | --- | --- | --- | --- | --- |

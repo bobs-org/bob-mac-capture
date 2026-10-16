@@ -110,6 +110,60 @@ final class RefsEntryPointsTests: XCTestCase {
         XCTAssertEqual(capture.plainDraft, "keep me")
     }
 
+    func testToggleRefsTabsWhileHiddenPresentsTabsAndRetainsCaptureDraft() {
+        let capture = CapturePanelModel()
+        capture.plainDraft = "keep me"
+        let log = EventLog()
+        let coordinator = makeCoordinator(
+            capture: capture,
+            captureVisible: true,
+            refsVisible: false,
+            log: log,
+            presentRefsWithSource: { source in
+                log.events.append(source == .highlightsTabs ? "show-refs-tabs" : "show-refs")
+            }
+        )
+
+        coordinator.toggleRefsTabs()
+
+        XCTAssertEqual(log.events, ["close-retain", "show-refs-tabs"])
+        XCTAssertEqual(capture.plainDraft, "keep me")
+    }
+
+    func testToggleRefsTabsEnablesTabsOnVisibleLibrary() {
+        let capture = CapturePanelModel()
+        let log = EventLog()
+        let coordinator = makeCoordinator(
+            capture: capture,
+            captureVisible: false,
+            refsVisible: true,
+            log: log,
+            isRefsInTabs: { false },
+            setRefsTabsFilter: { enabled in log.events.append("tabs-\(enabled)") }
+        )
+
+        coordinator.toggleRefsTabs()
+
+        XCTAssertEqual(log.events, ["tabs-true"])
+    }
+
+    func testToggleRefsTabsHidesVisibleTabsPanel() {
+        let capture = CapturePanelModel()
+        let log = EventLog()
+        let coordinator = makeCoordinator(
+            capture: capture,
+            captureVisible: false,
+            refsVisible: true,
+            log: log,
+            isRefsInTabs: { true },
+            setRefsTabsFilter: { enabled in log.events.append("tabs-\(enabled)") }
+        )
+
+        coordinator.toggleRefsTabs()
+
+        XCTAssertEqual(log.events, ["hide-refs"])
+    }
+
     // MARK: - Takeover
 
     func testTakeoverRegistersWhenHighlightsAlreadyFrontmostAtStart() {
@@ -124,6 +178,23 @@ final class RefsEntryPointsTests: XCTestCase {
         XCTAssertEqual(
             fixture.registrar.configuration(for: .refsHighlightsOpen),
             .highlightsCommandO
+        )
+    }
+
+    func testTakeoverRegistersTabsKeyOnlyForHighlights() {
+        let fixture = makeTakeover(
+            frontmost: HighlightsLocator.bundleIdentifier,
+            openKey: .cmdO,
+            tabsKey: .shiftCmdO
+        )
+
+        fixture.takeover.start()
+
+        XCTAssertTrue(fixture.isTakeoverRegistered)
+        XCTAssertTrue(fixture.isTabsTakeoverRegistered)
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsTabs),
+            .highlightsShiftCommandO
         )
     }
 
@@ -218,7 +289,8 @@ final class RefsEntryPointsTests: XCTestCase {
     func testTakeoverStopUnregisters() {
         let fixture = makeTakeover(
             frontmost: HighlightsLocator.bundleIdentifier,
-            openKey: .cmdO
+            openKey: .cmdO,
+            tabsKey: .shiftCmdO
         )
         fixture.takeover.start()
         XCTAssertTrue(fixture.isTakeoverRegistered)
@@ -226,6 +298,32 @@ final class RefsEntryPointsTests: XCTestCase {
         fixture.takeover.stop()
 
         XCTAssertFalse(fixture.isTakeoverRegistered)
+        XCTAssertFalse(fixture.isTabsTakeoverRegistered)
+    }
+
+    func testTakeoverSamplesOnlyExpectedAppOnDeactivation() async {
+        let fixture = makeTakeover(
+            frontmost: HighlightsLocator.bundleIdentifier,
+            openKey: .cmdO,
+            tabsKey: .shiftCmdO
+        )
+        fixture.takeover.start()
+
+        fixture.deactivatedAppBundleID = HighlightsLocator.bundleIdentifier
+        fixture.center.post(
+            name: NSWorkspace.didDeactivateApplicationNotification,
+            object: nil
+        )
+        await fixture.waitUntil { fixture.deactivationSamples == 1 }
+        XCTAssertEqual(fixture.deactivationSamples, 1)
+
+        fixture.deactivatedAppBundleID = "com.apple.Safari"
+        fixture.center.post(
+            name: NSWorkspace.didDeactivateApplicationNotification,
+            object: nil
+        )
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(fixture.deactivationSamples, 1)
     }
 
     func testTakeoverReportsRegistrationFailure() {
@@ -252,14 +350,17 @@ final class RefsEntryPointsTests: XCTestCase {
         let settings = AppSettings(defaults: defaults)
         XCTAssertTrue(settings.refsHotkeyEnabled)
         XCTAssertEqual(settings.refsHighlightsOpenKey, .cmdO)
+        XCTAssertEqual(settings.refsHighlightsTabsKey, .shiftCmdO)
         XCTAssertEqual(settings.refsHighlightsAppPath, "")
 
         settings.refsHotkeyEnabled = false
         settings.refsHighlightsOpenKey = .ctrlO
+        settings.refsHighlightsTabsKey = .cmdE
         settings.refsHighlightsAppPath = "/Applications/Highlights.app"
 
         XCTAssertFalse(defaults.bool(forKey: "refsHotkeyEnabled"))
         XCTAssertEqual(defaults.string(forKey: "refsHighlightsOpenKey"), "ctrlO")
+        XCTAssertEqual(defaults.string(forKey: "refsHighlightsTabsKey"), "cmdE")
         XCTAssertEqual(
             defaults.string(forKey: "refsHighlightsAppPath"),
             "/Applications/Highlights.app"
@@ -268,10 +369,13 @@ final class RefsEntryPointsTests: XCTestCase {
         let reloaded = AppSettings(defaults: defaults)
         XCTAssertFalse(reloaded.refsHotkeyEnabled)
         XCTAssertEqual(reloaded.refsHighlightsOpenKey, .ctrlO)
+        XCTAssertEqual(reloaded.refsHighlightsTabsKey, .cmdE)
         XCTAssertEqual(reloaded.refsHighlightsAppPath, "/Applications/Highlights.app")
 
         defaults.set("bogus", forKey: "refsHighlightsOpenKey")
         XCTAssertEqual(AppSettings(defaults: defaults).refsHighlightsOpenKey, .cmdO)
+        defaults.set("bogus", forKey: "refsHighlightsTabsKey")
+        XCTAssertEqual(AppSettings(defaults: defaults).refsHighlightsTabsKey, .shiftCmdO)
     }
 
     func testVaultRootFallsBackToHomeBob() {
@@ -389,13 +493,16 @@ final class RefsEntryPointsTests: XCTestCase {
             openKey: .cmdO
         )
         let originalKey = delegate.settings.refsHighlightsOpenKey
+        let originalTabsKey = delegate.settings.refsHighlightsTabsKey
         let originalPath = delegate.settings.refsHighlightsAppPath
         delegate.settings.refsHighlightsOpenKey = .cmdO
+        delegate.settings.refsHighlightsTabsKey = .shiftCmdO
         delegate.settings.refsHighlightsAppPath = ""
         delegate.highlightsTakeover = fixture.takeover
         delegate.observeRefsSettings()
         defer {
             delegate.settings.refsHighlightsOpenKey = originalKey
+            delegate.settings.refsHighlightsTabsKey = originalTabsKey
             delegate.settings.refsHighlightsAppPath = originalPath
         }
 
@@ -404,6 +511,19 @@ final class RefsEntryPointsTests: XCTestCase {
             fixture.registrar.configuration(for: .refsHighlightsOpen),
             .highlightsCommandO
         )
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsTabs),
+            .highlightsShiftCommandO
+        )
+
+        delegate.settings.refsHighlightsTabsKey = .cmdE
+        XCTAssertEqual(
+            fixture.registrar.configuration(for: .refsHighlightsTabs),
+            .highlightsCommandE
+        )
+
+        delegate.settings.refsHighlightsTabsKey = .off
+        XCTAssertFalse(fixture.isTabsTakeoverRegistered)
 
         delegate.settings.refsHighlightsOpenKey = .ctrlO
         XCTAssertEqual(
@@ -554,7 +674,10 @@ final class RefsEntryPointsTests: XCTestCase {
         capture: CapturePanelModel,
         captureVisible: Bool,
         refsVisible: Bool,
-        log: EventLog
+        log: EventLog,
+        presentRefsWithSource: ((RefsPresentationSource) -> Void)? = nil,
+        isRefsInTabs: @escaping () -> Bool = { false },
+        setRefsTabsFilter: @escaping (Bool) -> Void = { _ in }
     ) -> BobPanelCoordinator {
         BobPanelCoordinator(
             isCaptureVisible: { captureVisible },
@@ -565,6 +688,9 @@ final class RefsEntryPointsTests: XCTestCase {
             },
             presentCapture: { log.events.append("show-capture") },
             presentRefs: { log.events.append("show-refs") },
+            presentRefsWithSource: presentRefsWithSource,
+            isRefsInTabs: isRefsInTabs,
+            setRefsTabsFilter: setRefsTabsFilter,
             hideRefs: { log.events.append("hide-refs") }
         )
     }
@@ -575,7 +701,10 @@ final class RefsEntryPointsTests: XCTestCase {
         let registrar = EntryPointsFakeRegistrar()
         var frontmost: String?
         var openKey: RefsHighlightsOpenKey
+        var tabsKey: RefsHighlightsTabsKey
         var override: String?
+        var deactivatedAppBundleID: String?
+        var deactivationSamples = 0
         var errors: [String] = []
         lazy var takeover: HighlightsTakeover = {
             let registry = HotKeyRegistry(registrar: registrar) { _ in }
@@ -584,7 +713,12 @@ final class RefsEntryPointsTests: XCTestCase {
                 registry: registry,
                 frontmostBundleID: { [weak self] in self?.frontmost },
                 openKey: { [weak self] in self?.openKey ?? .cmdO },
+                tabsKey: { [weak self] in self?.tabsKey ?? .off },
                 overrideBundleID: { [weak self] in self?.override },
+                deactivatedBundleID: { [weak self] _ in self?.deactivatedAppBundleID },
+                onHighlightsDeactivated: { [weak self] in
+                    self?.deactivationSamples += 1
+                },
                 onError: { [weak self] in self?.errors.append($0) }
             )
         }()
@@ -592,17 +726,23 @@ final class RefsEntryPointsTests: XCTestCase {
         init(
             frontmost: String?,
             openKey: RefsHighlightsOpenKey,
+            tabsKey: RefsHighlightsTabsKey,
             override: String?,
             failIDs: Set<HotKeyAction>
         ) {
             self.frontmost = frontmost
             self.openKey = openKey
+            self.tabsKey = tabsKey
             self.override = override
             registrar.failIDs = Set(failIDs.map(\.rawValue))
         }
 
         var isTakeoverRegistered: Bool {
             registrar.liveIDs.contains(HotKeyAction.refsHighlightsOpen.rawValue)
+        }
+
+        var isTabsTakeoverRegistered: Bool {
+            registrar.liveIDs.contains(HotKeyAction.refsHighlightsTabs.rawValue)
         }
 
         func waitUntil(
@@ -623,12 +763,14 @@ final class RefsEntryPointsTests: XCTestCase {
     private func makeTakeover(
         frontmost: String?,
         openKey: RefsHighlightsOpenKey,
+        tabsKey: RefsHighlightsTabsKey = .off,
         override: String? = nil,
         failIDs: Set<HotKeyAction> = []
     ) -> TakeoverFixture {
         let fixture = TakeoverFixture(
             frontmost: frontmost,
             openKey: openKey,
+            tabsKey: tabsKey,
             override: override,
             failIDs: failIDs
         )

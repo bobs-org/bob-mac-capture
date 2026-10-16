@@ -10,7 +10,10 @@ final class BobPanelCoordinator {
     private let closeCaptureRetainingDraft: () -> Void
     private let presentCapture: () -> Void
     private let presentRefs: () -> Void
+    private let presentRefsWithSource: (RefsPresentationSource) -> Void
     private let presentRefsPreservingState: () -> Void
+    private let isRefsInTabs: () -> Bool
+    private let setRefsTabsFilter: (Bool) -> Void
     private let hideRefs: () -> Void
     private var returnToCaptureAfterCopy = false
 
@@ -21,6 +24,9 @@ final class BobPanelCoordinator {
         presentCapture: @escaping () -> Void,
         presentRefs: @escaping () -> Void,
         presentRefsPreservingState: @escaping () -> Void = {},
+        presentRefsWithSource: ((RefsPresentationSource) -> Void)? = nil,
+        isRefsInTabs: @escaping () -> Bool = { false },
+        setRefsTabsFilter: @escaping (Bool) -> Void = { _ in },
         hideRefs: @escaping () -> Void
     ) {
         self.isCaptureVisible = isCaptureVisible
@@ -28,7 +34,10 @@ final class BobPanelCoordinator {
         self.closeCaptureRetainingDraft = closeCaptureRetainingDraft
         self.presentCapture = presentCapture
         self.presentRefs = presentRefs
+        self.presentRefsWithSource = presentRefsWithSource ?? { _ in presentRefs() }
         self.presentRefsPreservingState = presentRefsPreservingState
+        self.isRefsInTabs = isRefsInTabs
+        self.setRefsTabsFilter = setRefsTabsFilter
         self.hideRefs = hideRefs
     }
 
@@ -43,12 +52,12 @@ final class BobPanelCoordinator {
 
     /// Shows Refs, retaining the capture draft first when Capture
     /// is visible.
-    func showRefs() {
+    func showRefs(source: RefsPresentationSource = .library) {
         returnToCaptureAfterCopy = isCaptureVisible()
         if returnToCaptureAfterCopy {
             closeCaptureRetainingDraft()
         }
-        presentRefs()
+        presentRefsWithSource(source)
     }
 
     /// Hides Refs after a copy and restores Capture only when Refs was
@@ -76,6 +85,20 @@ final class BobPanelCoordinator {
             hideRefs()
         } else {
             showRefs()
+        }
+    }
+
+    /// Opens Refs in Tabs, enables Tabs in an already visible library, or
+    /// hides the panel when Tabs is already showing.
+    func toggleRefsTabs() {
+        guard isRefsVisible() else {
+            showRefs(source: .highlightsTabs)
+            return
+        }
+        if isRefsInTabs() {
+            hideRefs()
+        } else {
+            setRefsTabsFilter(true)
         }
     }
 }

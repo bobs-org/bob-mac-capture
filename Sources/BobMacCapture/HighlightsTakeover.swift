@@ -1,18 +1,17 @@
 import AppKit
 
-/// Registers the Highlights-frontmost takeover key
-/// (`.refsHighlightsOpen`) only while the frontmost app is Highlights —
-/// or the Settings override app — and the takeover setting is not off.
-/// Other apps never lose Command-O or Control-O. The panel is
-/// non-activating, so Highlights stays frontmost while the panel is
-/// visible and the same key closes it.
+/// Registers the Highlights-frontmost Refs keys only while Highlights or
+/// the Settings override app is frontmost.
 @MainActor
 final class HighlightsTakeover {
     private let notificationCenter: NotificationCenter
     private let registry: HotKeyRegistry
     private let frontmostBundleID: () -> String?
     private let openKey: () -> RefsHighlightsOpenKey
+    private let tabsKey: () -> RefsHighlightsTabsKey
     private let overrideBundleID: () -> String?
+    private let deactivatedBundleID: (Notification) -> String?
+    private let onHighlightsDeactivated: () -> Void
     private let onError: (String) -> Void
     private var tokens: [NSObjectProtocol] = []
 
@@ -21,14 +20,25 @@ final class HighlightsTakeover {
         registry: HotKeyRegistry,
         frontmostBundleID: @escaping () -> String?,
         openKey: @escaping () -> RefsHighlightsOpenKey,
+        tabsKey: @escaping () -> RefsHighlightsTabsKey = { .off },
         overrideBundleID: @escaping () -> String?,
+        deactivatedBundleID: @escaping (Notification) -> String? = { notification in
+            let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                as? NSRunningApplication
+            return application?.bundleIdentifier
+                ?? (notification.object as? NSRunningApplication)?.bundleIdentifier
+        },
+        onHighlightsDeactivated: @escaping () -> Void = {},
         onError: @escaping (String) -> Void
     ) {
         self.notificationCenter = notificationCenter
         self.registry = registry
         self.frontmostBundleID = frontmostBundleID
         self.openKey = openKey
+        self.tabsKey = tabsKey
         self.overrideBundleID = overrideBundleID
+        self.deactivatedBundleID = deactivatedBundleID
+        self.onHighlightsDeactivated = onHighlightsDeactivated
         self.onError = onError
     }
 
@@ -49,8 +59,16 @@ final class HighlightsTakeover {
                     forName: name,
                     object: nil,
                     queue: nil
-                ) { [weak self] _ in
-                    Task { @MainActor in self?.sync() }
+                ) { [weak self] notification in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        if name == NSWorkspace.didDeactivateApplicationNotification,
+                            self.deactivatedBundleID(notification) == self.expectedBundleID
+                        {
+                            self.onHighlightsDeactivated()
+                        }
+                        self.sync()
+                    }
                 }
             )
         }
@@ -60,41 +78,57 @@ final class HighlightsTakeover {
     func stop() {
         stopObserving()
         registry.unregister(.refsHighlightsOpen)
+        registry.unregister(.refsHighlightsTabs)
     }
 
-    /// Registers the configured takeover key when Highlights (or the
-    /// override app) is frontmost and the setting is not off, and
-    /// unregisters otherwise. A registration failure is reported,
-    /// never thrown.
+    /// Syncs both takeover keys with the current settings.
     func sync() {
-        sync(key: openKey(), overrideAppBundleID: overrideBundleID())
-    }
-
-    /// Re-syncs with an explicit key and override app path, so Settings
-    /// sinks apply the values they receive instead of re-reading state
-    /// that `@Published` has not published yet.
-    func sync(key: RefsHighlightsOpenKey, appPath: String) {
         sync(
-            key: key,
-            overrideAppBundleID: AppDelegate.highlightsOverrideBundleID(path: appPath)
+            openKey: openKey(),
+            tabsKey: tabsKey(),
+            overrideBundleID: overrideBundleID()
         )
     }
 
-    private func sync(key: RefsHighlightsOpenKey, overrideAppBundleID: String?) {
-        guard let configuration = key.configuration else {
-            registry.unregister(.refsHighlightsOpen)
-            return
-        }
-        let expected = overrideAppBundleID ?? HighlightsLocator.bundleIdentifier
+    /// Re-syncs with explicit settings values from the `@Published` sinks.
+    func sync(
+        openKey: RefsHighlightsOpenKey,
+        tabsKey: RefsHighlightsTabsKey,
+        appPath: String
+    ) {
+        sync(
+            openKey: openKey,
+            tabsKey: tabsKey,
+            overrideBundleID: AppDelegate.highlightsOverrideBundleID(path: appPath)
+        )
+    }
+
+    private func sync(
+        openKey: RefsHighlightsOpenKey,
+        tabsKey: RefsHighlightsTabsKey,
+        overrideBundleID: String?
+    ) {
+        let expected = overrideBundleID ?? HighlightsLocator.bundleIdentifier
         guard frontmostBundleID() == expected else {
             registry.unregister(.refsHighlightsOpen)
+            registry.unregister(.refsHighlightsTabs)
+            return
+        }
+        sync(action: .refsHighlightsOpen, configuration: openKey.configuration)
+        sync(action: .refsHighlightsTabs, configuration: tabsKey.configuration)
+    }
+
+    private var expectedBundleID: String {
+        overrideBundleID() ?? HighlightsLocator.bundleIdentifier
+    }
+
+    private func sync(action: HotKeyAction, configuration: HotKeyConfiguration?) {
+        guard let configuration else {
+            registry.unregister(action)
             return
         }
         do {
-            try registry.register(
-                .refsHighlightsOpen,
-                configuration: configuration
-            )
+            try registry.register(action, configuration: configuration)
         } catch {
             onError("Refs hotkey conflict: \(error)")
         }

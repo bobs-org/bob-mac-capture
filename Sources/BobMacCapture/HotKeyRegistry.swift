@@ -35,6 +35,18 @@ struct HotKeyConfiguration: Equatable {
         modifiers: UInt32(controlKey),
         displayName: "Control-O"
     )
+
+    static let highlightsShiftCommandO = HotKeyConfiguration(
+        keyCode: UInt32(kVK_ANSI_O),
+        modifiers: UInt32(cmdKey | shiftKey),
+        displayName: "Shift-Command-O"
+    )
+
+    static let highlightsCommandE = HotKeyConfiguration(
+        keyCode: UInt32(kVK_ANSI_E),
+        modifiers: UInt32(cmdKey),
+        displayName: "Command-E"
+    )
 }
 
 protocol HotKeyRegistering {
@@ -83,6 +95,7 @@ enum HotKeyAction: UInt32, CaseIterable {
     case capture = 1
     case refs = 2
     case refsHighlightsOpen = 3
+    case refsHighlightsTabs = 4
 }
 
 /// One Carbon event handler routing every Bob hotkey by `EventHotKeyID`.
