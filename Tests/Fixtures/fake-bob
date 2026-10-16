@@ -120,6 +120,43 @@ template_no_rows_draft=$'@@template:\nRecord {0} @work:{1}\n\n'
 template_arity_draft=$'@@template:\nRecord {0} @work:{1}\n\nAcme abc extra'
 
 case "${command}" in
+  capture-templates)
+    if [[ "${FAKE_BOB_TEMPLATES_UNSUPPORTED:-}" == "1" ]]; then
+      printf "error: unrecognized subcommand 'capture-templates'\n\nUsage: bob [COMMAND]\n" >&2
+      exit 2
+    fi
+    template_command="${1:-list}"
+    if [[ "${template_command}" == "--format" || "${template_command}" == "-f" ]]; then
+      template_command="list"
+    fi
+    case "${template_command}" in
+      list)
+        template_fixture="${FAKE_BOB_TEMPLATES_LIST_FIXTURE:-capture-templates-list-populated.json}"
+        cat "${fixtures_dir}/${template_fixture}"
+        ;;
+      save)
+        template_fixture="${FAKE_BOB_TEMPLATES_SAVE_FIXTURE:-capture-templates-save-new.json}"
+        cat "${fixtures_dir}/${template_fixture}"
+        exit "${FAKE_BOB_TEMPLATES_EXIT:-0}"
+        ;;
+      delete)
+        template_fixture="${FAKE_BOB_TEMPLATES_DELETE_FIXTURE:-capture-templates-delete.json}"
+        cat "${fixtures_dir}/${template_fixture}"
+        ;;
+      clear)
+        template_fixture="${FAKE_BOB_TEMPLATES_CLEAR_FIXTURE:-capture-templates-clear.json}"
+        cat "${fixtures_dir}/${template_fixture}"
+        ;;
+      show)
+        template_fixture="${FAKE_BOB_TEMPLATES_SHOW_FIXTURE:-capture-templates-show.json}"
+        cat "${fixtures_dir}/${template_fixture}"
+        ;;
+      *)
+        printf "error: unrecognized subcommand '%s'\n" "${template_command}" >&2
+        exit 2
+        ;;
+    esac
+    ;;
   capture-parse)
     draft="${*: -1}"
     if [[ "${draft}" == "${template_example_draft}" ]]; then
@@ -3574,7 +3611,21 @@ JSON
       fi
     done
     draft="${*: -1}"
-    if [[ "${draft}" == "${template_example_draft}" ]]; then
+    capture_args=("$@")
+    for ((arg_index = 0; arg_index < ${#capture_args[@]}; arg_index++)); do
+      if [[ "${capture_args[arg_index]}" == "--template-origin" ]]; then
+        ((arg_index += 1))
+        continue
+      fi
+      if [[ "${capture_args[arg_index]}" == "--" ]]; then
+        draft="${capture_args[arg_index + 1]:-}"
+        break
+      fi
+    done
+    if [[ -n "${FAKE_BOB_CAPTURE_TEMPLATE_FIXTURE:-}" ]]; then
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/g" \
+        "${fixtures_dir}/${FAKE_BOB_CAPTURE_TEMPLATE_FIXTURE}"
+    elif [[ "${draft}" == "${template_example_draft}" ]]; then
       cat "${fixtures_dir}/capture-template-example.json"
     elif [[ "${draft}" == "${template_one_row_draft}" ]]; then
       cat "${fixtures_dir}/capture-template-one-row.json"
