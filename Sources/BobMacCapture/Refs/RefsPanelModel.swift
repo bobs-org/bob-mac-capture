@@ -414,6 +414,10 @@ public final class RefsPanelModel: ObservableObject {
     /// Hidden-panel Today-link outcomes use system notifications.
     public var todayLinkNotifier: (RefsTodayLinkResponse, String) -> Void = { _, _ in }
     public var todayLinkFailureNotifier: (String, String?) -> Void = { _, _ in }
+    public var todayLinkBeep: () -> Void = { NSSound.beep() }
+    public var todayLinkPreviewDebounce: @Sendable () async throws -> Void = {
+        try await Task.sleep(for: .milliseconds(90))
+    }
 
     private let library: RefsLibrary
     private let opener: RefsOpening
@@ -458,14 +462,20 @@ public final class RefsPanelModel: ObservableObject {
     private var copyMessageTask: Task<Void, Never>?
     private var renameTask: Task<Void, Never>?
     private var todayLinkSequence: UInt64 = 0
+    private var todayLinkListingSequence: UInt64 = 0
+    private var todayLinkListingTask: Task<Void, Never>?
+    private var todayLinkPreviewTask: Task<Void, Never>?
     private var todayLinkTask: Task<Void, Never>?
+    private var todayLinkOverlaySequence: UInt64 = 0
     private var selectionAtScanStart: String?
     private var pendingScanBanner: RefsBanner?
     private var scanNoticeSeen = false
 
     private struct TodayLinkOverlay {
+        let writeGeneration: UInt64
         let name: String
         var refreshGeneration: UInt64
+        var snapshotGeneration: UInt64
         var refreshPending: Bool
     }
 
@@ -1289,7 +1299,8 @@ public final class RefsPanelModel: ObservableObject {
     public func openCopyCard(
         optionHeld: Bool = NSEvent.modifierFlags.contains(.option)
     ) {
-        guard !isRenaming else { return }
+        guard !isRenaming, !isLinkingToday else { return }
+        closeTodayLinkCard()
         closeRenameCard()
         closeCopyCard()
         guard let item = selectedItem,
@@ -1341,13 +1352,14 @@ public final class RefsPanelModel: ObservableObject {
     /// and note path stay frozen until the operation is cancelled or
     /// Bob returns a result.
     public func openRenameCard() {
-        guard !isRenaming,
+        guard !isRenaming, !isLinkingToday,
               let item = selectedItem,
               listing.orderedIDs.contains(item.id),
               !unavailableIDs.contains(item.id)
         else {
             return
         }
+        closeTodayLinkCard()
         closeCopyCard()
         closeRenameCard()
         renameStatus = nil
@@ -1531,7 +1543,9 @@ public final class RefsPanelModel: ObservableObject {
     /// A click commits the row immediately, matching the Copy card's
     /// click-to-act behavior and skipping an unnecessary preview roundtrip.
     public func todayLinkRowTapped(_ index: Int) {
-        guard var card = todayLinkCard, card.phase == .ready else { return }
+        guard var card = todayLinkCard,
+              card.phase.canSelectDestination
+        else { return }
         _ = card.select(index: index)
         let effect = card.handle(.submit)
         todayLinkCard = card
@@ -1541,6 +1555,13 @@ public final class RefsPanelModel: ObservableObject {
     public func handleTodayLinkCardKey(_ command: RefsTodayLinkKeyCommand) {
         guard var card = todayLinkCard else { return }
         let effect = card.handle(command)
+        if effect == .none,
+           command == .submit,
+           card.phase == .ready,
+           card.selector == nil
+        {
+            todayLinkBeep()
+        }
         todayLinkCard = card
         applyTodayLinkEffect(effect, token: todayLinkSequence)
     }
@@ -1548,31 +1569,46 @@ public final class RefsPanelModel: ObservableObject {
     private func closeTodayLinkCard() {
         guard !isLinkingToday else { return }
         todayLinkSequence &+= 1
-        todayLinkTask?.cancel()
-        todayLinkTask = nil
+        invalidateTodayLinkListing()
+        invalidateTodayLinkPreview()
         todayLinkCard = nil
         todayLinkCardGeneration &+= 1
     }
 
     private func loadTodayLinkListing(token: UInt64) {
-        guard let card = todayLinkCard else { return }
+        guard let card = todayLinkCard,
+              card.phase == .loading || card.phase == .reloading
+        else { return }
+        invalidateTodayLinkListing()
+        let requestID = todayLinkListingSequence
         let path = card.notePath
-        Task { [weak self, library] in
+        todayLinkListingTask = Task { [weak self, library] in
             do {
                 let response = try await library.linkToToday(
                     notePath: path, selector: .automatic, dryRun: true
                 )
-                self?.applyTodayLinkListing(response, token: token)
+                guard !Task.isCancelled else { return }
+                self?.applyTodayLinkListing(response, token: token, requestID: requestID)
             } catch {
+                guard !Task.isCancelled else { return }
                 self?.failTodayLinkListing(
-                    RefsTodayLinkProblemMapping.transportProblem(for: error), token: token
+                    RefsTodayLinkProblemMapping.transportProblem(for: error),
+                    token: token,
+                    requestID: requestID
                 )
             }
         }
     }
 
-    private func applyTodayLinkListing(_ response: RefsTodayLinkResponse, token: UInt64) {
-        guard token == todayLinkSequence, var card = todayLinkCard else { return }
+    private func applyTodayLinkListing(
+        _ response: RefsTodayLinkResponse, token: UInt64, requestID: UInt64
+    ) {
+        guard token == todayLinkSequence,
+              requestID == todayLinkListingSequence,
+              var card = todayLinkCard,
+              card.phase != .running
+        else { return }
+        todayLinkListingTask = nil
         let effect = card.applyListing(response)
         todayLinkCard = card
         if case .refused(let message, let hint) = card.phase, !panelIsVisible() {
@@ -1581,8 +1617,15 @@ public final class RefsPanelModel: ObservableObject {
         applyTodayLinkEffect(effect, token: token)
     }
 
-    private func failTodayLinkListing(_ problem: RefsTodayLinkFailure, token: UInt64) {
-        guard token == todayLinkSequence, var card = todayLinkCard else { return }
+    private func failTodayLinkListing(
+        _ problem: RefsTodayLinkFailure, token: UInt64, requestID: UInt64
+    ) {
+        guard token == todayLinkSequence,
+              requestID == todayLinkListingSequence,
+              var card = todayLinkCard,
+              card.phase != .running
+        else { return }
+        todayLinkListingTask = nil
         let effect = card.fail(problem)
         todayLinkCard = card
         if !panelIsVisible() {
@@ -1598,6 +1641,7 @@ public final class RefsPanelModel: ObservableObject {
         case .cancel:
             closeTodayLinkCard()
         case .reload:
+            invalidateTodayLinkPreview()
             loadTodayLinkListing(token: token)
         case .preview(let selector):
             guard let card = todayLinkCard,
@@ -1606,14 +1650,22 @@ public final class RefsPanelModel: ObservableObject {
             else {
                 return
             }
+            invalidateTodayLinkPreview()
             let path = card.notePath
-            Task { [weak self, library] in
+            let debounce = todayLinkPreviewDebounce
+            todayLinkPreviewTask = Task { [weak self, library] in
                 do {
+                    try await debounce()
+                    try Task.checkCancellation()
                     let response = try await library.linkToToday(
                         notePath: path, selector: selector, dryRun: true
                     )
+                    guard !Task.isCancelled else { return }
                     self?.applyTodayLinkPreview(response, request: request, token: token)
+                } catch is CancellationError {
+                    return
                 } catch {
+                    guard !Task.isCancelled else { return }
                     self?.failTodayLinkPreview(
                         RefsTodayLinkProblemMapping.transportProblem(for: error),
                         request: request,
@@ -1624,7 +1676,9 @@ public final class RefsPanelModel: ObservableObject {
         case .submit(let selector):
             guard let card = todayLinkCard else { return }
             let path = card.notePath
-            todayLinkTask?.cancel()
+            invalidateTodayLinkListing()
+            invalidateTodayLinkPreview()
+            guard todayLinkTask == nil else { return }
             todayLinkTask = Task { [weak self, library] in
                 do {
                     let response = try await library.linkToToday(
@@ -1668,6 +1722,17 @@ public final class RefsPanelModel: ObservableObject {
         applyTodayLinkEffect(effect, token: token)
     }
 
+    private func invalidateTodayLinkListing() {
+        todayLinkListingSequence &+= 1
+        todayLinkListingTask?.cancel()
+        todayLinkListingTask = nil
+    }
+
+    private func invalidateTodayLinkPreview() {
+        todayLinkPreviewTask?.cancel()
+        todayLinkPreviewTask = nil
+    }
+
     private func finishTodayLink(_ response: RefsTodayLinkResponse, token: UInt64) {
         guard token == todayLinkSequence, let card = todayLinkCard else { return }
         todayLinkTask = nil
@@ -1686,10 +1751,17 @@ public final class RefsPanelModel: ObservableObject {
         let itemID = card.frozenItemID
         let title = card.title
         let overlayGeneration = library.todayRefreshGeneration
+        let snapshotGeneration = library.snapshotRefreshGeneration
+        var overlayWriteGeneration: UInt64?
         if toast.style != .guarded, let linked = response.pomodoros.first(where: \.linked) {
+            todayLinkOverlaySequence &+= 1
+            let writeGeneration = todayLinkOverlaySequence
+            overlayWriteGeneration = writeGeneration
             todayLinkOverlay[itemID] = TodayLinkOverlay(
+                writeGeneration: writeGeneration,
                 name: linked.name ?? "",
                 refreshGeneration: overlayGeneration,
+                snapshotGeneration: snapshotGeneration,
                 refreshPending: true
             )
         }
@@ -1706,20 +1778,31 @@ public final class RefsPanelModel: ObservableObject {
         } else {
             todayLinkNotifier(response, title)
         }
-        Task { [weak self, library] in
-            let refreshed = await library.refreshTodayAndWait(reason: .captureSuccess)
-            guard let self,
+        let inspectorLoader = inspectorLoader
+        Task { [weak self, library, inspectorLoader] in
+            await inspectorLoader.discard(id: itemID)
+            let refreshed = await library.refreshAndWait(reason: .todayLink)
+            guard let overlayWriteGeneration,
+                  let self,
                   let overlay = self.todayLinkOverlay[itemID],
-                  overlay.refreshGeneration == overlayGeneration
+                  overlay.writeGeneration == overlayWriteGeneration
             else {
                 return
             }
-            if refreshed {
+            let todayIsFresh = refreshed.today
+                && library.todayRefreshGeneration > overlay.refreshGeneration
+            let snapshotIsFresh = refreshed.snapshot
+                && library.snapshotRefreshGeneration > overlay.snapshotGeneration
+            if todayIsFresh {
                 self.todayLinkOverlay.removeValue(forKey: itemID)
             } else {
                 self.todayLinkOverlay[itemID] = TodayLinkOverlay(
+                    writeGeneration: overlay.writeGeneration,
                     name: overlay.name,
                     refreshGeneration: library.todayRefreshGeneration,
+                    snapshotGeneration: snapshotIsFresh
+                        ? library.snapshotRefreshGeneration
+                        : overlay.snapshotGeneration,
                     refreshPending: false
                 )
             }
@@ -1731,6 +1814,7 @@ public final class RefsPanelModel: ObservableObject {
         todayLinkTask = nil
         let effect = card.fail(problem)
         todayLinkCard = card
+        todayLinkCardGeneration &+= 1
         if !panelIsVisible() {
             todayLinkFailureNotifier(problem.message, problem.hint)
         }

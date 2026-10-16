@@ -7,7 +7,8 @@ import RefsCore
 
 /// Why the library refreshed: launch, the vault watcher, a panel open that
 /// found a stale snapshot, a manual request, wake from sleep, a capture
-/// success (Today only), the 10-minute Today timer, or Recheck Bob.
+/// success (Today only), a Today-link success (both lanes), the 10-minute
+/// Today timer, or Recheck Bob.
 public enum RefsRefreshReason: String, Sendable {
     case launch
     case watcher
@@ -15,6 +16,7 @@ public enum RefsRefreshReason: String, Sendable {
     case manual
     case wake
     case captureSuccess
+    case todayLink
     case timer
     case recheck
     case scan
@@ -141,6 +143,8 @@ public final class RefsLibrary: ObservableObject {
     /// Increments after each successful Today refresh, so optimistic
     /// Today pills can yield to the refreshed Bob snapshot.
     @Published public private(set) var todayRefreshGeneration: UInt64 = 0
+    /// Increments after each successful reference snapshot refresh.
+    @Published public private(set) var snapshotRefreshGeneration: UInt64 = 0
 
     /// Seconds between background Today refreshes.
     public static let todayRefreshInterval: TimeInterval = 600
@@ -157,7 +161,7 @@ public final class RefsLibrary: ObservableObject {
     private var today = RefsToday()
     private var openEvents: [RefsOpenEvent] = []
 
-    private var snapshotTask: Task<Void, Never>?
+    private var snapshotTask: Task<Bool, Never>?
     private var snapshotFollowUp = false
     private var todayTask: Task<Bool, Never>?
     private var todayFollowUp = false
@@ -287,11 +291,17 @@ public final class RefsLibrary: ObservableObject {
     @discardableResult
     public func refreshTodayAndWait(reason: RefsRefreshReason) async -> Bool {
         refreshToday(reason: reason)
-        var succeeded = false
-        while let current = todayTask {
-            succeeded = await current.value
-        }
-        return succeeded
+        return await waitForTodayPasses()
+    }
+
+    /// Refreshes both the task-detail snapshot and the Today ledger, waiting
+    /// through one queued follow-up on each coalescing lane.
+    public func refreshAndWait(reason: RefsRefreshReason) async -> (snapshot: Bool, today: Bool) {
+        refreshSnapshot(reason: reason)
+        refreshToday(reason: reason)
+        let snapshotSucceeded = await waitForSnapshotPasses()
+        let todaySucceeded = await waitForTodayPasses()
+        return (snapshotSucceeded, todaySucceeded)
     }
 
     /// Runs `bob ref scan -w -f json` on its own `refs-scan` lane.
@@ -491,10 +501,29 @@ public final class RefsLibrary: ObservableObject {
             snapshotFollowUp = true
             return
         }
-        snapshotTask = Task { [weak self] in await self?.runSnapshotPass(reason: reason) }
+        snapshotTask = Task { [weak self] in
+            guard let self else { return false }
+            return await self.runSnapshotPass(reason: reason)
+        }
     }
 
-    private func runSnapshotPass(reason: RefsRefreshReason) async {
+    private func waitForSnapshotPasses() async -> Bool {
+        var succeeded = false
+        while let current = snapshotTask {
+            succeeded = await current.value
+        }
+        return succeeded
+    }
+
+    private func waitForTodayPasses() async -> Bool {
+        var succeeded = false
+        while let current = todayTask {
+            succeeded = await current.value
+        }
+        return succeeded
+    }
+
+    private func runSnapshotPass(reason: RefsRefreshReason) async -> Bool {
         defer {
             snapshotTask = nil
             if snapshotFollowUp {
@@ -503,7 +532,7 @@ public final class RefsLibrary: ObservableObject {
             }
         }
         guard !Task.isCancelled else {
-            return
+            return false
         }
         refreshState = .refreshing
         guard let fetcher else {
@@ -512,7 +541,7 @@ public final class RefsLibrary: ObservableObject {
             } else {
                 refreshState = .idle
             }
-            return
+            return false
         }
         let token = CaptureSignpost.begin("refs-refresh")
         defer { CaptureSignpost.end(token) }
@@ -550,13 +579,16 @@ public final class RefsLibrary: ObservableObject {
             lastSuccessAt = now()
             refreshState = .idle
             hasSnapshot = true
+            snapshotRefreshGeneration &+= 1
             snapshotStore.save(snapshot: next, today: today)
             // The git-date lane runs after the snapshot publishes, so the
             // first paint never waits for `-g` and a `-g` failure cannot
             // take a good snapshot off the screen.
             refreshGitDates()
+            return true
         } catch {
             refreshState = .failed(message: Self.boundedMessage(for: error), at: now())
+            return false
         }
     }
 

@@ -22,6 +22,7 @@ public enum RefsTodayLinkPresentation {
   public static let untitled = "Untitled Pomodoro"
   public static let linking = "Linking…"
   public static let loading = "Loading Pomodoros…"
+  public static let reloading = "Refreshing Pomodoros…"
   public static let emptyTitle = "No open Pomodoros today"
   public static let emptyHint = "Type a name to plan one"
   public static let newPill = "New"

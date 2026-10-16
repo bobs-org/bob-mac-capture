@@ -11,12 +11,15 @@ struct RefsTodayLinkCardView: View {
     let card: RefsTodayLinkCard
     let focusSequence: UInt64
     var previewMode = false
+    var fixedNow: Date? = nil
     let onQueryChange: (String) -> Void
     let onRowTap: (Int) -> Void
 
     @Environment(\.colorSchemeContrast) private var contrast
     @State private var now = Date()
     private let minute = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+
+    private var displayNow: Date { fixedNow ?? now }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -35,7 +38,7 @@ struct RefsTodayLinkCardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Link reference to Today")
-        .onReceive(minute) { now = $0 }
+        .onReceive(minute) { if fixedNow == nil { now = $0 } }
     }
 
     private var header: some View {
@@ -129,7 +132,7 @@ struct RefsTodayLinkCardView: View {
     @ViewBuilder
     private var rows: some View {
         switch card.phase {
-        case .loading:
+        case .loading, .reloading:
             VStack(spacing: 4) {
                 ForEach(0..<3, id: \.self) { _ in
                     HStack(spacing: 9) {
@@ -142,7 +145,11 @@ struct RefsTodayLinkCardView: View {
                     .frame(height: 38)
                 }
             }
-            .accessibilityLabel(RefsTodayLinkPresentation.loading)
+            .accessibilityLabel(
+                card.phase == .reloading
+                    ? RefsTodayLinkPresentation.reloading
+                    : RefsTodayLinkPresentation.loading
+            )
         case .ready, .running, .failed:
             if card.visiblePomodoros.isEmpty, !card.offersCreate, card.query.isEmpty {
                 VStack(alignment: .leading, spacing: 5) {
@@ -176,7 +183,7 @@ struct RefsTodayLinkCardView: View {
     private func pomodoroRow(_ row: RefsTodayLinkPomodoro, index: Int) -> some View {
         let selected = card.selectedIndex == index
         let label = RefsTodayLinkPresentation.rowAccessibilityLabel(
-            row, selected: selected, now: now
+            row, selected: selected, now: displayNow
         )
         return HStack(spacing: 8) {
             progressGlyph(row)
@@ -190,7 +197,7 @@ struct RefsTodayLinkCardView: View {
                     Spacer(minLength: 0)
                     if selected { RefsReturnKeycap() }
                 }
-                Text(RefsTodayLinkPresentation.rowMeta(row, now: now))
+                Text(RefsTodayLinkPresentation.rowMeta(row, now: displayNow))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -242,7 +249,7 @@ struct RefsTodayLinkCardView: View {
         ZStack {
             Circle()
                 .stroke(.secondary.opacity(0.24), lineWidth: 2)
-            if row.running, let fraction = RefsTodayLinkPresentation.progress(row, now: now) {
+            if row.running, let fraction = RefsTodayLinkPresentation.progress(row, now: displayNow) {
                 Circle()
                     .trim(from: 0, to: fraction)
                     .stroke(Color.pink, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
@@ -329,6 +336,10 @@ struct RefsTodayLinkCardView: View {
                 }
             }
             .accessibilityElement(children: .combine)
+        case .reloading:
+            Text(RefsTodayLinkPresentation.reloading)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         case .loading, .ready, .refused:
             EmptyView()
         }

@@ -831,7 +831,11 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
   var todayLinkResponse = RefsTodayLinkResponse()
   var todayLinkError: Error?
   var todayLinkDelayNanoseconds: UInt64 = 0
+  var todayLinkHandler: (@Sendable (String, RefsTodayLinkSelector, Bool) async throws -> RefsTodayLinkResponse)?
   var listResponse = RefsListResponse(schemaVersion: 1)
+  var listError: Error?
+  var planResponse = RefsPlanResponse(schemaVersion: 2)
+  var planError: Error?
   var showDelayNanoseconds: UInt64 = 50_000_000
   var renameDelayNanoseconds: UInt64 = 0
   /// When set, the returned row uses this path instead of the
@@ -841,11 +845,13 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
   var showResponse: RefsShowResponse?
 
   func list(gitDates: Bool) async throws -> RefsListResponse {
-    listResponse
+    if let listError { throw listError }
+    return listResponse
   }
 
   func plan() async throws -> RefsPlanResponse {
-    RefsPlanResponse(schemaVersion: 2)
+    if let planError { throw planError }
+    return planResponse
   }
 
   var scanResult: RefsScanResponse = RefsScanResponse(schemaVersion: 1)
@@ -879,6 +885,9 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
     lock.withLock { todayLinkCalls.append((notePath, selector, dryRun)) }
     if todayLinkDelayNanoseconds > 0 {
       try await Task.sleep(nanoseconds: todayLinkDelayNanoseconds)
+    }
+    if let handler = lock.withLock({ todayLinkHandler }) {
+      return try await handler(notePath, selector, dryRun)
     }
     if let todayLinkError { throw todayLinkError }
     return lock.withLock {

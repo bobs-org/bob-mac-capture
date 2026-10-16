@@ -21,6 +21,17 @@ final class RefsTodayLinkTests: XCTestCase {
     XCTAssertEqual(error.error?.code, "multiple_running")
     XCTAssertNil(error.capture)
     XCTAssertEqual(error.pomodoros.count, 2)
+
+    for (name, code) in [
+      ("no-reading-task", "no_reading_task"),
+      ("stale-pomodoro", "stale_pomodoro"),
+      ("reading-task-closed", "reading_task_closed"),
+    ] {
+      let refusal = try fixture(name)
+      XCTAssertEqual(refusal.ok, false)
+      XCTAssertEqual(refusal.error?.code, code)
+      XCTAssertNil(refusal.capture)
+    }
   }
 
   func testOptionalAndUnknownFields() throws {
@@ -189,8 +200,20 @@ final class RefsTodayLinkTests: XCTestCase {
     card.handle(.submit)
     XCTAssertEqual(card.fail(problem("stale_pomodoro")), .reload)
     XCTAssertEqual(card.query, "reading")
+    XCTAssertEqual(card.phase, .reloading)
+    XCTAssertEqual(card.pomodoros, [])
+    XCTAssertEqual(card.handle(.submit), .none)
+    XCTAssertEqual(card.editQuery("rea"), .none)
+    XCTAssertEqual(card.query, "rea")
     XCTAssertEqual(card.applyListing(try fixture("linked")), .preview(.entry(ref: "5:ddf7159c")))
-    XCTAssertEqual(card.query, "reading")
+    XCTAssertEqual(card.query, "rea")
+    XCTAssertEqual(card.handle(.submit), .submit(.entry(ref: "5:ddf7159c")))
+
+    var cancellableReload = makeCard()
+    cancellableReload.applyListing(try fixture("listing"))
+    cancellableReload.handle(.submit)
+    XCTAssertEqual(cancellableReload.fail(problem("stale_pomodoro")), .reload)
+    XCTAssertEqual(cancellableReload.handle(.cancel), .cancel)
   }
 
   func testKeyMapAndIME() {

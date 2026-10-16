@@ -3,10 +3,23 @@ import Foundation
 
 public enum RefsTodayLinkPhase: Equatable, Sendable {
   case loading
+  case reloading
   case ready
   case refused(message: String, hint: String?)
   case running
   case failed(message: String, hint: String?)
+
+  public var canSelectDestination: Bool {
+    switch self {
+    case .ready, .failed: return true
+    default: return false
+    }
+  }
+
+  public var isFailed: Bool {
+    if case .failed = self { return true }
+    return false
+  }
 }
 
 public enum RefsTodayLinkCardEffect: Equatable, Sendable {
@@ -134,7 +147,8 @@ public struct RefsTodayLinkCard: Equatable, Sendable {
 
   public var selector: RefsTodayLinkSelector? {
     if Self.canonicalName(query).isEmpty && !hasNavigated {
-      return defaultProblem == nil ? .automatic : nil
+      return (phase == .loading || phase == .ready) && defaultProblem == nil
+        ? .automatic : nil
     }
     if let row = selectedPomodoro { return .entry(ref: row.ref) }
     return selectsCreate ? .exactName(query) : nil
@@ -176,12 +190,14 @@ public struct RefsTodayLinkCard: Equatable, Sendable {
     query = value
     clearFailure()
     resetSelection()
-    return phase == .loading ? invalidateAndReturnNone() : requestPreview()
+    return phase == .loading || phase == .reloading
+      ? invalidateAndReturnNone() : requestPreview()
   }
 
   @discardableResult
   public mutating func select(index: Int) -> RefsTodayLinkCardEffect {
-    guard canEdit, phase != .loading, (0..<rowCount).contains(index) else { return .none }
+    guard canEdit, phase.canSelectDestination, (0..<rowCount).contains(index)
+    else { return .none }
     clearFailure()
     selectedIndex = index
     hasNavigated = true
@@ -197,7 +213,7 @@ public struct RefsTodayLinkCard: Equatable, Sendable {
       invalidatePreview()
       return .cancel
     case .move(let delta):
-      guard canEdit, phase != .loading, rowCount > 0 else { return .none }
+      guard canEdit, phase.canSelectDestination, rowCount > 0 else { return .none }
       let origin = selectedIndex ?? (delta >= 0 ? -1 : 0)
       return select(index: ((origin + delta) % rowCount + rowCount) % rowCount)
     case .submit, .submitExactName:
@@ -206,6 +222,8 @@ public struct RefsTodayLinkCard: Equatable, Sendable {
       if phase == .loading {
         guard command == .submit, Self.canonicalName(query).isEmpty else { return .none }
         chosen = .automatic
+      } else if !phase.canSelectDestination {
+        return .none
       } else if command == .submitExactName {
         chosen = Self.canonicalName(query).isEmpty ? nil : .exactName(query)
       } else {
@@ -222,7 +240,7 @@ public struct RefsTodayLinkCard: Equatable, Sendable {
   public mutating func applyPreview(
     _ response: RefsTodayLinkResponse, for request: RefsTodayLinkPreviewRequest
   ) -> Bool {
-    guard phase != .running, previewRequest == request, selector == request.selector else {
+    guard phase == .ready, previewRequest == request, selector == request.selector else {
       return false
     }
     preview = response
@@ -236,10 +254,16 @@ public struct RefsTodayLinkCard: Equatable, Sendable {
   public mutating func fail(_ problem: RefsTodayLinkFailure) -> RefsTodayLinkCardEffect {
     let wasLoading = phase == .loading
     failure = problem
-    phase =
-      wasLoading
-      ? .refused(message: problem.message, hint: problem.hint)
-      : .failed(message: problem.message, hint: problem.hint)
+    if problem.code == "stale_pomodoro" {
+      phase = .reloading
+      pomodoros = []
+      selectedIndex = nil
+      defaultProblem = nil
+    } else {
+      phase = wasLoading
+        ? .refused(message: problem.message, hint: problem.hint)
+        : .failed(message: problem.message, hint: problem.hint)
+    }
     invalidatePreview()
     return problem.code == "stale_pomodoro" ? .reload : .none
   }

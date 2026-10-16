@@ -76,6 +76,482 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertEqual(completed?.1, "Rename test reference")
     }
 
+    func testDelayedListingFailureCannotUnlockFastPathWrite() async throws {
+        let path = "ref/blogs/today_link_test.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "today_link_test")]
+        )
+        let gate = TodayLinkResponseGate()
+        fetcher.todayLinkHandler = { _, _, _ in try await gate.respond() }
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [path])
+        harness.model.panelIsVisible = { true }
+        var completions = 0
+        harness.model.todayLinkCompletion = { _, _ in completions += 1 }
+
+        harness.model.openTodayLinkCard()
+        await gate.waitForRequests(1)
+        harness.model.handleTodayLinkCardKey(.submit)
+        await gate.waitForRequests(2)
+        await gate.resolve(0, with: .failure(RefsTestError.boom))
+        await gate.waitForCompletion(0)
+        await Task.yield()
+        XCTAssertEqual(harness.model.todayLinkCard?.phase, .running)
+        XCTAssertTrue(harness.model.perform(.escape))
+        harness.model.handleTodayLinkCardKey(.cancel)
+        XCTAssertEqual(harness.model.todayLinkCard?.phase, .running)
+
+        await gate.resolve(1, with: .success(try todayLinkFixture("refs-today-linked.json")))
+        await harness.waitForModel { $0.todayLinkCard == nil }
+        XCTAssertEqual(fetcher.todayLinkCalls.filter { !$0.dryRun }.count, 1)
+        XCTAssertEqual(completions, 1)
+    }
+
+    func testStaleReloadBlocksOldChoicesUntilFreshRowsArrive() async throws {
+        let path = "ref/blogs/today_link_test.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "today_link_test")]
+        )
+        fetcher.todayLinkResponses = [
+            try todayLinkFixture("refs-today-listing.json"),
+            try todayLinkFixture("refs-today-stale-pomodoro.json"),
+            try todayLinkFixture("refs-today-listing.json"),
+        ]
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [path])
+        harness.model.todayLinkPreviewDebounce = {}
+        harness.model.openTodayLinkCard()
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+        harness.model.selectTodayLinkRow(1)
+        harness.model.handleTodayLinkCardKey(.submit)
+        await harness.waitForModel { $0.todayLinkCard?.phase == .reloading }
+        XCTAssertEqual(harness.model.todayLinkCard?.query, "")
+        XCTAssertEqual(harness.model.todayLinkCard?.pomodoros, [])
+        harness.model.editTodayLinkQuery("rea")
+        harness.model.handleTodayLinkCardKey(.submit)
+        XCTAssertEqual(harness.model.todayLinkCard?.phase, .reloading)
+        XCTAssertEqual(fetcher.todayLinkCalls.filter { !$0.dryRun }.count, 1)
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+        XCTAssertEqual(harness.model.todayLinkCard?.query, "rea")
+        XCTAssertEqual(harness.model.todayLinkCard?.selectedPomodoro?.name, "READING")
+        harness.model.handleTodayLinkCardKey(.submit)
+        await harness.waitForModel { $0.todayLinkCard?.phase == .running }
+        XCTAssertEqual(fetcher.todayLinkCalls.last?.selector, .entry(ref: "5:ddf7159c"))
+    }
+
+    func testBobRefusalFixturesStayRefusedWithoutSubmittingWrites() async throws {
+        let path = "ref/blogs/today_link_test.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "today_link_test")]
+        )
+        fetcher.todayLinkResponses = [
+            try todayLinkFixture("refs-today-no-reading-task.json"),
+            try todayLinkFixture("refs-today-reading-task-closed.json"),
+        ]
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [path])
+
+        harness.model.openTodayLinkCard()
+        await harness.waitForModel { $0.todayLinkCard?.phase == .refused(
+            message: "reference ref/papers/attention.md has no reading task",
+            hint: "legacy trackerless refs cannot be planned for today"
+        ) }
+        XCTAssertTrue(harness.model.perform(.escape))
+
+        harness.model.openTodayLinkCard()
+        await harness.waitForModel { $0.todayLinkCard?.phase == .refused(
+            message: "reading task is already read", hint: nil
+        ) }
+        XCTAssertEqual(fetcher.todayLinkCalls.map(\.dryRun), [true, true])
+    }
+
+    func testAtoBtoAPreviewErrorsCannotReplaceLatestPreviewOrWrite() async throws {
+        let path = "ref/blogs/today_link_test.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "today_link_test")]
+        )
+        let gate = TodayLinkResponseGate()
+        fetcher.todayLinkHandler = { _, _, _ in try await gate.respond() }
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [path])
+        harness.model.todayLinkPreviewDebounce = {}
+        harness.model.openTodayLinkCard()
+        await gate.waitForRequests(1)
+        await gate.resolve(0, with: .success(try todayLinkFixture("refs-today-listing.json")))
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+
+        harness.model.editTodayLinkQuery("cur")
+        await gate.waitForRequests(2)
+        harness.model.editTodayLinkQuery("rea")
+        await gate.waitForRequests(3)
+        harness.model.editTodayLinkQuery("cur")
+        await gate.waitForRequests(4)
+        await gate.resolve(2, with: .success(try todayLinkFixture("refs-today-listing.json")))
+        await gate.resolve(3, with: .success(try todayLinkFixture("refs-today-listing.json")))
+        await harness.waitForModel {
+            $0.todayLinkCard?.previewPending == false
+                && $0.todayLinkCard?.preview?.capture?.pomodoroName == "CURRENT"
+        }
+        XCTAssertEqual(harness.model.todayLinkCard?.query, "cur")
+        XCTAssertEqual(harness.model.todayLinkCard?.preview?.capture?.pomodoroName, "CURRENT")
+
+        harness.model.editTodayLinkQuery("rea")
+        await gate.waitForRequests(5)
+        harness.model.handleTodayLinkCardKey(.submit)
+        await gate.waitForRequests(6)
+        await gate.resolve(1, with: .failure(RefsTestError.boom))
+        await gate.resolve(4, with: .success(try todayLinkFixture("refs-today-listing.json")))
+        await gate.waitForCompletion(1)
+        await gate.waitForCompletion(4)
+        await Task.yield()
+        XCTAssertEqual(harness.model.todayLinkCard?.phase, .running)
+        XCTAssertEqual(fetcher.todayLinkCalls.last?.selector, .entry(ref: "5:ddf7159c"))
+        await gate.resolve(5, with: .success(try todayLinkFixture("refs-today-linked.json")))
+        await harness.waitForModel { $0.todayLinkCard == nil }
+        XCTAssertEqual(fetcher.todayLinkCalls.filter { !$0.dryRun }.count, 1)
+    }
+
+    func testClosingAndReopeningDropsOutOfOrderListingResults() async throws {
+        let path = "ref/blogs/today_link_test.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "today_link_test")]
+        )
+        let gate = TodayLinkResponseGate()
+        fetcher.todayLinkHandler = { _, _, _ in try await gate.respond() }
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [path])
+        var failures: [String] = []
+        harness.model.todayLinkFailureNotifier = { message, _ in failures.append(message) }
+
+        harness.model.openTodayLinkCard()
+        await gate.waitForRequests(1)
+        harness.model.handleTodayLinkCardKey(.cancel)
+        XCTAssertNil(harness.model.todayLinkCard)
+        harness.model.openTodayLinkCard()
+        await gate.waitForRequests(2)
+        await gate.resolve(1, with: .success(try todayLinkFixture("refs-today-listing.json")))
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+        await gate.resolve(0, with: .failure(RefsTestError.boom))
+        await gate.waitForCompletion(0)
+        await Task.yield()
+        XCTAssertEqual(harness.model.todayLinkCard?.phase, .ready)
+        XCTAssertTrue(failures.isEmpty)
+    }
+
+    func testReturnSubmitsWithoutWaitingForDebouncedPreview() async throws {
+        let path = "ref/blogs/today_link_test.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "today_link_test")]
+        )
+        let gate = TodayLinkResponseGate()
+        fetcher.todayLinkHandler = { _, _, _ in try await gate.respond() }
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [path])
+        harness.model.todayLinkPreviewDebounce = {
+            try await Task.sleep(for: .seconds(3_600))
+        }
+        harness.model.openTodayLinkCard()
+        await gate.waitForRequests(1)
+        await gate.resolve(0, with: .success(try todayLinkFixture("refs-today-listing.json")))
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+        harness.model.editTodayLinkQuery("rea")
+        harness.model.handleTodayLinkCardKey(.submit)
+        await gate.waitForRequests(2)
+        XCTAssertEqual(fetcher.todayLinkCalls.count, 2)
+        XCTAssertEqual(fetcher.todayLinkCalls.map(\.dryRun), [true, false])
+        XCTAssertEqual(fetcher.todayLinkCalls.last?.selector, .entry(ref: "5:ddf7159c"))
+        await gate.resolve(1, with: .success(try todayLinkFixture("refs-today-linked.json")))
+        await harness.waitForModel { $0.todayLinkCard == nil }
+    }
+
+    func testFailedCardRowTapRecoversAndFailureRefocusesField() async throws {
+        let path = "ref/blogs/today_link_test.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "today_link_test")]
+        )
+        fetcher.todayLinkResponses = [
+            try todayLinkFixture("refs-today-listing.json"),
+            RefsTodayLinkResponse(
+                ok: false,
+                error: RefsTodayLinkFailure(
+                    code: "note_changed", message: "The note changed", hint: "Try again"
+                )
+            ),
+            try todayLinkFixture("refs-today-linked.json"),
+        ]
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [path])
+        harness.model.todayLinkPreviewDebounce = {}
+        harness.model.openTodayLinkCard()
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+        let beforeFocus = harness.model.todayLinkCardGeneration
+        harness.model.handleTodayLinkCardKey(.submit)
+        await harness.waitForModel { $0.todayLinkCard?.phase.isFailed == true }
+        XCTAssertGreaterThan(harness.model.todayLinkCardGeneration, beforeFocus)
+        harness.model.todayLinkRowTapped(0)
+        await harness.waitForModel { $0.todayLinkCard == nil }
+        XCTAssertEqual(fetcher.todayLinkCalls.filter { !$0.dryRun }.count, 2)
+    }
+
+    func testUnselectableReturnAndCommandNBeepAndHiddenWriteNotifiesOnce() async throws {
+        let path = "ref/blogs/today_link_test.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "today_link_test")]
+        )
+        fetcher.todayLinkResponses = [
+            try todayLinkFixture("refs-today-multiple-running.json"),
+            try todayLinkFixture("refs-today-linked.json"),
+        ]
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [path])
+        var beeps = 0
+        var notifications: [(RefsTodayLinkResponse, String)] = []
+        harness.model.todayLinkBeep = { beeps += 1 }
+        harness.model.todayLinkNotifier = { response, title in notifications.append((response, title)) }
+        harness.model.panelIsVisible = { false }
+        harness.model.openTodayLinkCard()
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+        harness.model.handleTodayLinkCardKey(.submit)
+        if let command = harness.model.todayLinkCardKeyCommand(
+            keyCode: 45, modifiers: [.command, .capsLock], hasMarkedText: false
+        ) {
+            harness.model.handleTodayLinkCardKey(command)
+        }
+        XCTAssertEqual(beeps, 2)
+        harness.model.selectTodayLinkRow(0)
+        harness.model.handleTodayLinkCardKey(.submit)
+        harness.model.panelDidHide()
+        await harness.waitForModel { $0.todayLinkCard == nil }
+        XCTAssertEqual(notifications.count, 1)
+        XCTAssertEqual(fetcher.todayLinkCalls.filter { !$0.dryRun }.count, 1)
+    }
+
+    func testTodayLinkRefreshesTaskSnapshotTodayAndDiscardsInspectorCache() async throws {
+        let path = "ref/blogs/today_link_test.md"
+        let original = Self.renameRecord(path: path, stem: "today_link_test")
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [original])
+        fetcher.todayLinkResponses = [
+            try todayLinkFixture("refs-today-listing.json"),
+            try todayLinkFixture("refs-today-linked.json"),
+        ]
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [path])
+        harness.model.panelIsVisible = { true }
+        let oldItem = try XCTUnwrap(harness.library.items.first)
+        let cached = RefsShowRow(path: path, ownNotes: "cached before link")
+        harness.model.inspectorLoader.installShowRowForPreviews(cached, for: oldItem)
+        XCTAssertEqual(harness.model.inspectorLoader.cachedShowRow(for: oldItem), cached)
+        let snapshotGeneration = harness.library.snapshotRefreshGeneration
+        let todayGeneration = harness.library.todayRefreshGeneration
+        harness.model.todayLinkCompletion = { _, _ in
+            fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [
+                RefRecord(
+                    path: path,
+                    link: original.link,
+                    title: original.title,
+                    refType: original.refType,
+                    status: original.status,
+                    readingState: original.readingState,
+                    task: RefTask(
+                        path: "sase.md", blockID: "ref-attention",
+                        link: "[[sase#^ref-attention]]", mark: "*"
+                    ),
+                    sourcePDF: original.sourcePDF
+                ),
+            ])
+            fetcher.planResponse = RefsPlanResponse(schemaVersion: 2, todayTasks: [
+                RefsPlanTodayTask(
+                    path: "sase.md", blockID: "ref-attention",
+                    entryName: "CURRENT", statusSymbol: "*"
+                ),
+            ])
+        }
+        harness.model.openTodayLinkCard()
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+        harness.model.handleTodayLinkCardKey(.submit)
+        await harness.waitForModel { _ in
+            harness.library.snapshotRefreshGeneration > snapshotGeneration
+                && harness.library.todayRefreshGeneration > todayGeneration
+                && harness.model.pomodoroName(for: path) == "CURRENT"
+        }
+        XCTAssertEqual(harness.library.items.first?.task?.mark, "*")
+        XCTAssertEqual(harness.library.signals.today.entry(for: try XCTUnwrap(harness.library.items.first))?.pomodoroName, "CURRENT")
+        XCTAssertNil(harness.model.inspectorLoader.cachedShowRow(for: oldItem))
+    }
+
+    func testTodayCardsRemainExclusiveAcrossRenameCopyAndEscapeAndRefuseOldBob() async throws {
+        let path = "ref/blogs/today_link_test.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "today_link_test")]
+        )
+        fetcher.todayLinkResponses = [
+            try todayLinkFixture("refs-today-listing.json"),
+            RefsTodayLinkResponse(
+                ok: false,
+                error: RefsTodayLinkFailure(
+                    code: "bob_too_old", message: "Update bob", hint: "Install the latest CLI"
+                )
+            ),
+        ]
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [path])
+
+        harness.model.openTodayLinkCard()
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+        harness.model.openCopyCard()
+        XCTAssertNil(harness.model.todayLinkCard)
+        XCTAssertNotNil(harness.model.copyCard)
+
+        harness.model.openTodayLinkCard()
+        await harness.waitForModel { $0.todayLinkCard?.phase == .refused(
+            message: "Update bob", hint: "Install the latest CLI"
+        ) }
+        harness.model.openRenameCard()
+        XCTAssertNil(harness.model.todayLinkCard)
+        XCTAssertNotNil(harness.model.renameCard)
+        harness.model.openTodayLinkCard()
+        XCTAssertNil(harness.model.renameCard)
+        XCTAssertNotNil(harness.model.todayLinkCard)
+        XCTAssertTrue(harness.model.perform(.escape))
+        XCTAssertNil(harness.model.todayLinkCard)
+    }
+
+    func testHiddenTodayLinkFailureNotifiesOnce() async throws {
+        let path = "ref/blogs/today_link_test.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "today_link_test")]
+        )
+        fetcher.todayLinkResponses = [
+            try todayLinkFixture("refs-today-listing.json"),
+            RefsTodayLinkResponse(
+                ok: false,
+                error: RefsTodayLinkFailure(
+                    code: "note_changed", message: "The note changed", hint: "Open it again"
+                )
+            ),
+        ]
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [path])
+        harness.model.panelIsVisible = { false }
+        var failures: [(String, String?)] = []
+        harness.model.todayLinkFailureNotifier = { failures.append(($0, $1)) }
+        harness.model.openTodayLinkCard()
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+        harness.model.handleTodayLinkCardKey(.submit)
+        harness.model.panelDidHide()
+        await harness.waitForModel { $0.todayLinkCard?.phase.isFailed == true }
+        XCTAssertEqual(failures.count, 1)
+        XCTAssertEqual(failures.first?.0, "The note changed")
+    }
+
+    func testGuardedWriteDoesNotInventTodayPillAndFailedRefreshKeepsValidOverlay() async throws {
+        let path = "ref/blogs/today_link_test.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "today_link_test")]
+        )
+        fetcher.todayLinkResponses = [
+            try todayLinkFixture("refs-today-listing.json"),
+            try todayLinkFixture("refs-today-link-guard.json"),
+            try todayLinkFixture("refs-today-listing.json"),
+            try todayLinkFixture("refs-today-linked.json"),
+        ]
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [path])
+        harness.model.openTodayLinkCard()
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+        harness.model.handleTodayLinkCardKey(.submit)
+        await harness.waitForModel { $0.todayLinkCard == nil }
+        XCTAssertNil(harness.model.pomodoroName(for: path))
+
+        fetcher.listError = RefsTestError.boom
+        fetcher.planError = RefsTestError.boom
+        harness.model.openTodayLinkCard()
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+        let todayGeneration = harness.library.todayRefreshGeneration
+        harness.model.handleTodayLinkCardKey(.submit)
+        await harness.waitForModel { $0.todayLinkCard == nil }
+        let item = try XCTUnwrap(harness.library.items.first)
+        await harness.waitForModel { _ in
+            if case .failed = harness.library.refreshState { return true }
+            return false
+        }
+        XCTAssertEqual(harness.library.todayRefreshGeneration, todayGeneration)
+        XCTAssertNil(harness.library.signals.today.entry(for: item))
+        XCTAssertEqual(harness.model.pomodoroName(for: path), "CURRENT")
+    }
+
+    func testRepeatedTodayLinksEachKeepTheirOutcomeAndPill() async throws {
+        let path = "ref/blogs/today_link_test.md"
+        let fetcher = FakeRefsFetcher()
+        let base = Self.renameRecord(path: path, stem: "today_link_test")
+        let item = RefRecord(
+            path: path,
+            link: base.link,
+            title: base.title,
+            refType: base.refType,
+            status: base.status,
+            readingState: base.readingState,
+            task: RefTask(
+                path: "sase.md", blockID: "ref-attention",
+                link: "[[sase#^ref-attention]]", mark: "*"
+            ),
+            sourcePDF: base.sourcePDF
+        )
+        fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [item])
+        fetcher.planResponse = RefsPlanResponse(schemaVersion: 2, todayTasks: [
+            RefsPlanTodayTask(
+                path: "sase.md", blockID: "ref-attention", entryName: "CURRENT", statusSymbol: "*"
+            ),
+        ])
+        fetcher.todayLinkResponses = [
+            try todayLinkFixture("refs-today-listing.json"),
+            try todayLinkFixture("refs-today-linked.json"),
+            try todayLinkFixture("refs-today-listing.json"),
+            try todayLinkFixture("refs-today-already-current.json"),
+        ]
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [path])
+        harness.model.panelIsVisible = { true }
+        var outcomes: [RefsTodayLinkToast.Style] = []
+        harness.model.todayLinkCompletion = { toast, _ in outcomes.append(toast.style) }
+
+        harness.model.openTodayLinkCard()
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+        harness.model.handleTodayLinkCardKey(.submit)
+        await harness.waitForModel { $0.todayLinkCard == nil }
+
+        harness.model.openTodayLinkCard()
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+        harness.model.handleTodayLinkCardKey(.submit)
+        await harness.waitForModel { $0.todayLinkCard == nil }
+        await harness.waitForModel { $0.pomodoroName(for: path) == "CURRENT" }
+        XCTAssertEqual(outcomes, [.linked, .already])
+        XCTAssertEqual(fetcher.todayLinkCalls.filter { !$0.dryRun }.count, 2)
+    }
+
     func testRenameUsesBobDestinationMigratesHistoryAndNotifiesWhenHidden() async throws {
         let oldPath = "ref/blogs/old_stem.md"
         let newPath = "ref/blogs/new_stem.md"
@@ -412,6 +888,46 @@ final class RefsPanelModelTests: XCTestCase {
             editor.selectedRange(),
             NSRange(location: 0, length: item.stem.utf16.count)
         )
+        controller.hide()
+    }
+
+    func testTodayLinkFailureRefocusesItsFilterField() async throws {
+        let path = "ref/blogs/today_link_test.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "today_link_test")]
+        )
+        fetcher.todayLinkResponses = [
+            try todayLinkFixture("refs-today-listing.json"),
+            RefsTodayLinkResponse(
+                ok: false,
+                error: RefsTodayLinkFailure(
+                    code: "note_changed", message: "The note changed", hint: "Try again"
+                )
+            ),
+        ]
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [path])
+        let controller = RefsPanelController(model: harness.model)
+        controller.prewarm()
+        controller.show()
+        harness.model.panelIsVisible = { true }
+        harness.model.openTodayLinkCard()
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+        harness.model.handleTodayLinkCardKey(.submit)
+        await harness.waitForModel { $0.todayLinkCard?.phase.isFailed == true }
+
+        let panel = controller.makePanelIfNeeded()
+        let deadline = Date().addingTimeInterval(1)
+        var field: NSTextField?
+        while Date() < deadline {
+            panel.contentView?.layoutSubtreeIfNeeded()
+            field = RefsPanelController.findTodayLinkField(in: panel.contentView)
+            if field?.currentEditor() != nil { break }
+            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.02))
+        }
+        XCTAssertNotNil(field?.currentEditor())
         controller.hide()
     }
 
@@ -1999,6 +2515,13 @@ final class RefsPanelModelTests: XCTestCase {
             harness.model.banner?.message,
             "“\(tabName)” isn't in your library."
         )
+        XCTAssertTrue(harness.model.perform(.showRenameCard))
+        XCTAssertTrue(harness.model.perform(.showTodayLinkCard))
+        XCTAssertNil(harness.model.todayLinkCard)
+        XCTAssertEqual(
+            harness.model.banner?.message,
+            "“\(tabName)” isn't in your library."
+        )
 
         harness.library.installSnapshotForPreviews(
             items: harness.library.items,
@@ -2685,5 +3208,52 @@ final class FakeTabsReader: HighlightsTabsReading, @unchecked Sendable {
             targets.append(target)
             return selectResult
         }
+    }
+}
+
+private actor TodayLinkResponseGate {
+    private var requestCount = 0
+    private var pending: [Int: CheckedContinuation<RefsTodayLinkResponse, Error>] = [:]
+    private var completed: Set<Int> = []
+    private var requestWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
+    private var completionWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
+
+    func respond() async throws -> RefsTodayLinkResponse {
+        let index = requestCount
+        requestCount += 1
+        let ready = requestWaiters.filter { $0.0 <= requestCount }
+        requestWaiters.removeAll { $0.0 <= requestCount }
+        ready.forEach { $0.1.resume() }
+        do {
+            let response = try await withCheckedThrowingContinuation { continuation in
+                pending[index] = continuation
+            }
+            markCompleted(index)
+            return response
+        } catch {
+            markCompleted(index)
+            throw error
+        }
+    }
+
+    func waitForRequests(_ count: Int) async {
+        guard requestCount < count else { return }
+        await withCheckedContinuation { requestWaiters.append((count, $0)) }
+    }
+
+    func waitForCompletion(_ index: Int) async {
+        guard !completed.contains(index) else { return }
+        await withCheckedContinuation { completionWaiters.append((index, $0)) }
+    }
+
+    func resolve(_ index: Int, with result: Result<RefsTodayLinkResponse, Error>) {
+        pending.removeValue(forKey: index)?.resume(with: result)
+    }
+
+    private func markCompleted(_ index: Int) {
+        completed.insert(index)
+        let ready = completionWaiters.filter { $0.0 == index }
+        completionWaiters.removeAll { $0.0 == index }
+        ready.forEach { $0.1.resume() }
     }
 }
