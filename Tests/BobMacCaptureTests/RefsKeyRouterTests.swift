@@ -91,6 +91,16 @@ final class RefsKeyRouterTests: XCTestCase {
         XCTAssertNil(route(KeyCode.k))
     }
 
+    func testCommandNOpensTodayCardAndPassesThroughDuringComposition() {
+        XCTAssertEqual(route(KeyCode.n, .command), .showTodayLinkCard)
+        XCTAssertEqual(route(KeyCode.n, [.command, .capsLock]), .showTodayLinkCard)
+        XCTAssertNil(route(
+            KeyCode.n,
+            .command,
+            context: RefsKeyContext(markedTextPresent: true)
+        ))
+    }
+
     func testCommandKMasksActionsMenu() {
         XCTAssertEqual(route(KeyCode.k, .command), .showActions)
     }

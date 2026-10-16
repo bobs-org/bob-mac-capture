@@ -41,6 +41,41 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertNil(harness.model.selectedRowRect)
     }
 
+    func testTodayLinkUsesBobDefaultStaysOpenAndOverlaysTodayPill() async throws {
+        let path = "ref/blogs/today_link_test.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "today_link_test")]
+        )
+        fetcher.todayLinkResponses = [
+            try todayLinkFixture("refs-today-listing.json"),
+            try todayLinkFixture("refs-today-linked.json"),
+        ]
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        await harness.waitForSnapshot(ids: [path])
+        harness.model.panelIsVisible = { true }
+        var completed: (RefsTodayLinkToast, String)?
+        harness.model.todayLinkCompletion = { toast, title in
+            XCTAssertEqual(harness.model.pomodoroName(for: path), "CURRENT")
+            completed = (toast, title)
+        }
+
+        harness.model.openTodayLinkCard()
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+        XCTAssertEqual(harness.model.todayLinkCard?.selectedPomodoro?.name, "CURRENT")
+        harness.model.handleTodayLinkCardKey(.submit)
+
+        await harness.waitForModel { $0.todayLinkCard == nil }
+        XCTAssertEqual(harness.model.selectedID, path)
+        XCTAssertEqual(fetcher.todayLinkCalls.map(\.notePath), [path, path])
+        XCTAssertEqual(fetcher.todayLinkCalls.map(\.dryRun), [true, false])
+        XCTAssertEqual(fetcher.todayLinkCalls.first?.selector, .automatic)
+        XCTAssertEqual(completed?.0.title, "Linked under CURRENT")
+        XCTAssertEqual(completed?.0.style, .linked)
+        XCTAssertEqual(completed?.1, "Rename test reference")
+    }
+
     func testRenameUsesBobDestinationMigratesHistoryAndNotifiesWhenHidden() async throws {
         let oldPath = "ref/blogs/old_stem.md"
         let newPath = "ref/blogs/new_stem.md"
@@ -2416,6 +2451,13 @@ final class RefsPanelModelTests: XCTestCase {
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
                 .merging(environment) { _, override in override }
+        )
+    }
+
+    private func todayLinkFixture(_ name: String) throws -> RefsTodayLinkResponse {
+        try JSONDecoder().decode(
+            RefsTodayLinkResponse.self,
+            from: Data(contentsOf: harnessFixtureURL(name))
         )
     }
 

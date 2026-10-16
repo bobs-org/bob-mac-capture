@@ -11,6 +11,24 @@ public protocol RefsFetching: Sendable {
   func show(path: String) async throws -> RefsShowResponse
   func scan() async throws -> RefsScanResponse
   func rename(notePath: String, name: String) async throws -> RefsRenameResponse
+  func linkToToday(
+    notePath: String, selector: RefsTodayLinkSelector, dryRun: Bool
+  ) async throws -> RefsTodayLinkResponse
+}
+
+public enum RefsFetchingError: Error, Sendable {
+  case unsupported
+}
+
+public extension RefsFetching {
+  /// Older fake fetchers need not implement the Today-link lane unless a
+  /// panel-model test exercises it. The production fetcher supplies the
+  /// Bob-backed implementation below.
+  func linkToToday(
+    notePath: String, selector: RefsTodayLinkSelector, dryRun: Bool
+  ) async throws -> RefsTodayLinkResponse {
+    throw RefsFetchingError.unsupported
+  }
 }
 
 public final class BobRefsFetcher: RefsFetching, @unchecked Sendable {

@@ -65,6 +65,7 @@ public struct RefsTodayLinkCard: Equatable, Sendable {
   public let frozenItemID: String
   public let notePath: String
   public let title: String
+  public let kind: RefKind
   public let taskCaption: String
   public private(set) var query = ""
   public private(set) var phase: RefsTodayLinkPhase = .loading
@@ -82,6 +83,7 @@ public struct RefsTodayLinkCard: Equatable, Sendable {
     frozenItemID = item.id
     notePath = item.id
     title = item.rawTitle
+    kind = item.kind
     taskCaption = RefsTodayLinkPresentation.taskCaption(
       path: item.task?.path, blockID: item.task?.blockID)
     previewRequest = RefsTodayLinkPreviewRequest(selector: .automatic, generation: 0)

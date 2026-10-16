@@ -499,7 +499,7 @@ final class RefsInspectorLoaderTests: XCTestCase {
     XCTAssertEqual(chatSections.count, 3)
     XCTAssertEqual(
       chatSections[1],
-      [.copy, .rename]
+      [.copy, .rename, .linkToday]
     )
 
     let paperURL = fixtures.library.audioURL(for: fixtures.paper)
@@ -532,6 +532,9 @@ final class RefsInspectorLoaderTests: XCTestCase {
       RefsAction.scanLibrary.keyEquivalentModifierMask,
       .command
     )
+    XCTAssertEqual(RefsAction.linkToday.title, "Link to Today…")
+    XCTAssertEqual(RefsAction.linkToday.keyEquivalent, "n")
+    XCTAssertEqual(RefsAction.linkToday.keyEquivalentModifierMask, .command)
   }
 
   func testCopyActionOpensCardAndCopiesItsSelectedRow() throws {
@@ -820,9 +823,14 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
   private let lock = NSLock()
   private(set) var showPaths: [String] = []
   private(set) var renameCalls: [(notePath: String, name: String)] = []
+  private(set) var todayLinkCalls: [(notePath: String, selector: RefsTodayLinkSelector, dryRun: Bool)] = []
   var showError: Error?
   var renameError: Error?
   var renameResponse = RefsRenameResponse()
+  var todayLinkResponses: [RefsTodayLinkResponse] = []
+  var todayLinkResponse = RefsTodayLinkResponse()
+  var todayLinkError: Error?
+  var todayLinkDelayNanoseconds: UInt64 = 0
   var listResponse = RefsListResponse(schemaVersion: 1)
   var showDelayNanoseconds: UInt64 = 50_000_000
   var renameDelayNanoseconds: UInt64 = 0
@@ -863,6 +871,20 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
       throw renameError
     }
     return renameResponse
+  }
+
+  func linkToToday(
+    notePath: String, selector: RefsTodayLinkSelector, dryRun: Bool
+  ) async throws -> RefsTodayLinkResponse {
+    lock.withLock { todayLinkCalls.append((notePath, selector, dryRun)) }
+    if todayLinkDelayNanoseconds > 0 {
+      try await Task.sleep(nanoseconds: todayLinkDelayNanoseconds)
+    }
+    if let todayLinkError { throw todayLinkError }
+    return lock.withLock {
+      if !todayLinkResponses.isEmpty { return todayLinkResponses.removeFirst() }
+      return todayLinkResponse
+    }
   }
 
   func show(path: String) async throws -> RefsShowResponse {

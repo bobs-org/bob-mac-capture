@@ -60,6 +60,7 @@ public enum RefsCommand: Equatable, Sendable {
     case showActions
     case showCopyCard
     case showRenameCard
+    case showTodayLinkCard
     case scan
     /// Scroll the right-hand inspector by half its viewport.
     case scrollInspector(RefsInspectorScrollDirection)
@@ -264,6 +265,9 @@ public final class RefsPanelModel: ObservableObject {
                 if copyCard?.frozenItemID != selectedID {
                     closeCopyCard()
                 }
+                if todayLinkCard?.frozenItemID != selectedID, !isLinkingToday {
+                    closeTodayLinkCard()
+                }
                 // A failed rename card survives selection changes so the
                 // next presentation can re-show its inline error.
                 if renameCard?.frozenItemID != selectedID, !isRenaming,
@@ -314,9 +318,17 @@ public final class RefsPanelModel: ObservableObject {
     /// Last completed rename status, shown in the footer until the next
     /// panel operation replaces it.
     @Published public private(set) var renameStatus: String?
+    /// The reference currently being linked to an open Pomodoro today.
+    @Published public private(set) var todayLinkCard: RefsTodayLinkCard?
+    @Published public private(set) var todayLinkCardGeneration: UInt64 = 0
+    @Published private var todayLinkOverlay: [String: TodayLinkOverlay] = [:]
 
     public var isRenaming: Bool {
         renameCard?.phase == .running
+    }
+
+    public var isLinkingToday: Bool {
+        todayLinkCard?.phase == .running
     }
 
     /// Flags only affect an open card (including its picker layer).
@@ -383,6 +395,9 @@ public final class RefsPanelModel: ObservableObject {
     /// Called after one checked pasteboard write succeeds. The controller
     /// hides Refs and presents the confirmation HUD from this callback.
     public var copyCompletion: (RefsCopyRow) -> Void = { _ in }
+    /// Called after a visible-panel Today link succeeds. The controller
+    /// renders the shared glass toast without closing the panel.
+    public var todayLinkCompletion: (RefsTodayLinkToast, String) -> Void = { _, _ in }
     /// Whether the panel is currently visible. The controller sets this;
     /// the scan completion path reads it to decide between a live
     /// re-rank and a hidden notification.
@@ -396,6 +411,9 @@ public final class RefsPanelModel: ObservableObject {
     /// Called with the inline message when a rename fails after the
     /// panel was hidden.
     public var renameFailureNotifier: (String, String?) -> Void = { _, _ in }
+    /// Hidden-panel Today-link outcomes use system notifications.
+    public var todayLinkNotifier: (RefsTodayLinkResponse, String) -> Void = { _, _ in }
+    public var todayLinkFailureNotifier: (String, String?) -> Void = { _, _ in }
 
     private let library: RefsLibrary
     private let opener: RefsOpening
@@ -439,9 +457,17 @@ public final class RefsPanelModel: ObservableObject {
     private var pendingCopyTimeoutToken: UInt64?
     private var copyMessageTask: Task<Void, Never>?
     private var renameTask: Task<Void, Never>?
+    private var todayLinkSequence: UInt64 = 0
+    private var todayLinkTask: Task<Void, Never>?
     private var selectionAtScanStart: String?
     private var pendingScanBanner: RefsBanner?
     private var scanNoticeSeen = false
+
+    private struct TodayLinkOverlay {
+        let name: String
+        var refreshGeneration: UInt64
+        var refreshPending: Bool
+    }
 
     public init(
         library: RefsLibrary,
@@ -479,6 +505,9 @@ public final class RefsPanelModel: ObservableObject {
         }
         itemsSubscription.store(in: &subscriptions)
         signalsSubscription.store(in: &subscriptions)
+        library.$todayRefreshGeneration.sink { [weak self] _ in
+            Task { await self?.libraryDidPublish() }
+        }.store(in: &subscriptions)
         library.$scanState.sink { [weak self] _ in
             Task { await self?.scanStateDidChange() }
         }.store(in: &subscriptions)
@@ -507,6 +536,9 @@ public final class RefsPanelModel: ObservableObject {
     /// Clears the scan notice once it has been seen.
     public func panelDidHide() {
         closeCopyCard()
+        if !isLinkingToday {
+            closeTodayLinkCard()
+        }
         // A failed rename card survives hiding so the next presentation
         // can re-show its inline error.
         if !isRenaming, renameCard?.isFailed != true {
@@ -523,6 +555,11 @@ public final class RefsPanelModel: ObservableObject {
     /// through the row's located task, so two references sharing one
     /// parent note do not both claim the pill.
     public func pomodoroName(for id: String) -> String? {
+        if let overlay = todayLinkOverlay[id],
+           library.todayRefreshGeneration <= overlay.refreshGeneration
+        {
+            return overlay.name
+        }
         guard let item = library.items.first(where: { $0.id == id }) else {
             return nil
         }
@@ -556,7 +593,7 @@ public final class RefsPanelModel: ObservableObject {
         presentationCount += 1
         selectedRowRect = nil
         renameStatus = nil
-        if isRenaming {
+        if isRenaming || isLinkingToday {
             return
         }
         closeCopyCard()
@@ -637,6 +674,12 @@ public final class RefsPanelModel: ObservableObject {
             beginTabsRefresh(preservingSelection: false)
             return true
         case .escape:
+            if todayLinkCard != nil {
+                if !isLinkingToday {
+                    closeTodayLinkCard()
+                }
+                return true
+            }
             if renameCard != nil, !isRenaming {
                 closeRenameCard()
                 return true
@@ -690,7 +733,7 @@ public final class RefsPanelModel: ObservableObject {
             }
             return true
         case .select(let id):
-            if isRenaming {
+            if isRenaming || isLinkingToday {
                 return true
             }
             closeRenameCard()
@@ -701,7 +744,7 @@ public final class RefsPanelModel: ObservableObject {
             selectedID = id
             return true
         case .activate(let id):
-            if isRenaming {
+            if isRenaming || isLinkingToday {
                 return true
             }
             closeRenameCard()
@@ -712,7 +755,7 @@ public final class RefsPanelModel: ObservableObject {
             selectedID = id
             return openSelected(.highlights)
         case .showActions:
-            if isRenaming {
+            if isRenaming || isLinkingToday {
                 return true
             }
             closeRenameCard()
@@ -727,6 +770,7 @@ public final class RefsPanelModel: ObservableObject {
             actionsPresenter()
             return true
         case .showCopyCard:
+            if isLinkingToday { return true }
             if let tab = selectedOpenTab, isSynthetic(tab) {
                 showNoteActionWarning(for: tab)
                 return true
@@ -734,11 +778,20 @@ public final class RefsPanelModel: ObservableObject {
             openCopyCard()
             return true
         case .showRenameCard:
+            if isLinkingToday { return true }
             if let tab = selectedOpenTab, isSynthetic(tab) {
                 showNoteActionWarning(for: tab)
                 return true
             }
             openRenameCard()
+            return true
+        case .showTodayLinkCard:
+            if isRenaming || isLinkingToday { return true }
+            if let tab = selectedOpenTab, isSynthetic(tab) {
+                showNoteActionWarning(for: tab)
+                return true
+            }
+            openTodayLinkCard()
             return true
         case .scan:
             if isScanning {
@@ -1216,6 +1269,8 @@ public final class RefsPanelModel: ObservableObject {
             openCopyCard()
         case .rename:
             openRenameCard()
+        case .linkToday:
+            openTodayLinkCard()
         case .openSourceURL(let url):
             _ = NSWorkspace.shared.open(url)
         case .openNarration(let url):
@@ -1418,6 +1473,268 @@ public final class RefsPanelModel: ObservableObject {
         if !panelIsVisible() {
             renameFailureNotifier(message, hint)
         }
+    }
+
+    /// Opens Bob's Link to Today card for the selected real reference.
+    /// The first dry run is the source of the default, rows, and preview.
+    public func openTodayLinkCard() {
+        guard !isRenaming, !isLinkingToday,
+              let item = selectedItem,
+              listing.orderedIDs.contains(item.id),
+              !unavailableIDs.contains(item.id)
+        else {
+            return
+        }
+        closeCopyCard()
+        closeRenameCard()
+        closeTodayLinkCard()
+        todayLinkSequence &+= 1
+        let token = todayLinkSequence
+        todayLinkCard = RefsTodayLinkCard(item: item)
+        todayLinkCardGeneration &+= 1
+        AccessibilityNotification.Announcement(
+            "Link to Today. Choose a Pomodoro."
+        ).post()
+        loadTodayLinkListing(token: token)
+    }
+
+    /// Maps the focused card's key without intercepting ordinary text
+    /// editing or IME composition.
+    public func todayLinkCardKeyCommand(
+        keyCode: UInt16,
+        modifiers: RefsCopyKeyModifiers,
+        hasMarkedText: Bool
+    ) -> RefsTodayLinkKeyCommand? {
+        guard let card = todayLinkCard else { return nil }
+        return RefsTodayLinkKeyMap.command(
+            keyCode: keyCode,
+            modifiers: modifiers,
+            isRunning: card.phase == .running,
+            hasMarkedText: hasMarkedText
+        )
+    }
+
+    public func editTodayLinkQuery(_ value: String) {
+        guard var card = todayLinkCard else { return }
+        let effect = card.editQuery(value)
+        todayLinkCard = card
+        applyTodayLinkEffect(effect, token: todayLinkSequence)
+    }
+
+    public func selectTodayLinkRow(_ index: Int) {
+        guard var card = todayLinkCard else { return }
+        let effect = card.select(index: index)
+        todayLinkCard = card
+        applyTodayLinkEffect(effect, token: todayLinkSequence)
+    }
+
+    /// A click commits the row immediately, matching the Copy card's
+    /// click-to-act behavior and skipping an unnecessary preview roundtrip.
+    public func todayLinkRowTapped(_ index: Int) {
+        guard var card = todayLinkCard, card.phase == .ready else { return }
+        _ = card.select(index: index)
+        let effect = card.handle(.submit)
+        todayLinkCard = card
+        applyTodayLinkEffect(effect, token: todayLinkSequence)
+    }
+
+    public func handleTodayLinkCardKey(_ command: RefsTodayLinkKeyCommand) {
+        guard var card = todayLinkCard else { return }
+        let effect = card.handle(command)
+        todayLinkCard = card
+        applyTodayLinkEffect(effect, token: todayLinkSequence)
+    }
+
+    private func closeTodayLinkCard() {
+        guard !isLinkingToday else { return }
+        todayLinkSequence &+= 1
+        todayLinkTask?.cancel()
+        todayLinkTask = nil
+        todayLinkCard = nil
+        todayLinkCardGeneration &+= 1
+    }
+
+    private func loadTodayLinkListing(token: UInt64) {
+        guard let card = todayLinkCard else { return }
+        let path = card.notePath
+        Task { [weak self, library] in
+            do {
+                let response = try await library.linkToToday(
+                    notePath: path, selector: .automatic, dryRun: true
+                )
+                self?.applyTodayLinkListing(response, token: token)
+            } catch {
+                self?.failTodayLinkListing(
+                    RefsTodayLinkProblemMapping.transportProblem(for: error), token: token
+                )
+            }
+        }
+    }
+
+    private func applyTodayLinkListing(_ response: RefsTodayLinkResponse, token: UInt64) {
+        guard token == todayLinkSequence, var card = todayLinkCard else { return }
+        let effect = card.applyListing(response)
+        todayLinkCard = card
+        if case .refused(let message, let hint) = card.phase, !panelIsVisible() {
+            todayLinkFailureNotifier(message, hint)
+        }
+        applyTodayLinkEffect(effect, token: token)
+    }
+
+    private func failTodayLinkListing(_ problem: RefsTodayLinkFailure, token: UInt64) {
+        guard token == todayLinkSequence, var card = todayLinkCard else { return }
+        let effect = card.fail(problem)
+        todayLinkCard = card
+        if !panelIsVisible() {
+            todayLinkFailureNotifier(problem.message, problem.hint)
+        }
+        applyTodayLinkEffect(effect, token: token)
+    }
+
+    private func applyTodayLinkEffect(_ effect: RefsTodayLinkCardEffect, token: UInt64) {
+        switch effect {
+        case .none:
+            break
+        case .cancel:
+            closeTodayLinkCard()
+        case .reload:
+            loadTodayLinkListing(token: token)
+        case .preview(let selector):
+            guard let card = todayLinkCard,
+                  let request = card.previewRequest,
+                  request.selector == selector
+            else {
+                return
+            }
+            let path = card.notePath
+            Task { [weak self, library] in
+                do {
+                    let response = try await library.linkToToday(
+                        notePath: path, selector: selector, dryRun: true
+                    )
+                    self?.applyTodayLinkPreview(response, request: request, token: token)
+                } catch {
+                    self?.failTodayLinkPreview(
+                        RefsTodayLinkProblemMapping.transportProblem(for: error),
+                        request: request,
+                        token: token
+                    )
+                }
+            }
+        case .submit(let selector):
+            guard let card = todayLinkCard else { return }
+            let path = card.notePath
+            todayLinkTask?.cancel()
+            todayLinkTask = Task { [weak self, library] in
+                do {
+                    let response = try await library.linkToToday(
+                        notePath: path, selector: selector, dryRun: false
+                    )
+                    self?.finishTodayLink(response, token: token)
+                } catch {
+                    self?.failTodayLinkWrite(
+                        RefsTodayLinkProblemMapping.transportProblem(for: error), token: token
+                    )
+                }
+            }
+        }
+    }
+
+    private func applyTodayLinkPreview(
+        _ response: RefsTodayLinkResponse,
+        request: RefsTodayLinkPreviewRequest,
+        token: UInt64
+    ) {
+        guard token == todayLinkSequence, var card = todayLinkCard else { return }
+        guard card.applyPreview(response, for: request) else { return }
+        todayLinkCard = card
+    }
+
+    private func failTodayLinkPreview(
+        _ problem: RefsTodayLinkFailure,
+        request: RefsTodayLinkPreviewRequest,
+        token: UInt64
+    ) {
+        guard token == todayLinkSequence, var card = todayLinkCard,
+              card.previewRequest == request
+        else {
+            return
+        }
+        let effect = card.fail(problem)
+        todayLinkCard = card
+        if !panelIsVisible() {
+            todayLinkFailureNotifier(problem.message, problem.hint)
+        }
+        applyTodayLinkEffect(effect, token: token)
+    }
+
+    private func finishTodayLink(_ response: RefsTodayLinkResponse, token: UInt64) {
+        guard token == todayLinkSequence, let card = todayLinkCard else { return }
+        todayLinkTask = nil
+        guard response.ok == true,
+              let toast = RefsTodayLinkPresentation.toast(response: response, title: card.title)
+        else {
+            let problem = RefsTodayLinkProblemMapping.responseProblem(response)
+                ?? RefsTodayLinkFailure(
+                    code: "invalid_response",
+                    message: RefsTodayLinkPresentation.invalidResponse
+                )
+            failTodayLinkWrite(problem, token: token)
+            return
+        }
+
+        let itemID = card.frozenItemID
+        let title = card.title
+        let overlayGeneration = library.todayRefreshGeneration
+        if toast.style != .guarded, let linked = response.pomodoros.first(where: \.linked) {
+            todayLinkOverlay[itemID] = TodayLinkOverlay(
+                name: linked.name ?? "",
+                refreshGeneration: overlayGeneration,
+                refreshPending: true
+            )
+        }
+        todayLinkSequence &+= 1
+        todayLinkCard = nil
+        todayLinkCardGeneration &+= 1
+        if panelIsVisible() {
+            todayLinkCompletion(toast, title)
+            if let announcement = RefsTodayLinkPresentation.announcement(
+                response: response, title: title
+            ) {
+                AccessibilityNotification.Announcement(announcement).post()
+            }
+        } else {
+            todayLinkNotifier(response, title)
+        }
+        Task { [weak self, library] in
+            let refreshed = await library.refreshTodayAndWait(reason: .captureSuccess)
+            guard let self,
+                  let overlay = self.todayLinkOverlay[itemID],
+                  overlay.refreshGeneration == overlayGeneration
+            else {
+                return
+            }
+            if refreshed {
+                self.todayLinkOverlay.removeValue(forKey: itemID)
+            } else {
+                self.todayLinkOverlay[itemID] = TodayLinkOverlay(
+                    name: overlay.name,
+                    refreshGeneration: library.todayRefreshGeneration,
+                    refreshPending: false
+                )
+            }
+        }
+    }
+
+    private func failTodayLinkWrite(_ problem: RefsTodayLinkFailure, token: UInt64) {
+        guard token == todayLinkSequence, var card = todayLinkCard else { return }
+        todayLinkTask = nil
+        let effect = card.fail(problem)
+        todayLinkCard = card
+        if !panelIsVisible() {
+            todayLinkFailureNotifier(problem.message, problem.hint)
+        }
+        applyTodayLinkEffect(effect, token: token)
     }
 
     /// Feeds one key captured by the controller to the card state machine.
@@ -1665,6 +1982,14 @@ public final class RefsPanelModel: ObservableObject {
     }
 
     private func libraryDidPublish() {
+        if todayLinkOverlay.values.contains(where: {
+            !$0.refreshPending && $0.refreshGeneration < library.todayRefreshGeneration
+        }) {
+            todayLinkOverlay = todayLinkOverlay.filter {
+                $0.value.refreshPending
+                    || $0.value.refreshGeneration >= library.todayRefreshGeneration
+            }
+        }
         // Keep the card's frozen listing intact while bob moves the bundle
         // and the library performs its single post-rename refresh. On
         // success, runRename installs a fresh listing at bob's `to.path`.

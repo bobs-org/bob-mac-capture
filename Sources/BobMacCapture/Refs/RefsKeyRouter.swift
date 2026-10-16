@@ -131,7 +131,11 @@ public enum RefsKeyRouter {
         case KeyCode.p:
             return flags == .control ? .move(.previous) : nil
         case KeyCode.n:
-            return flags == .control ? .move(.next) : nil
+            if flags == .control { return .move(.next) }
+            if flags.subtracting(.capsLock) == .command, !context.markedTextPresent {
+                return .showTodayLinkCard
+            }
+            return nil
         case KeyCode.k:
             if flags == .control {
                 return .move(.previous)

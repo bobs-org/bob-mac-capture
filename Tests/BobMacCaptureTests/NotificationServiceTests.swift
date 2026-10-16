@@ -1233,6 +1233,27 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertNil(NotificationService.refsScanContent(quiet))
     }
 
+    func testRefsTodayLinkSuccessAndFailureContent() throws {
+        let response = try todayLinkFixture("refs-today-linked.json")
+        let success = NotificationService.refsTodayLinkContent(
+            response: response,
+            title: "Attention Is All You Need"
+        )
+        XCTAssertEqual(success?.title, "Linked under CURRENT")
+        XCTAssertTrue(success?.body.contains("Attention Is All You Need") == true)
+        XCTAssertTrue(success?.body.contains("Ready → Next") == true)
+
+        let failure = NotificationService.refsTodayLinkFailureContent(
+            message: "Today's Pomodoros could not be loaded.",
+            hint: "Try again."
+        )
+        XCTAssertEqual(failure.title, "Reference link failed")
+        XCTAssertEqual(
+            failure.body,
+            "Today's Pomodoros could not be loaded.\nTry again."
+        )
+    }
+
     func testRefsScanCategoryRegistersForegroundShowAction() {
         let category = NotificationService.refsScanCategory()
         XCTAssertEqual(
@@ -1500,6 +1521,17 @@ final class NotificationServiceTests: XCTestCase {
             throw NSError(domain: "NotificationServiceTests", code: 1)
         }
         return success
+    }
+
+    private func todayLinkFixture(_ name: String) throws -> RefsTodayLinkResponse {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        return try JSONDecoder().decode(
+            RefsTodayLinkResponse.self,
+            from: Data(contentsOf: fixtures.appendingPathComponent(name))
+        )
     }
 
     // `dayFileChanged: false` models an idempotent re-toggle onto an already-linked

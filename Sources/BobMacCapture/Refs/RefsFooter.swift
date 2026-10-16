@@ -28,7 +28,9 @@ struct RefsFooter: View {
 
     private var hints: some View {
         Group {
-            if model.copyCard != nil {
+            if let card = model.todayLinkCard {
+                Text(RefsTodayLinkPresentation.hints(query: card.query))
+            } else if model.copyCard != nil {
                 Text("Copy — press a key")
             } else {
                 ViewThatFits(in: .horizontal) {
@@ -56,14 +58,14 @@ struct RefsFooter: View {
 
     static func hintVariants(openHint: String, tabsFilter: Bool = false) -> [String] {
         if tabsFilter {
-            let core = "\(openHint)  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘K Actions"
+            let core = "\(openHint)  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘N Today  ⌘K Actions"
             return [
                 "\(core)  ⌘T Library  ⌘1–5 Scope  esc Close",
                 "\(core)  ⌘T Library  esc Close",
                 "\(core)  ⌘T Library",
             ]
         }
-        let core = "\(openHint)  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘K Actions"
+        let core = "\(openHint)  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘N Today  ⌘K Actions"
         return [
             "\(core)  ⌘S Scan  ⌘1–5 Scope  ⌘T Tabs  esc Close",
             "\(core)  ⌘S Scan  esc Close",

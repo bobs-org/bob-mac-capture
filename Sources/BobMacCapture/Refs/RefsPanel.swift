@@ -39,7 +39,7 @@ public final class RefsPanelController: NSObject {
     private let model: RefsPanelModel
     private var panel: RefsPanel?
     private var localMonitor: Any?
-    private let copyHUD = RefsCopyHUDController()
+    private let glassToast = RefsGlassToastController()
     private var inspectorScrollCancellable: AnyCancellable?
     private var inspectorRevealCancellable: AnyCancellable?
     private var revealFollowTask: Task<Void, Never>?
@@ -63,6 +63,9 @@ public final class RefsPanelController: NSObject {
         copyDismisser = { [weak self] in self?.hide() }
         model.copyCompletion = { [weak self] row in
             self?.copySucceeded(row)
+        }
+        model.todayLinkCompletion = { [weak self] toast, title in
+            self?.todayLinkSucceeded(toast, title: title)
         }
         model.panelIsVisible = { [weak self] in self?.isVisible == true }
         inspectorScrollCancellable = model.inspectorScrolls.sink { [weak self] direction in
@@ -96,7 +99,7 @@ public final class RefsPanelController: NSObject {
     public func show(source: RefsPresentationSource = .library) {
         let token = CaptureSignpost.begin("refs-panel-show")
         defer { CaptureSignpost.end(token) }
-        copyHUD.dismiss()
+        glassToast.dismiss()
         model.prepareForPresentation(source: source)
         model.refreshForOpen()
         orderFront()
@@ -109,7 +112,7 @@ public final class RefsPanelController: NSObject {
     public func represent() {
         let token = CaptureSignpost.begin("refs-panel-reshow")
         defer { CaptureSignpost.end(token) }
-        copyHUD.dismiss()
+        glassToast.dismiss()
         orderFront()
     }
 
@@ -136,7 +139,7 @@ public final class RefsPanelController: NSObject {
     /// frontmost app on its own. The model clears a seen scan notice
     /// here, so a finished scan's footer text does not linger.
     public func hide() {
-        copyHUD.dismiss()
+        glassToast.dismiss()
         panel?.orderOut(nil)
         model.panelDidHide()
     }
@@ -144,12 +147,24 @@ public final class RefsPanelController: NSObject {
     private func copySucceeded(_ row: RefsCopyRow) {
         let formerFrame = panel?.frame ?? .zero
         copyDismisser()
-        copyHUD.show(
+        glassToast.show(
             title: row.confirmationTitle,
             value: row.preview,
             centeredOn: formerFrame
         )
         AccessibilityNotification.Announcement(row.confirmationTitle).post()
+    }
+
+    private func todayLinkSucceeded(_ toast: RefsTodayLinkToast, title: String) {
+        guard let panel, panel.isVisible else { return }
+        glassToast.show(
+            title: toast.title,
+            value: toast.value,
+            detail: toast.detail,
+            style: toast.style,
+            holdDuration: RefsTodayLinkPresentation.toastHoldDuration,
+            aboveFooterOf: panel.frame
+        )
     }
 
     /// Pops the ⌘K actions menu below the selected row, or at the
@@ -192,6 +207,9 @@ public final class RefsPanelController: NSObject {
                     item.isEnabled = false
                 }
                 if action == .rename, model.isRenaming {
+                    item.isEnabled = false
+                }
+                if action == .linkToday, model.isRenaming || model.isLinkingToday {
                     item.isEnabled = false
                 }
                 menu.addItem(item)
@@ -335,6 +353,17 @@ public final class RefsPanelController: NSObject {
             }
             return event
         }
+        if model.todayLinkCard != nil {
+            guard let command = model.todayLinkCardKeyCommand(
+                keyCode: event.keyCode,
+                modifiers: Self.copyModifiers(event.modifierFlags),
+                hasMarkedText: markedTextInTodayLinkField()
+            ) else {
+                return event
+            }
+            model.handleTodayLinkCardKey(command)
+            return nil
+        }
         if model.renameCard != nil {
             guard let command = model.renameCardKeyCommand(
                 keyCode: event.keyCode,
@@ -416,6 +445,15 @@ public final class RefsPanelController: NSObject {
         return editor.hasMarkedText()
     }
 
+    private func markedTextInTodayLinkField() -> Bool {
+        guard let field = Self.findTodayLinkField(in: panel?.contentView),
+              let editor = field.currentEditor() as? NSTextView
+        else {
+            return false
+        }
+        return editor.hasMarkedText()
+    }
+
     /// Claims search-field focus when nothing else holds it, leaving
     /// focused controls such as banner buttons alone.
     private func repairFilterFocusIfNeeded() {
@@ -483,6 +521,19 @@ public final class RefsPanelController: NSObject {
             if let found = findRenameField(in: subview) {
                 return found
             }
+        }
+        return nil
+    }
+
+    static func findTodayLinkField(in view: NSView?) -> CapturePickerFilterNSTextField? {
+        guard let view else { return nil }
+        if let field = view as? CapturePickerFilterNSTextField,
+           field.accessibilityIdentifier() == refsTodayLinkFieldAccessibilityIdentifier
+        {
+            return field
+        }
+        for subview in view.subviews {
+            if let found = findTodayLinkField(in: subview) { return found }
         }
         return nil
     }

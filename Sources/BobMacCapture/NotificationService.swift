@@ -153,6 +153,21 @@ final class NotificationService: NSObject, ObservableObject {
         }
     }
 
+    /// Confirms a Today link that completed while Bob Refs was hidden.
+    func notifyRefsTodayLink(_ response: RefsTodayLinkResponse, title: String) {
+        guard let content = Self.refsTodayLinkContent(response: response, title: title) else {
+            return
+        }
+        Task { try? await add(content) }
+    }
+
+    /// Reports a Today-link failure that landed while the panel was hidden.
+    func notifyRefsTodayLinkFailure(message: String, hint: String?) {
+        Task {
+            try? await add(Self.refsTodayLinkFailureContent(message: message, hint: hint))
+        }
+    }
+
     func sendTestNotification() async throws {
         try await add(Self.testContent())
     }
@@ -340,6 +355,34 @@ final class NotificationService: NSObject, ObservableObject {
         let content = UNMutableNotificationContent()
         content.title = text.title
         content.body = text.body
+        return content
+    }
+
+    nonisolated static func refsTodayLinkContent(
+        response: RefsTodayLinkResponse,
+        title: String
+    ) -> UNMutableNotificationContent? {
+        guard let presentation = RefsTodayLinkPresentation.notification(
+            response: response, title: title
+        ) else {
+            return nil
+        }
+        let content = UNMutableNotificationContent()
+        content.title = presentation.title
+        content.body = presentation.body
+        return content
+    }
+
+    nonisolated static func refsTodayLinkFailureContent(
+        message: String,
+        hint: String?
+    ) -> UNMutableNotificationContent {
+        let presentation = RefsTodayLinkPresentation.failureNotification(
+            message: message, hint: hint
+        )
+        let content = UNMutableNotificationContent()
+        content.title = presentation.title
+        content.body = presentation.body
         return content
     }
 

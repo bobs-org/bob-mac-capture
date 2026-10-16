@@ -1449,9 +1449,10 @@ Diagnostic for hard failures.
 | Command-S | Scan for new references now (`bob ref scan -w` in the background); a second ⌘S while one runs does nothing |
 | Command-K | Actions menu for the selected row |
 | Command-Y | Open the Copy card for the selected row |
+| Command-N | Open the Link to Today card for the selected reference |
 | Command-Shift-R | Open the Rename card for the selected row |
 | Backspace on an empty query | Remove the scope token |
-| Esc, Ctrl-[ | Rename or Copy card, then banner, then query, then scope, then close |
+| Esc, Ctrl-[ | Link to Today, Rename, or Copy card, then banner, query, scope, close |
 | Shift-Tab | Consumed (no-op) |
 
 Return and Command-Y while IME-composing pass through to the text system. Ctrl-D
@@ -1512,6 +1513,21 @@ another attempt. The card explains that the note and inbound links move
 with the PDF while the reading task keeps its identity. Close the PDF in
 Highlights first. Hiding the panel does not cancel a rename already in
 progress; completion while hidden posts a notification.
+
+### Link to Today card
+
+Command-N or Link to Today… in the ⌘K menu opens the selected reference's
+Pomodoro picker. Bob supplies the open Pomodoros, the current or next
+default, and each preview; Return links to the default, while typing
+filters rows and offers a new Pomodoro name. Arrow keys move through
+matches, Shift-Return creates or reuses the exact typed name, and clicking
+a row links it. The card stays open while choosing another reference.
+The selected row gains its Today pill immediately, then the library refresh
+replaces that optimistic pill. A glass toast confirms the lane and ledger
+change; if the panel was hidden when Bob returned, Bob Refs posts the same
+outcome as a system notification. VoiceOver announces visible successes.
+Escape closes the card, and a link already in progress finishes if the
+panel hides.
 
 ### Opening Bob Refs
 
@@ -1624,11 +1640,12 @@ outline headings feed back into the ranking signals, so rows gain
 
 The ⌘K actions menu pops up below the selected row (at the list's
 center when the row frame is unknown): Open in Highlights (↵), Open
-Note (⌘↵), Reveal in Finder (⌥↵), Copy… (⌘Y), Rename… (⌘⇧R), Open
+Note (⌘↵), Reveal in Finder (⌥↵), Copy… (⌘Y), Rename… (⌘⇧R),
+Link to Today… (⌘N), Open
 Source URL (only with `urls`), Open Narration (only with `audio`, in
 the default app), Open in Default App, Refresh Library (⌘R), and Scan
-for New References (⌘S, last; disabled while a scan runs). Copy… and
-Rename… open their matching cards.
+for New References (⌘S, last; disabled while a scan runs). Copy…,
+Rename…, and Link to Today… open their matching cards.
 
 ### Privacy
 

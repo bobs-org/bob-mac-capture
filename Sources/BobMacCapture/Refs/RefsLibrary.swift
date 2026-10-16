@@ -138,6 +138,9 @@ public final class RefsLibrary: ObservableObject {
     @Published public private(set) var hasSnapshot: Bool = false
     /// The scan lane state: idle, scanning, or the last outcome.
     @Published public private(set) var scanState: RefsScanState = .idle
+    /// Increments after each successful Today refresh, so optimistic
+    /// Today pills can yield to the refreshed Bob snapshot.
+    @Published public private(set) var todayRefreshGeneration: UInt64 = 0
 
     /// Seconds between background Today refreshes.
     public static let todayRefreshInterval: TimeInterval = 600
@@ -156,7 +159,7 @@ public final class RefsLibrary: ObservableObject {
 
     private var snapshotTask: Task<Void, Never>?
     private var snapshotFollowUp = false
-    private var todayTask: Task<Void, Never>?
+    private var todayTask: Task<Bool, Never>?
     private var todayFollowUp = false
     private var gitTask: Task<Void, Never>?
     private var gitFollowUp = false
@@ -272,7 +275,23 @@ public final class RefsLibrary: ObservableObject {
             todayFollowUp = true
             return
         }
-        todayTask = Task { [weak self] in await self?.runTodayPass(reason: reason) }
+        todayTask = Task { [weak self] in
+            guard let self else { return false }
+            return await self.runTodayPass(reason: reason)
+        }
+    }
+
+    /// Refreshes Today and waits through a queued follow-up if another
+    /// Today pass was already running. Returns whether the final pass
+    /// completed successfully.
+    @discardableResult
+    public func refreshTodayAndWait(reason: RefsRefreshReason) async -> Bool {
+        refreshToday(reason: reason)
+        var succeeded = false
+        while let current = todayTask {
+            succeeded = await current.value
+        }
+        return succeeded
     }
 
     /// Runs `bob ref scan -w -f json` on its own `refs-scan` lane.
@@ -372,6 +391,21 @@ public final class RefsLibrary: ObservableObject {
             throw RefsLibraryError.unavailable
         }
         return try await fetcher.show(path: path)
+    }
+
+    /// Runs Bob's reference-to-Pomodoro preview or write. Bob owns the
+    /// selector semantics and the vault mutation.
+    public func linkToToday(
+        notePath: String,
+        selector: RefsTodayLinkSelector = .automatic,
+        dryRun: Bool
+    ) async throws -> RefsTodayLinkResponse {
+        guard let fetcher else {
+            throw RefsLibraryError.unavailable
+        }
+        return try await fetcher.linkToToday(
+            notePath: notePath, selector: selector, dryRun: dryRun
+        )
     }
 
     /// Runs Bob's whole-file rename on its independent, non-cancelling
@@ -583,7 +617,7 @@ public final class RefsLibrary: ObservableObject {
         }
     }
 
-    private func runTodayPass(reason: RefsRefreshReason) async {
+    private func runTodayPass(reason: RefsRefreshReason) async -> Bool {
         defer {
             todayTask = nil
             if todayFollowUp {
@@ -592,18 +626,21 @@ public final class RefsLibrary: ObservableObject {
             }
         }
         guard let fetcher else {
-            return
+            return false
         }
         do {
             let plan = try await fetcher.plan()
             today = RefsToday(plan: plan)
+            todayRefreshGeneration &+= 1
             signals.today = today
             if let snapshot {
                 snapshotStore.save(snapshot: snapshot, today: today)
             }
+            return true
         } catch {
             // A failed Today refresh — including a schema mismatch — keeps
             // the last Today value instead of clearing it.
+            return false
         }
     }
 

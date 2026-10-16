@@ -191,7 +191,9 @@ public struct RefsPanelView: View {
             }
         } else {
             Group {
-                if model.renameCard != nil {
+                if model.todayLinkCard != nil {
+                    todayLinkCard
+                } else if model.renameCard != nil {
                     renameCard
                 } else if model.copyCard != nil {
                     copyCard
@@ -200,7 +202,10 @@ public struct RefsPanelView: View {
                         .transition(.opacity)
                 }
             }
-            .animation(copyCardAnimation, value: model.copyCard != nil || model.renameCard != nil)
+            .animation(
+                copyCardAnimation,
+                value: model.copyCard != nil || model.renameCard != nil || model.todayLinkCard != nil
+            )
         }
     }
 
@@ -213,7 +218,9 @@ public struct RefsPanelView: View {
     @ViewBuilder
     private var inspector: some View {
         Group {
-            if model.renameCard != nil {
+            if model.todayLinkCard != nil {
+                todayLinkCard
+            } else if model.renameCard != nil {
                 renameCard
             } else if model.copyCard != nil {
                 copyCard
@@ -241,7 +248,10 @@ public struct RefsPanelView: View {
                     .transition(.opacity)
             }
         }
-        .animation(copyCardAnimation, value: model.copyCard != nil || model.renameCard != nil)
+        .animation(
+            copyCardAnimation,
+            value: model.copyCard != nil || model.renameCard != nil || model.todayLinkCard != nil
+        )
     }
 
     private var copyCard: some View {
@@ -283,6 +293,22 @@ public struct RefsPanelView: View {
                     onDraftChange: { model.editRenameDraft($0) }
                 )
                 .id(model.renameCardGeneration)
+                .transition(copyCardTransition)
+            }
+        }
+    }
+
+    private var todayLinkCard: some View {
+        Group {
+            if let card = model.todayLinkCard {
+                RefsTodayLinkCardView(
+                    card: card,
+                    focusSequence: model.todayLinkCardGeneration,
+                    previewMode: previewMode,
+                    onQueryChange: { model.editTodayLinkQuery($0) },
+                    onRowTap: { model.todayLinkRowTapped($0) }
+                )
+                .id(model.todayLinkCardGeneration)
                 .transition(copyCardTransition)
             }
         }
