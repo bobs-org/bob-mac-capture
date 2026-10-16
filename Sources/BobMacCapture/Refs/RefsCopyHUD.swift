@@ -300,6 +300,8 @@ public typealias RefsCopyHUDController = RefsGlassToastController
 
 /// Shared glass content. Copy keeps its compact checkmark treatment;
 /// Today adds a pink or orange badge, reference title, and detail line.
+/// Closed-tab toasts use `xmark.square.fill` in secondary tint and omit
+/// the detail line when it is nil or empty.
 @available(macOS 26.0, *)
 struct RefsGlassToastView: View {
     let title: String

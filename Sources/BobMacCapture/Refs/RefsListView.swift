@@ -57,7 +57,10 @@ struct RefsSectionHeader: View {
 
 /// The list column: a scroll view of pinned sections whose selection
 /// stays visible without animation. Reports its visible row budget to
-/// the model so paging moves by one less than fits.
+/// the model so paging moves by one less than fits. Tab-close
+/// removals fold out through a short transition; query re-ranks stay
+/// unanimated because only the model's close path wraps in
+/// `withAnimation`.
 @available(macOS 26.0, *)
 struct RefsListView: View {
     @ObservedObject var model: RefsPanelModel
@@ -68,6 +71,7 @@ struct RefsListView: View {
     /// Dims every row for stale Tabs rows after a failed re-read, on
     /// top of each row's own treatment.
     var dimRows = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         if previewMode {
@@ -166,9 +170,11 @@ struct RefsListView: View {
                 },
                 onActivate: {
                     model.perform(.activate(id: id))
-                }
+                },
+                onClose: closeHandler(for: id)
             )
             .opacity(dimRows ? 0.6 : 1)
+            .transition(removalTransition)
             .onGeometryChange(for: CGRect?.self) { proxy in
                 model.selectedID == id
                     ? proxy.frame(in: .named("refsPanel")) : nil
@@ -177,6 +183,27 @@ struct RefsListView: View {
                     model.selectedRowRect = rect
                 }
             }
+        )
+    }
+
+    /// The row close button, or nil when this id is not a closable tab.
+    private func closeHandler(for id: String) -> (() -> Void)? {
+        guard model.canCloseTab(id: id) else {
+            return nil
+        }
+        return { _ = model.perform(.closeTab(id: id)) }
+    }
+
+    /// Close removals fade and collapse so the rows below glide up.
+    /// Reduce Motion keeps the fade and drops the collapse. Insertions
+    /// are identity so a query re-rank never animates in.
+    private var removalTransition: AnyTransition {
+        if reduceMotion {
+            return .opacity
+        }
+        return .asymmetric(
+            insertion: .identity,
+            removal: .opacity.combined(with: .scale(scale: 0.35, anchor: .top))
         )
     }
 

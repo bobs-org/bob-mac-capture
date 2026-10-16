@@ -123,17 +123,20 @@ final class RefsFooterTests: XCTestCase {
     func testTabsHintsLeadWithSwitchAndNameTheLibrary() {
         XCTAssertEqual(
             RefsFooter.hintsText(openHint: "↵ Switch", tabsFilter: true),
-            "↵ Switch  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘N Today  ⌘K Actions  "
-                + "⌘T Library  ⌘1–5 Scope  esc Close"
+            "↵ Switch  ⌃D Close Tab  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘N Today  "
+                + "⌘K Actions  ⌘T Library  ⌘1–5 Scope  esc Close"
         )
         let variants = RefsFooter.hintVariants(
             openHint: "↵ Switch",
             tabsFilter: true
         )
-        XCTAssertEqual(variants.count, 3)
+        XCTAssertEqual(variants.count, 4)
         XCTAssertTrue(variants.allSatisfy { $0.contains("⌘T Library") })
+        XCTAssertTrue(variants.allSatisfy { $0.contains("⌃D Close Tab") })
         XCTAssertTrue(variants.allSatisfy { $0.hasPrefix("↵ Switch") })
         XCTAssertFalse(variants.joined().contains("⌘S Scan"))
+        XCTAssertTrue(variants[0].contains("⌥↵ Reveal"))
+        XCTAssertFalse(variants[3].contains("⌥↵ Reveal"))
         // Library mode keeps its own hints and names the Tabs entry
         // only in the widest variant.
         XCTAssertTrue(

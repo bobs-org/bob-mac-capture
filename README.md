@@ -1445,7 +1445,9 @@ Diagnostic for hard failures.
 | Option-Return | Reveal the PDF in Finder |
 | Up/Down, Ctrl-P/Ctrl-N, Ctrl-K/Ctrl-J | Move (wraps) |
 | Page Up/Page Down | Page the results list by one less than fits |
-| Ctrl-D / Ctrl-U | Scroll the preview down/up by half its height; at the very bottom, Ctrl-D shows the next page of your notes and highlights; search keeps focus |
+| Ctrl-D | In Tabs, close the selected tab in Highlights; elsewhere scroll the preview down by half its height; at the very bottom, Ctrl-D shows the next page of your notes and highlights; search keeps focus |
+| Ctrl-U | Scroll the preview up by half its height; search keeps focus |
+| Shift-Command-T | Reopen the most recently closed Highlights tab |
 | Command-Up/Command-Down, Home/End | First, last |
 | Option-Up/Option-Down | First row of the previous/next section (browse only) |
 | Command-1 … Command-5 | Scope All, Chats, Papers, Articles, Docs |
@@ -1462,9 +1464,12 @@ Diagnostic for hard failures.
 Return and Command-Y while IME-composing pass through to the text system. Ctrl-D
 and Ctrl-U also pass through while IME-composing; once recognized they
 consume the key even when the preview is hidden, short, empty, or
-already at an edge. At the very bottom, Ctrl-D shows the next page of
+already at an edge. In Tabs, Ctrl-D closes the selected tab instead of
+scrolling. At the very bottom of the preview, Ctrl-D shows the next page of
 your notes and highlights (clicking the disclosure row does the same);
 when nothing is hidden it is still consumed and does nothing.
+Shift-Command-T reopens the most recently closed tab, or does nothing
+when none remain; it also passes through while IME-composing.
 Printable keys fall through to the search field. Result counts are
 announced 600 ms after typing stops, never on every keystroke.
 
@@ -1583,13 +1588,29 @@ previous tab is preselected.
 
 Return, Tab, or double-click switches to the existing tab. Switching
 keeps its page, does not change reading state, and does not add an entry
-to the open log. Tabs refreshes on panel show, Command-T, or Command-R;
+to the open log. Control-D closes the selected tab, including collision
+and unmatched rows: the row folds out, the next row is selected, and the
+panel stays up so Control-D Control-D Control-D clears several tabs.
+Hovered and selected Tabs rows also show a Close Tab button (⌃D).
+Closing the last open document also quits Highlights, and the panel
+hides. Shift-Command-T reopens the most recently closed tab (up to 20,
+kept in memory for the app's lifetime). A matched row reopens its library
+PDF; a collision or unmatched row reopens only when its full path was
+known.
+
+If Highlights already closed the tab, the row stays gone with no error.
+If Highlights shows a save sheet instead of closing, Bob Refs hides so
+the sheet is in front. Any other failure puts the row back, selected,
+with "Couldn't close “title” in Highlights."
+
+Tabs refreshes on panel show, Command-T, or Command-R;
 it does not poll in the background. The panel explains when Accessibility
 permission is needed, Highlights is not running, no documents are open,
 or a read fails.
 
-Accessibility reads Highlights' window and tab attributes and selects a
-tab through its button. Names stay in memory. Highlights exposes the
+Accessibility reads Highlights' window and tab attributes, selects a
+tab through its button, and presses a tab's or window's close button.
+Names stay in memory. Highlights exposes the
 visible tab's full path; background tabs match by filename only. Tabs in
 other Spaces and full-screen windows are untested.
 
@@ -1643,7 +1664,8 @@ outline headings feed back into the ranking signals, so rows gain
 `N pp` and search can match headings.
 
 The ⌘K actions menu pops up below the selected row (at the list's
-center when the row frame is unknown): Open in Highlights (↵), Open
+center when the row frame is unknown): Open in Highlights (↵), Close Tab
+(⌃D, matched Tabs rows), Open
 Note (⌘↵), Reveal in Finder (⌥↵), Copy… (⌘Y), Rename… (⌘⇧R),
 Link to Today… (⌘N), Open
 Source URL (only with `urls`), Open Narration (only with `audio`, in
@@ -1664,8 +1686,10 @@ settings persist a small set of `UserDefaults` keys (the ⌃⇧⌘R
 binding flag, the Highlights-frontmost open key, the Highlights Tabs
 key (`refsHighlightsTabsKey`, default `shiftCmdO`), the Highlights
 override path, and the preview notes page size). Accessibility is used
-only against Highlights to read window and tab attributes and select a
-tab button; tab names stay in memory and are never persisted. Signposts
+only against Highlights: it reads window and tab attributes, selects a
+tab button, and presses a tab's or window's close button. Bob Refs quits
+Highlights only after closing its last document. Tab names and closed-tab
+entries stay in memory and are never persisted. Signposts
 carry event names only, never note text.
 Scan notifications may show reference titles, as capture notifications
 already show task text; the Just scanned mark itself lives in memory
@@ -1683,6 +1707,9 @@ only and is never written to disk.
   Open Accessibility Settings from the Tabs card to clear a stale grant and
   bring up the system prompt, then allow Bob Mac Capture. Tabs never asks for
   permission at launch.
+- "Couldn't close “title” in Highlights": the row came back because
+  Highlights did not close that tab. Press Control-D to retry. If a save
+  sheet appears instead, Bob Refs hides so Highlights can show the sheet.
 - If the switch looks on but does nothing, its row is pinned to an older build.
   The button repairs it, or run
   `tccutil reset Accessibility org.bobs.bob-mac-capture` and grant the app again.
@@ -1767,6 +1794,8 @@ Bob Refs shortcuts:
 | --- | --- |
 | Command-T | Toggle the Tabs filter; the query and kind scope stay in place |
 | Shift-Command-O | While Highlights is frontmost, open Bob Refs in Tabs; configurable to Command-E or Off |
+| Ctrl-D | In Tabs, close the selected tab in Highlights; elsewhere scroll the preview |
+| Shift-Command-T | Reopen the most recently closed Highlights tab |
 
 | Key | In the editor | While completion is visible | While Add block ID is open | While Name Pomodoro is open |
 | --- | --- | --- | --- | --- |

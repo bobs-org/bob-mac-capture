@@ -46,4 +46,13 @@ final class RefsTabsViewsTests: XCTestCase {
             "Couldn't read Highlights' tabs · ⌘R to retry"
         )
     }
+
+    func testCloseTabCopy() {
+        XCTAssertEqual(RefsRowView.closeTabHelp, "Close Tab (⌃D)")
+        XCTAssertEqual(RefsRowView.closeTabActionName, "Close Tab")
+        XCTAssertEqual(
+            RefsInspectorView.tabFallbackHint,
+            "↵ switches to this tab · ⌃D closes it"
+        )
+    }
 }

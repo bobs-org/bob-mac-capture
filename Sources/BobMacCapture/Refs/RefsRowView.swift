@@ -166,7 +166,8 @@ struct RefsTabDocTile: View {
 /// its accessibility label. Collision and unmatched rows (no item)
 /// render dimmed with the neutral document tile and glyph instead of
 /// the kind tile and state glyph — a legible treatment distinct from
-/// the unavailable 0.45 dim.
+/// the unavailable 0.45 dim. Closable Tabs rows reserve an 18 pt
+/// trailing column for a quiet close button on hover and selection.
 @available(macOS 26.0, *)
 struct RefsRowView: View {
     let content: RefsRowContent
@@ -174,9 +175,22 @@ struct RefsRowView: View {
     let pomodoroName: String?
     let onSelect: () -> Void
     let onActivate: () -> Void
+    /// Closes this Highlights tab. Non-nil only when the model can
+    /// close the row, so the trailing column is reserved then and
+    /// nothing shifts as the pointer moves.
+    var onClose: (() -> Void)? = nil
+    /// Design fixtures force the hover close button without a pointer.
+    var previewHovering = false
+
+    /// Tooltip and VoiceOver name for the row close control.
+    static let closeTabHelp = "Close Tab (⌃D)"
+    /// The VoiceOver action name that closes this tab.
+    static let closeTabActionName = "Close Tab"
 
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovering = false
+    @State private var closeHovering = false
 
     /// Whether this row is a collision or unmatched Tabs row.
     private var isTabFallback: Bool {
@@ -228,6 +242,7 @@ struct RefsRowView: View {
                 RefsStateGlyph(content: content)
                     .accessibilityHidden(true)
             }
+            closeColumn
         }
         .padding(.leading, 8)
         .padding(.trailing, 12)
@@ -240,6 +255,51 @@ struct RefsRowView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .refsCloseTabAction(onClose)
+    }
+
+    /// True when the reserved close column should paint the button:
+    /// selected, hovered, or a design-fixture hover.
+    private var showsCloseControl: Bool {
+        onClose != nil && (isSelected || hovering || previewHovering)
+    }
+
+    /// An 18 pt trailing column, reserved whenever this row can close,
+    /// so the glyph never shoves neighbors as the button fades in.
+    @ViewBuilder
+    private var closeColumn: some View {
+        if onClose != nil {
+            ZStack {
+                if showsCloseControl {
+                    closeButton
+                        .transition(reduceMotion ? .identity : .opacity)
+                }
+            }
+            .frame(width: 18, alignment: .center)
+            .animation(
+                reduceMotion ? nil : .easeInOut(duration: 0.12),
+                value: showsCloseControl
+            )
+        }
+    }
+
+    /// Quiet close control: secondary until the pointer is over it.
+    /// The button consumes the click so the row neither selects nor
+    /// activates. VoiceOver uses the row action instead.
+    private var closeButton: some View {
+        Button {
+            onClose?()
+        } label: {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(closeHovering ? Color.primary : Color.secondary)
+                .frame(width: 18, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help(Self.closeTabHelp)
+        .onHover { closeHovering = $0 }
+        .accessibilityHidden(true)
     }
 
     private var gutter: some View {
@@ -375,5 +435,18 @@ struct RefsRowView: View {
             }
         }
         return parts.joined(separator: ", ")
+    }
+}
+
+@available(macOS 26.0, *)
+extension View {
+    /// Adds the VoiceOver "Close Tab" action only when the row can close.
+    @ViewBuilder
+    fileprivate func refsCloseTabAction(_ action: (() -> Void)?) -> some View {
+        if let action {
+            self.accessibilityAction(named: RefsRowView.closeTabActionName, action)
+        } else {
+            self
+        }
     }
 }

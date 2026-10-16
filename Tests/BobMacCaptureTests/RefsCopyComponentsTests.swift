@@ -60,6 +60,40 @@ final class RefsCopyComponentsTests: XCTestCase {
     func testClosedTabToastStyleUsesCloseGlyph() {
         XCTAssertEqual(RefsGlassToastStyle.closedTab.symbolName, "xmark.square.fill")
         XCTAssertEqual(RefsGlassToastStyle.closedTab.color, .secondary)
+        let withDetail = RefsTabClosePresentation.toast(
+            title: "Attention Is All You Need",
+            canReopen: true
+        )
+        let withoutDetail = RefsTabClosePresentation.toast(
+            title: "Attention Is All You Need",
+            canReopen: false
+        )
+        XCTAssertEqual(withDetail.detail, "⇧⌘T reopens")
+        XCTAssertNil(withoutDetail.detail)
+        let lastQuit = RefsTabClosePresentation.lastToast(
+            title: "Attention Is All You Need",
+            highlightsQuit: true
+        )
+        let lastOpen = RefsTabClosePresentation.lastToast(
+            title: "Attention Is All You Need",
+            highlightsQuit: false
+        )
+        XCTAssertEqual(lastQuit.detail, "Highlights quit")
+        XCTAssertNil(lastOpen.detail)
+        _ = RefsGlassToastView(
+            title: withoutDetail.title,
+            value: withoutDetail.value,
+            detail: withoutDetail.detail,
+            style: .closedTab,
+            previewMode: true
+        )
+        _ = RefsGlassToastView(
+            title: lastOpen.title,
+            value: lastOpen.value,
+            detail: lastOpen.detail,
+            style: .closedTab,
+            previewMode: true
+        )
     }
 
     func testCopyCardMetricsMatchTokens() {

@@ -74,6 +74,10 @@ final class RefsPanelDesignTests: XCTestCase {
         try renderTabsNoDocuments(now: now)
         try renderTabsFailedStale(model: model, now: now)
         try renderTabsWithoutLibrarySnapshot(now: now)
+        try renderTabsCloseSelected(model: model, now: now)
+        try renderTabsCloseHoverRow(model: model, now: now)
+        try renderTabsFooter(model: model, now: now)
+        try renderClosedTabToasts()
     }
 
     // MARK: - Renders
@@ -1353,6 +1357,99 @@ final class RefsPanelDesignTests: XCTestCase {
         XCTAssertTrue(hasStaleRows)
         XCTAssertEqual(model.listing.orderedIDs.count, 9)
         try write(model: model, name: "refs-tabs-failed-stale-880", width: 880)
+    }
+
+    /// The 9-row Tabs list with the selected row's close button in the
+    /// reserved trailing column.
+    private func renderTabsCloseSelected(model: RefsPanelModel, now: Date) throws {
+        installTabs(model: model, now: now, state: .loaded, frontmost: true)
+        let selected = try XCTUnwrap(model.selectedID)
+        XCTAssertTrue(model.canCloseTab(id: selected))
+        XCTAssertEqual(model.listing.orderedIDs.count, 9)
+        try write(model: model, name: "refs-tabs-close-selected-880", width: 880)
+    }
+
+    /// An unselected Tabs row with the close button forced on, as if
+    /// the pointer were over it. ImageRenderer never drives `onHover`.
+    private func renderTabsCloseHoverRow(model: RefsPanelModel, now: Date) throws {
+        installTabs(model: model, now: now, state: .loaded, frontmost: true)
+        let id = "ref/chat/team_fit_review.md"
+        XCTAssertNotEqual(model.selectedID, id)
+        XCTAssertTrue(model.canCloseTab(id: id))
+        let content = try XCTUnwrap(model.rowContent(for: id))
+        let width = RefsVisualTokens.listWidth(panelWidth: 880)
+        let view = RefsRowView(
+            content: content,
+            isSelected: false,
+            pomodoroName: model.pomodoroName(for: id),
+            onSelect: {},
+            onActivate: {},
+            onClose: {},
+            previewHovering: true
+        )
+        .frame(width: width, height: RefsVisualTokens.rowHeight)
+        for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
+            try RenderFixtureWriter.write(
+                view,
+                name: "refs-tabs-close-hover-row",
+                width: width,
+                appearance: appearance
+            )
+        }
+    }
+
+    /// The Tabs footer at panel width and at the inspector cutoff, so
+    /// ViewThatFits can drop Reveal while keeping Close Tab.
+    private func renderTabsFooter(model: RefsPanelModel, now: Date) throws {
+        installTabs(model: model, now: now, state: .loaded, frontmost: true)
+        XCTAssertTrue(model.tabsFilter)
+        for width in [CGFloat(880), CGFloat(760)] {
+            let view = RefsFooter(model: model)
+                .frame(width: width, height: RefsVisualTokens.footerHeight)
+            for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
+                try RenderFixtureWriter.write(
+                    view,
+                    name: "refs-tabs-footer-\(Int(width))",
+                    width: width,
+                    appearance: appearance
+                )
+            }
+        }
+    }
+
+    /// Closed-tab toasts with and without the reopen line, and last-tab
+    /// toasts with and without the Highlights-quit line.
+    private func renderClosedTabToasts() throws {
+        let title = "Attention Is All You Need"
+        let fixtures: [(String, RefsTabCloseToast)] = [
+            ("refs-closed-tab-toast-reopen",
+             RefsTabClosePresentation.toast(title: title, canReopen: true)),
+            ("refs-closed-tab-toast",
+             RefsTabClosePresentation.toast(title: title, canReopen: false)),
+            ("refs-closed-last-tab-toast-quit",
+             RefsTabClosePresentation.lastToast(title: title, highlightsQuit: true)),
+            ("refs-closed-last-tab-toast",
+             RefsTabClosePresentation.lastToast(title: title, highlightsQuit: false)),
+        ]
+        for (name, toast) in fixtures {
+            XCTAssertEqual(toast.value, title)
+            let view = RefsGlassToastView(
+                title: toast.title,
+                value: toast.value,
+                detail: toast.detail,
+                style: .closedTab,
+                previewMode: true
+            )
+            .frame(width: 420)
+            for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
+                try RenderFixtureWriter.write(
+                    view,
+                    name: name,
+                    width: 420,
+                    appearance: appearance
+                )
+            }
+        }
     }
 
     /// Tabs mode without a library snapshot yet: every tab reads

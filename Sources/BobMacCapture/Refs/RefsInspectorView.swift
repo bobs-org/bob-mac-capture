@@ -101,6 +101,8 @@ struct RefsInspectorView: View {
     /// Runs the model's reveal; the controller follows the tail for
     /// keyboard and click reveals alike.
     var onRevealMoreNotes: () -> Void = {}
+    /// Collision and unmatched inspector hint: switch and close.
+    static let tabFallbackHint = "↵ switches to this tab · ⌃D closes it"
     @State private var disclosureHover = false
 
     var body: some View {
@@ -153,8 +155,8 @@ struct RefsInspectorView: View {
     /// The minimal card for collision and unmatched Tabs rows: the
     /// file name with the neutral tile, the library verdict, the
     /// candidate notes with their note paths (plus the Highlights
-    /// document path when known), and the switch hint. Matched rows
-    /// keep the full inspector above.
+    /// document path when known), and the switch-and-close hint.
+    /// Matched rows keep the full inspector above.
     private func tabFallbackCard(for tab: RefsOpenTab) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
@@ -191,7 +193,7 @@ struct RefsInspectorView: View {
                     .lineLimit(2)
                     .truncationMode(.middle)
             }
-            Text("↵ switches to this tab")
+            Text(Self.tabFallbackHint)
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
