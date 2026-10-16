@@ -2,7 +2,7 @@ import Foundation
 
 /// Compact execution summary for a declared bulk template. Older Bob omits
 /// the object, so clients can safely treat nil as an ordinary capture.
-public struct CaptureTemplateSummary: Codable, Equatable {
+public struct CaptureTemplateSummary: Codable, Equatable, Sendable {
   public let line: Int
   public let fieldCount: Int
   public let rowCount: Int
@@ -56,7 +56,7 @@ public struct CaptureTemplateSummary: Codable, Equatable {
 
 /// One row field from Bob's template-aware editor parse. Ranges are UTF-8
 /// byte offsets into the typed draft, including quotes where present.
-public struct CaptureTemplateField: Codable, Equatable {
+public struct CaptureTemplateField: Codable, Equatable, Sendable {
   public let field: Int
   public let value: String
   public let range: CaptureRange
@@ -88,7 +88,7 @@ public struct CaptureTemplateField: Codable, Equatable {
 /// A template row as returned by `capture-parse` and `capture`. Parse-only
 /// details are optional so the same type decodes execution's compact
 /// `{row,line}` object without rejecting older or partial payloads.
-public struct CaptureTemplateRow: Codable, Equatable {
+public struct CaptureTemplateRow: Codable, Equatable, Sendable {
   public let row: Int
   public let line: Int
   public let range: CaptureRange?
@@ -807,7 +807,7 @@ public struct CaptureDiagnostic: Codable, Equatable {
   }
 }
 
-public struct CaptureRange: Codable, Equatable {
+public struct CaptureRange: Codable, Equatable, Sendable {
   public let start: Int
   public let end: Int
 
@@ -2246,7 +2246,7 @@ public struct CaptureRewriteEdit: Codable, Equatable {
   }
 }
 
-public struct CaptureGlobalDestination: Codable, Equatable {
+public struct CaptureGlobalDestination: Codable, Equatable, Sendable {
   public let range: CaptureRange?
   public let mode: String
   public let route: String?
@@ -2876,7 +2876,7 @@ public struct CaptureLinkGuard: Codable, Equatable, Sendable {
   }
 }
 
-public struct CaptureCommandSuccess: Codable, Equatable {
+public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
   public let ok: Bool
   public let dryRun: Bool
   public let routed: Bool
@@ -4954,7 +4954,7 @@ public struct CapturePomodoroEntry: Codable, Equatable {
 
 // Keep callers on non-optional collection fields while tolerating older bob binaries
 // that omitted empty arrays from clip JSON.
-public struct CaptureClipOutput: Codable, Equatable {
+public struct CaptureClipOutput: Codable, Equatable, Sendable {
   public let header: String?
   public let mode: String
   public let lines: [String]
@@ -4999,7 +4999,7 @@ public struct CaptureClipOutput: Codable, Equatable {
   }
 }
 
-public struct CaptureAttachmentOutput: Codable, Equatable {
+public struct CaptureAttachmentOutput: Codable, Equatable, Sendable {
   public let source: String
   public let saved: String
   public let kind: String
@@ -5013,7 +5013,7 @@ public struct CaptureAttachmentOutput: Codable, Equatable {
   }
 }
 
-public struct CaptureScheduleLog: Codable, Equatable {
+public struct CaptureScheduleLog: Codable, Equatable, Sendable {
   public let reason: String
   public let lines: [String]
 

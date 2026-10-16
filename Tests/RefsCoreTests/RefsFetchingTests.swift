@@ -284,6 +284,114 @@ final class RefsFetchingTests: XCTestCase {
     }
   }
 
+  func testTodaySelectorsAndDryRunArgv() async throws {
+    let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: recordURL) }
+    let fetcher = BobRefsFetcher(
+      client: try client(environment: ["FAKE_BOB_RECORD_PATH": recordURL.path]))
+    let selectors: [(RefsTodayLinkSelector, String)] = [
+      (.automatic, ""), (.entry(ref: "2:abcd"), "-P 2:abcd "),
+      (.exactName("deep work"), "-p deep work -e "),
+    ]
+    for (selector, args) in selectors {
+      for dryRun in [true, false] {
+        let response = try await fetcher.linkToToday(
+          notePath: "-ref with spaces.md", selector: selector, dryRun: dryRun)
+        XCTAssertEqual(response.ok, true)
+        XCTAssertEqual(response.capture?.dryRun, dryRun)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+          record.contains(
+            "argv=ref today -f json \(dryRun ? "-d " : "")\(args)-- -ref with spaces.md\n"))
+      }
+    }
+    XCTAssertEqual(BobRefsFetcher.todayLinkTimeout, 30)
+    XCTAssertEqual(BobProcessClient.defaultTimeout, 20)
+  }
+
+  func testTodayErrorEnvelopeExitOneAndOlderBobExitTwo() async throws {
+    let fetcher = BobRefsFetcher(
+      client: try client(environment: [
+        "FAKE_BOB_REF_TODAY_FIXTURE": "refs-today-multiple-running.json",
+        "FAKE_BOB_REF_TODAY_EXIT": "1",
+      ]))
+    let response = try await fetcher.linkToToday(notePath: "ref/a.md", dryRun: true)
+    XCTAssertEqual(response.ok, false)
+    XCTAssertEqual(response.error?.code, "multiple_running")
+    XCTAssertEqual(response.pomodoros.count, 2)
+    XCTAssertEqual(RefsTodayLinkProblemMapping.responseProblem(response), response.error)
+
+    let old = BobRefsFetcher(client: try client(environment: ["FAKE_BOB_REF_TODAY_EXIT": "2"]))
+    do {
+      _ = try await old.linkToToday(notePath: "ref/a.md", dryRun: false)
+      XCTFail("expected older bob failure")
+    } catch {
+      XCTAssertEqual(
+        RefsTodayLinkProblemMapping.transportProblem(for: error),
+        .init(
+          code: "bob_too_old",
+          message: "This bob can't link references to today yet — update bob on this Mac"))
+    }
+  }
+
+  func testTodaySchemaMismatchAndTransportMapping() async throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: url) }
+    try Data(#"{"schema_version":2,"ok":true}"#.utf8).write(to: url)
+    let fetcher = BobRefsFetcher(
+      client: try client(environment: ["FAKE_BOB_REF_TODAY_FIXTURE": url.path]))
+    do {
+      _ = try await fetcher.linkToToday(notePath: "ref/a.md", dryRun: true)
+      XCTFail("expected schema mismatch")
+    } catch let error as BobClientError {
+      guard case .schemaMismatch(_, let expected, let actual) = error else {
+        return XCTFail("\(error)")
+      }
+      XCTAssertEqual(expected, 1)
+      XCTAssertEqual(actual, 2)
+    }
+    XCTAssertEqual(
+      RefsTodayLinkProblemMapping.transportProblem(for: NSError(domain: "test", code: 1)).code,
+      "transport")
+  }
+
+  func testTodayTimeoutMapping() {
+    let failure = RefsTodayLinkProblemMapping.transportProblem(
+      for: BobClientError.timedOut(command: ["bob", "ref", "today"], seconds: 30))
+    XCTAssertEqual(failure.code, "timed_out")
+    XCTAssertEqual(failure.message, "Linking the reference took too long and was stopped.")
+    XCTAssertEqual(failure.hint, "Check today's ledger and try again.")
+  }
+
+  func testTodayPreviewsCancelPreviousPreviewLaneOnly() async throws {
+    let process = try client(environment: ["FAKE_BOB_DELAY_SECONDS": "0.5"])
+    let fetcher = BobRefsFetcher(client: process)
+    let first = Task {
+      let response: RefsTodayLinkResponse = try await process.decodeReport(
+        arguments: ["ref", "today"], expectedSchema: 1, lane: "refs-today-preview")
+      return response
+    }
+    try await Task.sleep(nanoseconds: 200_000_000)
+    let second = try await fetcher.linkToToday(notePath: "ref/a.md", dryRun: true)
+    XCTAssertEqual(second.ok, true)
+    do {
+      _ = try await first.value
+      XCTFail("expected preview cancellation")
+    } catch let error as BobClientError {
+      guard case .processFailed = error else { throw error }
+    }
+  }
+
+  func testTodayWritesNeverCancelAndPreviewsUseSeparateLane() async throws {
+    let fetcher = BobRefsFetcher(client: try client(environment: ["FAKE_BOB_DELAY_SECONDS": "0.3"]))
+    async let first = fetcher.linkToToday(notePath: "ref/a.md", dryRun: false)
+    async let second = fetcher.linkToToday(
+      notePath: "ref/a.md", selector: .exactName("read"), dryRun: false)
+    async let preview = fetcher.linkToToday(notePath: "ref/a.md", dryRun: true)
+    let responses = try await [first, second, preview]
+    XCTAssertEqual(responses.map(\.ok), [true, true, true])
+  }
+
   private func client(environment: [String: String]) throws -> BobProcessClient {
     BobProcessClient(
       executablePath: try fakeBobPath(),

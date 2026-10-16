@@ -5022,6 +5022,22 @@ JSON
         cat "${fixtures_dir}/${scan_fixture}"
       fi
       exit "${FAKE_BOB_REFS_SCAN_EXIT:-0}"
+    elif [[ "${subcommand}" == "today" ]]; then
+      today_exit="${FAKE_BOB_REF_TODAY_EXIT:-0}"
+      if [[ "${today_exit}" == "2" ]]; then
+        exit 2
+      fi
+      today_default="refs-today-linked.json"
+      if [[ " $* " == *" -d "* ]]; then
+        today_default="refs-today-listing.json"
+      fi
+      today_fixture="${FAKE_BOB_REF_TODAY_FIXTURE:-${today_default}}"
+      if [[ "${today_fixture}" == */* ]]; then
+        cat "${today_fixture}"
+      else
+        cat "${fixtures_dir}/${today_fixture}"
+      fi
+      exit "${today_exit}"
     elif [[ "${subcommand}" == "rename" ]]; then
       # `bob ref rename -f json -- <note> <name>`. Exit 2 models an older
       # bob that rejects the command before it can print a JSON envelope.

@@ -1,0 +1,82 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "command": "ref today",
+  "generated_at": "2026-10-16T09:15:00",
+  "mode": "write",
+  "changed": true,
+  "ref": {
+    "path": "ref/papers/attention.md",
+    "link": "[[ref/papers/attention]]",
+    "title": "Attention Is All You Need",
+    "marker_id": "attention"
+  },
+  "task": {
+    "path": "cash.md",
+    "block_id": "ref-attention",
+    "link": "[[cash#^ref-attention]]",
+    "status_symbol": " ",
+    "status_name": "Ready"
+  },
+  "pomodoros": [
+    {
+      "ref": "2:4e8b857b",
+      "line": 2,
+      "name": "CURRENT",
+      "slug": "current",
+      "time_range": "0900-0930",
+      "placeholder": false,
+      "starts_at": "2026-10-16T09:00",
+      "ends_at": "2026-10-16T09:30",
+      "running": true,
+      "default": true,
+      "linked": false,
+      "task_link_count": 0
+    },
+    {
+      "ref": "4:ddf7159c",
+      "line": 4,
+      "name": "READING",
+      "slug": "reading",
+      "time_range": null,
+      "placeholder": true,
+      "starts_at": null,
+      "ends_at": null,
+      "running": false,
+      "default": false,
+      "linked": false,
+      "task_link_count": 0
+    }
+  ],
+  "capture": {
+    "block_id": "ref-attention",
+    "created": "2026-10-16",
+    "dry_run": false,
+    "kind": "link_guard",
+    "link_guard": {
+      "detail": "not linked (project waits on [[job.md#^prep]]) \u00b7 promoted job.md#^prep",
+      "promoted": [
+        "job.md#^prep"
+      ],
+      "reasons": [
+        "project_dependency"
+      ]
+    },
+    "ok": true,
+    "placement": "unchanged",
+    "previous_status_name": "Ready",
+    "previous_status_symbol": " ",
+    "previous_task_line": "- [ ] #task #ref [[ref/papers/attention]] ^ref-attention",
+    "relative_target": "cash.md",
+    "route": "cash",
+    "route_label": "cash.md",
+    "routed": true,
+    "scheduled": null,
+    "status_changed": false,
+    "status_name": "Ready",
+    "status_symbol": " ",
+    "target": "/tmp/bob/cash.md",
+    "task_line": "- [ ] #task #ref [[ref/papers/attention]] ^ref-attention",
+    "text": ""
+  }
+}

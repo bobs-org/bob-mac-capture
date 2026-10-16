@@ -22,6 +22,8 @@ public final class BobRefsFetcher: RefsFetching, @unchecked Sendable {
   /// cycles. Keep the client timeout above those server-side budgets.
   public static let renameTimeout: TimeInterval = 180
 
+  public static let todayLinkTimeout: TimeInterval = 30
+
   private let client: BobProcessClient
 
   public init(client: BobProcessClient) {
@@ -75,4 +77,18 @@ public final class BobRefsFetcher: RefsFetching, @unchecked Sendable {
       timeout: Self.renameTimeout
     )
   }
+
+  public func linkToToday(
+    notePath: String, selector: RefsTodayLinkSelector = .automatic, dryRun: Bool
+  ) async throws -> RefsTodayLinkResponse {
+    try await client.decodeReport(
+      arguments: ["ref", "today", "-f", "json"] + (dryRun ? ["-d"] : [])
+        + selector.arguments + ["--", notePath],
+      expectedSchema: 1,
+      lane: dryRun ? "refs-today-preview" : "refs-today",
+      cancelsPreviousInLane: dryRun,
+      timeout: dryRun ? BobProcessClient.defaultTimeout : Self.todayLinkTimeout
+    )
+  }
+
 }
