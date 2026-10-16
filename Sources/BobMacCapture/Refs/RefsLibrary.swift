@@ -360,6 +360,11 @@ public final class RefsLibrary: ObservableObject {
         snapshot?.fetchedAt
     }
 
+    /// The resolved vault root used to match open Highlights tabs to PDFs.
+    public var vaultRootURL: URL {
+        vaultRoot()
+    }
+
     /// Hydrates one note's annotations and tasks for the inspector on
     /// the `refs-show` lane. Throws when no fetcher is set.
     public func showDetail(path: String) async throws -> RefsShowResponse {

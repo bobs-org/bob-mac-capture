@@ -93,11 +93,11 @@ public final class RefsPanelController: NSObject {
     /// Shows the panel: resets the model, recomputes the frame, fades
     /// in, and focuses the search field. Highlights stays frontmost:
     /// this never calls `NSApp.activate`.
-    public func show() {
+    public func show(source: RefsPresentationSource = .library) {
         let token = CaptureSignpost.begin("refs-panel-show")
         defer { CaptureSignpost.end(token) }
         copyHUD.dismiss()
-        model.prepareForPresentation()
+        model.prepareForPresentation(source: source)
         model.refreshForOpen()
         orderFront()
     }

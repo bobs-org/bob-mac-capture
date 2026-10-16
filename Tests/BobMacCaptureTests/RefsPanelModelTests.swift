@@ -1877,6 +1877,300 @@ final class RefsPanelModelTests: XCTestCase {
         }
     }
 
+    func testTabsAndLibraryPresentationSourcesResetTheFilter() async throws {
+        let reader = FakeTabsReader(isTrusted: false)
+        let harness = try makeHarness(tabsReader: reader, isAdHocSigned: true)
+        await harness.waitForSnapshot()
+
+        harness.model.setQuery("keep")
+        harness.model.perform(.setScope(.papers))
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+
+        XCTAssertTrue(harness.model.tabsFilter)
+        XCTAssertEqual(harness.model.query, "")
+        XCTAssertEqual(harness.model.scope, .all)
+        XCTAssertEqual(harness.model.tabsState, .needsPermission(adHoc: true))
+        XCTAssertEqual(reader.readCount, 0)
+
+        harness.model.prepareForPresentation(source: .library)
+
+        XCTAssertFalse(harness.model.tabsFilter)
+        XCTAssertEqual(harness.model.tabsState, .off)
+        XCTAssertEqual(harness.model.query, "")
+        XCTAssertEqual(harness.model.scope, .all)
+    }
+
+    func testTabsToggleKeepsQueryAndScopeAndEscapePeelsTabsBeforeScope() async throws {
+        let reader = FakeTabsReader(isTrusted: false)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        harness.model.setQuery("harness")
+        harness.model.perform(.setScope(.papers))
+
+        XCTAssertTrue(harness.model.perform(.toggleTabs))
+        XCTAssertTrue(harness.model.tabsFilter)
+        XCTAssertEqual(harness.model.query, "harness")
+        XCTAssertEqual(harness.model.scope, .papers)
+
+        XCTAssertTrue(harness.model.perform(.escape))
+        XCTAssertEqual(harness.model.query, "")
+        XCTAssertTrue(harness.model.tabsFilter)
+        XCTAssertEqual(harness.model.scope, .papers)
+        XCTAssertTrue(harness.model.perform(.escape))
+        XCTAssertFalse(harness.model.tabsFilter)
+        XCTAssertEqual(harness.model.scope, .papers)
+        XCTAssertTrue(harness.model.perform(.escape))
+        XCTAssertEqual(harness.model.scope, .all)
+
+        harness.model.perform(.setScope(.papers))
+        harness.model.perform(.toggleTabs)
+        XCTAssertTrue(harness.model.perform(.deleteBackwardOnEmpty))
+        XCTAssertFalse(harness.model.tabsFilter)
+        XCTAssertEqual(harness.model.scope, .papers)
+        XCTAssertTrue(harness.model.perform(.deleteBackwardOnEmpty))
+        XCTAssertEqual(harness.model.scope, .all)
+    }
+
+    func testSyntheticTabsSurviveLibraryPublicationAndBlockNoteActions() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        let tabName = "outside_library.pdf"
+        let snapshot = HighlightsTabsSnapshot(
+            windows: [HighlightsTabsSnapshot.Window(
+                isMain: true,
+                tabs: [HighlightsTabsSnapshot.Tab(
+                    fileName: tabName,
+                    isSelected: true
+                )]
+            )],
+            highlightsIsFrontmost: false
+        )
+        harness.model.installTabsForPreviews(
+            snapshot: snapshot,
+            state: .loaded,
+            frontmost: false
+        )
+        let rowID = "highlights-tab:\(tabName)"
+        XCTAssertEqual(harness.model.selectedID, rowID)
+        XCTAssertEqual(harness.model.rowContent(for: rowID)?.caption, "Not in your library")
+
+        XCTAssertTrue(harness.model.perform(.open(.note)))
+        XCTAssertEqual(
+            harness.model.banner?.message,
+            "“\(tabName)” isn't in your library."
+        )
+        XCTAssertTrue(harness.model.perform(.showCopyCard))
+        XCTAssertEqual(
+            harness.model.banner?.message,
+            "“\(tabName)” isn't in your library."
+        )
+
+        harness.library.installSnapshotForPreviews(
+            items: harness.library.items,
+            signals: harness.library.signals,
+            refreshState: .idle
+        )
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(harness.model.listing.orderedIDs.contains(rowID))
+        XCTAssertFalse(harness.model.unavailableIDs.contains(rowID))
+        XCTAssertEqual(harness.model.rowContent(for: rowID)?.isUnavailable, false)
+    }
+
+    func testMatchedTabSwitchDoesNotRecordAnOpen() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let item = try XCTUnwrap(harness.library.items.first)
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            [item],
+            vault: harness.vault,
+            frontmost: false
+        )))
+
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel { $0.tabsState == .loaded }
+        XCTAssertEqual(harness.model.selectedID, item.id)
+        XCTAssertTrue(harness.model.perform(.open(.highlights)))
+        await harness.waitForModel { _ in !harness.opener.highlightsOpens.isEmpty }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(harness.opener.highlightsOpens.count, 1)
+        XCTAssertTrue(harness.openLogStore.load().isEmpty)
+        XCTAssertEqual(harness.library.signals.opens.count(item.id), 0)
+    }
+
+    func testUnmatchedSwitchSelectsTheTabAndShowsClosedBanner() async throws {
+        let reader = FakeTabsReader(isTrusted: true, selectResult: .notFound)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let fileName = "external_notes.pdf"
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            fileNames: [fileName],
+            frontmost: false
+        )))
+
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel { $0.tabsState == .loaded }
+        XCTAssertTrue(harness.model.perform(.open(.highlights)))
+        await harness.waitForModel { $0.banner?.message == "That tab was closed in Highlights." }
+
+        XCTAssertEqual(reader.selectedTargets, [HighlightsTabTarget(
+            fileName: fileName,
+            windowOrdinal: 0
+        )])
+        XCTAssertEqual(harness.dismissed, 1)
+        XCTAssertEqual(harness.represented, 1)
+    }
+
+    func testHeldEnterOpensWhenFirstTabSnapshotLands() async throws {
+        let reader = FakeTabsReader(isTrusted: true, readDelayNanoseconds: 80_000_000)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let item = try XCTUnwrap(harness.library.items.first)
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            [item],
+            vault: harness.vault,
+            frontmost: false
+        )))
+
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        XCTAssertEqual(harness.model.tabsState, .loading)
+        XCTAssertTrue(harness.model.listing.orderedIDs.isEmpty)
+        XCTAssertTrue(harness.model.perform(.open(.highlights)))
+        await harness.waitForModel { _ in !harness.opener.highlightsOpens.isEmpty }
+
+        XCTAssertEqual(harness.opener.highlightsOpens.count, 1)
+        XCTAssertTrue(harness.openLogStore.load().isEmpty)
+        XCTAssertEqual(harness.library.signals.opens.count(item.id), 0)
+    }
+
+    func testHeldEnterIsDroppedAfterQueryEditAndFailedRead() async throws {
+        let reader = FakeTabsReader(
+            isTrusted: true,
+            readDelayNanoseconds: 80_000_000
+        )
+        reader.setNextResult(.failed("Temporary read failure"))
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        XCTAssertTrue(harness.model.perform(.open(.highlights)))
+        harness.model.setQuery("cancel")
+        await harness.waitForModel {
+            if case .failed = $0.tabsState { return true }
+            return false
+        }
+
+        XCTAssertTrue(harness.opener.highlightsOpens.isEmpty)
+        if case .failed(_, let hasStaleRows) = harness.model.tabsState {
+            XCTAssertFalse(hasStaleRows)
+        } else {
+            XCTFail("expected failed tab state")
+        }
+    }
+
+    func testTabsRefreshTakesAnotherSnapshotAndKeepsSelection() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let items = Array(harness.library.items.prefix(2))
+        guard items.count == 2 else {
+            XCTFail("fixture needs two references")
+            return
+        }
+        let first = Self.tabsSnapshot(items, vault: harness.vault, frontmost: false)
+        reader.setNextResult(.snapshot(first))
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel { $0.tabsState == .loaded }
+        let keepID = items[1].id
+        XCTAssertTrue(harness.model.perform(.select(id: keepID)))
+
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            Array(items.reversed()),
+            vault: harness.vault,
+            frontmost: true
+        )))
+        XCTAssertTrue(harness.model.perform(.refresh))
+        await harness.waitForModel {
+            $0.tabsSession.lastSnapshot?.highlightsIsFrontmost == true
+        }
+
+        XCTAssertEqual(harness.model.selectedID, keepID)
+        XCTAssertEqual(reader.readCount, 2)
+    }
+
+    func testSupersededTabRefreshDoesNotReplaceNewSnapshot() async throws {
+        let reader = FakeTabsReader(
+            isTrusted: true,
+            readDelayNanoseconds: 200_000_000
+        )
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let item = try XCTUnwrap(harness.library.items.first)
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            fileNames: ["older_snapshot.pdf"],
+            frontmost: false
+        )))
+
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel { _ in reader.readCount == 1 }
+        reader.setReadDelay(0)
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            fileNames: [URL(fileURLWithPath: item.pdfPath).lastPathComponent],
+            frontmost: true
+        )))
+        XCTAssertTrue(harness.model.perform(.refresh))
+        await harness.waitForModel {
+            $0.tabsSession.lastSnapshot?.highlightsIsFrontmost == true
+        }
+        try? await Task.sleep(nanoseconds: 250_000_000)
+
+        XCTAssertEqual(harness.model.tabsState, .loaded)
+        XCTAssertEqual(harness.model.tabsListing?.tabs.keys.sorted(), [item.id])
+        XCTAssertTrue(harness.model.tabsSession.lastSnapshot?.highlightsIsFrontmost == true)
+        XCTAssertEqual(reader.readCount, 2)
+    }
+
+    private static func tabsSnapshot(
+        _ items: [RefItem],
+        vault: URL,
+        frontmost: Bool
+    ) -> HighlightsTabsSnapshot {
+        let tabs = items.enumerated().map { index, item in
+            HighlightsTabsSnapshot.Tab(
+                fileName: URL(fileURLWithPath: item.pdfPath).lastPathComponent,
+                documentPath: index == 0 ? vault.appendingPathComponent(item.pdfPath).path : nil,
+                isSelected: index == 0
+            )
+        }
+        return HighlightsTabsSnapshot(
+            windows: tabs.isEmpty ? [] : [HighlightsTabsSnapshot.Window(
+                isMain: true,
+                pageCaption: "p. 1/4",
+                tabs: tabs
+            )],
+            highlightsIsFrontmost: frontmost
+        )
+    }
+
+    private static func tabsSnapshot(
+        fileNames: [String],
+        frontmost: Bool
+    ) -> HighlightsTabsSnapshot {
+        HighlightsTabsSnapshot(
+            windows: fileNames.isEmpty ? [] : [HighlightsTabsSnapshot.Window(
+                isMain: true,
+                tabs: fileNames.enumerated().map { index, fileName in
+                    HighlightsTabsSnapshot.Tab(
+                        fileName: fileName,
+                        isSelected: index == 0
+                    )
+                }
+            )],
+            highlightsIsFrontmost: frontmost
+        )
+    }
+
     private static func pickerAnnotations() -> [RefsShowAnnotation] {
         [
             RefsShowAnnotation(
@@ -2010,7 +2304,9 @@ final class RefsPanelModelTests: XCTestCase {
     private func makeHarness(
         highlightsURL: URL? = URL(fileURLWithPath: "/Applications/Highlights.app"),
         missing: Set<String> = [],
-        environment: [String: String] = [:]
+        environment: [String: String] = [:],
+        tabsReader: FakeTabsReader? = nil,
+        isAdHocSigned: Bool = false
     ) throws -> Harness {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -2044,7 +2340,9 @@ final class RefsPanelModelTests: XCTestCase {
             library: library,
             opener: opener,
             highlights: locator,
-            pasteboard: pasteboard
+            pasteboard: pasteboard,
+            tabs: tabsReader.map { HighlightsTabsSession(reader: $0) },
+            isAdHocSigned: { isAdHocSigned }
         )
         let harness = Harness(
             library: library,
@@ -2274,5 +2572,76 @@ struct FakeLocator: RefsHighlightsLocating, Sendable {
 
     func highlightsAppURL() -> URL? {
         appURL
+    }
+}
+
+final class FakeTabsReader: HighlightsTabsReading, @unchecked Sendable {
+    private let lock = NSLock()
+    private var trusted: Bool
+    private var nextResult: HighlightsTabsReadResult?
+    private var defaultResult: HighlightsTabsReadResult = .failed("No fake result")
+    private var selectResult: HighlightsTabSelectResult
+    private var readDelayNanoseconds: UInt64
+    private var reads = 0
+    private var targets: [HighlightsTabTarget] = []
+
+    init(
+        isTrusted: Bool,
+        selectResult: HighlightsTabSelectResult = .selected,
+        readDelayNanoseconds: UInt64 = 0
+    ) {
+        trusted = isTrusted
+        self.selectResult = selectResult
+        self.readDelayNanoseconds = readDelayNanoseconds
+    }
+
+    var readCount: Int {
+        lock.withLock { reads }
+    }
+
+    var selectedTargets: [HighlightsTabTarget] {
+        lock.withLock { targets }
+    }
+
+    func setNextResult(_ result: HighlightsTabsReadResult) {
+        lock.withLock {
+            nextResult = result
+        }
+    }
+
+    func setReadDelay(_ delay: UInt64) {
+        lock.withLock {
+            readDelayNanoseconds = delay
+        }
+    }
+
+    func isTrusted() -> Bool {
+        lock.withLock { trusted }
+    }
+
+    func requestTrust() {
+        lock.withLock {
+            trusted = true
+        }
+    }
+
+    func read() async -> HighlightsTabsReadResult {
+        let (result, delay) = lock.withLock { () -> (HighlightsTabsReadResult, UInt64) in
+            reads += 1
+            let result = nextResult ?? defaultResult
+            nextResult = nil
+            return (result, readDelayNanoseconds)
+        }
+        if delay > 0 {
+            try? await Task.sleep(nanoseconds: delay)
+        }
+        return result
+    }
+
+    func select(_ target: HighlightsTabTarget) async -> HighlightsTabSelectResult {
+        lock.withLock {
+            targets.append(target)
+            return selectResult
+        }
     }
 }

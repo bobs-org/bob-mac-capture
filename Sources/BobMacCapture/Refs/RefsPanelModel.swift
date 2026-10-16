@@ -15,11 +15,43 @@ public enum RefsOpenTarget: Equatable, Sendable {
     case defaultApp
 }
 
+/// The source requested when the Refs panel is shown.
+public enum RefsPresentationSource: Equatable, Sendable {
+    /// Show the ordinary reference library.
+    case library
+    /// Show the current Highlights tabs.
+    case highlightsTabs
+}
+
+/// The state of the Highlights Tabs filter.
+public enum RefsTabsState: Equatable, Sendable {
+    /// The Tabs filter is off.
+    case off
+    /// A Highlights tab snapshot is being read.
+    case loading
+    /// A snapshot with at least one open document is available.
+    case loaded
+    /// Accessibility permission is needed before reading tabs.
+    case needsPermission(adHoc: Bool)
+    /// Highlights is not running.
+    case notRunning
+    /// Highlights is running with no open documents.
+    case noDocuments
+    /// A tab read failed; the previous rows may still be shown dimmed.
+    case failed(message: String, hasStaleRows: Bool)
+}
+
 /// Every panel gesture the key router and the list funnel through.
 public enum RefsCommand: Equatable, Sendable {
     case open(RefsOpenTarget)
     case move(RefsMove)
     case setScope(RefScope)
+    /// Toggles the Highlights Tabs filter while keeping query and scope.
+    case toggleTabs
+    /// Sets the Highlights Tabs filter, used by the coordinator.
+    case setTabsFilter(Bool)
+    /// Requests Accessibility access after an explicit card action.
+    case requestTabsPermission
     case escape
     case deleteBackwardOnEmpty
     case refresh
@@ -68,6 +100,10 @@ public struct RefsBanner: Equatable, Sendable {
 /// unavailable), its caption, its why-here line, and its flags.
 public struct RefsRowContent: Equatable, Sendable {
     public var item: RefItem?
+    /// The open Highlights tab represented by this row, when in Tabs mode.
+    public var openTab: RefsOpenTab?
+    /// Candidate references for a tab title that matches multiple notes.
+    public var candidateItems: [RefItem]
     public var title: String
     public var caption: String
     /// The `Character` range of the matched stem or secondary part
@@ -83,6 +119,8 @@ public struct RefsRowContent: Equatable, Sendable {
 
     public init(
         item: RefItem?,
+        openTab: RefsOpenTab? = nil,
+        candidateItems: [RefItem] = [],
         title: String,
         caption: String,
         captionMatch: Range<Int>? = nil,
@@ -94,6 +132,8 @@ public struct RefsRowContent: Equatable, Sendable {
         isUnavailable: Bool
     ) {
         self.item = item
+        self.openTab = openTab
+        self.candidateItems = candidateItems
         self.title = title
         self.caption = caption
         self.captionMatch = captionMatch
@@ -210,6 +250,12 @@ public final class RefsPanelModel: ObservableObject {
     @Published public var query: String = ""
     @Published public private(set) var scope: RefScope = .all
     @Published public private(set) var listing: RefsListing
+    /// Whether the listing is filtered to the open Highlights tabs.
+    @Published public private(set) var tabsFilter = false
+    /// The current Tabs read state.
+    @Published public private(set) var tabsState: RefsTabsState = .off
+    /// The latest ranked tab rows, keyed by listing row id.
+    @Published public private(set) var tabsListing: RefsTabsListing?
     @Published public private(set) var selectedID: String? {
         didSet {
             if oldValue != selectedID {
@@ -310,6 +356,8 @@ public final class RefsPanelModel: ObservableObject {
     @Published public private(set) var scanNotice: RefsScanOutcome?
     /// The inspector's hydrated content, published per selected id.
     public let inspectorLoader: RefsInspectorLoader
+    /// Owns tab snapshots, reader generations, and in-memory recency.
+    public let tabsSession: HighlightsTabsSession
     /// Live inspector scroll requests. Not published: successive identical
     /// presses must all arrive, and trackpad movement must not redraw the
     /// panel model.
@@ -353,6 +401,14 @@ public final class RefsPanelModel: ObservableObject {
     private let opener: RefsOpening
     private let highlights: RefsHighlightsLocating
     private let pasteboard: RefsPasteboardWriting
+    private let isAdHocSigned: () -> Bool
+    /// Matched only when a new tab snapshot lands; library publications
+    /// update row content without changing which tabs are listed.
+    private var matchedTabs: [RefsOpenTab] = []
+    private var tabsHighlightsIsFrontmost = false
+    private var tabsRefreshGeneration: UInt64 = 0
+    private var preserveTabsSelectionOnNextSnapshot = false
+    private var heldTabsOpen = false
     private let inspectorScrollSubject = PassthroughSubject<
         RefsInspectorScrollDirection, Never
     >()
@@ -360,7 +416,14 @@ public final class RefsPanelModel: ObservableObject {
         RefsInspectorNotesReveal, Never
     >()
     private var subscriptions = Set<AnyCancellable>()
-    private var pendingOpen: (id: String, target: RefsOpenTarget)?
+    private struct PendingOpen {
+        let id: String
+        let target: RefsOpenTarget
+        let recordsOpen: Bool
+        let switchedFileName: String?
+    }
+
+    private var pendingOpen: PendingOpen?
     /// Set by ⌘R (and Retry) so the next completed refresh builds a fresh
     /// listing instead of a content-only update.
     private var pendingRefreshRerank = false
@@ -384,12 +447,18 @@ public final class RefsPanelModel: ObservableObject {
         library: RefsLibrary,
         opener: RefsOpening,
         highlights: RefsHighlightsLocating,
-        pasteboard: RefsPasteboardWriting = SystemRefsPasteboard()
+        pasteboard: RefsPasteboardWriting = SystemRefsPasteboard(),
+        tabs: HighlightsTabsSession? = nil,
+        isAdHocSigned: @escaping () -> Bool = { false }
     ) {
         self.library = library
         self.opener = opener
         self.highlights = highlights
         self.pasteboard = pasteboard
+        tabsSession = tabs ?? HighlightsTabsSession(
+            reader: UnavailableHighlightsTabsReader()
+        )
+        self.isAdHocSigned = isAdHocSigned
         let initialListing = RefsRanker.listing(
             library.items,
             query: "",
@@ -468,12 +537,22 @@ public final class RefsPanelModel: ObservableObject {
         return library.items.first { $0.id == selectedID }
     }
 
+    /// The tab metadata for each row in the latest Tabs listing.
+    public var openTabsByID: [String: RefsOpenTab] {
+        tabsListing?.tabs ?? [:]
+    }
+
+    private var selectedOpenTab: RefsOpenTab? {
+        guard let selectedID else { return nil }
+        return openTabsByID[selectedID]
+    }
+
     /// Resets for presentation: a blank query, All scope, a fresh listing,
     /// and the first row selected. A pending scan banner installs here,
     /// and an unseen scan notice is marked seen. The fresh listing
     /// includes Just scanned through `signals.scan`, so its first row
     /// selects that section's first row.
-    public func prepareForPresentation() {
+    public func prepareForPresentation(source: RefsPresentationSource = .library) {
         presentationCount += 1
         selectedRowRect = nil
         renameStatus = nil
@@ -490,11 +569,18 @@ public final class RefsPanelModel: ObservableObject {
         }
         query = ""
         scope = .all
+        tabsFilter = source == .highlightsTabs
+        tabsState = tabsFilter ? .loading : .off
+        heldTabsOpen = false
+        preserveTabsSelectionOnNextSnapshot = false
         banner = nil
         pendingOpen = nil
         revealedPageID = nil
         revealedPage = nil
         rerankSelectingFirst()
+        if tabsFilter {
+            beginTabsRefresh(preservingSelection: false)
+        }
         if let pending = pendingScanBanner {
             banner = pending
             pendingScanBanner = nil
@@ -507,6 +593,7 @@ public final class RefsPanelModel: ObservableObject {
     /// Re-ranks on every query edit, selects the first row, and dismisses
     /// any banner.
     public func queryDidChange() {
+        heldTabsOpen = false
         banner = nil
         rerankSelectingFirst()
     }
@@ -539,6 +626,16 @@ public final class RefsPanelModel: ObservableObject {
             scope = next
             rerankSelectingFirst()
             return true
+        case .toggleTabs:
+            setTabsFilter(!tabsFilter)
+            return true
+        case .setTabsFilter(let enabled):
+            setTabsFilter(enabled)
+            return true
+        case .requestTabsPermission:
+            tabsSession.reader.requestTrust()
+            beginTabsRefresh(preservingSelection: false)
+            return true
         case .escape:
             if renameCard != nil, !isRenaming {
                 closeRenameCard()
@@ -554,7 +651,12 @@ public final class RefsPanelModel: ObservableObject {
             }
             if !query.isEmpty {
                 query = ""
+                heldTabsOpen = false
                 rerankSelectingFirst()
+                return true
+            }
+            if tabsFilter {
+                setTabsFilter(false)
                 return true
             }
             if scope != .all {
@@ -565,7 +667,14 @@ public final class RefsPanelModel: ObservableObject {
             hidePanel()
             return true
         case .deleteBackwardOnEmpty:
-            guard query.isEmpty, scope != .all else {
+            guard query.isEmpty else {
+                return false
+            }
+            if tabsFilter {
+                setTabsFilter(false)
+                return true
+            }
+            guard scope != .all else {
                 return false
             }
             scope = .all
@@ -576,6 +685,9 @@ public final class RefsPanelModel: ObservableObject {
             // `libraryDidPublish`): re-ranking now would pin the old data.
             pendingRefreshRerank = true
             library.refresh(reason: .manual)
+            if tabsFilter {
+                beginTabsRefresh(preservingSelection: true)
+            }
             return true
         case .select(let id):
             if isRenaming {
@@ -605,15 +717,27 @@ public final class RefsPanelModel: ObservableObject {
             }
             closeRenameCard()
             closeCopyCard()
+            if let tab = selectedOpenTab, isSynthetic(tab) {
+                showNoteActionWarning(for: tab)
+                return true
+            }
             guard selectedID != nil, selectedItem != nil else {
                 return false
             }
             actionsPresenter()
             return true
         case .showCopyCard:
+            if let tab = selectedOpenTab, isSynthetic(tab) {
+                showNoteActionWarning(for: tab)
+                return true
+            }
             openCopyCard()
             return true
         case .showRenameCard:
+            if let tab = selectedOpenTab, isSynthetic(tab) {
+                showNoteActionWarning(for: tab)
+                return true
+            }
             openRenameCard()
             return true
         case .scan:
@@ -671,6 +795,168 @@ public final class RefsPanelModel: ObservableObject {
         refreshIfStale(maxAge: maxAge)
     }
 
+    private func setTabsFilter(_ enabled: Bool) {
+        guard tabsFilter != enabled else { return }
+        heldTabsOpen = false
+        banner = nil
+        tabsFilter = enabled
+        if enabled {
+            tabsState = .loading
+            preserveTabsSelectionOnNextSnapshot = false
+            rebuildTabsListing(preservingSelection: false)
+            beginTabsRefresh(preservingSelection: false)
+        } else {
+            tabsRefreshGeneration &+= 1
+            tabsState = .off
+            preserveTabsSelectionOnNextSnapshot = false
+            rerankSelectingFirst()
+        }
+    }
+
+    /// Starts a trusted, one-shot tab read. The reader itself never prompts.
+    private func beginTabsRefresh(preservingSelection: Bool) {
+        guard tabsFilter else { return }
+        tabsRefreshGeneration &+= 1
+        let requestGeneration = tabsRefreshGeneration
+        preserveTabsSelectionOnNextSnapshot = preservingSelection
+        guard tabsSession.reader.isTrusted() else {
+            heldTabsOpen = false
+            matchedTabs = []
+            tabsHighlightsIsFrontmost = false
+            tabsState = .needsPermission(adHoc: isAdHocSigned())
+            rebuildTabsListing(preservingSelection: false)
+            return
+        }
+        tabsState = .loading
+        let session = tabsSession
+        Task { [weak self] in
+            let result = await session.refresh()
+            guard let self,
+                  self.tabsFilter,
+                  self.tabsRefreshGeneration == requestGeneration,
+                  let result
+            else {
+                return
+            }
+            self.applyTabsReadResult(result)
+        }
+    }
+
+    private func applyTabsReadResult(_ result: HighlightsTabsReadResult) {
+        switch result {
+        case .notRunning:
+            matchedTabs = []
+            tabsHighlightsIsFrontmost = false
+            tabsState = .notRunning
+            heldTabsOpen = false
+            rebuildTabsListing(preservingSelection: false)
+        case .notTrusted:
+            matchedTabs = []
+            tabsHighlightsIsFrontmost = false
+            tabsState = .needsPermission(adHoc: isAdHocSigned())
+            heldTabsOpen = false
+            rebuildTabsListing(preservingSelection: false)
+        case .failed(let message):
+            let hasStaleRows = !listing.orderedIDs.isEmpty
+            tabsState = .failed(message: message, hasStaleRows: hasStaleRows)
+            heldTabsOpen = false
+            if !hasStaleRows {
+                rebuildTabsListing(preservingSelection: false)
+            }
+        case .snapshot(let snapshot):
+            tabsHighlightsIsFrontmost = snapshot.highlightsIsFrontmost
+            matchedTabs = HighlightsTabMatcher.match(
+                snapshot,
+                items: library.items,
+                vaultRoot: library.vaultRootURL
+            )
+            tabsState = matchedTabs.isEmpty ? .noDocuments : .loaded
+            let preserve = preserveTabsSelectionOnNextSnapshot
+            preserveTabsSelectionOnNextSnapshot = false
+            rebuildTabsListing(preservingSelection: preserve)
+            if heldTabsOpen {
+                heldTabsOpen = false
+                if selectedID != nil {
+                    _ = perform(.open(.highlights))
+                }
+            }
+        }
+    }
+
+    private func rebuildTabsListing(preservingSelection: Bool) {
+        let keep = preservingSelection ? selectedID : nil
+        let ranked = RefsTabsRanker.listing(
+            tabs: matchedTabs,
+            items: library.items,
+            query: query,
+            scope: scope,
+            signals: library.signals,
+            recency: tabsSession.recency,
+            highlightsIsFrontmost: tabsHighlightsIsFrontmost
+        )
+        tabsListing = ranked
+        listing = ranked.listing
+        unavailableIDs = []
+        if let keep, listing.orderedIDs.contains(keep) {
+            selectedID = keep
+        } else {
+            selectedID = ranked.preselectedID
+        }
+    }
+
+    private func isSynthetic(_ tab: RefsOpenTab) -> Bool {
+        tab.match == .collision || tab.match == .none
+    }
+
+    private func showNoteActionWarning(for tab: RefsOpenTab) {
+        let message: String
+        if tab.match == .collision {
+            message = "“\(tab.fileName)” matches \(tab.candidateIDs.count) notes — press ⌘T and search to act on one."
+        } else {
+            message = "“\(tab.fileName)” isn't in your library."
+        }
+        banner = RefsBanner(kind: .warning, message: message, actions: [])
+    }
+
+    private func selectOpenTab(_ tab: RefsOpenTab) -> Bool {
+        hidePanel()
+        let session = tabsSession
+        Task { [weak self] in
+            let result = await session.select(tab)
+            guard let self else { return }
+            switch result {
+            case .selected:
+                break
+            case .notFound:
+                self.panelRepresenter()
+                self.banner = RefsBanner(
+                    kind: .warning,
+                    message: "That tab was closed in Highlights.",
+                    actions: []
+                )
+            case .notRunning:
+                self.tabsState = .notRunning
+                self.panelRepresenter()
+                self.banner = RefsBanner(
+                    kind: .warning,
+                    message: "Highlights isn't running.",
+                    actions: []
+                )
+            case .notTrusted:
+                self.tabsState = .needsPermission(adHoc: self.isAdHocSigned())
+                self.panelRepresenter()
+            case .failed:
+                self.panelRepresenter()
+                self.banner = RefsBanner(
+                    kind: .error,
+                    message: "Couldn't switch to that tab in Highlights.",
+                    actions: []
+                )
+            }
+        }
+        return true
+    }
+
     /// The current library signals (Today, open stats, Spotlight
     /// facts, missing PDFs). The inspector reads these at render time.
     public var signals: RefsSignals {
@@ -693,9 +979,32 @@ public final class RefsPanelModel: ObservableObject {
         let signals = library.signals
         let match = listing.matches[id]
         let section = listing.sections.first { $0.ids.contains(id) }.flatMap(\.kind)
+        let openTab = tabsFilter ? tabsListing?.tabs[id] : nil
+        if let openTab, isSynthetic(openTab) {
+            let candidates = openTab.candidateIDs.compactMap { candidateID in
+                library.items.first { $0.id == candidateID }
+            }
+            let caption = openTab.match == .none
+                ? "Not in your library"
+                : "Matches \(openTab.candidateIDs.count) notes"
+            return RefsRowContent(
+                item: nil,
+                openTab: openTab,
+                candidateItems: candidates,
+                title: openTab.fileName,
+                caption: caption,
+                whyHere: openTab.isCurrent ? "Current tab in Highlights" : "Open in Highlights",
+                match: match,
+                section: section,
+                isUnopened: false,
+                isMissingPDF: false,
+                isUnavailable: false
+            )
+        }
         guard let item = library.items.first(where: { $0.id == id }) else {
             return RefsRowContent(
                 item: nil,
+                openTab: openTab,
                 title: listing.unavailableItems[id]?.title.text ?? id,
                 caption: "No longer in your library",
                 whyHere: "No longer in your library",
@@ -711,6 +1020,7 @@ public final class RefsPanelModel: ObservableObject {
         )
         return RefsRowContent(
             item: item,
+            openTab: openTab,
             title: item.title.text,
             caption: captioned.text,
             captionMatch: captioned.matchRange,
@@ -781,7 +1091,11 @@ public final class RefsPanelModel: ObservableObject {
         self.scanNotice = scanNotice
         scanNoticeSeen = scanNotice != nil
         knownItems = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
-        listing = RefsRanker.listing(items, query: query, scope: scope, signals: signals)
+        if tabsFilter {
+            rebuildTabsListing(preservingSelection: false)
+        } else {
+            listing = RefsRanker.listing(items, query: query, scope: scope, signals: signals)
+        }
         unavailableIDs = []
         self.selectedID = selectedID
         if let inspector {
@@ -792,6 +1106,30 @@ public final class RefsPanelModel: ObservableObject {
         } else {
             inspectorLoader.reset()
         }
+    }
+
+    /// Installs a canned tab snapshot and state for previews without invoking a reader.
+    public func installTabsForPreviews(
+        snapshot: HighlightsTabsSnapshot?,
+        state: RefsTabsState,
+        frontmost: Bool
+    ) {
+        tabsFilter = true
+        tabsState = state
+        tabsHighlightsIsFrontmost = frontmost
+        heldTabsOpen = false
+        preserveTabsSelectionOnNextSnapshot = false
+        if let snapshot {
+            matchedTabs = HighlightsTabMatcher.match(
+                snapshot,
+                items: library.items,
+                vaultRoot: library.vaultRootURL
+            )
+        } else {
+            matchedTabs = []
+        }
+        rebuildTabsListing(preservingSelection: false)
+        unavailableIDs = []
     }
 
     /// Requests inspector hydration for the selected row. The loader
@@ -1244,6 +1582,10 @@ public final class RefsPanelModel: ObservableObject {
     private func rerankSelectingFirst() {
         pendingRefreshRerank = false
         pruneKnownItems()
+        if tabsFilter {
+            rebuildTabsListing(preservingSelection: false)
+            return
+        }
         listing = RefsRanker.listing(
             library.items,
             query: query,
@@ -1260,6 +1602,10 @@ public final class RefsPanelModel: ObservableObject {
         pendingRefreshRerank = false
         pruneKnownItems()
         let keep = selectedID
+        if tabsFilter {
+            rebuildTabsListing(preservingSelection: true)
+            return
+        }
         listing = RefsRanker.listing(
             library.items,
             query: query,
@@ -1279,6 +1625,17 @@ public final class RefsPanelModel: ObservableObject {
     private func freshListing(selecting id: String) {
         pendingRefreshRerank = false
         pruneKnownItems()
+        if tabsFilter {
+            rebuildTabsListing(preservingSelection: false)
+            if !listing.orderedIDs.contains(id) {
+                query = ""
+                rebuildTabsListing(preservingSelection: false)
+            }
+            selectedID = listing.orderedIDs.contains(id)
+                ? id
+                : RefsSelectionPolicy.initial(in: listing)
+            return
+        }
         var fresh = RefsRanker.listing(
             library.items,
             query: query,
@@ -1317,12 +1674,24 @@ public final class RefsPanelModel: ObservableObject {
         for item in library.items {
             knownItems[item.id] = item
         }
-        let available = Set(library.items.map(\.id))
+        var available = Set(library.items.map(\.id))
+        if tabsFilter, let tabsListing {
+            for tab in tabsListing.tabs.values where isSynthetic(tab) {
+                available.insert(tab.rowID)
+            }
+        }
         let (next, unavailable) = listing.refreshingContent(
             availableIDs: available,
             lastKnownItems: knownItems
         )
         listing = next
+        if tabsFilter, let tabsListing {
+            self.tabsListing = RefsTabsListing(
+                listing: next,
+                tabs: tabsListing.tabs,
+                preselectedID: tabsListing.preselectedID
+            )
+        }
         // Vanished rows leave the frozen listing, so intersecting with it
         // would drop the flag on the very next publish (every pass publishes
         // items and signals separately). Keep flags for every id that is
@@ -1409,6 +1778,10 @@ public final class RefsPanelModel: ObservableObject {
 
     private func buildFreshListingForScan(_ outcome: RefsScanOutcome) {
         pendingRefreshRerank = false
+        if tabsFilter {
+            freshListingKeepingSelection()
+            return
+        }
         if case .search = listing.mode {
             freshListingKeepingSelection()
             return
@@ -1443,6 +1816,14 @@ public final class RefsPanelModel: ObservableObject {
     private func openSelected(_ target: RefsOpenTarget) -> Bool {
         CaptureSignpost.event("refs-open-dispatch")
         guard let id = selectedID else {
+            if target == .highlights,
+               tabsFilter,
+               tabsState == .loading,
+               listing.orderedIDs.isEmpty
+            {
+                heldTabsOpen = true
+                return true
+            }
             return false
         }
         // A vanished selected id is no longer in the listing, so this check
@@ -1458,11 +1839,25 @@ public final class RefsPanelModel: ObservableObject {
         guard listing.orderedIDs.contains(id) else {
             return false
         }
+        if tabsFilter, let tab = tabsListing?.tabs[id], isSynthetic(tab) {
+            if target == .highlights {
+                return selectOpenTab(tab)
+            }
+            showNoteActionWarning(for: tab)
+            return true
+        }
         guard let item = library.items.first(where: { $0.id == id }) else {
             return false
         }
         switch target {
         case .highlights:
+            if tabsFilter, let tab = tabsListing?.tabs[id] {
+                return openInHighlights(
+                    item,
+                    recordsOpen: false,
+                    switchedFileName: tab.fileName
+                )
+            }
             return openInHighlights(item)
         case .note:
             opener.openNote(library.noteURL(for: item))
@@ -1480,7 +1875,7 @@ public final class RefsPanelModel: ObservableObject {
         }
     }
 
-    private func openStored(_ pending: (id: String, target: RefsOpenTarget)) {
+    private func openStored(_ pending: PendingOpen) {
         guard let item = library.items.first(where: { $0.id == pending.id }) else {
             banner = RefsBanner(
                 kind: .warning,
@@ -1491,7 +1886,11 @@ public final class RefsPanelModel: ObservableObject {
         }
         switch pending.target {
         case .highlights:
-            openInHighlights(item)
+            openInHighlights(
+                item,
+                recordsOpen: pending.recordsOpen,
+                switchedFileName: pending.switchedFileName
+            )
         case .defaultApp:
             openWithDefaultApp(item)
         case .note, .reveal:
@@ -1500,7 +1899,11 @@ public final class RefsPanelModel: ObservableObject {
     }
 
     @discardableResult
-    private func openInHighlights(_ item: RefItem) -> Bool {
+    private func openInHighlights(
+        _ item: RefItem,
+        recordsOpen: Bool = true,
+        switchedFileName: String? = nil
+    ) -> Bool {
         if library.signals.missingPDFs.contains(item.id) {
             opener.openNote(library.noteURL(for: item))
             return true
@@ -1510,7 +1913,12 @@ public final class RefsPanelModel: ObservableObject {
             return true
         }
         guard let app = highlights.highlightsAppURL() else {
-            pendingOpen = (item.id, .highlights)
+            pendingOpen = PendingOpen(
+                id: item.id,
+                target: .highlights,
+                recordsOpen: recordsOpen,
+                switchedFileName: switchedFileName
+            )
             banner = RefsBanner(
                 kind: .error,
                 message: "Highlights isn’t installed where Bob Refs can find it.",
@@ -1518,14 +1926,21 @@ public final class RefsPanelModel: ObservableObject {
             )
             return true
         }
-        pendingOpen = (item.id, .highlights)
+        pendingOpen = PendingOpen(
+            id: item.id,
+            target: .highlights,
+            recordsOpen: recordsOpen,
+            switchedFileName: switchedFileName
+        )
         hidePanel()
         opener.openInHighlights(pdf, app: app) { [weak self] error in
             Task {
                 await self?.finishHighlightsOpen(
                     itemID: item.id,
                     title: item.title.text,
-                    error: error
+                    error: error,
+                    recordsOpen: recordsOpen,
+                    switchedFileName: switchedFileName
                 )
             }
         }
@@ -1542,7 +1957,12 @@ public final class RefsPanelModel: ObservableObject {
             opener.openNote(library.noteURL(for: item))
             return true
         }
-        pendingOpen = (item.id, .defaultApp)
+        pendingOpen = PendingOpen(
+            id: item.id,
+            target: .defaultApp,
+            recordsOpen: true,
+            switchedFileName: nil
+        )
         hidePanel()
         opener.openWithDefaultApp(pdf) { [weak self] error in
             Task {
@@ -1556,10 +1976,21 @@ public final class RefsPanelModel: ObservableObject {
         return true
     }
 
-    private func finishHighlightsOpen(itemID: String, title: String, error: Error?) {
+    private func finishHighlightsOpen(
+        itemID: String,
+        title: String,
+        error: Error?,
+        recordsOpen: Bool,
+        switchedFileName: String?
+    ) {
         if let error {
             lastDiagnostic = RefsLibrary.boundedMessage(for: error)
-            pendingOpen = (itemID, .highlights)
+            pendingOpen = PendingOpen(
+                id: itemID,
+                target: .highlights,
+                recordsOpen: recordsOpen,
+                switchedFileName: switchedFileName
+            )
             // Re-show without resetting: the query, scope, frozen
             // listing, selection, and pendingOpen all survive, and the
             // coordinator retains a visible Capture draft.
@@ -1572,14 +2003,23 @@ public final class RefsPanelModel: ObservableObject {
         } else {
             pendingOpen = nil
             banner = nil
-            library.recordOpen(id: itemID)
+            if recordsOpen {
+                library.recordOpen(id: itemID)
+            } else if let switchedFileName {
+                tabsSession.recordSwitch(fileName: switchedFileName)
+            }
         }
     }
 
     private func finishDefaultAppOpen(itemID: String, title: String, error: Error?) {
         if let error {
             lastDiagnostic = RefsLibrary.boundedMessage(for: error)
-            pendingOpen = (itemID, .defaultApp)
+            pendingOpen = PendingOpen(
+                id: itemID,
+                target: .defaultApp,
+                recordsOpen: true,
+                switchedFileName: nil
+            )
             // Re-show without resetting, as above.
             panelRepresenter()
             banner = RefsBanner(
