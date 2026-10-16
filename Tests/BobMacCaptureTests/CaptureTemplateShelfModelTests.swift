@@ -592,9 +592,9 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
         CaptureSavedTemplate(
             index: 2,
             id: "reading",
-            text: "Read {0} @reading^{1} p:2",
-            draft: "@@template:\nRead {0} @reading^{1} p:2\n\n",
-            cursor: 39,
+            text: "Read {0} @reading^{1} $2",
+            draft: "@@template:\nRead {0} @reading^{1} $2\n\n",
+            cursor: 38,
             fieldCount: 2,
             lineCount: 1,
             route: "reading"

@@ -720,12 +720,12 @@ struct CapturePanelView: View {
                     // the themes, and this hint names the gestures that keep
                     // the plan closed.
                     if model.errorCode == "plan_theme_cap_exceeded" {
-                        Text("Queue it with ^ or defer with p:<N>.")
+                        Text("Queue it with ^ or defer with $<N>.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                             .accessibilityLabel(
-                                "Plan hint: Queue it with ^ or defer with p:<N>."
+                                "Plan hint: Queue it with ^ or defer with $<N>."
                             )
                     }
                     HStack {

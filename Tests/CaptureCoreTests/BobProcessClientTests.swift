@@ -598,7 +598,7 @@ final class BobProcessClientTests: XCTestCase {
             ]
         )
 
-        let response = try await client.captureLivePreview("buy milk % p:1", priorityRollSeed: "fixed")
+        let response = try await client.captureLivePreview("buy milk % $1", priorityRollSeed: "fixed")
 
         guard case .success(let success) = response else {
             return XCTFail("Expected a successful live preview response")
@@ -606,7 +606,7 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(success.dryRun)
         XCTAssertEqual(success.taskLine, "- [ ] #task captured [created::2026-08-14]")
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- buy milk % p:1"))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- buy milk % $1"))
         XCTAssertTrue(record.contains("BOB_PRIORITY_ROLL_SEED=fixed"))
     }
 

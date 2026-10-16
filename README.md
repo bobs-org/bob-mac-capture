@@ -1071,7 +1071,7 @@ legacy preview and notification copy.
   dry run clears the card so no stale preview sits beside the error. The error
   callout shows Bob's message unchanged; a strict plan-budget refusal
   (`code == plan_theme_cap_exceeded`) adds the hint line `Queue it with ^ or
-  defer with p:<N>.` While a
+  defer with $<N>.` While a
   list dangles on `,`/`!`/`~`, the card previews the trimmed draft dimmed with a
   `Type a task number after ,` row, **Close** is disabled, and Return cannot
   submit; while a Work Log bullet dangles (`=x` plus `- 1`), the card previews
@@ -1172,7 +1172,7 @@ legacy preview and notification copy.
   every task-block fixture to PNG (light/dark, 760/620 pt, scale 2) when
   `BOB_MAC_CAPTURE_RENDER_DIR` is set.
 - The preview path assigns a fixed `BOB_PRIORITY_ROLL_SEED` for the draft lifecycle so
-  randomized `p:<N>` scheduled dates can be reused by submission. Bob derives
+  randomized `$<N>` scheduled dates can be reused by submission. Bob derives
   item-specific rolls from that seed for batch drafts, and the seed resets only after a
   successful capture or discard.
 - Capture targets are cached at launch, refreshed when the panel opens, and invalidated
@@ -1933,7 +1933,7 @@ existing-task sub-bullet, `@route+block-id#section` to nest under one of that ta
 ALL-CAPS section bullets, `@route^block-id` for an ordinary task with an authored block
 ID, `@route^block-id+#pomodoro` for a project note (with ` :id` / ` ^id` tokens
 on its task bullets naming and optionally linking project tasks),
-`s:<N>`, `p:<N>`, `%`, …) at the end of any valid line configures that item even
+`s:<N>`, `$<N>`, `%`, …) at the end of any valid line configures that item even
 when it appears on a child line. The app never parses that punctuation itself:
 highlighting and completion follow bob-cli's semantic spans. Both families complete
 their route side; only the `+` family's right-hand side offers existing tasks, `#` after
@@ -1949,7 +1949,7 @@ reports "Linked N tasks into …". The retired
 Prepare the launch review
 - Confirm the rollout owner
   - Send the owner the final date
-- Attach the final checklist @work p:1
+- Attach the final checklist @work $1
   - Verify the links
 
 Write release note @notes#Ideas
@@ -2256,7 +2256,7 @@ the clipboard. Bob still claims an eligible URL-only reference ending in exact `
 a companion-audio request: `https://arxiv.org/pdf/2609.12039 %` stays a reference
 while you type. Ordinary `%`, `%N`, and `%header` clipboard spans stay literal. Pressing
 the explicit **Preview** button or **Capture** resolves the clipboard and
-Clipy history normally, exactly as the final capture would. A `p:<N>` random
+Clipy history normally, exactly as the final capture would. A `$<N>` random
 schedule is rolled once per
 draft and reused by every subsequent live preview and by the final submission, so the
 displayed scheduled date always matches what gets written.
