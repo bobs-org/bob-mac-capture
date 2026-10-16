@@ -49,14 +49,14 @@ public enum RefsAction: Equatable, Sendable {
     }
 
     /// The shortcut hint the menu shows, mirroring the panel keys:
-    /// the opens carry ↵, ⌘↵, and ⌥↵, Close Tab carries ⌃D, Refresh
+    /// the opens carry ↵, ⌘↵, and ⌥↵, Close Tab carries ⌃X, Refresh
     /// carries ⌘R, and Scan carries ⌘S.
     public var keyEquivalent: String {
         switch self {
         case .openHighlights, .openNote, .reveal:
             return "\r"
         case .closeTab:
-            return "d"
+            return "x"
         case .refreshLibrary:
             return "r"
         case .scanLibrary:

@@ -1445,7 +1445,8 @@ Diagnostic for hard failures.
 | Option-Return | Reveal the PDF in Finder |
 | Up/Down, Ctrl-P/Ctrl-N, Ctrl-K/Ctrl-J | Move (wraps) |
 | Page Up/Page Down | Page the results list by one less than fits |
-| Ctrl-D | In Tabs, close the selected tab in Highlights; elsewhere scroll the preview down by half its height; at the very bottom, Ctrl-D shows the next page of your notes and highlights; search keeps focus |
+| Ctrl-X | Close the selected tab in Highlights (Tabs only); elsewhere passes through to search |
+| Ctrl-D | Scroll the preview down by half its height; at the very bottom, Ctrl-D shows the next page of your notes and highlights; search keeps focus |
 | Ctrl-U | Scroll the preview up by half its height; search keeps focus |
 | Shift-Command-T | Reopen the most recently closed Highlights tab |
 | Command-Up/Command-Down, Home/End | First, last |
@@ -1461,11 +1462,11 @@ Diagnostic for hard failures.
 | Esc, Ctrl-[ | Link to Today, Rename, or Copy card, then banner, query, scope, close |
 | Shift-Tab | Consumed (no-op) |
 
-Return and Command-Y while IME-composing pass through to the text system. Ctrl-D
-and Ctrl-U also pass through while IME-composing; once recognized they
-consume the key even when the preview is hidden, short, empty, or
-already at an edge. In Tabs, Ctrl-D closes the selected tab instead of
-scrolling. At the very bottom of the preview, Ctrl-D shows the next page of
+Return and Command-Y while IME-composing pass through to the text system. Ctrl-D,
+Ctrl-U, and Ctrl-X also pass through while IME-composing; once recognized Ctrl-D
+and Ctrl-U consume the key even when the preview is hidden, short, empty, or
+already at an edge. In Tabs, Ctrl-X closes the selected tab; Ctrl-D always
+scrolls. At the very bottom of the preview, Ctrl-D shows the next page of
 your notes and highlights (clicking the disclosure row does the same);
 when nothing is hidden it is still consumed and does nothing.
 Shift-Command-T reopens the most recently closed tab, or does nothing
@@ -1588,10 +1589,10 @@ previous tab is preselected.
 
 Return, Tab, or double-click switches to the existing tab. Switching
 keeps its page, does not change reading state, and does not add an entry
-to the open log. Control-D closes the selected tab, including collision
+to the open log. Control-X closes the selected tab, including collision
 and unmatched rows: the row folds out, the next row is selected, and the
-panel stays up so Control-D Control-D Control-D clears several tabs.
-Hovered and selected Tabs rows also show a Close Tab button (⌃D).
+panel stays up so Control-X Control-X Control-X clears several tabs.
+Hovered and selected Tabs rows also show a Close Tab button (⌃X).
 Closing the last open document also quits Highlights, and the panel
 hides. Shift-Command-T reopens the most recently closed tab (up to 20,
 kept in memory for the app's lifetime). A matched row reopens its library
@@ -1665,7 +1666,7 @@ outline headings feed back into the ranking signals, so rows gain
 
 The ⌘K actions menu pops up below the selected row (at the list's
 center when the row frame is unknown): Open in Highlights (↵), Close Tab
-(⌃D, matched Tabs rows), Open
+(⌃X, matched Tabs rows), Open
 Note (⌘↵), Reveal in Finder (⌥↵), Copy… (⌘Y), Rename… (⌘⇧R),
 Link to Today… (⌘N), Open
 Source URL (only with `urls`), Open Narration (only with `audio`, in
@@ -1708,7 +1709,7 @@ only and is never written to disk.
   bring up the system prompt, then allow Bob Mac Capture. Tabs never asks for
   permission at launch.
 - "Couldn't close “title” in Highlights": the row came back because
-  Highlights did not close that tab. Press Control-D to retry. If a save
+  Highlights did not close that tab. Press Control-X to retry. If a save
   sheet appears instead, Bob Refs hides so Highlights can show the sheet.
 - If the switch looks on but does nothing, its row is pinned to an older build.
   The button repairs it, or run
@@ -1794,7 +1795,8 @@ Bob Refs shortcuts:
 | --- | --- |
 | Command-T | Toggle the Tabs filter; the query and kind scope stay in place |
 | Shift-Command-O | While Highlights is frontmost, open Bob Refs in Tabs; configurable to Command-E or Off |
-| Ctrl-D | In Tabs, close the selected tab in Highlights; elsewhere scroll the preview |
+| Ctrl-X | Close the selected tab in Highlights (Tabs only) |
+| Ctrl-D | Scroll the preview down by half its height |
 | Shift-Command-T | Reopen the most recently closed Highlights tab |
 
 | Key | In the editor | While completion is visible | While Add block ID is open | While Name Pomodoro is open |

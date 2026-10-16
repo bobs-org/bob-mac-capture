@@ -169,6 +169,7 @@ final class AXHighlightsTabsReader: HighlightsTabsReading, @unchecked Sendable {
                     deadline: deadline
                 )
                 if let verified = verifyClosed(
+                    target: target,
                     fileName: target.fileName,
                     beforeCount: beforeCount,
                     application: application,
@@ -309,28 +310,56 @@ final class AXHighlightsTabsReader: HighlightsTabsReading, @unchecked Sendable {
     }
 
     private func verifyClosed(
+        target: HighlightsTabTarget,
         fileName: String,
         beforeCount: Int,
         application: NSRunningApplication,
         deadline: UInt64
     ) -> HighlightsTabCloseResult? {
-        while DispatchTime.now().uptimeNanoseconds < deadline {
-            if highlightsExited(application) {
-                return .closed(emptySnapshot())
-            }
-            do {
-                let current = try readSnapshot(application, deadline: deadline)
-                if titleCount(fileName, in: current.snapshot) < beforeCount {
-                    return .closed(current.snapshot)
+        var latestSheetWindow: AXUIElement?
+        return CloseVerification.run(
+            beforeCount: beforeCount,
+            deadline: deadline,
+            now: { DispatchTime.now().uptimeNanoseconds },
+            hasExited: { [weak application] in
+                guard let application else { return true }
+                return self.highlightsExited(application)
+            },
+            read: {
+                let current = try self.readSnapshot(application, deadline: deadline)
+                let count = self.titleCount(fileName, in: current.snapshot)
+                if count < beforeCount {
+                    latestSheetWindow = nil
+                    return (current.snapshot, count, false)
                 }
-            } catch {
-                if highlightsExited(application) {
-                    return .closed(emptySnapshot())
+                let sheetWindow: AXUIElement?
+                if let location = HighlightsTabLocator.locate(target, in: current.snapshot),
+                   current.windows.indices.contains(location.window),
+                   try self.windowHasSheet(
+                       current.windows[location.window].element,
+                       deadline: deadline
+                   )
+                {
+                    sheetWindow = current.windows[location.window].element
+                } else {
+                    sheetWindow = try self.firstWindowWithSheet(
+                        in: current.windows,
+                        deadline: deadline
+                    )
                 }
-            }
-            Thread.sleep(forTimeInterval: pollInterval)
-        }
-        return nil
+                latestSheetWindow = sheetWindow
+                return (current.snapshot, count, sheetWindow != nil)
+            },
+            onNeedsAttention: {
+                guard let sheetWindow = latestSheetWindow else { return }
+                CaptureSignpost.event("refs-tabs-close-needs-attention")
+                _ = application.activate(options: [])
+                self.setMessagingTimeout(on: sheetWindow)
+                _ = AXUIElementPerformAction(sheetWindow, kAXRaiseAction as CFString)
+            },
+            sleep: { Thread.sleep(forTimeInterval: self.pollInterval) },
+            emptySnapshot: { self.emptySnapshot() }
+        )
     }
 
     private func needsAttentionOrFailed(
@@ -801,5 +830,49 @@ final class AXHighlightsTabsReader: HighlightsTabsReading, @unchecked Sendable {
         guard DispatchTime.now().uptimeNanoseconds < deadline else {
             throw ReadFailure(reason: "Reading Highlights' tabs timed out")
         }
+    }
+}
+
+/// The bounded close-verification loop, factored so tests inject
+/// scripted reads, time, and sheet effects while production passes
+/// the real Accessibility closures. Polls about every 50 ms within
+/// the same ~2 s total budget: verified title-count decrease wins,
+/// a save sheet yields needsAttention with one activate/raise, an
+/// exited app yields an empty closed snapshot, and anything else
+/// reaches a bounded failure without pressing close again.
+enum CloseVerification {
+    static func run(
+        beforeCount: Int,
+        deadline: UInt64,
+        now: () -> UInt64,
+        hasExited: () -> Bool,
+        read: () throws -> (
+            snapshot: HighlightsTabsSnapshot, titleCount: Int, hasSheet: Bool
+        ),
+        onNeedsAttention: () -> Void,
+        sleep: () -> Void,
+        emptySnapshot: () -> HighlightsTabsSnapshot
+    ) -> HighlightsTabCloseResult? {
+        while now() < deadline {
+            if hasExited() {
+                return .closed(emptySnapshot())
+            }
+            do {
+                let current = try read()
+                if current.titleCount < beforeCount {
+                    return .closed(current.snapshot)
+                }
+                if current.hasSheet {
+                    onNeedsAttention()
+                    return .needsAttention
+                }
+            } catch {
+                if hasExited() {
+                    return .closed(emptySnapshot())
+                }
+            }
+            sleep()
+        }
+        return nil
     }
 }

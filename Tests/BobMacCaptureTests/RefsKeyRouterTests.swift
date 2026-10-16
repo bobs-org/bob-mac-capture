@@ -19,6 +19,7 @@ final class RefsKeyRouterTests: XCTestCase {
         static let y: UInt16 = 16
         static let s: UInt16 = 1
         static let d: UInt16 = 2
+        static let x: UInt16 = 7
         static let u: UInt16 = 32
         static let j: UInt16 = 38
         static let k: UInt16 = 40
@@ -147,31 +148,48 @@ final class RefsKeyRouterTests: XCTestCase {
             route(KeyCode.u, .control, context: search),
             .scrollInspector(.up)
         )
+        // Ctrl-D scrolls even with a closable Tabs row selected.
+        let tabsRow = RefsKeyContext(selectionIsOpenTab: true)
+        XCTAssertEqual(
+            route(KeyCode.d, .control, context: tabsRow),
+            .scrollInspector(.down)
+        )
     }
 
     func testControlDAndURequireExactControl() {
         XCTAssertNil(route(KeyCode.d))
         XCTAssertNil(route(KeyCode.u))
+        XCTAssertNil(route(KeyCode.x))
         XCTAssertNil(route(KeyCode.d, .command))
         XCTAssertNil(route(KeyCode.u, .option))
+        XCTAssertNil(route(KeyCode.x, .command))
         XCTAssertNil(route(KeyCode.d, [.control, .shift]))
         XCTAssertNil(route(KeyCode.u, [.control, .command]))
         XCTAssertNil(route(KeyCode.d, [.control, .option]))
+        XCTAssertNil(route(KeyCode.x, [.control, .shift]))
+        XCTAssertNil(route(KeyCode.x, [.control, .command]))
+        XCTAssertNil(route(KeyCode.x, [.control, .option]))
+        // Plain X typing and Command-X editing never close.
+        XCTAssertNil(route(KeyCode.x))
+        XCTAssertNil(route(KeyCode.x, .command))
     }
 
     func testControlDAndUPassThroughWhileComposing() {
         let composing = RefsKeyContext(markedTextPresent: true)
         XCTAssertNil(route(KeyCode.d, .control, context: composing))
         XCTAssertNil(route(KeyCode.u, .control, context: composing))
+        XCTAssertNil(route(KeyCode.x, .control, context: composing))
     }
 
-    func testControlDClosesOnlyWhenAnOpenTabRowIsSelected() {
+    func testControlXClosesOnlyWhenAnOpenTabRowIsSelected() {
         let tabsRow = RefsKeyContext(selectionIsOpenTab: true)
         let otherRow = RefsKeyContext(tabsFilterOn: true)
-        XCTAssertEqual(route(KeyCode.d, .control, context: tabsRow), .closeSelectedTab)
-        XCTAssertEqual(route(KeyCode.d, .control, context: otherRow), .scrollInspector(.down))
+        let libraryRow = RefsKeyContext()
+        XCTAssertEqual(route(KeyCode.x, .control, context: tabsRow), .closeSelectedTab)
+        XCTAssertNil(route(KeyCode.x, .control, context: otherRow))
+        XCTAssertNil(route(KeyCode.x, .control, context: libraryRow))
         XCTAssertNil(route(
-            KeyCode.d,
+            KeyCode.x,
             .control,
             context: RefsKeyContext(markedTextPresent: true, selectionIsOpenTab: true)
         ))

@@ -59,11 +59,11 @@ struct RefsFooter: View {
     static func hintVariants(openHint: String, tabsFilter: Bool = false) -> [String] {
         if tabsFilter {
             let core =
-                "\(openHint)  ⌃D Close Tab  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘N Today  ⌘K Actions"
+                "\(openHint)  ⌃X Close Tab  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘N Today  ⌘K Actions"
             // Drop Reveal first when the 760 pt footer can no longer
             // hold the full Tabs core; Close Tab stays in every variant.
             let compactCore =
-                "\(openHint)  ⌃D Close Tab  ⌘↵ Note  ⌘Y Copy  ⌘N Today  ⌘K Actions"
+                "\(openHint)  ⌃X Close Tab  ⌘↵ Note  ⌘Y Copy  ⌘N Today  ⌘K Actions"
             return [
                 "\(core)  ⌘T Library  ⌘1–5 Scope  esc Close",
                 "\(core)  ⌘T Library  esc Close",

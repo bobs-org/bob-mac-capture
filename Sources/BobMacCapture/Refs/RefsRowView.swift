@@ -183,7 +183,7 @@ struct RefsRowView: View {
     var previewHovering = false
 
     /// Tooltip and VoiceOver name for the row close control.
-    static let closeTabHelp = "Close Tab (⌃D)"
+    static let closeTabHelp = "Close Tab (⌃X)"
     /// The VoiceOver action name that closes this tab.
     static let closeTabActionName = "Close Tab"
 

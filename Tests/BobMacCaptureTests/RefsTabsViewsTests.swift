@@ -48,11 +48,11 @@ final class RefsTabsViewsTests: XCTestCase {
     }
 
     func testCloseTabCopy() {
-        XCTAssertEqual(RefsRowView.closeTabHelp, "Close Tab (⌃D)")
+        XCTAssertEqual(RefsRowView.closeTabHelp, "Close Tab (⌃X)")
         XCTAssertEqual(RefsRowView.closeTabActionName, "Close Tab")
         XCTAssertEqual(
             RefsInspectorView.tabFallbackHint,
-            "↵ switches to this tab · ⌃D closes it"
+            "↵ switches to this tab · ⌃X closes it"
         )
     }
 }

@@ -102,7 +102,7 @@ struct RefsInspectorView: View {
     /// keyboard and click reveals alike.
     var onRevealMoreNotes: () -> Void = {}
     /// Collision and unmatched inspector hint: switch and close.
-    static let tabFallbackHint = "↵ switches to this tab · ⌃D closes it"
+    static let tabFallbackHint = "↵ switches to this tab · ⌃X closes it"
     @State private var disclosureHover = false
 
     var body: some View {

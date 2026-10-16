@@ -50,6 +50,7 @@ public enum RefsKeyRouter {
         static let y: UInt16 = 16
         static let s: UInt16 = 1
         static let d: UInt16 = 2
+        static let x: UInt16 = 7
         static let u: UInt16 = 32
         static let j: UInt16 = 38
         static let k: UInt16 = 40
@@ -70,7 +71,7 @@ public enum RefsKeyRouter {
     }
 
     /// Maps one key press to a panel command, or nil to pass it through.
-    /// Control-D closes a selected Tabs row and scrolls elsewhere;
+    /// Control-X closes a selected Tabs row; Control-D always scrolls;
     /// Shift-Command-T reopens the newest closed tab.
     public static func command(
         keyCode: UInt16,
@@ -158,12 +159,18 @@ public enum RefsKeyRouter {
             return flags == .control ? .move(.next) : nil
         case KeyCode.d:
             if flags == .control {
+                return context.markedTextPresent ? nil : .scrollInspector(.down)
+            }
+            return nil
+        case KeyCode.x:
+            // Control-X closes only a closable Tabs row; elsewhere it
+            // passes through to the search field. Plain X typing and
+            // Command-X text editing never reach this branch.
+            if flags == .control {
                 if context.markedTextPresent {
                     return nil
                 }
-                return context.selectionIsOpenTab
-                    ? .closeSelectedTab
-                    : .scrollInspector(.down)
+                return context.selectionIsOpenTab ? .closeSelectedTab : nil
             }
             return nil
         case KeyCode.u:

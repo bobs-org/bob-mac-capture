@@ -52,8 +52,8 @@ public enum RefsCommand: Equatable, Sendable {
     case setTabsFilter(Bool)
     /// Requests Accessibility access after an explicit card action.
     case requestTabsPermission
-    /// Closes the selected Highlights tab, falling back to inspector scroll
-    /// if the selected row is no longer an open tab.
+    /// Closes the selected Highlights tab. A stale dispatch with no
+    /// closable row is a consumed no-op and never scrolls the preview.
     case closeSelectedTab
     /// Closes the identified Highlights tab row.
     case closeTab(id: String)
@@ -270,9 +270,13 @@ public final class RefsPanelModel: ObservableObject {
         return canCloseTab(id: selectedID)
     }
 
-    /// Whether id is an open tab row in the Tabs listing.
+    /// Whether id is an open tab row in the Tabs listing. False while
+    /// a Rename or Link to Today vault write is running, so the row
+    /// button, VoiceOver action, and actions menu hide their close
+    /// affordances during either write.
     public func canCloseTab(id: String) -> Bool {
-        tabsFilter && tabsListing?.tabs[id] != nil
+        guard !isRenaming, !isLinkingToday else { return false }
+        return tabsFilter && tabsListing?.tabs[id] != nil
     }
     @Published public private(set) var selectedID: String? {
         didSet {
@@ -717,12 +721,18 @@ public final class RefsPanelModel: ObservableObject {
             beginTabsRefresh(preservingSelection: false)
             return true
         case .closeSelectedTab:
+            if isRenaming || isLinkingToday {
+                return true
+            }
+            // Stale closes never scroll and never close another tab.
             guard canCloseSelectedTab, let selectedID else {
-                inspectorScrollSubject.send(.down)
                 return true
             }
             return closeTab(id: selectedID)
         case .closeTab(let id):
+            if isRenaming || isLinkingToday {
+                return true
+            }
             return closeTab(id: id)
         case .reopenClosedTab:
             if let pendingClosedTab {
@@ -1024,6 +1034,12 @@ public final class RefsPanelModel: ObservableObject {
             return false
         }
 
+        // Clean up non-running cards like the surrounding row actions;
+        // the dispatch guards above keep an in-flight vault write alive.
+        closeRenameCard()
+        closeTodayLinkCard()
+        closeCopyCard()
+
         let nextSelection = RefsSelectionPolicy.afterRemoving(id, in: listing)
         let title = rowContent(for: id)?.title ?? tab.fileName
         let reopen: RefsClosedTab?
@@ -1076,8 +1092,18 @@ public final class RefsPanelModel: ObservableObject {
         return true
     }
 
+    /// Narrow test seam: how many close workers have started, and
+    /// whether the queue is fully idle. Tests use these to prove a
+    /// drained queue stops instead of chaining empty workers.
+    var closeWorkerLaunchCountForTests = 0
+    var isCloseIdleForTests: Bool {
+        closeQueue.isEmpty && closeWorker == nil
+    }
+
     private func startCloseWorkerIfNeeded() {
-        guard closeWorker == nil else { return }
+        guard closeWorker == nil, !closeQueue.isEmpty else { return }
+        let requestGeneration = tabsRefreshGeneration
+        closeWorkerLaunchCountForTests += 1
         closeWorker = Task { [weak self] in
             guard let self else { return }
             while let next = self.takeNextClose() {
@@ -1087,11 +1113,17 @@ public final class RefsPanelModel: ObservableObject {
                 )
                 self.finishClose(next, outcome: outcome)
             }
-            if self.tabsFilter, self.tabsState == .loading {
+            // Settle a refresh superseded by a close, but never a fresh
+            // read that started after this worker batch.
+            if self.tabsFilter, self.tabsState == .loading,
+               self.tabsRefreshGeneration == requestGeneration
+            {
                 self.tabsState = self.matchedTabs.isEmpty ? .noDocuments : .loaded
             }
             self.closeWorker = nil
-            self.startCloseWorkerIfNeeded()
+            if !self.closeQueue.isEmpty {
+                self.startCloseWorkerIfNeeded()
+            }
         }
     }
 
@@ -1427,7 +1459,7 @@ public final class RefsPanelModel: ObservableObject {
     }
 
     /// Installs a canned tab snapshot and state for previews without invoking a reader.
-    /// `closingIDs` hides those rows the same way an in-flight ⌃D does, so
+    /// `closingIDs` hides those rows the same way an in-flight ⌃X does, so
     /// close-views can render a list mid-close.
     public func installTabsForPreviews(
         snapshot: HighlightsTabsSnapshot?,

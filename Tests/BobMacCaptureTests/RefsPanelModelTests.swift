@@ -2811,6 +2811,172 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertEqual(toasts.last?.title, "Closed the last tab")
     }
 
+    func testCloseWorkerStopsWhenQueueEmptiesAndRestartsOnceForSecondBatch() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        let items = Array(harness.library.items.prefix(3))
+        guard items.count == 3 else {
+            XCTFail("fixture needs three references")
+            return
+        }
+        reader.setNextResult(.snapshot(Self.tabsSnapshot(
+            items,
+            vault: harness.vault,
+            frontmost: false
+        )))
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel { $0.tabsState == .loaded }
+
+        let firstID = try XCTUnwrap(harness.model.listing.orderedIDs.first)
+        reader.setNextCloseResults([
+            .closed(Self.tabsSnapshot(
+                items.filter { $0.id != firstID },
+                vault: harness.vault,
+                frontmost: false
+            )),
+        ])
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        await harness.waitForModel { $0.isCloseIdleForTests && reader.closeTargets.count == 1 }
+        let launchesAfterFirst = harness.model.closeWorkerLaunchCountForTests
+        XCTAssertEqual(launchesAfterFirst, 1)
+        // An idle queue must not chain empty workers.
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(harness.model.isCloseIdleForTests)
+        XCTAssertEqual(harness.model.closeWorkerLaunchCountForTests, launchesAfterFirst)
+
+        let secondID = try XCTUnwrap(harness.model.listing.orderedIDs.first)
+        let thirdID = try XCTUnwrap(
+            RefsSelectionPolicy.afterRemoving(secondID, in: harness.model.listing)
+        )
+        let secondItem = try XCTUnwrap(items.first { $0.id == secondID })
+        let thirdItem = try XCTUnwrap(items.first { $0.id == thirdID })
+        reader.setNextCloseResults([
+            .closed(Self.tabsSnapshot(
+                items.filter { $0.id != firstID && $0.id != secondID },
+                vault: harness.vault,
+                frontmost: false
+            )),
+            .closed(Self.tabsSnapshot([], vault: harness.vault, frontmost: false)),
+        ])
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        await harness.waitForModel { $0.isCloseIdleForTests && reader.closeTargets.count == 3 }
+        XCTAssertEqual(harness.model.closeWorkerLaunchCountForTests, launchesAfterFirst + 1)
+        XCTAssertEqual(reader.closeTargets.map(\.fileName), [
+            URL(fileURLWithPath: items.first { $0.id == firstID }!.pdfPath).lastPathComponent,
+            URL(fileURLWithPath: secondItem.pdfPath).lastPathComponent,
+            URL(fileURLWithPath: thirdItem.pdfPath).lastPathComponent,
+        ])
+        XCTAssertEqual(reader.maxConcurrentCloses, 1)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(harness.model.isCloseIdleForTests)
+        XCTAssertEqual(harness.model.closeWorkerLaunchCountForTests, launchesAfterFirst + 1)
+    }
+
+    func testCloseBlockedWhileRenameWriteRunsThenWorksAfterSettlement() async throws {
+        let path = "ref/blogs/rename_guard_test.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "rename_guard_test")]
+        )
+        fetcher.renameDelayNanoseconds = 300_000_000
+        fetcher.renameResponse = RefsRenameResponse(
+            schemaVersion: 1,
+            ok: true,
+            from: RefsRenameLocation(path: path, stem: "rename_guard_test"),
+            to: RefsRenameLocation(path: path, stem: "rename_guard_test"),
+            links: RefsRenameLinks(rewritten: 0, files: []),
+            outcome: "renamed",
+            changed: false
+        )
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeRenameHarness(fetcher: fetcher, tabsReader: reader)
+        await harness.waitForSnapshot(ids: [path])
+        let item = try XCTUnwrap(harness.library.items.first)
+        harness.model.installTabsForPreviews(
+            snapshot: Self.tabsSnapshot([item], vault: harness.vault, frontmost: false),
+            state: .loaded,
+            frontmost: false
+        )
+        let rowID = item.id
+        XCTAssertTrue(harness.model.canCloseTab(id: rowID))
+
+        harness.model.openRenameCard()
+        harness.model.editRenameDraft("rename_guard_test")
+        harness.model.handleRenameCardKey(.submit)
+        await harness.waitForModel { $0.isRenaming }
+        XCTAssertFalse(harness.model.canCloseTab(id: rowID))
+        XCTAssertFalse(harness.model.canCloseSelectedTab)
+
+        let selectedBefore = harness.model.selectedID
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        XCTAssertTrue(harness.model.perform(.closeTab(id: rowID)))
+        XCTAssertTrue(reader.closeTargets.isEmpty)
+        XCTAssertTrue(harness.model.listing.orderedIDs.contains(rowID))
+        XCTAssertEqual(harness.model.selectedID, selectedBefore)
+
+        await harness.waitForModel { !$0.isRenaming }
+        XCTAssertTrue(harness.model.canCloseTab(id: rowID))
+        reader.setNextCloseResults([.closed(Self.tabsSnapshot(
+            [],
+            vault: harness.vault,
+            frontmost: false
+        ))])
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        await harness.waitForModel { $0.isCloseIdleForTests && reader.closeTargets.count == 1 }
+        XCTAssertFalse(harness.model.listing.orderedIDs.contains(rowID))
+    }
+
+    func testCloseBlockedWhileTodayLinkWriteRunsThenWorksAfterSettlement() async throws {
+        let path = "ref/blogs/today_link_test.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "today_link_test")]
+        )
+        let gate = TodayLinkResponseGate()
+        fetcher.todayLinkHandler = { _, _, _ in try await gate.respond() }
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeRenameHarness(fetcher: fetcher, tabsReader: reader)
+        await harness.waitForSnapshot(ids: [path])
+        let item = try XCTUnwrap(harness.library.items.first)
+        harness.model.installTabsForPreviews(
+            snapshot: Self.tabsSnapshot([item], vault: harness.vault, frontmost: false),
+            state: .loaded,
+            frontmost: false
+        )
+        let rowID = item.id
+        harness.model.todayLinkPreviewDebounce = {}
+        harness.model.openTodayLinkCard()
+        await gate.waitForRequests(1)
+        await gate.resolve(0, with: .success(try todayLinkFixture("refs-today-listing.json")))
+        await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
+        harness.model.handleTodayLinkCardKey(.submit)
+        await harness.waitForModel { $0.isLinkingToday }
+        XCTAssertFalse(harness.model.canCloseTab(id: rowID))
+
+        let selectedBefore = harness.model.selectedID
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        XCTAssertTrue(harness.model.perform(.closeTab(id: rowID)))
+        XCTAssertTrue(reader.closeTargets.isEmpty)
+        XCTAssertTrue(harness.model.listing.orderedIDs.contains(rowID))
+        XCTAssertEqual(harness.model.selectedID, selectedBefore)
+
+        await gate.resolve(1, with: .success(try todayLinkFixture("refs-today-linked.json")))
+        await harness.waitForModel { !$0.isLinkingToday }
+        XCTAssertTrue(harness.model.canCloseTab(id: rowID))
+        reader.setNextCloseResults([.closed(Self.tabsSnapshot(
+            [],
+            vault: harness.vault,
+            frontmost: false
+        ))])
+        XCTAssertTrue(harness.model.perform(.closeSelectedTab))
+        await harness.waitForModel { $0.isCloseIdleForTests && reader.closeTargets.count == 1 }
+        XCTAssertFalse(harness.model.listing.orderedIDs.contains(rowID))
+    }
+
     func testFailedCloseRestoresAndSelectsRowWithFailureBanner() async throws {
         let reader = FakeTabsReader(isTrusted: true)
         let harness = try makeHarness(tabsReader: reader)
@@ -2922,7 +3088,7 @@ final class RefsPanelModelTests: XCTestCase {
             [.openHighlights, .closeTab]
         )
         XCTAssertEqual(RefsAction.closeTab.title, "Close Tab")
-        XCTAssertEqual(RefsAction.closeTab.keyEquivalent, "d")
+        XCTAssertEqual(RefsAction.closeTab.keyEquivalent, "x")
         XCTAssertEqual(RefsAction.closeTab.keyEquivalentModifierMask, .control)
 
         reader.setNextCloseResults([.closed(Self.tabsSnapshot(
@@ -2937,12 +3103,14 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertTrue(harness.model.perform(.setTabsFilter(false)))
         XCTAssertFalse(harness.model.actionsSections().flatMap { $0 }.contains(.closeTab))
 
+        // A stale close is a consumed no-op and never scrolls.
         var scrolls: [RefsInspectorScrollDirection] = []
         let scrollSubscription = harness.model.inspectorScrolls.sink {
             scrolls.append($0)
         }
         XCTAssertTrue(harness.model.perform(.closeSelectedTab))
-        XCTAssertEqual(scrolls, [.down])
+        XCTAssertTrue(scrolls.isEmpty)
+        XCTAssertTrue(reader.closeTargets.count == 1)
         withExtendedLifetime(scrollSubscription) {}
     }
 
@@ -3373,7 +3541,10 @@ final class RefsPanelModelTests: XCTestCase {
         return harness
     }
 
-    private func makeRenameHarness(fetcher: FakeRefsFetcher) throws -> Harness {
+    private func makeRenameHarness(
+        fetcher: FakeRefsFetcher,
+        tabsReader: FakeTabsReader? = nil
+    ) throws -> Harness {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
         let vault = root.appendingPathComponent("vault")
@@ -3405,7 +3576,8 @@ final class RefsPanelModelTests: XCTestCase {
             library: library,
             opener: opener,
             highlights: FakeLocator(appURL: nil),
-            pasteboard: pasteboard
+            pasteboard: pasteboard,
+            tabs: tabsReader.map { HighlightsTabsSession(reader: $0) }
         )
         let harness = Harness(
             library: library,
