@@ -31,9 +31,12 @@ final class AXHighlightsTabsReader: HighlightsTabsReading, @unchecked Sendable {
         AccessibilityTrust.isTrusted()
     }
 
-    /// Requests the Accessibility grant after an explicit user action.
+    /// Requests the Accessibility grant after an explicit user action, then opens
+    /// the Accessibility pane if the system prompt did not grant trust.
     func requestTrust() {
-        AccessibilityTrust.requestPrompt()
+        if !AccessibilityTrust.requestPrompt() {
+            AccessibilityTrust.openSettings()
+        }
     }
 
     /// Reads one bounded snapshot from Highlights without launching it.

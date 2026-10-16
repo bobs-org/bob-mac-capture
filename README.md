@@ -308,7 +308,9 @@ Create the identity once in Keychain Access:
    certificate in the login keychain.
 
 `just install` picks the identity up automatically on the next install — no flags
-needed. On the first signed install, `codesign` prompts for keychain access: choose
+needed. bob-cli's `just install-all` installs the same way, passing no identity so
+the installer resolves the login keychain identity. On the first signed install,
+`codesign` prompts for keychain access: choose
 **Always Allow** so future installs stay unattended.
 
 Always run `just install` from a GUI Terminal session on the Mac. Over SSH the login
@@ -1663,12 +1665,13 @@ only and is never written to disk.
   Settings › References.
 - "Bob Refs needs Accessibility access to see Highlights' tabs": use
   Open Accessibility Settings from the Tabs card and grant access to Bob
-  Mac Capture. Tabs never asks for permission at launch.
-- If an ad-hoc reinstall makes that grant stop working, re-add Bob Mac
-  Capture in System Settings › Privacy & Security › Accessibility, or
-  reset the stored grant with
-  `tccutil reset Accessibility org.bobs.bob-mac-capture` and grant it
-  again. A stable signing identity keeps the grant across reinstalls.
+  Mac Capture. The button opens the Accessibility pane. Tabs never asks for
+  permission at launch.
+- If the switch already looks on after a signing identity change, remove Bob
+  Mac Capture from System Settings › Privacy & Security › Accessibility and
+  add it again, or reset the stored grant with
+  `tccutil reset Accessibility org.bobs.bob-mac-capture` and grant it again.
+  A stable signing identity keeps the grant across reinstalls.
 - To reset open history (recently-opened rows and frecency), use
   Reset Open History… in Settings › References behind its
   confirmation dialog.

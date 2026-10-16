@@ -45,8 +45,8 @@ private struct RefsTabsCard<Content: View>: View {
 
 /// The permission card: explains the Accessibility need, offers the
 /// prompting check behind an explicit button press, and offers the way
-/// back to the library. Ad-hoc builds warn that the grant resets on
-/// every reinstall, with the `tccutil` escape hatch.
+/// back to the library. The hint explains how to recover a missing or
+/// stale grant for either signing style.
 @available(macOS 26.0, *)
 struct RefsTabsPermissionCard: View {
     @ObservedObject var model: RefsPanelModel
@@ -58,16 +58,10 @@ struct RefsTabsPermissionCard: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            if adHoc {
-                Text(
-                    "Grants reset when an ad-hoc build is reinstalled. "
-                        + "Re-add the app, or run `tccutil reset Accessibility "
-                        + "org.bobs.bob-mac-capture`."
-                )
+            Text(AccessibilityTrust.permissionHint(isAdHocBuild: adHoc))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            }
             HStack(spacing: 12) {
                 Button("Open Accessibility Settings") {
                     model.perform(.requestTabsPermission)
@@ -83,13 +77,8 @@ struct RefsTabsPermissionCard: View {
     }
 
     private var accessibilityLabel: String {
-        var label =
-            "Bob Refs needs Accessibility access to see Highlights' tabs."
-        if adHoc {
-            label +=
-                " Grants reset when an ad-hoc build is reinstalled."
-        }
-        return label
+        let label = "Bob Refs needs Accessibility access to see Highlights' tabs."
+        return "\(label) \(AccessibilityTrust.permissionHint(isAdHocBuild: adHoc))"
     }
 }
 
