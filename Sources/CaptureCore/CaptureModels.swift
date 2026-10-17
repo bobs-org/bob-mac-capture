@@ -3003,6 +3003,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
   /// Additive template execution summary and row metadata.
   public let template: CaptureTemplateSummary?
   public let templateRow: CaptureTemplateRow?
+  /// Additive batch-level open destinations. Nil means an older Bob; an empty
+  /// array is an explicit instruction to open nothing.
+  public let openNotes: [CaptureOpenNote]?
 
   public init(
     ok: Bool,
@@ -3071,7 +3074,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     droppedDependencies: [CaptureDroppedDependency] = [],
     linkGuard: CaptureLinkGuard? = nil,
     template: CaptureTemplateSummary? = nil,
-    templateRow: CaptureTemplateRow? = nil
+    templateRow: CaptureTemplateRow? = nil,
+    openNotes: [CaptureOpenNote]? = nil
   ) {
     self.ok = ok
     self.dryRun = dryRun
@@ -3140,6 +3144,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     self.warnings = warnings
     self.template = template
     self.templateRow = templateRow
+    self.openNotes = openNotes?.filter { $0.path.hasPrefix("/") && !$0.path.isEmpty }
   }
 
   public init(from decoder: Decoder) throws {
@@ -3283,6 +3288,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
       (try? container.decodeIfPresent(CaptureTemplateSummary.self, forKey: .template)) ?? nil
     templateRow =
       (try? container.decodeIfPresent(CaptureTemplateRow.self, forKey: .templateRow)) ?? nil
+    openNotes = (try? container.decodeIfPresent([CaptureOpenNote].self, forKey: .openNotes))?
+      .filter { $0.path.hasPrefix("/") && !$0.path.isEmpty }
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -3353,6 +3360,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     case warnings
     case template
     case templateRow = "template_row"
+    case openNotes = "open_notes"
   }
 
   /// The exact Markdown block `bob capture` writes beneath the destination, in the

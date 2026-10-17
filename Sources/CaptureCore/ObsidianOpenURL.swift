@@ -51,7 +51,31 @@ public enum ObsidianOpenURL {
         return URL(string: "obsidian://bob-goto-task?\(query.joined(separator: "&"))")
     }
 
-    private static func isValidTaskRef(_ ref: String) -> Bool {
+    /// Builds the single versioned URL used to open a capture's notes.
+    public static func openNotesURL(for plan: CaptureOpenPlan) -> URL? {
+        guard !plan.isEmpty else { return nil }
+        let notes = Array(plan.notes.prefix(8))
+        var query = ["count=\(notes.count)"]
+        for (offset, note) in notes.enumerated() {
+            let index = offset + 1
+            query.append("path\(index)=\(percentEncodeTaskGotoValue(note.path))")
+            if let line = note.line, line > 0 {
+                query.append("line\(index)=\(line)")
+                if let ref = note.ref, isValidTaskRef(ref) {
+                    query.append("ref\(index)=\(percentEncodeTaskGotoValue(ref))")
+                }
+            }
+            if let blockID = note.blockID, isValidBlockID(blockID) {
+                query.append("block\(index)=\(percentEncodeTaskGotoValue(blockID))")
+            }
+        }
+        if plan.notes.count > notes.count {
+            query.append("total=\(plan.notes.count)")
+        }
+        return URL(string: "obsidian://bob-open-notes?\(query.joined(separator: "&"))")
+    }
+
+    static func isValidTaskRef(_ ref: String) -> Bool {
         let parts = ref.split(separator: ":", omittingEmptySubsequences: false)
         guard parts.count == 2,
               let line = Int(parts[0]),
@@ -66,7 +90,7 @@ public enum ObsidianOpenURL {
         }
     }
 
-    private static func isValidBlockID(_ blockID: String) -> Bool {
+    static func isValidBlockID(_ blockID: String) -> Bool {
         !blockID.isEmpty && blockID.utf8.allSatisfy {
             (48...57).contains($0)
                 || (65...90).contains($0)

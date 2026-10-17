@@ -1,0 +1,130 @@
+import XCTest
+
+@testable import CaptureCore
+
+final class CaptureOpenPlanTests: XCTestCase {
+  func testDecodesBobOpenNotesAndDropsBadEntriesAndOptionalValues() throws {
+    let json = #"""
+      [
+        {"path":"/vault/one.md","relative_path":"one.md","role":"note","label":"One","line":0,"ref":"bad","block_id":"bad id"},
+        {"path":"relative.md","relative_path":"relative.md","role":"future","label":"Future"},
+        {"path":"/vault/two.md","relative_path":"two.md","role":"future-role","label":"Two","line":4,"ref":"4:deadbeef","block_id":"abc-123"}
+      ]
+      """#
+    let data = Data(json.utf8)
+    let decoded = try JSONDecoder().decode([CaptureOpenNote].self, from: data)
+    let plan = CaptureOpenPlan(openNotes: decoded, captures: [])
+
+    XCTAssertEqual(plan.source, .bob)
+    XCTAssertEqual(plan.notes.count, 2)
+    XCTAssertNil(plan.notes[0].line)
+    XCTAssertNil(plan.notes[0].ref)
+    XCTAssertNil(plan.notes[0].blockID)
+    XCTAssertEqual(plan.notes[1].role, .other("future-role"))
+    XCTAssertEqual(plan.notes[1].line, 4)
+  }
+
+  func testCaptureSuccessDistinguishesMissingAndEmptyOpenNotes() throws {
+    let old = try decodeSuccess(openNotes: nil)
+    let explicitEmpty = try decodeSuccess(openNotes: "[]")
+
+    XCTAssertNil(old.openNotes)
+    XCTAssertEqual(explicitEmpty.openNotes, [])
+    XCTAssertEqual(CaptureOpenPlan(openNotes: old.openNotes, captures: [old]).source, .legacy)
+    XCTAssertTrue(CaptureOpenPlan(openNotes: explicitEmpty.openNotes, captures: [old]).isEmpty)
+  }
+
+  func testLegacyPlanDeduplicatesCaptureTargetsInOrder() {
+    let first = capture(target: "/vault/one.md", relativeTarget: "one.md")
+    let duplicate = capture(target: "/vault/one.md", relativeTarget: "one.md")
+    let second = capture(target: "/vault/two.md", relativeTarget: "two.md")
+
+    let plan = CaptureOpenPlan(openNotes: nil, captures: [first, duplicate, second])
+
+    XCTAssertEqual(plan.source, .legacy)
+    XCTAssertEqual(plan.notes.map(\.path), ["/vault/one.md", "/vault/two.md"])
+  }
+
+  func testBobNotesAreDeduplicatedAndNotificationPayloadRoundTrips() throws {
+    let notes = [
+      CaptureOpenNote(path: "/vault/a.md", relativePath: "a.md", role: .note, label: "A", line: 3, ref: "3:deadbeef", blockID: "abc-1"),
+      CaptureOpenNote(path: "/vault/a.md", relativePath: "duplicate.md", role: .day, label: "Duplicate"),
+      CaptureOpenNote(path: "/vault/b.md", relativePath: "b.md", role: .other("pdf"), label: "B"),
+    ]
+    let plan = CaptureOpenPlan(openNotes: notes, captures: [])
+    let restored = try XCTUnwrap(CaptureOpenPlan(notificationPayload: plan.notificationPayload))
+
+    XCTAssertEqual(plan.notes.count, 2)
+    XCTAssertEqual(restored.notes, plan.notes)
+    XCTAssertEqual(restored.source, .bob)
+    XCTAssertNil(CaptureOpenPlan(notificationPayload: [["relative_path": "missing path"]]))
+  }
+
+  func testOpenNotesURLEncodesValuesAndIncludesLineRefAndBlock() throws {
+    let note = CaptureOpenNote(
+      path: "/vault/é +&.md",
+      relativePath: "é +&.md",
+      role: .note,
+      label: "One",
+      line: 9,
+      ref: "9:a1b2c3d4",
+      blockID: "abc-123"
+    )
+    let plan = CaptureOpenPlan(openNotes: [note], captures: [])
+    let url = try XCTUnwrap(ObsidianOpenURL.openNotesURL(for: plan))
+    let absolute = try XCTUnwrap(url.absoluteString.removingPercentEncoding)
+
+    XCTAssertTrue(url.absoluteString.hasPrefix("obsidian://bob-open-notes?count=1&path1=/vault/"))
+    XCTAssertTrue(absolute.contains("/vault/é +&.md"))
+    XCTAssertTrue(url.absoluteString.contains("line1=9"))
+    XCTAssertTrue(url.absoluteString.contains("ref1=9%3Aa1b2c3d4"))
+    XCTAssertTrue(url.absoluteString.contains("block1=abc-123"))
+  }
+
+  func testOpenNotesURLTruncatesToEightAndReportsTotal() throws {
+    let notes = (1...10).map { index in
+      CaptureOpenNote(
+        path: "/vault/\(index).md",
+        relativePath: "\(index).md",
+        role: .note,
+        label: "\(index)"
+      )
+    }
+    let url = try XCTUnwrap(ObsidianOpenURL.openNotesURL(for: CaptureOpenPlan(openNotes: notes, captures: [])))
+    let query = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+
+    XCTAssertEqual(query.first(where: { $0.name == "count" })?.value, "8")
+    XCTAssertEqual(query.first(where: { $0.name == "path8" })?.value, "/vault/8.md")
+    XCTAssertNil(query.first(where: { $0.name == "path9" }))
+    XCTAssertEqual(query.first(where: { $0.name == "total" })?.value, "10")
+    XCTAssertNil(ObsidianOpenURL.openNotesURL(for: CaptureOpenPlan(openNotes: [], captures: [])))
+  }
+
+  private func decodeSuccess(openNotes: String?) throws -> CaptureCommandSuccess {
+    let notes = openNotes.map { ", \"open_notes\": \($0)" } ?? ""
+    let json = """
+    {
+      "ok": true, "dry_run": false, "routed": false, "route_label": "Inbox",
+      "relative_target": "inbox.md", "target": "/vault/inbox.md", "text": "Task",
+      "task_line": "- [ ] Task", "kind": "task", "created": "today", "placement": "append"\(notes)
+    }
+    """
+    return try JSONDecoder().decode(CaptureCommandSuccess.self, from: Data(json.utf8))
+  }
+
+  private func capture(target: String, relativeTarget: String) -> CaptureCommandSuccess {
+    CaptureCommandSuccess(
+      ok: true,
+      dryRun: false,
+      routed: false,
+      routeLabel: "Inbox",
+      relativeTarget: relativeTarget,
+      target: target,
+      text: "Task",
+      taskLine: "- [ ] Task",
+      kind: "task",
+      created: "today",
+      placement: "append"
+    )
+  }
+}
