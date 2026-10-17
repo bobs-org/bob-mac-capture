@@ -1153,23 +1153,9 @@ struct CapturePickerKeyHints: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 12) {
-                ForEach(0..<Self.items(for: source).count, id: \.self) { index in
-                    let item = Self.items(for: source)[index]
-                    HStack(spacing: 4) {
-                        Text(item.keys)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.primary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 4))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
-                            )
-                        Text(item.action)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                ViewThatFits(in: .horizontal) {
+                    hintRow(items: source.keyHintItems())
+                    hintRow(items: source.keyHintItems().filter { $0.keys != "⌃↩" })
                 }
                 Spacer(minLength: 12)
             }
@@ -1181,6 +1167,28 @@ struct CapturePickerKeyHints: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(source.keyHintsAccessibilityLabel)
+    }
+
+    private func hintRow(items: [(keys: String, action: String)]) -> some View {
+        HStack(spacing: 12) {
+            ForEach(0..<items.count, id: \.self) { index in
+                HStack(spacing: 4) {
+                    Text(items[index].keys)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.background.opacity(0.6), in: RoundedRectangle(cornerRadius: 4))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 4)
+                                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                        )
+                    Text(items[index].action)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 }
 

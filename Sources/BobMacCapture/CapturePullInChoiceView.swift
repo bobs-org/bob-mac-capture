@@ -802,17 +802,33 @@ struct CapturePullInChoiceFooter: View {
         ("space", "Mark"),
         ("⌘A", "All"),
         ("esc", "Back"),
+        ("⌃↩", "Pull In & Open"),
     ]
 
+    static func hintItems(openAfterCapture: Bool) -> [(keys: String, action: String)] {
+        if openAfterCapture {
+            return Array(hintItems.dropLast())
+        }
+        return hintItems
+    }
+
     static let accessibilityText =
-        "Up, Down, Control-N, or Control-P moves the highlight. Space marks the highlighted offer. Command-A marks every offer. Return pulls in the marked offers, or the highlighted offer when none are marked. Shift-Return skips pulling in any offer. Escape goes back to the draft without writing."
+        "Up, Down, Control-N, or Control-P moves the highlight. Space marks the highlighted offer. Command-A marks every offer. Return pulls in the marked offers, or the highlighted offer when none are marked. Shift-Return skips pulling in any offer. Control-Return pulls in and opens the reported notes. Escape goes back to the draft without writing."
+
+    static let openIntentAccessibilityText =
+        "Up, Down, Control-N, or Control-P moves the highlight. Space marks the highlighted offer. Command-A marks every offer. Return pulls in the marked offers, or the highlighted offer when none are marked, then opens the reported notes. Shift-Return skips pulling in any offer, then opens the reported notes. Escape goes back to the draft without writing."
+
+    private var openAfterCapture: Bool {
+        model.pullInChoice?.openAfterCapture == true
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             ViewThatFits(in: .horizontal) {
-                hintRow(items: Self.hintItems)
-                hintRow(items: Array(Self.hintItems.dropLast()))
-                hintRow(items: Array(Self.hintItems.prefix(2)))
+                hintRow(items: Self.hintItems(openAfterCapture: openAfterCapture))
+                hintRow(items: Array(Self.hintItems(openAfterCapture: openAfterCapture).filter { $0.keys != "⌃↩" }))
+                hintRow(items: Array(Self.hintItems(openAfterCapture: true).dropLast()))
+                hintRow(items: Array(Self.hintItems(openAfterCapture: true).prefix(2)))
             }
             Spacer(minLength: 12)
             Button {
@@ -820,6 +836,9 @@ struct CapturePullInChoiceFooter: View {
             } label: {
                 HStack(spacing: 4) {
                     Text("Skip")
+                    if openAfterCapture {
+                        Image(systemName: "arrow.up.forward")
+                    }
                     Text("⇧↩")
                         .opacity(0.7)
                 }
@@ -832,6 +851,9 @@ struct CapturePullInChoiceFooter: View {
                 HStack(spacing: 4) {
                     Text(pullInTitle)
                         .contentTransition(.numericText())
+                    if openAfterCapture {
+                        Image(systemName: "arrow.up.forward")
+                    }
                     Text("↩")
                         .opacity(0.7)
                 }
@@ -841,7 +863,9 @@ struct CapturePullInChoiceFooter: View {
         }
         .frame(minHeight: 28)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(Self.accessibilityText)
+        .accessibilityLabel(
+            openAfterCapture ? Self.openIntentAccessibilityText : Self.accessibilityText
+        )
         .onChange(of: model.statusAnnouncementTick) { _, _ in
             guard !model.statusText.isEmpty else {
                 return

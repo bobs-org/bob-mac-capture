@@ -509,6 +509,9 @@ struct CapturePanelView: View {
                 CapturePanelFooter(model: model)
                     .fixedSize(horizontal: false, vertical: true)
                     .layoutPriority(2)
+                    .overlay(alignment: .topTrailing) {
+                        CaptureOpenHintCapsule(model: model)
+                    }
                     .onGeometryChange(for: CGFloat.self) { geometry in
                         geometry.size.height
                     } action: { height in
@@ -926,6 +929,17 @@ private struct CapturePanelFooter: View {
                     statusIsFocused = true
                 }
             Spacer(minLength: 12)
+            ViewThatFits(in: .horizontal) {
+                actionRow(includeOpenChip: true)
+                actionRow(includeOpenChip: false)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Capture actions")
+    }
+
+    private func actionRow(includeOpenChip: Bool) -> some View {
+        HStack(alignment: .center, spacing: 8) {
             if model.savedTemplatesFooterVisible {
                 Button {
                     model.toggleTemplateShelf()
@@ -965,17 +979,108 @@ private struct CapturePanelFooter: View {
                 !model.hasDraft || model.isSubmitting || model.isPreviewing || model.inlinePromptVisible
                     || model.pickerVisible
             )
+            if includeOpenChip, model.openHintChipVisible {
+                CaptureOpenHintChip(model: model)
+            }
             Button(model.primaryActionTitle) {
                 model.submit(openAfterCapture: false)
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(
-                !model.hasDraft || model.isSubmitting || model.inlinePromptVisible
-                    || model.pickerVisible || model.isClosePending
-            )
+            .disabled(!model.primaryActionEnabled)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Capture actions")
+    }
+}
+
+@available(macOS 26.0, *)
+private struct CaptureOpenHintChip: View {
+    @ObservedObject var model: CapturePanelModel
+
+    private var presentation: CaptureOpenHintPresentation {
+        model.openHintPresentation
+    }
+
+    var body: some View {
+        Button {
+            model.submit(openAfterCapture: true)
+        } label: {
+            HStack(spacing: 4) {
+                Text("⌃↩")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        .background.opacity(0.6),
+                        in: RoundedRectangle(cornerRadius: 4)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+                    )
+                Text("Open")
+                    .font(.caption)
+                Image(systemName: "arrow.up.forward")
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(model.openHintRevealed ? Color.accentColor : Color.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(presentation.helpText)
+        .accessibilityLabel(presentation.accessibilityLabel)
+        .disabled(!model.primaryActionEnabled)
+    }
+}
+
+@available(macOS 26.0, *)
+private struct CaptureOpenHintCapsule: View {
+    @ObservedObject var model: CapturePanelModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var presentation: CaptureOpenHintPresentation {
+        model.openHintPresentation
+    }
+
+    private var revealed: Bool {
+        model.openHintChipVisible && model.openHintRevealed
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Opens in Obsidian")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(Array(presentation.rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 6) {
+                    Image(systemName: row.symbolName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 12)
+                    Text(row.label)
+                        .font(.caption)
+                    if let detail = row.detail {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if let overflowText = presentation.overflowText {
+                Text(overflowText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .shadow(radius: 12, y: 6)
+        .fixedSize()
+        .alignmentGuide(.top) { $0[.bottom] }
+        .offset(y: reduceMotion || !revealed ? 0 : -4)
+        .opacity(revealed ? 1 : 0)
+        .animation(.easeInOut(duration: 0.16), value: revealed)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

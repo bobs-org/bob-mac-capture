@@ -853,7 +853,8 @@ legacy preview and notification copy.
   46pt filter bar (a `^` scope token, the filter field, and a monospaced task
   count), a scrollable list with pinned Pomodoro headers, an 80pt detail strip,
   and key-hint chips in the footer (↑↓ Move · ↩ Insert · ⌘↩ Insert & Capture ·
-  esc Clear/Cancel). The editor dims to 50% while picking; tapping it cancels.
+  ⌃↩ Capture & Open · esc Clear/Cancel; Control-Return drops first in a narrow
+  panel). The editor dims to 50% while picking; tapping it cancels.
   With an empty filter, tasks group by Pomodoro entry in Bob's order, each
   header showing its ordinal, name (or "Unnamed Pomodoro"), `HH:MM–HH:MM` time
   range when present, a pink NOW pill for the current entry, and a task count;
@@ -1879,7 +1880,10 @@ project folds, blocked residents, and a projected plan-link count when Bob suppl
 the budget. It is a full-width card like the task picker, with a context line naming
 what unblocked the offers, destination capsules that turn green on the offers Return
 will pull in, a live Links projection when Bob supplied the budget, and footer hints
-with Skip and Pull In N buttons that also work by pointer. The success notification
+with Skip and Pull In N buttons that also work by pointer, plus a lowest-priority
+`⌃↩ Pull In & Open` hint. When the card already carries an open intent (Control-Return
+from a picker, or Control-Return on the card itself), that hint is omitted and both
+buttons show a trailing `arrow.up.forward` glyph. The success notification
 reports what was pulled in.
 
 If Bob rejects the exact `--require-pull-in-choice` flag as an unexpected argument
@@ -1888,8 +1892,20 @@ successor-choice checks. Other failures and explicit stale-key refusals are neve
 retried. The app only sends explicit offer keys from a matching preview or write-free
 refusal back to `bob capture`.
 
+When Capture is enabled, the footer shows a **⌃↩ Open** chip just before the primary
+button whenever the live preview's open plan is non-empty, and also while this draft
+still has no preview. A queued link whose plan is empty hides the chip. Clicking it
+captures and opens Bob's reported notes. Hold Control alone (no other modifier, no
+key) for 400 ms to tint the chip and fade in a destinations capsule above the footer's
+trailing edge — "Opens in Obsidian", then up to four rows with a note or calendar
+glyph, label, and optional `line N`, then `+N more`. The capsule uses the completion
+list's material and shadow so the footer never reflows; Reduce Motion crossfades
+without the 4 pt rise. VoiceOver reads the destinations from the chip; the capsule is
+hidden from accessibility. In a narrow panel the chip is the first footer control
+`ViewThatFits` drops.
+
 Every capture action is reachable from the keyboard alone; the hotkey, editor, completion
-list, Stash/Capture/Preview/Discard buttons, and stash picker never require a pointer.
+list, Stash/Capture/Preview/Discard buttons, the Open chip, and stash picker never require a pointer.
 Opening the **Add block ID** or **Name Pomodoro** prompt moves keyboard focus into that
 prompt's field; that field's first responder is owned directly by AppKit rather than
 SwiftUI focus, and a keystroke arriving while nothing holds focus re-claims the field.

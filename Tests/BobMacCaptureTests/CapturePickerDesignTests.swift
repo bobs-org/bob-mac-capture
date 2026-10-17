@@ -250,54 +250,72 @@ final class CapturePickerDesignTests: XCTestCase {
     func testKeyHintsDocumentPickerKeyboardContract() {
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: .activeTask).map { $0.keys },
-            ["↑↓", "↩", "⌘↩", "esc"]
+            ["↑↓", "↩", "⌘↩", "⌃↩", "esc"]
         )
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: .activeTask).map { $0.action },
-            ["Move", "Insert", "Insert & Capture", "Clear / Cancel"]
+            ["Move", "Insert", "Insert & Capture", "Capture & Open", "Clear / Cancel"]
         )
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: .taskLink).map { $0.keys },
-            ["↑↓", "↩", "⇧↩", "⌘↩", "esc"]
+            ["↑↓", "↩", "⇧↩", "⌘↩", "⌃↩", "esc"]
         )
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: .taskLink).map { $0.action },
-            ["Move", "Link", "Link & Start", "Link & Capture", "Clear / Cancel"]
+            ["Move", "Link", "Link & Start", "Link & Capture", "Capture & Open", "Clear / Cancel"]
         )
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: .dependency).map { $0.keys },
-            ["↑↓", "↩", "⌘↩", "esc"]
+            ["↑↓", "↩", "⌘↩", "⌃↩", "esc"]
         )
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: .dependency).map { $0.action },
-            ["Move", "Use task", "Capture", "Clear / Cancel"]
+            ["Move", "Use task", "Capture", "Capture & Open", "Clear / Cancel"]
         )
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: .blockID(Self.linkContext)).map { $0.keys },
-            ["↑↓", "↩", "⌘↩", "esc"]
+            ["↑↓", "↩", "⌘↩", "⌃↩", "esc"]
         )
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: .blockID(Self.linkContext)).map { $0.action },
-            ["Move", "Insert", "Insert & Capture", "Clear / Cancel"]
+            ["Move", "Insert", "Insert & Capture", "Capture & Open", "Clear / Cancel"]
         )
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: .blockID(Self.newIDContext)).map { $0.keys },
-            ["↑↓", "↩", "⌘↩", "␣", "esc"]
+            ["↑↓", "↩", "⌘↩", "␣", "⌃↩", "esc"]
         )
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: .blockID(Self.newIDContext)).map { $0.action },
-            ["Move", "Insert", "Insert & Capture", "Insert & keep typing", "Clear / Cancel"]
+            [
+                "Move", "Insert", "Insert & Capture", "Insert & keep typing", "Capture & Open",
+                "Clear / Cancel",
+            ]
         )
         let parentTask = CapturePickerSource.parentTask(
             .vault(markerRange: CaptureRange(start: 0, end: 1), actionContinuationKeys: ["+"])
         )
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: parentTask).map { $0.keys },
-            ["↑↓", "↩", "⌘↩", "esc"]
+            ["↑↓", "↩", "⌘↩", "⌃↩", "esc"]
         )
         XCTAssertEqual(
             CapturePickerKeyHints.items(for: parentTask).map { $0.action },
-            ["Move", "Select Task", "Select & Capture", "Clear / Cancel"]
+            ["Move", "Select Task", "Select & Capture", "Capture & Open", "Clear / Cancel"]
+        )
+        XCTAssertEqual(
+            CapturePickerKeyHints.items(for: .taskGoto).map { $0.keys },
+            ["↑↓", "↩", "⌘↩", "esc"]
+        )
+        XCTAssertEqual(
+            CapturePickerKeyHints.items(for: .taskComplete).map { $0.action },
+            ["Move", "Insert", "Insert & next", "Complete", "Complete & Open", "Clear / Cancel"]
+        )
+        XCTAssertEqual(
+            CapturePickerSource.activeTask.keyHintVariants().map { $0.map(\.keys) },
+            [
+                ["↑↓", "↩", "⌘↩", "⌃↩", "esc"],
+                ["↑↓", "↩", "⌘↩", "esc"],
+            ]
         )
     }
 

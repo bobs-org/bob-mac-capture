@@ -388,24 +388,24 @@ public enum CapturePickerSource: Equatable, Sendable {
     public var cardAccessibilityHint: String {
         switch self {
         case .activeTask:
-            return "Arrow keys move, Return inserts the task, Escape cancels."
+            return "Arrow keys move, Return inserts the task, Control-Return inserts, captures, and opens, Escape cancels."
         case .taskLink:
-            return "Arrow keys move, Return inserts the task link, Shift-Return inserts it and starts its session, Escape cancels."
+            return "Arrow keys move, Return inserts the task link, Shift-Return inserts it and starts its session, Control-Return inserts, captures, and opens, Escape cancels."
         case .taskGoto:
             return "Arrow keys move, Return or Command-Return opens the task in Obsidian, Escape cancels."
         case .dependency:
-            return "Arrow keys move, Return inserts the prerequisite, Command Return inserts and captures, Escape cancels."
+            return "Arrow keys move, Return inserts the prerequisite, Command Return inserts and captures, Control-Return inserts, captures, and opens, Escape cancels."
         case .blockedTask:
-            return "Arrow keys move, Return inserts the task to block, Command Return inserts and captures, Escape cancels."
+            return "Arrow keys move, Return inserts the task to block, Command Return inserts and captures, Control-Return inserts, captures, and opens, Escape cancels."
         case .taskComplete:
-            return "Arrow keys move, Return inserts the task, Shift Return inserts it and starts the next, Command Return inserts and captures, Escape cancels."
+            return "Arrow keys move, Return inserts the task, Shift Return inserts it and starts the next, Command Return inserts and captures, Control-Return completes and opens, Escape cancels."
         case .blockID(let context):
             if context.isNewIDMode {
-                return "Arrow keys move, Return inserts the ID, Escape cancels."
+                return "Arrow keys move, Return inserts the ID, Control-Return inserts, captures, and opens, Escape cancels."
             }
-            return "Arrow keys move, Return inserts the task, Escape cancels."
+            return "Arrow keys move, Return inserts the task, Control-Return inserts, captures, and opens, Escape cancels."
         case .parentTask:
-            return "Arrow keys move, Return inserts the parent task, Escape cancels."
+            return "Arrow keys move, Return inserts the parent task, Control-Return inserts, captures, and opens, Escape cancels."
         }
     }
 
@@ -434,8 +434,46 @@ public enum CapturePickerSource: Equatable, Sendable {
         }
     }
 
-    /// Footer key hints in display order.
+    /// Footer key hints in display order. Control-Return sits just before
+    /// Escape so ViewThatFits can drop it first.
     public func keyHintItems() -> [(keys: String, action: String)] {
+        insertingControlReturnHint(into: coreKeyHintItems())
+    }
+
+    /// Full hints, then the same list without Control-Return.
+    public func keyHintVariants() -> [[(keys: String, action: String)]] {
+        let items = keyHintItems()
+        let compact = items.filter { $0.keys != "⌃↩" }
+        if compact.count == items.count {
+            return [items]
+        }
+        return [items, compact]
+    }
+
+    private var controlReturnHint: (keys: String, action: String)? {
+        switch self {
+        case .taskGoto:
+            return nil
+        case .taskComplete:
+            return ("⌃↩", "Complete & Open")
+        default:
+            return ("⌃↩", "Capture & Open")
+        }
+    }
+
+    private func insertingControlReturnHint(
+        into items: [(keys: String, action: String)]
+    ) -> [(keys: String, action: String)] {
+        guard let hint = controlReturnHint else {
+            return items
+        }
+        var items = items
+        let insertAt = items.last?.keys == "esc" ? items.count - 1 : items.count
+        items.insert(hint, at: insertAt)
+        return items
+    }
+
+    private func coreKeyHintItems() -> [(keys: String, action: String)] {
         switch self {
         case .activeTask:
             return [
@@ -515,24 +553,24 @@ public enum CapturePickerSource: Equatable, Sendable {
     public var keyHintsAccessibilityLabel: String {
         switch self {
         case .activeTask:
-            return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Escape to clear or cancel."
+            return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Control Return to insert, capture, and open, Escape to clear or cancel."
         case .taskLink:
-            return "Picker keys: up and down to move, Return to link, Shift Return to link and start, Command Return to link and capture, Escape to clear or cancel."
+            return "Picker keys: up and down to move, Return to link, Shift Return to link and start, Command Return to link and capture, Control Return to link, capture, and open, Escape to clear or cancel."
         case .taskGoto:
             return "Picker keys: up and down to move, Return or Command Return to open the task in Obsidian, Escape to clear or cancel."
         case .dependency:
-            return "Picker keys: up and down to move, Return to use the task, Command Return to use it and capture, Escape to clear or cancel."
+            return "Picker keys: up and down to move, Return to use the task, Command Return to use it and capture, Control Return to use it, capture, and open, Escape to clear or cancel."
         case .blockedTask:
-            return "Picker keys: up and down to move, Return to block the task, Command Return to block it and capture, Escape to clear or cancel."
+            return "Picker keys: up and down to move, Return to block the task, Command Return to block it and capture, Control Return to block it, capture, and open, Escape to clear or cancel."
         case .taskComplete:
-            return "Picker keys: up and down to move, Return to insert, Shift Return to insert and start the next, Command Return to insert and capture, Escape to clear or cancel."
+            return "Picker keys: up and down to move, Return to insert, Shift Return to insert and start the next, Command Return to insert and capture, Control Return to complete and open, Escape to clear or cancel."
         case .blockID(let context):
             if context.isNewIDMode {
-                return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Space to insert and keep typing, Escape to clear or cancel."
+                return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Control Return to insert, capture, and open, Space to insert and keep typing, Escape to clear or cancel."
             }
-            return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Escape to clear or cancel."
+            return "Picker keys: up and down to move, Return to insert, Command Return to insert and capture, Control Return to insert, capture, and open, Escape to clear or cancel."
         case .parentTask:
-            return "Picker keys: up and down to move, Return to select the task, Command Return to select and capture, Escape to clear or cancel."
+            return "Picker keys: up and down to move, Return to select the task, Command Return to select and capture, Control Return to select, capture, and open, Escape to clear or cancel."
         }
     }
 

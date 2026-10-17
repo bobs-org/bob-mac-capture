@@ -1747,12 +1747,17 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return
         }
 
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
             guard let self,
                   self.panel?.isKeyWindow == true
             else {
                 return event
             }
+            if event.type == .flagsChanged {
+                self.model.noteModifierFlagsChanged(event.modifierFlags)
+                return event
+            }
+            self.model.clearOpenHintReveal()
             self.repairPromptFieldFocusIfOrphaned()
             self.repairPickerFilterFocusIfNeeded()
             guard let command = self.keyRouter.command(

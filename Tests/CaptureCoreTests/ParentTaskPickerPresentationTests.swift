@@ -437,14 +437,14 @@ final class ParentTaskPickerPresentationTests: XCTestCase {
 
     func testParentTaskKeyHintsOmitShiftReturn() {
         let source = CapturePickerSource.parentTask(vaultContext())
-        XCTAssertEqual(source.keyHintItems().map(\.keys), ["↑↓", "↩", "⌘↩", "esc"])
+        XCTAssertEqual(source.keyHintItems().map(\.keys), ["↑↓", "↩", "⌘↩", "⌃↩", "esc"])
         XCTAssertEqual(
             source.keyHintItems().map(\.action),
-            ["Move", "Select Task", "Select & Capture", "Clear / Cancel"]
+            ["Move", "Select Task", "Select & Capture", "Capture & Open", "Clear / Cancel"]
         )
         XCTAssertEqual(
             source.keyHintsAccessibilityLabel,
-            "Picker keys: up and down to move, Return to select the task, Command Return to select and capture, Escape to clear or cancel."
+            "Picker keys: up and down to move, Return to select the task, Command Return to select and capture, Control Return to select, capture, and open, Escape to clear or cancel."
         )
     }
 

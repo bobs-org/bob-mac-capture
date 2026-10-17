@@ -234,6 +234,13 @@ final class CapturePanelModel: ObservableObject {
     @Published var previewResults: [CaptureCommandSuccess] = []
     @Published var lastSuccessGlobalDestination: CaptureGlobalDestination?
     @Published var previewGlobalDestination: CaptureGlobalDestination?
+    /// Latest live-preview open plan, built from bob's `open_notes` or the
+    /// legacy fallback. Nil means this draft has no preview yet.
+    @Published var previewOpenPlan: CaptureOpenPlan?
+    /// True after Control has been held alone for the reveal delay.
+    @Published var openHintRevealed = false
+    var openHintRevealDelayNanoseconds: UInt64 = 400_000_000
+    private var openHintRevealTask: Task<Void, Never>?
     // Incremented on every successful capture so the view can drive a VoiceOver
     // announcement without needing `CaptureCommandSuccess` to be diffed for equality.
     @Published var successAnnouncementTick = 0
@@ -279,9 +286,7 @@ final class CapturePanelModel: ObservableObject {
             }
             invalidateAnalysis()
             previewPullInSnapshot = nil
-            previewResult = nil
-            previewResults = []
-            previewGlobalDestination = nil
+            clearPreviewOutputs()
             previewState = .idle
             if isPreviewing {
                 activeRequestID = nil
@@ -1184,6 +1189,91 @@ final class CapturePanelModel: ObservableObject {
         return "Capture"
     }
 
+    /// The footer Open chip uses the same enablement as Capture.
+    var primaryActionEnabled: Bool {
+        hasDraft
+            && !isSubmitting
+            && !inlinePromptVisible
+            && !pickerVisible
+            && !isClosePending
+    }
+
+    /// Plan used by the footer chip: the stored preview plan, else a
+    /// legacy plan from `previewResults` when tests assign those directly.
+    var previewOpenHintPlan: CaptureOpenPlan? {
+        if let previewOpenPlan {
+            return previewOpenPlan
+        }
+        guard !previewResults.isEmpty else {
+            return nil
+        }
+        return CaptureOpenPlan(openNotes: nil, captures: previewResults)
+    }
+
+    var openHintPresentation: CaptureOpenHintPresentation {
+        CaptureOpenHintPresentation(plan: previewOpenHintPlan)
+    }
+
+    var openHintChipVisible: Bool {
+        primaryActionEnabled && openHintPresentation.isAvailable
+    }
+
+    static func isControlHeldAlone(_ flags: NSEvent.ModifierFlags) -> Bool {
+        let significant = flags.intersection([.control, .shift, .option, .command])
+        return significant == .control
+    }
+
+    func noteModifierFlagsChanged(_ flags: NSEvent.ModifierFlags) {
+        if Self.isControlHeldAlone(flags) {
+            beginOpenHintRevealIfNeeded()
+        } else {
+            clearOpenHintReveal()
+        }
+    }
+
+    func beginOpenHintRevealIfNeeded() {
+        guard openHintRevealTask == nil, !openHintRevealed else {
+            return
+        }
+        let delay = openHintRevealDelayNanoseconds
+        openHintRevealTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: delay)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else {
+                return
+            }
+            self?.openHintRevealed = true
+            self?.openHintRevealTask = nil
+        }
+    }
+
+    func clearOpenHintReveal() {
+        openHintRevealTask?.cancel()
+        openHintRevealTask = nil
+        openHintRevealed = false
+    }
+
+    private func assignPreviewOutputs(
+        captures: [CaptureCommandSuccess],
+        openNotes: [CaptureOpenNote]?,
+        globalDestination: CaptureGlobalDestination?
+    ) {
+        previewResult = captures.first
+        previewResults = captures
+        previewGlobalDestination = globalDestination
+        previewOpenPlan = CaptureOpenPlan(openNotes: openNotes, captures: captures)
+    }
+
+    private func clearPreviewOutputs() {
+        previewResult = nil
+        previewResults = []
+        previewGlobalDestination = nil
+        previewOpenPlan = nil
+    }
+
     /// Follows the agenda store's count publisher. The store nils the
     /// count on failure, a non-today snapshot, and client replacement,
     /// so the model only forwards it.
@@ -1268,9 +1358,7 @@ final class CapturePanelModel: ObservableObject {
             if changed {
                 statusText = "Bob is not resolved"
                 previewState = .idle
-                previewResult = nil
-                previewResults = []
-                previewGlobalDestination = nil
+                clearPreviewOutputs()
                 completionResponse = nil
                 completionDraftSnapshot = nil
                 fileUnderActive = false
@@ -1610,6 +1698,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func submit(openAfterCapture: Bool) {
+        clearOpenHintReveal()
         guard !inlinePromptVisible, !isSubmitting, !isPreviewing, hasDraft else {
             return
         }
@@ -1803,6 +1892,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func confirmPullInChoice(openAfterCapture: Bool) {
+        clearOpenHintReveal()
         guard var choice = pullInChoice, !isSubmitting else {
             return
         }
@@ -2616,6 +2706,7 @@ final class CapturePanelModel: ObservableObject {
 
     func prepareForDismissal() {
         panelVisible = false
+        clearOpenHintReveal()
         previewPullInSnapshot = nil
         dismissStashPicker()
         dismissTemplateShelf()
@@ -2654,9 +2745,7 @@ final class CapturePanelModel: ObservableObject {
         statusText = ""
         errorMessage = nil
         errorCode = nil
-        previewResult = nil
-        previewResults = []
-        previewGlobalDestination = nil
+        clearPreviewOutputs()
         previewPullInSnapshot = nil
         closePendingText = nil
         closePendingAction = "Close"
@@ -5269,9 +5358,7 @@ final class CapturePanelModel: ObservableObject {
 
     private func applyQuietIncompletePicker(_ need: CapturePickerNeed, parse: CaptureParseResponse) {
         previewState = .idle
-        previewResult = nil
-        previewResults = []
-        previewGlobalDestination = nil
+        clearPreviewOutputs()
         closePendingText = nil
         closePendingAction = "Close"
         errorMessage = nil
@@ -6692,9 +6779,7 @@ final class CapturePanelModel: ObservableObject {
             lastSuccessResults = captures
             lastSuccessGlobalDestination = success.globalDestination
             previewPullInSnapshot = nil
-            previewResult = nil
-            previewResults = []
-            previewGlobalDestination = nil
+            clearPreviewOutputs()
             errorMessage = nil
             errorCode = nil
             setPlainDraft("")
@@ -6863,9 +6948,11 @@ final class CapturePanelModel: ObservableObject {
                 generation: generation,
                 requestID: requestID
             )
-            previewResult = captures.first
-            previewResults = captures
-            previewGlobalDestination = success.globalDestination
+            assignPreviewOutputs(
+                captures: captures,
+                openNotes: success.openNotes,
+                globalDestination: success.globalDestination
+            )
             errorMessage = nil
             errorCode = nil
             if let presentation = Self.soleResetPresentation(for: captures) {
@@ -6890,9 +6977,7 @@ final class CapturePanelModel: ObservableObject {
         case .failure(let failure):
             // A failed explicit dry run drops the preview result for the same
             // reason `failPreview` does: no stale card beside the red error.
-            previewResult = nil
-            previewResults = []
-            previewGlobalDestination = nil
+            clearPreviewOutputs()
             previewPullInSnapshot = nil
             errorMessage = failure.error
             errorCode = failure.code
@@ -7059,9 +7144,7 @@ final class CapturePanelModel: ObservableObject {
         // A failed live dry run must never leave a stale card beside the red
         // error: a close preview's `closed_at` and timing describe a moment
         // that has already passed, so drop the whole preview result.
-        previewResult = nil
-        previewResults = []
-        previewGlobalDestination = nil
+        clearPreviewOutputs()
         previewPullInSnapshot = nil
         errorMessage = String(describing: error)
         errorCode = nil
@@ -7137,9 +7220,7 @@ final class CapturePanelModel: ObservableObject {
         // A changed draft can still have the prior response in these caches while
         // the debounce is running. Clear it before calculating the next preview so
         // the footer and preview card always describe the same draft.
-        previewResult = nil
-        previewResults = []
-        previewGlobalDestination = nil
+        clearPreviewOutputs()
         closePendingText = nil
         closePendingAction = "Close"
 
@@ -7436,9 +7517,11 @@ final class CapturePanelModel: ObservableObject {
                             requestID: nil
                         )
                         self?.previewState = .ready(success)
-                        self?.previewResult = captures.first
-                        self?.previewResults = captures
-                        self?.previewGlobalDestination = success.globalDestination
+                        self?.assignPreviewOutputs(
+                            captures: captures,
+                            openNotes: success.openNotes,
+                            globalDestination: success.globalDestination
+                        )
                         self?.errorMessage = nil
                         self?.errorCode = nil
                         // A bare URL that will queue under the default parent
@@ -7498,9 +7581,7 @@ final class CapturePanelModel: ObservableObject {
                         self?.previewState = .failed(failure.error)
                         // Like `failPreview`: a failed live dry run must never
                         // leave a stale card beside the red error.
-                        self?.previewResult = nil
-                        self?.previewResults = []
-                        self?.previewGlobalDestination = nil
+                        self?.clearPreviewOutputs()
                         self?.previewPullInSnapshot = nil
                         self?.closePendingText = nil
                         self?.closePendingAction = "Close"

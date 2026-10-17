@@ -552,7 +552,7 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
         XCTAssertEqual(source.cardAccessibilityLabel, "Task link picker")
         XCTAssertEqual(
             source.cardAccessibilityHint,
-            "Arrow keys move, Return inserts the task link, Shift-Return inserts it and starts its session, Escape cancels."
+            "Arrow keys move, Return inserts the task link, Shift-Return inserts it and starts its session, Control-Return inserts, captures, and opens, Escape cancels."
         )
         XCTAssertEqual(source.appearedAnnouncementPrefix, "Open tasks")
         XCTAssertEqual(source.pickerUsedDefaultsKey, "org.bobs.bob-mac-capture.task-link-picker-used")
@@ -561,15 +561,15 @@ final class TaskLinkPickerPresentationTests: XCTestCase {
     func testTaskLinkKeyHints() {
         XCTAssertEqual(
             CapturePickerSource.taskLink.keyHintItems().map(\.keys),
-            ["↑↓", "↩", "⇧↩", "⌘↩", "esc"]
+            ["↑↓", "↩", "⇧↩", "⌘↩", "⌃↩", "esc"]
         )
         XCTAssertEqual(
             CapturePickerSource.taskLink.keyHintItems().map(\.action),
-            ["Move", "Link", "Link & Start", "Link & Capture", "Clear / Cancel"]
+            ["Move", "Link", "Link & Start", "Link & Capture", "Capture & Open", "Clear / Cancel"]
         )
         XCTAssertEqual(
             CapturePickerSource.taskLink.keyHintsAccessibilityLabel,
-            "Picker keys: up and down to move, Return to link, Shift Return to link and start, Command Return to link and capture, Escape to clear or cancel."
+            "Picker keys: up and down to move, Return to link, Shift Return to link and start, Command Return to link and capture, Control Return to link, capture, and open, Escape to clear or cancel."
         )
     }
 

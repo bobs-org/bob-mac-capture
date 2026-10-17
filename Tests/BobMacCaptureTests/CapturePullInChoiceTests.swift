@@ -510,12 +510,19 @@ final class CapturePullInChoiceTests: XCTestCase {
 
   func testFooterContractPinsHintsAndAccessibilityText() {
     let items = CapturePullInChoiceFooter.hintItems
-    XCTAssertEqual(items.map { $0.keys }, ["⌃N ⌃P", "space", "⌘A", "esc"])
-    XCTAssertEqual(items.map { $0.action }, ["Move", "Mark", "All", "Back"])
+    XCTAssertEqual(items.map { $0.keys }, ["⌃N ⌃P", "space", "⌘A", "esc", "⌃↩"])
+    XCTAssertEqual(items.map { $0.action }, ["Move", "Mark", "All", "Back", "Pull In & Open"])
+    XCTAssertEqual(
+      CapturePullInChoiceFooter.hintItems(openAfterCapture: true).map { $0.keys },
+      ["⌃N ⌃P", "space", "⌘A", "esc"]
+    )
     let label = CapturePullInChoiceFooter.accessibilityText
-    for phrase in ["Control-N", "Space", "Command-A", "Return", "Shift-Return", "Escape"] {
+    for phrase in ["Control-N", "Space", "Command-A", "Return", "Shift-Return", "Control-Return", "Escape"] {
       XCTAssertTrue(label.contains(phrase), "Footer label mentions \(phrase)")
     }
+    XCTAssertFalse(
+      CapturePullInChoiceFooter.openIntentAccessibilityText.contains("Control-Return pulls in and opens")
+    )
   }
 
   private func choiceState(
