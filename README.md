@@ -97,7 +97,9 @@ mutation.
   `template_row` incomplete need, and the `template` route-completion candidate.
   Go To and Control-\ today-Pomodoro landing also require bob-plugins
   **bob-navigation-hotkeys ≥ 2.32.0** (or the version that shipped
-  `obsidian://bob-goto-task`), deployed to the vault with `bob plugins sync`.
+  `obsidian://bob-goto-task`). Control-Return landing via
+  `obsidian://bob-open-notes` needs **bob-navigation-hotkeys ≥ 2.44.1**,
+  deployed to the vault with `bob plugins sync`.
   Older builds can still capture ordinary drafts, but
   global declarations, bare-`@@` absorption, the Add block ID flow, the Name Pomodoro
   flow, the task-section popup, and the task-toggle footer/preview report the local Bob
@@ -1219,8 +1221,10 @@ legacy preview and notification copy.
 - A successful aggregate capture hides the panel automatically only after Bob returns
   success for the whole draft; a failed capture keeps the panel open with its complete
   draft and an actionable error. Control-Return opens Bob's `open_notes` through one
-  `bob-open-notes` URL, which opens tabs and lands on each captured line. This needs the
-  new `bob-navigation-hotkeys` handler; an older plugin opens notes without landing.
+  `bob-open-notes` URL, which opens tabs and lands on each captured line. This needs
+  bob-navigation-hotkeys ≥ 2.44.1; an older plugin ignores the unknown
+  `bob-open-notes` action, so nothing opens. An older bob that omits `open_notes`
+  still opens the notes as tabs, but without landing.
   Reopening the panel after a success starts from a clean slate — the prior
   "Captured → …" summary and status text are cleared, while a retained draft (from Escape
   or a failure) reopens exactly as it was left. Closing the panel never destroys a draft.

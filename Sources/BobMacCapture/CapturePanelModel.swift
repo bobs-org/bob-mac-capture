@@ -313,15 +313,9 @@ final class CapturePanelModel: ObservableObject {
     /// and reports success on the main actor. Tests inject a closure.
     var noteOpener: (
         URL,
-        @escaping @MainActor (Bool) -> Void
+        @escaping @MainActor (Error?) -> Void
     ) -> Void = { url, completion in
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.open(url, configuration: configuration) { _, error in
-            Task { @MainActor in
-                completion(error == nil)
-            }
-        }
+        CapturePanelModel.openObsidianURL(url, completion: completion)
     }
     /// Read-only Go To dispatch. Production opens `obsidian://bob-goto-task`
     /// through `NSWorkspace` with `activates = true` and reports success on
@@ -330,12 +324,8 @@ final class CapturePanelModel: ObservableObject {
         URL,
         @escaping @MainActor (Bool) -> Void
     ) -> Void = { url, completion in
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
-        NSWorkspace.shared.open(url, configuration: configuration) { _, error in
-            Task { @MainActor in
-                completion(error == nil)
-            }
+        CapturePanelModel.openObsidianURL(url) { error in
+            completion(error == nil)
         }
     }
     var panelDismisser: () -> Void = {}
@@ -1253,7 +1243,22 @@ final class CapturePanelModel: ObservableObject {
     func clearOpenHintReveal() {
         openHintRevealTask?.cancel()
         openHintRevealTask = nil
-        openHintRevealed = false
+        if openHintRevealed {
+            openHintRevealed = false
+        }
+    }
+
+    private static func openObsidianURL(
+        _ url: URL,
+        completion: @escaping @MainActor (Error?) -> Void
+    ) {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.open(url, configuration: configuration) { _, error in
+            Task { @MainActor in
+                completion(error)
+            }
+        }
     }
 
     private func assignPreviewOutputs(
@@ -1896,14 +1901,14 @@ final class CapturePanelModel: ObservableObject {
         guard var choice = pullInChoice, !isSubmitting else {
             return
         }
-        if openAfterCapture {
-            choice.openAfterCapture = true
-            pullInChoice = choice
-        }
         let keys = choice.effectiveSelectionKeys
         guard !keys.isEmpty else {
             announceStatus("No visible successor offer is selected")
             return
+        }
+        if openAfterCapture {
+            choice.openAfterCapture = true
+            pullInChoice = choice
         }
         commitPullInChoice(choice, selection: .keys(keys))
     }
@@ -5564,7 +5569,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func acceptSelectedCompletionThenSubmitAndOpen() {
-        let isTemplateHeader = selectedCompletion?.replacement.hasPrefix("@@template:") ?? false
+        let isTemplateHeader = selectedCompletion?.kind == "template"
         guard acceptSelectedCompletion(),
               !isTemplateHeader,
               !completionVisible,
@@ -6821,9 +6826,9 @@ final class CapturePanelModel: ObservableObject {
             if openAfterCapture,
                let url = ObsidianOpenURL.openNotesURL(for: openPlan)
             {
-                noteOpener(url) { [weak self] didOpen in
-                    guard let self, !didOpen else { return }
-                    self.postCaptureOpenFailure(message: "Obsidian could not open the requested capture notes.")
+                noteOpener(url) { [weak self] error in
+                    guard let self, let error else { return }
+                    self.postCaptureOpenFailure(message: error.localizedDescription)
                 }
             } else {
                 postCaptureSuccess(

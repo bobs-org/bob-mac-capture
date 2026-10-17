@@ -118,6 +118,51 @@ public struct CaptureOpenNote: Codable, Equatable, Sendable {
     }
 }
 
+/// Decodes one `open_notes` element, dropping entries whose `path`, `role`,
+/// or `label` is missing or not a string.
+struct LossyOpenNote: Decodable {
+    let note: CaptureOpenNote?
+
+    private enum CodingKeys: String, CodingKey {
+        case path
+        case relativePath = "relative_path"
+        case role
+        case label
+        case line
+        case ref
+        case blockID = "block_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        guard let values = try? decoder.container(keyedBy: CodingKeys.self) else {
+            note = nil
+            return
+        }
+        guard
+            let path = try? values.decode(String.self, forKey: .path),
+            let role = try? values.decode(String.self, forKey: .role),
+            let label = try? values.decode(String.self, forKey: .label)
+        else {
+            note = nil
+            return
+        }
+        let relativePath =
+            (try? values.decode(String.self, forKey: .relativePath)) ?? path
+        let line = try? values.decode(Int.self, forKey: .line)
+        let ref = try? values.decode(String.self, forKey: .ref)
+        let blockID = try? values.decode(String.self, forKey: .blockID)
+        note = CaptureOpenNote(
+            path: path,
+            relativePath: relativePath,
+            role: CaptureOpenNote.Role(rawValue: role),
+            label: label,
+            line: line,
+            ref: ref,
+            blockID: blockID
+        )
+    }
+}
+
 /// The portable, normalized decision about which notes a capture should open.
 public struct CaptureOpenPlan: Equatable, Sendable {
     public enum Source: Equatable, Sendable {
@@ -180,7 +225,7 @@ public struct CaptureOpenPlan: Equatable, Sendable {
                 path: dayFile,
                 relativePath: dayFile,
                 role: .day,
-                label: label
+                label: "Today"
             ))
         }
         return notes

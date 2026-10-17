@@ -100,6 +100,16 @@ struct CaptureKeyRoutingContext: Equatable {
 }
 
 struct CaptureKeyCommandRouter {
+    private static let ignoredReturnModifiers: NSEvent.ModifierFlags = [
+        .capsLock, .numericPad, .function, .help,
+    ]
+
+    private static func strippedReturnModifiers(
+        _ modifiers: NSEvent.ModifierFlags
+    ) -> NSEvent.ModifierFlags {
+        modifiers.subtracting(ignoredReturnModifiers)
+    }
+
     private enum KeyCode {
         static let `return`: UInt16 = 36
         static let keypadEnter: UInt16 = 76
@@ -187,13 +197,14 @@ struct CaptureKeyCommandRouter {
 
         switch event.keyCode {
         case KeyCode.return, KeyCode.keypadEnter:
-            if modifiers.contains(.command) {
+            let keys = Self.strippedReturnModifiers(modifiers)
+            if keys.contains(.command) {
                 return context.completionVisible ? .acceptCompletionThenSubmitAndOpen : .submitAndOpen
             }
-            if modifiers == .control {
+            if keys == .control {
                 return context.completionVisible ? .acceptCompletionThenSubmitAndOpen : .submitAndOpen
             }
-            if modifiers.contains(.shift) || modifiers.contains(.option) {
+            if keys.contains(.shift) || keys.contains(.option) {
                 return .insertNewline
             }
             if context.completionVisible {
@@ -286,16 +297,17 @@ struct CaptureKeyCommandRouter {
         switch event.keyCode {
         case KeyCode.return, KeyCode.keypadEnter:
             guard !isRepeat else { return .consumeKey }
-            if modifiers == .control {
+            let keys = Self.strippedReturnModifiers(modifiers)
+            if keys == .control {
                 return .confirmPullInChoiceAndOpen
             }
-            if modifiers.contains(.control) {
+            if keys.contains(.control) {
                 return .consumeKey
             }
-            if modifiers == .shift {
+            if keys == .shift {
                 return .chooseNoPullInOffers
             }
-            return modifiers.isEmpty ? .confirmPullInChoice : .consumeKey
+            return keys.isEmpty ? .confirmPullInChoice : .consumeKey
         case KeyCode.escape:
             return .cancelPullInChoice
         case KeyCode.leftBracket:
@@ -380,16 +392,17 @@ struct CaptureKeyCommandRouter {
     ) -> CaptureKeyCommand? {
         switch event.keyCode {
         case KeyCode.return, KeyCode.keypadEnter:
-            if modifiers.contains(.command) {
+            let keys = Self.strippedReturnModifiers(modifiers)
+            if keys.contains(.command) {
                 return .acceptPickerRowAndSubmit
             }
-            if modifiers == .control {
+            if keys == .control {
                 return context.pickerSourceIsTaskGoto ? .acceptPickerRow : .acceptPickerRowAndSubmitAndOpen
             }
-            if modifiers.contains(.control) {
+            if keys.contains(.control) {
                 return .consumeKey
             }
-            if modifiers == .shift {
+            if keys == .shift {
                 if context.pickerSourceIsTaskLink {
                     return .acceptPickerRowAndStart
                 }
@@ -398,10 +411,10 @@ struct CaptureKeyCommandRouter {
                 }
                 return .consumeKey
             }
-            if modifiers.contains(.option) {
+            if keys.contains(.option) {
                 return .consumeKey
             }
-            return modifiers.isEmpty ? .acceptPickerRow : nil
+            return keys.isEmpty ? .acceptPickerRow : nil
         case KeyCode.tab:
             if modifiers.isEmpty {
                 return .acceptPickerRow

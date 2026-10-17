@@ -66,7 +66,7 @@ final class CaptureRefPanelTests: XCTestCase {
         var openedURLs: [URL] = []
         model.noteOpener = { url, completion in
             openedURLs.append(url)
-            completion(true)
+            completion(nil)
         }
 
         model.submit(openAfterCapture: true)
@@ -83,7 +83,7 @@ final class CaptureRefPanelTests: XCTestCase {
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
             let path = components?.queryItems?.first { $0.name == "path1" }?.value
             openedPaths.append(path ?? "")
-            completion(true)
+            completion(nil)
         }
 
         model.submit(openAfterCapture: true)

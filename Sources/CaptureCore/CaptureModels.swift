@@ -3288,8 +3288,23 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
       (try? container.decodeIfPresent(CaptureTemplateSummary.self, forKey: .template)) ?? nil
     templateRow =
       (try? container.decodeIfPresent(CaptureTemplateRow.self, forKey: .templateRow)) ?? nil
-    openNotes = (try? container.decodeIfPresent([CaptureOpenNote].self, forKey: .openNotes))?
-      .filter { $0.path.hasPrefix("/") && !$0.path.isEmpty }
+    if container.contains(.openNotes) {
+      if try container.decodeNil(forKey: .openNotes) {
+        openNotes = []
+      } else {
+        var unkeyed = try container.nestedUnkeyedContainer(forKey: .openNotes)
+        var notes: [CaptureOpenNote] = []
+        while !unkeyed.isAtEnd {
+          let wrapper = try unkeyed.decode(LossyOpenNote.self)
+          if let note = wrapper.note {
+            notes.append(note)
+          }
+        }
+        openNotes = notes.filter { $0.path.hasPrefix("/") && !$0.path.isEmpty }
+      }
+    } else {
+      openNotes = nil
+    }
   }
 
   private enum CodingKeys: String, CodingKey {

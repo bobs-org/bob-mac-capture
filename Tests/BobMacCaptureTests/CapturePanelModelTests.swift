@@ -147,7 +147,7 @@ final class CapturePanelModelTests: XCTestCase {
         var openedPaths: [String] = []
         model.noteOpener = { url, completion in
             openedPaths = self.openNotePaths(in: url)
-            completion(true)
+            completion(nil)
         }
 
         model.submit(openAfterCapture: true)
@@ -172,7 +172,7 @@ final class CapturePanelModelTests: XCTestCase {
         model.noteOpener = { url, completion in
             openCalls += 1
             openedURL = url
-            completion(true)
+            completion(nil)
         }
 
         model.submit(openAfterCapture: true)
@@ -200,7 +200,7 @@ final class CapturePanelModelTests: XCTestCase {
         model.noteOpener = { url, completion in
             openCalls += 1
             openedURL = url
-            completion(true)
+            completion(nil)
         }
         var dismissCount = 0
         model.panelDismisser = { dismissCount += 1 }
@@ -222,7 +222,7 @@ final class CapturePanelModelTests: XCTestCase {
         model.plainDraft = "Call bank @Cash"
         var successNotifications = 0
         model.captureSuccessNotifier = { _, _, _ in successNotifications += 1 }
-        model.noteOpener = { _, completion in completion(true) }
+        model.noteOpener = { _, completion in completion(nil) }
 
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
@@ -249,7 +249,7 @@ final class CapturePanelModelTests: XCTestCase {
         var successPlans: [CaptureOpenPlan] = []
         model.noteOpener = { _, completion in
             openCalls += 1
-            completion(true)
+            completion(nil)
         }
         model.captureSuccessNotifier = { _, _, plan in successPlans.append(plan) }
 
@@ -272,13 +272,13 @@ final class CapturePanelModelTests: XCTestCase {
         var openFailure: String?
         model.captureSuccessNotifier = { _, _, _ in successNotifications += 1 }
         model.captureOpenFailureNotifier = { openFailure = $0 }
-        model.noteOpener = { _, completion in completion(false) }
+        model.noteOpener = { _, completion in completion(NSError(domain: "test.open", code: 1, userInfo: [NSLocalizedDescriptionKey: "sandbox denied"])) }
 
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
 
         XCTAssertEqual(successNotifications, 0)
-        XCTAssertEqual(openFailure, "Obsidian could not open the requested capture notes.")
+        XCTAssertEqual(openFailure, "sandbox denied")
     }
 
     func testControlCompletionAcceptsThenCapturesAndOpensWhenNoFollowUpAppears() async throws {
@@ -299,7 +299,7 @@ final class CapturePanelModelTests: XCTestCase {
         var openedURL: URL?
         model.noteOpener = { url, completion in
             openedURL = url
-            completion(true)
+            completion(nil)
         }
 
         model.acceptSelectedCompletionThenSubmitAndOpen()
@@ -312,18 +312,25 @@ final class CapturePanelModelTests: XCTestCase {
 
     func testControlCompletionAcceptsTemplateHeaderWithoutSubmitting() {
         let model = CapturePanelModel()
-        model.plainDraft = "@@temp"
+        model.plainDraft = "@@te"
         model.completionResponse = CaptureCompletionResponse(
             ok: true,
-            cursor: 6,
-            replacement: CaptureRange(start: 0, end: 6),
-            context: "template_header",
-            candidates: [CaptureCompletionCandidate(replacement: "@@template:weekly")]
+            cursor: 4,
+            replacement: CaptureRange(start: 2, end: 4),
+            context: "route",
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "template:",
+                    route: "template:",
+                    label: "Bulk template: one capture per row below",
+                    kind: "template"
+                )
+            ]
         )
 
         model.acceptSelectedCompletionThenSubmitAndOpen()
 
-        XCTAssertEqual(model.plainDraft, "@@template:weekly")
+        XCTAssertEqual(model.plainDraft, "@@template:")
         XCTAssertFalse(model.isSubmitting)
         XCTAssertFalse(model.inlinePromptVisible)
     }
@@ -364,7 +371,7 @@ final class CapturePanelModelTests: XCTestCase {
         var openedPaths: [String] = []
         model.noteOpener = { url, completion in
             openedPaths = self.openNotePaths(in: url)
-            completion(true)
+            completion(nil)
         }
 
         model.submit(openAfterCapture: true)
@@ -387,7 +394,7 @@ final class CapturePanelModelTests: XCTestCase {
         var openedPaths: [String] = []
         model.noteOpener = { url, completion in
             openedPaths = self.openNotePaths(in: url)
-            completion(true)
+            completion(nil)
         }
 
         model.submit(openAfterCapture: true)
@@ -430,7 +437,7 @@ final class CapturePanelModelTests: XCTestCase {
         var openedPaths: [String] = []
         model.noteOpener = { url, completion in
             openedPaths = self.openNotePaths(in: url)
-            completion(true)
+            completion(nil)
         }
 
         model.submit(openAfterCapture: true)
@@ -956,7 +963,7 @@ final class CapturePanelModelTests: XCTestCase {
         model.noteOpener = { url, completion in
             openedURL = url
             openCalls += 1
-            completion(true)
+            completion(nil)
         }
 
         model.acceptSelectedPickerRowAndSubmitAndOpen()
@@ -1071,7 +1078,7 @@ final class CapturePanelModelTests: XCTestCase {
         var openedURL: URL?
         model.noteOpener = { url, completion in
             openedURL = url
-            completion(true)
+            completion(nil)
         }
 
         XCTAssertTrue(controller.perform(.acceptPickerRowAndSubmitAndOpen))

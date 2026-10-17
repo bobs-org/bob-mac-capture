@@ -46,7 +46,7 @@ final class CapturePullInChoiceModelTests: XCTestCase {
     var dismissed = 0
     model.noteOpener = { url, completion in
       opened.append(url)
-      completion(true)
+      completion(nil)
     }
     model.panelDismisser = { dismissed += 1 }
     XCTAssertTrue(controller.perform(.confirmPullInChoiceAndOpen))
@@ -71,6 +71,40 @@ final class CapturePullInChoiceModelTests: XCTestCase {
       .compactMap { $0.components(separatedBy: "\n").first }
     XCTAssertEqual(seeds.count, 2)
     XCTAssertEqual(seeds[0], seeds[1])
+  }
+
+  func testControlReturnWithEmptySelectionDoesNotStickOpenIntent() async throws {
+    let record = temporaryRecordURL()
+    let model = makeModel(record: record, stdout: successResponse())
+    model.plainDraft = "complete task"
+    model.preview()
+    try await waitUntil { !model.isPreviewing }
+    model.submit(openAfterCapture: false)
+    XCTAssertTrue(model.pullInChoiceVisible)
+    model.updatePullInChoiceFilter("no matching offer")
+    XCTAssertEqual(model.pullInChoice?.effectiveSelectionKeys, [])
+    XCTAssertEqual(model.pullInChoice?.openAfterCapture, false)
+
+    var opened = 0
+    model.noteOpener = { _, completion in
+      opened += 1
+      completion(nil)
+    }
+
+    model.confirmPullInChoice(openAfterCapture: true)
+    XCTAssertTrue(model.pullInChoiceVisible)
+    XCTAssertEqual(model.pullInChoice?.openAfterCapture, false)
+    XCTAssertEqual(opened, 0)
+
+    model.confirmPullInChoice()
+    XCTAssertTrue(model.pullInChoiceVisible)
+    XCTAssertEqual(opened, 0)
+
+    model.chooseNoPullInOffers()
+    try await waitUntil { !model.isSubmitting }
+    XCTAssertEqual(opened, 0)
+    XCTAssertTrue(
+      try recordText(record).contains("argv=capture --format json --pull-in none -- complete task"))
   }
 
   func testShiftReturnSubmitsExplicitNone() async throws {

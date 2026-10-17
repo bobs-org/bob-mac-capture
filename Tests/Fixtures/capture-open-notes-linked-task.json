@@ -1,0 +1,145 @@
+{
+  "ok": true,
+  "dry_run": false,
+  "routed": true,
+  "route": "cash",
+  "route_label": "cash.md",
+  "relative_target": "cash.md",
+  "target": "/tmp/bob-open-notes-fixture/vault/cash.md",
+  "text": "",
+  "task_line": "- [*] #task Finish packet [fresh:: 2026-10-17] [dependsOn::root] ^goog-exit",
+  "kind": "task_toggle",
+  "created": "2026-10-17",
+  "scheduled": null,
+  "placement": "toggled",
+  "block_id": "goog-exit",
+  "day_file": "/tmp/bob-open-notes-fixture/vault/day.md",
+  "block_link": "[[cash#^goog-exit]]",
+  "pomodoro_link_placement": "inserted",
+  "toggle_direction": "next",
+  "previous_task_line": "- [ ] #task Finish packet [dependsOn::root] ^goog-exit",
+  "status_symbol": "*",
+  "status_name": "Next",
+  "previous_status_symbol": " ",
+  "previous_status_name": "Ready",
+  "pomodoro_name": "CURRENT",
+  "creates_pomodoro": false,
+  "pomodoro_already_linked": false,
+  "removed_pomodoro_links": 0,
+  "pomodoro_selector_unused": false,
+  "toggle_behavior": "ensure_next",
+  "status_changed": true,
+  "pomodoro_link_action": "moved",
+  "pomodoro_link_source": {
+    "line": 4,
+    "name": "LATER"
+  },
+  "pomodoro_link_destination": {
+    "line": 2,
+    "name": "CURRENT",
+    "time_range": "0900-0930",
+    "role": "current"
+  },
+  "plan_budget": {
+    "status": "ok",
+    "themes": {
+      "count": 2,
+      "cap": 3,
+      "over": false,
+      "before": 2
+    },
+    "links": {
+      "count": 1,
+      "cap": 10,
+      "over": false,
+      "before": 1
+    }
+  },
+  "pomodoro_blocks": [
+    {
+      "relative_target": "day.md",
+      "line": 2,
+      "name": "CURRENT",
+      "time_range": "0900-0930",
+      "status": "running",
+      "created": false,
+      "roles": [
+        "linked"
+      ],
+      "lines": [
+        {
+          "text": "- [ ] (**0900-0930**) \u2014 CURRENT",
+          "depth": 0,
+          "change": "unchanged"
+        },
+        {
+          "text": "  - context",
+          "depth": 1,
+          "change": "unchanged"
+        },
+        {
+          "text": "  - [[cash#^goog-exit]]",
+          "depth": 1,
+          "change": "added"
+        },
+        {
+          "text": "    - review notes",
+          "depth": 2,
+          "change": "added"
+        }
+      ]
+    },
+    {
+      "relative_target": "day.md",
+      "line": 6,
+      "name": "LATER",
+      "status": "queued",
+      "created": false,
+      "roles": [
+        "unlinked"
+      ],
+      "lines": [
+        {
+          "text": "- [ ] () \u2014 LATER",
+          "depth": 0,
+          "change": "unchanged"
+        },
+        {
+          "text": "  - [[cash#^goog-exit]]",
+          "depth": 1,
+          "change": "removed"
+        },
+        {
+          "text": "    - review notes",
+          "depth": 2,
+          "change": "removed"
+        }
+      ]
+    }
+  ],
+  "open_notes": [
+    {
+      "path": "/tmp/bob-open-notes-fixture/vault/cash.md",
+      "relative_path": "cash.md",
+      "role": "note",
+      "label": "cash.md",
+      "line": 1,
+      "ref": "1:83064ad7",
+      "block_id": "goog-exit"
+    },
+    {
+      "path": "/tmp/bob-open-notes-fixture/vault/day.md",
+      "relative_path": "day.md",
+      "role": "day",
+      "label": "Today",
+      "line": 2,
+      "ref": "2:4e8b857b"
+    }
+  ],
+  "pull_in": {
+    "supported": true,
+    "offer_count": 0,
+    "choice": null,
+    "picked_count": 0
+  }
+}

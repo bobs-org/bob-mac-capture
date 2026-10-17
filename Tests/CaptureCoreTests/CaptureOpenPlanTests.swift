@@ -81,6 +81,79 @@ final class CaptureOpenPlanTests: XCTestCase {
     XCTAssertTrue(url.absoluteString.contains("block1=abc-123"))
   }
 
+  func testOpenNotesURLEncodesHashInPath() throws {
+    let note = CaptureOpenNote(
+      path: "/vault/foo#bar.md",
+      relativePath: "foo#bar.md",
+      role: .note,
+      label: "Hash"
+    )
+    let plan = CaptureOpenPlan(openNotes: [note], captures: [])
+    let url = try XCTUnwrap(ObsidianOpenURL.openNotesURL(for: plan))
+    XCTAssertTrue(url.absoluteString.contains("path1="))
+    XCTAssertFalse(url.absoluteString.contains("/vault/foo#bar.md"))
+    XCTAssertEqual(
+      URLComponents(url: url, resolvingAgainstBaseURL: false)?
+        .queryItems?.first(where: { $0.name == "path1" })?.value,
+      "/vault/foo#bar.md"
+    )
+  }
+
+  func testLegacyDayFileLabelIsToday() {
+    let capture = CaptureCommandSuccess(
+      ok: true,
+      dryRun: false,
+      routed: true,
+      routeLabel: "cash.md",
+      relativeTarget: "cash.md",
+      target: "/vault/cash.md",
+      text: "Task",
+      taskLine: "- [ ] Task",
+      kind: "pomodoro_start",
+      created: "today",
+      placement: "toggled",
+      dayFile: "/vault/day.md",
+      pomodoroStart: PomodoroStartSummary(
+        start: "0940",
+        end: "1005",
+        durationMinutes: 25,
+        offsetUnits: 0,
+        pomodoroName: "WORK",
+        pomodoroLine: 3,
+        createdPomodoro: false,
+        timeRange: "(**0940-1005** [t:: 25m])"
+      )
+    )
+    let plan = CaptureOpenPlan(openNotes: nil, captures: [capture])
+    XCTAssertEqual(plan.source, .legacy)
+    XCTAssertEqual(plan.notes.map(\.role), [.note, .day])
+    XCTAssertEqual(plan.notes.map(\.label), ["cash.md", "Today"])
+  }
+
+  func testCaptureSuccessDropsOnlyMalformedOpenNoteEntries() throws {
+    let json = """
+    {
+      "ok": true, "dry_run": false, "routed": false, "route_label": "Inbox",
+      "relative_target": "inbox.md", "target": "/vault/inbox.md", "text": "Task",
+      "task_line": "- [ ] Task", "kind": "task", "created": "today", "placement": "append",
+      "open_notes": [
+        {"path":"/vault/good.md","relative_path":"good.md","role":"note","label":"Good"},
+        {"path":123,"role":"note","label":"Bad path"},
+        {"path":"/vault/no-role.md","relative_path":"no-role.md","label":"Missing role"},
+        {"path":"/vault/no-label.md","relative_path":"no-label.md","role":"note"},
+        7,
+        {"path":"/vault/also.md","relative_path":"also.md","role":"day","label":"Today","line":3}
+      ]
+    }
+    """
+    let success = try JSONDecoder().decode(
+      CaptureCommandSuccess.self,
+      from: Data(json.utf8)
+    )
+    XCTAssertEqual(success.openNotes?.map(\.path), ["/vault/good.md", "/vault/also.md"])
+    XCTAssertEqual(success.openNotes?.map(\.label), ["Good", "Today"])
+  }
+
   func testOpenNotesURLTruncatesToEightAndReportsTotal() throws {
     let notes = (1...10).map { index in
       CaptureOpenNote(
@@ -110,6 +183,26 @@ final class CaptureOpenPlanTests: XCTestCase {
     }
     """
     return try JSONDecoder().decode(CaptureCommandSuccess.self, from: Data(json.utf8))
+  }
+
+  func testDecodesRealBobLinkedTaskOpenNotesFixture() throws {
+    let url = URL(fileURLWithPath: #filePath)
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .appendingPathComponent("Fixtures/capture-open-notes-linked-task.json")
+    let success = try JSONDecoder().decode(
+      CaptureCommandSuccess.self,
+      from: Data(contentsOf: url)
+    )
+    XCTAssertEqual(success.kind, "task_toggle")
+    let notes = try XCTUnwrap(success.openNotes)
+    XCTAssertEqual(notes.map(\.role), [.note, .day])
+    XCTAssertEqual(notes.map(\.label), ["cash.md", "Today"])
+    XCTAssertEqual(notes[0].blockID, "goog-exit")
+    XCTAssertEqual(notes[1].line, 2)
+    let plan = CaptureOpenPlan(openNotes: notes, captures: [success])
+    XCTAssertEqual(plan.source, .bob)
+    XCTAssertNotNil(ObsidianOpenURL.openNotesURL(for: plan))
   }
 
   private func capture(target: String, relativeTarget: String) -> CaptureCommandSuccess {

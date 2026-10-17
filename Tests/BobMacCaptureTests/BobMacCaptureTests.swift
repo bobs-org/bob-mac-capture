@@ -503,6 +503,14 @@ final class BobMacCaptureTests: XCTestCase {
             router.command(for: keyEvent(keyCode: 36, modifiers: [.control, .command])),
             .submitAndOpen
         )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: [.control, .capsLock])),
+            .submitAndOpen
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 76, modifiers: [.control, .numericPad])),
+            .submitAndOpen
+        )
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .shift)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .option)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 38, modifiers: .control)), .insertBulletNewline)
@@ -737,6 +745,10 @@ final class BobMacCaptureTests: XCTestCase {
         )
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 76, modifiers: .control), context: context),
+            .confirmPullInChoiceAndOpen
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: [.control, .capsLock]), context: context),
             .confirmPullInChoiceAndOpen
         )
         XCTAssertEqual(

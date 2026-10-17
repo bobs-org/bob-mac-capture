@@ -127,6 +127,13 @@ final class CaptureTaskLinkPanelTests: XCTestCase {
             .acceptPickerRowAndStart
         )
         XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 36, modifiers: [.shift, .capsLock]),
+                context: taskLinkContext
+            ),
+            .acceptPickerRowAndStart
+        )
+        XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 36, modifiers: .shift), context: activeContext),
             .consumeKey
         )
