@@ -30,7 +30,7 @@ keychain="${HOME}/Library/Keychains/login.keychain-db"
 # Check this before querying identities: over SSH the login keychain can be
 # unreachable, and a security command may otherwise wait for GUI interaction.
 if ! /usr/bin/security show-keychain-info "${keychain}" >/dev/null 2>&1; then
-  printf 'The login keychain is locked or unreachable. Run this script from a GUI Terminal on the Mac.\n' >&2
+  printf 'The login keychain is locked or refusing access. Run this script from a GUI Terminal on the Mac. If that also fails, its password may differ from the login password (README › Signing).\n' >&2
   exit 75
 fi
 

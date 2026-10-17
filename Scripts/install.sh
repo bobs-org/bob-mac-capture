@@ -17,7 +17,8 @@ exits without touching anything. Useful for read-only verification on the Mac.
 
 --check-signing checks whether codesign can use the resolved identity without
 creating it, building, or installing. It prints the resolved identity on
-success. If codesign cannot use it, the command prints fixes and exits 77.
+success. If codesign cannot use it, the command prints fixes and exits 77. A
+login keychain that is unlocked but refuses access exits 78.
 USAGE
 }
 
@@ -28,6 +29,10 @@ stable_identity_name="Bob Mac Capture Local"
 # The login keychain must be unlocked for codesign to use its private key.
 keychain="${HOME}/Library/Keychains/login.keychain-db"
 probe_output=""
+keychain_info_output=""
+keychain_state=""
+password_last_set_time=""
+confirmed_mismatch_time=""
 
 # find-identity lists identities even when this session cannot use their private keys.
 probe_signing_identity() {
@@ -50,12 +55,47 @@ probe_signing_identity() {
   return "${status}"
 }
 
-login_keychain_reachable() {
-  /usr/bin/security show-keychain-info "${keychain}" >/dev/null 2>&1
+classify_login_keychain() {
+  local status
+  if keychain_info_output="$(/usr/bin/security show-keychain-info "${keychain}" 2>&1)"; then
+    keychain_state="reachable"
+    return 0
+  else
+    status=$?
+  fi
+
+  # Only interaction-not-allowed means this session cannot show the unlock
+  # prompt. Other failures can mean an unlocked keychain is refusing access.
+  if (( status == 36 )) || [[ "${keychain_info_output}" == *"User interaction is not allowed"* ]]; then
+    keychain_state="locked"
+  else
+    keychain_state="refused"
+  fi
+}
+
+gather_keychain_mismatch_evidence() {
+  local password_epoch last_unlock_log_line
+  password_last_set_time=""
+  confirmed_mismatch_time=""
+
+  if password_epoch="$(/usr/bin/dscl . -read "/Users/$(/usr/bin/id -un 2>/dev/null)" accountPolicyData 2>/dev/null | /usr/bin/sed '1d' | /usr/bin/plutil -extract passwordLastSetTime raw - 2>/dev/null)" && [[ -n "${password_epoch}" ]]; then
+    if password_last_set_time="$(/bin/date -r "${password_epoch%.*}" '+%Y-%m-%d %H:%M' 2>/dev/null)"; then
+      :
+    else
+      password_last_set_time=""
+    fi
+  fi
+
+  # These are Apple's private loginwindow log strings; a miss only drops the
+  # confirmation line from the report.
+  if last_unlock_log_line="$(/usr/bin/log show --last 1d --style compact --predicate 'process == "loginwindow" AND category == "dp_login" AND (eventMessage CONTAINS "unlocking with" OR eventMessage CONTAINS "failed to unlock")' 2>/dev/null | /usr/bin/tail -n 1)" && [[ "${last_unlock_log_line}" == *failed* ]]; then
+    confirmed_mismatch_time="${last_unlock_log_line:0:19}"
+  fi
+  return 0
 }
 
 print_signing_failure_report() {
-  local identity="$1" line launchd_manager identity_output found_identity_line=false
+  local identity="$1" line identity_output found_identity_line=false
   printf 'codesign cannot use the "%s" signing identity from this session:\n' "${identity}" >&2
   if [[ -n "${probe_output}" ]]; then
     while IFS= read -r line || [[ -n "${line}" ]]; do
@@ -65,14 +105,34 @@ print_signing_failure_report() {
     printf '    (no codesign diagnostic)\n' >&2
   fi
 
-  if ! login_keychain_reachable; then
-    launchd_manager="$(/bin/launchctl managername 2>/dev/null || printf 'unknown')"
-    printf 'The login keychain is locked in this session; launchd reports %s (a GUI Terminal reports Aqua).\n' "${launchd_manager}" >&2
-    printf 'This happens over SSH and in a tmux server first started over SSH.\n' >&2
+  if [[ "${keychain_state}" == "locked" ]]; then
+    printf 'The login keychain is locked in this session, which cannot show the macOS unlock prompt (SSH, or a tmux server first started over SSH).\n' >&2
     printf 'Nothing was built or installed.\n\n' >&2
     printf 'Fixes:\n' >&2
     printf '  1. Run security unlock-keychain ~/Library/Keychains/login.keychain-db, then rerun from this same shell.\n' >&2
     printf '  2. Rerun from a GUI Terminal window that is not attached to an SSH-started tmux.\n' >&2
+    printf '  3. Install ad-hoc with just install ~/Applications -, which resets the Accessibility grant.\n' >&2
+    return
+  fi
+
+  if [[ "${keychain_state}" == "refused" ]]; then
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+      printf '    %s\n' "${line}" >&2
+    done <<< "${keychain_info_output}"
+    printf 'The login keychain is unlocked but refused access.\n' >&2
+    if [[ -n "${confirmed_mismatch_time}" ]]; then
+      printf 'At the last screen unlock (%s), macOS could not unlock it with your login password.\n' "${confirmed_mismatch_time}" >&2
+    else
+      printf 'This usually means its password no longer matches your Mac login password.\n' >&2
+    fi
+    if [[ -n "${password_last_set_time}" ]]; then
+      printf 'The Mac login password last changed at %s.\n' "${password_last_set_time}" >&2
+    fi
+    printf 'passwd, dscl . -passwd, and sysadminctl -resetPasswordFor change only the account password; macOS breaks keychain access again after every screen lock until the two match.\n' >&2
+    printf 'Nothing was built or installed.\n\n' >&2
+    printf 'Fixes:\n' >&2
+    printf '  1. Sync once with security set-keychain-password ~/Library/Keychains/login.keychain-db (old = the previous login password, new = the current one).\n' >&2
+    printf '  2. For this run only, use security unlock-keychain ~/Library/Keychains/login.keychain-db with the previous login password, then rerun.\n' >&2
     printf '  3. Install ad-hoc with just install ~/Applications -, which resets the Accessibility grant.\n' >&2
     return
   fi
@@ -99,7 +159,12 @@ ensure_signing_identity_usable() {
     return 0
   fi
 
-  if ! login_keychain_reachable && [[ -t 0 ]]; then
+  classify_login_keychain
+  if [[ "${keychain_state}" == "refused" ]]; then
+    gather_keychain_mismatch_evidence
+  fi
+
+  if [[ "${keychain_state}" == "locked" && -t 0 ]]; then
     printf 'The login keychain is locked in this session (SSH, or a tmux server started over SSH), so unlock it to sign with "%s"; macOS asks for the login password.\n' "${identity}" >&2
     /usr/bin/security unlock-keychain "${keychain}" || true
     if probe_signing_identity "${identity}"; then
@@ -107,7 +172,28 @@ ensure_signing_identity_usable() {
     fi
   fi
 
+  if [[ "${keychain_state}" == "refused" && -t 0 ]]; then
+    if [[ -n "${confirmed_mismatch_time}" ]]; then
+      printf 'The login keychain refused access although it is unlocked. At the last screen unlock (%s), macOS could not unlock it with your login password; its password no longer matches the Mac login password.\n' "${confirmed_mismatch_time}" >&2
+    else
+      printf 'The login keychain refused access although it is unlocked. Its password likely no longer matches your Mac login password.\n' >&2
+    fi
+    if [[ -n "${password_last_set_time}" ]]; then
+      printf 'The Mac login password last changed at %s.\n' "${password_last_set_time}" >&2
+    fi
+    printf 'macOS breaks keychain access again after every screen lock until the passwords match.\n' >&2
+    printf 'Unlock it for this run with the previous login password.\n' >&2
+    /usr/bin/security unlock-keychain "${keychain}" || true
+    if probe_signing_identity "${identity}"; then
+      printf 'For the lasting fix, run security set-keychain-password ~/Library/Keychains/login.keychain-db once.\n' >&2
+      return 0
+    fi
+  fi
+
   print_signing_failure_report "${identity}"
+  if [[ "${keychain_state}" == "refused" ]]; then
+    exit 78
+  fi
   exit 77
 }
 

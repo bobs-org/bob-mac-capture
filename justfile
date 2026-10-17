@@ -36,13 +36,15 @@ bundle identity="-":
 # "Bob Mac Capture Local" identity, creating it when missing, and falls back
 # to ad-hoc with a warning if creation needs a GUI Terminal. Before building,
 # install checks the identity and offers to unlock a locked login keychain in a
-# terminal. bundle keeps its ad-hoc default.
+# terminal. A mismatched login keychain password also blocks signing and offers
+# a one-run unlock with the previous password. bundle keeps its ad-hoc default.
 install target="~/Applications" identity="":
     ./Scripts/install.sh --target "{{target}}" --identity "{{identity}}"
 
 # Checks, without building or installing, that codesign can use the install
 # signing identity from this session. In a terminal, it offers to unlock a
-# locked login keychain.
+# locked login keychain or a mismatched login keychain with the previous
+# password for this run.
 signing-check identity="":
     ./Scripts/install.sh --check-signing --identity "{{identity}}"
 

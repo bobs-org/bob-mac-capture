@@ -312,14 +312,23 @@ If automatic setup is unavailable, create the identity manually in Keychain Acce
 On the first signed install, `codesign` prompts for keychain access: choose
 **Always Allow** so future installs stay unattended.
 
-Prefer a GUI Terminal on the Mac. Over SSH, or in a tmux server first started over SSH,
-the login keychain is locked; `launchctl managername` prints `Background` there instead
-of `Aqua`. While the identity is missing, setup cannot run and the install falls back
-to ad-hoc. Once the identity exists, the install checks before building that codesign
-can use it. If the login keychain is locked and the command has a terminal, it asks to
-unlock it through `security unlock-keychain`; otherwise it stops with exit 77 and lists
-the fixes. `just signing-check` runs the same check without building. In this install
-path, `errSecInternalComponent` from codesign means the login keychain is locked.
+Prefer a GUI Terminal or a tmux server started from one. Over SSH, or in a tmux server
+first started over SSH, the login keychain is locked. While the identity is missing,
+setup cannot run and the install falls back to ad-hoc. Once the identity exists, the
+install checks before building that codesign can use it:
+
+- **Locked session:** with a terminal, it offers `security unlock-keychain`. Otherwise
+  it stops with exit 77.
+- **Password mismatch:** after the Mac login password changes through `passwd`,
+  `dscl . -passwd`, or `sysadminctl -resetPasswordFor`, the login keychain keeps the old
+  password. loginwindow then fails to unlock it after every screen lock, and every app's
+  keychain access fails. The install names this cause and offers a one-run unlock with
+  the previous password. Otherwise it stops with exit 78. The lasting fix is
+  `security set-keychain-password ~/Library/Keychains/login.keychain-db`. Changing the
+  password in System Settings › Users & Groups keeps the two in sync.
+
+`errSecInternalComponent` from codesign means it could not use the key in either case.
+`just signing-check` runs the same check without building.
 
 Verify an install with:
 
