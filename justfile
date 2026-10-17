@@ -34,10 +34,17 @@ bundle identity="-":
 
 # An empty identity means "resolve": install.sh signs with the stable
 # "Bob Mac Capture Local" identity, creating it when missing, and falls back
-# to ad-hoc with a warning if creation needs a GUI Terminal. bundle keeps its
-# ad-hoc default.
+# to ad-hoc with a warning if creation needs a GUI Terminal. Before building,
+# install checks the identity and offers to unlock a locked login keychain in a
+# terminal. bundle keeps its ad-hoc default.
 install target="~/Applications" identity="":
     ./Scripts/install.sh --target "{{target}}" --identity "{{identity}}"
+
+# Checks, without building or installing, that codesign can use the install
+# signing identity from this session. In a terminal, it offers to unlock a
+# locked login keychain.
+signing-check identity="":
+    ./Scripts/install.sh --check-signing --identity "{{identity}}"
 
 # Creates the stable local signing identity from a GUI Terminal on the Mac.
 signing-identity:

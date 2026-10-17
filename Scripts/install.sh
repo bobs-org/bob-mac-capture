@@ -6,7 +6,7 @@ package_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 usage() {
   cat <<'USAGE'
 Usage: Scripts/install.sh [--identity IDENTITY] [--target /Applications|~/Applications]
-       [--print-resolved-identity]
+       [--print-resolved-identity] [--check-signing]
 
 Builds a staged signed app bundle, replaces only the target Bob Mac Capture.app,
 verifies the installed bundle identifier and signature, and restarts a copy that
@@ -14,6 +14,10 @@ was already running from that exact install path.
 
 --print-resolved-identity prints the signing identity that would be used and
 exits without touching anything. Useful for read-only verification on the Mac.
+
+--check-signing checks whether codesign can use the resolved identity without
+creating it, building, or installing. It prints the resolved identity on
+success. If codesign cannot use it, the command prints fixes and exits 77.
 USAGE
 }
 
@@ -21,6 +25,91 @@ USAGE
 # Signing with it keeps the Accessibility and notification grants across
 # reinstalls. The install script creates it when missing from a GUI Terminal.
 stable_identity_name="Bob Mac Capture Local"
+# The login keychain must be unlocked for codesign to use its private key.
+keychain="${HOME}/Library/Keychains/login.keychain-db"
+probe_output=""
+
+# find-identity lists identities even when this session cannot use their private keys.
+probe_signing_identity() {
+  local probe_dir status
+  probe_dir="$(/usr/bin/mktemp -d)" || {
+    probe_output="Could not create a temporary directory for the signing probe."
+    return 1
+  }
+  if ! /bin/cp /usr/bin/true "${probe_dir}/probe"; then
+    probe_output="Could not copy /usr/bin/true for the signing probe."
+    /bin/rm -rf "${probe_dir}"
+    return 1
+  fi
+  if probe_output="$(/usr/bin/codesign --force --sign "$1" --timestamp=none "${probe_dir}/probe" 2>&1)"; then
+    status=0
+  else
+    status=$?
+  fi
+  /bin/rm -rf "${probe_dir}"
+  return "${status}"
+}
+
+login_keychain_reachable() {
+  /usr/bin/security show-keychain-info "${keychain}" >/dev/null 2>&1
+}
+
+print_signing_failure_report() {
+  local identity="$1" line launchd_manager identity_output found_identity_line=false
+  printf 'codesign cannot use the "%s" signing identity from this session:\n' "${identity}" >&2
+  if [[ -n "${probe_output}" ]]; then
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+      printf '    %s\n' "${line}" >&2
+    done <<< "${probe_output}"
+  else
+    printf '    (no codesign diagnostic)\n' >&2
+  fi
+
+  if ! login_keychain_reachable; then
+    launchd_manager="$(/bin/launchctl managername 2>/dev/null || printf 'unknown')"
+    printf 'The login keychain is locked in this session; launchd reports %s (a GUI Terminal reports Aqua).\n' "${launchd_manager}" >&2
+    printf 'This happens over SSH and in a tmux server first started over SSH.\n' >&2
+    printf 'Nothing was built or installed.\n\n' >&2
+    printf 'Fixes:\n' >&2
+    printf '  1. Run security unlock-keychain ~/Library/Keychains/login.keychain-db, then rerun from this same shell.\n' >&2
+    printf '  2. Rerun from a GUI Terminal window that is not attached to an SSH-started tmux.\n' >&2
+    printf '  3. Install ad-hoc with just install ~/Applications -, which resets the Accessibility grant.\n' >&2
+    return
+  fi
+
+  printf 'codesign was refused the identity private key, or matched more than one identity.\n' >&2
+  printf 'Run the install from a GUI Terminal and answer any codesign keychain prompt with Always Allow.\n' >&2
+  identity_output="$(/usr/bin/security find-identity -p codesigning 2>/dev/null || true)"
+  printf 'Matching security find-identity lines:\n' >&2
+  while IFS= read -r line; do
+    if [[ "${line}" == *"\"${identity}\""* ]]; then
+      printf '    %s\n' "${line}" >&2
+      found_identity_line=true
+    fi
+  done <<< "${identity_output}"
+  if [[ "${found_identity_line}" == false ]]; then
+    printf '    (none found)\n' >&2
+  fi
+  printf 'If more than one copy appears, delete the extras in Keychain Access › login › My Certificates and rerun.\n' >&2
+}
+
+ensure_signing_identity_usable() {
+  local identity="$1"
+  if probe_signing_identity "${identity}"; then
+    return 0
+  fi
+
+  if ! login_keychain_reachable && [[ -t 0 ]]; then
+    printf 'The login keychain is locked in this session (SSH, or a tmux server started over SSH), so unlock it to sign with "%s"; macOS asks for the login password.\n' "${identity}" >&2
+    /usr/bin/security unlock-keychain "${keychain}" || true
+    if probe_signing_identity "${identity}"; then
+      return 0
+    fi
+  fi
+
+  print_signing_failure_report "${identity}"
+  exit 77
+}
 
 # Prints the identity `security find-identity` resolves to: the stable identity
 # when the keychain holds it, "-" (ad-hoc) otherwise. Takes no action.
@@ -38,6 +127,7 @@ find_stored_signing_identity() {
 # CODESIGN_IDENTITY wins. Empty in both places means "resolve".
 cli_identity=""
 print_resolved_identity_only=false
+check_signing_only=false
 target_dir="${HOME}/Applications"
 
 while [[ $# -gt 0 ]]; do
@@ -52,6 +142,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --print-resolved-identity)
       print_resolved_identity_only=true
+      shift
+      ;;
+    --check-signing)
+      check_signing_only=true
       shift
       ;;
     -h|--help)
@@ -81,6 +175,16 @@ if [[ -z "${identity}" ]]; then
 fi
 
 if [[ "${print_resolved_identity_only}" == "true" ]]; then
+  printf '%s\n' "${identity}"
+  exit 0
+fi
+
+if [[ "${check_signing_only}" == "true" ]]; then
+  if [[ "${identity}" != "-" ]]; then
+    ensure_signing_identity_usable "${identity}"
+  elif [[ "${resolved_from_keychain}" == "true" ]]; then
+    printf 'The stable signing identity is missing; just install from a GUI Terminal creates it.\n' >&2
+  fi
   printf '%s\n' "${identity}"
   exit 0
 fi
@@ -116,6 +220,10 @@ install_path="${target_dir}/${app_name}"
 tmp_path="${target_dir}/.${app_name}.$$"
 backup_path="${target_dir}/.${app_name}.previous.$$"
 previous_requirement=""
+
+if [[ "${identity}" != "-" ]]; then
+  ensure_signing_identity_usable "${identity}"
+fi
 
 designated_requirement() {
   local output line requirement
