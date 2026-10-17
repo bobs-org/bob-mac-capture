@@ -535,6 +535,25 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 1, modifiers: .command)), .saveTemplate)
         XCTAssertNil(router.command(for: keyEvent(keyCode: 1)))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 1, modifiers: [.control, .shift])))
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 42, modifiers: .control)),
+            .openTodayPomodoro
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 42, modifiers: .control), completionVisible: true),
+            .openTodayPomodoro
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 42, modifiers: .control),
+                context: CaptureKeyRoutingContext(pickerChipVisible: true)
+            ),
+            .openTodayPomodoro
+        )
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 42)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: .command)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: [.control, .shift])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: [.control, .option])))
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), completionVisible: true), .acceptCompletion)
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 36, modifiers: .command), completionVisible: true),
@@ -959,6 +978,74 @@ final class BobMacCaptureTests: XCTestCase {
             router.command(for: controlT, context: CaptureKeyRoutingContext(pullInChoiceVisible: true)),
             .consumeKey
         )
+    }
+
+    func testKeyRouterMapsControlBackslashToOpenTodayPomodoroAndConsumesOnModals() {
+        let router = CaptureKeyCommandRouter()
+        let controlBackslash = keyEvent(keyCode: 42, modifiers: .control)
+        XCTAssertEqual(
+            router.command(for: controlBackslash),
+            .openTodayPomodoro
+        )
+        XCTAssertEqual(
+            router.command(for: controlBackslash, completionVisible: true),
+            .openTodayPomodoro
+        )
+        XCTAssertEqual(
+            router.command(
+                for: controlBackslash,
+                context: CaptureKeyRoutingContext(pickerChipVisible: true)
+            ),
+            .openTodayPomodoro
+        )
+        XCTAssertEqual(
+            router.command(
+                for: controlBackslash,
+                context: CaptureKeyRoutingContext(stashPickerVisible: true, stashEntryCount: 1)
+            ),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(
+                for: controlBackslash,
+                context: CaptureKeyRoutingContext(
+                    templateShelfVisible: true,
+                    templateEntryCount: 1
+                )
+            ),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(
+                for: controlBackslash,
+                context: CaptureKeyRoutingContext(taskIDPromptVisible: true)
+            ),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(
+                for: controlBackslash,
+                context: CaptureKeyRoutingContext(pomodoroNamePromptVisible: true)
+            ),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(
+                for: controlBackslash,
+                context: CaptureKeyRoutingContext(pullInChoiceVisible: true)
+            ),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(
+                for: controlBackslash,
+                context: CaptureKeyRoutingContext(pickerVisible: true)
+            ),
+            .consumeKey
+        )
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 42)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: .command)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: [.control, .shift])))
     }
 
     func testKeyRouterConsumesPrintableKeysWhileStashPickerIsModalButLeavesCommandShortcuts() {

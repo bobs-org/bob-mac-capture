@@ -159,4 +159,19 @@ final class TaskGotoPickerPresentationTests: XCTestCase {
             )
         )
     }
+
+    func testTaskGotoURLOmitsRefQueryItemWhenRefIsNil() throws {
+        let url = try XCTUnwrap(
+            ObsidianOpenURL.taskGotoURL(path: "/note.md", line: 1, ref: nil)
+        )
+        XCTAssertEqual(url.absoluteString, "obsidian://bob-goto-task?path=/note.md&line=1")
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        XCTAssertEqual(components.queryItems?.map(\.name), ["path", "line"])
+        XCTAssertNil(components.queryItems?.first { $0.name == "ref" })
+    }
+
+    func testTaskGotoURLStillRejectsInvalidNonNilRef() {
+        XCTAssertNil(ObsidianOpenURL.taskGotoURL(path: "/note.md", line: 1, ref: "1:ABCDEF12"))
+        XCTAssertNil(ObsidianOpenURL.taskGotoURL(path: "/note.md", line: 1, ref: "01:abcd1234"))
+    }
 }

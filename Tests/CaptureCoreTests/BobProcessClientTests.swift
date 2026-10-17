@@ -1948,6 +1948,52 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(response.currentTaskLinkCount, 3)
     }
 
+    func testCapturePomodorosRecordsArgvWithoutAllByDefault() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_POMODOROS_FIXTURE": "pomodoros-current-3.json",
+            ]
+        )
+
+        _ = try await client.capturePomodoros()
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.split(whereSeparator: \.isNewline).contains {
+                $0 == "argv=capture-pomodoros --format json"
+            }
+        )
+    }
+
+    func testCapturePomodorosIncludeCompletedRecordsAllFlag() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_POMODOROS_FIXTURE": "pomodoros-current-3.json",
+            ]
+        )
+
+        _ = try await client.capturePomodoros(includeCompleted: true)
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.split(whereSeparator: \.isNewline).contains {
+                $0 == "argv=capture-pomodoros --format json --all"
+            }
+        )
+    }
+
     func testCaptureAgendaUnsupportedOptionMapsOldBob() async throws {
         let client = BobProcessClient(
             executablePath: try fakeBobPath(),

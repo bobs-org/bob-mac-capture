@@ -95,9 +95,9 @@ mutation.
   Bulk templates require Bob's additive `template` / `template_row` parse and capture
   objects, field-indexed `template_placeholder` and `template_field` spans, the
   `template_row` incomplete need, and the `template` route-completion candidate.
-  Go To also requires bob-plugins **bob-navigation-hotkeys ≥ 2.32.0** (or the version
-  that shipped `obsidian://bob-goto-task`), deployed to the vault with
-  `bob plugins sync`.
+  Go To and Control-\ today-Pomodoro landing also require bob-plugins
+  **bob-navigation-hotkeys ≥ 2.32.0** (or the version that shipped
+  `obsidian://bob-goto-task`), deployed to the vault with `bob plugins sync`.
   Older builds can still capture ordinary drafts, but
   global declarations, bare-`@@` absorption, the Add block ID flow, the Name Pomodoro
   flow, the task-section popup, and the task-toggle footer/preview report the local Bob
@@ -1829,6 +1829,7 @@ Bob Refs shortcuts:
 | Escape / Ctrl-[ | Close the panel, retaining a nonempty draft without confirmation | Close completion | Cancel back to the task list | Cancel back to the Pomodoro list |
 | Control-S | Open the canceled-draft stash picker | Open the canceled-draft stash picker | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-T | Open the saved-template shelf | Open the shelf and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
+| Control-\ | Open today's daily note in Obsidian with the caret on the running Pomodoro (when none is running: the first open entry, else the last completed, else the note's first line), hide the panel, and retain a nonempty draft | Same, and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Command-S | Save the current `@@template:` draft | Save the current `@@template:` draft | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-C | Stash a nonempty draft, then clear and close. A Go To (`/`) draft is discarded instead of stashed | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close |
 
@@ -1893,6 +1894,7 @@ that non-modal workflow.
 | Escape / Ctrl-[ | Close only the stash picker |
 | Control-S | Close the stash picker |
 | Control-T | Close the stash and open the saved-template shelf |
+| Control-\ | Consume the key; finish or cancel the stash first |
 
 The 36-entry upper bound exists so every retained row always has a unique one-key
 accelerator while reserving `D` for Delete All: `1` through `9`, then `0`, then `A`
@@ -1908,11 +1910,42 @@ through `C`, `-`, and `E` through `Z`.
 | Backspace twice | Arm, then delete the selected template |
 | Control-S | Close the shelf and open the stash |
 | Control-T | Close the shelf |
+| Control-\ | Consume the key; finish or cancel the shelf first |
 | Escape / Ctrl-[ | Disarm deletion, or close the shelf |
 
 Control-T replaces AppKit's transpose-characters shortcut in the capture editor. Inside
 capture pickers, prompts, and successor choices it is consumed so it never edits or
 transposes text.
+
+### Opening today's Pomodoro (Control-\)
+
+Control-\ is an in-panel key, not a global hotkey (a global Control-\ would take
+SIGQUIT from terminals and Vim's `Ctrl-\ Ctrl-N`). Each press runs a fresh
+`bob capture-pomodoros --format json --all` through the pomodoros lane; it does
+not use the idle-agenda cache. The app never reads the daily note.
+
+Landing rule, from the decoded response:
+
+1. Missing, empty, or relative `day_file`: status
+   `bob sent no daily-note path — update bob`; the panel stays open.
+2. The entry with `is_current`: that line, with its `ref` when valid.
+3. Else the first `open` entry in document order.
+4. Else the last `completed` entry.
+5. Else line 1 of the daily note, with no `ref`.
+
+The chosen destination is dispatched as `obsidian://bob-goto-task` with
+`path`, `line`, and `ref` when the entry's ref is valid. A missing or invalid
+ref builds a line-only URL. Nothing in the vault is written. On success the
+panel hides and a nonempty draft is retained exactly like Escape: it is never
+stashed, discarded, or captured. On a failed open, status is
+`Couldn't open Obsidian` and the panel stays. A failed fetch is
+`Couldn't read today's Pomodoros`. A press while a capture is submitting is
+`Wait for the capture to finish`. A press while Bob is unresolved is
+`Bob is not resolved`. A second press while a fetch or open is already in
+flight does nothing. If the panel is hidden before the result lands, the
+result is dropped. While the stash, saved-template shelf, Add block ID or
+Name Pomodoro prompt, successor-choice card, or a picker is open, Control-\
+is consumed so you finish or cancel that surface first.
 
 A draft is one or more capture items separated by one or more blank or whitespace-only
 physical lines, with an optional global destination declaration token anywhere in the

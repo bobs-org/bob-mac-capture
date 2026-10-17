@@ -66,6 +66,7 @@ enum CaptureKeyCommand: Equatable {
     case cycleTaskLinkSuggestionBackward
     case continuePickerOperator(String)
     case insertCloseTaskNumber(String)
+    case openTodayPomodoro
 }
 
 struct CaptureKeyRoutingContext: Equatable {
@@ -122,6 +123,7 @@ struct CaptureKeyCommandRouter {
         static let p: UInt16 = 35
         static let u: UInt16 = 32
         static let leftBracket: UInt16 = 33
+        static let backslash: UInt16 = 42
     }
 
     func command(
@@ -169,6 +171,10 @@ struct CaptureKeyCommandRouter {
 
         if event.keyCode == KeyCode.t, modifiers == .control {
             return .toggleTemplateShelf
+        }
+
+        if event.keyCode == KeyCode.backslash, modifiers == .control {
+            return .openTodayPomodoro
         }
 
         if event.keyCode == KeyCode.s, modifiers == .command {
@@ -298,6 +304,8 @@ struct CaptureKeyCommandRouter {
         case KeyCode.a:
             return modifiers == .command ? .markAllPullInOffers : nil
         case KeyCode.t:
+            return modifiers == .control ? .consumeKey : nil
+        case KeyCode.backslash:
             return modifiers == .control ? .consumeKey : nil
         default:
             return nil
@@ -435,6 +443,8 @@ struct CaptureKeyCommandRouter {
             return modifiers == .control ? .consumeKey : nil
         case KeyCode.t:
             return modifiers == .control ? .consumeKey : nil
+        case KeyCode.backslash:
+            return modifiers == .control ? .consumeKey : nil
         case KeyCode.c:
             return modifiers == .control ? .stashDraftAndClose : nil
         default:
@@ -477,6 +487,8 @@ struct CaptureKeyCommandRouter {
             return modifiers == .control ? .consumeKey : nil
         case KeyCode.t:
             return modifiers == .control ? .consumeKey : nil
+        case KeyCode.backslash:
+            return modifiers == .control ? .consumeKey : nil
         default:
             return nil
         }
@@ -489,6 +501,9 @@ struct CaptureKeyCommandRouter {
     ) -> CaptureKeyCommand? {
         if event.keyCode == KeyCode.t, modifiers == .control {
             return .toggleTemplateShelf
+        }
+        if event.keyCode == KeyCode.backslash, modifiers == .control {
+            return .consumeKey
         }
 
         if isClearStashShortcut(for: event, modifiers: modifiers) {
@@ -536,6 +551,9 @@ struct CaptureKeyCommandRouter {
         }
         if event.keyCode == KeyCode.s, modifiers == .control {
             return .switchTemplateShelfToStash
+        }
+        if event.keyCode == KeyCode.backslash, modifiers == .control {
+            return .consumeKey
         }
 
         if modifiers.isEmpty,

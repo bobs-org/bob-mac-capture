@@ -366,6 +366,11 @@ final class CapturePanelModel: ObservableObject {
     /// swallowed until the opener reports, so a double Return cannot dispatch
     /// twice.
     private(set) var taskGotoDispatchInFlight = false
+    /// True while Control-\ is fetching today's Pomodoros or dispatching
+    /// the goto URL. A second press is a no-op until it clears.
+    private(set) var todayPomodoroGotoInFlight = false
+    private var todayPomodoroGotoGeneration: UInt64 = 0
+    private var todayPomodoroGotoTask: Task<Void, Never>?
     /// Latest parse reported the `task_goto` need. Ctrl-C uses this so a `/`
     /// draft is discarded even when the picker has already chipped.
     private var lastAnalysisNeedsTaskGoto = false
@@ -767,6 +772,7 @@ final class CapturePanelModel: ObservableObject {
     deinit {
         analysisTask?.cancel()
         rewriteTask?.cancel()
+        todayPomodoroGotoTask?.cancel()
     }
 
     var plainDraft: String {
@@ -1976,6 +1982,7 @@ final class CapturePanelModel: ObservableObject {
         dismissTemplateShelf()
         clearInlinePrompts()
         agendaExpanded = []
+        invalidateTodayPomodoroGoto()
         if hasDraft {
             statusText = "Draft retained"
         }
@@ -2586,6 +2593,7 @@ final class CapturePanelModel: ObservableObject {
         clearInlinePrompts()
         agendaExpanded = []
         invalidateRewrite()
+        invalidateTodayPomodoroGoto()
     }
 
     func requestFocus(_ target: CapturePanelFocusTarget) {
@@ -2608,6 +2616,7 @@ final class CapturePanelModel: ObservableObject {
         closeCommaProvenance.clear()
         lastProvenanceDraft = plainDraft
         taskGotoDispatchInFlight = false
+        invalidateTodayPomodoroGoto()
         lastAnalysisNeedsTaskGoto = false
         clearPickerState()
         clearInlinePrompts()
@@ -4440,6 +4449,92 @@ final class CapturePanelModel: ObservableObject {
             }
             submit(openAfterCapture: false)
         }
+    }
+
+    /// Opens today's daily note on the running Pomodoro (or the nearest
+    /// fallback) through `obsidian://bob-goto-task`. Fetches a fresh
+    /// `capture-pomodoros --all` snapshot, never the idle-agenda cache.
+    /// Success retains a nonempty draft the way Escape does. A second press
+    /// while a fetch or open is in flight is a no-op.
+    func openTodayPomodoroInObsidian() {
+        if isSubmitting {
+            announceStatus("Wait for the capture to finish")
+            return
+        }
+        if todayPomodoroGotoInFlight {
+            return
+        }
+        guard let processClient else {
+            announceStatus("Bob is not resolved")
+            return
+        }
+
+        todayPomodoroGotoInFlight = true
+        todayPomodoroGotoGeneration &+= 1
+        let generation = todayPomodoroGotoGeneration
+        announceStatus("Opening today's note…")
+
+        todayPomodoroGotoTask = Task { [weak self, processClient] in
+            let outcome: Result<CapturePomodorosResponse, Error>
+            do {
+                outcome = .success(
+                    try await processClient.capturePomodoros(includeCompleted: true)
+                )
+            } catch {
+                outcome = .failure(error)
+            }
+            guard let self else {
+                return
+            }
+            self.finishTodayPomodoroGoto(generation: generation, outcome: outcome)
+        }
+    }
+
+    private func finishTodayPomodoroGoto(
+        generation: UInt64,
+        outcome: Result<CapturePomodorosResponse, Error>
+    ) {
+        guard todayPomodoroGotoGeneration == generation else {
+            return
+        }
+        guard panelVisible else {
+            todayPomodoroGotoInFlight = false
+            return
+        }
+        switch outcome {
+        case .failure:
+            todayPomodoroGotoInFlight = false
+            announceStatus("Couldn't read today's Pomodoros")
+        case .success(let response):
+            switch CaptureTodayPomodoroGoto.resolve(response) {
+            case .refused(let refusal):
+                todayPomodoroGotoInFlight = false
+                announceStatus(refusal.statusText)
+            case .destination(let destination):
+                taskGotoOpener(destination.url) { [weak self] success in
+                    guard let self else {
+                        return
+                    }
+                    guard self.todayPomodoroGotoGeneration == generation else {
+                        return
+                    }
+                    self.todayPomodoroGotoInFlight = false
+                    if success {
+                        self.prepareForRetainedClose()
+                        self.panelDismisser()
+                    } else {
+                        self.announceStatus("Couldn't open Obsidian")
+                    }
+                }
+            }
+        }
+    }
+
+    private func invalidateTodayPomodoroGoto() {
+        todayPomodoroGotoTask?.cancel()
+        todayPomodoroGotoTask = nil
+        todayPomodoroGotoInFlight = false
+        todayPomodoroGotoGeneration &+= 1
     }
 
     /// Dispatches `obsidian://bob-goto-task` for a Go To row. Command-Return

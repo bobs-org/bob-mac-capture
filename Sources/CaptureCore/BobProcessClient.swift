@@ -86,9 +86,15 @@ public final class BobProcessClient: @unchecked Sendable {
     return response
   }
 
-  public func capturePomodoros() async throws -> CapturePomodorosResponse {
+  public func capturePomodoros(includeCompleted: Bool = false) async throws
+    -> CapturePomodorosResponse
+  {
+    var arguments = ["capture-pomodoros", "--format", "json"]
+    if includeCompleted {
+      arguments.append("--all")
+    }
     let response: CapturePomodorosResponse = try await decode(
-      arguments: ["capture-pomodoros", "--format", "json"],
+      arguments: arguments,
       expectedSchema: 1,
       lane: "pomodoros"
     )

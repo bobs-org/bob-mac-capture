@@ -2,7 +2,8 @@ import Foundation
 
 // Bob returns absolute filesystem `target` paths, not `obsidian://open` URLs.
 // The app builds that URL for note opens and uses the dedicated read-only
-// `bob-goto-task` protocol for task navigation.
+// `bob-goto-task` protocol for the `/` Go To picker and Control-\ today-
+// Pomodoro landing.
 public enum ObsidianOpenURL {
     public static func url(forAbsolutePath path: String) -> URL? {
         guard !path.isEmpty else {
@@ -19,13 +20,18 @@ public enum ObsidianOpenURL {
     /// Builds the read-only task navigation URL. The protocol contract keeps
     /// path slashes literal and percent-encodes every other non-unreserved
     /// UTF-8 byte, including `+` so query parsers cannot turn it into a space.
+    /// A nil `ref` omits the `ref=` query item (note-top and line-only
+    /// landings). A non-nil invalid `ref` still returns nil.
     public static func taskGotoURL(
         path: String,
         line: Int,
-        ref: String,
+        ref: String?,
         blockID: String? = nil
     ) -> URL? {
-        guard path.hasPrefix("/"), line > 0, isValidTaskRef(ref) else {
+        guard path.hasPrefix("/"), line > 0 else {
+            return nil
+        }
+        if let ref, !isValidTaskRef(ref) {
             return nil
         }
         if let blockID, !isValidBlockID(blockID) {
@@ -35,8 +41,10 @@ public enum ObsidianOpenURL {
         var query = [
             "path=\(percentEncodeTaskGotoValue(path))",
             "line=\(line)",
-            "ref=\(percentEncodeTaskGotoValue(ref))",
         ]
+        if let ref {
+            query.append("ref=\(percentEncodeTaskGotoValue(ref))")
+        }
         if let blockID {
             query.append("block=\(percentEncodeTaskGotoValue(blockID))")
         }

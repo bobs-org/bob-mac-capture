@@ -1664,6 +1664,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .saveTemplate:
             model.saveTemplateFromKeyboard()
             return true
+        case .openTodayPomodoro:
+            model.dismissCompletion()
+            model.openTodayPomodoroInObsidian()
+            return true
         case .consumeKey:
             model.disarmTemplateDeleteIfNeeded()
             return true

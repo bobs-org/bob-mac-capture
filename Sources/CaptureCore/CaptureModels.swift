@@ -6160,19 +6160,23 @@ public struct CaptureBlockIDField: Codable, Equatable, Sendable {
 /// Versioned `bob capture-pomodoros --format json` response. Only the
 /// current entry's numbered Task Link count matters to the editor; every
 /// other field decodes tolerantly so an older bob without
-/// `task_link_count` still decodes with a nil count.
+/// `task_link_count`, `day_file`, `ref`, or `state` still decodes with
+/// nil / `.other` defaults.
 public struct CapturePomodorosResponse: Decodable, Equatable {
   public let ok: Bool
   public let schemaVersion: Int
+  public let dayFile: String?
   public let pomodoros: [CapturePomodorosListEntry]
 
   public init(
     ok: Bool,
     schemaVersion: Int = 1,
-    pomodoros: [CapturePomodorosListEntry] = []
+    pomodoros: [CapturePomodorosListEntry] = [],
+    dayFile: String? = nil
   ) {
     self.ok = ok
     self.schemaVersion = schemaVersion
+    self.dayFile = dayFile
     self.pomodoros = pomodoros
   }
 
@@ -6180,6 +6184,7 @@ public struct CapturePomodorosResponse: Decodable, Equatable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     ok = try container.decode(Bool.self, forKey: .ok)
     schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+    dayFile = try container.decodeIfPresent(String.self, forKey: .dayFile)
     pomodoros =
       try container.decodeIfPresent(
         [CapturePomodorosListEntry].self,
@@ -6196,30 +6201,77 @@ public struct CapturePomodorosResponse: Decodable, Equatable {
   private enum CodingKeys: String, CodingKey {
     case ok
     case schemaVersion = "schema_version"
+    case dayFile = "day_file"
     case pomodoros
   }
 }
 
-/// Minimal `capture-pomodoros` entry: only the fields the close-comma
-/// assist needs. `taskLinkCount` is the size of the numbered Task Link
-/// lineup a plain `=x` close indexes; it is an integer only on the
-/// `isCurrent` entry and null elsewhere. Older bob binaries omit the key.
+/// Wire `state` on a `capture-pomodoros` entry. Unknown values decode to
+/// `.other` so a newer bob never breaks the panel.
+public enum CapturePomodorosEntryState: Equatable, Sendable {
+  case open
+  case completed
+  case other
+
+  public init(wireValue: String?) {
+    switch wireValue {
+    case "open":
+      self = .open
+    case "completed":
+      self = .completed
+    default:
+      self = .other
+    }
+  }
+}
+
+extension CapturePomodorosEntryState: Codable {
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    let raw = try? container.decode(String.self)
+    self.init(wireValue: raw)
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    switch self {
+    case .open:
+      try container.encode("open")
+    case .completed:
+      try container.encode("completed")
+    case .other:
+      try container.encode("other")
+    }
+  }
+}
+
+/// Minimal `capture-pomodoros` entry: the fields the close-comma assist
+/// and Control-\ today-Pomodoro landing need. `taskLinkCount` is the size
+/// of the numbered Task Link lineup a plain `=x` close indexes; it is an
+/// integer only on the `isCurrent` entry and null elsewhere. Older bob
+/// binaries omit `task_link_count`, `ref`, and `state`.
 public struct CapturePomodorosListEntry: Decodable, Equatable {
   public let line: Int
   public let name: String?
   public let isCurrent: Bool
   public let taskLinkCount: Int?
+  public let ref: String?
+  public let state: CapturePomodorosEntryState
 
   public init(
     line: Int = 0,
     name: String? = nil,
     isCurrent: Bool = false,
-    taskLinkCount: Int? = nil
+    taskLinkCount: Int? = nil,
+    ref: String? = nil,
+    state: CapturePomodorosEntryState = .other
   ) {
     self.line = line
     self.name = name
     self.isCurrent = isCurrent
     self.taskLinkCount = taskLinkCount
+    self.ref = ref
+    self.state = state
   }
 
   public init(from decoder: Decoder) throws {
@@ -6228,6 +6280,12 @@ public struct CapturePomodorosListEntry: Decodable, Equatable {
     name = try container.decodeIfPresent(String.self, forKey: .name)
     isCurrent = try container.decodeIfPresent(Bool.self, forKey: .isCurrent) ?? false
     taskLinkCount = try container.decodeIfPresent(Int.self, forKey: .taskLinkCount)
+    ref = try container.decodeIfPresent(String.self, forKey: .ref)
+    state =
+      try container.decodeIfPresent(
+        CapturePomodorosEntryState.self,
+        forKey: .state
+      ) ?? .other
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -6235,5 +6293,7 @@ public struct CapturePomodorosListEntry: Decodable, Equatable {
     case name
     case isCurrent = "is_current"
     case taskLinkCount = "task_link_count"
+    case ref
+    case state
   }
 }
