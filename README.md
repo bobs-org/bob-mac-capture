@@ -521,15 +521,19 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
   Return (or Tab, or a click) inserts exactly Bob's `route:block-id` into Bob's range
   and returns to the editor, keeping any typed `#name`/`=<X>`/`=x` suffix — the app
   never synthesizes that grammar, you type it after the insert. Command-Return inserts
-  and captures in one step. An exact `route:block-id` never opens anything. When
+  and captures in one step; Control-Return inserts, captures, and opens the reported
+  notes in Obsidian. An exact `route:block-id` never opens anything. When
   `capture-parse` reports `active_task` in `needs`, the app skips the doomed live dry
   run and shows "Pick an active task — press Tab to browse" instead of red
   incomplete-marker errors. Cached route completion never intercepts `^`, and the
   `active_task_route`/`active_task_block_id` spans reuse the route and block-ID
   highlight colors. The inline completion list is unchanged for every other context.
+  Active Task Picker keys: Return/Tab Insert, Command-Return Insert & Capture,
+  Control-Return Insert, Capture & Open.
 - While the Active Task Picker is open, printable keys edit the filter field natively
   (as do Cmd-A/C/V/X/Z, Ctrl-A/E, and Left/Right). Return/Tab inserts the selected
-  task and returns to the editor; Command-Return inserts and captures;
+  task and returns to the editor; Command-Return inserts and captures; Control-Return
+  inserts, captures, and opens the reported notes;
   Shift/Option-Return and Shift-Tab are consumed. Down/Ctrl-N/Ctrl-J and Up/Ctrl-P/Ctrl-K
   move (wrapping); Page Up/Page Down move one page; Cmd-Up/Home and Cmd-Down/End jump
   to the first/last row. Escape clears a non-empty filter, then cancels (draft
@@ -556,7 +560,8 @@ when linking pulls a future schedule forward,
 
 Return (or Tab) replaces the `:` query with `@route:block-id`; Shift-Return
 inserts `@route:block-id=` so the live preview shows the start before Return
-captures; Command-Return inserts then captures. Escape clears the filter, then
+captures; Command-Return inserts then captures; Control-Return inserts, captures,
+and opens the reported notes. Escape clears the filter, then
 cancels to the reopen chip; Backspace on an empty filter removes the `:` token.
 
 Tasks without an ID show `route:` plus a dim `plus.circle` suggestion; accepting
@@ -571,7 +576,7 @@ the picker with the filter intact.
 Bulk drafts work: each blank-line-separated item is judged alone.
 
 Task Link Picker keys: Return/Tab Link, Shift-Return Link & Start,
-Command-Return Link & Capture, Escape Clear/Cancel, Backspace on empty filter
+Command-Return Link & Capture, Control-Return Link, Capture & Open, Escape Clear/Cancel, Backspace on empty filter
 removes `:`. In the link-mode Add block ID prompt, Tab / Shift-Tab cycle
 suggestions.
 
@@ -592,13 +597,13 @@ and, once that open succeeds, hides the panel and discards the draft. Nothing
 is minted, stamped, linked, walked, or captured. A failed dispatch keeps the
 picker open with "Couldn't open Obsidian".
 
-Return, Tab, click, and Command-Return all Go To the selected row.
+Return, Tab, click, Command-Return, and Control-Return all Go To the selected row.
 Shift-Return and Option-Return are consumed. Escape clears a non-empty
 filter, then cancels to the reopen chip; Backspace on an empty filter removes
 the `/` token and the idle agenda returns. Control-C on a Go To draft
 discards it instead of pushing it to the canceled-draft stash.
 
-Go To Picker keys: Return/Tab/Command-Return Go To, Shift-Return consumed,
+Go To Picker keys: Return/Tab/Command-Return/Control-Return Go To, Shift-Return consumed,
 Escape Clear/Cancel, Backspace on empty filter removes `/`, Control-C
 discards.
 
@@ -635,7 +640,8 @@ inserts that key once, and suppresses reopen so `+2` / `++3` match fast typing.
 Scoped and prose-terminal pickers never use that handoff. A quiet footer hint
 reads **Type a number or + to adjust; Esc to extend +5m**.
 
-Return/Tab selects the task; Command-Return selects then captures;
+Return/Tab selects the task; Command-Return selects then captures; Control-Return
+selects, captures, and opens the reported notes;
 Shift-Return is consumed and never appends `=`. Escape clears a nonempty filter,
 then cancels to the reopen chip (**Select a parent task** / **Append to a
 task**). Backspace on an empty filter uses Bob's `trigger_removal_range`: it
@@ -650,8 +656,9 @@ success inserts the returned ID into the ID-only range. Buttons read Add ID &
 Select / Add ID & Capture.
 
 Parent Task Picker keys: Return/Tab Select Task, Command-Return Select &
-Capture, Escape Clear/Cancel, Backspace on empty filter removes Bob's trigger
-range. In the card-mode Add block ID prompt, Tab / Shift-Tab cycle suggestions.
+Capture, Control-Return Select, Capture & Open, Escape Clear/Cancel, Backspace
+on empty filter removes Bob's trigger range. In the card-mode Add block ID
+prompt, Tab / Shift-Tab cycle suggestions.
 
 ### Dependency Picker
 
@@ -692,6 +699,7 @@ and “Do cleanup tasks”, or + for an existing one**.
 Return (or Tab) replaces only Bob's range with the replacement and returns to
 the editor; at a terminal token one separating space is left for typing another
 `&`. Command-Return inserts then captures only when the dependent is complete;
+Control-Return also opens the reported notes when the dependent is complete;
 with no dependent yet it keeps the draft open ("Add task text or @note+id,
 then capture"). Shift-Return has no start-session behavior on this source.
 Escape restores the draft/caret and shows the Choose dependency chip; Backspace
@@ -704,6 +712,9 @@ dependency mode, calling `bob capture-task-id --note-path` with the exact path
 reopens them) and splicing Bob's `dependency_replacement` verbatim. Escape
 returns to the picker with the filter intact; assignment failure inserts
 nothing. The prompt buttons read Add ID & Use / Add ID & Capture.
+
+Dependency Picker keys: Return/Tab Insert, Command-Return Insert & Capture,
+Control-Return Insert, Capture & Open when the dependent is complete.
 
 ### Blocks Picker
 
@@ -720,10 +731,13 @@ from Bob.
 
 The partial `X *` need shows **Pick a task to block — press Tab to browse**.
 Return or Tab inserts Bob's replacement, Command-Return inserts then captures
-when the owner is complete, and Backspace on an empty filter removes the `*`
+when the owner is complete, Control-Return also opens the reported notes, and Backspace on an empty filter removes the `*`
 token. A line-initial `*` stays a Markdown bullet placeholder. ID-less rows use
 `capture-task-id --note-path` and splice `blocked_task_replacement`; older Bob
 shows **This Bob is too old for blocked-task picks. Update Bob first.**
+
+Blocks Picker keys: Return/Tab Insert, Command-Return Insert & Capture,
+Control-Return Insert, Capture & Open when the owner is complete.
 
 ### Complete Picker
 
@@ -751,7 +765,8 @@ and the disabled reason).
 Return (or Tab) inserts Bob's `!note:block-id`; Shift-Return inserts, appends
 a blank line plus `!`, and the fresh picker opens with the just-picked task
 marked "Already in this draft" for bulk completions; Command-Return inserts,
-then captures. With an empty filter, Bob's continuation keys `!` and `[`
+then captures; Control-Return inserts, captures, and opens Bob's reported notes.
+With an empty filter, Bob's continuation keys `!` and `[`
 close the picker and type the key, so `!!` falls back to prose and `![`
 hands off to embed completion. Escape and Backspace behave as in `:`.
 
@@ -759,6 +774,9 @@ ID-less rows open the Add block ID prompt via `capture-task-id --note-path`
 and splice Bob's `complete_replacement` verbatim; Swift never builds the
 token. The prompt previews `!<locator>:<id>` from Bob's candidate locator,
 never the file name. The buttons read Add ID & Insert and Add ID & Complete.
+
+Complete Picker keys: Return/Tab Insert, Command-Return Insert & Capture,
+Control-Return Insert, Capture & Open.
 
 Preview shows one `⛓ depends on · Buy shoes · foo.md ^bar · Ready → In Progress` or
 `🧱 blocks · Do cleanup tasks · job.md ^cleanup · Next → Blocked` row per
@@ -1002,8 +1020,9 @@ legacy preview and notification copy.
 - `bob capture --format json` keeps the legacy top-level first result for a single
   capture or compatibility fallback, and may add an ordered `captures` array for a batch.
   The app normalizes both shapes to one collection before updating preview, status,
-  VoiceOver announcements, notification content, and Command-Return opening; it keeps the
-  additive top-level `global_destination` summary alongside that normalized collection
+  VoiceOver announcements, and notification content; it forwards the batch-level
+  `open_notes` array unchanged for Control-Return instead of re-deriving destinations.
+  It keeps the additive top-level `global_destination` summary alongside that normalized collection
   and never splits a draft into multiple mutating `bob` subprocesses. When live preview
   reports exactly one `task_toggle`, the footer's primary action changes from
   **Capture** to **Set Next**, **Set Open**, or **Ensure Next** according to
@@ -1198,8 +1217,10 @@ legacy preview and notification copy.
   cancels every outstanding invocation via `cancelActiveProcess()`.
 - A successful aggregate capture hides the panel automatically only after Bob returns
   success for the whole draft; a failed capture keeps the panel open with its complete
-  draft and an actionable error. Command-Return opens every unique returned target in
-  source order. Reopening the panel after a success starts from a clean slate — the prior
+  draft and an actionable error. Control-Return opens Bob's `open_notes` through one
+  `bob-open-notes` URL, which opens tabs and lands on each captured line. This needs the
+  new `bob-navigation-hotkeys` handler; an older plugin opens notes without landing.
+  Reopening the panel after a success starts from a clean slate — the prior
   "Captured → …" summary and status text are cleared, while a retained draft (from Escape
   or a failure) reopens exactly as it was left. Closing the panel never destroys a draft.
   **Discard** permanently clears the draft, while Control-C stashes a semantically
@@ -1267,9 +1288,10 @@ the task goes if clipping fails. The footer action is **Queue** for a queued
 single link and **Done** for an already-known one; batches keep **Capture**.
 The editor underlines the whole link in the link color via the `ref_url` span.
 Notifications read `Queued for reading: <link>` (or `Already in your library:
-<title>`), and Command-Return opens the note or intake PDF only for
-`in_library` and `in_intake` — a queued link opens nothing, because Bob reports
-no target for it. An older Bob without the `ref` object keeps capturing the
+<title>`), and Control-Return opens the note or intake PDF only for
+`in_library` and `in_intake`, using Bob's landing data; a queued link opens
+nothing, because Bob reports no target for it. Command-Return is the editor
+alias. An older Bob without the `ref` object keeps capturing the
 link as an ordinary task with the standard card; upgrade Bob before queueing
 links. Queueing can be turned off per draft with `bob capture -R/--no-ref`.
 
@@ -1818,7 +1840,8 @@ Bob Refs shortcuts:
 | Key | In the editor | While completion is visible | While Add block ID is open | While Name Pomodoro is open |
 | --- | --- | --- | --- | --- |
 | Return | Capture, then close the panel | Accept the selected completion | Add the ID and select the task | Name the Pomodoro and select it |
-| Command-Return | Capture, open the target in Obsidian, then close the panel | Accept, then submit | Consume the key; do not capture | Consume the key; do not capture |
+| Control-Return | Capture, open Bob's reported notes on their captured lines, then close the panel | Accept, then capture and open if no picker or prompt follows (template headers only accept) | Same as Return; keep an open intent from a picker | Same as Return; keep an open intent from a picker |
+| Command-Return | Same as Control-Return | Same as Control-Return | Consume the key; do not capture | Consume the key; do not capture |
 | Shift-Return / Option-Return | Insert a newline | Insert a newline | Add the ID and select the task | Name the Pomodoro and select it |
 | Ctrl-J | Insert a new indentation-aware `- ` row; anywhere before a populated dash bullet's body, remove the prefix into a blank separator and keep its body; in a template draft, as reported by bob's parse, insert a plain newline | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
 | Ctrl-Shift-O | Insert a blank physical line immediately above the current line and move the caret onto it | Same edit, and close completion | Native text-field behavior | Native text-field behavior |
@@ -1850,7 +1873,8 @@ highlight, including from the filter. Space marks or unmarks the highlighted off
 whenever the filter is empty or unfocused, including immediately after the card opens.
 The filter takes spaces only once it holds text. Command-A marks every offer,
 Shift-Return is Skip: it commits with no offers, and Escape returns to the unchanged
-draft without writing. The card shows Bob's global offer numbers, destinations,
+draft without writing. Control-Return confirms with Return's selection rule, captures,
+and opens Bob's reported notes. The card shows Bob's global offer numbers, destinations,
 project folds, blocked residents, and a projected plan-link count when Bob supplied
 the budget. It is a full-width card like the task picker, with a context line naming
 what unblocked the offers, destination capsules that turn green on the offers Return
@@ -2331,11 +2355,13 @@ authorized notification body content is the captured semantic text; failure
 notifications still carry only the bounded error message. The install-complete banner
 uses fixed copy with no path, identity, version, or capture text.
 
-Capture notifications register singular and plural foreground actions (`Open Note` and
-`Open Notes`). The notification stores the legacy first `targetPath` plus an ordered
-`targetPaths` array, and clicking the notification or pressing its open action routes
-every unique Obsidian destination in source order. If Bob returns no usable destination,
-the notification remains informative and omits the open action. Settings shows live
+Capture notifications register a foreground action named for the note count and store
+Bob's open-plan payload. Clicking the notification or pressing its open action sends
+one `bob-open-notes` URL. Older delivered notifications still route from their
+`targetPath` or `targetPaths` values. If Bob reports no usable destination, the
+notification remains informative and omits the open action. A Control-Return open
+success skips the capture-success banner; an open failure posts “Captured, but
+Obsidian didn't open” with the error. Settings shows live
 authorization status, a button to request authorization, a link to the system
 notification settings pane, and a test-notification action.
 

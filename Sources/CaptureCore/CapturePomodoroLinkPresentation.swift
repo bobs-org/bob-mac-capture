@@ -38,9 +38,8 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
     /// `"2026/20260710.md \u{00b7} under BUGS"`. `nil` only when Bob omitted
     /// `day_file`, which a link result never does.
     public let dayFileDestinationLabel: String?
-    /// Whether the daily note's content actually changed, so a Command-Return open
-    /// after capture knows whether to also open the day file alongside the route
-    /// note, and so notifications only offer it when it changed.
+    /// Legacy `CaptureOpenPlan` fallback signal for whether to include the daily note
+    /// alongside the route note when an older Bob omits `open_notes`.
     public let dayFileChanged: Bool
     /// `"Start"` when Bob reported an atomic `pomodoro_start`, else `"Link"` — the
     /// footer's primary action verb. Does not vary with `isDryRun`: it always

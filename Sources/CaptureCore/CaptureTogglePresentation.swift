@@ -29,8 +29,8 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
     /// there is no named Pomodoro (or the direction is `open`/`unlink`, where naming is inert).
     /// `nil` only when Bob omitted `day_file`, which a toggle result never does.
     public let dayFileDestinationLabel: String?
-    /// Whether the daily note's content actually changed, so a Command-Return open
-    /// after capture knows whether to also open the day file alongside the route note.
+    /// Legacy `CaptureOpenPlan` fallback signal for whether to include the daily note
+    /// alongside the route note when an older Bob omits `open_notes`.
     public let dayFileChanged: Bool
 
     public let previousTaskLine: String

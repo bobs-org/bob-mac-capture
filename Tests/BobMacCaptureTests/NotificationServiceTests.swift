@@ -26,7 +26,7 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertEqual(content.title, "Task captured")
         XCTAssertEqual(content.subtitle, "cash.md")
         XCTAssertEqual(content.body, "Call bank\nScheduled: 2026-08-18")
-        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureCategoryIdentifier)
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureOpenPlanCategoryIdentifier(count: 1))
         XCTAssertEqual(
             content.userInfo[NotificationService.targetPathKey] as? String,
             "/Users/bryan/bob/cash.md"
@@ -351,7 +351,7 @@ final class NotificationServiceTests: XCTestCase {
             Next: CAPTURE · new · carries 2 links
             """
         )
-        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureCategoryIdentifier)
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureOpenPlanCategoryIdentifier(count: 1))
     }
 
     func testPomodoroLinkCloseNotificationUsesCloseTitleAndBody() throws {
@@ -589,7 +589,7 @@ final class NotificationServiceTests: XCTestCase {
 
         XCTAssertEqual(content.title, "2 items captured")
         XCTAssertEqual(content.subtitle, "1 note, 1 task across 1 destination")
-        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureCategoryIdentifier)
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureOpenPlanCategoryIdentifier(count: 1))
         XCTAssertEqual(
             content.userInfo[NotificationService.targetPathsKey] as? [String],
             ["/Users/bryan/bob/today.md"]
@@ -621,7 +621,7 @@ final class NotificationServiceTests: XCTestCase {
 
         XCTAssertEqual(content.title, "2 items captured")
         XCTAssertEqual(content.subtitle, "2 tasks \u{00b7} foo.md")
-        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureCategoryIdentifier)
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureOpenPlanCategoryIdentifier(count: 1))
         XCTAssertTrue(content.body.contains("1. First task"))
         XCTAssertTrue(content.body.contains("2. Second task"))
         XCTAssertFalse(content.body.contains("-> foo.md"))
@@ -677,7 +677,7 @@ final class NotificationServiceTests: XCTestCase {
             globalDestination: CaptureGlobalDestination(mode: "task", route: "foo")
         )
 
-        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureBatchCategoryIdentifier)
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureOpenPlanCategoryIdentifier(count: 2))
         XCTAssertEqual(
             content.userInfo[NotificationService.targetPathsKey] as? [String],
             [
@@ -710,7 +710,7 @@ final class NotificationServiceTests: XCTestCase {
 
         XCTAssertEqual(content.title, "2 items captured")
         XCTAssertEqual(content.subtitle, "1 note, 1 task across 2 destinations")
-        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureBatchCategoryIdentifier)
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureOpenPlanCategoryIdentifier(count: 2))
         XCTAssertEqual(
             content.userInfo[NotificationService.targetPathsKey] as? [String],
             [
@@ -745,7 +745,7 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertTrue(content.body.contains("+ [[cash#^goog-exit]]"))
         // Two files changed (the route note and the daily note), so this uses the
         // plural "Open Notes" category the same way an ordinary multi-target batch does.
-        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureBatchCategoryIdentifier)
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureOpenPlanCategoryIdentifier(count: 2))
         XCTAssertEqual(
             content.userInfo[NotificationService.targetPathsKey] as? [String],
             ["/tmp/bob/cash.md", "/tmp/bob/2026/20260910.md"]
@@ -762,7 +762,7 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertTrue(content.body.contains("Ready \u{2192} Next"))
         XCTAssertTrue(content.body.contains("Moved LATER \u{2192} CURRENT"))
         XCTAssertFalse(content.body.contains("+ [["))
-        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureBatchCategoryIdentifier)
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureOpenPlanCategoryIdentifier(count: 2))
         XCTAssertEqual(
             content.userInfo[NotificationService.targetPathsKey] as? [String],
             ["/tmp/bob/cash.md", "/tmp/bob/2026/20260910.md"]
@@ -775,7 +775,7 @@ final class NotificationServiceTests: XCTestCase {
         ])
 
         XCTAssertEqual(content.title, "Already Next")
-        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureCategoryIdentifier)
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureOpenPlanCategoryIdentifier(count: 1))
         XCTAssertEqual(
             content.userInfo[NotificationService.targetPathKey] as? String,
             "/tmp/bob/cash.md"
@@ -799,7 +799,7 @@ final class NotificationServiceTests: XCTestCase {
 
         XCTAssertEqual(content.title, "Ensured Next and created")
         XCTAssertTrue(content.body.contains("created FRESH"))
-        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureBatchCategoryIdentifier)
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureOpenPlanCategoryIdentifier(count: 2))
         XCTAssertEqual(
             content.userInfo[NotificationService.targetPathsKey] as? [String],
             ["/tmp/bob/cash.md", "/tmp/bob/2026/20260910.md"]
@@ -815,7 +815,7 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertEqual(content.subtitle, "sase.md \u{00b7} ^ready")
         XCTAssertTrue(content.body.contains("Todo \u{2192} Next"))
         XCTAssertTrue(content.body.contains("Linked under BUGS"))
-        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureBatchCategoryIdentifier)
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureOpenPlanCategoryIdentifier(count: 2))
         XCTAssertEqual(
             content.userInfo[NotificationService.targetPathsKey] as? [String],
             ["/tmp/bob/sase.md", "/tmp/bob/2026/20260710.md"]
@@ -829,7 +829,7 @@ final class NotificationServiceTests: XCTestCase {
 
         XCTAssertEqual(content.title, "Already in BUGS")
         XCTAssertTrue(content.body.contains("Task Link already in BUGS; no ledger change."))
-        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureCategoryIdentifier)
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureOpenPlanCategoryIdentifier(count: 1))
         // The unchanged day file is excluded; the single route note still yields ordered paths.
         XCTAssertEqual(
             content.userInfo[NotificationService.targetPathsKey] as? [String],
@@ -890,7 +890,7 @@ final class NotificationServiceTests: XCTestCase {
             toggleCapture(direction: "next", dayFileChanged: false),
         ])
 
-        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureCategoryIdentifier)
+        XCTAssertEqual(content.categoryIdentifier, NotificationService.captureOpenPlanCategoryIdentifier(count: 1))
         XCTAssertEqual(
             content.userInfo[NotificationService.targetPathsKey] as? [String],
             ["/tmp/bob/cash.md"]
@@ -930,6 +930,7 @@ final class NotificationServiceTests: XCTestCase {
     func testCaptureCategoriesRegisterSingularAndPluralOpenActions() {
         let singular = NotificationService.captureCategory()
         let plural = NotificationService.captureBatchCategory()
+        let counted = NotificationService.captureOpenPlanCategory(count: 3)
 
         XCTAssertEqual(singular.identifier, NotificationService.captureCategoryIdentifier)
         XCTAssertEqual(singular.actions.map(\.identifier), [NotificationService.openNoteActionIdentifier])
@@ -939,14 +940,69 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertEqual(plural.identifier, NotificationService.captureBatchCategoryIdentifier)
         XCTAssertEqual(plural.actions.map(\.identifier), [NotificationService.openNotesActionIdentifier])
         XCTAssertEqual(plural.actions[0].title, "Open Notes")
+        XCTAssertEqual(counted.identifier, NotificationService.captureOpenPlanCategoryIdentifier(count: 3))
+        XCTAssertEqual(counted.actions.map(\.identifier), [NotificationService.openNotesActionIdentifier])
+        XCTAssertEqual(counted.actions[0].title, "Open 3 Notes")
         XCTAssertEqual(
             Set(NotificationService.captureCategories().map(\.identifier)),
-            [
+            Set([
                 NotificationService.captureCategoryIdentifier,
                 NotificationService.captureBatchCategoryIdentifier,
                 NotificationService.installRestartCategoryIdentifier,
                 NotificationService.refsScanCategoryIdentifier,
-            ]
+            ] + (1...8).map { NotificationService.captureOpenPlanCategoryIdentifier(count: $0) })
+        )
+    }
+
+    func testOpenPlanNotificationActionUsesOneBobOpenNotesURL() {
+        let notes = [
+            CaptureOpenNote(
+                path: "/Users/bryan/bob/work notes.md",
+                relativePath: "work notes.md",
+                role: .note,
+                label: "work notes",
+                line: 42,
+                ref: "42:35a733bd"
+            ),
+            CaptureOpenNote(
+                path: "/Users/bryan/bob/2026/20261017.md",
+                relativePath: "2026/20261017.md",
+                role: .day,
+                label: "Today",
+                line: 18
+            ),
+        ]
+        let plan = CaptureOpenPlan(openNotes: notes, captures: [])
+        let content = NotificationService.successContent(captures: [], openPlan: plan)
+
+        XCTAssertEqual(
+            content.categoryIdentifier,
+            NotificationService.captureOpenPlanCategoryIdentifier(count: 2)
+        )
+        XCTAssertEqual((content.userInfo[NotificationService.openPlanKey] as? [[String: Any]])?.count, 2)
+        let urls = NotificationService.targetURLs(
+            forActionIdentifier: UNNotificationDefaultActionIdentifier,
+            userInfo: content.userInfo
+        )
+        XCTAssertEqual(urls.count, 1)
+        XCTAssertEqual(urls[0].scheme, "obsidian")
+        XCTAssertEqual(urls[0].host, "bob-open-notes")
+        let query = URLComponents(url: urls[0], resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(query.first(where: { $0.name == "count" })?.value, "2")
+        XCTAssertEqual(query.first(where: { $0.name == "path1" })?.value, notes[0].path)
+        XCTAssertEqual(query.first(where: { $0.name == "line1" })?.value, "42")
+        XCTAssertEqual(query.first(where: { $0.name == "ref1" })?.value, notes[0].ref)
+        XCTAssertEqual(query.first(where: { $0.name == "path2" })?.value, notes[1].path)
+    }
+
+    func testOpenFailureNotificationCarriesTheReportedError() {
+        let content = NotificationService.openFailureContent(message: "Obsidian returned an open error")
+
+        XCTAssertEqual(content.title, "Captured, but Obsidian didn't open")
+        XCTAssertEqual(content.body, "Obsidian returned an open error")
+        XCTAssertEqual(
+            content.userInfo[NotificationService.openErrorKey] as? String,
+            "Obsidian returned an open error"
         )
     }
 

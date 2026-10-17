@@ -26,6 +26,7 @@ enum CaptureTaskLinkFollowUp: Equatable, Sendable {
     case none
     case start
     case submit
+    case submitAndOpen
 }
 
 /// Why the Add block ID prompt is open.
@@ -54,7 +55,7 @@ enum CaptureTaskIDPromptPurpose: Equatable {
     /// Dependency mode for an ID-less `&` row: name the task with the exact
     /// vault-relative note path (never the lowercased route), then splice
     /// Bob's `dependency_replacement`. No start-session follow-up exists on
-    /// this source: only `.none` and `.submit` occur. `allowClosed` permits
+    /// this source: `.none`, `.submit`, and `.submitAndOpen` occur. `allowClosed` permits
     /// Done/Cancelled history rows without reopening them.
     case dependency(
         notePath: String,
@@ -75,8 +76,8 @@ enum CaptureTaskIDPromptPurpose: Equatable {
     )
     /// Complete mode for an ID-less `!` row: name the task with the exact
     /// vault-relative note path (never the lowercased route), then splice
-    /// Bob's `complete_replacement`. Only `.none` and `.submit` occur:
-    /// Shift-Return chains via the picker, never via the prompt.
+    /// Bob's `complete_replacement`. Shift-Return chains via the picker,
+    /// never via the prompt.
     case taskComplete(
         notePath: String,
         taskRef: String,
@@ -294,11 +295,32 @@ final class CapturePanelModel: ObservableObject {
         }
     }
     var notificationService: NotificationService?
-    var targetOpener: (URL) -> Void = { NSWorkspace.shared.open($0) }
+    /// Optional notification seams for model tests; production leaves these
+    /// nil and posts through `notificationService`.
+    var captureSuccessNotifier: ((
+        [CaptureCommandSuccess],
+        CaptureGlobalDestination?,
+        CaptureOpenPlan
+    ) -> Void)?
+    var captureOpenFailureNotifier: ((String) -> Void)?
+    /// Capture note dispatch. Production opens bob's single
+    /// `obsidian://bob-open-notes` URL through an activating workspace call
+    /// and reports success on the main actor. Tests inject a closure.
+    var noteOpener: (
+        URL,
+        @escaping @MainActor (Bool) -> Void
+    ) -> Void = { url, completion in
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        NSWorkspace.shared.open(url, configuration: configuration) { _, error in
+            Task { @MainActor in
+                completion(error == nil)
+            }
+        }
+    }
     /// Read-only Go To dispatch. Production opens `obsidian://bob-goto-task`
     /// through `NSWorkspace` with `activates = true` and reports success on
-    /// the main actor. Tests inject a closure. Distinct from `targetOpener`,
-    /// which still opens capture-result note URLs synchronously.
+    /// the main actor. Tests inject a closure.
     var taskGotoOpener: (
         URL,
         @escaping @MainActor (Bool) -> Void
@@ -1777,8 +1799,16 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func confirmPullInChoice() {
-        guard let choice = pullInChoice, !isSubmitting else {
+        confirmPullInChoice(openAfterCapture: false)
+    }
+
+    func confirmPullInChoice(openAfterCapture: Bool) {
+        guard var choice = pullInChoice, !isSubmitting else {
             return
+        }
+        if openAfterCapture {
+            choice.openAfterCapture = true
+            pullInChoice = choice
         }
         let keys = choice.effectiveSelectionKeys
         guard !keys.isEmpty else {
@@ -3733,8 +3763,8 @@ final class CapturePanelModel: ObservableObject {
     /// auto-open only on `.edit` when not suppressed, show the chip on
     /// `.selection`, and refetch the full list at `r.start` when the caret
     /// is past it. Choosing a prerequisite stays allowed before the
-    /// dependent exists: the owner rides along for the header and the
-    /// Command-Return gate, never to block the pick itself.
+    /// dependent exists: the owner rides along for the header and capture
+    /// follow-up gate, never to block the pick itself.
     private func handleDependencyCompletion(
         _ completion: CaptureCompletionResponse,
         draft: String,
@@ -4293,11 +4323,19 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func acceptSelectedPickerRow(submitAfterInsert: Bool) {
+        acceptSelectedPickerRow(followUp: submitAfterInsert ? .submit : .none)
+    }
+
+    func acceptSelectedPickerRowAndSubmitAndOpen() {
+        acceptSelectedPickerRow(followUp: .submitAndOpen)
+    }
+
+    private func acceptSelectedPickerRow(followUp: CaptureTaskLinkFollowUp) {
         guard let selectedRowID = picker?.selectedRowID else {
             // An empty-list accept is a no-op.
             return
         }
-        acceptPickerRow(id: selectedRowID, submitAfterInsert: submitAfterInsert)
+        acceptPickerRow(id: selectedRowID, followUp: followUp)
     }
 
     func acceptSelectedPickerRowAndStart() {
@@ -4315,6 +4353,10 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func acceptPickerRow(id: String, submitAfterInsert: Bool) {
+        acceptPickerRow(id: id, followUp: submitAfterInsert ? .submit : .none)
+    }
+
+    private func acceptPickerRow(id: String, followUp: CaptureTaskLinkFollowUp) {
         if picker?.source == .taskGoto {
             acceptTaskGotoRow(id: id)
             return
@@ -4341,7 +4383,7 @@ final class CapturePanelModel: ObservableObject {
             presentTaskLinkIDPrompt(
                 pending: pending,
                 pickerSnapshot: picker,
-                followUp: submitAfterInsert ? .submit : .none
+                followUp: followUp
             )
             return
         }
@@ -4349,7 +4391,7 @@ final class CapturePanelModel: ObservableObject {
             presentParentTaskIDPrompt(
                 pending: pending,
                 pickerSnapshot: picker,
-                followUp: submitAfterInsert ? .submit : .none
+                followUp: followUp
             )
             return
         }
@@ -4357,7 +4399,7 @@ final class CapturePanelModel: ObservableObject {
             presentDependencyIDPrompt(
                 pending: pending,
                 pickerSnapshot: picker,
-                followUp: submitAfterInsert ? .submit : .none
+                followUp: followUp
             )
             return
         }
@@ -4365,7 +4407,7 @@ final class CapturePanelModel: ObservableObject {
             presentBlockedTaskIDPrompt(
                 pending: pending,
                 pickerSnapshot: picker,
-                followUp: submitAfterInsert ? .submit : .none
+                followUp: followUp
             )
             return
         }
@@ -4373,7 +4415,7 @@ final class CapturePanelModel: ObservableObject {
             presentTaskCompleteIDPrompt(
                 pending: pending,
                 pickerSnapshot: picker,
-                followUp: submitAfterInsert ? .submit : .none
+                followUp: followUp
             )
             return
         }
@@ -4440,14 +4482,14 @@ final class CapturePanelModel: ObservableObject {
         } else {
             announceStatus("Inserted \(row.detail.insertionPrefix)\(insertionText)")
         }
-        if submitAfterInsert {
+        if followUp == .submit || followUp == .submitAndOpen {
             if (source == .dependency || source == .blockedTask), owner == nil {
                 // No dependent yet: keep the draft open and teach the next
                 // step instead of submitting an ownerless pick.
                 announceStatus("Add task text or @note+id, then capture")
                 return
             }
-            submit(openAfterCapture: false)
+            submit(openAfterCapture: followUp == .submitAndOpen)
         }
     }
 
@@ -5434,14 +5476,29 @@ final class CapturePanelModel: ObservableObject {
         selectedCompletionIndex = (selectedCompletionIndex + count - 1) % count
     }
 
-    func acceptSelectedCompletion() {
+    func acceptSelectedCompletionThenSubmitAndOpen() {
+        let isTemplateHeader = selectedCompletion?.replacement.hasPrefix("@@template:") ?? false
+        guard acceptSelectedCompletion(),
+              !isTemplateHeader,
+              !completionVisible,
+              !pickerVisible,
+              !inlinePromptVisible,
+              hasDraft
+        else {
+            return
+        }
+        submit(openAfterCapture: true)
+    }
+
+    @discardableResult
+    func acceptSelectedCompletion() -> Bool {
         guard let completionResponse,
               let candidate = selectedCompletion,
               let range = stringRange(in: plainDraft, byteRange: completionResponse.replacement)
         else {
             statusText = "Completion range is stale"
             dismissCompletion()
-            return
+            return false
         }
 
         if completionResponse.context == "task", candidate.requiresBlockID {
@@ -5450,7 +5507,7 @@ final class CapturePanelModel: ObservableObject {
                 draftSnapshot: plainDraft,
                 replacementRange: completionResponse.replacement
             )
-            return
+            return true
         }
 
         // A `pomodoro_start_name` create row either makes a brand-new session
@@ -5463,7 +5520,7 @@ final class CapturePanelModel: ObservableObject {
                 range: range,
                 completionResponse: completionResponse
             ) else {
-                return
+                return false
             }
             let name = candidate.name.flatMap { $0.isEmpty ? nil : $0 } ?? candidate.replacement
             if candidate.state == "completed" {
@@ -5472,7 +5529,7 @@ final class CapturePanelModel: ObservableObject {
                 announceStatus("\(name) will be created and started when captured")
             }
             requestFocus(.editor)
-            return
+            return true
         }
 
         if completionResponse.context == "pomodoro_name", candidate.createsPomodoro {
@@ -5481,12 +5538,12 @@ final class CapturePanelModel: ObservableObject {
                 range: range,
                 completionResponse: completionResponse
             ) else {
-                return
+                return false
             }
             let name = candidate.name.flatMap { $0.isEmpty ? nil : $0 } ?? candidate.replacement
             announceStatus("\(name) will be created when captured")
             requestFocus(.editor)
-            return
+            return true
         }
 
         // A `pomodoro_start_name` name-it row shares the `pomodoro_name`
@@ -5501,10 +5558,10 @@ final class CapturePanelModel: ObservableObject {
                 draftSnapshot: plainDraft,
                 replacementRange: completionResponse.replacement
             )
-            return
+            return true
         }
 
-        _ = applySelectedCompletionReplacement(
+        return applySelectedCompletionReplacement(
             candidate: candidate,
             range: range,
             completionResponse: completionResponse
@@ -6333,8 +6390,8 @@ final class CapturePanelModel: ObservableObject {
                 statusText = "Added ^\(success.blockID) to \(success.relativeTarget)"
                 announceStatus("Added ^\(success.blockID) to \(success.route).md and inserted \(link)")
                 requestFocus(.editor)
-                if followUp == .submit {
-                    submit(openAfterCapture: false)
+                if followUp == .submit || followUp == .submitAndOpen {
+                    submit(openAfterCapture: followUp == .submitAndOpen)
                 }
                 return
             }
@@ -6380,8 +6437,8 @@ final class CapturePanelModel: ObservableObject {
                 statusText = "Added ^\(success.blockID) to \(success.relativeTarget)"
                 announceStatus("Added ^\(success.blockID) to \(success.relativeTarget) and inserted \(replacement)")
                 requestFocus(.editor)
-                if followUp == .submit {
-                    submit(openAfterCapture: false)
+                if followUp == .submit || followUp == .submitAndOpen {
+                    submit(openAfterCapture: followUp == .submitAndOpen)
                 }
                 return
             }
@@ -6436,8 +6493,8 @@ final class CapturePanelModel: ObservableObject {
                 statusText = "Added ^\(success.blockID) to \(success.relativeTarget)"
                 announceStatus("Added ^\(success.blockID) to \(success.relativeTarget) and inserted \(replacement)")
                 requestFocus(.editor)
-                if followUp == .submit {
-                    submit(openAfterCapture: false)
+                if followUp == .submit || followUp == .submitAndOpen {
+                    submit(openAfterCapture: followUp == .submitAndOpen)
                 }
                 return
             }
@@ -6524,8 +6581,8 @@ final class CapturePanelModel: ObservableObject {
         statusText = "Added ^\(success.blockID) to \(success.relativeTarget)"
         announceStatus("Added ^\(success.blockID) to \(success.relativeTarget) and inserted \(replacement)")
         requestFocus(.editor)
-        if followUp == .submit {
-            submit(openAfterCapture: false)
+        if followUp == .submit || followUp == .submitAndOpen {
+            submit(openAfterCapture: followUp == .submitAndOpen)
         }
     }
 
@@ -6592,8 +6649,8 @@ final class CapturePanelModel: ObservableObject {
         statusText = "Added ^\(success.blockID) to \(success.relativeTarget)"
         announceStatus("Added ^\(success.blockID) to \(success.relativeTarget) and inserted \(insertion)")
         requestFocus(.editor)
-        if followUp == .submit {
-            submit(openAfterCapture: false)
+        if followUp == .submit || followUp == .submitAndOpen {
+            submit(openAfterCapture: followUp == .submitAndOpen)
         }
     }
 
@@ -6628,6 +6685,7 @@ final class CapturePanelModel: ObservableObject {
         switch response {
         case .success(let success):
             let captures = success.normalizedCaptures
+            let openPlan = CaptureOpenPlan(openNotes: success.openNotes, captures: captures)
             invalidateAnalysis()
             rememberRefParent(captures: captures)
             lastSuccess = captures.first
@@ -6675,14 +6733,19 @@ final class CapturePanelModel: ObservableObject {
             templateOrigin = nil
             successAnnouncementTick += 1
             savedTemplateShelf.refresh(reason: .submit)
-            notificationService?.notifyCaptureSuccess(
-                captures: captures,
-                globalDestination: success.globalDestination
-            )
-            if openAfterCapture {
-                for url in uniqueTargetURLs(from: captures) {
-                    targetOpener(url)
+            if openAfterCapture,
+               let url = ObsidianOpenURL.openNotesURL(for: openPlan)
+            {
+                noteOpener(url) { [weak self] didOpen in
+                    guard let self, !didOpen else { return }
+                    self.postCaptureOpenFailure(message: "Obsidian could not open the requested capture notes.")
                 }
+            } else {
+                postCaptureSuccess(
+                    captures: captures,
+                    globalDestination: success.globalDestination,
+                    openPlan: openPlan
+                )
             }
             panelDismisser()
         case .failure(let failure):
@@ -6722,6 +6785,30 @@ final class CapturePanelModel: ObservableObject {
             errorCode = failure.code
             statusText = "Capture failed"
             notificationService?.notifyCaptureFailure(message: failure.error)
+        }
+    }
+
+    private func postCaptureSuccess(
+        captures: [CaptureCommandSuccess],
+        globalDestination: CaptureGlobalDestination?,
+        openPlan: CaptureOpenPlan
+    ) {
+        if let captureSuccessNotifier {
+            captureSuccessNotifier(captures, globalDestination, openPlan)
+        } else {
+            notificationService?.notifyCaptureSuccess(
+                captures: captures,
+                globalDestination: globalDestination,
+                openPlan: openPlan
+            )
+        }
+    }
+
+    private func postCaptureOpenFailure(message: String) {
+        if let captureOpenFailureNotifier {
+            captureOpenFailureNotifier(message)
+        } else {
+            notificationService?.notifyCaptureOpenFailure(message: message)
         }
     }
 
@@ -7981,60 +8068,6 @@ final class CapturePanelModel: ObservableObject {
 
     private func displayLabel(for capture: CaptureCommandSuccess) -> String {
         capture.routeLabel.isEmpty ? capture.relativeTarget : capture.routeLabel
-    }
-
-    // A toggle's or link's route note and Bob's daily note may be the same file, or
-    // the daily note may be untouched (nothing was linked, moved, or started) — both
-    // are handled by `seen` deduplication plus gating the day file on
-    // `dayFileChanged`, so Command-Return never opens a note the capture didn't
-    // actually write to.
-    private func uniqueTargetURLs(from captures: [CaptureCommandSuccess]) -> [URL] {
-        var seen = Set<String>()
-        var urls: [URL] = []
-        func appendURL(forAbsolutePath path: String) {
-            guard seen.insert(path).inserted,
-                  let url = ObsidianOpenURL.url(forAbsolutePath: path)
-            else {
-                return
-            }
-            urls.append(url)
-        }
-        for capture in captures {
-            appendURL(forAbsolutePath: capture.target)
-            if let dayFile = capture.dayFile, Self.captureWroteDayFile(capture) {
-                appendURL(forAbsolutePath: dayFile)
-            }
-        }
-        return urls
-    }
-
-    private static func captureWroteDayFile(_ capture: CaptureCommandSuccess) -> Bool {
-        if CapturePomodoroResetPresentation(capture: capture) != nil {
-            return true
-        }
-        if CapturePomodoroClosePresentation(capture: capture) != nil {
-            return true
-        }
-        if CapturePomodoroStartPresentation.isSessionStart(capture) {
-            return true
-        }
-        if let toggle = CaptureTogglePresentation(capture: capture) {
-            return toggle.dayFileChanged
-        }
-        if CaptureTaskCompletePresentation(capture: capture) != nil {
-            // Bob sets the top-level `day_file` whenever the gesture
-            // changed the day file, and a linked successor always changes
-            // it — even when the predecessor had no ledger entry of its own.
-            guard let complete = capture.taskComplete else { return false }
-            return complete.ledger != nil || complete.unblocked.contains { $0.link != nil }
-        }
-        if let link = CapturePomodoroLinkPresentation(capture: capture) {
-            return link.dayFileChanged
-        }
-        if let note = capture.projectNote, !note.taskLinks.isEmpty {
-            return true
-        }
-        return false
     }
 
     private static func blockIDValidationMessage(for blockID: String) -> String? {

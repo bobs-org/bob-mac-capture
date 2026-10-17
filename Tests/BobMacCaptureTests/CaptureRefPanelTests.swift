@@ -64,7 +64,10 @@ final class CaptureRefPanelTests: XCTestCase {
     func testQueuedSubmitOpensNothing() async throws {
         let model = try refModel(draft: "https://example.com/post")
         var openedURLs: [URL] = []
-        model.targetOpener = { openedURLs.append($0) }
+        model.noteOpener = { url, completion in
+            openedURLs.append(url)
+            completion(true)
+        }
 
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
@@ -76,10 +79,11 @@ final class CaptureRefPanelTests: XCTestCase {
     func testInLibrarySubmitOpensTheNote() async throws {
         let model = try refModel(draft: "https://example.com/captured")
         var openedPaths: [String] = []
-        model.targetOpener = { url in
+        model.noteOpener = { url, completion in
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-            let path = components?.queryItems?.first { $0.name == "path" }?.value
+            let path = components?.queryItems?.first { $0.name == "path1" }?.value
             openedPaths.append(path ?? "")
+            completion(true)
         }
 
         model.submit(openAfterCapture: true)

@@ -1286,19 +1286,23 @@ private struct TaskIDPromptCard: View {
                 return "Add ID & Start"
             case .submit:
                 return "Add ID & Capture"
+            case .submitAndOpen:
+                return "Add ID, Capture & Open"
             }
         case .dependency(_, _, _, let followUp, _, _):
             switch followUp {
-            case .submit:
+            case .submit, .submitAndOpen:
                 return "Add ID & Capture"
             case .none, .start:
                 return "Add ID & Use"
             }
         case .blockedTask(_, _, _, let followUp, _):
-            return followUp == .submit ? "Add ID & Capture" : "Add ID & Use"
+            return followUp == .submit || followUp == .submitAndOpen
+                ? "Add ID & Capture"
+                : "Add ID & Use"
         case .taskComplete(_, _, _, let followUp, _):
             switch followUp {
-            case .submit:
+            case .submit, .submitAndOpen:
                 return "Add ID & Complete"
             case .none, .start:
                 return "Add ID & Insert"
@@ -1307,7 +1311,7 @@ private struct TaskIDPromptCard: View {
             return "Add & Select"
         case .parentTaskPicker(_, _, _, let followUp, _, _):
             switch followUp {
-            case .submit:
+            case .submit, .submitAndOpen:
                 return "Add ID & Capture"
             case .none, .start:
                 return "Add ID & Select"

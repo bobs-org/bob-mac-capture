@@ -496,7 +496,13 @@ final class BobMacCaptureTests: XCTestCase {
         let router = CaptureKeyCommandRouter()
 
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36)), .submit)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .control)), .submitAndOpen)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .command)), .submitAndOpen)
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 76, modifiers: .control)), .submitAndOpen)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: [.control, .command])),
+            .submitAndOpen
+        )
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .shift)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .option)), .insertNewline)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 38, modifiers: .control)), .insertBulletNewline)
@@ -556,8 +562,12 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: [.control, .option])))
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), completionVisible: true), .acceptCompletion)
         XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .control), completionVisible: true),
+            .acceptCompletionThenSubmitAndOpen
+        )
+        XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 36, modifiers: .command), completionVisible: true),
-            .acceptCompletion
+            .acceptCompletionThenSubmitAndOpen
         )
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 36, modifiers: [.command, .shift])),
@@ -565,7 +575,7 @@ final class BobMacCaptureTests: XCTestCase {
         )
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 36, modifiers: [.command, .shift]), completionVisible: true),
-            .acceptCompletion
+            .acceptCompletionThenSubmitAndOpen
         )
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 36, modifiers: .shift), completionVisible: true),
@@ -611,6 +621,10 @@ final class BobMacCaptureTests: XCTestCase {
         )
 
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), context: context), .submitTaskIDPrompt)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .control), context: context),
+            .submitTaskIDPrompt
+        )
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 76), context: context), .submitTaskIDPrompt)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .command), context: context), .consumeKey)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 53), context: context), .cancelTaskIDPrompt)
@@ -632,8 +646,27 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), context: context), .acceptPickerRow)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 76), context: context), .acceptPickerRow)
         XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .control), context: context),
+            .acceptPickerRowAndSubmitAndOpen
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 76, modifiers: .control), context: context),
+            .acceptPickerRowAndSubmitAndOpen
+        )
+        XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 36, modifiers: .command), context: context),
             .acceptPickerRowAndSubmit
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 36, modifiers: .control),
+                context: CaptureKeyRoutingContext(pickerVisible: true, pickerSourceIsTaskGoto: true)
+            ),
+            .acceptPickerRow
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: [.control, .shift]), context: context),
+            .consumeKey
         )
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 36, modifiers: .shift), context: context),
@@ -691,6 +724,31 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 8, modifiers: .control), context: context),
             .stashDraftAndClose
+        )
+    }
+
+    func testKeyRouterUsesControlReturnToConfirmPullInAndOpenWithoutRepeat() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(pullInChoiceVisible: true)
+
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .control), context: context),
+            .confirmPullInChoiceAndOpen
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 76, modifiers: .control), context: context),
+            .confirmPullInChoiceAndOpen
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: [.control, .shift]), context: context),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 36, modifiers: .control),
+                context: CaptureKeyRoutingContext(pullInChoiceVisible: true, keyIsRepeat: true)
+            ),
+            .consumeKey
         )
     }
 
@@ -793,6 +851,10 @@ final class BobMacCaptureTests: XCTestCase {
         )
 
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), context: context), .submitPomodoroNamePrompt)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .control), context: context),
+            .submitPomodoroNamePrompt
+        )
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 76), context: context), .submitPomodoroNamePrompt)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36, modifiers: .command), context: context), .consumeKey)
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 53), context: context), .cancelPomodoroNamePrompt)
@@ -816,6 +878,10 @@ final class BobMacCaptureTests: XCTestCase {
         )
 
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), context: context), .restoreSelectedStashEntry)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .control), context: context),
+            .consumeKey
+        )
         XCTAssertNil(router.command(for: keyEvent(keyCode: 36, modifiers: .command), context: context))
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 53), context: context), .dismissStashPicker)
         XCTAssertEqual(
@@ -900,6 +966,10 @@ final class BobMacCaptureTests: XCTestCase {
         )
 
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), context: context), .useSelectedTemplate)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .control), context: context),
+            .consumeKey
+        )
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 53), context: context), .dismissTemplateShelf)
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 33, modifiers: .control), context: context),

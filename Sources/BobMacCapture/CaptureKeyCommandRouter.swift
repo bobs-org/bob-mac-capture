@@ -34,6 +34,7 @@ enum CaptureKeyCommand: Equatable {
     case saveTemplate
     case consumeKey
     case acceptCompletion
+    case acceptCompletionThenSubmitAndOpen
     case nextCompletion
     case previousCompletion
     case tabEditorAssist
@@ -43,6 +44,7 @@ enum CaptureKeyCommand: Equatable {
     case submitPomodoroNamePrompt
     case cancelPomodoroNamePrompt
     case confirmPullInChoice
+    case confirmPullInChoiceAndOpen
     case chooseNoPullInOffers
     case cancelPullInChoice
     case nextPullInOffer
@@ -53,6 +55,7 @@ enum CaptureKeyCommand: Equatable {
     case acceptPickerRowAndStart
     case acceptPickerRowAndContinue
     case acceptPickerRowAndSubmit
+    case acceptPickerRowAndSubmitAndOpen
     case nextPickerRow
     case previousPickerRow
     case pagePickerRowsDown
@@ -87,6 +90,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var pickerVisible = false
     var pickerSourceIsTaskLink = false
     var pickerSourceIsTaskComplete = false
+    var pickerSourceIsTaskGoto = false
     var pickerDispatchInFlight = false
     var pickerFilterIsEmpty = true
     var pickerChipVisible = false
@@ -184,7 +188,10 @@ struct CaptureKeyCommandRouter {
         switch event.keyCode {
         case KeyCode.return, KeyCode.keypadEnter:
             if modifiers.contains(.command) {
-                return context.completionVisible ? .acceptCompletion : .submitAndOpen
+                return context.completionVisible ? .acceptCompletionThenSubmitAndOpen : .submitAndOpen
+            }
+            if modifiers == .control {
+                return context.completionVisible ? .acceptCompletionThenSubmitAndOpen : .submitAndOpen
             }
             if modifiers.contains(.shift) || modifiers.contains(.option) {
                 return .insertNewline
@@ -279,6 +286,12 @@ struct CaptureKeyCommandRouter {
         switch event.keyCode {
         case KeyCode.return, KeyCode.keypadEnter:
             guard !isRepeat else { return .consumeKey }
+            if modifiers == .control {
+                return .confirmPullInChoiceAndOpen
+            }
+            if modifiers.contains(.control) {
+                return .consumeKey
+            }
             if modifiers == .shift {
                 return .chooseNoPullInOffers
             }
@@ -370,7 +383,13 @@ struct CaptureKeyCommandRouter {
             if modifiers.contains(.command) {
                 return .acceptPickerRowAndSubmit
             }
-            if modifiers.contains(.shift) {
+            if modifiers == .control {
+                return context.pickerSourceIsTaskGoto ? .acceptPickerRow : .acceptPickerRowAndSubmitAndOpen
+            }
+            if modifiers.contains(.control) {
+                return .consumeKey
+            }
+            if modifiers == .shift {
                 if context.pickerSourceIsTaskLink {
                     return .acceptPickerRowAndStart
                 }
@@ -521,6 +540,9 @@ struct CaptureKeyCommandRouter {
 
         switch event.keyCode {
         case KeyCode.return, KeyCode.keypadEnter:
+            if modifiers == .control {
+                return .consumeKey
+            }
             return modifiers.isEmpty ? .restoreSelectedStashEntry : nil
         case KeyCode.escape:
             return .dismissStashPicker
@@ -567,6 +589,9 @@ struct CaptureKeyCommandRouter {
 
         switch event.keyCode {
         case KeyCode.return, KeyCode.keypadEnter:
+            if modifiers == .control {
+                return .consumeKey
+            }
             return modifiers.isEmpty ? .useSelectedTemplate : nil
         case KeyCode.escape:
             return .dismissTemplateShelf

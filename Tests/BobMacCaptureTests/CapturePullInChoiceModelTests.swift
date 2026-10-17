@@ -35,7 +35,7 @@ final class CapturePullInChoiceModelTests: XCTestCase {
     model.plainDraft = "complete task"
     model.preview()
     try await waitUntil { !model.isPreviewing }
-    model.submit(openAfterCapture: true)
+    model.submit(openAfterCapture: false)
     XCTAssertTrue(model.pullInChoiceVisible)
 
     model.movePullInChoiceHighlight(by: 1)
@@ -44,16 +44,22 @@ final class CapturePullInChoiceModelTests: XCTestCase {
     let controller = CapturePanelController(model: model)
     var opened: [URL] = []
     var dismissed = 0
-    model.targetOpener = { opened.append($0) }
+    model.noteOpener = { url, completion in
+      opened.append(url)
+      completion(true)
+    }
     model.panelDismisser = { dismissed += 1 }
-    XCTAssertTrue(controller.perform(.confirmPullInChoice))
+    XCTAssertTrue(controller.perform(.confirmPullInChoiceAndOpen))
     try await waitUntil { !model.isSubmitting }
 
     XCTAssertNil(model.pullInChoice)
     XCTAssertEqual(model.plainDraft, "")
+    XCTAssertEqual(opened.count, 1)
+    XCTAssertEqual(opened[0].host, "bob-open-notes")
     XCTAssertEqual(
-      opened,
-      [try XCTUnwrap(ObsidianOpenURL.url(forAbsolutePath: "/tmp/day.md"))])
+      URLComponents(url: opened[0], resolvingAgainstBaseURL: false)?.queryItems?
+        .first(where: { $0.name == "path1" })?.value,
+      "/tmp/day.md")
     XCTAssertEqual(dismissed, 1)
     let calls = try recordText(record)
     XCTAssertEqual(calls.components(separatedBy: "argv=capture").count - 1, 2)

@@ -8,6 +8,19 @@ import XCTest
 
 @MainActor
 final class CapturePanelModelTests: XCTestCase {
+    private func openNotePaths(in url: URL) -> [String] {
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        guard let rawCount = items.first(where: { $0.name == "count" })?.value,
+              let count = Int(rawCount),
+              count > 0
+        else {
+            return []
+        }
+        return (1...count).compactMap { index in
+            items.first(where: { $0.name == "path\(index)" })?.value
+        }
+    }
+
     func testSubmitClearsDraftAndRecordsDestinationOnSuccess() async throws {
         let model = CapturePanelModel()
         model.processClient = BobProcessClient(
@@ -132,10 +145,9 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "@@foo\nFirst task\n\nSecond task @bar"
         var openedPaths: [String] = []
-        model.targetOpener = { url in
-            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-            let path = components?.queryItems?.first { $0.name == "path" }?.value
-            openedPaths.append(path ?? "")
+        model.noteOpener = { url, completion in
+            openedPaths = self.openNotePaths(in: url)
+            completion(true)
         }
 
         model.submit(openAfterCapture: true)
@@ -156,13 +168,24 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "Call bank @Cash"
         var openedURL: URL?
-        model.targetOpener = { openedURL = $0 }
+        var openCalls = 0
+        model.noteOpener = { url, completion in
+            openCalls += 1
+            openedURL = url
+            completion(true)
+        }
 
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
 
         XCTAssertEqual(openedURL?.scheme, "obsidian")
-        XCTAssertEqual(openedURL?.host, "open")
+        XCTAssertEqual(openedURL?.host, "bob-open-notes")
+        XCTAssertEqual(
+            URLComponents(url: try XCTUnwrap(openedURL), resolvingAgainstBaseURL: false)?.queryItems?
+                .first(where: { $0.name == "path1" })?.value,
+            "/tmp/bob/cash.md"
+        )
+        XCTAssertEqual(openCalls, 1)
     }
 
     func testSuccessfulSubmitAndOpenDismissesPanelExactlyOnceAndOpensTarget() async throws {
@@ -173,7 +196,12 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "Call bank @Cash"
         var openedURL: URL?
-        model.targetOpener = { openedURL = $0 }
+        var openCalls = 0
+        model.noteOpener = { url, completion in
+            openCalls += 1
+            openedURL = url
+            completion(true)
+        }
         var dismissCount = 0
         model.panelDismisser = { dismissCount += 1 }
 
@@ -182,6 +210,148 @@ final class CapturePanelModelTests: XCTestCase {
 
         XCTAssertEqual(dismissCount, 1)
         XCTAssertNotNil(openedURL)
+        XCTAssertEqual(openCalls, 1)
+    }
+
+    func testSuccessfulOpenSuppressesTheCaptureSuccessNotification() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "Call bank @Cash"
+        var successNotifications = 0
+        model.captureSuccessNotifier = { _, _, _ in successNotifications += 1 }
+        model.noteOpener = { _, completion in completion(true) }
+
+        model.submit(openAfterCapture: true)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(successNotifications, 0)
+    }
+
+    func testEmptyBobOpenPlanDoesNotOpenObsidianAndKeepsSuccessNotification() async throws {
+        let model = CapturePanelModel()
+        let response = sameTargetBatchSuccessJSON.replacingOccurrences(
+            of: "\"captures\":",
+            with: "\"open_notes\": [],\n          \"captures\":"
+        )
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": response,
+            ]
+        )
+        model.plainDraft = "First @cash\n\nSecond @cash"
+        var openCalls = 0
+        var successPlans: [CaptureOpenPlan] = []
+        model.noteOpener = { _, completion in
+            openCalls += 1
+            completion(true)
+        }
+        model.captureSuccessNotifier = { _, _, plan in successPlans.append(plan) }
+
+        model.submit(openAfterCapture: true)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(openCalls, 0)
+        XCTAssertEqual(successPlans.count, 1)
+        XCTAssertTrue(successPlans[0].isEmpty)
+    }
+
+    func testFailedOpenPostsCaptureOpenFailureInsteadOfSuccess() async throws {
+        let model = CapturePanelModel()
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        )
+        model.plainDraft = "Call bank @Cash"
+        var successNotifications = 0
+        var openFailure: String?
+        model.captureSuccessNotifier = { _, _, _ in successNotifications += 1 }
+        model.captureOpenFailureNotifier = { openFailure = $0 }
+        model.noteOpener = { _, completion in completion(false) }
+
+        model.submit(openAfterCapture: true)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(successNotifications, 0)
+        XCTAssertEqual(openFailure, "Obsidian could not open the requested capture notes.")
+    }
+
+    func testControlCompletionAcceptsThenCapturesAndOpensWhenNoFollowUpAppears() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            )
+        )
+        model.plainDraft = "Call @ca"
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 8,
+            replacement: CaptureRange(start: 6, end: 8),
+            context: "route",
+            candidates: [CaptureCompletionCandidate(replacement: "cash", route: "cash")]
+        )
+        var openedURL: URL?
+        model.noteOpener = { url, completion in
+            openedURL = url
+            completion(true)
+        }
+
+        model.acceptSelectedCompletionThenSubmitAndOpen()
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertEqual(openedURL?.host, "bob-open-notes")
+        XCTAssertEqual(model.lastSuccess?.kind, "task")
+    }
+
+    func testControlCompletionAcceptsTemplateHeaderWithoutSubmitting() {
+        let model = CapturePanelModel()
+        model.plainDraft = "@@temp"
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 6,
+            replacement: CaptureRange(start: 0, end: 6),
+            context: "template_header",
+            candidates: [CaptureCompletionCandidate(replacement: "@@template:weekly")]
+        )
+
+        model.acceptSelectedCompletionThenSubmitAndOpen()
+
+        XCTAssertEqual(model.plainDraft, "@@template:weekly")
+        XCTAssertFalse(model.isSubmitting)
+        XCTAssertFalse(model.inlinePromptVisible)
+    }
+
+    func testControlCompletionAcceptsButStopsForAnInlinePrompt() {
+        let model = CapturePanelModel()
+        model.plainDraft = "@Cash+"
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: 6,
+            replacement: CaptureRange(start: 6, end: 6),
+            context: "task",
+            candidates: [
+                CaptureCompletionCandidate(
+                    replacement: "",
+                    route: "cash",
+                    taskRef: "8:missingidea",
+                    requiresBlockID: true,
+                    blockIDSuggestions: ["new-id"]
+                ),
+            ]
+        )
+
+        model.acceptSelectedCompletionThenSubmitAndOpen()
+
+        XCTAssertTrue(model.taskIDPromptVisible)
+        XCTAssertFalse(model.isSubmitting)
+        XCTAssertEqual(model.plainDraft, "@Cash+")
     }
 
     func testSubmitAndOpenBatchOpensUniqueTargetsInSourceOrder() async throws {
@@ -192,10 +362,9 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "First item @Cash\n\nSecond item @notes#Ideas"
         var openedPaths: [String] = []
-        model.targetOpener = { url in
-            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-            let path = components?.queryItems?.first { $0.name == "path" }?.value
-            openedPaths.append(path ?? "")
+        model.noteOpener = { url, completion in
+            openedPaths = self.openNotePaths(in: url)
+            completion(true)
         }
 
         model.submit(openAfterCapture: true)
@@ -216,10 +385,9 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "First @cash\n\nSecond @cash"
         var openedPaths: [String] = []
-        model.targetOpener = { url in
-            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-            let path = components?.queryItems?.first { $0.name == "path" }?.value
-            openedPaths.append(path ?? "")
+        model.noteOpener = { url, completion in
+            openedPaths = self.openNotePaths(in: url)
+            completion(true)
         }
 
         model.submit(openAfterCapture: true)
@@ -260,10 +428,9 @@ final class CapturePanelModelTests: XCTestCase {
         )
         model.plainDraft = "Ship release @work\n\nCapture follow-up @ideas\n\nBackfill notes @work"
         var openedPaths: [String] = []
-        model.targetOpener = { url in
-            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-            let path = components?.queryItems?.first { $0.name == "path" }?.value
-            openedPaths.append(path ?? "")
+        model.noteOpener = { url, completion in
+            openedPaths = self.openNotePaths(in: url)
+            completion(true)
         }
 
         model.submit(openAfterCapture: true)
@@ -779,6 +946,27 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice -- @sase:deep-fix"))
     }
 
+    func testControlPickerAcceptCapturesAndOpensThePlan() async throws {
+        let (model, _) = try taskLinkModel()
+        model.plainDraft = ":"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        var openedURL: URL?
+        var openCalls = 0
+        model.noteOpener = { url, completion in
+            openedURL = url
+            openCalls += 1
+            completion(true)
+        }
+
+        model.acceptSelectedPickerRowAndSubmitAndOpen()
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.lastSuccess?.kind, "pomodoro_link")
+        XCTAssertEqual(openCalls, 1)
+        XCTAssertEqual(openedURL?.host, "bob-open-notes")
+    }
+
     func testTaskLinkBackspaceOnEmptyFilterLeavesEmptyItem() async throws {
         let (model, _) = try taskLinkModel()
         model.plainDraft = ":"
@@ -871,6 +1059,33 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.lastSuccess?.kind, "pomodoro_link")
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice -- @sase:fix-flaky-gkeep"))
+    }
+
+    func testControlPickerAcceptKeepsOpenIntentThroughAddBlockIDPrompt() async throws {
+        let (model, recordURL) = try taskLinkModel()
+        model.plainDraft = ":"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+        model.selectPickerRow(id: "sase|7:446bd057")
+        let controller = CapturePanelController(model: model)
+        var openedURL: URL?
+        model.noteOpener = { url, completion in
+            openedURL = url
+            completion(true)
+        }
+
+        XCTAssertTrue(controller.perform(.acceptPickerRowAndSubmitAndOpen))
+        XCTAssertEqual(model.taskIDPrompt?.linkFollowUp, .submitAndOpen)
+        model.submitTaskIDPrompt()
+        await waitUntil { model.taskIDPrompt == nil && model.plainDraft.isEmpty && !model.isSubmitting }
+
+        XCTAssertEqual(model.lastSuccess?.kind, "pomodoro_link")
+        XCTAssertEqual(openedURL?.host, "bob-open-notes")
+        XCTAssertTrue(
+            try String(contentsOf: recordURL).contains(
+                "argv=capture --format json --require-pull-in-choice -- @sase:fix-flaky-gkeep"
+            )
+        )
     }
 
     func testTaskLinkIdlessDuplicateKeepsPromptWithError() async throws {

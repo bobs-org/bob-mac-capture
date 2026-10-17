@@ -45,6 +45,8 @@ final class NotificationService: NSObject, ObservableObject {
     nonisolated static let refsScanShowActionIdentifier = "org.bobs.bob-mac-capture.refs-scan.show"
     nonisolated static let targetPathKey = "targetPath"
     nonisolated static let targetPathsKey = "targetPaths"
+    nonisolated static let openPlanKey = "openPlan"
+    nonisolated static let openErrorKey = "openError"
     nonisolated static let foregroundPresentationOptions: UNNotificationPresentationOptions = [
         .banner, .sound, .list,
     ]
@@ -87,13 +89,21 @@ final class NotificationService: NSObject, ObservableObject {
 
     func notifyCaptureSuccess(
         captures: [CaptureCommandSuccess],
-        globalDestination: CaptureGlobalDestination? = nil
+        globalDestination: CaptureGlobalDestination? = nil,
+        openPlan: CaptureOpenPlan? = nil
     ) {
         Task {
             try? await add(Self.successContent(
                 captures: captures,
-                globalDestination: globalDestination
+                globalDestination: globalDestination,
+                openPlan: openPlan
             ))
+        }
+    }
+
+    func notifyCaptureOpenFailure(message: String) {
+        Task {
+            try? await add(Self.openFailureContent(message: message))
         }
     }
 
@@ -196,26 +206,37 @@ final class NotificationService: NSObject, ObservableObject {
     // without hopping onto the main actor.
     nonisolated static func successContent(
         captures: [CaptureCommandSuccess],
-        globalDestination: CaptureGlobalDestination? = nil
+        globalDestination: CaptureGlobalDestination? = nil,
+        openPlan: CaptureOpenPlan? = nil
     ) -> UNMutableNotificationContent {
+        let openPlan = openPlan ?? CaptureOpenPlan(openNotes: nil, captures: captures)
         let presentation = successPresentation(
             captures: captures,
-            globalDestination: globalDestination
+            globalDestination: globalDestination,
+            openPlan: openPlan
         )
         let content = UNMutableNotificationContent()
         content.title = presentation.title
         content.subtitle = presentation.subtitle
         content.body = presentation.body
         content.sound = .default
-        if !presentation.targetPaths.isEmpty {
-            content.categoryIdentifier = presentation.targetPaths.count == 1
-                ? captureCategoryIdentifier
-                : captureBatchCategoryIdentifier
+        if !openPlan.isEmpty {
+            content.categoryIdentifier = captureOpenPlanCategoryIdentifier(count: openPlan.notes.count)
             content.userInfo = [
+                openPlanKey: openPlan.notificationPayload,
                 targetPathKey: presentation.targetPaths[0],
                 targetPathsKey: presentation.targetPaths,
             ]
         }
+        return content
+    }
+
+    nonisolated static func openFailureContent(message: String) -> UNMutableNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.title = "Captured, but Obsidian didn't open"
+        content.body = message
+        content.sound = .default
+        content.userInfo = [openErrorKey: message]
         return content
     }
 
@@ -301,6 +322,26 @@ final class NotificationService: NSObject, ObservableObject {
         )
     }
 
+    nonisolated static func captureOpenPlanCategory(count: Int) -> UNNotificationCategory {
+        let count = min(max(count, 1), 8)
+        let noun = count == 1 ? "Note" : "Notes"
+        let action = UNNotificationAction(
+            identifier: openNotesActionIdentifier,
+            title: "Open \(count) \(noun)",
+            options: [.foreground]
+        )
+        return UNNotificationCategory(
+            identifier: captureOpenPlanCategoryIdentifier(count: count),
+            actions: [action],
+            intentIdentifiers: [],
+            options: []
+        )
+    }
+
+    nonisolated static func captureOpenPlanCategoryIdentifier(count: Int) -> String {
+        "org.bobs.bob-mac-capture.capture-open-plan-\(min(max(count, 1), 8))"
+    }
+
     nonisolated static func installRestartCategory() -> UNNotificationCategory {
         let capture = UNNotificationAction(
             identifier: captureActionIdentifier,
@@ -316,12 +357,16 @@ final class NotificationService: NSObject, ObservableObject {
     }
 
     nonisolated static func captureCategories() -> Set<UNNotificationCategory> {
-        [
+        var categories: Set<UNNotificationCategory> = [
             captureCategory(),
             captureBatchCategory(),
             installRestartCategory(),
             refsScanCategory(),
         ]
+        for count in 1...8 {
+            categories.insert(captureOpenPlanCategory(count: count))
+        }
+        return categories
     }
 
     /// The hidden-panel scan content from the §8 strings: nil when the
@@ -482,6 +527,13 @@ final class NotificationService: NSObject, ObservableObject {
             return []
         }
 
+        if let payload = userInfo[openPlanKey] as? [[String: Any]],
+           let plan = CaptureOpenPlan(notificationPayload: payload),
+           let url = ObsidianOpenURL.openNotesURL(for: plan)
+        {
+            return [url]
+        }
+
         let targetPaths: [String]
         if let paths = userInfo[targetPathsKey] as? [String] {
             targetPaths = paths
@@ -496,17 +548,18 @@ final class NotificationService: NSObject, ObservableObject {
 
     nonisolated private static func successPresentation(
         captures: [CaptureCommandSuccess],
-        globalDestination: CaptureGlobalDestination?
+        globalDestination: CaptureGlobalDestination?,
+        openPlan: CaptureOpenPlan
     ) -> CaptureNotificationPresentation {
         let nonemptyCaptures = captures.isEmpty ? [] : captures
-        let targetPaths = notificationTargetPaths(for: nonemptyCaptures)
+        let targetPaths = openPlan.notes.map(\.path)
         guard nonemptyCaptures.count != 1, !nonemptyCaptures.isEmpty else {
             guard let capture = nonemptyCaptures.first else {
                 return CaptureNotificationPresentation(
                     title: "Captured",
                     subtitle: "",
                     body: "",
-                    targetPaths: []
+                    targetPaths: targetPaths
                 )
             }
             if let toggle = CaptureTogglePresentation(capture: capture) {
@@ -833,52 +886,6 @@ final class NotificationService: NSObject, ObservableObject {
             return ""
         }
         return "\(labels.count) destination\(labels.count == 1 ? "" : "s")"
-    }
-
-    // A toggle's or link's day file is only worth an "Open Note(s)" action when the
-    // capture actually wrote to it (linked, unlinked, moved, started, or cleaned up
-    // a duplicate) — matching the gate `CapturePanelModel.uniqueTargetURLs` uses for
-    // Command-Return.
-    nonisolated private static func notificationTargetPaths(
-        for captures: [CaptureCommandSuccess]
-    ) -> [String] {
-        var paths: [String] = []
-        for capture in captures {
-            paths.append(capture.target)
-            if let dayFile = capture.dayFile, dayFileChanged(for: capture) {
-                paths.append(dayFile)
-            }
-        }
-        return orderedUniquePaths(paths.filter { !$0.isEmpty })
-    }
-
-    nonisolated private static func dayFileChanged(for capture: CaptureCommandSuccess) -> Bool {
-        if CapturePomodoroResetPresentation(capture: capture) != nil {
-            return true
-        }
-        if CapturePomodoroClosePresentation(capture: capture) != nil {
-            return true
-        }
-        if CapturePomodoroStartPresentation.isSessionStart(capture) {
-            return true
-        }
-        if let toggle = CaptureTogglePresentation(capture: capture) {
-            return toggle.dayFileChanged
-        }
-        if CaptureTaskCompletePresentation(capture: capture) != nil {
-            // Bob sets the top-level `day_file` whenever the gesture
-            // changed the day file, and a linked successor always changes
-            // it — even when the predecessor had no ledger entry of its own.
-            guard let complete = capture.taskComplete else { return false }
-            return complete.ledger != nil || complete.unblocked.contains { $0.link != nil }
-        }
-        if let link = CapturePomodoroLinkPresentation(capture: capture) {
-            return link.dayFileChanged
-        }
-        if let note = capture.projectNote, !note.taskLinks.isEmpty {
-            return true
-        }
-        return false
     }
 
     nonisolated private static func orderedUniquePaths(_ paths: [String]) -> [String] {

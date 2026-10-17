@@ -1502,6 +1502,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .submitAndOpen:
             model.submit(openAfterCapture: true)
             return true
+        case .acceptCompletionThenSubmitAndOpen:
+            model.acceptSelectedCompletionThenSubmitAndOpen()
+            return true
         case .insertNewline:
             return Self.insertNewlineInEditableTextView(
                 firstResponder: panel?.firstResponder,
@@ -1576,6 +1579,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             return true
         case .acceptPickerRowAndSubmit:
             model.acceptSelectedPickerRow(submitAfterInsert: true)
+            return true
+        case .acceptPickerRowAndSubmitAndOpen:
+            model.acceptSelectedPickerRowAndSubmitAndOpen()
             return true
         case .cycleTaskLinkSuggestionForward:
             model.cycleTaskLinkSuggestion(forward: true)
@@ -1695,6 +1701,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .confirmPullInChoice:
             model.confirmPullInChoice()
             return true
+        case .confirmPullInChoiceAndOpen:
+            model.confirmPullInChoice(openAfterCapture: true)
+            return true
         case .chooseNoPullInOffers:
             model.chooseNoPullInOffers()
             return true
@@ -1770,6 +1779,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     pickerVisible: self.model.pickerVisible,
                     pickerSourceIsTaskLink: self.model.pickerSourceIsTaskLink,
                     pickerSourceIsTaskComplete: self.model.pickerSourceIsTaskComplete,
+                    pickerSourceIsTaskGoto: self.model.pickerSourceIsTaskGoto,
                     pickerDispatchInFlight: self.model.taskGotoDispatchInFlight,
                     pickerFilterIsEmpty: self.model.pickerFilterIsEmpty,
                     pickerChipVisible: self.model.pickerChipVisible,

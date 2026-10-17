@@ -41,7 +41,7 @@ struct CapturePickerState: Equatable {
     /// Lexical owner of the `task_dependency` or `blocked_task` modifier
     /// the session opened on (nil for every other source, and for an
     /// ownerless leading sigil).
-    /// Command-Return submits after insert only when this is non-nil: an
+    /// A capture-and-open Return submits after insert only when this is non-nil: an
     /// ownerless pick must first gain task text or `@note+id`.
     var dependencyOwner: DependencyOwner? = nil
     /// Bob's `action_continuation_keys` for the Complete (`!`) picker:
@@ -65,7 +65,7 @@ struct CapturePickerChipState: Equatable {
     var candidates: [CaptureCompletionCandidate]
     var warnings: [String]
     /// Lexical dependency owner the chip's snapshot belongs to, so a
-    /// refetch-free reopen keeps the Command-Return gate. Nil for other
+    /// refetch-free reopen keeps the capture-and-open gate. Nil for other
     /// sources and ownerless picks.
     var dependencyOwner: DependencyOwner? = nil
 }

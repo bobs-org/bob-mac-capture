@@ -38,9 +38,9 @@ public struct CaptureRefPresentation: Equatable, Sendable {
     public let notificationTitle: String
     public let notificationBody: String
     public let previewAccessibilitySummary: String
-    /// The absolute vault path Command-Return opens, or nil when bob reported
-    /// no target. Bob fills `target` only for `in_library` and `in_intake`,
-    /// so a queued link opens nothing.
+    /// Bob's absolute target for the reference. Control-Return forwards Bob's
+    /// `open_notes`; the legacy open plan uses this target when that field is
+    /// absent. Queued links have no target and open nothing.
     public let openTargetPath: String?
     /// The canonical resolved parent route (`"sase"`, `"mac_inbox"`); empty
     /// when an older Bob omitted `ref.parent`.

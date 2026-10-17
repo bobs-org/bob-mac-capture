@@ -183,7 +183,7 @@ struct CapturePullInChoiceSection: Equatable, Identifiable {
 struct CapturePullInChoiceState: Equatable {
   let draftSnapshot: String
   let processClientIdentity: String
-  let openAfterCapture: Bool
+  var openAfterCapture: Bool
   let priorityRollSeed: String
   let generation: UInt64
   let requestID: UUID?
