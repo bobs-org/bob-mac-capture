@@ -319,7 +319,11 @@ public enum CaptureAgendaFitPlanner {
             statusGlyph: base.statusGlyph,
             accessibilityLabel: base.accessibilityLabel,
             accessoryAccessibilityLabel: base.accessoryAccessibilityLabel,
-            notesChip: chip
+            notesChip: chip,
+            planBudget: base.planBudget,
+            nameIsDerived: base.nameIsDerived,
+            homeChip: base.homeChip,
+            homeHue: base.homeHue
         )
     }
 

@@ -110,6 +110,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
     public let items: [CaptureAgendaItem]
     public let slug: String?
     public let selectable: Bool
+    public let homes: CaptureAgendaHomes?
 
     public init(
         line: Int = 0,
@@ -123,7 +124,8 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         notes: [CaptureAgendaLine] = [],
         items: [CaptureAgendaItem] = [],
         slug: String? = nil,
-        selectable: Bool = false
+        selectable: Bool = false,
+        homes: CaptureAgendaHomes? = nil
     ) {
         self.line = line
         self.name = name
@@ -137,6 +139,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         self.items = items
         self.slug = slug
         self.selectable = selectable
+        self.homes = homes
     }
 
     public init(from decoder: Decoder) throws {
@@ -155,6 +158,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         items = try container.decodeIfPresent([CaptureAgendaItem].self, forKey: .items) ?? []
         slug = try container.decodeIfPresent(String.self, forKey: .slug)
         selectable = try container.decodeIfPresent(Bool.self, forKey: .selectable) ?? false
+        homes = try container.decodeIfPresent(CaptureAgendaHomes.self, forKey: .homes)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -170,6 +174,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         case items
         case slug
         case selectable
+        case homes
     }
 }
 

@@ -132,6 +132,21 @@ final class RefsTodayLinkTests: XCTestCase {
     XCTAssertTrue(card.selectsCreate)
   }
 
+  func testHomesListingDecodesAndFiltersOnDerivedLabel() throws {
+    var card = makeCard()
+    let homes = try fixture("homes")
+    XCTAssertEqual(homes.schemaVersion, 1)
+    XCTAssertEqual(homes.pomodoros[0].homes?.chip, nil)
+    XCTAssertEqual(homes.pomodoros[1].homes?.chip, "bob · dev +1")
+    XCTAssertEqual(homes.pomodoros[2].homes?.label, "sase")
+    XCTAssertEqual(homes.pomodoros[3].homes?.kind, .unlinked)
+    card.applyListing(homes)
+    card.editQuery("sase")
+    XCTAssertEqual(card.visiblePomodoros.map(\.ref), ["6:unnamed-label"])
+    card.editQuery("hack")
+    XCTAssertEqual(card.visiblePomodoros.map(\.ref), ["4:named-chip"])
+  }
+
   func testPreviewTokensRejectOldSelectionsAndRepeatedSelectors() throws {
     var card = makeCard()
     card.applyListing(try fixture("listing"))
@@ -268,6 +283,28 @@ final class RefsTodayLinkTests: XCTestCase {
     XCTAssertEqual(RefsTodayLinkPresentation.pills(current), ["Next up", "Here"])
     XCTAssertEqual(RefsTodayLinkPresentation.rowMeta(current, now: now), "planned · 1 task")
     XCTAssertEqual(RefsTodayLinkPresentation.rowTitle(row("unnamed", nil)), "Untitled Pomodoro")
+    let homes = try fixture("homes")
+    XCTAssertEqual(RefsTodayLinkPresentation.rowTitle(homes.pomodoros[0]), "BOB")
+    XCTAssertFalse(RefsTodayLinkPresentation.rowTitleIsDerived(homes.pomodoros[0]))
+    XCTAssertNil(RefsTodayLinkPresentation.namedHomeChip(homes.pomodoros[0]))
+    XCTAssertEqual(RefsTodayLinkPresentation.rowTitle(homes.pomodoros[1]), "HACK")
+    XCTAssertEqual(
+      RefsTodayLinkPresentation.namedHomeChip(homes.pomodoros[1]), "bob · dev +1")
+    XCTAssertEqual(RefsTodayLinkPresentation.namedHomeHue(homes.pomodoros[1]), .orange)
+    XCTAssertEqual(RefsTodayLinkPresentation.rowTitle(homes.pomodoros[2]), "sase")
+    XCTAssertTrue(RefsTodayLinkPresentation.rowTitleIsDerived(homes.pomodoros[2]))
+    XCTAssertNil(RefsTodayLinkPresentation.namedHomeChip(homes.pomodoros[2]))
+    XCTAssertEqual(
+      RefsTodayLinkPresentation.rowTitle(homes.pomodoros[3]), "Untitled Pomodoro")
+    XCTAssertFalse(RefsTodayLinkPresentation.rowTitleIsDerived(homes.pomodoros[3]))
+    XCTAssertEqual(
+      RefsTodayLinkPresentation.rowAccessibilityLabel(
+        homes.pomodoros[2], selected: false, now: now, timeZone: zone),
+      "for sase, planned · 1 task")
+    XCTAssertTrue(
+      RefsTodayLinkPresentation.rowAccessibilityLabel(
+        homes.pomodoros[1], selected: false, now: now, timeZone: zone
+      ).contains("for bob · dev +1"))
     XCTAssertEqual(
       RefsTodayLinkPresentation.createTitle(query: " deep   work "), "New Pomodoro DEEP WORK")
     XCTAssertEqual(RefsTodayLinkPresentation.hints(query: ""), "↑↓ select   ↵ link   esc cancel")

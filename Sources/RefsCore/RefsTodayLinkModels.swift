@@ -90,6 +90,7 @@ public struct RefsTodayLinkPomodoro: Decodable, Equatable, Sendable {
   public let isDefault: Bool
   public let linked: Bool
   public let taskLinkCount: Int
+  public let homes: CaptureAgendaHomes?
 
   public init(
     ref: String,
@@ -103,7 +104,8 @@ public struct RefsTodayLinkPomodoro: Decodable, Equatable, Sendable {
     running: Bool = false,
     isDefault: Bool = false,
     linked: Bool = false,
-    taskLinkCount: Int = 0
+    taskLinkCount: Int = 0,
+    homes: CaptureAgendaHomes? = nil
   ) {
     self.ref = ref
     self.line = line
@@ -117,6 +119,7 @@ public struct RefsTodayLinkPomodoro: Decodable, Equatable, Sendable {
     self.isDefault = isDefault
     self.linked = linked
     self.taskLinkCount = taskLinkCount
+    self.homes = homes
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -132,6 +135,7 @@ public struct RefsTodayLinkPomodoro: Decodable, Equatable, Sendable {
     case isDefault = "default"
     case linked
     case taskLinkCount = "task_link_count"
+    case homes
   }
 
   public init(from decoder: Decoder) throws {
@@ -148,6 +152,7 @@ public struct RefsTodayLinkPomodoro: Decodable, Equatable, Sendable {
     isDefault = try container.decodeIfPresent(Bool.self, forKey: .isDefault) ?? false
     linked = try container.decodeIfPresent(Bool.self, forKey: .linked) ?? false
     taskLinkCount = try container.decodeIfPresent(Int.self, forKey: .taskLinkCount) ?? 0
+    homes = try container.decodeIfPresent(CaptureAgendaHomes.self, forKey: .homes)
   }
 }
 

@@ -19,7 +19,7 @@ public enum RefsTodayLinkPresentation {
   public static let bobTooOldMessage =
     "This bob can't link references to today yet — update bob on this Mac"
   public static let header = "LINK TO TODAY"
-  public static let untitled = "Untitled Pomodoro"
+  public static let untitled = PomodoroHomesPresentation.untitled
   public static let linking = "Linking…"
   public static let loading = "Loading Pomodoros…"
   public static let reloading = "Refreshing Pomodoros…"
@@ -41,8 +41,19 @@ public enum RefsTodayLinkPresentation {
   }
 
   public static func rowTitle(_ row: RefsTodayLinkPomodoro) -> String {
-    guard let name = row.name, !name.isEmpty else { return untitled }
-    return name
+    PomodoroHomesPresentation.displayName(authored: row.name, homes: row.homes)
+  }
+
+  public static func rowTitleIsDerived(_ row: RefsTodayLinkPomodoro) -> Bool {
+    PomodoroHomesPresentation.nameIsDerived(authored: row.name, homes: row.homes)
+  }
+
+  public static func namedHomeChip(_ row: RefsTodayLinkPomodoro) -> String? {
+    PomodoroHomesPresentation.namedChip(authored: row.name, homes: row.homes)
+  }
+
+  public static func namedHomeHue(_ row: RefsTodayLinkPomodoro) -> PomodoroHomeHue? {
+    namedHomeChip(row) == nil ? nil : row.homes?.hue
   }
 
   public static func createTitle(query: String) -> String {
@@ -83,7 +94,9 @@ public enum RefsTodayLinkPresentation {
   public static func rowAccessibilityLabel(
     _ row: RefsTodayLinkPomodoro, selected: Bool, now: Date, timeZone: TimeZone = .current
   ) -> String {
-    var parts = [rowTitle(row)] + pills(row).map { $0.lowercased() }
+    var parts =
+      [PomodoroHomesPresentation.accessibilityName(authored: row.name, homes: row.homes)]
+      + pills(row).map { $0.lowercased() }
     parts.append(rowMeta(row, now: now, timeZone: timeZone))
     if selected { parts.append("selected") }
     return parts.joined(separator: ", ")

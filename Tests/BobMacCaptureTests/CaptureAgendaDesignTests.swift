@@ -36,6 +36,7 @@ final class CaptureAgendaDesignTests: XCTestCase {
             ("agenda-empty", 2_000),
             ("agenda-multiple-timed", 2_000),
             ("agenda-lightbulb", 2_000),
+            ("agenda-homes", 2_000),
         ]
         for (base, budget) in cases {
             let snapshot = try agendaSnapshot(base + ".json")

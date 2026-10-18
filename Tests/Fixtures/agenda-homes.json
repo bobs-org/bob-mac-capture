@@ -1,0 +1,125 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "date": "2026-08-28",
+  "completed_summary": {
+    "count": 0,
+    "minutes": 0
+  },
+  "pomodoros": [
+    {
+      "line": 3,
+      "name": "BOB",
+      "role": "current",
+      "is_current": true,
+      "starts_at": "2026-08-28T08:00",
+      "ends_at": "2026-08-28T08:30",
+      "slug": "bob",
+      "selectable": true,
+      "items": [],
+      "notes": [],
+      "homes": {
+        "state": "forecast",
+        "kind": "work",
+        "label": "bob",
+        "chip": null,
+        "hue": "orange",
+        "parts": [
+          {
+            "key": "bob.md",
+            "label": "bob",
+            "kind": "project",
+            "area": "gtd.md",
+            "area_label": "gtd",
+            "hue": "orange",
+            "tasks": 1,
+            "share": 100
+          }
+        ]
+      }
+    },
+    {
+      "line": 10,
+      "name": "HACK",
+      "role": "next",
+      "slug": "hack",
+      "selectable": true,
+      "items": [],
+      "notes": [],
+      "homes": {
+        "state": "forecast",
+        "kind": "work",
+        "label": "bob · dev +1",
+        "chip": "bob · dev +1",
+        "hue": "orange",
+        "parts": [
+          {
+            "key": "bob.md",
+            "label": "bob",
+            "kind": "project",
+            "area": "gtd.md",
+            "area_label": "gtd",
+            "hue": "orange",
+            "tasks": 1,
+            "share": 50
+          },
+          {
+            "key": "dev.md",
+            "label": "dev",
+            "kind": "area",
+            "area": "dev.md",
+            "area_label": "dev",
+            "hue": "blue",
+            "tasks": 1,
+            "share": 50
+          }
+        ]
+      }
+    },
+    {
+      "line": 20,
+      "name": null,
+      "role": "later",
+      "slug": null,
+      "selectable": false,
+      "items": [],
+      "notes": [],
+      "homes": {
+        "state": "forecast",
+        "kind": "work",
+        "label": "sase",
+        "chip": "sase",
+        "hue": "orange",
+        "parts": [
+          {
+            "key": "sase.md",
+            "label": "sase",
+            "kind": "project",
+            "area": "gtd.md",
+            "area_label": "gtd",
+            "hue": "orange",
+            "tasks": 1,
+            "share": 100
+          }
+        ]
+      }
+    },
+    {
+      "line": 30,
+      "name": null,
+      "role": "later",
+      "slug": null,
+      "selectable": false,
+      "items": [],
+      "notes": [],
+      "homes": {
+        "state": "attributed",
+        "kind": "unlinked",
+        "label": "",
+        "chip": null,
+        "hue": null,
+        "parts": []
+      }
+    }
+  ]
+}

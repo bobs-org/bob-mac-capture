@@ -12,6 +12,8 @@ final class CaptureAgendaModelsTests: XCTestCase {
         "agenda-no-daily-note.json",
         "agenda-nothing-running.json",
         "agenda-yesterday.json",
+        "agenda-homes.json",
+        "agenda-homes-legacy.json",
     ]
 
     private func fixture(_ name: String) throws -> Data {

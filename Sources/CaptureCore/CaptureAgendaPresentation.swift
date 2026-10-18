@@ -42,6 +42,9 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
     public let lineLimit: Int
     public let hasAccessory: Bool
     public let notesChip: String?
+    public let nameIsDerived: Bool
+    public let homeChip: String?
+    public let homeHue: PomodoroHomeHue?
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -49,7 +52,10 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         depth: Int,
         lineLimit: Int,
         hasAccessory: Bool,
-        notesChip: String? = nil
+        notesChip: String? = nil,
+        nameIsDerived: Bool = false,
+        homeChip: String? = nil,
+        homeHue: PomodoroHomeHue? = nil
     ) {
         self.kind = kind
         self.text = text
@@ -57,6 +63,9 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         self.lineLimit = lineLimit
         self.hasAccessory = hasAccessory
         self.notesChip = notesChip
+        self.nameIsDerived = nameIsDerived
+        self.homeChip = homeChip
+        self.homeHue = homeHue
     }
 }
 
@@ -80,6 +89,13 @@ public struct CaptureAgendaRow: Equatable, Sendable {
     /// A session-notes chip rendered as its own capsule button next
     /// to the header's normal trailing accessory, never inside it.
     public let notesChip: String?
+    /// True when `text` is a derived home label, so the view paints it
+    /// in a secondary style.
+    public let nameIsDerived: Bool
+    /// Named-entry home chip (bob already suppressed it when the name
+    /// says the same thing). Drawn as a muted accessory with a hue dot.
+    public let homeChip: String?
+    public let homeHue: PomodoroHomeHue?
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -92,7 +108,10 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         accessibilityLabel: String? = nil,
         accessoryAccessibilityLabel: String? = nil,
         notesChip: String? = nil,
-        planBudget: CapturePlanBudgetPresentation? = nil
+        planBudget: CapturePlanBudgetPresentation? = nil,
+        nameIsDerived: Bool = false,
+        homeChip: String? = nil,
+        homeHue: PomodoroHomeHue? = nil
     ) {
         self.kind = kind
         self.text = text
@@ -105,13 +124,19 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         self.accessoryAccessibilityLabel = accessoryAccessibilityLabel
         self.notesChip = notesChip
         self.planBudget = planBudget
+        self.nameIsDerived = nameIsDerived
+        self.homeChip = homeChip
+        self.homeHue = homeHue
         key = CaptureAgendaRowKey(
             kind: kind,
             text: text,
             depth: depth,
             lineLimit: lineLimit,
             hasAccessory: numberBadge != nil || accessoryText != nil,
-            notesChip: notesChip
+            notesChip: notesChip,
+            nameIsDerived: nameIsDerived,
+            homeChip: homeChip,
+            homeHue: homeHue
         )
     }
 }
@@ -255,7 +280,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         )
         let ordered = Self.orderEntries(entries)
         warningRow = openCount >= 2 ? Self.makeMultiOpenWarningRow() : nil
-        let laterNames = ordered.filter { $0.role == .later }.map { Self.displayName($0.name) }
+        let laterNames = ordered.filter { $0.role == .later }.map(Self.displayName)
         stripFullRow = Self.makeStripRow(names: laterNames)
         guard snapshot.date == today else {
             state = .loading
@@ -302,11 +327,20 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         return current + open + next + later
     }
 
-    static func displayName(_ name: String?) -> String {
-        guard let name, !name.isEmpty else {
-            return "Untitled Pomodoro"
-        }
-        return name
+    static func displayName(_ entry: CaptureAgendaPomodoro) -> String {
+        PomodoroHomesPresentation.displayName(authored: entry.name, homes: entry.homes)
+    }
+
+    static func nameIsDerived(_ entry: CaptureAgendaPomodoro) -> Bool {
+        PomodoroHomesPresentation.nameIsDerived(authored: entry.name, homes: entry.homes)
+    }
+
+    static func namedHomeChip(_ entry: CaptureAgendaPomodoro) -> String? {
+        PomodoroHomesPresentation.namedChip(authored: entry.name, homes: entry.homes)
+    }
+
+    static func spokenName(_ entry: CaptureAgendaPomodoro) -> String {
+        PomodoroHomesPresentation.accessibilityName(authored: entry.name, homes: entry.homes)
     }
 
     // MARK: - Title, warning, and state rows
@@ -502,8 +536,19 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         seen: inout Set<String>,
         firstNames: inout [String: String]
     ) -> CaptureAgendaGroup {
-        let name = displayName(entry.name)
-        let header = makeHeaderRow(entry: entry, name: name, now: now)
+        let name = displayName(entry)
+        let derived = nameIsDerived(entry)
+        let homeChip = namedHomeChip(entry)
+        let homeHue = homeChip == nil ? nil : entry.homes?.hue
+        let header = makeHeaderRow(
+            entry: entry,
+            name: name,
+            spoken: spokenName(entry),
+            derived: derived,
+            homeChip: homeChip,
+            homeHue: homeHue,
+            now: now
+        )
         let sessionNotes = entry.notes.map { note in
             CaptureAgendaRow(
                 kind: .sessionNote,
@@ -540,7 +585,14 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                 accessibilityLabel: "No linked tasks"
             )
             : nil
-        let oneRow = makeOneRowRow(name: name, tasks: tasks)
+        let oneRow = makeOneRowRow(
+            name: name,
+            tasks: tasks,
+            derived: derived,
+            homeChip: homeChip,
+            homeHue: homeHue,
+            spoken: spokenName(entry)
+        )
         return CaptureAgendaGroup(
             id: .group(entryLine: entry.line),
             role: entry.role,
@@ -556,7 +608,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             stripName: name,
             accessibilityLabel: groupAccessibilityLabel(
                 entry: entry,
-                name: name,
+                name: spokenName(entry),
                 taskCount: tasks.count
             )
         )
@@ -565,6 +617,10 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     static func makeHeaderRow(
         entry: CaptureAgendaPomodoro,
         name: String,
+        spoken: String,
+        derived: Bool,
+        homeChip: String?,
+        homeHue: PomodoroHomeHue?,
         now: Date?
     ) -> CaptureAgendaRow {
         let accessory: String?
@@ -579,7 +635,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                 CaptureAgendaClock.remainingText(endsAt: entry.endsAt, now: $0)
             }
             accessory = [range, countdown].compactMap { $0 }.joined(separator: " · ")
-            label = "Header, \(name)"
+            label = "Header, \(spoken)"
         case .open:
             let range = CaptureAgendaClock.timeRangeText(
                 startsAt: entry.startsAt,
@@ -590,20 +646,20 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             } else {
                 accessory = "Open"
             }
-            label = "Header, \(name)"
+            label = "Header, \(spoken)"
         case .next:
             accessory = "= starts it"
-            label = "Header, \(name)"
+            label = "Header, \(spoken)"
         case .later:
             if entry.selectable, let slug = entry.slug, !slug.isEmpty {
                 accessory = "=#\(slug)"
             } else {
                 accessory = nil
             }
-            label = "Header, \(name)"
+            label = "Header, \(spoken)"
         case .completed, .other:
             accessory = nil
-            label = "Header, \(name)"
+            label = "Header, \(spoken)"
         }
         let trimmed = accessory.flatMap { $0.isEmpty ? nil : $0 }
         return CaptureAgendaRow(
@@ -612,7 +668,10 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             depth: 0,
             lineLimit: 2,
             accessoryText: trimmed,
-            accessibilityLabel: label
+            accessibilityLabel: label,
+            nameIsDerived: derived,
+            homeChip: homeChip,
+            homeHue: homeHue
         )
     }
 
@@ -662,7 +721,11 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
 
     static func makeOneRowRow(
         name: String,
-        tasks: [CaptureAgendaTask]
+        tasks: [CaptureAgendaTask],
+        derived: Bool,
+        homeChip: String?,
+        homeHue: PomodoroHomeHue?,
+        spoken: String
     ) -> CaptureAgendaRow {
         let titles = tasks.map { spokenKeepText($0.title) }.joined(separator: " · ")
         let joined = titles.isEmpty ? name : "\(name) · \(titles)"
@@ -674,7 +737,10 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             depth: 0,
             lineLimit: CaptureAgendaLayoutMetrics.oneLineLimit,
             accessoryText: chip,
-            accessibilityLabel: "\(name), \(chip)"
+            accessibilityLabel: "\(spoken), \(chip)",
+            nameIsDerived: derived,
+            homeChip: homeChip,
+            homeHue: homeHue
         )
     }
 

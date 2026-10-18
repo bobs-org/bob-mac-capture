@@ -191,8 +191,18 @@ struct RefsTodayLinkCardView: View {
                 HStack(spacing: 6) {
                     Text(RefsTodayLinkPresentation.rowTitle(row))
                         .font(.callout.weight(selected ? .semibold : .regular))
+                        .foregroundStyle(
+                            RefsTodayLinkPresentation.rowTitleIsDerived(row)
+                                ? .secondary : .primary
+                        )
                         .lineLimit(1)
                         .truncationMode(.tail)
+                    if let chip = RefsTodayLinkPresentation.namedHomeChip(row) {
+                        PomodoroHomeChipView(
+                            chip: chip,
+                            hue: RefsTodayLinkPresentation.namedHomeHue(row)
+                        )
+                    }
                     pillLabels(row)
                     Spacer(minLength: 0)
                     if selected { RefsReturnKeycap() }

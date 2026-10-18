@@ -66,6 +66,12 @@ final class CaptureAgendaHeightConsistencyTests: XCTestCase {
                 budget: 2_000,
                 expanded: []
             )
+            try assertConsistent(
+                fixture: "agenda-homes.json",
+                contentWidth: width,
+                budget: 2_000,
+                expanded: []
+            )
             let lightbulb = try agendaSnapshot("agenda-lightbulb.json")
             let lightbulbPresentation = CaptureAgendaPresentation(
                 snapshot: lightbulb,

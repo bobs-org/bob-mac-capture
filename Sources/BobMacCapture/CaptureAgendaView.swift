@@ -696,9 +696,16 @@ struct CaptureAgendaRowView: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             headerGlyphView
             Text(row.text)
-                .font(.subheadline.weight(.semibold))
-                .tracking(0.3)
+                .font(
+                    row.nameIsDerived
+                        ? .subheadline : .subheadline.weight(.semibold)
+                )
+                .foregroundStyle(row.nameIsDerived ? .secondary : .primary)
+                .tracking(row.nameIsDerived ? 0 : 0.3)
                 .lineLimit(row.lineLimit)
+            if let chip = row.homeChip {
+                PomodoroHomeChipView(chip: chip, hue: row.homeHue)
+            }
             Spacer(minLength: 12)
             headerAccessoryView
         }
@@ -886,8 +893,15 @@ struct CaptureAgendaRowView: View {
             Image(systemName: "circle.dashed")
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
-            CaptureAgendaRowInlineText.text(row.text, base: .callout, color: .primary)
-                .lineLimit(row.lineLimit)
+            CaptureAgendaRowInlineText.text(
+                row.text,
+                base: .callout,
+                color: row.nameIsDerived ? .secondary : .primary
+            )
+            .lineLimit(row.lineLimit)
+            if let chip = row.homeChip {
+                PomodoroHomeChipView(chip: chip, hue: row.homeHue)
+            }
             Spacer(minLength: 12)
             chipButton(
                 text: row.accessoryText ?? "",

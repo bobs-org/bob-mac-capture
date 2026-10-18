@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "date": "2026-08-28",
+  "completed_summary": {
+    "count": 0,
+    "minutes": 0
+  },
+  "pomodoros": [
+    {
+      "line": 3,
+      "name": null,
+      "role": "next",
+      "slug": null,
+      "selectable": false,
+      "items": [],
+      "notes": []
+    }
+  ]
+}

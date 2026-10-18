@@ -1841,7 +1841,11 @@ only and is never written to disk.
 With an empty draft, the panel shows today's Pomodoro agenda below the editor, in
 the same thin-material pane as the live preview. It lists the running Pomodoro (Now)
 and every future one (Next, then Later), each with its linked tasks at the most
-detail that fits below the fixed eye line without scrolling. Keep source links in
+detail that fits below the fixed eye line without scrolling. Unnamed entries show
+the derived `homes.label` from `bob capture-pomodoros --tasks` (secondary style)
+instead of "Untitled Pomodoro"; named entries keep their authored name and, when
+bob supplies a chip, a muted home chip with an area-hue dot. The one-row fold and
+the Later strip use the same names. An older bob that omits `homes` is unchanged. Keep source links in
 those task titles and details display as a lightbulb. The `x` and `=`
 numbers match the ones `bob` will use: the current entry shows its `x` numbers and
 every other open entry shows its `=` lineup number.
