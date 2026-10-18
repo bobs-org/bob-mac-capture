@@ -19,14 +19,14 @@ final class CapturePullInChoiceModelTests: XCTestCase {
     XCTAssertTrue(model.pullInChoice?.markedKeys.isEmpty == true)
     XCTAssertEqual(model.pullInChoice?.effectiveSelectionKeys, ["offer#one^key"])
     XCTAssertTrue(model.editorInputLocked)
-    XCTAssertEqual(try recordText(record).components(separatedBy: "argv=capture").count - 1, 1)
+    XCTAssertEqual(captureCallCount(try recordText(record)), 1)
 
     model.cancelPullInChoiceFromKeyboard()
     XCTAssertFalse(model.pullInChoiceVisible)
     XCTAssertFalse(model.editorInputLocked)
     XCTAssertEqual(model.plainDraft, "complete task")
     XCTAssertEqual(model.focusRequest.target, .editor)
-    XCTAssertEqual(try recordText(record).components(separatedBy: "argv=capture").count - 1, 1)
+    XCTAssertEqual(captureCallCount(try recordText(record)), 1)
   }
 
   func testMarkedSubsetDispatchesOpaqueKeysOnceAndKeepsOpenAfterIntent() async throws {
@@ -62,15 +62,20 @@ final class CapturePullInChoiceModelTests: XCTestCase {
       "/tmp/day.md")
     XCTAssertEqual(dismissed, 1)
     let calls = try recordText(record)
-    XCTAssertEqual(calls.components(separatedBy: "argv=capture").count - 1, 2)
+    XCTAssertEqual(captureCallCount(calls), 2)
     XCTAssertTrue(calls.contains("argv=capture --format json --dry-run -- complete task"))
     XCTAssertTrue(
       calls.contains("argv=capture --format json --pull-in opaque:two#^suffix -- complete task"))
     XCTAssertFalse(calls.contains("--require-pull-in-choice"))
-    let seeds = calls.components(separatedBy: "BOB_PRIORITY_ROLL_SEED=").dropFirst()
-      .compactMap { $0.components(separatedBy: "\n").first }
+    let captureBlocks = calls.components(separatedBy: "argv=")
+      .dropFirst()
+      .filter { $0.hasPrefix("capture ") }
+    let seeds = captureBlocks.compactMap { block in
+      block.components(separatedBy: "BOB_PRIORITY_ROLL_SEED=").dropFirst()
+        .first?.components(separatedBy: "\n").first
+    }
     XCTAssertEqual(seeds.count, 2)
-    XCTAssertEqual(seeds[0], seeds[1])
+    XCTAssertEqual(try XCTUnwrap(seeds.first), try XCTUnwrap(seeds.dropFirst().first))
   }
 
   func testControlReturnWithEmptySelectionDoesNotStickOpenIntent() async throws {
@@ -140,7 +145,7 @@ final class CapturePullInChoiceModelTests: XCTestCase {
     XCTAssertEqual(model.plainDraft, "complete task")
     XCTAssertEqual(model.pullInChoice?.selectableKeys, ["refusal:key"])
     let calls = try recordText(record)
-    XCTAssertEqual(calls.components(separatedBy: "argv=capture").count - 1, 2)
+    XCTAssertEqual(captureCallCount(calls), 2)
     XCTAssertTrue(calls.contains("--require-pull-in-choice"))
   }
 
@@ -235,4 +240,11 @@ final class CapturePullInChoiceModelTests: XCTestCase {
   private func refusalResponse() -> String {
     #"{"ok":false,"error":"Choose successor offers","code":"pull_in_choice_required","pull_in":{"supported":true,"offer_count":1,"choice":"explicit","picked_count":0},"offers":[{"note_path":"travel.md","block_id":"one","line":1,"text":"One task","previous_status_symbol":"?","previous_status_name":"Blocked","status_symbol":" ","status_name":"Ready","not_linked":"not_selected","offer":{"key":"refusal:key","n":1,"group":"hand_off","destination":{"day_file":"20261013.md","entry_name":"FOCUS","entry_role":"current","fallback":false},"selected":false,"block_id_needed":false}}]}"#
   }
+}
+
+private func captureCallCount(_ record: String) -> Int {
+  record.components(separatedBy: "argv=")
+    .dropFirst()
+    .filter { $0.hasPrefix("capture ") }
+    .count
 }

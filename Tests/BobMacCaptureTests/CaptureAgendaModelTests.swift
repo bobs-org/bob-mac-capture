@@ -483,7 +483,9 @@ final class CaptureAgendaModelTests: XCTestCase {
         )
         typeDraft(model, "=")
         await waitUntil {
-            (try? String(contentsOf: recordURL))?.contains("argv=") == true
+            (try? String(contentsOf: recordURL))?.components(separatedBy: "argv=")
+                .dropFirst()
+                .contains { !$0.hasPrefix("capture-templates") } == true
         }
 
         typeDraft(model, "")

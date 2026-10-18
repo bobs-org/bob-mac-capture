@@ -429,7 +429,9 @@ final class CapturePanelAgendaLayoutTests: XCTestCase {
         await waitForEditorFocus(panel)
         typeDraft(model, "=")
         await waitUntil {
-            (try? String(contentsOf: recordURL))?.contains("argv=") == true
+            (try? String(contentsOf: recordURL))?.components(separatedBy: "argv=")
+                .dropFirst()
+                .contains { !$0.hasPrefix("capture-templates") } == true
         }
         // Clear before the preview settles: request retirement must win.
         typeDraft(model, "")

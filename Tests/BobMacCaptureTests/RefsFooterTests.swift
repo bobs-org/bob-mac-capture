@@ -15,7 +15,7 @@ final class RefsFooterTests: XCTestCase {
         XCTAssertEqual(
             RefsFooter.hintsText(openHint: "↵ Open note"),
             "↵ Open note  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘N Today  ⌘K Actions  ⌘S Scan  "
-                + "⌘1–5 Scope  esc Close"
+                + "⌘1–5 Scope  ⌘T Tabs  esc Close"
         )
         XCTAssertEqual(
             RefsFooter.hintVariants(openHint: "↵ Open note").map {

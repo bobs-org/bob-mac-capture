@@ -99,7 +99,7 @@ final class CaptureOpenHintTests: XCTestCase {
         model.noteModifierFlagsChanged(.control)
         XCTAssertFalse(model.openHintRevealed)
 
-        try? await Task.sleep(nanoseconds: 60_000_000)
+        await waitForOpenHint(model)
         XCTAssertTrue(model.openHintRevealed)
 
         model.noteModifierFlagsChanged([])
@@ -111,16 +111,23 @@ final class CaptureOpenHintTests: XCTestCase {
         model.openHintRevealDelayNanoseconds = 1_000_000
         model.plainDraft = "Inbox task"
         model.noteModifierFlagsChanged(.control)
-        try? await Task.sleep(nanoseconds: 20_000_000)
+        await waitForOpenHint(model)
         XCTAssertTrue(model.openHintRevealed)
 
         model.submit(openAfterCapture: true)
         XCTAssertFalse(model.openHintRevealed)
 
         model.noteModifierFlagsChanged(.control)
-        try? await Task.sleep(nanoseconds: 20_000_000)
+        await waitForOpenHint(model)
         XCTAssertTrue(model.openHintRevealed)
         model.prepareForDismissal()
         XCTAssertFalse(model.openHintRevealed)
+    }
+
+    private func waitForOpenHint(_ model: CapturePanelModel) async {
+        let deadline = ContinuousClock.now + .seconds(2)
+        while !model.openHintRevealed, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
     }
 }

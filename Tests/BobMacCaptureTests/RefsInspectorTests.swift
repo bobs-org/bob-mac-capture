@@ -303,7 +303,7 @@ final class RefsInspectorLoaderTests: XCTestCase {
     XCTAssertEqual(content.highlights, [])
   }
 
-  func testRevealMoreWithOnlyHighlightsEmitsRange() {
+  func testRevealMoreWithOnlyHighlightsEmitsRange() throws {
     let model = makePreviewModel()
     let item = previewChat()
     let highlights = (1...5).map { index in
@@ -330,8 +330,9 @@ final class RefsInspectorLoaderTests: XCTestCase {
 
     XCTAssertTrue(model.revealMoreInspectorNotes())
     XCTAssertEqual(received.count, 1)
-    XCTAssertEqual(received[0].range, 3..<5)
-    XCTAssertEqual(received[0].id, item.id)
+    let reveal = try XCTUnwrap(received.first)
+    XCTAssertEqual(reveal.range, 3..<5)
+    XCTAssertEqual(reveal.id, item.id)
     _ = cancellable
   }
 
@@ -448,25 +449,56 @@ final class RefsInspectorLoaderTests: XCTestCase {
       includingPropertiesForKeys: nil
     )
     XCTAssertEqual(thumbs.count, 1)
-    XCTAssertEqual(try permissions(of: thumbs[0]), 0o600)
+    XCTAssertEqual(try permissions(of: XCTUnwrap(thumbs.first)), 0o600)
   }
 
   func testIntrinsicsDiscardDropsInFlightAndAllowsFutureLoads() async throws {
-    final class CallCounter: @unchecked Sendable {
+    final class ReadProbe: @unchecked Sendable {
       private let lock = NSLock()
-      private(set) var count = 0
-      func increment() {
-        lock.withLock { count += 1 }
+      private var startedStorage = 0
+      private var finishedStorage = 0
+      private var isOpenStorage = false
+
+      var started: Int {
+        lock.withLock { startedStorage }
+      }
+
+      var finished: Int {
+        lock.withLock { finishedStorage }
+      }
+
+      private var isOpen: Bool {
+        lock.withLock { isOpenStorage }
+      }
+
+      func enter() {
+        lock.withLock { startedStorage += 1 }
+      }
+
+      func finish() {
+        lock.withLock { finishedStorage += 1 }
+      }
+
+      func open() {
+        lock.withLock { isOpenStorage = true }
+      }
+
+      func waitUntilOpen() async {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while !isOpen, ContinuousClock.now < deadline {
+          try? await Task.sleep(for: .milliseconds(10))
+        }
       }
     }
-    let counter = CallCounter()
+    let probe = ReadProbe()
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
     let loader = await RefsPDFIntrinsicsLoader(
       cacheDirectory: root,
       reader: { @Sendable _ in
-        try? await Task.sleep(nanoseconds: 100_000_000)
-        counter.increment()
+        probe.enter()
+        await probe.waitUntilOpen()
+        probe.finish()
         return RefsPDFIntrinsics(pageCount: 7)
       }
     )
@@ -477,16 +509,23 @@ final class RefsInspectorLoaderTests: XCTestCase {
     FileManager.default.createFile(
       atPath: pdf.path, contents: Data("fake".utf8)
     )
-    async let first = loader.intrinsics(for: pdf, id: "roundtrip")
-    try? await Task.sleep(nanoseconds: 20_000_000)
+    let first = Task {
+      await loader.intrinsics(for: pdf, id: "roundtrip")
+    }
+    let deadline = ContinuousClock.now + .seconds(5)
+    while probe.started == 0, ContinuousClock.now < deadline {
+      try? await Task.sleep(for: .milliseconds(10))
+    }
+    XCTAssertEqual(probe.started, 1)
     await loader.discard(id: "roundtrip")
-    let firstPageCount = await first.pageCount
-    XCTAssertEqual(firstPageCount, 7)
+    probe.open()
+    let firstValue = await first.value
+    XCTAssertEqual(firstValue.pageCount, 7)
     let secondPageCount = await loader.intrinsics(for: pdf, id: "roundtrip").pageCount
     XCTAssertEqual(secondPageCount, 7)
     let thirdPageCount = await loader.intrinsics(for: pdf, id: "roundtrip").pageCount
     XCTAssertEqual(thirdPageCount, 7)
-    XCTAssertEqual(counter.count, 2)
+    XCTAssertEqual(probe.finished, 2)
   }
 
   func testActionsMenuVariesWithURLsAndAudio() throws {
@@ -498,7 +537,7 @@ final class RefsInspectorLoaderTests: XCTestCase {
     )
     XCTAssertEqual(chatSections.count, 3)
     XCTAssertEqual(
-      chatSections[1],
+      try XCTUnwrap(chatSections.dropFirst().first),
       [.copy, .rename, .linkToday]
     )
 
@@ -508,12 +547,13 @@ final class RefsInspectorLoaderTests: XCTestCase {
       for: fixtures.paper,
       audioURL: paperURL
     )
-    XCTAssertTrue(paperSections[1].contains(.copy))
+    let paperActions = try XCTUnwrap(paperSections.dropFirst().first)
+    XCTAssertTrue(paperActions.contains(.copy))
     XCTAssertTrue(
-      paperSections[1].contains(
+      paperActions.contains(
         .openSourceURL(URL(string: "https://example.com/post")!)
       ))
-    XCTAssertTrue(paperSections[1].contains(.openNarration(paperURL!)))
+    XCTAssertTrue(paperActions.contains(.openNarration(paperURL!)))
   }
 
   func testActionsMenuEndsWithScanAfterRefresh() {
@@ -589,7 +629,8 @@ final class RefsInspectorLoaderTests: XCTestCase {
     XCTAssertEqual(RefsAction.rename.title, "Rename…")
     XCTAssertEqual(RefsAction.rename.keyEquivalent, "r")
     XCTAssertEqual(RefsAction.rename.keyEquivalentModifierMask, [.command, .shift])
-    XCTAssertTrue(model.actionsSections()[1].contains(.rename))
+    let rowActions = try XCTUnwrap(model.actionsSections().dropFirst().first)
+    XCTAssertTrue(rowActions.contains(.rename))
     model.performAction(.copy)
     XCTAssertNotNil(model.copyCard)
 
@@ -602,7 +643,7 @@ final class RefsInspectorLoaderTests: XCTestCase {
     XCTAssertNil(model.copyCard)
 
     model.performAction(.rename)
-    XCTAssertEqual(model.renameCard?.draftStem, "today_report")
+    XCTAssertEqual(model.renameCard?.draftStem, "team_fit_review")
     XCTAssertNil(model.copyCard)
   }
 

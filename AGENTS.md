@@ -20,3 +20,7 @@ unverified.
 
 After a red **Lint Swift formatting** step, check the later CI steps too — a parse
 error in lint skips Build, Test, Bundle, and the install gates.
+
+A Test step that dies at the watchdog is a hang. The sampled xctest stack in the log
+or `test-hang` artifact names the stuck test. Async tests must never await an untimed
+continuation or gate.

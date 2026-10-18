@@ -4648,7 +4648,10 @@ final class CapturePanelModelTests: XCTestCase {
         await waitUntil { !model.isSubmitting }
 
         let record = (try? String(contentsOf: recordURL)) ?? ""
-        let invocationCount = record.components(separatedBy: "argv=").count - 1
+        let invocationCount = record.components(separatedBy: "argv=")
+            .dropFirst()
+            .filter { $0.hasPrefix("capture ") }
+            .count
         XCTAssertEqual(invocationCount, 1)
     }
 

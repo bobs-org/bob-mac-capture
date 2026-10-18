@@ -402,17 +402,19 @@ final class RefsInspectorScrollTests: XCTestCase {
         XCTAssertTrue(tryUnwrapFilter(harness.panel).holdsFirstResponder)
     }
 
-    func testHostedShortContentRevealsWithNoOffsetChange() {
+    func testHostedShortContentRevealsWithNoOffsetChange() throws {
         let harness = makeHostedHarness(
             width: 880,
             notes: Self.eightNotes(),
-            shortContent: true
+            shortContent: true,
+            notesPageSize: 1
         )
         defer { harness.panel.orderOut(nil) }
         settleShort(harness.panel)
         focusSearch(harness)
         let selected = tryUnwrapSelected(harness)
         let before = inspectorOffset(in: harness.panel)
+        try assertInspectorFits(harness.panel)
 
         XCTAssertNil(
             harness.controller.processKeyEvent(
@@ -421,9 +423,10 @@ final class RefsInspectorScrollTests: XCTestCase {
         )
         XCTAssertEqual(
             harness.model.inspectorNotesPage(for: selected).visibleCount(total: 8),
-            6
+            2
         )
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.6))
+        try assertInspectorFits(harness.panel)
         XCTAssertEqual(
             inspectorOffset(in: harness.panel),
             before,
@@ -471,7 +474,8 @@ final class RefsInspectorScrollTests: XCTestCase {
     private func makeHostedHarness(
         width: CGFloat,
         notes: [RefsShowAnnotation]? = nil,
-        shortContent: Bool = false
+        shortContent: Bool = false,
+        notesPageSize: Int? = nil
     ) -> HostedHarness {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -494,6 +498,9 @@ final class RefsInspectorScrollTests: XCTestCase {
             highlights: FakeLocator(appURL: nil),
             pasteboard: FakePasteboard()
         )
+        if let notesPageSize {
+            model.notesPageSize = notesPageSize
+        }
         let items = (0..<12).map { index in
             RefItem(
                 id: "ref/chat/overflow_\(index).md",
@@ -606,6 +613,17 @@ final class RefsInspectorScrollTests: XCTestCase {
         }
         let clip = scroll.contentView
         return "lookup=found clip=\(clip.bounds) docHeight=\(documentView.frame.height) flipped=\(documentView.isFlipped) insets=\(clip.contentInsets)"
+    }
+
+    private func assertInspectorFits(_ panel: RefsPanel) throws {
+        let diagnostics = inspectorDiagnostics(in: panel)
+        let scroll = try XCTUnwrap(inspectorScroll(in: panel), diagnostics)
+        let documentView = try XCTUnwrap(scroll.documentView, diagnostics)
+        XCTAssertLessThanOrEqual(
+            documentView.frame.height,
+            scroll.contentView.bounds.height,
+            diagnostics
+        )
     }
 
     private func inspectorOffset(in panel: RefsPanel) -> CGFloat {

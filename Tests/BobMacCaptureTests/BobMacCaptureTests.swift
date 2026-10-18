@@ -2494,7 +2494,7 @@ final class BobMacCaptureTests: XCTestCase {
             text: "@@template:\nTask {0}",
             selectedRange: NSRange(location: 5, length: 4)
         )
-        XCTAssertEqual(selection.text, "@@temp\nTask {0}")
+        XCTAssertEqual(selection.text, "@@tem\ne:\nTask {0}")
         XCTAssertEqual(selection.selection, NSRange(location: 6, length: 0))
     }
 

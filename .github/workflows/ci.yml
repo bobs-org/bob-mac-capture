@@ -10,6 +10,7 @@ jobs:
   macos:
     name: macOS 26 SwiftPM
     runs-on: macos-26
+    timeout-minutes: 60
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -37,12 +38,39 @@ jobs:
         run: ./Scripts/xcode-swift.sh build
 
       - name: Test
+        timeout-minutes: 25
         env:
           BOB_MAC_CAPTURE_RENDER_DIR: ${{ runner.temp }}/render-fixtures
+          BOB_MAC_CAPTURE_TEST_HANG_DIR: ${{ runner.temp }}/test-hang
+          NSUnbufferedIO: "YES"
         run: |
           set -euo pipefail
-          mkdir -p "${BOB_MAC_CAPTURE_RENDER_DIR}"
-          ./Scripts/xcode-swift.sh test
+          mkdir -p "${BOB_MAC_CAPTURE_RENDER_DIR}" "${BOB_MAC_CAPTURE_TEST_HANG_DIR}"
+
+          ./Scripts/xcode-swift.sh test &
+          test_pid=$!
+          started_at=$SECONDS
+
+          # XCTest has no per-test timeout. Keep the job responsive when an async test
+          # waits forever, and leave a sampled stack that identifies the stuck test.
+          while kill -0 "${test_pid}" 2>/dev/null; do
+            if (( SECONDS - started_at >= 900 )); then
+              echo "::error::swift test ran longer than 15 minutes; sampling xctest"
+              for pid in $(pgrep -x xctest || true); do
+                sample_file="${BOB_MAC_CAPTURE_TEST_HANG_DIR}/xctest-${pid}.txt"
+                sudo -n sample "${pid}" 5 -file "${sample_file}" || \
+                  sample "${pid}" 5 -file "${sample_file}" || true
+                sed -n '1,200p' "${sample_file}" || true
+              done
+              pkill -x xctest || true
+              kill "${test_pid}" 2>/dev/null || true
+              wait "${test_pid}" || true
+              exit 1
+            fi
+            sleep 5
+          done
+
+          wait "${test_pid}"
 
       - name: Upload render fixtures
         if: always()
@@ -50,6 +78,15 @@ jobs:
         with:
           name: render-fixtures
           path: ${{ runner.temp }}/render-fixtures
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload test hang samples
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-hang-samples
+          path: ${{ runner.temp }}/test-hang
           if-no-files-found: ignore
           retention-days: 14
 
@@ -281,6 +318,7 @@ jobs:
           }
 
           # 1. Fresh install while stopped: do not auto-launch.
+          # shellcheck disable=SC2088 # install.sh expands its literal target argument.
           HOME="${temp_home}" ./Scripts/install.sh --target '~/Applications' --identity "-" >"${stdout}"
           verify_install
           helper="$(./Scripts/xcode-swift.sh build --configuration release --show-bin-path)/BobMacCaptureInstallHelper"
@@ -310,6 +348,7 @@ jobs:
           sleep 1
 
           reinstall_start="$(date '+%Y-%m-%d %H:%M:%S')"
+          # shellcheck disable=SC2088 # install.sh expands its literal target argument.
           HOME="${temp_home}" ./Scripts/install.sh --target '~/Applications' --identity "-" >"${stdout}"
           verify_install
           wait_until_gone "${old_pid}" || {
@@ -342,6 +381,7 @@ jobs:
           done
           test "$(instance_count)" -eq 0
 
+          # shellcheck disable=SC2088 # install.sh expands its literal target argument.
           HOME="${temp_home}" ./Scripts/install.sh --target '~/Applications' --identity "-" >"${stdout}"
           verify_install
           sleep 3

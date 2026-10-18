@@ -54,6 +54,7 @@ final class RefsPanelModelTests: XCTestCase {
         ]
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
         harness.model.panelIsVisible = { true }
         var completed: (RefsTodayLinkToast, String)?
         harness.model.todayLinkCompletion = { toast, title in
@@ -87,6 +88,7 @@ final class RefsPanelModelTests: XCTestCase {
         fetcher.todayLinkHandler = { _, _, _ in try await gate.respond() }
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
         harness.model.panelIsVisible = { true }
         var completions = 0
         harness.model.todayLinkCompletion = { _, _ in completions += 1 }
@@ -116,31 +118,36 @@ final class RefsPanelModelTests: XCTestCase {
             schemaVersion: 1,
             refs: [Self.renameRecord(path: path, stem: "today_link_test")]
         )
-        fetcher.todayLinkResponses = [
-            try todayLinkFixture("refs-today-listing.json"),
-            try todayLinkFixture("refs-today-stale-pomodoro.json"),
-            try todayLinkFixture("refs-today-listing.json"),
-        ]
+        let gate = TodayLinkResponseGate()
+        fetcher.todayLinkHandler = { _, _, _ in try await gate.respond() }
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
         harness.model.todayLinkPreviewDebounce = {}
         harness.model.openTodayLinkCard()
+        await gate.waitForRequests(1)
+        await gate.resolve(0, with: .success(try todayLinkFixture("refs-today-listing.json")))
         await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
         harness.model.selectTodayLinkRow(1)
         harness.model.handleTodayLinkCardKey(.submit)
-        await harness.waitForModel { $0.todayLinkCard?.phase == .reloading }
+        await gate.resolve(1, with: .success(try todayLinkFixture("refs-today-stale-pomodoro.json")))
+        await gate.waitForRequests(3)
+        XCTAssertEqual(harness.model.todayLinkCard?.phase, .reloading)
         XCTAssertEqual(harness.model.todayLinkCard?.query, "")
         XCTAssertEqual(harness.model.todayLinkCard?.pomodoros, [])
         harness.model.editTodayLinkQuery("rea")
         harness.model.handleTodayLinkCardKey(.submit)
         XCTAssertEqual(harness.model.todayLinkCard?.phase, .reloading)
         XCTAssertEqual(fetcher.todayLinkCalls.filter { !$0.dryRun }.count, 1)
+        await gate.resolve(2, with: .success(try todayLinkFixture("refs-today-listing.json")))
         await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
         XCTAssertEqual(harness.model.todayLinkCard?.query, "rea")
         XCTAssertEqual(harness.model.todayLinkCard?.selectedPomodoro?.name, "READING")
         harness.model.handleTodayLinkCardKey(.submit)
         await harness.waitForModel { $0.todayLinkCard?.phase == .running }
-        XCTAssertEqual(fetcher.todayLinkCalls.last?.selector, .entry(ref: "5:ddf7159c"))
+        XCTAssertEqual(fetcher.todayLinkCalls.last?.selector, .entry(ref: "4:ddf7159c"))
+        await gate.waitForRequests(4)
+        await gate.resolve(3, with: .success(try todayLinkFixture("refs-today-linked.json")))
     }
 
     func testBobRefusalFixturesStayRefusedWithoutSubmittingWrites() async throws {
@@ -156,6 +163,7 @@ final class RefsPanelModelTests: XCTestCase {
         ]
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
 
         harness.model.openTodayLinkCard()
         await harness.waitForModel { $0.todayLinkCard?.phase == .refused(
@@ -182,6 +190,7 @@ final class RefsPanelModelTests: XCTestCase {
         fetcher.todayLinkHandler = { _, _, _ in try await gate.respond() }
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
         harness.model.todayLinkPreviewDebounce = {}
         harness.model.openTodayLinkCard()
         await gate.waitForRequests(1)
@@ -213,7 +222,7 @@ final class RefsPanelModelTests: XCTestCase {
         await gate.waitForCompletion(4)
         await Task.yield()
         XCTAssertEqual(harness.model.todayLinkCard?.phase, .running)
-        XCTAssertEqual(fetcher.todayLinkCalls.last?.selector, .entry(ref: "5:ddf7159c"))
+        XCTAssertEqual(fetcher.todayLinkCalls.last?.selector, .entry(ref: "4:ddf7159c"))
         await gate.resolve(5, with: .success(try todayLinkFixture("refs-today-linked.json")))
         await harness.waitForModel { $0.todayLinkCard == nil }
         XCTAssertEqual(fetcher.todayLinkCalls.filter { !$0.dryRun }.count, 1)
@@ -230,6 +239,7 @@ final class RefsPanelModelTests: XCTestCase {
         fetcher.todayLinkHandler = { _, _, _ in try await gate.respond() }
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
         var failures: [String] = []
         harness.model.todayLinkFailureNotifier = { message, _ in failures.append(message) }
 
@@ -259,6 +269,7 @@ final class RefsPanelModelTests: XCTestCase {
         fetcher.todayLinkHandler = { _, _, _ in try await gate.respond() }
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
         harness.model.todayLinkPreviewDebounce = {
             try await Task.sleep(for: .seconds(3_600))
         }
@@ -271,7 +282,7 @@ final class RefsPanelModelTests: XCTestCase {
         await gate.waitForRequests(2)
         XCTAssertEqual(fetcher.todayLinkCalls.count, 2)
         XCTAssertEqual(fetcher.todayLinkCalls.map(\.dryRun), [true, false])
-        XCTAssertEqual(fetcher.todayLinkCalls.last?.selector, .entry(ref: "5:ddf7159c"))
+        XCTAssertEqual(fetcher.todayLinkCalls.last?.selector, .entry(ref: "4:ddf7159c"))
         await gate.resolve(1, with: .success(try todayLinkFixture("refs-today-linked.json")))
         await harness.waitForModel { $0.todayLinkCard == nil }
     }
@@ -295,6 +306,7 @@ final class RefsPanelModelTests: XCTestCase {
         ]
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
         harness.model.todayLinkPreviewDebounce = {}
         harness.model.openTodayLinkCard()
         await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
@@ -320,6 +332,7 @@ final class RefsPanelModelTests: XCTestCase {
         ]
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
         var beeps = 0
         var notifications: [(RefsTodayLinkResponse, String)] = []
         harness.model.todayLinkBeep = { beeps += 1 }
@@ -353,6 +366,7 @@ final class RefsPanelModelTests: XCTestCase {
         ]
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
         harness.model.panelIsVisible = { true }
         let oldItem = try XCTUnwrap(harness.library.items.first)
         let cached = RefsShowRow(path: path, ownNotes: "cached before link")
@@ -414,6 +428,7 @@ final class RefsPanelModelTests: XCTestCase {
         ]
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
 
         harness.model.openTodayLinkCard()
         await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
@@ -453,6 +468,7 @@ final class RefsPanelModelTests: XCTestCase {
         ]
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
         harness.model.panelIsVisible = { false }
         var failures: [(String, String?)] = []
         harness.model.todayLinkFailureNotifier = { failures.append(($0, $1)) }
@@ -480,6 +496,7 @@ final class RefsPanelModelTests: XCTestCase {
         ]
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
         harness.model.openTodayLinkCard()
         await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
         harness.model.handleTodayLinkCardKey(.submit)
@@ -534,6 +551,7 @@ final class RefsPanelModelTests: XCTestCase {
         ]
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
         harness.model.panelIsVisible = { true }
         var outcomes: [RefsTodayLinkToast.Style] = []
         harness.model.todayLinkCompletion = { toast, _ in outcomes.append(toast.style) }
@@ -562,7 +580,8 @@ final class RefsPanelModelTests: XCTestCase {
         )
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [oldPath])
-        let openedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        harness.model.prepareForPresentation()
+        let openedAt = Date().addingTimeInterval(-3_600)
         harness.openLogStore.append(RefsOpenEvent(path: oldPath, at: openedAt))
         fetcher.renameResponse = RefsRenameResponse(
             schemaVersion: 1,
@@ -616,6 +635,7 @@ final class RefsPanelModelTests: XCTestCase {
         )
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [oldPath])
+        harness.model.prepareForPresentation()
         var failures: [(message: String, hint: String?)] = []
         harness.model.renameFailureNotifier = { failures.append(($0, $1)) }
         harness.model.openRenameCard()
@@ -637,8 +657,9 @@ final class RefsPanelModelTests: XCTestCase {
         // The failure lands while hidden, so it notifies, and the
         // running-to-failed transition refocuses the field.
         XCTAssertEqual(failures.count, 1)
-        XCTAssertEqual(failures[0].message, "That filename is already in use.")
-        XCTAssertEqual(failures[0].hint, "Choose a different filename.")
+        let failure = try XCTUnwrap(failures.first)
+        XCTAssertEqual(failure.message, "That filename is already in use.")
+        XCTAssertEqual(failure.hint, "Choose a different filename.")
         XCTAssertEqual(harness.model.renameCardGeneration, openedGeneration + 1)
 
         harness.model.prepareForPresentation()
@@ -668,6 +689,7 @@ final class RefsPanelModelTests: XCTestCase {
         )
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [oldPath])
+        harness.model.prepareForPresentation()
         harness.model.openRenameCard()
         harness.model.handleRenameCardKey(.submit)
 
@@ -689,6 +711,7 @@ final class RefsPanelModelTests: XCTestCase {
         fetcher.scanDelayNanoseconds = 500_000_000
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [oldPath])
+        harness.model.prepareForPresentation()
         XCTAssertTrue(harness.model.perform(.scan))
         await harness.waitForScanStart()
         harness.model.openRenameCard()
@@ -712,6 +735,7 @@ final class RefsPanelModelTests: XCTestCase {
         )
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [oldPath])
+        harness.model.prepareForPresentation()
         fetcher.renameResponse = RefsRenameResponse(
             schemaVersion: 1,
             ok: true,
@@ -821,6 +845,7 @@ final class RefsPanelModelTests: XCTestCase {
             schemaVersion: 1,
             refs: [Self.renameRecord(path: newPath, stem: newStem)]
         )
+        harness.model.prepareForPresentation()
         harness.model.openRenameCard()
         harness.model.editRenameDraft(newStem)
         harness.model.handleRenameCardKey(.submit)
@@ -830,6 +855,7 @@ final class RefsPanelModelTests: XCTestCase {
     func testRenameTextEditingKeysPassThroughControllerAndEscapeClosesCardFirst() async throws {
         let harness = try makeHarness()
         await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
         let item = try XCTUnwrap(harness.model.selectedItem)
         harness.model.installForPreviews(
             items: [item], signals: harness.model.signals, query: "", scope: .all,
@@ -862,6 +888,7 @@ final class RefsPanelModelTests: XCTestCase {
     func testRenameFieldPrefillsStemAndTakesFirstResponderWithTextSelected() async throws {
         let harness = try makeHarness()
         await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
         let controller = RefsPanelController(model: harness.model)
         controller.prewarm()
         controller.show()
@@ -878,7 +905,7 @@ final class RefsPanelModelTests: XCTestCase {
             if field?.currentEditor() != nil {
                 break
             }
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.02))
+            try? await Task.sleep(for: .milliseconds(20))
         }
 
         let renameField = try XCTUnwrap(field)
@@ -909,9 +936,11 @@ final class RefsPanelModelTests: XCTestCase {
         ]
         let harness = try makeRenameHarness(fetcher: fetcher)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
         let controller = RefsPanelController(model: harness.model)
         controller.prewarm()
         controller.show()
+        try await Task.sleep(for: .milliseconds(100))
         harness.model.panelIsVisible = { true }
         harness.model.openTodayLinkCard()
         await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
@@ -925,7 +954,7 @@ final class RefsPanelModelTests: XCTestCase {
             panel.contentView?.layoutSubtreeIfNeeded()
             field = RefsPanelController.findTodayLinkField(in: panel.contentView)
             if field?.currentEditor() != nil { break }
-            RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.02))
+            try? await Task.sleep(for: .milliseconds(20))
         }
         XCTAssertNotNil(field?.currentEditor())
         controller.hide()
@@ -1009,6 +1038,7 @@ final class RefsPanelModelTests: XCTestCase {
         ])
         await harness.waitForSnapshot()
         harness.model.prepareForPresentation()
+        harness.model.copyCardNoteCapacity = 9
         let id = "ref/chat/small_reading.md"
         XCTAssertTrue(harness.model.perform(.select(id: id)))
         var completions: [RefsCopyRow] = []
@@ -1861,7 +1891,8 @@ final class RefsPanelModelTests: XCTestCase {
         let first = harness.model.selectedID
         XCTAssertTrue(harness.model.perform(.move(.nextSection)))
         XCTAssertNotEqual(harness.model.selectedID, first)
-        let secondSectionFirst = harness.model.listing.sections[1].ids.first
+        let secondSection = try XCTUnwrap(harness.model.listing.sections.dropFirst().first)
+        let secondSectionFirst = secondSection.ids.first
         XCTAssertEqual(harness.model.selectedID, secondSectionFirst)
 
         harness.model.query = "small"
@@ -2037,17 +2068,19 @@ final class RefsPanelModelTests: XCTestCase {
         }
         XCTAssertTrue(harness.model.revealMoreInspectorNotes())
         XCTAssertEqual(received.count, 1)
-        XCTAssertEqual(received[0].id, items[0].id)
-        XCTAssertEqual(received[0].generation, 1)
-        XCTAssertEqual(received[0].range, 3..<6)
+        let firstReveal = try XCTUnwrap(received.first)
+        XCTAssertEqual(firstReveal.id, items[0].id)
+        XCTAssertEqual(firstReveal.generation, 1)
+        XCTAssertEqual(firstReveal.range, 3..<6)
         XCTAssertEqual(
             harness.model.inspectorNotesPage(for: items[0].id).visibleCount(total: 8),
             6
         )
         XCTAssertTrue(harness.model.revealMoreInspectorNotes())
         XCTAssertEqual(received.count, 2)
-        XCTAssertEqual(received[1].range, 6..<8)
-        XCTAssertEqual(received[1].generation, 2)
+        let secondReveal = try XCTUnwrap(received.dropFirst().first)
+        XCTAssertEqual(secondReveal.range, 6..<8)
+        XCTAssertEqual(secondReveal.generation, 2)
         XCTAssertFalse(harness.model.revealMoreInspectorNotes())
         _ = cancellable
     }
@@ -2707,7 +2740,7 @@ final class RefsPanelModelTests: XCTestCase {
         await harness.waitForModel { $0.tabsState == .loaded }
 
         let orderedIDs = harness.model.listing.orderedIDs
-        let targetID = orderedIDs[1]
+        let targetID = try XCTUnwrap(orderedIDs.dropFirst().first)
         let neighbour = RefsSelectionPolicy.afterRemoving(
             targetID,
             in: harness.model.listing
@@ -2894,6 +2927,7 @@ final class RefsPanelModelTests: XCTestCase {
         let reader = FakeTabsReader(isTrusted: true)
         let harness = try makeRenameHarness(fetcher: fetcher, tabsReader: reader)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
         let item = try XCTUnwrap(harness.library.items.first)
         harness.model.installTabsForPreviews(
             snapshot: Self.tabsSnapshot([item], vault: harness.vault, frontmost: false),
@@ -2941,6 +2975,7 @@ final class RefsPanelModelTests: XCTestCase {
         let reader = FakeTabsReader(isTrusted: true)
         let harness = try makeRenameHarness(fetcher: fetcher, tabsReader: reader)
         await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
         let item = try XCTUnwrap(harness.library.items.first)
         harness.model.installTabsForPreviews(
             snapshot: Self.tabsSnapshot([item], vault: harness.vault, frontmost: false),
@@ -2964,6 +2999,7 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertTrue(harness.model.listing.orderedIDs.contains(rowID))
         XCTAssertEqual(harness.model.selectedID, selectedBefore)
 
+        await gate.waitForRequests(2)
         await gate.resolve(1, with: .success(try todayLinkFixture("refs-today-linked.json")))
         await harness.waitForModel { !$0.isLinkingToday }
         XCTAssertTrue(harness.model.canCloseTab(id: rowID))
@@ -2990,6 +3026,7 @@ final class RefsPanelModelTests: XCTestCase {
         harness.model.prepareForPresentation(source: .highlightsTabs)
         await harness.waitForModel { $0.tabsState == .loaded }
         reader.setNextCloseResults([.failed("close failed")])
+        harness.model.panelIsVisible = { true }
 
         XCTAssertTrue(harness.model.perform(.closeSelectedTab))
         await harness.waitForModel {
@@ -3083,10 +3120,8 @@ final class RefsPanelModelTests: XCTestCase {
         harness.model.prepareForPresentation(source: .highlightsTabs)
         await harness.waitForModel { $0.tabsState == .loaded }
 
-        XCTAssertEqual(
-            Array(harness.model.actionsSections()[0].prefix(2)),
-            [.openHighlights, .closeTab]
-        )
+        let firstActions = try XCTUnwrap(harness.model.actionsSections().first)
+        XCTAssertEqual(Array(firstActions.prefix(2)), [.openHighlights, .closeTab])
         XCTAssertEqual(RefsAction.closeTab.title, "Close Tab")
         XCTAssertEqual(RefsAction.closeTab.keyEquivalent, "x")
         XCTAssertEqual(RefsAction.closeTab.keyEquivalentModifierMask, .control)
@@ -3531,6 +3566,7 @@ final class RefsPanelModelTests: XCTestCase {
             highlightsURL: highlightsURL
         )
         model.panelDismisser = { [weak harness] in harness?.dismissed += 1 }
+        model.tabCloseDismisser = { [weak harness] in harness?.dismissed += 1 }
         model.panelPresenter = { [weak harness] in harness?.presented += 1 }
         // The error re-show path keeps every bit of panel state, like the
         // real coordinator-backed representer.
@@ -3588,6 +3624,7 @@ final class RefsPanelModelTests: XCTestCase {
             vault: vault,
             highlightsURL: nil
         )
+        model.tabCloseDismisser = { [weak harness] in harness?.dismissed += 1 }
         library.refresh(reason: .manual)
         return harness
     }
@@ -3895,15 +3932,10 @@ private actor TodayLinkResponseGate {
     private var requestCount = 0
     private var pending: [Int: CheckedContinuation<RefsTodayLinkResponse, Error>] = [:]
     private var completed: Set<Int> = []
-    private var requestWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
-    private var completionWaiters: [(Int, CheckedContinuation<Void, Never>)] = []
 
     func respond() async throws -> RefsTodayLinkResponse {
         let index = requestCount
         requestCount += 1
-        let ready = requestWaiters.filter { $0.0 <= requestCount }
-        requestWaiters.removeAll { $0.0 <= requestCount }
-        ready.forEach { $0.1.resume() }
         do {
             let response = try await withCheckedThrowingContinuation { continuation in
                 pending[index] = continuation
@@ -3916,24 +3948,63 @@ private actor TodayLinkResponseGate {
         }
     }
 
-    func waitForRequests(_ count: Int) async {
-        guard requestCount < count else { return }
-        await withCheckedContinuation { requestWaiters.append((count, $0)) }
+    @discardableResult
+    func waitForRequests(
+        _ count: Int,
+        timeout: Duration = .seconds(5),
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while requestCount < count {
+            guard ContinuousClock.now < deadline else {
+                XCTFail("expected \(count) today-link requests before timeout", file: file, line: line)
+                return false
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return true
     }
 
-    func waitForCompletion(_ index: Int) async {
-        guard !completed.contains(index) else { return }
-        await withCheckedContinuation { completionWaiters.append((index, $0)) }
+    @discardableResult
+    func waitForCompletion(
+        _ index: Int,
+        timeout: Duration = .seconds(5),
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while !completed.contains(index) {
+            guard ContinuousClock.now < deadline else {
+                XCTFail("today-link request \(index) did not complete before timeout", file: file, line: line)
+                return false
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        return true
     }
 
-    func resolve(_ index: Int, with result: Result<RefsTodayLinkResponse, Error>) {
+    @discardableResult
+    func resolve(
+        _ index: Int,
+        with result: Result<RefsTodayLinkResponse, Error>,
+        timeout: Duration = .seconds(5),
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async -> Bool {
+        let deadline = ContinuousClock.now + timeout
+        while pending[index] == nil {
+            guard ContinuousClock.now < deadline else {
+                XCTFail("today-link request \(index) was not ready to resolve before timeout", file: file, line: line)
+                return false
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
         pending.removeValue(forKey: index)?.resume(with: result)
+        return true
     }
 
     private func markCompleted(_ index: Int) {
         completed.insert(index)
-        let ready = completionWaiters.filter { $0.0 == index }
-        completionWaiters.removeAll { $0.0 == index }
-        ready.forEach { $0.1.resume() }
     }
 }

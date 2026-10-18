@@ -162,6 +162,10 @@ case "${command}" in
     if [[ -n "${FAKE_BOB_PARSE_FIXTURE:-}" ]]; then
       cat "${fixtures_dir}/${FAKE_BOB_PARSE_FIXTURE}"
       exit 0
+    elif [[ "${draft}" == "@@te" ]]; then
+      cat "${fixtures_dir}/capture-parse-template-prefix.json"
+    elif [[ "${draft}" == "${template_one_row_draft}" ]]; then
+      cat "${fixtures_dir}/capture-parse-template-one-row.json"
     elif [[ "${draft}" == "${template_example_draft}" ]]; then
       cat "${fixtures_dir}/capture-parse-template-example.json"
     elif [[ "${draft}" == "${template_header_draft}" ]]; then

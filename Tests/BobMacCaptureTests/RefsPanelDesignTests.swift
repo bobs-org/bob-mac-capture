@@ -1202,7 +1202,7 @@ final class RefsPanelDesignTests: XCTestCase {
             "ref/chat/morning_notes.md"
         )
         let current = try XCTUnwrap(model.rowContent(
-            for: "ref/chat/team_fit_review.md"
+            for: "ref/chat/today_report.md"
         ))
         XCTAssertEqual(current.openTab?.isCurrent, true)
         XCTAssertEqual(current.openTab?.pageCaption, "p. 5/25")
@@ -1373,7 +1373,7 @@ final class RefsPanelDesignTests: XCTestCase {
     /// the pointer were over it. ImageRenderer never drives `onHover`.
     private func renderTabsCloseHoverRow(model: RefsPanelModel, now: Date) throws {
         installTabs(model: model, now: now, state: .loaded, frontmost: true)
-        let id = "ref/chat/team_fit_review.md"
+        let id = "ref/chat/today_report.md"
         XCTAssertNotEqual(model.selectedID, id)
         XCTAssertTrue(model.canCloseTab(id: id))
         let content = try XCTUnwrap(model.rowContent(for: id))
