@@ -3179,6 +3179,7 @@ final class CapturePanelModelTests: XCTestCase {
             "Would restart CAPTURE 0920-0945 → 0935-1000 (25m) at line 5"
         )
         XCTAssertEqual(model.primaryActionTitle, "Restart")
+        XCTAssertTrue(model.primaryActionIsOverride)
     }
 
     func testOverrideSwapPresentationOffersSwapFooterAction() throws {
@@ -3190,17 +3191,18 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.sessionStartPresentation?.variant, .swap)
         XCTAssertEqual(model.sessionStartPresentation?.title, "Swap in BUGS")
         XCTAssertEqual(model.primaryActionTitle, "Swap")
+        XCTAssertTrue(model.primaryActionIsOverride)
     }
 
-    func testOverrideIdlePresentationOffersStartFooterAction() throws {
-        let idle = try startSuccessFixture("pomodoro-start-override-idle.json")
+    func testPlainStartPresentationDoesNotTintOverride() throws {
+        let start = try startSuccessFixture("pomodoro-start-next.json")
         let model = CapturePanelModel()
-        model.previewResult = idle
-        model.previewResults = [idle]
+        model.previewResult = start
+        model.previewResults = [start]
 
-        XCTAssertEqual(model.sessionStartPresentation?.variant, .idleStart)
-        XCTAssertEqual(model.sessionStartPresentation?.title, "Start BUGS")
+        XCTAssertEqual(model.sessionStartPresentation?.variant, .start)
         XCTAssertEqual(model.primaryActionTitle, "Start")
+        XCTAssertFalse(model.primaryActionIsOverride)
     }
 
     func testOverrideRestartLivePreviewAndSubmitUseRestartArgvFooterAndStatus() async throws {
@@ -3212,9 +3214,10 @@ final class CapturePanelModelTests: XCTestCase {
                 "HOME": "/tmp",
                 "PATH": "/usr/bin:/bin",
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_POMODORO_RUNNING": "1",
             ]
         )
-        let draft = "=="
+        let draft = "="
 
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
@@ -3248,7 +3251,7 @@ final class CapturePanelModelTests: XCTestCase {
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
-        let draft = "==#bugs"
+        let draft = "=#bugs"
 
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
@@ -3293,9 +3296,10 @@ final class CapturePanelModelTests: XCTestCase {
         await waitUntil { !model.isSubmitting }
 
         XCTAssertEqual(model.primaryActionTitle, "Capture")
+        XCTAssertFalse(model.primaryActionIsOverride)
     }
 
-    func testRunningStartDryRunSurfacesStillRunningError() async throws {
+    func testCountedRestartLivePreviewUsesRestartFooter() async throws {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
@@ -3306,14 +3310,14 @@ final class CapturePanelModelTests: XCTestCase {
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
         await waitUntil {
-            if case .failed = model.previewState { return true }
+            if case .ready = model.previewState { return true }
             return false
         }
 
-        XCTAssertNil(model.sessionStartPresentation)
-        XCTAssertEqual(model.statusText, "Preview failed")
-        XCTAssertTrue(model.errorMessage?.contains("still running") ?? false)
-        XCTAssertEqual(model.primaryActionTitle, "Capture")
+        XCTAssertEqual(model.sessionStartPresentation?.variant, .restart)
+        XCTAssertEqual(model.sessionStartPresentation?.title, "Restart CAPTURE")
+        XCTAssertEqual(model.primaryActionTitle, "Restart")
+        XCTAssertTrue(model.primaryActionIsOverride)
     }
 
     func testNamedStartIncompleteDraftRequestsStartNameCompletion() async throws {
@@ -3466,13 +3470,17 @@ final class CapturePanelModelTests: XCTestCase {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
-            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_OVERRIDE": "1",
+            ]
         )
-        model.plainDraft = "==#"
-        model.editorTextDidChange(cursorUTF8Offset: 3)
+        model.plainDraft = "=#"
+        model.editorTextDidChange(cursorUTF8Offset: 2)
         await waitUntil { model.completionResponse?.context == "pomodoro_start_name" }
 
-        // An incomplete `==#` is a state, not an error: the calm picker
+        // An incomplete `=#` is a state, not an error: the calm picker
         // status names the running session the pick would displace, with
         // the list kept open.
         XCTAssertEqual(model.previewState, .idle)
@@ -3496,7 +3504,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         XCTAssertEqual(
             model.rowContent(for: running).accessibilityHint,
-            "Already running — == restarts it; pick another Pomodoro to swap in"
+            "Already running — = restarts it; pick another Pomodoro to swap in"
         )
     }
 
@@ -3504,10 +3512,14 @@ final class CapturePanelModelTests: XCTestCase {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
-            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_OVERRIDE": "1",
+            ]
         )
-        model.plainDraft = "==3#"
-        model.editorTextDidChange(cursorUTF8Offset: 4)
+        model.plainDraft = "=3#"
+        model.editorTextDidChange(cursorUTF8Offset: 3)
         await waitUntil { model.completionResponse?.context == "pomodoro_start_name" }
 
         XCTAssertEqual(model.previewState, .idle)
@@ -3522,36 +3534,6 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(
             model.rowContent(for: running).accessibilityHint,
             "Restarts it now"
-        )
-    }
-
-    func testOverridePickerIdleKeepsCalmStatus() async throws {
-        let model = CapturePanelModel(debounceNanoseconds: 0)
-        model.processClient = BobProcessClient(
-            executablePath: try fakeBobPath(),
-            environment: [
-                "HOME": "/tmp",
-                "PATH": "/usr/bin:/bin",
-                "FAKE_BOB_OVERRIDE_IDLE": "1",
-            ]
-        )
-        model.plainDraft = "==#"
-        model.editorTextDidChange(cursorUTF8Offset: 3)
-        await waitUntil { model.completionResponse?.context == "pomodoro_start_name" }
-
-        // Nothing is running, so the override names no session: the
-        // existing calm status stands and open rows keep discovery text.
-        XCTAssertEqual(model.previewState, .idle)
-        XCTAssertNil(model.errorMessage)
-        XCTAssertEqual(
-            model.statusText,
-            "Pick a Pomodoro to start, or type a new name"
-        )
-        XCTAssertTrue(model.completionVisible)
-        let candidates = try XCTUnwrap(model.completionResponse?.candidates)
-        XCTAssertEqual(
-            model.rowContent(for: candidates[0]).secondaryText,
-            "Next up"
         )
     }
 
@@ -3605,7 +3587,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.primaryActionTitle, "Start")
     }
 
-    func testNamedStartStillRunningKeepsRedErrorBlock() async throws {
+    func testNamedStartWhileRunningShowsSwapCard() async throws {
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
@@ -3620,16 +3602,18 @@ final class CapturePanelModelTests: XCTestCase {
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
         await waitUntil {
-            if case .failed = model.previewState { return true }
+            if case .ready = model.previewState { return true }
             return false
         }
 
-        // Error previews keep the existing red error block: no card, and
-        // Bob's message already teaches the one-line switch.
-        XCTAssertNil(model.sessionStartPresentation)
-        XCTAssertEqual(model.statusText, "Preview failed")
-        XCTAssertTrue(model.errorMessage?.contains("is still running") ?? false)
-        XCTAssertTrue(model.errorMessage?.contains("x =#deep-work") ?? false)
+        XCTAssertEqual(model.sessionStartPresentation?.variant, .swap)
+        XCTAssertEqual(model.sessionStartPresentation?.title, "Swap in DEEP WORK")
+        XCTAssertEqual(model.primaryActionTitle, "Swap")
+        XCTAssertTrue(model.primaryActionIsOverride)
+        XCTAssertEqual(
+            model.sessionStartPresentation?.overrideWarning?.headline,
+            "Overrides the running BUGS"
+        )
     }
 
     func testAcceptingStartNameNewRowAnnouncesCreationAndStart() {

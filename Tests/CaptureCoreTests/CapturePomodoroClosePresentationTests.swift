@@ -419,7 +419,6 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         }
         for name in [
             "pomodoro-close-no-running.json",
-            "pomodoro-start-running.json",
             "pomodoro-close-bad-name.json",
         ] {
             let raw = try fixtureText(name)

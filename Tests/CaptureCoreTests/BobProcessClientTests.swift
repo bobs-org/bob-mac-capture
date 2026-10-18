@@ -969,7 +969,7 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(success.pomodoroStart?.offsetUnits, 2)
     }
 
-    func testLivePreviewSurfacesRunningStartAsActionableFailure() async throws {
+    func testLivePreviewDecodesCountedRestartOverride() async throws {
         let client = BobProcessClient(
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
@@ -977,11 +977,17 @@ final class BobProcessClientTests: XCTestCase {
 
         let response = try await client.captureLivePreview("=3", priorityRollSeed: "fixed")
 
-        guard case .failure(let failure) = response else {
-            return XCTFail("Expected a failed live preview response")
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful live preview response")
         }
-        XCTAssertTrue(failure.error.contains("still running"))
-        XCTAssertTrue(failure.error.contains("`x`, a blank line, then `=3`"))
+        XCTAssertEqual(success.kind, "pomodoro_start")
+        XCTAssertEqual(success.pomodoroStart?.overrideOutcome?.action, "restart")
+        XCTAssertEqual(success.pomodoroStart?.pomodoroName, "CAPTURE")
+        XCTAssertEqual(success.pomodoroStart?.overrideOutcome?.closeFirst, "x =3")
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+        XCTAssertEqual(presentation.variant, .restart)
+        XCTAssertEqual(presentation.title, "Restart CAPTURE")
+        XCTAssertTrue(presentation.isOverride)
     }
 
     func testLivePreviewDecodesStartSwitchBatchFromOneProcess() async throws {
@@ -1106,7 +1112,7 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(String(decoding: draft, as: UTF8.self), "x =#deep-work")
     }
 
-    func testNamedStartStillRunningFailureTeachesOneLineSwitch() async throws {
+    func testNamedStartWhileRunningSwapsInDestination() async throws {
         let client = BobProcessClient(
             executablePath: try fakeBobPath(),
             environment: [
@@ -1118,11 +1124,12 @@ final class BobProcessClientTests: XCTestCase {
 
         let response = try await client.captureLivePreview("=#deep-work", priorityRollSeed: "fixed")
 
-        guard case .failure(let failure) = response else {
-            return XCTFail("Expected a failed live preview response")
+        guard case .success(let success) = response else {
+            return XCTFail("Expected a successful live preview response")
         }
-        XCTAssertTrue(failure.error.contains("is still running"))
-        XCTAssertTrue(failure.error.contains("x =#deep-work"))
+        XCTAssertEqual(success.pomodoroStart?.overrideOutcome?.action, "swap")
+        XCTAssertEqual(success.pomodoroStart?.pomodoroName, "DEEP WORK")
+        XCTAssertEqual(success.pomodoroStart?.overrideOutcome?.previous?.pomodoroName, "BUGS")
     }
 
     func testCaptureCompleteOffersNoCandidatesForStart() async throws {

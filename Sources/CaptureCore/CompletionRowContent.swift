@@ -258,9 +258,9 @@ public struct CompletionRowContent: Equatable, Sendable {
 /// Builds the presentation content for one completion candidate. `query` is the in-progress
 /// text between the completion replacement's start and the cursor; pass an empty string when
 /// there is none (an empty-query result list still renders, just without match emphasis).
-/// `override` is Bob's top-level `override` object for a `==` name field (nil for a plain
-/// `=` field or an older Bob): under `==#` open rows read as a ledger takeover and the
-/// running row teaches the restart instead of the close.
+/// `override` is Bob's top-level `override` object for a `=#` name field while a
+/// session runs (nil when idle, or on an older Bob): under `=#` open rows read as a
+/// ledger takeover and the running row teaches the restart instead of the close.
 public func completionRowContent(
     for candidate: CaptureCompletionCandidate,
     context rawContext: String?,
@@ -727,10 +727,10 @@ private func startNameLinkBadge(childCount: Int?) -> String {
 }
 
 /// The secondary text for a `pomodoro_start_name` open row: under a
-/// ledger-keeping `==#`, the row reads as a takeover of the running
-/// ledger (`Takes over 0920–0945`); otherwise it keeps the `Next up` /
-/// `Planned` discovery text. A keeps-ledger response with no running
-/// session (idle) has no ledger to take over, so it also keeps the
+/// ledger-keeping `=#` while a session runs, the row reads as a takeover
+/// of the running ledger (`Takes over 0920–0945`); otherwise it keeps the
+/// `Next up` / `Planned` discovery text. A keeps-ledger response with no
+/// running session (idle) has no ledger to take over, so it also keeps the
 /// discovery text.
 private func startNameOpenSecondary(
     nextUp: Bool,
@@ -745,18 +745,18 @@ private func startNameOpenSecondary(
 }
 
 /// The accessibility hint for a `pomodoro_start_name` running row: under
-/// `==#` the row teaches the swap (`==` restarts the running session, any
-/// other pick swaps in), under `==<X>#` it restarts, and under a plain
-/// `=#` (or an older Bob with no override object) it teaches `==` before
-/// the close spellings.
+/// `=#` while a session runs the row teaches the swap (`=` restarts the
+/// running session, any other pick swaps in), under `=<X>#` it restarts,
+/// and when Bob reports no override object it teaches `=` before the close
+/// spellings.
 private func startNameRunningHint(override: CaptureCompleteOverride?) -> String {
     if override?.running != nil {
         if override?.keepsLedger == true {
-            return "Already running \u{2014} == restarts it; pick another Pomodoro to swap in"
+            return "Already running \u{2014} = restarts it; pick another Pomodoro to swap in"
         }
         return "Restarts it now"
     }
-    return "Already running. Restart it with ==, or close it first with x."
+    return "Already running. Restart it with =, or close it first with x."
 }
 
 /// The display name for a `pomodoro_start_name` start, new, again, or running

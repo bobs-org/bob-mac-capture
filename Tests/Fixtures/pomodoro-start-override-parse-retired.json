@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"input":"==","body":"==","mode":"pomodoro_start","route":null,"section":null,"block_id":null,"needs":[],"spans":[{"start":0,"end":2,"kind":"pomodoro_start"}],"diagnostics":[{"severity":"error","code":"invalid_pomodoro_start","message":"`==` is retired: `=` restarts or swaps the running Pomodoro by itself; write `=`","range":[0,2]}]}

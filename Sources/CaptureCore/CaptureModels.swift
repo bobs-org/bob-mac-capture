@@ -831,20 +831,14 @@ public struct PomodoroStartSpec: Codable, Equatable, Sendable {
   /// The typed `~<K>` drop list, ascending. Omitted (decodes as empty) when
   /// no drop list was typed or the Bob build predates start drops.
   public let drop: [Int]
-  /// True when the token used the doubled `==` sigil: an override of the
-  /// running Pomodoro rather than a plain start. Omitted (decodes as false)
-  /// for plain `=` tokens and older Bob builds.
-  public let isOverride: Bool
 
   public init(
-    raw: String, durationUnits: Int = 0, offsetUnits: Int = 0, drop: [Int] = [],
-    isOverride: Bool = false
+    raw: String, durationUnits: Int = 0, offsetUnits: Int = 0, drop: [Int] = []
   ) {
     self.raw = raw
     self.durationUnits = durationUnits
     self.offsetUnits = offsetUnits
     self.drop = drop
-    self.isOverride = isOverride
   }
 
   public init(from decoder: Decoder) throws {
@@ -853,7 +847,6 @@ public struct PomodoroStartSpec: Codable, Equatable, Sendable {
     durationUnits = try container.decodeIfPresent(Int.self, forKey: .durationUnits) ?? 0
     offsetUnits = try container.decodeIfPresent(Int.self, forKey: .offsetUnits) ?? 0
     drop = try container.decodeIfPresent([Int].self, forKey: .drop) ?? []
-    isOverride = try container.decodeIfPresent(Bool.self, forKey: .isOverride) ?? false
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -861,7 +854,6 @@ public struct PomodoroStartSpec: Codable, Equatable, Sendable {
     case durationUnits = "duration_units"
     case offsetUnits = "offset_units"
     case drop
-    case isOverride = "override"
   }
 }
 
@@ -948,10 +940,12 @@ public struct PomodoroStartTask: Codable, Equatable, Sendable {
   }
 }
 
-/// The running session in the pre-image of a `==` override: its name (omitted
+/// The running session in the pre-image of a `=` override: its name (omitted
 /// when unnamed), 1-based ledger line, and `HHMM` range plus duration.
-/// Every field decodes tolerantly so a partial object still previews instead
-/// of failing the whole capture.
+/// `overdue` is true when `now` is at or after that session's end; omitted
+/// (decodes as false) when false or on older Bob. Every field decodes
+/// tolerantly so a partial object still previews instead of failing the
+/// whole capture.
 public struct PomodoroStartPrevious: Codable, Equatable, Sendable {
   public let pomodoroName: String?
   public let pomodoroLine: Int
@@ -959,6 +953,7 @@ public struct PomodoroStartPrevious: Codable, Equatable, Sendable {
   public let end: String
   public let durationMinutes: Int
   public let timeRange: String
+  public let overdue: Bool
 
   public init(
     pomodoroName: String? = nil,
@@ -966,7 +961,8 @@ public struct PomodoroStartPrevious: Codable, Equatable, Sendable {
     start: String = "",
     end: String = "",
     durationMinutes: Int = 0,
-    timeRange: String = ""
+    timeRange: String = "",
+    overdue: Bool = false
   ) {
     self.pomodoroName = pomodoroName
     self.pomodoroLine = pomodoroLine
@@ -974,6 +970,7 @@ public struct PomodoroStartPrevious: Codable, Equatable, Sendable {
     self.end = end
     self.durationMinutes = durationMinutes
     self.timeRange = timeRange
+    self.overdue = overdue
   }
 
   public init(from decoder: Decoder) throws {
@@ -984,6 +981,7 @@ public struct PomodoroStartPrevious: Codable, Equatable, Sendable {
     end = try container.decodeIfPresent(String.self, forKey: .end) ?? ""
     durationMinutes = try container.decodeIfPresent(Int.self, forKey: .durationMinutes) ?? 0
     timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange) ?? ""
+    overdue = try container.decodeIfPresent(Bool.self, forKey: .overdue) ?? false
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -993,10 +991,11 @@ public struct PomodoroStartPrevious: Codable, Equatable, Sendable {
     case end
     case durationMinutes = "duration_minutes"
     case timeRange = "time_range"
+    case overdue
   }
 }
 
-/// The swapped-out session in the post-image of a `==#name` swap: its name,
+/// The swapped-out session in the post-image of a `=#name` swap: its name,
 /// 1-based ledger line, final entry line, direct-child Task Link count, and
 /// whether it kept stand-alone notes. Decodes tolerantly like its sibling.
 public struct PomodoroStartDemoted: Codable, Equatable, Sendable {
@@ -1038,28 +1037,34 @@ public struct PomodoroStartDemoted: Codable, Equatable, Sendable {
   }
 }
 
-/// Override outcome for a `==` token: how the running session was overridden
-/// (`restart`, `swap`), or that nothing was running and the token behaved
-/// exactly like its `=` twin (`start`). `ledger` is `kept` for a swap that
-/// took over the running ledger byte-for-byte, `fresh` otherwise. `previous`
-/// is the running session in the pre-image; `demoted` is swaps only.
-/// Decodes tolerantly; the summary keeps only the three known actions.
+/// Override outcome for a whole-item `=` start that restarted or swapped a
+/// running session (`restart`, `swap`). Older Bob may still send `"start"`
+/// when nothing was running; the presentation treats that as a plain start.
+/// `ledger` is `kept` for a swap that took over the running ledger
+/// byte-for-byte, `fresh` otherwise. `previous` is the running session in
+/// the pre-image; `demoted` is swaps only. `closeFirst` is Bob's draft
+/// spelling that closes the running session first (`x =`, `x =#bugs`);
+/// omitted (decodes as nil) on older Bob. Decodes tolerantly; the summary
+/// keeps the three known actions so an older `"start"` still previews.
 public struct PomodoroStartOverride: Codable, Equatable, Sendable {
   public let action: String
   public let ledger: String
   public let previous: PomodoroStartPrevious?
   public let demoted: PomodoroStartDemoted?
+  public let closeFirst: String?
 
   public init(
     action: String = "",
     ledger: String = "",
     previous: PomodoroStartPrevious? = nil,
-    demoted: PomodoroStartDemoted? = nil
+    demoted: PomodoroStartDemoted? = nil,
+    closeFirst: String? = nil
   ) {
     self.action = action
     self.ledger = ledger
     self.previous = previous
     self.demoted = demoted
+    self.closeFirst = closeFirst
   }
 
   public init(from decoder: Decoder) throws {
@@ -1068,6 +1073,7 @@ public struct PomodoroStartOverride: Codable, Equatable, Sendable {
     ledger = try container.decodeIfPresent(String.self, forKey: .ledger) ?? ""
     previous = try container.decodeIfPresent(PomodoroStartPrevious.self, forKey: .previous)
     demoted = try container.decodeIfPresent(PomodoroStartDemoted.self, forKey: .demoted)
+    closeFirst = try container.decodeIfPresent(String.self, forKey: .closeFirst)
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -1075,6 +1081,7 @@ public struct PomodoroStartOverride: Codable, Equatable, Sendable {
     case ledger
     case previous
     case demoted
+    case closeFirst = "close_first"
   }
 }
 
@@ -1101,10 +1108,10 @@ public struct PomodoroStartSummary: Codable, Equatable, Sendable {
   /// Rows removed by `~<K>`, in lineup order. Omitted (decodes as empty)
   /// when nothing was dropped.
   public let dropped: [PomodoroStartTask]
-  /// Override outcome for a `==` token, present exactly when the token was
-  /// `==`; plain `=` never carries it. Omitted (decodes as nil) on older
-  /// Bob builds, and an unknown action decodes as nil so a future outcome
-  /// previews as a plain start instead of failing the whole capture.
+  /// Override outcome for a whole-item `=` start that restarted or swapped
+  /// a running session. Omitted (decodes as nil) on a plain start and on
+  /// older Bob builds; an unknown action decodes as nil so a future
+  /// outcome previews as a plain start instead of failing the whole capture.
   public let overrideOutcome: PomodoroStartOverride?
 
   public init(
@@ -5179,7 +5186,7 @@ public struct CaptureTargetSection: Codable, Equatable, Identifiable {
   }
 }
 
-/// The running session a `==` name field would override, from Bob's
+/// The running session a `=#` name field would override, from Bob's
 /// additive top-level `override` object on a `pomodoro_start_name`
 /// completion. `pomodoroName` is absent for an unnamed running session;
 /// `line` is the 1-based day-file line and `timeRange` the ledger span the
@@ -5209,11 +5216,12 @@ public struct CaptureCompleteOverrideRunning: Codable, Equatable, Sendable {
   }
 }
 
-/// Additive override context for a `==` name field on a
-/// `pomodoro_start_name` completion: `keepsLedger` is true when the `<X>`
-/// suffix is empty (a swap takes over the running ledger byte-for-byte);
-/// `running` is present only when exactly one timed session runs. Plain
-/// `=` name fields never carry this object, so missing decodes as nil.
+/// Additive override context for a `pomodoro_start_name` field when exactly
+/// one session runs and no earlier item is a whole-item session operator.
+/// Present for `=#` (and counted `=3#`) while a session runs. `keepsLedger`
+/// is true when the `<X>` suffix is empty (a swap takes over the running
+/// ledger byte-for-byte); `running` is always set when the object is
+/// present. Older Bob omits it, so missing decodes as nil.
 public struct CaptureCompleteOverride: Codable, Equatable, Sendable {
   public let keepsLedger: Bool
   public let running: CaptureCompleteOverrideRunning?
@@ -5243,9 +5251,9 @@ public struct CaptureCompletionResponse: Codable, Equatable {
   public let context: String?
   public let candidates: [CaptureCompletionCandidate]
   public let warnings: [String]
-  /// Additive top-level `override` object, present exactly when the name
-  /// field belongs to a `==` token. Older Bob omits it; then the rows
-  /// and picker status read as a plain `=` start.
+  /// Additive top-level `override` object, present when the name field is
+  /// a `=#` start while a session runs. Older Bob omits it; then the rows
+  /// and picker status read as a plain start.
   public let overrideInfo: CaptureCompleteOverride?
   /// Additive top-level `block_id` object, present exactly when the context
   /// is `pomodoro_block_id` or `task_block_id`. Older Bob binaries omit it;

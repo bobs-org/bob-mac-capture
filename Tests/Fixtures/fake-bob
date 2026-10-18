@@ -275,21 +275,9 @@ case "${command}" in
       cat "${fixtures_dir}/pomodoro-start-named-parse-chain.json"
     elif [[ "${draft}" == "x =#de" ]]; then
       cat "${fixtures_dir}/pomodoro-start-named-parse-chain-query.json"
-    elif [[ "${draft}" == "==" ]]; then
-      # Bare restart (real `bob capture-parse` output): `pomodoro_start`
-      # mode with the additive `override` spec flag.
-      cat "${fixtures_dir}/pomodoro-start-override-parse-restart.json"
-    elif [[ "${draft}" == "==#bugs" ]]; then
-      # Named override swap (real `bob capture-parse` output).
-      cat "${fixtures_dir}/pomodoro-start-override-parse.json"
-    elif [[ "${draft}" == "==#" ]]; then
-      # Incomplete override name (real `bob capture-parse` output):
-      # `pomodoro_name` need with the partial override spec.
-      cat "${fixtures_dir}/pomodoro-start-override-parse-incomplete.json"
-    elif [[ "${draft}" == "==3#" ]]; then
-      # Counted incomplete override name (real `bob capture-parse`
-      # output): the same need with a fresh-timing partial spec.
-      cat "${fixtures_dir}/pomodoro-start-override-parse-fresh-incomplete.json"
+    elif [[ "${draft}" == "==" || "${draft}" == "==#bugs" || "${draft}" == "==#" || "${draft}" == "==3#" ]]; then
+      # Claimed `==` is a teaching error (real `bob capture-parse` output).
+      cat "${fixtures_dir}/pomodoro-start-override-parse-retired.json"
     elif [[ "${draft}" == "^bob:ready=x" ]]; then
       cat "${fixtures_dir}/pomodoro-close-parse-link.json"
     elif [[ "${draft}" == *"[[AI"* ]]; then
@@ -3340,29 +3328,32 @@ JSON
     elif [[ "${draft}" == "=#" ]]; then
       # Named-start rows for the worked-example ledger (real
       # `bob capture-complete` output; only the cursor varies).
-      # `FAKE_BOB_POMODORO_RUNNING=1` serves the running-ledger variant,
-      # where DEEP WORK leads with `next_up` and BUGS trails as running.
-      if [[ "${FAKE_BOB_POMODORO_RUNNING:-0}" == "1" ]]; then
+      # `FAKE_BOB_OVERRIDE=1` serves the swap-picker rows (override object
+      # present). Real bob omits that object on an empty `=#`; the fixture
+      # is the `=#bugs` cursor-2 list. `FAKE_BOB_POMODORO_RUNNING=1` serves
+      # the running-ledger variant without override, matching empty `=#`.
+      if [[ "${FAKE_BOB_OVERRIDE:-0}" == "1" ]]; then
+        sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-override-complete.json"
+      elif [[ "${FAKE_BOB_POMODORO_RUNNING:-0}" == "1" ]]; then
         sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-running.json"
       else
         sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete.json"
       fi
-    elif [[ "${draft}" == "==#" ]]; then
-      # Override name-picker rows for the worked-example ledger (real
-      # `bob capture-complete` output; only the cursor varies).
-      # `FAKE_BOB_OVERRIDE_IDLE=1` serves the idle variant: nothing is
-      # running, so the override carries no running session.
-      if [[ "${FAKE_BOB_OVERRIDE_IDLE:-0}" == "1" ]]; then
-        sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-override-complete-idle.json"
-      else
-        sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-override-complete.json"
-      fi
-    elif [[ "${draft}" == "==3#" ]]; then
-      # Fresh-timing override rows (real `bob capture-complete` output;
-      # only the cursor varies).
+    elif [[ "${draft}" == "=#bugs" ]]; then
+      # Named-start rows with a destination name, so Bob's state-based
+      # override object is present (real `bob capture-complete` on
+      # `=#bugs` at cursor 2; only the cursor varies).
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-override-complete.json"
+    elif [[ "${draft}" == "=3#plan" ]]; then
+      # Fresh-timing override rows (real `bob capture-complete` on
+      # `=3#plan` at cursor 3; only the cursor varies).
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-override-complete-fresh.json"
     elif [[ "${draft}" == "=3#" ]]; then
-      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-counted.json"
+      if [[ "${FAKE_BOB_OVERRIDE:-0}" == "1" ]]; then
+        sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-override-complete-fresh.json"
+      else
+        sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-counted.json"
+      fi
     elif [[ "${draft}" == "=#rev" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete-new.json"
     elif [[ "${draft}" == "=#de" ]]; then
@@ -3694,7 +3685,13 @@ JSON
     elif [[ "${draft}" == "Draft docs @bob:draft-docs=x" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-close-new-task.json"
     elif [[ "${draft}" == "=" ]]; then
-      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-next.json"
+      # fake-bob is stateless: idle `=` starts the next session, and
+      # `FAKE_BOB_POMODORO_RUNNING=1` serves the override restart.
+      if [[ "${FAKE_BOB_POMODORO_RUNNING:-0}" == "1" ]]; then
+        sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-override-restart.json"
+      else
+        sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-next.json"
+      fi
     elif [[ "${draft}" == "=~2" ]]; then
       # Whole-item start with a `~<K>` drop list (real `bob capture --dry-run`
       # output on the worked-example ledger; only the dry-run flag varies).
@@ -3703,26 +3700,24 @@ JSON
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-drop-empty.json"
     elif [[ "${draft}" == "=#capture~2" ]]; then
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-drop-named.json"
-    elif [[ "${draft}" == "==" ]]; then
-      # Override restart (real `bob capture --dry-run` output on the
-      # worked-example ledger; only the dry-run flag varies).
-      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-override-restart.json"
-    elif [[ "${draft}" == "==#bugs" ]]; then
+    elif [[ "${draft}" == "=#bugs" ]]; then
       # Override swap with a kept ledger (real `bob capture --dry-run`
       # output; only the dry-run flag varies).
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-override-swap-kept.json"
-    elif [[ "${draft}" == "==3#plan" ]]; then
+    elif [[ "${draft}" == "=3#plan" ]]; then
       # Override swap with a fresh ledger onto a created ("again") session
       # (real `bob capture --dry-run` output; only the dry-run flag varies).
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-override-swap-fresh-created.json"
+    elif [[ "${draft}" == "==" || "${draft}" == "==#bugs" || "${draft}" == "==3#plan" ]]; then
+      # Claimed `==` is a teaching error (real `bob capture` output).
+      cat "${fixtures_dir}/pomodoro-start-override-capture-retired.json"
+      exit 1
     elif [[ "${draft}" == "=-2" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-timed.json"
     elif [[ "${draft}" == "=3" ]]; then
-      # A bare `=` starts the next session, so `=3` against a running session
-      # fails with the still-running error (fake-bob is stateless: `=` serves
-      # the clear-ledger start while `=3` serves the running-ledger failure).
-      cat "${fixtures_dir}/pomodoro-start-running.json"
-      exit 1
+      # Counted restart of the running session (real `bob capture --dry-run`
+      # output; only the dry-run flag varies).
+      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-running.json"
     elif [[ "${draft}" == "${start_switch_draft}" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/g" "${fixtures_dir}/pomodoro-start-switch.json"
     elif [[ "${draft}" == "^bob:ready#capture=x" ]]; then
@@ -4851,12 +4846,13 @@ JSON
     elif [[ "${draft}" == "=#deep-work" ]]; then
       # Named starts on the worked-example ledger (real
       # `bob capture --dry-run` output; only the dry-run flag varies).
-      # `FAKE_BOB_POMODORO_RUNNING=1` serves the running-ledger R4 failure.
+      # `FAKE_BOB_POMODORO_RUNNING=1` serves the named swap of DEEP WORK
+      # in over the running BUGS session.
       if [[ "${FAKE_BOB_POMODORO_RUNNING:-0}" == "1" ]]; then
-        cat "${fixtures_dir}/pomodoro-start-named-still-running.json"
-        exit 1
+        sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-named-swap.json"
+      else
+        sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-named-existing.json"
       fi
-      sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-named-existing.json"
     elif [[ "${draft}" == "=#review" ]]; then
       sed "s/\"dry_run\":true/\"dry_run\":${dry_run}/" "${fixtures_dir}/pomodoro-start-named-created.json"
     elif [[ "${draft}" == "=#plan" ]]; then

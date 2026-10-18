@@ -624,7 +624,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.badges, ["Running"])
         XCTAssertEqual(
             content.accessibilityHint,
-            "Already running. Restart it with ==, or close it first with x."
+            "Already running. Restart it with =, or close it first with x."
         )
     }
 
@@ -663,7 +663,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.badges, ["Running"])
         XCTAssertEqual(
             content.accessibilityHint,
-            "Already running — == restarts it; pick another Pomodoro to swap in"
+            "Already running — = restarts it; pick another Pomodoro to swap in"
         )
     }
 
@@ -1235,15 +1235,6 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertFalse(override.keepsLedger)
         XCTAssertEqual(override.running?.pomodoroName, "CAPTURE")
         XCTAssertEqual(override.running?.timeRange, "0920-0945")
-    }
-
-    func testOverrideCompleteIdleFixtureOmitsRunning() throws {
-        let response = try decodeCompletionFixture("pomodoro-start-override-complete-idle.json")
-
-        let override = try XCTUnwrap(response.overrideInfo)
-        XCTAssertTrue(override.keepsLedger)
-        XCTAssertNil(override.running)
-        XCTAssertEqual(response.candidates.count, 2)
     }
 
     func testPlainStartNameFixtureCarriesNoOverride() throws {

@@ -249,7 +249,10 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
             "pomodoro-start-override-restart.json",
             "pomodoro-start-override-swap-kept.json",
             "pomodoro-start-override-swap-fresh-created.json",
-            "pomodoro-start-override-idle.json",
+            "pomodoro-start-override-overdue.json",
+            "pomodoro-start-override-unnamed.json",
+            "pomodoro-start-running.json",
+            "pomodoro-start-named-swap.json",
         ] {
             let success = try decodeFixture(name)
             XCTAssertNotNil(
@@ -259,9 +262,7 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
             )
         }
         for name in [
-            "pomodoro-start-running.json",
             "pomodoro-start-none.json",
-            "pomodoro-start-named-still-running.json",
         ] {
             let raw = try fixtureText(name)
             let response = try JSONDecoder().decode(
@@ -404,17 +405,18 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         )
     }
 
-    func testStillRunningFixtureTeachesOneLineSwitch() throws {
-        let raw = try fixtureText("pomodoro-start-named-still-running.json")
-        let response = try JSONDecoder().decode(
-            CaptureCommandResponse.self,
-            from: Data(raw.utf8)
+    func testNamedSwapFixtureTakesOverRunningLedger() throws {
+        let success = try decodeFixture("pomodoro-start-named-swap.json")
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+
+        XCTAssertEqual(presentation.variant, .swap)
+        XCTAssertTrue(presentation.takesOverLedger)
+        XCTAssertEqual(presentation.title, "Swap in DEEP WORK")
+        XCTAssertEqual(presentation.primaryActionTitle, "Swap")
+        XCTAssertEqual(
+            presentation.overrideWarning?.headline,
+            "Overrides the running BUGS"
         )
-        guard case .failure(let failure) = response else {
-            return XCTFail("expected failed Bob response")
-        }
-        XCTAssertTrue(failure.error.contains("is still running"), failure.error)
-        XCTAssertTrue(failure.error.contains("x =#deep-work"), failure.error)
     }
 
     func testDropFixtureMergesKeptAndDroppedInLineupOrder() throws {
@@ -722,11 +724,24 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         XCTAssertNil(presentation.demotedText)
         XCTAssertFalse(presentation.takesOverLedger)
         XCTAssertNil(presentation.takesOverBadgeText)
-        XCTAssertNil(presentation.idleCaption)
         XCTAssertEqual(presentation.primaryActionTitle, "Restart")
         XCTAssertEqual(presentation.notificationTitle, "Restarted CAPTURE")
-        XCTAssertEqual(presentation.notificationBody, "0935–1000 (25m) · 2 queued")
+        XCTAssertEqual(
+            presentation.notificationBody,
+            "0935–1000 (25m) · 2 queued · was 0920–0945"
+        )
         XCTAssertEqual(presentation.batchSuffix, " (restarted CAPTURE 0935-1000)")
+        let warning = try XCTUnwrap(presentation.overrideWarning)
+        XCTAssertEqual(warning.headline, "Overrides the running CAPTURE")
+        XCTAssertEqual(warning.rangeText, "0920–0945")
+        XCTAssertEqual(warning.detail, "Its clock restarts without closing it")
+        XCTAssertEqual(warning.closeFirst, "x =")
+        XCTAssertEqual(
+            warning.accessibilityText,
+            "Warning: overrides the running CAPTURE, 0920 to 0945. Its clock restarts without closing it. Type x = to close it first."
+        )
+        XCTAssertTrue(presentation.accessibilitySummary.hasPrefix(warning.accessibilityText))
+        XCTAssertTrue(presentation.isOverride)
     }
 
     func testOverrideRestartCommitUsesRestartedVerb() throws {
@@ -735,7 +750,7 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
             summary: summary,
             dryRun: false,
             relativeTarget: "2026/20261009.md",
-            captureText: "=="
+            captureText: "="
         )
 
         XCTAssertEqual(committed.variant, .restart)
@@ -761,8 +776,12 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         )
         XCTAssertEqual(presentation.demotedText, "CAPTURE → first future · keeps 2 Task Links")
         XCTAssertNil(presentation.restartWasText)
-        XCTAssertNil(presentation.idleCaption)
         XCTAssertEqual(presentation.primaryActionTitle, "Swap")
+        let warning = try XCTUnwrap(presentation.overrideWarning)
+        XCTAssertEqual(warning.headline, "Overrides the running CAPTURE")
+        XCTAssertEqual(warning.detail, "BUGS takes over its clock without closing it")
+        XCTAssertEqual(warning.closeFirst, "x =#bugs")
+        XCTAssertTrue(presentation.isOverride)
         XCTAssertEqual(presentation.notificationTitle, "Swapped in BUGS")
         XCTAssertEqual(presentation.notificationBody, "0920–0945 · CAPTURE back to first future")
         XCTAssertEqual(presentation.batchSuffix, " (swapped in BUGS 0920-0945)")
@@ -786,27 +805,43 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.notificationBody, "0935–0950 · CAPTURE back to first future")
         XCTAssertEqual(presentation.batchSuffix, " (swapped in PLAN 0935-0950)")
         XCTAssertEqual(presentation.primaryActionTitle, "Swap")
+        let warning = try XCTUnwrap(presentation.overrideWarning)
+        XCTAssertEqual(warning.headline, "Overrides the running CAPTURE")
+        XCTAssertEqual(warning.detail, "It steps aside without closing it")
+        XCTAssertEqual(warning.closeFirst, "x =3#plan")
     }
 
-    func testOverrideIdleFixtureStartsLikePlainStartWithCaption() throws {
-        let success = try decodeFixture("pomodoro-start-override-idle.json")
+    func testOverrideOverdueFixtureNamesStillOpenPastEnd() throws {
+        let success = try decodeFixture("pomodoro-start-override-overdue.json")
         let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
 
-        XCTAssertEqual(presentation.variant, .idleStart)
-        XCTAssertEqual(presentation.title, "Start BUGS")
-        XCTAssertEqual(
-            presentation.statusText,
-            "Would start BUGS 0935-1000 (25m) at line 3"
-        )
-        XCTAssertEqual(presentation.idleCaption, "Nothing was running — starts like =")
-        XCTAssertNil(presentation.restartWasText)
-        XCTAssertNil(presentation.demotedText)
-        XCTAssertEqual(presentation.primaryActionTitle, "Start")
-        XCTAssertEqual(presentation.notificationTitle, "Started BUGS")
-        XCTAssertEqual(presentation.notificationBody, "0935-1000 (25m) · Nothing queued")
-        XCTAssertTrue(
-            presentation.accessibilitySummary.contains("Nothing was running — starts like =")
-        )
+        XCTAssertEqual(presentation.variant, .restart)
+        let warning = try XCTUnwrap(presentation.overrideWarning)
+        XCTAssertEqual(warning.headline, "Overrides CAPTURE, still open past its end")
+        XCTAssertEqual(warning.rangeText, "0920–0945")
+        XCTAssertEqual(warning.closeFirst, "x =")
+        XCTAssertTrue(success.pomodoroStart?.overrideOutcome?.previous?.overdue == true)
+    }
+
+    func testOverrideUnnamedFixtureNamesTheRunningSession() throws {
+        let success = try decodeFixture("pomodoro-start-override-unnamed.json")
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+
+        XCTAssertEqual(presentation.variant, .restart)
+        let warning = try XCTUnwrap(presentation.overrideWarning)
+        XCTAssertEqual(warning.headline, "Overrides the running session")
+        XCTAssertEqual(warning.rangeText, "0920–0945")
+        XCTAssertEqual(warning.detail, "Its clock restarts without closing it")
+        XCTAssertEqual(warning.closeFirst, "x =")
+    }
+
+    func testPlainStartHasNoOverrideBanner() throws {
+        let success = try decodeFixture("pomodoro-start-next.json")
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+
+        XCTAssertEqual(presentation.variant, .start)
+        XCTAssertFalse(presentation.isOverride)
+        XCTAssertNil(presentation.overrideWarning)
     }
 
     func testOlderBobWithoutOverrideDecodesAsPlainStart() throws {
@@ -817,10 +852,60 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.variant, .start)
         XCTAssertFalse(presentation.takesOverLedger)
         XCTAssertNil(presentation.takesOverBadgeText)
-        XCTAssertNil(presentation.idleCaption)
+        XCTAssertNil(presentation.overrideWarning)
         XCTAssertNil(presentation.restartWasText)
         XCTAssertNil(presentation.demotedText)
         XCTAssertEqual(presentation.title, "Start CAPTURE")
+        XCTAssertEqual(presentation.primaryActionTitle, "Start")
+    }
+
+    func testOlderBobWithoutOverdueOrCloseFirstStillGetsBanner() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"",
+             "relative_target":"2026/20261009.md","target":"/tmp/bob/2026/20261009.md",
+             "text":"=","task_line":"- [ ] (**0935-1000** [t:: 25m]) — CAPTURE",
+             "kind":"pomodoro_start","created":"2026-10-09","scheduled":null,
+             "placement":"started",
+             "pomodoro_start":{"start":"0935","end":"1000","duration_minutes":25,
+              "offset_units":0,"pomodoro_name":"CAPTURE","pomodoro_line":5,
+              "created_pomodoro":false,"time_range":"(**0935-1000** [t:: 25m])",
+              "tasks":[],
+              "override":{"action":"restart","ledger":"fresh",
+               "previous":{"pomodoro_name":"CAPTURE","pomodoro_line":5,
+                "start":"0920","end":"0945","duration_minutes":25,
+                "time_range":"0920-0945"}}}}
+            """
+        )
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+        XCTAssertEqual(presentation.variant, .restart)
+        let warning = try XCTUnwrap(presentation.overrideWarning)
+        XCTAssertEqual(warning.headline, "Overrides the running CAPTURE")
+        XCTAssertEqual(warning.detail, "Its clock restarts without closing it")
+        XCTAssertNil(warning.closeFirst)
+        XCTAssertFalse(success.pomodoroStart?.overrideOutcome?.previous?.overdue == true)
+    }
+
+    func testLeftoverStartActionDecodesAsPlainStart() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"",
+             "relative_target":"2026/20261009.md","target":"/tmp/bob/2026/20261009.md",
+             "text":"=","task_line":"- [ ] (**0935-1000** [t:: 25m]) — CAPTURE",
+             "kind":"pomodoro_start","created":"2026-10-09","scheduled":null,
+             "placement":"started",
+             "pomodoro_start":{"start":"0935","end":"1000","duration_minutes":25,
+              "offset_units":0,"pomodoro_name":"CAPTURE","pomodoro_line":5,
+              "created_pomodoro":false,"time_range":"(**0935-1000** [t:: 25m])",
+              "tasks":[],
+              "override":{"action":"start","ledger":"fresh"}}}
+            """
+        )
+        XCTAssertEqual(success.pomodoroStart?.overrideOutcome?.action, "start")
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+        XCTAssertEqual(presentation.variant, .start)
+        XCTAssertFalse(presentation.isOverride)
+        XCTAssertNil(presentation.overrideWarning)
         XCTAssertEqual(presentation.primaryActionTitle, "Start")
     }
 
@@ -829,7 +914,7 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
             """
             {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"",
              "relative_target":"2026/20261009.md","target":"/tmp/bob/2026/20261009.md",
-             "text":"==","task_line":"- [ ] (**0935-1000** [t:: 25m]) — CAPTURE",
+             "text":"=","task_line":"- [ ] (**0935-1000** [t:: 25m]) — CAPTURE",
              "kind":"pomodoro_start","created":"2026-10-09","scheduled":null,
              "placement":"started",
              "pomodoro_start":{"start":"0935","end":"1000","duration_minutes":25,
@@ -846,28 +931,18 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.title, "Start CAPTURE")
     }
 
-    func testOverrideParseFixturesCarrySpecFlag() throws {
-        let swap = try JSONDecoder().decode(
+    func testRetiredDoubleEqualsParseFixtureTeachesRewrite() throws {
+        let response = try JSONDecoder().decode(
             CaptureParseResponse.self,
-            from: Data(fixtureText("pomodoro-start-override-parse.json").utf8)
+            from: Data(fixtureText("pomodoro-start-override-parse-retired.json").utf8)
         )
-        XCTAssertEqual(swap.mode, "pomodoro_start")
-        XCTAssertEqual(swap.pomodoroStart?.isOverride, true)
-
-        let restart = try JSONDecoder().decode(
-            CaptureParseResponse.self,
-            from: Data(fixtureText("pomodoro-start-override-parse-restart.json").utf8)
+        XCTAssertEqual(response.mode, "pomodoro_start")
+        XCTAssertEqual(response.diagnostics.first?.code, "invalid_pomodoro_start")
+        XCTAssertEqual(
+            response.diagnostics.first?.message,
+            "`==` is retired: `=` restarts or swaps the running Pomodoro by itself; write `=`"
         )
-        XCTAssertEqual(restart.mode, "pomodoro_start")
-        XCTAssertEqual(restart.pomodoroStart?.isOverride, true)
-
-        let incomplete = try JSONDecoder().decode(
-            CaptureParseResponse.self,
-            from: Data(fixtureText("pomodoro-start-override-parse-incomplete.json").utf8)
-        )
-        XCTAssertEqual(incomplete.mode, "incomplete")
-        XCTAssertEqual(incomplete.needs, ["pomodoro_name"])
-        XCTAssertEqual(incomplete.pomodoroStart?.isOverride, true)
+        XCTAssertNil(response.pomodoroStart)
     }
 
     func testTaskRowDisplayTitleHidesWikilinkAndCodeMarkup() throws {

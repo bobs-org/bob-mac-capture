@@ -463,13 +463,16 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
   `template_field` uses the same slot hue, selected by `field % 6` from orange, teal,
   pink, green, purple, and brown. Template diagnostics underline their typed ranges in
   red; ordinary drafts keep their existing highlighting.
-- A `==` override restart or swap previews on the same start card with reworded
-  titles, status, badges, footer action, and notifications, built only from Bob's
-  additive `pomodoro_start.override` object (`action` restart/swap/start, `ledger`
-  kept/fresh, `previous`, `demoted`) and the `capture-parse` spec's additive
-  `override` flag. An older Bob that omits both decodes as a plain `=` start with
-  no behavior change, and an unknown override action degrades to a plain start;
-  the app never computes ledger ranges itself.
+- A `=` override restart or swap previews on the same start card with an orange
+  warning banner as the first row, reworded titles, status, badges, footer action,
+  and notifications, built only from Bob's additive `pomodoro_start.override`
+  object (`action` restart/swap, leftover `"start"` as a plain start, `ledger`
+  kept/fresh, `previous` including `overdue`, `demoted`, `close_first`). An older
+  Bob that omits the object decodes as a plain `=` start with no behavior change,
+  and an unknown override action degrades to a plain start; the app never computes
+  ledger ranges itself. The footer's primary Return tints orange whenever the
+  on-screen preview contains an override. Claimed `==` is a retired teaching
+  error.
 - Inline completion calls
   `bob capture-complete --all-tasks --cursor BYTE --format json -- <draft>`; accepted
   ordinary candidates apply the server-provided byte replacement range and
@@ -986,17 +989,18 @@ legacy preview and notification copy.
   calm `Pick a Pomodoro to start, or type a new name` status instead of a
   doomed dry run; a caret on the `=<X>` suffix itself requests nothing. The
   list narrows as you type while the live preview already shows the resolved
-  session, and Return starts it. Under a `==` token Bob adds its additive
-  top-level `override` object (`keeps_ledger` plus the running session) and
-  the list reads as a swap picker: the status becomes
+  session, and Return starts it. Under a `=#name` field while a session runs,
+  Bob adds its additive top-level `override` object (`keeps_ledger` plus the
+  running session) and the list reads as a swap picker: the status becomes
   `Pick a Pomodoro to take over CAPTURE's 0920–0945` (or
   `Pick a Pomodoro to start now · CAPTURE returns to first future` with a
-  fresh `==<X>#` timing), open rows read `Takes over 0920–0945`, and the
+  fresh `=<X>#` timing), open rows read `Takes over 0920–0945`, and the
   running row keeps `Running 0920–0945` while teaching
-  `Already running — == restarts it; pick another Pomodoro to swap in`
-  (`Restarts it now` with fresh timing). With nothing running the existing
-  status and discovery rows stand. Under a plain `=#` the running row now
-  teaches `Already running. Restart it with ==, or close it first with x.`
+  `Already running — = restarts it; pick another Pomodoro to swap in`
+  (`Restarts it now` with fresh timing). An empty `=#` reports no override
+  until a name is typed, so the existing status and discovery rows stand.
+  Under a plain `=#` the running row now
+  teaches `Already running. Restart it with =, or close it first with x.`
   An older Bob that reports no
   `pomodoro_start_name` context offers no rows there; the panel simply shows
   no completion until Bob is upgraded.
@@ -1038,8 +1042,8 @@ legacy preview and notification copy.
   Bob's returned behavior metadata; when it reports exactly one `pomodoro_link`,
   the action becomes **Start** if the link starts a session and **Link** otherwise;
   a single close — whole-item `x`, link `=x`, or new-task `=x` — becomes
-  **Close**; a single whole-item `=`/`=<X>` start becomes **Start**, a `==<X>`
-  restart becomes **Restart**, and a `==[<X>]#name` swap becomes **Swap**; a single
+  **Close**; a single whole-item `=`/`=<X>` start becomes **Start**, a `=`
+  restart of the running session becomes **Restart**, and a `=#name` swap becomes **Swap**; a single
   whole-item `!note:block-id` completion becomes **Complete**;
   batches keep **Capture** because Return will submit more than the toggle.
   Ensure Next preview, VoiceOver, and notifications present status and relocation
@@ -1127,19 +1131,21 @@ legacy preview and notification copy.
   then one caption row — the teaching hint before a drop is typed, the drop
   summary after (`Dropped 2, 4`, plus ` · nothing left queued` when nothing stays
   queued), or the pending notice while a list dangles — followed by the queued-task
-  rows merged with dropped rows in lineup order. A `==<X>` restart keeps the
+  rows merged with dropped rows in lineup order. A restart or swap puts an
+  orange warning banner first on the card (`Overrides the running CAPTURE`,
+  with the session range, a detail line, and a monospaced `x =` chip to close
+  it first) and tints the footer's primary Return orange. A `=` restart keeps the
   start pink but swaps the header glyph for `arrow.clockwise.circle.fill`,
   retitles to `Restart NAME` / `Restarted NAME`, reads
   `Would restart CAPTURE 0920-0945 → 0935-1000 (15m) at line 5` in the status,
   and adds a dim `was 0920–0945` caption under the destination. A
-  `==[<X>]#name` swap instead uses `arrow.left.arrow.right.circle.fill`,
+  `=#name` swap instead uses `arrow.left.arrow.right.circle.fill`,
   retitles to `Swap in NAME` / `Swapped in NAME`, reads
   `Would swap in BUGS 0920-0945 (takes over CAPTURE) at line 5` for a kept
   ledger (or the fresh session range otherwise), adds a `Takes over` capsule
   next to the title when the swap keeps the running ledger, and adds an
   `arrow.uturn.down` demoted row (`CAPTURE → first future · keeps 2 Task Links`,
-  plus ` and its notes`). An idle `==` that found nothing running keeps the
-  plain start card with a `Nothing was running — starts like =` caption. Each numbered row gets the close
+  plus ` and its notes`). Each numbered row gets the close
   card's number badge (`n.circle`, filled for dropped rows, capsule above 50) with
   status glyphs (`circle` Ready, `circle.inset.filled` Next,
   `circle.lefthalf.filled` In Progress, `questionmark.circle` other,
@@ -1159,16 +1165,16 @@ legacy preview and notification copy.
   half. An empty lineup keeps the quiet `Type #name to start a specific Pomodoro`
   caption, and named starts with an empty lineup show no hint. Dropped rows read
   "Task 2, …, drops from today" and queued rows "Task 1, …, queued" for VoiceOver.
-  A still-running error keeps the red error block with Bob's one-line-switch
-  message unchanged. The footer's primary action
+  A `=` that overrides the running session shows the orange banner on the start
+  card instead of a still-running error. The footer's primary action
   becomes **Start** (**Restart** for a restart, **Swap** for a swap), the live-preview, preview, and submit status read
   `Would start …` / `Started …` with the session and line (plus ` · drops 2` /
   ` · dropped 2` once a drop is typed), `Would restart …` / `Restarted …` with
   the before → after range for a restart, and `Would swap in …` /
   `Swapped in …` with the takeover or fresh range for a swap, and the notification
   reads `Started NAME` with the session and queued-task count (counting `tasks`
-  only, plus ` · dropped 2`), `Restarted NAME` with the en-dash session and
-  queued count, or `Swapped in NAME` with the taken range and the demoted
+  only, plus ` · dropped 2`), `Restarted NAME` with the en-dash session, queued
+  count, and ` · was 0920–0945`, or `Swapped in NAME` with the taken range and the demoted
   session back to first future. One item stays compact; a batch renders an ordered stack with item count,
   destination/kind metadata, dividers, and exact `previewBlockLines` or toggle
   transition rows. When Bob reports a global destination, preview and the destination
@@ -2173,16 +2179,15 @@ never offers route or task completion. Preview renders Bob's resolved session,
 day-file destination, and queued Task Links — sourced only from
 `bob capture --dry-run --no-clip --format json`, including in mixed
 drafts — and submission runs the same Bob command; the footer says **Start**
-and the notification summarizes the same returned start. The doubled `==`
-sigil overrides the running Pomodoro instead: `==<X>` restarts it now with
-fresh `se<X>` timing, and `==[<X>]#name` swaps that Pomodoro in (taking over
+and the notification summarizes the same returned start. The same `=` token
+overrides the running Pomodoro when one is open: `=` / `=<X>` restarts it now
+with fresh `se<X>` timing, and `=#name` swaps that Pomodoro in (taking over
 the running ledger unless a timing is given) while the old session returns to
-first future; with nothing running, `==` starts exactly like its `=` twin.
-The `==` token highlights with the same `pomodoro_start` span plus the
-`override` flag, `==#` opens the start picker once Bob reports its override
-context, and preview renders Bob's resolved before → after range and demoted
-row — sourced only from `bob capture --dry-run --no-clip --format json` —
-with a **Restart** / **Swap** footer and matching notifications. Type `x`, a blank
+first future. Preview renders an orange override banner plus Bob's resolved
+before → after range and demoted row — sourced only from
+`bob capture --dry-run --no-clip --format json` — with a **Restart** / **Swap**
+footer tinted orange and matching notifications. Claimed `==` is a retired
+teaching error. Type `x`, a blank
 line, then `=` to close the running session and start the next one in a single
 draft. A whole-item `x` closes
 the running Pomodoro; `@route:block-id=x` links an existing task first (dropping
@@ -2428,7 +2433,8 @@ capture text rather than raw draft syntax: a single capture is titled `Task capt
 returns it. A close is titled `Closed NAME` and its body carries the session and
 timing line, the tasks and Work Log line, and the next-session line. A start is
 titled `Started NAME` with the session and queued-task count; a restart is
-titled `Restarted NAME` with the en-dash session and queued count, and a swap
+titled `Restarted NAME` with the en-dash session, queued count, and
+` · was 0920–0945`, and a swap
 is titled `Swapped in NAME` with the taken range and the demoted session back
 to first future. A batch is titled with the item count, summarizes task/note and destination
 counts, and emits one ordered body line per captured item without substituting an

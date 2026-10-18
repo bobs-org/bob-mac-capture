@@ -17,22 +17,32 @@ import Foundation
 /// `Start` footer action, and start notification apply to whole-item `=`/`=<X>` starts
 /// (`kind == "pomodoro_start"` — see `isSessionStart`).
 ///
-/// A `==` override keeps the same kind and card: the presentation only rewords it.
+/// A `=` override keeps the same kind and card: the presentation only rewords it.
 /// `variant` drives the title (`Restart CAPTURE` / `Restarted CAPTURE`,
 /// `Swap in BUGS` / `Swapped in BUGS`), the status line, the `Takes over` badge
-/// for kept-ledger swaps, the idle caption when nothing was running, the
-/// `Restart` / `Swap` footer action, and the notification title/body, so the
-/// SwiftUI layer never branches on override JSON fields.
+/// for kept-ledger swaps, the override warning banner, the `Restart` / `Swap`
+/// footer action, and the notification title/body, so the SwiftUI layer never
+/// branches on override JSON fields.
 public struct CapturePomodoroStartPresentation: Equatable, Sendable {
-    /// Which session story this card tells: a plain `=` start, a `==<X>`
-    /// restart of the running session, a `==[<X>]#name` swap, or an idle
-    /// `==` that behaved exactly like its `=` twin. Decoded once from
-    /// `pomodoro_start.override`; an older Bob without it is a plain start.
+    /// Which session story this card tells: a plain `=` start, a `=<X>`
+    /// restart of the running session, or a `=[<X>]#name` swap. Decoded once
+    /// from `pomodoro_start.override`; an older Bob without it, an unknown
+    /// action, or a leftover `"start"` action is a plain start.
     public enum Variant: Equatable, Sendable {
         case start
         case restart
         case swap
-        case idleStart
+    }
+
+    /// The orange override banner on a restart or swap card. Copy is built
+    /// only from Bob's `override` object: the app never computes clocks or
+    /// composes tokens.
+    public struct OverrideWarning: Equatable, Sendable {
+        public let headline: String
+        public let rangeText: String
+        public let detail: String
+        public let closeFirst: String?
+        public let accessibilityText: String
     }
     /// The leading glyph for a queued-task row. Resolved rows map the task's
     /// current status symbol; unresolved rows always warn. Dropped rows leave
@@ -185,14 +195,18 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
     public let primaryActionTitle: String
     /// The session story this card tells (see `Variant`).
     public let variant: Variant
+    /// True for a restart or swap: the card shows the override banner and
+    /// the footer Return tints orange.
+    public var isOverride: Bool {
+        variant == .restart || variant == .swap
+    }
     /// True for a swap that took over the running ledger byte-for-byte.
     public let takesOverLedger: Bool
     /// `"Takes over"` on a kept-ledger swap, nil otherwise. Rendered as a
     /// small pink capsule next to the title, alongside New/Created.
     public let takesOverBadgeText: String?
-    /// `"Nothing was running — starts like ="` when an idle `==` behaved
-    /// like its `=` twin, nil otherwise.
-    public let idleCaption: String?
+    /// The override banner for a restart or swap, nil on a plain start.
+    public let overrideWarning: OverrideWarning?
     /// `"was 0920–0945"` (the pre-image range) on a restart, nil otherwise.
     /// Rendered as a dim caption under the title.
     public let restartWasText: String?
@@ -235,14 +249,18 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
             variant = .restart
         case "swap":
             variant = .swap
-        case "start":
-            variant = .idleStart
         default:
             variant = .start
         }
         takesOverLedger = override?.ledger == "kept" && variant == .swap
         takesOverBadgeText = takesOverLedger ? "Takes over" : nil
-        idleCaption = variant == .idleStart ? "Nothing was running — starts like =" : nil
+        overrideWarning = Self.makeOverrideWarning(
+            variant: variant,
+            pomodoroName: pomodoroName,
+            takesOverLedger: takesOverLedger,
+            previous: override?.previous,
+            closeFirst: override?.closeFirst
+        )
         let previousRange = override?.previous?.timeRange ?? ""
         if variant == .restart, !previousRange.isEmpty {
             restartWasText = "was \(enDashRange(previousRange))"
@@ -284,7 +302,7 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
                 statusText =
                     "\(dryRun ? "Would swap in" : "Swapped in") \(pomodoroName) \(start)-\(end) (\(durationMinutes)m)\(created) at line \(pomodoroLine)\(dropSuffix)"
             }
-        case .start, .idleStart:
+        case .start:
             title = "\(dryRun ? "Start" : "Started") \(pomodoroName)"
             let verb = dryRun ? "Would start" : "Started"
             statusText =
@@ -357,7 +375,7 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
             if summary.createdPomodoro {
                 spoken += ", created new entry"
             }
-        case .start, .idleStart:
+        case .start:
             let createdPhrase = summary.createdPomodoro ? ", created new entry" : ", uses existing entry"
             spoken =
                 "Starts \(pomodoroName), \(start) to \(end), \(durationMinutes) minutes, line \(pomodoroLine)\(createdPhrase)"
@@ -371,14 +389,14 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
                 : ", \(tasks.count) queued task\(tasks.count == 1 ? "" : "s")"
         }
         spoken += taskRows.compactMap { $0.index == nil ? nil : ", \($0.accessibilityLabel)" }.joined()
-        if let idleCaption {
-            spoken += ". \(idleCaption)"
-        }
         if let teachingHint {
             spoken += ". \(teachingHint.text)"
         }
         if let dropSummary {
             spoken += ". \(dropSummary)"
+        }
+        if let overrideWarning {
+            spoken = "\(overrideWarning.accessibilityText). \(spoken)"
         }
         accessibilitySummary = spoken
         notificationDetail = statusText
@@ -387,11 +405,13 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         switch variant {
         case .restart:
             notificationTitle = "Restarted \(pomodoroName)"
+            let wasSuffix = restartWasText.map { " · \($0)" } ?? ""
             if let tasks = summary.tasks, !tasks.isEmpty {
                 notificationBody =
-                    "\(enDashRange(sessionText)) · \(tasks.count) queued\(notificationDropSuffix)"
+                    "\(enDashRange(sessionText)) · \(tasks.count) queued\(notificationDropSuffix)\(wasSuffix)"
             } else {
-                notificationBody = "\(enDashRange(sessionText)) · Nothing queued\(notificationDropSuffix)"
+                notificationBody =
+                    "\(enDashRange(sessionText)) · Nothing queued\(notificationDropSuffix)\(wasSuffix)"
             }
         case .swap:
             notificationTitle = "Swapped in \(pomodoroName)"
@@ -399,7 +419,7 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
             let demotedName = demotedNameText(override?.demoted?.pomodoroName)
             notificationBody =
                 "\(enDashRange(takenRange)) · \(demotedName) back to first future\(notificationDropSuffix)"
-        case .start, .idleStart:
+        case .start:
             notificationTitle = "Started \(pomodoroName)"
             if summary.createdPomodoro {
                 notificationBody = "\(enDashRange(sessionText)) · New session\(notificationDropSuffix)"
@@ -416,7 +436,7 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         case .swap:
             let takenRange = takesOverLedger ? previousRange : "\(start)-\(end)"
             batchSuffix = " (swapped in \(pomodoroName) \(takenRange))"
-        case .start, .idleStart:
+        case .start:
             batchSuffix = " (started \(pomodoroName) \(start)-\(end))"
         }
         switch variant {
@@ -424,9 +444,62 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
             primaryActionTitle = "Restart"
         case .swap:
             primaryActionTitle = "Swap"
-        case .start, .idleStart:
+        case .start:
             primaryActionTitle = "Start"
         }
+    }
+
+    /// Banner copy for a restart or swap, built only from Bob's override
+    /// object. Nil on a plain start. An older Bob without `overdue` or
+    /// `close_first` still gets a banner, minus the close-first line.
+    static func makeOverrideWarning(
+        variant: Variant,
+        pomodoroName: String,
+        takesOverLedger: Bool,
+        previous: PomodoroStartPrevious?,
+        closeFirst: String?
+    ) -> OverrideWarning? {
+        guard variant == .restart || variant == .swap else {
+            return nil
+        }
+        let named = previous?.pomodoroName.flatMap { $0.isEmpty ? nil : $0 }
+        let overdue = previous?.overdue ?? false
+        let headline: String
+        if overdue {
+            headline = named.map { "Overrides \($0), still open past its end" }
+                ?? "Overrides the session, still open past its end"
+        } else {
+            headline = named.map { "Overrides the running \($0)" }
+                ?? "Overrides the running session"
+        }
+        let rangeText = enDashRange(previous?.timeRange ?? "")
+        let detail: String
+        switch variant {
+        case .restart:
+            detail = "Its clock restarts without closing it"
+        case .swap:
+            detail = takesOverLedger
+                ? "\(pomodoroName) takes over its clock without closing it"
+                : "It steps aside without closing it"
+        case .start:
+            return nil
+        }
+        let close = closeFirst.flatMap { $0.isEmpty ? nil : $0 }
+        var spoken = "Warning: \(headline.prefix(1).lowercased())\(headline.dropFirst())"
+        if let start = previous?.start, let end = previous?.end, !start.isEmpty, !end.isEmpty {
+            spoken += ", \(start) to \(end)"
+        }
+        spoken += ". \(detail)"
+        if let close {
+            spoken += ". Type \(close) to close it first."
+        }
+        return OverrideWarning(
+            headline: headline,
+            rangeText: rangeText,
+            detail: detail,
+            closeFirst: close,
+            accessibilityText: spoken
+        )
     }
 
     /// Kept (`tasks`) and dropped (`dropped`) rows merged in lineup order:

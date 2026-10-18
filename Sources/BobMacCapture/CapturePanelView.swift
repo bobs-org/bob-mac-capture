@@ -986,6 +986,7 @@ private struct CapturePanelFooter: View {
                 model.submit(openAfterCapture: false)
             }
             .keyboardShortcut(.defaultAction)
+            .tint(model.primaryActionIsOverride ? .orange : nil)
             .disabled(!model.primaryActionEnabled)
         }
     }
@@ -3170,6 +3171,9 @@ struct PreviewPane: View {
         let isPending = model.closePendingText != nil
         let showsBadges = start.taskRows.contains { $0.index != nil }
         VStack(alignment: .leading, spacing: 6) {
+            if let warning = start.overrideWarning {
+                overrideWarningBanner(warning, sessionTint: sessionTint)
+            }
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if total > 1 {
                     Text("\(index + 1)")
@@ -3219,8 +3223,8 @@ struct PreviewPane: View {
             }
 
             // Override captions under the destination: the pre-image range a
-            // restart leaves behind, the session a swap returns to first
-            // future, or the idle note when `==` started like `=`.
+            // restart leaves behind, or the session a swap returns to first
+            // future. The orange banner above the title is the warning.
             if let was = start.restartWasText {
                 Text(was)
                     .font(.caption)
@@ -3233,17 +3237,6 @@ struct PreviewPane: View {
                         .foregroundStyle(.secondary)
                         .accessibilityHidden(true)
                     Text(demoted)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-            }
-            if let idle = start.idleCaption {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Image(systemName: "play.circle")
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                    Text(idle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
@@ -3364,9 +3357,63 @@ struct PreviewPane: View {
             return "arrow.clockwise.circle.fill"
         case .swap:
             return "arrow.left.arrow.right.circle.fill"
-        case .start, .idleStart:
+        case .start:
             return "play.circle.fill"
         }
+    }
+
+    /// The orange override banner: triangle glyph, headline with the
+    /// session range on the right, a secondary detail line, and an optional
+    /// `Type` / chip / `to close it first` row from Bob's `close_first`.
+    private func overrideWarningBanner(
+        _ warning: CapturePomodoroStartPresentation.OverrideWarning,
+        sessionTint: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+                Text(warning.headline)
+                    .fontWeight(.semibold)
+                Spacer(minLength: 4)
+                if !warning.rangeText.isEmpty {
+                    Text(warning.rangeText)
+                        .font(.system(.callout, design: .monospaced))
+                }
+            }
+            Text(warning.detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let closeFirst = warning.closeFirst {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("Type")
+                    Text(closeFirst)
+                        .font(.system(.caption, design: .monospaced))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .foregroundStyle(sessionTint)
+                        .background(
+                            sessionTint.opacity(0.18),
+                            in: RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        )
+                    Text("to close it first")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.orange.opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.orange.opacity(0.4))
+        )
+        .accessibilityHidden(true)
     }
 
     /// Renders the start-card teaching-hint tokens: example tokens share the

@@ -1150,9 +1150,17 @@ final class CapturePanelModel: ObservableObject {
         return CapturePomodoroStartPresentation(capture: previewResult)
     }
 
+    /// True when any capture in the on-screen preview is a restart or swap,
+    /// so the footer's primary Return tints orange.
+    var primaryActionIsOverride: Bool {
+        previewResults.contains { capture in
+            CapturePomodoroStartPresentation(capture: capture)?.isOverride == true
+        }
+    }
+
     /// The footer's primary action verb. Single close, start, toggle, link,
     /// adjust, and shift previews name their action so Return's meaning is
-    /// clear. A `==` override start names its own verb (`Restart` / `Swap`)
+    /// clear. A `=` override start names its own verb (`Restart` / `Swap`)
     /// via its presentation. It never varies with `dryRun` — it always names
     /// what Return will do next.
     var primaryActionTitle: String {
@@ -3471,10 +3479,10 @@ final class CapturePanelModel: ObservableObject {
         // only the File-under opener sets the header back below.
         fileUnderActive = false
         // A `pomodoro_start_name` list that opened on the quiet incomplete
-        // picker (`==#`, `==3#`, `=#`) still shows that calm status line:
-        // refresh it from Bob's override object once completion arrives, so
-        // a `==` pick names the running session it displaces. Any other
-        // status (a live preview, a prompt) is left alone.
+        // picker (`=#`, `=3#`) still shows that calm status line: refresh
+        // it from Bob's override object once completion arrives, so a `=#`
+        // pick names the running session it displaces. Any other status (a
+        // live preview, a prompt) is left alone.
         if completion.context == "pomodoro_start_name",
            statusText == CapturePickerNeed.pomodoroStart.statusText
         {

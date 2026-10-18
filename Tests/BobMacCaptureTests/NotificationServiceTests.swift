@@ -172,7 +172,7 @@ final class NotificationServiceTests: XCTestCase {
                 kind: "pomodoro_start",
                 routeLabel: "",
                 target: "/tmp/bob/2026/20261009.md",
-                text: "==",
+                text: "=",
                 pomodoroStart: PomodoroStartSummary(
                     start: "0935",
                     end: "1000",
@@ -215,7 +215,7 @@ final class NotificationServiceTests: XCTestCase {
 
         XCTAssertEqual(content.title, "Restarted CAPTURE")
         XCTAssertEqual(content.subtitle, "2026/20261009.md")
-        XCTAssertEqual(content.body, "0935–1000 (25m) · 1 queued")
+        XCTAssertEqual(content.body, "0935–1000 (25m) · 1 queued · was 0920–0945")
     }
 
     func testOverrideSwapSuccessUsesSwappedTitleAndDemotedBody() {
@@ -224,7 +224,7 @@ final class NotificationServiceTests: XCTestCase {
                 kind: "pomodoro_start",
                 routeLabel: "",
                 target: "/tmp/bob/2026/20261009.md",
-                text: "==#bugs",
+                text: "=#bugs",
                 pomodoroStart: PomodoroStartSummary(
                     start: "0920",
                     end: "0945",
@@ -272,7 +272,7 @@ final class NotificationServiceTests: XCTestCase {
                 kind: "pomodoro_start",
                 routeLabel: "",
                 target: "/tmp/bob/2026/20261009.md",
-                text: "==",
+                text: "=",
                 pomodoroStart: PomodoroStartSummary(
                     start: "0935",
                     end: "1000",

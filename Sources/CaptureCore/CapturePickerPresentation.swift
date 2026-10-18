@@ -670,14 +670,14 @@ public enum CapturePickerNeed: Equatable, Sendable {
     }
 }
 
-/// The status line for a `pomodoro_start_name` completion list: under a
-/// `==` token Bob's top-level `override` object names the running session
-/// the pick would displace, so the line says what the pick does with it —
-/// a ledger-keeping `==#` takes over its range, a fresh `==<X>#` starts now
-/// and returns it to first future. With no running session (idle) or no
-/// override object (a plain `=#`, or an older Bob), the existing text
-/// stands. Every string is built from Bob's JSON; Swift never parses the
-/// draft or the ledger itself.
+/// The status line for a `pomodoro_start_name` completion list: while a
+/// session runs, Bob's top-level `override` object names the running
+/// session the pick would displace, so the line says what the pick does
+/// with it — a ledger-keeping `=#` takes over its range, a fresh `=<X>#`
+/// starts now and returns it to first future. With no running session
+/// (idle) or no override object (an older Bob), the existing text stands.
+/// Every string is built from Bob's JSON; Swift never parses the draft or
+/// the ledger itself.
 public func pomodoroStartPickerStatus(override: CaptureCompleteOverride?) -> String {
     let plain = CapturePickerNeed.pomodoroStart.statusText
     guard let running = override?.running else {
