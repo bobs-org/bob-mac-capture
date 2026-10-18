@@ -359,9 +359,9 @@ final class CapturePanelModel: ObservableObject {
     // The draft that produced the visible `completionResponse`, so a `+` commit can
     // locate the route text by byte range instead of trusting the view-supplied caret.
     private var completionDraftSnapshot: String?
-    /// The draft the last completion step settled on; the Block ID Picker
-    /// auto-opens only when the edits since this draft wrote the separator
-    /// before Bob's ID part.
+    /// The draft the last completion step settled on; the Block ID and Active
+    /// Task pickers auto-open only when the edits since this draft wrote the
+    /// separator or trigger before Bob's replacement part.
     private var editAnalysisBaseline = ""
     /// The trimmed bare-URL draft Esc dismissed the File-under list for.
     /// The list does not reopen for this URL until the draft changes to a
@@ -3225,7 +3225,8 @@ final class CapturePanelModel: ObservableObject {
             cursor: cursor,
             generation: generation,
             processClient: processClient,
-            trigger: trigger
+            trigger: trigger,
+            writtenRange: writtenRange
         )
     }
 
@@ -3500,13 +3501,17 @@ final class CapturePanelModel: ObservableObject {
         pickerChip = nil
     }
 
+    /// An exact candidate opens nothing. Otherwise auto-open only when the
+    /// edit wrote the `^` before Bob's replacement range and the token is not
+    /// suppressed; other edits and caret-only moves offer the reopen chip.
     private func handleActiveTaskCompletion(
         _ completion: CaptureCompletionResponse,
         draft: String,
         cursor: Int,
         generation: UInt64,
         processClient: BobProcessClient,
-        trigger: CompletionTrigger
+        trigger: CompletionTrigger,
+        writtenRange: CaptureRange?
     ) async {
         // An `active_task` response never sets `completionResponse`, even when
         // `candidates` is empty.
@@ -3524,7 +3529,8 @@ final class CapturePanelModel: ObservableObject {
             clearPickerInterruption(trigger: trigger)
             return
         }
-        guard trigger == .edit, pickerAutoOpenSuppressedStart != r.start else {
+        let triggerTyped = captureEditWroteSeparator(writtenRange, before: r.start)
+        guard trigger == .edit, triggerTyped, pickerAutoOpenSuppressedStart != r.start else {
             pickerChip = CapturePickerChipState(
                 source: .activeTask,
                 draftSnapshot: draft,
@@ -3588,9 +3594,9 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
-    /// Routes a `task_link` or `task_goto` completion response into the
-    /// picker card, mirroring `handleActiveTaskCompletion`: dismiss the
-    /// inline list, auto-open only on `.edit` when not suppressed, show the
+    /// Routes a `task_link` or `task_goto` completion response into the picker
+    /// card: dismiss the inline list, auto-open only on `.edit` when not
+    /// suppressed, show the
     /// chip on `.selection`, and refetch the full list at `r.start` when the
     /// caret is past the sigil. The catalog source decides the index mode
     /// (link vs Go To) and the expected Bob context.

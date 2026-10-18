@@ -515,11 +515,14 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
   a fuzzy matcher in `CaptureCore`
   so each keystroke is instant and flicker-free, and filter text never touches the
   draft. Local filtering is a deliberate presentation-only responsibility, the same
-  precedent as the locally ranked `capture-targets` route cache. The picker opens when
-  you edit the `route:block-id` part of a `^` item that is not already an exact
-  candidate; a caret-only move shows a compact "Browse active tasks ⇥" chip instead,
-  and Escape suppresses auto-open for that token while the chip offers a one-key
-  reopen. Fast typing is safe: text typed before the picker appears seeds the filter.
+  precedent as the locally ranked `capture-targets` route cache. The picker auto-opens
+  only when the edit writes the `^` trigger before Bob's replacement range, including
+  a paste or fast typing since the last settled analysis. Backspace, Delete, typing
+  inside an existing `route:block-id`, and caret-only moves show a compact
+  "Browse active tasks ⇥" chip instead. Escape suppresses auto-open for that token
+  while the chip offers a one-key reopen. Reshowing the panel with the picker open
+  also reopens it. Fast typing is safe: text typed before the picker appears seeds
+  the filter.
   Return (or Tab, or a click) inserts exactly Bob's `route:block-id` into Bob's range
   and returns to the editor, keeping any typed `#name`/`=<X>`/`=x` suffix — the app
   never synthesizes that grammar, you type it after the insert. Command-Return inserts

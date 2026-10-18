@@ -1129,12 +1129,12 @@ JSON
   "diagnostics": []
 }
 JSON
-    elif [[ "${draft}" == "^dee" ]]; then
-      cat <<'JSON'
+    elif [[ "${draft}" == "^dee" || "${draft}" == "^sase:deep-fi" || "${draft}" == "^sase:deep-fiz" ]]; then
+      cat <<JSON
 {
   "ok": true,
   "schema_version": 1,
-  "input": "^dee",
+  "input": "${draft}",
   "body": "",
   "mode": "incomplete",
   "route": null,
@@ -1142,7 +1142,7 @@ JSON
   "block_id": null,
   "needs": ["active_task"],
   "spans": [
-    { "start": 0, "end": 4, "kind": "interactive_placeholder" }
+    { "start": 0, "end": ${#draft}, "kind": "interactive_placeholder" }
   ],
   "diagnostics": []
 }
@@ -2628,14 +2628,14 @@ JSON
   ]
 }
 JSON
-    elif [[ "${draft}" == "^dee" ]]; then
+    elif [[ "${draft}" == "^dee" || "${draft}" == "^sase:deep-fi" || "${draft}" == "^sase:deep-fiz" ]]; then
       if [[ "${cursor}" == "1" ]]; then
         cat <<JSON
 {
   "ok": true,
   "schema_version": 1,
   "cursor": 1,
-  "replacement": { "start": 1, "end": 4 },
+  "replacement": { "start": 1, "end": ${#draft} },
   "context": "active_task",
   "candidates": [
     {
@@ -2683,7 +2683,7 @@ JSON
   "ok": true,
   "schema_version": 1,
   "cursor": ${cursor},
-  "replacement": { "start": 1, "end": 4 },
+  "replacement": { "start": 1, "end": ${#draft} },
   "context": "active_task",
   "candidates": [
     {

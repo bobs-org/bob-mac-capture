@@ -1243,6 +1243,69 @@ final class CapturePanelModelTests: XCTestCase {
         )
     }
 
+    func testCaretPickerEditsAfterAcceptShowChipWithoutReopening() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "^"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerVisible }
+
+        model.selectPickerRow(id: "sase:deep-fix")
+        model.acceptSelectedPickerRow(submitAfterInsert: false)
+        XCTAssertEqual(model.plainDraft, "^sase:deep-fix")
+        await waitUntil {
+            guard case .ready(let preview) = model.previewState else {
+                return false
+            }
+            return preview.kind == "pomodoro_link"
+        }
+
+        // Backspace one byte, type inside the existing ID, then delete the
+        // whole part. None of these edits writes the `^` trigger.
+        for draft in ["^sase:deep-fi", "^sase:deep-fiz", "^"] {
+            model.plainDraft = draft
+            model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
+            await waitUntil {
+                model.pickerChipVisible && model.pickerChip?.draftSnapshot == draft
+            }
+
+            XCTAssertFalse(model.pickerVisible)
+            XCTAssertFalse(model.editorInputLocked)
+            XCTAssertEqual(model.pickerChip?.source, .activeTask)
+            XCTAssertNil(model.completionResponse)
+        }
+
+        model.openPickerFromChip()
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertEqual(model.picker?.source, .activeTask)
+    }
+
+    func testCaretPickerStaleChipRerunsAndOpensPicker() async throws {
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            ),
+            debounceNanoseconds: 5_000_000
+        )
+        model.plainDraft = "^"
+        model.editorSelectionDidChange(cursorUTF8Offset: 1)
+        await waitUntil { model.pickerChipVisible }
+        XCTAssertFalse(model.pickerVisible)
+
+        model.plainDraft = "^dee"
+        model.openPickerFromChip()
+        await waitUntil { model.pickerVisible }
+        XCTAssertEqual(model.picker?.source, .activeTask)
+        XCTAssertEqual(model.picker?.filterText, "dee")
+        XCTAssertEqual(model.picker?.candidates.count, 3)
+    }
+
     func testCommandAcceptInsertsAndSubmits() async throws {
         let model = CapturePanelModel(
             processClient: BobProcessClient(
