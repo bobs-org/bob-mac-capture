@@ -2279,7 +2279,7 @@ final class CapturePanelModelTests: XCTestCase {
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
             ]
         )
-        let draft = "=x"
+        let draft = "x"
 
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
@@ -2316,8 +2316,8 @@ final class CapturePanelModelTests: XCTestCase {
         // A live close card is showing; then the draft becomes `=3`, whose
         // dry run fails with the still-running error. The stale card must go
         // away with the red error.
-        model.plainDraft = "=x"
-        model.editorTextDidChange(cursorUTF8Offset: 2)
+        model.plainDraft = "x"
+        model.editorTextDidChange(cursorUTF8Offset: 1)
         await waitUntil {
             if case .ready = model.previewState { return true }
             return false
@@ -2343,22 +2343,22 @@ final class CapturePanelModelTests: XCTestCase {
         let comma = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
-            input: "=x1,",
-            body: "=x1,",
+            input: "x1,",
+            body: "x1,",
             mode: "incomplete",
             needs: ["pomodoro_close_task"],
             spans: [
-                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
-                CaptureSpan(start: 2, end: 3, kind: "pomodoro_close_in_progress"),
-                CaptureSpan(start: 3, end: 4, kind: "interactive_placeholder"),
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
+                CaptureSpan(start: 1, end: 2, kind: "pomodoro_close_in_progress"),
+                CaptureSpan(start: 2, end: 3, kind: "interactive_placeholder"),
             ]
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: comma, draft: "=x1,")?.trimmed,
-            "=x1"
+            CapturePanelModel.closePendingTrim(in: comma, draft: "x1,")?.trimmed,
+            "x1"
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: comma, draft: "=x1,")?.separator,
+            CapturePanelModel.closePendingTrim(in: comma, draft: "x1,")?.separator,
             ","
         )
 
@@ -2388,22 +2388,22 @@ final class CapturePanelModelTests: XCTestCase {
         let tilde = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
-            input: "=x1~",
-            body: "=x1~",
+            input: "x1~",
+            body: "x1~",
             mode: "incomplete",
             needs: ["pomodoro_close_task"],
             spans: [
-                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
-                CaptureSpan(start: 2, end: 3, kind: "pomodoro_close_in_progress"),
-                CaptureSpan(start: 3, end: 4, kind: "interactive_placeholder"),
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
+                CaptureSpan(start: 1, end: 2, kind: "pomodoro_close_in_progress"),
+                CaptureSpan(start: 2, end: 3, kind: "interactive_placeholder"),
             ]
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: tilde, draft: "=x1~")?.trimmed,
-            "=x1"
+            CapturePanelModel.closePendingTrim(in: tilde, draft: "x1~")?.trimmed,
+            "x1"
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: tilde, draft: "=x1~")?.separator,
+            CapturePanelModel.closePendingTrim(in: tilde, draft: "x1~")?.separator,
             "~"
         )
     }
@@ -2412,22 +2412,22 @@ final class CapturePanelModelTests: XCTestCase {
         let valid = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
-            input: "=x1",
-            body: "=x1",
+            input: "x1",
+            body: "x1",
             mode: "pomodoro_close",
             needs: [],
             spans: [
-                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
-                CaptureSpan(start: 2, end: 3, kind: "pomodoro_close_in_progress"),
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
+                CaptureSpan(start: 1, end: 2, kind: "pomodoro_close_in_progress"),
             ]
         )
-        XCTAssertNil(CapturePanelModel.closePendingTrim(in: valid, draft: "=x1"))
+        XCTAssertNil(CapturePanelModel.closePendingTrim(in: valid, draft: "x1"))
     }
 
-    func testCloseAliasPreviewSubmitsUntouchedDraft() async throws {
-        // Bare aliases and long-form defaults get an immediate dry-run and
-        // enable Close; submission sends the exact original argv.
-        for draft in ["=*", "=!", "=*2", "=x*", "=x!"] {
+    func testBareXSelectionPreviewSubmitsUntouchedDraft() async throws {
+        // Bare x selections get an immediate dry-run and enable Close;
+        // submission sends the exact original argv.
+        for draft in ["x*", "x!", "x*2", "x*!2"] {
             let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             let model = CapturePanelModel(debounceNanoseconds: 0)
             model.processClient = BobProcessClient(
@@ -2461,7 +2461,7 @@ final class CapturePanelModelTests: XCTestCase {
         }
     }
 
-    func testCloseAliasInvalidBlocksSubmissionAndClearsStaleCard() async throws {
+    func testInvalidBareXSelectionBlocksSubmissionAndClearsStaleCard() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
         model.processClient = BobProcessClient(
@@ -2472,15 +2472,15 @@ final class CapturePanelModelTests: XCTestCase {
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
             ]
         )
-        model.plainDraft = "=*"
+        model.plainDraft = "x*"
         model.editorTextDidChange(cursorUTF8Offset: 2)
         await waitUntil {
             if case .ready = model.previewState { return true }
             return false
         }
         XCTAssertNotNil(model.closePresentation)
-        // A malformed alias cannot submit and clears the stale card.
-        model.plainDraft = "=*abc"
+        // A malformed selection cannot submit and clears the stale card.
+        model.plainDraft = "x*abc"
         model.editorTextDidChange(cursorUTF8Offset: 5)
         await waitUntil {
             if case .failed = model.previewState { return true }
@@ -2488,7 +2488,7 @@ final class CapturePanelModelTests: XCTestCase {
         }
         XCTAssertNil(model.closePresentation)
         // A genuinely incomplete draft disables submission with a pending card.
-        model.plainDraft = "=*1,"
+        model.plainDraft = "x*1,"
         model.editorTextDidChange(cursorUTF8Offset: 4)
         await waitUntil { model.closePendingText != nil }
         XCTAssertEqual(model.closePendingText, "Type a task number after ,")
@@ -2500,14 +2500,14 @@ final class CapturePanelModelTests: XCTestCase {
         model.submit(openAfterCapture: false)
         XCTAssertFalse(model.isSubmitting)
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- =*1\n"))
-        XCTAssertFalse(record.contains("argv=capture --format json --require-pull-in-choice -- =*1,"))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- x*1\n"))
+        XCTAssertFalse(record.contains("argv=capture --format json --require-pull-in-choice -- x*1,"))
     }
 
     func testClosePendingTrimTrimsOnlyNeedingItems() {
-        let draft = "=x1\n\n=x2,"
-        // Byte ranges: item 0 is [0, 3), item 1 is [5, 9); the placeholder
-        // covers the dangling comma at [8, 9).
+        let draft = "x1\n\nx2,"
+        // Byte ranges: item 0 is [0, 2), item 1 is [4, 7); the placeholder
+        // covers the dangling comma at [6, 7).
         let parse = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
@@ -2515,25 +2515,25 @@ final class CapturePanelModelTests: XCTestCase {
             body: "",
             mode: "incomplete",
             spans: [
-                CaptureSpan(start: 5, end: 7, kind: "pomodoro_close"),
-                CaptureSpan(start: 7, end: 8, kind: "pomodoro_close_in_progress"),
-                CaptureSpan(start: 8, end: 9, kind: "interactive_placeholder"),
+                CaptureSpan(start: 4, end: 5, kind: "pomodoro_close"),
+                CaptureSpan(start: 5, end: 6, kind: "pomodoro_close_in_progress"),
+                CaptureSpan(start: 6, end: 7, kind: "interactive_placeholder"),
             ],
             items: [
                 CaptureParseItem(
                     index: 0,
-                    range: CaptureRange(start: 0, end: 3),
+                    range: CaptureRange(start: 0, end: 2),
                     lineStart: 1,
                     lineEnd: 1,
-                    body: "=x1",
+                    body: "x1",
                     mode: "pomodoro_close"
                 ),
                 CaptureParseItem(
                     index: 1,
-                    range: CaptureRange(start: 5, end: 9),
+                    range: CaptureRange(start: 4, end: 7),
                     lineStart: 3,
                     lineEnd: 3,
-                    body: "=x2,",
+                    body: "x2,",
                     mode: "incomplete",
                     needs: ["pomodoro_close_task"]
                 ),
@@ -2541,7 +2541,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         XCTAssertEqual(
             CapturePanelModel.closePendingTrim(in: parse, draft: draft)?.trimmed,
-            "=x1\n\n=x2"
+            "x1\n\nx2"
         )
     }
 
@@ -2551,8 +2551,8 @@ final class CapturePanelModelTests: XCTestCase {
         let parse = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
-            input: "=x1,",
-            body: "=x1,",
+            input: "x1,",
+            body: "x1,",
             mode: "incomplete",
             needs: ["pomodoro_close_task"],
             spans: [CaptureSpan(start: 0, end: 1, kind: "interactive_placeholder")],
@@ -2568,7 +2568,7 @@ final class CapturePanelModelTests: XCTestCase {
                 )
             ]
         )
-        XCTAssertNil(CapturePanelModel.closePendingTrim(in: parse, draft: "=x1,"))
+        XCTAssertNil(CapturePanelModel.closePendingTrim(in: parse, draft: "x1,"))
     }
 
     func testStartPendingTrimRemovesDanglingTildeAndComma() {
@@ -2625,9 +2625,9 @@ final class CapturePanelModelTests: XCTestCase {
     }
 
     func testStartPendingTrimTrimsChainPerItem() {
-        // `=x =~`: item 0 is a valid close, item 1 dangles on `~`. Only the
+        // `x =~`: item 0 is a valid close, item 1 dangles on `~`. Only the
         // start item trims, and the pending action names Start.
-        let draft = "=x =~"
+        let draft = "x =~"
         let parse = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
@@ -2635,22 +2635,22 @@ final class CapturePanelModelTests: XCTestCase {
             body: "",
             mode: "incomplete",
             spans: [
-                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
-                CaptureSpan(start: 3, end: 4, kind: "pomodoro_start"),
-                CaptureSpan(start: 4, end: 5, kind: "interactive_placeholder"),
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
+                CaptureSpan(start: 2, end: 3, kind: "pomodoro_start"),
+                CaptureSpan(start: 3, end: 4, kind: "interactive_placeholder"),
             ],
             items: [
                 CaptureParseItem(
                     index: 0,
-                    range: CaptureRange(start: 0, end: 2),
+                    range: CaptureRange(start: 0, end: 1),
                     lineStart: 1,
                     lineEnd: 1,
-                    body: "=x",
+                    body: "x",
                     mode: "pomodoro_close"
                 ),
                 CaptureParseItem(
                     index: 1,
-                    range: CaptureRange(start: 3, end: 5),
+                    range: CaptureRange(start: 2, end: 4),
                     lineStart: 1,
                     lineEnd: 1,
                     body: "=~",
@@ -2661,7 +2661,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         XCTAssertEqual(
             CapturePanelModel.closePendingTrim(in: parse, draft: draft)?.trimmed,
-            "=x ="
+            "x ="
         )
         XCTAssertEqual(
             CapturePanelModel.closePendingTrim(in: parse, draft: draft)?.action,
@@ -2672,7 +2672,7 @@ final class CapturePanelModelTests: XCTestCase {
     func testMixedPendingTrimKeepsCloseAction() {
         // Both a close list and a start list dangle: the pending verb stays
         // Close, preserving today's behavior whenever a close is involved.
-        let draft = "=x1, =~"
+        let draft = "x1, =~"
         let parse = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
@@ -2680,25 +2680,25 @@ final class CapturePanelModelTests: XCTestCase {
             body: "",
             mode: "incomplete",
             spans: [
-                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
-                CaptureSpan(start: 2, end: 3, kind: "pomodoro_close_in_progress"),
-                CaptureSpan(start: 3, end: 4, kind: "interactive_placeholder"),
-                CaptureSpan(start: 5, end: 6, kind: "pomodoro_start"),
-                CaptureSpan(start: 6, end: 7, kind: "interactive_placeholder"),
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
+                CaptureSpan(start: 1, end: 2, kind: "pomodoro_close_in_progress"),
+                CaptureSpan(start: 2, end: 3, kind: "interactive_placeholder"),
+                CaptureSpan(start: 4, end: 5, kind: "pomodoro_start"),
+                CaptureSpan(start: 5, end: 6, kind: "interactive_placeholder"),
             ],
             items: [
                 CaptureParseItem(
                     index: 0,
-                    range: CaptureRange(start: 0, end: 4),
+                    range: CaptureRange(start: 0, end: 3),
                     lineStart: 1,
                     lineEnd: 1,
-                    body: "=x1,",
+                    body: "x1,",
                     mode: "incomplete",
                     needs: ["pomodoro_close_task"]
                 ),
                 CaptureParseItem(
                     index: 1,
-                    range: CaptureRange(start: 5, end: 7),
+                    range: CaptureRange(start: 4, end: 6),
                     lineStart: 1,
                     lineEnd: 1,
                     body: "=~",
@@ -2709,7 +2709,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         XCTAssertEqual(
             CapturePanelModel.closePendingTrim(in: parse, draft: draft)?.trimmed,
-            "=x1 ="
+            "x1 ="
         )
         XCTAssertEqual(
             CapturePanelModel.closePendingTrim(in: parse, draft: draft)?.action,
@@ -2718,111 +2718,111 @@ final class CapturePanelModelTests: XCTestCase {
     }
 
     func testLogPendingTrimRemovesDanglingBullet() {
-        // Real `bob capture-parse` output for `=x` plus `- 1`: the number
+        // Real `bob capture-parse` output for `x` plus `- 1`: the number
         // under the placeholder is removed, leaving a `-` placeholder row.
         let parse = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
-            input: "=x\n- 1",
-            body: "=x",
+            input: "x\n- 1",
+            body: "x",
             mode: "incomplete",
             needs: ["pomodoro_close_log_text"],
             spans: [
-                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
-                CaptureSpan(start: 5, end: 6, kind: "interactive_placeholder"),
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
+                CaptureSpan(start: 4, end: 5, kind: "interactive_placeholder"),
             ]
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: parse, draft: "=x\n- 1")?.trimmed,
-            "=x\n-"
+            CapturePanelModel.closePendingTrim(in: parse, draft: "x\n- 1")?.trimmed,
+            "x\n-"
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: parse, draft: "=x\n- 1")?.separator,
+            CapturePanelModel.closePendingTrim(in: parse, draft: "x\n- 1")?.separator,
             "1"
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: parse, draft: "=x\n- 1")?.action,
+            CapturePanelModel.closePendingTrim(in: parse, draft: "x\n- 1")?.action,
             "Close"
         )
     }
 
     func testLogPendingTrimRemovesDanglingInlineNumber() {
-        // Real `bob capture-parse` output for `=x 2`: the numeric
-        // `interactive_placeholder` is removed, leaving `=x`.
+        // Real `bob capture-parse` output for `x 2`: the numeric
+        // `interactive_placeholder` is removed, leaving `x`.
         let parse = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
-            input: "=x 2",
-            body: "=x 2",
+            input: "x 2",
+            body: "x 2",
             mode: "incomplete",
             needs: ["pomodoro_close_log_text"],
             spans: [
-                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
-                CaptureSpan(start: 3, end: 4, kind: "interactive_placeholder"),
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
+                CaptureSpan(start: 2, end: 3, kind: "interactive_placeholder"),
             ]
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: parse, draft: "=x 2")?.trimmed,
-            "=x"
+            CapturePanelModel.closePendingTrim(in: parse, draft: "x 2")?.trimmed,
+            "x"
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: parse, draft: "=x 2")?.separator,
+            CapturePanelModel.closePendingTrim(in: parse, draft: "x 2")?.separator,
             "2"
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: parse, draft: "=x 2")?.action,
+            CapturePanelModel.closePendingTrim(in: parse, draft: "x 2")?.action,
             "Close"
         )
-        // `=x1,3 3` trims to the bare selection.
+        // `x1,3 3` trims to the bare selection.
         let explicit = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
-            input: "=x1,3 3",
-            body: "=x1,3 3",
+            input: "x1,3 3",
+            body: "x1,3 3",
             mode: "incomplete",
             needs: ["pomodoro_close_log_text"],
             spans: [
-                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
-                CaptureSpan(start: 2, end: 5, kind: "pomodoro_close_in_progress"),
-                CaptureSpan(start: 6, end: 7, kind: "interactive_placeholder"),
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
+                CaptureSpan(start: 1, end: 4, kind: "pomodoro_close_in_progress"),
+                CaptureSpan(start: 5, end: 6, kind: "interactive_placeholder"),
             ]
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: explicit, draft: "=x1,3 3")?.trimmed,
-            "=x1,3"
+            CapturePanelModel.closePendingTrim(in: explicit, draft: "x1,3 3")?.trimmed,
+            "x1,3"
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: explicit, draft: "=x1,3 3")?.separator,
+            CapturePanelModel.closePendingTrim(in: explicit, draft: "x1,3 3")?.separator,
             "3"
         )
-        // `=x 2 =` trims to `=x  =`, which bob reads as the chain `=x =`.
+        // `x 2 =` trims to `x  =`, which bob reads as the chain `x =`.
         // Real `bob capture-parse` output: the owner item dangles with the
         // trail start as its sibling.
         let chained = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
-            input: "=x 2 =",
-            body: "=x 2",
+            input: "x 2 =",
+            body: "x 2",
             mode: "incomplete",
             needs: ["pomodoro_close_log_text"],
             spans: [
-                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
-                CaptureSpan(start: 3, end: 4, kind: "interactive_placeholder"),
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
+                CaptureSpan(start: 2, end: 3, kind: "interactive_placeholder"),
                 CaptureSpan(start: 5, end: 6, kind: "pomodoro_start"),
             ],
             items: [
                 CaptureParseItem(
                     index: 1,
-                    range: CaptureRange(start: 0, end: 4),
+                    range: CaptureRange(start: 0, end: 3),
                     lineStart: 1,
                     lineEnd: 1,
-                    body: "=x 2",
+                    body: "x 2",
                     mode: "incomplete",
                     needs: ["pomodoro_close_log_text"]
                 ),
                 CaptureParseItem(
                     index: 2,
-                    range: CaptureRange(start: 5, end: 6),
+                    range: CaptureRange(start: 4, end: 5),
                     lineStart: 1,
                     lineEnd: 1,
                     body: "=",
@@ -2831,55 +2831,55 @@ final class CapturePanelModelTests: XCTestCase {
             ]
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: chained, draft: "=x 2 =")?.trimmed,
-            "=x  ="
+            CapturePanelModel.closePendingTrim(in: chained, draft: "x 2 =")?.trimmed,
+            "x  ="
         )
     }
 
     func testLogPendingTrimRemovesMidDraftDanglingBullets() {
         // A dangling bullet between complete entries trims to a placeholder
-        // row: `=x\n- 2 a\n- 1` and `=x\n- 1\n- 2 a` both keep the complete
+        // row: `x\n- 2 a\n- 1` and `x\n- 1\n- 2 a` both keep the complete
         // entry and leave a `-` row for the dangling one.
         let final = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
-            input: "=x\n- 2 a\n- 1",
-            body: "=x",
+            input: "x\n- 2 a\n- 1",
+            body: "x",
             mode: "incomplete",
             needs: ["pomodoro_close_log_text"],
             spans: [
-                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
-                CaptureSpan(start: 5, end: 6, kind: "pomodoro_close_log_index"),
-                CaptureSpan(start: 11, end: 12, kind: "interactive_placeholder"),
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
+                CaptureSpan(start: 4, end: 5, kind: "pomodoro_close_log_index"),
+                CaptureSpan(start: 10, end: 11, kind: "interactive_placeholder"),
             ]
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: final, draft: "=x\n- 2 a\n- 1")?.trimmed,
-            "=x\n- 2 a\n-"
+            CapturePanelModel.closePendingTrim(in: final, draft: "x\n- 2 a\n- 1")?.trimmed,
+            "x\n- 2 a\n-"
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: final, draft: "=x\n- 2 a\n- 1")?.separator,
+            CapturePanelModel.closePendingTrim(in: final, draft: "x\n- 2 a\n- 1")?.separator,
             "1"
         )
         let mid = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
-            input: "=x\n- 1\n- 2 a",
-            body: "=x",
+            input: "x\n- 1\n- 2 a",
+            body: "x",
             mode: "incomplete",
             needs: ["pomodoro_close_log_text"],
             spans: [
-                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
-                CaptureSpan(start: 5, end: 6, kind: "interactive_placeholder"),
-                CaptureSpan(start: 9, end: 10, kind: "pomodoro_close_log_index"),
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
+                CaptureSpan(start: 4, end: 5, kind: "interactive_placeholder"),
+                CaptureSpan(start: 8, end: 9, kind: "pomodoro_close_log_index"),
             ]
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: mid, draft: "=x\n- 1\n- 2 a")?.trimmed,
-            "=x\n- \n- 2 a"
+            CapturePanelModel.closePendingTrim(in: mid, draft: "x\n- 1\n- 2 a")?.trimmed,
+            "x\n- \n- 2 a"
         )
         XCTAssertEqual(
-            CapturePanelModel.closePendingTrim(in: mid, draft: "=x\n- 1\n- 2 a")?.separator,
+            CapturePanelModel.closePendingTrim(in: mid, draft: "x\n- 1\n- 2 a")?.separator,
             "1"
         )
     }
@@ -2888,19 +2888,19 @@ final class CapturePanelModelTests: XCTestCase {
         let parse = CaptureParseResponse(
             ok: true,
             schemaVersion: 1,
-            input: "=x\n- 1 wired the lexer\n  - chose a hand-rolled lexer",
-            body: "=x",
+            input: "x\n- 1 wired the lexer\n  - chose a hand-rolled lexer",
+            body: "x",
             mode: "pomodoro_close",
             needs: [],
             spans: [
-                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
-                CaptureSpan(start: 5, end: 6, kind: "pomodoro_close_log_index"),
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
+                CaptureSpan(start: 4, end: 5, kind: "pomodoro_close_log_index"),
             ]
         )
         XCTAssertNil(
             CapturePanelModel.closePendingTrim(
                 in: parse,
-                draft: "=x\n- 1 wired the lexer\n  - chose a hand-rolled lexer"
+                draft: "x\n- 1 wired the lexer\n  - chose a hand-rolled lexer"
             )
         )
     }
@@ -2971,12 +2971,12 @@ final class CapturePanelModelTests: XCTestCase {
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
             ]
         )
-        let draft = "=x1,"
+        let draft = "x1,"
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
         await waitUntil { model.closePendingText != nil }
 
-        // The card previews the trimmed draft: the =x1 outcome summary shows,
+        // The card previews the trimmed draft: the x1 outcome summary shows,
         // the pending notice names the dangling separator, and Close is off.
         XCTAssertEqual(model.closePendingText, "Type a task number after ,")
         XCTAssertTrue(model.isClosePending)
@@ -2989,11 +2989,11 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertFalse(model.isSubmitting)
         XCTAssertEqual(model.statusText, "Type a task number after , — Close is disabled")
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- =x1\n"))
-        XCTAssertFalse(record.contains("argv=capture --format json --require-pull-in-choice -- =x1,"))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- x1\n"))
+        XCTAssertFalse(record.contains("argv=capture --format json --require-pull-in-choice -- x1,"))
 
         // Once the draft becomes valid again, the normal card returns.
-        model.plainDraft = "=x1"
+        model.plainDraft = "x1"
         model.editorTextDidChange(cursorUTF8Offset: 3)
         await waitUntil {
             if case .ready = model.previewState { return model.closePendingText == nil }
@@ -3019,7 +3019,7 @@ final class CapturePanelModelTests: XCTestCase {
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
             ]
         )
-        let draft = "=x\n- 1"
+        let draft = "x\n- 1"
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
         await waitUntil { model.closePendingText != nil }
@@ -3036,8 +3036,8 @@ final class CapturePanelModelTests: XCTestCase {
         model.submit(openAfterCapture: false)
         XCTAssertFalse(model.isSubmitting)
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- =x\n"))
-        XCTAssertFalse(record.contains("argv=capture --format json --require-pull-in-choice -- =x\n- 1"))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- x\n"))
+        XCTAssertFalse(record.contains("argv=capture --format json --require-pull-in-choice -- x\n- 1"))
     }
 
     func testUnnumberedDraftPreviewsWithoutPendingTrimAndKeepsCloseEnabled() async throws {
@@ -3052,7 +3052,7 @@ final class CapturePanelModelTests: XCTestCase {
             contentsOf: fixtures.appendingPathComponent("pomodoro-close-parse-log-unresolved.json")
         )
         let parse = try JSONDecoder().decode(CaptureParseResponse.self, from: parseData)
-        let draft = "=x\n- wired the lexer\n- sketched the URL parser"
+        let draft = "x\n- wired the lexer\n- sketched the URL parser"
         XCTAssertNil(CapturePanelModel.closePendingTrim(in: parse, draft: draft))
 
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -3086,7 +3086,7 @@ final class CapturePanelModelTests: XCTestCase {
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(
             record.contains(
-                "argv=capture --dry-run --no-clip --format json -- =x\n- wired the lexer\n- sketched the URL parser"
+                "argv=capture --dry-run --no-clip --format json -- x\n- wired the lexer\n- sketched the URL parser"
             )
         )
     }
@@ -3099,7 +3099,7 @@ final class CapturePanelModelTests: XCTestCase {
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
-        let draft = "=x\n- foo\n- 2 bar"
+        let draft = "x\n- foo\n- 2 bar"
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
         await waitUntil {
@@ -3271,7 +3271,7 @@ final class CapturePanelModelTests: XCTestCase {
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
-        let draft = "=x\n\n="
+        let draft = "x\n\n="
 
         model.plainDraft = draft
         model.editorTextDidChange(cursorUTF8Offset: draft.utf8.count)
@@ -3376,7 +3376,7 @@ final class CapturePanelModelTests: XCTestCase {
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
             ]
         )
-        model.plainDraft = "=x =#de"
+        model.plainDraft = "x =#de"
         model.editorTextDidChange(cursorUTF8Offset: 6)
         await waitUntil { model.completionResponse?.context == "pomodoro_start_name" }
 
@@ -3386,7 +3386,7 @@ final class CapturePanelModelTests: XCTestCase {
             CaptureRange(start: 5, end: 7)
         )
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 6 --format json -- =x =#de"))
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 6 --format json -- x =#de"))
     }
 
     func testStartSuffixCaretRequestsNoCompletion() async throws {
@@ -3629,7 +3629,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertNil(model.sessionStartPresentation)
         XCTAssertEqual(model.statusText, "Preview failed")
         XCTAssertTrue(model.errorMessage?.contains("is still running") ?? false)
-        XCTAssertTrue(model.errorMessage?.contains("=x =#deep-work") ?? false)
+        XCTAssertTrue(model.errorMessage?.contains("x =#deep-work") ?? false)
     }
 
     func testAcceptingStartNameNewRowAnnouncesCreationAndStart() {
@@ -3739,14 +3739,14 @@ final class CapturePanelModelTests: XCTestCase {
                 "FAKE_BOB_RECORD_PATH": recordURL.path,
             ]
         )
-        model.plainDraft = "=x"
+        model.plainDraft = "x"
         model.editorTextDidChange(cursorUTF8Offset: 2)
         await waitUntil {
             if case .ready = model.previewState { return true }
             return false
         }
         XCTAssertNotNil(model.closePresentation)
-        let dryRunLine = "argv=capture --dry-run --no-clip --format json -- =x"
+        let dryRunLine = "argv=capture --dry-run --no-clip --format json -- x"
         let runsBefore = try String(contentsOf: recordURL)
             .components(separatedBy: dryRunLine).count - 1
         XCTAssertEqual(runsBefore, 1)
@@ -3772,8 +3772,8 @@ final class CapturePanelModelTests: XCTestCase {
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
-        // Inside the `=x` suffix there is nothing to complete.
-        model.plainDraft = "=x"
+        // Inside the `x` suffix there is nothing to complete.
+        model.plainDraft = "x"
         model.editorTextDidChange(cursorUTF8Offset: 2)
         await waitUntil {
             if case .ready = model.previewState { return true }
@@ -3788,7 +3788,7 @@ final class CapturePanelModelTests: XCTestCase {
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
-        model.plainDraft = "=x"
+        model.plainDraft = "x"
         model.editorTextDidChange(cursorUTF8Offset: 2)
 
         await waitUntil {

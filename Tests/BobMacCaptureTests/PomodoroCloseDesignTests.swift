@@ -15,8 +15,8 @@ import XCTest
 /// Fixtures (`Tests/Fixtures/pomodoro-close-successors.json`,
 /// `pomodoro-close-carried.json`) are real `bob capture --dry-run -f json`
 /// responses from bob-cli master with the successor-link capture phases,
-/// against sandbox vaults (see `Tests/Fixtures/fake-bob` routes `=x!1` and
-/// `=x!2` for the true drafts).
+/// against sandbox vaults (see `Tests/Fixtures/fake-bob` routes `x!1` and
+/// `x!2` for the true drafts).
 final class PomodoroCloseDesignTests: XCTestCase {
     @MainActor
     func testRenderCloseSuccessorStatesToPNG() throws {

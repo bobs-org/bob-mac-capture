@@ -64,7 +64,7 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
     case "blocked_task_block_id":
         return .blockID
     case "task_complete_sigil":
-        // The `!` sigil completes like `=x!`: it shares the complete-green
+        // The `!` sigil completes like `x!`: it shares the complete-green
         // with the close-list complete digits.
         return .pomodoroCloseComplete
     case "task_complete_note":
@@ -111,7 +111,7 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         // spans.
         return .pomodoroStart
     case "pomodoro_close":
-        // The whole-item `=x` token and the `=x` link suffix close the running
+        // The whole-item `x` token and the `=x` link suffix close the running
         // session, so they share the Pomodoro-session highlight with the start
         // and adjust spans.
         return .pomodoroStart
@@ -756,7 +756,7 @@ private func startNameRunningHint(override: CaptureCompleteOverride?) -> String 
         }
         return "Restarts it now"
     }
-    return "Already running. Restart it with ==, or close it first with =x."
+    return "Already running. Restart it with ==, or close it first with x."
 }
 
 /// The display name for a `pomodoro_start_name` start, new, again, or running

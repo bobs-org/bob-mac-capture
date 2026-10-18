@@ -237,7 +237,7 @@ public struct CaptureParseResponse: Codable, Equatable {
   // Additive whole-item `++N`/`--N` shift spec. Omitted for every
   // non-shift mode, so older bob output decodes as nil.
   public let pomodoroShift: PomodoroShiftSpec?
-  // Additive `=x` close suffix on a whole item or a `@`/`^` link item.
+  // Additive whole-item `x` close or `=x` close suffix on a `@`/`^` link item.
   // Omitted for every non-close mode, so older bob output decodes as nil.
   public let pomodoroClose: PomodoroCloseSpec?
   // Additive `&` / `*` markers and the owner they hang on. Older Bob
@@ -461,7 +461,8 @@ public struct CaptureParseItem: Codable, Equatable {
   // Per-item additive whole-item `++N`/`--N` shift spec. Omitted for
   // items without one.
   public let pomodoroShift: PomodoroShiftSpec?
-  // Per-item additive `=x` close suffix. Omitted for items without one.
+  // Per-item additive whole-item `x` close or `=x` link suffix. Omitted for
+  // items without one.
   public let pomodoroClose: PomodoroCloseSpec?
   public let dependencies: [CaptureParseRelationshipMarker]
   public let blockedTasks: [CaptureParseRelationshipMarker]
@@ -665,10 +666,12 @@ public struct PomodoroCloseLogEntry: Codable, Equatable, Sendable {
   }
 }
 
-/// The typed close token from `bob capture-parse` (`=x[…]` or the `=*`/`=!`
-/// aliases): `raw` preserves exactly what was typed (`"=x"`, `"=X1!2"`,
-/// `"=x1~2"`, `"=x*2"`, `"=*"`, `"=!"`). `inProgress` is the sorted
-/// `in_progress` list, or nil when `<N>` was omitted (plain `=x` leaves
+/// The typed close token from `bob capture-parse`: whole-item closes use
+/// `x[…]` including the `x*`/`x!` forms, while link and task suffixes use
+/// `=x[…]`. `raw` preserves exactly what was typed (for example `"x"`,
+/// `"x1!2"`, `"x1~2"`, `"x*2"`, `"x*"`, `"x!"`, or `"=x1!2"`).
+/// `inProgress` is the sorted
+/// `in_progress` list, or nil when `<N>` was omitted (plain `x` leaves
 /// unlisted links at their ledger outcome unless `*<P>` is present, which
 /// activates selection mode like `<N>`); `parkAll`/`completeAll` preserve a
 /// present-but-empty `*`/`!` group until Bob resolves the current lineup;
@@ -2098,7 +2101,7 @@ public struct PomodoroCloseSummary: Codable, Equatable, Sendable {
   }
 }
 
-/// One note-free `=x0` reset from Bob's additive `pomodoro_reset` result:
+/// One note-free `x0` reset from Bob's additive `pomodoro_reset` result:
 /// the current Pomodoro returned to the front of the future queue with its
 /// session ledger cleared. Reset and `pomodoro_close` are mutually exclusive.
 /// Older Bob binaries omit the key entirely; decode as nil.
@@ -2942,10 +2945,10 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
   // Additive shift summary for whole-item `++N`/`--N`.
   // Older bob binaries omit it entirely; decode as nil.
   public let pomodoroShift: PomodoroShiftSummary?
-  // Additive session-close result for `=x` and task-link closes. Older Bob
+  // Additive session-close result for whole-item `x` and task-link `=x` closes. Older Bob
   // binaries omit it entirely; decode as nil.
   public let pomodoroClose: PomodoroCloseSummary?
-  // Additive note-free `=x0` reset result. Mutually exclusive with
+  // Additive note-free `x0` reset result. Mutually exclusive with
   // `pomodoroClose`. Older Bob binaries omit it entirely; decode as nil.
   public let pomodoroReset: PomodoroResetSummary?
   // Additive dependency summary for captures that add prerequisites:
@@ -6270,7 +6273,7 @@ extension CapturePomodorosEntryState: Codable {
 
 /// Minimal `capture-pomodoros` entry: the fields the close-comma assist
 /// and Control-\ today-Pomodoro landing need. `taskLinkCount` is the size
-/// of the numbered Task Link lineup a plain `=x` close indexes; it is an
+/// of the numbered Task Link lineup a plain `x` close indexes; it is an
 /// integer only on the `isCurrent` entry and null elsewhere. Older bob
 /// binaries omit `task_link_count`, `ref`, and `state`.
 public struct CapturePomodorosListEntry: Decodable, Equatable {

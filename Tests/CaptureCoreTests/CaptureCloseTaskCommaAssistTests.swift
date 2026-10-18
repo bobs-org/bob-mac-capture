@@ -78,8 +78,8 @@ final class CaptureCloseTaskCommaAssistTests: XCTestCase {
     func testInsertsCommaAfterInProgressNumber() {
         expectEdit(
             typed: "2",
-            text: "=x1",
-            spans: [(0, 2, "pomodoro_close"), (2, 3, "pomodoro_close_in_progress")],
+            text: "x1",
+            spans: [(0, 1, "pomodoro_close"), (1, 2, "pomodoro_close_in_progress")],
             count: 3
         )
     }
@@ -87,7 +87,7 @@ final class CaptureCloseTaskCommaAssistTests: XCTestCase {
     func testInsertsCommaAfterParkNumber() {
         expectEdit(
             typed: "2",
-            text: "=*1",
+            text: "x*1",
             spans: [(0, 1, "pomodoro_close"), (1, 3, "pomodoro_close_park")],
             count: 3
         )
@@ -96,7 +96,7 @@ final class CaptureCloseTaskCommaAssistTests: XCTestCase {
     func testInsertsCommaAfterCompleteNumber() {
         expectEdit(
             typed: "2",
-            text: "=!1",
+            text: "x!1",
             spans: [(0, 1, "pomodoro_close"), (1, 3, "pomodoro_close_complete")],
             count: 3
         )
@@ -105,11 +105,11 @@ final class CaptureCloseTaskCommaAssistTests: XCTestCase {
     func testInsertsCommaInsideCompleteSpan() {
         expectEdit(
             typed: "4",
-            text: "=x2!1",
+            text: "x2!1",
             spans: [
-                (0, 2, "pomodoro_close"),
-                (2, 3, "pomodoro_close_in_progress"),
-                (3, 5, "pomodoro_close_complete"),
+                (0, 1, "pomodoro_close"),
+                (1, 2, "pomodoro_close_in_progress"),
+                (2, 4, "pomodoro_close_complete"),
             ],
             count: 4
         )
@@ -118,12 +118,12 @@ final class CaptureCloseTaskCommaAssistTests: XCTestCase {
     func testInsertsCommaAtEndOfParkSpan() {
         expectEdit(
             typed: "5",
-            text: "=x2!1,4*3",
+            text: "x2!1,4*3",
             spans: [
-                (0, 2, "pomodoro_close"),
-                (2, 3, "pomodoro_close_in_progress"),
-                (3, 7, "pomodoro_close_complete"),
-                (7, 9, "pomodoro_close_park"),
+                (0, 1, "pomodoro_close"),
+                (1, 2, "pomodoro_close_in_progress"),
+                (2, 6, "pomodoro_close_complete"),
+                (6, 8, "pomodoro_close_park"),
             ],
             count: 5
         )
@@ -132,13 +132,13 @@ final class CaptureCloseTaskCommaAssistTests: XCTestCase {
     func testInsertsCommaInDropSpan() {
         expectEdit(
             typed: "6",
-            text: "=x2!1,4*3~5",
+            text: "x2!1,4*3~5",
             spans: [
-                (0, 2, "pomodoro_close"),
-                (2, 3, "pomodoro_close_in_progress"),
-                (3, 7, "pomodoro_close_complete"),
-                (7, 9, "pomodoro_close_park"),
-                (9, 11, "pomodoro_close_drop"),
+                (0, 1, "pomodoro_close"),
+                (1, 2, "pomodoro_close_in_progress"),
+                (2, 6, "pomodoro_close_complete"),
+                (6, 8, "pomodoro_close_park"),
+                (8, 10, "pomodoro_close_drop"),
             ],
             count: 6
         )
@@ -175,41 +175,41 @@ final class CaptureCloseTaskCommaAssistTests: XCTestCase {
     func testInsertsCommaWithMultilineOffsets() {
         expectEdit(
             typed: "4",
-            text: "hello\n\n=x3",
-            spans: [(7, 9, "pomodoro_close"), (9, 10, "pomodoro_close_in_progress")],
+            text: "hello\n\nx3",
+            spans: [(7, 8, "pomodoro_close"), (8, 9, "pomodoro_close_in_progress")],
             count: 4
         )
     }
 
     func testInsertsCommaInMiddleOfList() {
-        // Caret after `2` in `=x2!1`: end of the in-progress span,
+        // Caret after `2` in `x2!1`: end of the in-progress span,
         // before `!`. Span shapes copied from `bob capture-parse`.
-        let text = "=x2!1"
+        let text = "x2!1"
         let spans = [
-            (0, 2, "pomodoro_close"),
-            (2, 3, "pomodoro_close_in_progress"),
-            (3, 5, "pomodoro_close_complete"),
+            (0, 1, "pomodoro_close"),
+            (1, 2, "pomodoro_close_in_progress"),
+            (2, 4, "pomodoro_close_complete"),
         ]
         let edit = CaptureCloseTaskCommaAssist.edit(
             typed: "3",
             text: text,
-            selectedRange: NSRange(location: 3, length: 0),
+            selectedRange: NSRange(location: 2, length: 0),
             snapshot: snapshot(draft: text, spans: spans),
             taskLinkCount: 4
         )
         XCTAssertEqual(edit?.replacementText, ",3")
-        XCTAssertEqual(edit?.replacementRange, NSRange(location: 3, length: 0))
-        XCTAssertEqual(edit?.resultingSelection, NSRange(location: 5, length: 0))
+        XCTAssertEqual(edit?.replacementRange, NSRange(location: 2, length: 0))
+        XCTAssertEqual(edit?.resultingSelection, NSRange(location: 4, length: 0))
     }
 
     func testMultibytePrefixConvertsUTF16CaretToUTF8() {
         // `é` is 2 bytes in UTF-8 but 1 unit in UTF-16. The caret at
-        // UTF-16 4 is UTF-8 6, inside the manually built [5, 6) list
+        // UTF-16 4 is UTF-8 5, at the end of the manually built [4, 5) list
         // span. A naive UTF-16 comparison would miss it.
         expectEdit(
             typed: "2",
-            text: "é =x1",
-            spans: [(5, 6, "pomodoro_close_in_progress")],
+            text: "é x1",
+            spans: [(4, 5, "pomodoro_close_in_progress")],
             count: 3
         )
     }
@@ -217,8 +217,8 @@ final class CaptureCloseTaskCommaAssistTests: XCTestCase {
     func testDeclinesWithoutKnownCount() {
         expectNil(
             typed: "2",
-            text: "=x1",
-            spans: [(0, 2, "pomodoro_close"), (2, 3, "pomodoro_close_in_progress")],
+            text: "x1",
+            spans: [(0, 1, "pomodoro_close"), (1, 2, "pomodoro_close_in_progress")],
             count: nil
         )
     }
@@ -226,47 +226,47 @@ final class CaptureCloseTaskCommaAssistTests: XCTestCase {
     func testDeclinesWithTenOrMoreLinks() {
         expectNil(
             typed: "2",
-            text: "=x1",
-            spans: [(0, 2, "pomodoro_close"), (2, 3, "pomodoro_close_in_progress")],
+            text: "x1",
+            spans: [(0, 1, "pomodoro_close"), (1, 2, "pomodoro_close_in_progress")],
             count: 10
         )
         expectNil(
             typed: "2",
-            text: "=x1",
-            spans: [(0, 2, "pomodoro_close"), (2, 3, "pomodoro_close_in_progress")],
+            text: "x1",
+            spans: [(0, 1, "pomodoro_close"), (1, 2, "pomodoro_close_in_progress")],
             count: 12
         )
     }
 
     func testDeclinesZeroAndNonDigits() {
-        let spans = [(0, 2, "pomodoro_close"), (2, 3, "pomodoro_close_in_progress")]
-        expectNil(typed: "0", text: "=x1", spans: spans, count: 3)
-        expectNil(typed: "x", text: "=x1", spans: spans, count: 3)
-        expectNil(typed: "12", text: "=x1", spans: spans, count: 3)
-        expectNil(typed: "", text: "=x1", spans: spans, count: 3)
+        let spans = [(0, 1, "pomodoro_close"), (1, 2, "pomodoro_close_in_progress")]
+        expectNil(typed: "0", text: "x1", spans: spans, count: 3)
+        expectNil(typed: "x", text: "x1", spans: spans, count: 3)
+        expectNil(typed: "12", text: "x1", spans: spans, count: 3)
+        expectNil(typed: "", text: "x1", spans: spans, count: 3)
     }
 
     func testDeclinesFirstDigitOfGroup() {
         // The byte before the caret is a sigil or `x`, not a digit.
         expectNil(
             typed: "1",
-            text: "=x",
-            spans: [(0, 2, "pomodoro_close")],
+            text: "x",
+            spans: [(0, 1, "pomodoro_close")],
             count: 3
         )
         expectNil(
             typed: "1",
-            text: "=x2!",
+            text: "x2!",
             spans: [
-                (0, 2, "pomodoro_close"),
-                (2, 3, "pomodoro_close_in_progress"),
-                (3, 4, "pomodoro_close_complete"),
+                (0, 1, "pomodoro_close"),
+                (1, 2, "pomodoro_close_in_progress"),
+                (2, 3, "pomodoro_close_complete"),
             ],
             count: 3
         )
         expectNil(
             typed: "1",
-            text: "=*",
+            text: "x*",
             spans: [(0, 1, "pomodoro_close")],
             count: 3
         )
@@ -275,18 +275,18 @@ final class CaptureCloseTaskCommaAssistTests: XCTestCase {
     func testDeclinesAfterCommaAndZero() {
         expectNil(
             typed: "2",
-            text: "=x1,",
+            text: "x1,",
             spans: [
-                (0, 2, "pomodoro_close"),
-                (2, 3, "pomodoro_close_in_progress"),
-                (3, 4, "interactive_placeholder"),
+                (0, 1, "pomodoro_close"),
+                (1, 2, "pomodoro_close_in_progress"),
+                (2, 3, "interactive_placeholder"),
             ],
             count: 3
         )
         expectNil(
             typed: "2",
-            text: "=x0",
-            spans: [(0, 2, "pomodoro_close"), (2, 3, "pomodoro_close_in_progress")],
+            text: "x0",
+            spans: [(0, 1, "pomodoro_close"), (1, 2, "pomodoro_close_in_progress")],
             count: 3
         )
     }
@@ -295,46 +295,46 @@ final class CaptureCloseTaskCommaAssistTests: XCTestCase {
         // Inline Work Log number and bullet numbers carry no list span.
         expectNil(
             typed: "2",
-            text: "=x 1",
-            spans: [(0, 2, "pomodoro_close"), (3, 4, "interactive_placeholder")],
+            text: "x 1",
+            spans: [(0, 1, "pomodoro_close"), (2, 3, "interactive_placeholder")],
             count: 3
         )
         expectNil(
             typed: "2",
-            text: "=x1\n- 1 did",
+            text: "x1\n- 1 did",
             spans: [(5, 6, "pomodoro_close_log_index")],
             count: 3
         )
         // Lexically malformed lists report only `pomodoro_close`.
         expectNil(
             typed: "2",
-            text: "=x1,1",
-            spans: [(0, 2, "pomodoro_close")],
+            text: "x1,1",
+            spans: [(0, 1, "pomodoro_close")],
             count: 3
         )
     }
 
     func testDeclinesStaleSnapshotAndSelection() {
-        let spans = [(0, 2, "pomodoro_close"), (2, 3, "pomodoro_close_in_progress")]
+        let spans = [(0, 1, "pomodoro_close"), (1, 2, "pomodoro_close_in_progress")]
         expectNil(
             typed: "2",
-            text: "=x1",
+            text: "x1",
             spans: spans,
             count: 3,
-            snapshotDraft: "=x"
+            snapshotDraft: "x"
         )
         expectNil(
             typed: "2",
-            text: "=x1",
+            text: "x1",
             spans: spans,
             count: 3,
-            selectedRange: NSRange(location: 3, length: 1)
+            selectedRange: NSRange(location: 1, length: 1)
         )
         XCTAssertNil(
             CaptureCloseTaskCommaAssist.edit(
                 typed: "2",
-                text: "=x1",
-                selectedRange: collapsed("=x1"),
+                text: "x1",
+                selectedRange: collapsed("x1"),
                 snapshot: nil,
                 taskLinkCount: 3
             )

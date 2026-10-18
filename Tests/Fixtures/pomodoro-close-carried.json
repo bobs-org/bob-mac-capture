@@ -6,7 +6,7 @@
  "route_label": "",
  "relative_target": "20261005.md",
  "target": "/tmp/bob-mac-capture-successors/vault/20261005.md",
- "text": "=x!2",
+ "text": "x!2",
  "task_line": "- [x] (**0920-0930** [t:: 10m]) \u2014 BOB",
  "kind": "pomodoro_close",
  "created": "2026-10-05",
@@ -15,7 +15,7 @@
  "day_file": "/tmp/bob-mac-capture-successors/vault/20261005.md",
  "pomodoro_name": "BOB",
  "pomodoro_close": {
-  "raw": "=x!2",
+  "raw": "x!2",
   "in_progress": null,
   "complete": [
    2

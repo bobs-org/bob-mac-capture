@@ -16,7 +16,7 @@ import XCTest
 ///   placeholder):
 ///     BOB_DAY_FILE=…/2026/20260930.md bob capture -b vault -f json -- "+5"
 ///     BOB_DAY_FILE=…/2026/20260930.md bob capture -b vault -f json -- "++1"
-///     BOB_DAY_FILE=…/2026/20260930.md bob capture -b vault -f json -- "+2 =x"
+///     BOB_DAY_FILE=…/2026/20260930.md bob capture -b vault -f json -- "+2 x"
 ///   start (`BOB_NOW="2026-09-28 09:42:00"`, day file `vault/day.md` holding
 ///   `## Pomodoros`, the `GTD` placeholder with `[[#^gtd]]` and a context
 ///   line, and a completed `PLAN` entry):
@@ -29,7 +29,7 @@ import XCTest
 ///   `BOB_NOW="2026-09-28 09:37:00"`, day file `vault/2026/20260928.md`,
 ///   plus `bob.md`, `sase.md`, and the obsidian-tasks-plugin settings from
 ///   `close_worked_vault` in bob-cli's `pomodoro_close` CLI tests):
-///     BOB_DAY_FILE=…/2026/20260928.md bob capture -b vault -f json -- "=x"
+///     BOB_DAY_FILE=…/2026/20260928.md bob capture -b vault -f json -- "x"
 final class CapturePomodoroBlockPresentationTests: XCTestCase {
     private func blockFixture(_ name: String) throws -> CaptureCommandSuccess {
         let fixtures = URL(fileURLWithPath: #filePath)
@@ -336,7 +336,7 @@ final class CapturePomodoroBlockPresentationTests: XCTestCase {
             routeLabel: "",
             relativeTarget: "2026/20260928.md",
             target: "/tmp/vault/2026/20260928.md",
-            text: "=x",
+            text: "x",
             taskLine: "\t- [[bob#^web-capture]]#",
             kind: "pomodoro_close",
             created: "2026-09-28",

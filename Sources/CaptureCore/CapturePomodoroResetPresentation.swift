@@ -1,6 +1,6 @@
 import Foundation
 
-/// Pure presentation model for a note-free `=x0` reset (`pomodoro_reset`
+/// Pure presentation model for a note-free `x0` reset (`pomodoro_reset`
 /// present on a `bob capture --format json` success), built once from
 /// `CaptureCommandSuccess` so the SwiftUI layer never branches on
 /// reset-specific JSON fields. The preview's only source of truth is Bob's

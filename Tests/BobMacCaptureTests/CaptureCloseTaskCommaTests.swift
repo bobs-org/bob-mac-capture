@@ -7,15 +7,15 @@ import XCTest
 @MainActor
 final class CaptureCloseTaskCommaTests: XCTestCase {
     private func closeSnapshot(
-        draft: String = "=x1"
+        draft: String = "x1"
     ) -> CaptureParseSnapshot {
         CaptureParseSnapshot(
             draft: draft,
             spans: [
-                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
                 CaptureSpan(
-                    start: 2,
-                    end: 3,
+                    start: 1,
+                    end: 2,
                     kind: "pomodoro_close_in_progress"
                 ),
             ]
@@ -179,8 +179,8 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
 
         let textView = NSTextView()
         textView.isEditable = true
-        textView.string = "=x1"
-        textView.setSelectedRange(NSRange(location: 3, length: 0))
+        textView.string = "x1"
+        textView.setSelectedRange(NSRange(location: 2, length: 0))
 
         XCTAssertTrue(
             CapturePanelController.insertCloseTaskNumberInEditableTextView(
@@ -189,8 +189,8 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
                 model: model
             )
         )
-        XCTAssertEqual(textView.string, "=x1,2")
-        XCTAssertEqual(textView.selectedRange(), NSRange(location: 5, length: 0))
+        XCTAssertEqual(textView.string, "x1,2")
+        XCTAssertEqual(textView.selectedRange(), NSRange(location: 4, length: 0))
     }
 
     func testInsertCloseTaskNumberDeclinesWithoutChangingText() {
@@ -200,8 +200,8 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
 
         let textView = NSTextView()
         textView.isEditable = true
-        textView.string = "=x1"
-        textView.setSelectedRange(NSRange(location: 3, length: 0))
+        textView.string = "x1"
+        textView.setSelectedRange(NSRange(location: 2, length: 0))
 
         XCTAssertFalse(
             CapturePanelController.insertCloseTaskNumberInEditableTextView(
@@ -210,7 +210,7 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
                 model: model
             )
         )
-        XCTAssertEqual(textView.string, "=x1")
+        XCTAssertEqual(textView.string, "x1")
     }
 
     func testInsertCloseTaskNumberDeclinesWhileComposing() {
@@ -220,12 +220,12 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
 
         let textView = NSTextView()
         textView.isEditable = true
-        textView.string = "=x1"
-        textView.setSelectedRange(NSRange(location: 3, length: 0))
+        textView.string = "x1"
+        textView.setSelectedRange(NSRange(location: 2, length: 0))
         textView.setMarkedText(
             "2",
             selectedRange: NSRange(location: 0, length: 1),
-            replacementRange: NSRange(location: 3, length: 0)
+            replacementRange: NSRange(location: 2, length: 0)
         )
 
         XCTAssertFalse(
@@ -243,13 +243,13 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
     func testStaleSnapshotNeverArmsEdit() {
         let model = CapturePanelModel()
         model.setCurrentPomodoroTaskLinkCountForTests(3)
-        model.setCloseListParseSnapshotForTests(closeSnapshot(draft: "=x"))
+        model.setCloseListParseSnapshotForTests(closeSnapshot(draft: "x"))
 
         XCTAssertNil(
             model.closeTaskCommaEdit(
                 typed: "2",
-                text: "=x1",
-                selectedRange: NSRange(location: 3, length: 0)
+                text: "x1",
+                selectedRange: NSRange(location: 2, length: 0)
             )
         )
     }
@@ -433,20 +433,20 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
         // The digit lands through the editor binding, which never clears
         // the pending request; the plainDraft setter does, so request after
         // assigning the draft to reach editorTextDidChange with it pending.
-        model.plainDraft = "=x1"
+        model.plainDraft = "x1"
         model.requestCloseListAssistParse()
-        model.editorTextDidChange(cursorUTF8Offset: "=x1".utf8.count)
+        model.editorTextDidChange(cursorUTF8Offset: "x1".utf8.count)
         await waitUntil {
             model.closeTaskCommaEdit(
                 typed: "2",
-                text: "=x1",
-                selectedRange: NSRange(location: 3, length: 0)
+                text: "x1",
+                selectedRange: NSRange(location: 2, length: 0)
             ) != nil
         }
         let edit = model.closeTaskCommaEdit(
             typed: "2",
-            text: "=x1",
-            selectedRange: NSRange(location: 3, length: 0)
+            text: "x1",
+            selectedRange: NSRange(location: 2, length: 0)
         )
         XCTAssertEqual(edit?.replacementText, ",2")
     }
@@ -454,14 +454,14 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
     func testAssistParseDoesNotRunWithoutKeyRequest() async throws {
         let model = try keyDrivenModel()
         model.setCurrentPomodoroTaskLinkCountForTests(3)
-        model.plainDraft = "=x1"
-        model.editorTextDidChange(cursorUTF8Offset: "=x1".utf8.count)
+        model.plainDraft = "x1"
+        model.editorTextDidChange(cursorUTF8Offset: "x1".utf8.count)
         try? await Task.sleep(nanoseconds: 500_000_000)
         XCTAssertNil(
             model.closeTaskCommaEdit(
                 typed: "2",
-                text: "=x1",
-                selectedRange: NSRange(location: 3, length: 0)
+                text: "x1",
+                selectedRange: NSRange(location: 2, length: 0)
             )
         )
     }
@@ -470,15 +470,15 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
         let model = try keyDrivenModel()
         // Same binding-order note as above: request after the draft so the
         // pending flag survives to editorTextDidChange, where disarm blocks.
-        model.plainDraft = "=x1"
+        model.plainDraft = "x1"
         model.requestCloseListAssistParse()
-        model.editorTextDidChange(cursorUTF8Offset: "=x1".utf8.count)
+        model.editorTextDidChange(cursorUTF8Offset: "x1".utf8.count)
         try? await Task.sleep(nanoseconds: 500_000_000)
         XCTAssertNil(
             model.closeTaskCommaEdit(
                 typed: "2",
-                text: "=x1",
-                selectedRange: NSRange(location: 3, length: 0)
+                text: "x1",
+                selectedRange: NSRange(location: 2, length: 0)
             )
         )
     }
@@ -489,8 +489,8 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
         armed.setCloseListParseSnapshotForTests(closeSnapshot())
         let acceptView = NSTextView()
         acceptView.isEditable = true
-        acceptView.string = "=x1"
-        acceptView.setSelectedRange(NSRange(location: 3, length: 0))
+        acceptView.string = "x1"
+        acceptView.setSelectedRange(NSRange(location: 2, length: 0))
         XCTAssertTrue(
             CapturePanelController.insertCloseTaskNumberInEditableTextView(
                 "2",
@@ -505,8 +505,8 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
         declined.setCloseListParseSnapshotForTests(closeSnapshot())
         let declineView = NSTextView()
         declineView.isEditable = true
-        declineView.string = "=x1"
-        declineView.setSelectedRange(NSRange(location: 3, length: 0))
+        declineView.string = "x1"
+        declineView.setSelectedRange(NSRange(location: 2, length: 0))
         XCTAssertFalse(
             CapturePanelController.insertCloseTaskNumberInEditableTextView(
                 "2",
@@ -556,76 +556,76 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
 
     func testBackspaceRemovesAssistedPair() {
         let model = CapturePanelModel()
-        let view = assistedView(model: model, text: "=x1", caret: 3, snapshot: closeSnapshot())
+        let view = assistedView(model: model, text: "x1", caret: 2, snapshot: closeSnapshot())
         XCTAssertTrue(insert("2", view: view, model: model))
-        XCTAssertEqual(view.string, "=x1,2")
-        XCTAssertEqual(view.selectedRange(), NSRange(location: 5, length: 0))
+        XCTAssertEqual(view.string, "x1,2")
+        XCTAssertEqual(view.selectedRange(), NSRange(location: 4, length: 0))
         XCTAssertTrue(backspace(view: view, model: model))
-        XCTAssertEqual(view.string, "=x1")
-        XCTAssertEqual(view.selectedRange(), NSRange(location: 3, length: 0))
+        XCTAssertEqual(view.string, "x1")
+        XCTAssertEqual(view.selectedRange(), NSRange(location: 2, length: 0))
         XCTAssertTrue(model.closeCommaProvenanceForTests().entries.isEmpty)
     }
 
     func testBackspaceRepeatedPairsDeleteInnermostFirst() {
         let model = CapturePanelModel()
-        let first = assistedView(model: model, text: "=x1", caret: 3, snapshot: closeSnapshot())
+        let first = assistedView(model: model, text: "x1", caret: 2, snapshot: closeSnapshot())
         XCTAssertTrue(insert("2", view: first, model: model))
-        XCTAssertEqual(first.string, "=x1,2")
+        XCTAssertEqual(first.string, "x1,2")
         // Fresh spans authorize the next digit at the new end.
         model.setCloseListParseSnapshotForTests(
             CaptureParseSnapshot(
-                draft: "=x1,2",
+                draft: "x1,2",
                 spans: [
-                    CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
-                    CaptureSpan(start: 2, end: 5, kind: "pomodoro_close_in_progress"),
+                    CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
+                    CaptureSpan(start: 1, end: 4, kind: "pomodoro_close_in_progress"),
                 ]
             )
         )
-        first.setSelectedRange(NSRange(location: 5, length: 0))
+        first.setSelectedRange(NSRange(location: 4, length: 0))
         XCTAssertTrue(insert("3", view: first, model: model))
-        XCTAssertEqual(first.string, "=x1,2,3")
-        XCTAssertEqual(first.selectedRange(), NSRange(location: 7, length: 0))
+        XCTAssertEqual(first.string, "x1,2,3")
+        XCTAssertEqual(first.selectedRange(), NSRange(location: 6, length: 0))
         XCTAssertTrue(backspace(view: first, model: model))
-        XCTAssertEqual(first.string, "=x1,2")
-        XCTAssertEqual(first.selectedRange(), NSRange(location: 5, length: 0))
+        XCTAssertEqual(first.string, "x1,2")
+        XCTAssertEqual(first.selectedRange(), NSRange(location: 4, length: 0))
         XCTAssertTrue(backspace(view: first, model: model))
-        XCTAssertEqual(first.string, "=x1")
-        XCTAssertEqual(first.selectedRange(), NSRange(location: 3, length: 0))
+        XCTAssertEqual(first.string, "x1")
+        XCTAssertEqual(first.selectedRange(), NSRange(location: 2, length: 0))
     }
 
     func testBackspaceMiddlePairBeforeBang() {
         let model = CapturePanelModel()
         let snapshot = CaptureParseSnapshot(
-            draft: "=x1!3",
+            draft: "x1!3",
             spans: [
-                CaptureSpan(start: 0, end: 2, kind: "pomodoro_close"),
-                CaptureSpan(start: 2, end: 3, kind: "pomodoro_close_in_progress"),
-                CaptureSpan(start: 3, end: 5, kind: "pomodoro_close_complete"),
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_close"),
+                CaptureSpan(start: 1, end: 2, kind: "pomodoro_close_in_progress"),
+                CaptureSpan(start: 2, end: 4, kind: "pomodoro_close_complete"),
             ]
         )
-        let view = assistedView(model: model, text: "=x1!3", caret: 3, snapshot: snapshot)
+        let view = assistedView(model: model, text: "x1!3", caret: 2, snapshot: snapshot)
         XCTAssertTrue(insert("2", view: view, model: model))
-        XCTAssertEqual(view.string, "=x1,2!3")
-        XCTAssertEqual(view.selectedRange(), NSRange(location: 5, length: 0))
+        XCTAssertEqual(view.string, "x1,2!3")
+        XCTAssertEqual(view.selectedRange(), NSRange(location: 4, length: 0))
         XCTAssertTrue(backspace(view: view, model: model))
-        XCTAssertEqual(view.string, "=x1!3")
-        XCTAssertEqual(view.selectedRange(), NSRange(location: 3, length: 0))
+        XCTAssertEqual(view.string, "x1!3")
+        XCTAssertEqual(view.selectedRange(), NSRange(location: 2, length: 0))
     }
 
     func testBackspaceUnicodePrefix() {
         let model = CapturePanelModel()
-        let draft = "🎉=x1"
+        let draft = "🎉x1"
         let nsLength = (draft as NSString).length
         let snapshot = CaptureParseSnapshot(
             draft: draft,
             spans: [
-                CaptureSpan(start: 0, end: 6, kind: "pomodoro_close"),
-                CaptureSpan(start: 6, end: 7, kind: "pomodoro_close_in_progress"),
+                CaptureSpan(start: 0, end: 5, kind: "pomodoro_close"),
+                CaptureSpan(start: 5, end: 6, kind: "pomodoro_close_in_progress"),
             ]
         )
         let view = assistedView(model: model, text: draft, caret: nsLength, snapshot: snapshot)
         XCTAssertTrue(insert("2", view: view, model: model))
-        XCTAssertEqual(view.string, "🎉=x1,2")
+        XCTAssertEqual(view.string, "🎉x1,2")
         XCTAssertTrue(backspace(view: view, model: model))
         XCTAssertEqual(view.string, draft)
     }
@@ -635,30 +635,30 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
         model.setCurrentPomodoroTaskLinkCountForTests(3)
         let view = NSTextView()
         view.isEditable = true
-        view.string = "=x1,2"
-        view.setSelectedRange(NSRange(location: 5, length: 0))
+        view.string = "x1,2"
+        view.setSelectedRange(NSRange(location: 4, length: 0))
         XCTAssertFalse(backspace(view: view, model: model))
-        XCTAssertEqual(view.string, "=x1,2")
+        XCTAssertEqual(view.string, "x1,2")
     }
 
     func testBackspaceDeclinesForNoncollapsedSelection() {
         let model = CapturePanelModel()
-        let view = assistedView(model: model, text: "=x1", caret: 3, snapshot: closeSnapshot())
+        let view = assistedView(model: model, text: "x1", caret: 2, snapshot: closeSnapshot())
         XCTAssertTrue(insert("2", view: view, model: model))
-        view.setSelectedRange(NSRange(location: 4, length: 1))
+        view.setSelectedRange(NSRange(location: 3, length: 1))
         XCTAssertFalse(backspace(view: view, model: model))
-        XCTAssertEqual(view.string, "=x1,2")
+        XCTAssertEqual(view.string, "x1,2")
     }
 
     func testBackspaceDeclinesWhileComposing() {
         let model = CapturePanelModel()
-        let view = assistedView(model: model, text: "=x1", caret: 3, snapshot: closeSnapshot())
+        let view = assistedView(model: model, text: "x1", caret: 2, snapshot: closeSnapshot())
         XCTAssertTrue(insert("2", view: view, model: model))
-        view.setSelectedRange(NSRange(location: 5, length: 0))
+        view.setSelectedRange(NSRange(location: 4, length: 0))
         view.setMarkedText(
             "x",
             selectedRange: NSRange(location: 0, length: 1),
-            replacementRange: NSRange(location: 5, length: 0)
+            replacementRange: NSRange(location: 4, length: 0)
         )
         XCTAssertFalse(backspace(view: view, model: model))
         view.unmarkText()
@@ -669,7 +669,7 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
         let view = NSTextView()
         view.isEditable = true
         view.string = "Parent\n- \nChild"
-        view.setSelectedRange(NSRange(location: 9, length: 0))
+        view.setSelectedRange(NSRange(location: 8, length: 0))
         // No provenance, so the comma helper declines and the bullet helper owns it.
         XCTAssertFalse(backspace(view: view, model: model))
         XCTAssertTrue(
@@ -682,7 +682,7 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
 
     func testProvenanceSurvivesEditBeforePair() {
         let model = CapturePanelModel()
-        let view = assistedView(model: model, text: "=x1", caret: 3, snapshot: closeSnapshot())
+        let view = assistedView(model: model, text: "x1", caret: 2, snapshot: closeSnapshot())
         XCTAssertTrue(insert("2", view: view, model: model))
         // Ordinary typing before the pair shifts it; Backspace still finds it.
         model.attributedDraft = AttributedString("A=x1,2")
@@ -697,45 +697,45 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
 
     func testProvenanceInvalidatedWhenPairReplaced() {
         let model = CapturePanelModel()
-        let view = assistedView(model: model, text: "=x1", caret: 3, snapshot: closeSnapshot())
+        let view = assistedView(model: model, text: "x1", caret: 2, snapshot: closeSnapshot())
         XCTAssertTrue(insert("2", view: view, model: model))
-        model.attributedDraft = AttributedString("=x1;2")
-        model.editorTextDidChange(cursorUTF8Offset: "=x1;2".utf8.count)
+        model.attributedDraft = AttributedString("x1;2")
+        model.editorTextDidChange(cursorUTF8Offset: "x1;2".utf8.count)
         let edited = NSTextView()
         edited.isEditable = true
-        edited.string = "=x1;2"
-        edited.setSelectedRange(NSRange(location: 5, length: 0))
+        edited.string = "x1;2"
+        edited.setSelectedRange(NSRange(location: 4, length: 0))
         XCTAssertFalse(backspace(view: edited, model: model))
     }
 
     func testProvenanceClearedOnProgrammaticReset() {
         let model = CapturePanelModel()
-        let view = assistedView(model: model, text: "=x1", caret: 3, snapshot: closeSnapshot())
+        let view = assistedView(model: model, text: "x1", caret: 2, snapshot: closeSnapshot())
         XCTAssertTrue(insert("2", view: view, model: model))
-        model.plainDraft = "=x1,2"
+        model.plainDraft = "x1,2"
         let reset = NSTextView()
         reset.isEditable = true
-        reset.string = "=x1,2"
-        reset.setSelectedRange(NSRange(location: 5, length: 0))
+        reset.string = "x1,2"
+        reset.setSelectedRange(NSRange(location: 4, length: 0))
         XCTAssertFalse(backspace(view: reset, model: model))
     }
 
     func testUndoDoesNotResurrectStaleProvenance() {
         let model = CapturePanelModel()
-        let view = assistedView(model: model, text: "=x1", caret: 3, snapshot: closeSnapshot())
+        let view = assistedView(model: model, text: "x1", caret: 2, snapshot: closeSnapshot())
         XCTAssertTrue(insert("2", view: view, model: model))
         XCTAssertTrue(backspace(view: view, model: model))
-        XCTAssertEqual(view.string, "=x1")
+        XCTAssertEqual(view.string, "x1")
         // Native undo restores the text without provenance; a second
         // Backspace must stay native instead of deleting a stale pair.
-        model.attributedDraft = AttributedString("=x1,2")
-        model.editorTextDidChange(cursorUTF8Offset: "=x1,2".utf8.count)
+        model.attributedDraft = AttributedString("x1,2")
+        model.editorTextDidChange(cursorUTF8Offset: "x1,2".utf8.count)
         let undone = NSTextView()
         undone.isEditable = true
-        undone.string = "=x1,2"
-        undone.setSelectedRange(NSRange(location: 5, length: 0))
+        undone.string = "x1,2"
+        undone.setSelectedRange(NSRange(location: 4, length: 0))
         XCTAssertFalse(backspace(view: undone, model: model))
-        XCTAssertEqual(undone.string, "=x1,2")
+        XCTAssertEqual(undone.string, "x1,2")
     }
 
     func testRouterKeepsModalBackspaceRouting() {
@@ -831,9 +831,9 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
         model.setCurrentPomodoroTaskLinkCountForTests(3)
         // Same binding order as testKeyDrivenAssistParseServesCommaEdit:
         // assign the draft before requesting so the pending flag survives.
-        model.plainDraft = "=x1"
+        model.plainDraft = "x1"
         model.requestCloseListAssistParse()
-        model.editorTextDidChange(cursorUTF8Offset: "=x1".utf8.count)
+        model.editorTextDidChange(cursorUTF8Offset: "x1".utf8.count)
         let replacement = BobProcessClient(
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
@@ -857,8 +857,8 @@ final class CaptureCloseTaskCommaTests: XCTestCase {
         XCTAssertNil(
             model.closeTaskCommaEdit(
                 typed: "2",
-                text: "=x1",
-                selectedRange: NSRange(location: 3, length: 0)
+                text: "x1",
+                selectedRange: NSRange(location: 2, length: 0)
             )
         )
     }

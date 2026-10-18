@@ -624,7 +624,7 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(content.badges, ["Running"])
         XCTAssertEqual(
             content.accessibilityHint,
-            "Already running. Restart it with ==, or close it first with =x."
+            "Already running. Restart it with ==, or close it first with x."
         )
     }
 

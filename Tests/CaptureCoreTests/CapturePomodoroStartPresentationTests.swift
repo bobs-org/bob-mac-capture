@@ -414,7 +414,7 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
             return XCTFail("expected failed Bob response")
         }
         XCTAssertTrue(failure.error.contains("is still running"), failure.error)
-        XCTAssertTrue(failure.error.contains("=x =#deep-work"), failure.error)
+        XCTAssertTrue(failure.error.contains("x =#deep-work"), failure.error)
     }
 
     func testDropFixtureMergesKeptAndDroppedInLineupOrder() throws {

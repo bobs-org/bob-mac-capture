@@ -26,7 +26,7 @@ public enum CaptureAgendaLayoutMetrics {
     public static let headerBottomSpacing: Double = 4
     /// Horizontal indent per depth, measured from the title column.
     public static let indentStep: Double = 14
-    /// Width reserved for the `=x` number badge column.
+    /// Width reserved for the `x` number badge column.
     public static let badgeColumnWidth: Double = 26
     /// Width reserved for the status glyph column.
     public static let glyphColumnWidth: Double = 16

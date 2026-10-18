@@ -434,7 +434,7 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.groups.map(\.name), ["ONE", "TWO"])
         XCTAssertEqual(
             presentation.warningRow?.text,
-            "Multiple open timed sessions — close one so `=x` knows which is running"
+            "Multiple open timed sessions — close one so `x` knows which is running"
         )
         let single = present(makeSnapshot(entries: [
             makeEntry(line: 3, name: "NOW", items: [makeItem(ledgerLine: 4)]),

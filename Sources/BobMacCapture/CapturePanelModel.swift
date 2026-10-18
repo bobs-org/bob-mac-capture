@@ -1111,7 +1111,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// The live preview's reset presentation for a single plain, linked-task,
-    /// or new-task note-free `=x0` reset. Bob's additive summary is the sole
+    /// or new-task note-free `x0` reset. Bob's additive summary is the sole
     /// source of reset effects; mutually exclusive with the close above.
     var resetPresentation: CapturePomodoroResetPresentation? {
         guard previewResults.count == 1, let previewResult else {
@@ -5423,14 +5423,14 @@ final class CapturePanelModel: ObservableObject {
     /// The pending close/start-list trim for a draft that dangles on a list
     /// separator or a Work Log entry: for every item whose `needs` contains
     /// `pomodoro_close_task` (`,`/`!`/`~`/`*`), `pomodoro_start_task` (`~`/`,`),
-    /// or `pomodoro_close_log_text` (a `- <n>` bullet or an inline `=x 2`
+    /// or `pomodoro_close_log_text` (a `- <n>` bullet or an inline `x 2`
     /// number with no entry text yet), the one `interactive_placeholder`
     /// span Bob reported inside that item's range is removed, so the live
     /// preview runs on the trimmed draft — exactly what has been typed so
     /// far. For a dangling bullet the removal leaves a `- ` placeholder row
     /// (or `-` after the trailing-space strip), which bob treats as a
     /// harmless placeholder, so the card previews the rest. For a dangling
-    /// inline number the removal leaves `=x` (or `=x =` from `=x 2 =`),
+    /// inline number the removal leaves `x` (or `x =` from `x 2 =`),
     /// which bob reads as the chain. Behavior is unchanged. Returns the trimmed draft, the dangling separator
     /// (or task number for a log pend) for the pending notice, and the footer
     /// action the pending card disables (`"Start"` when every pending scope
@@ -5499,9 +5499,9 @@ final class CapturePanelModel: ObservableObject {
         for range in ordered.reversed() {
             trimmed.removeSubrange(range)
         }
-        // A dangling bullet leaves a trailing space (`=x\n- 1` trims to
-        // `=x\n- `): strip it so the preview runs on the placeholder row
-        // (`=x\n-`, still a harmless placeholder).
+        // A dangling bullet leaves a trailing space (`x\n- 1` trims to
+        // `x\n- `): strip it so the preview runs on the placeholder row
+        // (`x\n-`, still a harmless placeholder).
         if isLogIndex {
             while trimmed.hasSuffix(" ") || trimmed.hasSuffix("\t") {
                 trimmed.removeLast()
@@ -7785,7 +7785,7 @@ final class CapturePanelModel: ObservableObject {
             return true
         }
 
-        // The additive `pomodoro_start` (`=<X>`) and `pomodoro_close` (`=x`)
+        // The additive `pomodoro_start` (`=<X>`) and `pomodoro_close` (`x`)
         // spans are deliberately absent: a cursor inside either suffix offers no
         // completion, while a cursor on its leading edge
         // still matches `pomodoro_name`/`pomodoro_block_id` so accepting a candidate

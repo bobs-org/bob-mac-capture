@@ -421,7 +421,7 @@ final class CaptureAgendaModelTests: XCTestCase {
 
     func testClearingFailedPreviewRestoresAgendaAndDropsError() async throws {
         let model = try await readyLiveModel()
-        typeDraft(model, "=*abc")
+        typeDraft(model, "x*abc")
         await waitUntil {
             if case .failed = model.previewState { return true }
             return false
@@ -436,7 +436,7 @@ final class CaptureAgendaModelTests: XCTestCase {
 
     func testClearingPendingClosePreviewRestoresAgendaAndAllowsNextDraft() async throws {
         let model = try await readyLiveModel()
-        typeDraft(model, "=x1,")
+        typeDraft(model, "x1,")
         await waitUntil { model.closePendingText != nil }
         XCTAssertTrue(model.isClosePending)
         XCTAssertEqual(model.closePendingAction, "Close")

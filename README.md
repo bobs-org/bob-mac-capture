@@ -83,10 +83,10 @@ mutation.
   plus whole-item `=<X>#name` named starts (the `pomodoro_name` span over the
   name bytes, the `pomodoro_start_name` completion context with the additive
   `next_up` row marker, the `=#` incomplete state with its
-  `interactive_placeholder` span, `=x#name` close near-miss diagnostics, and
+  `interactive_placeholder` span, `x#name` close near-miss diagnostics, and
   the additive `created_pomodoro` capture summary for new and "again"
   sessions),
-  plus Pomodoro close `=x` and its additive `pomodoro_close` capture summary,
+  plus Pomodoro close `x` and its additive `pomodoro_close` capture summary,
   plus the project-note `@route^block-id+#pomodoro` marker (the retired
   `@route:block-id+` spelling is a parse diagnostic), the trailing ` :id` /
   ` ^id` project-task tokens (`project_task_block_id` completion context with
@@ -127,15 +127,15 @@ mutation.
   summary whose `tasks` array is absent still previews: the card shows the
   session with no queued rows. An older Bob that omits
   `pomodoro_close` has no close preview or Close footer; upgrade Bob before using
-  `=x`. A close summary whose task, carried, notes, or next fields are absent
+  `x`. A close summary whose task, carried, notes, or next fields are absent
   still previews: booleans read as false, arrays as empty, and missing lines as
   zero, and unknown task roles degrade to a neutral row. A close summary whose
   `in_progress`, `park`, `complete`, `drop`, `task_links`, or `index` fields are absent
   still previews as today's unnumbered card: the spec decodes as no selection,
   rows decode as unnumbered, and no hint, summary, or badge renders. Whole-item
-  `=x` (or the `=*`/`=!` aliases omitting `x`) reports `pomodoro_close` mode with a `pomodoro_close` span and a
-  `{"raw": "=x"}` parse spec (`raw` preserves the exact alias, `=*` parks
-  all numbered links and `=!` completes them); link items keep `pomodoro_link`/`pomodoro_task`
+  `x` (including the `x*` and `x!` selection forms) reports `pomodoro_close` mode with a `pomodoro_close` span and a
+  `{"raw": "x"}` parse spec (`raw` preserves the exact token, `x*` parks
+  all numbered links and `x!` completes them); link items keep `pomodoro_link`/`pomodoro_task`
   mode with a `pomodoro_close` span kind over the suffix. A selection-bearing
   close adds `pomodoro_close_in_progress`, `pomodoro_close_park`,
   `pomodoro_close_complete`, and `pomodoro_close_drop` spans, an
@@ -145,19 +145,19 @@ mutation.
   `,`/`~` reports mode `incomplete` with a `pomodoro_close_task` need and
   an `interactive_placeholder` span instead of an error. A present-but-empty
   `*`/`!` group selects all numbered links left after explicit assignments;
-  explicit forms such as `=*1` and `=!1` narrow the action to task 1. Two
+  explicit forms such as `x*1` and `x!1` narrow the action to task 1. Two
   empty wildcard groups compete and need numbers on at least one group. One
-  entry may sit on the close line itself (`=x wired the lexer` logs to task 1
+  entry may sit on the close line itself (`x wired the lexer` logs to task 1
   for a plain close, or to the first eligible top-level worked link with
-  wildcard intent; `=x1,3 3 fixed the flake` logs to task 3): an explicit number adds a
+  wildcard intent; `x1,3 3 fixed the flake` logs to task 3): an explicit number adds a
   `pomodoro_close_log_index` span in cyan on the close line while the default
-  adds none, and a dangling inline number (`=x 2`) reports mode `incomplete`
+  adds none, and a dangling inline number (`x 2`) reports mode `incomplete`
   with a `pomodoro_close_log_text` need and an `interactive_placeholder`
   span over the number. Several entries use ⌃J bullets
-  (`=x` plus `- 1 wired the lexer`, with `  - …` detail bullets under
+  (`x` plus `- 1 wired the lexer`, with `  - …` detail bullets under
   entries), which add a `log` parse spec with the typed entries in order,
   each carrying its `details`. Bullets may omit the number: unnumbered
-  bullets log in order to the close's worked tasks (`=x3,4` plus `- foo bar`
+  bullets log in order to the close's worked tasks (`x3,4` plus `- foo bar`
   plus `- baz bam` writes exactly what `- 3 foo bar` plus `- 4 baz bam`
   writes), and a single worked task takes them all. Bullets are numbered
   all or none, and a leading number is always a task number (to log text
@@ -166,7 +166,7 @@ mutation.
   positional entries get no index chip; `capture-parse` omits `log[].index`
   for entries `bob capture` resolves against the running session, and the
   app decodes a missing index as nil. Entry and detail text keeps wikilink
-  spans but is otherwise neutral prose, and a dangling bullet (`=x` plus
+  spans but is otherwise neutral prose, and a dangling bullet (`x` plus
   `- 1`) reports mode `incomplete` with a `pomodoro_close_log_text` need
   and an `interactive_placeholder` span over the number instead of an
   error.
@@ -184,12 +184,12 @@ mutation.
   `Parked`, `Complete`, `Deferred`, and `Dropped` groups in that order
   (for example `Continue 1 \u00b7 Parked 2, 3 \u00b7 Complete 4, 5`);
   `Continue` means ordinary worked links carried onward and never names a
-  task status. `=x0*2` reports `Continue none \u00b7 Parked 2`. A dropped (`~<K>`)
+  task status. `x0*2` reports `Continue none \u00b7 Parked 2`. A dropped (`~<K>`)
   close removes those links from today without carrying or starting them; the
   card strikes and dims dropped rows, summarizes `Dropped 4, 5`, and reads
   "drops from today" for VoiceOver. A dropped row adds a "stays <status>"
-  caption naming the lane the task keeps. The `=*`/`=!` and bare `=x*`/`=x!`
-  all-task behavior requires the corresponding updated Bob executable. With an
+  caption naming the lane the task keeps. The `x*`/`x!` all-task selection
+  behavior requires the corresponding updated Bob executable. With an
   older Bob, the app displays that Bob's actual preview and submits the
   untouched draft through one Bob capture call; it never parses selection lists
   in Swift or simulates the new behavior. The app keeps
@@ -425,7 +425,7 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
   The close-list spans `pomodoro_close_in_progress` and `pomodoro_close_complete`
   render orange and green, sharing the badge colors of the rows they select; the
   whole-item completion spans `task_complete_sigil` (green, the same complete-green
-  as `=x!`), `task_complete_note` (route), and `task_complete_block_id` (block ID)
+  as `x!`), `task_complete_note` (route), and `task_complete_block_id` (block ID)
   reuse those existing colors, so the editor and the completion card never disagree
   about what a completion is;
   `pomodoro_close_drop` renders muted gray. The Work Log index span
@@ -433,8 +433,8 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
   line it lands on in the close card; it is not a completion span kind.
   The editor also auto-inserts `,` between close task numbers: typing `1`–`9`
   right after a task number in a close list inserts the separator itself
-  (`=x1` + `2` → `=x1,2`). Backspace immediately after an auto-inserted
-  `,<digit>` removes both characters together (`=x1,2` → `=x1`); a manually
+  (`x1` + `2` → `x1,2`). Backspace immediately after an auto-inserted
+  `,<digit>` removes both characters together (`x1,2` → `x1`); a manually
   typed or pasted comma stays native. The in-memory agenda store runs
   `bob capture-pomodoros --format json --tasks` on one shared lane: a
   prefetch at launch, filtered vault events (visible `.md` notes and the
@@ -453,7 +453,7 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
   in-flight counts and assist parses so a stale count never re-arms the
   assist. The decision uses bob's `capture-parse` close-list spans,
   so the app still never recognizes close syntax itself. Known limitation: a
-  batch that links several new tasks before its `=x` can push a 9-link session
+  batch that links several new tasks before its `x` can push a 9-link session
   past 10.
   Global destination spans (`global_route`, `global_sub_bullet_route`, and
   `global_sub_bullet_block_id`) reuse the existing destination and block-ID colors, so
@@ -996,7 +996,7 @@ legacy preview and notification copy.
   `Already running — == restarts it; pick another Pomodoro to swap in`
   (`Restarts it now` with fresh timing). With nothing running the existing
   status and discovery rows stand. Under a plain `=#` the running row now
-  teaches `Already running. Restart it with ==, or close it first with =x.`
+  teaches `Already running. Restart it with ==, or close it first with x.`
   An older Bob that reports no
   `pomodoro_start_name` context offers no rows there; the panel simply shows
   no completion until Bob is upgraded.
@@ -1037,7 +1037,7 @@ legacy preview and notification copy.
   **Capture** to **Set Next**, **Set Open**, or **Ensure Next** according to
   Bob's returned behavior metadata; when it reports exactly one `pomodoro_link`,
   the action becomes **Start** if the link starts a session and **Link** otherwise;
-  a single close — whole-item `=x`, link `=x`, or new-task `=x` — becomes
+  a single close — whole-item `x`, link `=x`, or new-task `=x` — becomes
   **Close**; a single whole-item `=`/`=<X>` start becomes **Start**, a `==<X>`
   restart becomes **Restart**, and a `==[<X>]#name` swap becomes **Swap**; a single
   whole-item `!note:block-id` completion becomes **Complete**;
@@ -1102,10 +1102,10 @@ legacy preview and notification copy.
   no numbered rows the card looks exactly like today's. Completed rows keep the
   embedded glyph tinted green with struck text and a `[*] → [x]` transition when
   the status changed. One caption row under the task rows teaches the syntax
-  before a selection is typed (`=x1,2 keeps only these in progress · … · =x 2
+  before a selection is typed (`x1,2 keeps only these in progress · … · x 2
   wrote the tests logs work to 2`, tinted like the editor spans, with the `2`
   in the cyan log tint) and shows the outcome summary after (`In progress 1, 3
-  · Complete 2 · Deferred 4`, or `In progress none` for `=x0`); numbered rows
+  · Complete 2 · Deferred 4`, or `In progress none` for `x0`); numbered rows
   never hide under `+N more`. The accessibility label includes the typed
   entries with their details after each entry. The footer's primary action becomes **Close**,
   the live-preview, preview, and submit status read `Would close …` / `Closed …`
@@ -1116,7 +1116,7 @@ legacy preview and notification copy.
   defer with $<N>.` While a
   list dangles on `,`/`!`/`~`, the card previews the trimmed draft dimmed with a
   `Type a task number after ,` row, **Close** is disabled, and Return cannot
-  submit; while a Work Log bullet dangles (`=x` plus `- 1`), the card previews
+  submit; while a Work Log bullet dangles (`x` plus `- 1`), the card previews
   the rest dimmed with a `Type the Work Log entry for task 1` row, **Close**
   stays disabled, and Return cannot submit; a valid draft
   restores the normal card. While a start list dangles on
@@ -1248,7 +1248,7 @@ legacy preview and notification copy.
 ### Completing tasks with `!`
 
 A capture item that is exactly `!note:block-id` completes that existing open task
-without closing a Pomodoro: the task line closes exactly as `=x!N` would write it,
+without closing a Pomodoro: the task line closes exactly as `x!N` would write it,
 its Task Links retire in today's ledger the way `bob task reconcile` would retire
 them, and Blocked dependents recover the way Ctrl+Enter recovers them. Bulk works
 one `!` item per blank-line-separated block; any failure rolls the whole batch back.
@@ -1842,8 +1842,8 @@ With an empty draft, the panel shows today's Pomodoro agenda below the editor, i
 the same thin-material pane as the live preview. It lists the running Pomodoro (Now)
 and every future one (Next, then Later), each with its linked tasks at the most
 detail that fits below the fixed eye line without scrolling. Keep source links in
-those task titles and details display as a lightbulb. The `=x` and `=`
-numbers match the ones `bob` will use: the current entry shows its `=x` numbers and
+those task titles and details display as a lightbulb. The `x` and `=`
+numbers match the ones `bob` will use: the current entry shows its `x` numbers and
 every other open entry shows its `=` lineup number.
 
 The row directly under `Today` shows the saved daily meters (`Themes N/C` and
@@ -1921,7 +1921,7 @@ Bob Refs shortcuts:
 | Ctrl-Shift-K | Move the caret to the previous physical line, keeping the current column when that line is long enough and clamping to its end when it is not; stops on the first line | Same move, leaving completion open and re-anchored at the new caret | Native text-field behavior | Native text-field behavior |
 | Command-V | Insert the clipboard's plain text, discarding source formatting; when an empty bullet row receives a Markdown bullet list, consume the first pasted marker and align the list to that row | Same paste edit, and close completion | Native text-field paste | Native text-field paste |
 | Backspace | Remove an auto-inserted `,<digit>` pair together, else remove an unused `- ` row in one action (native Backspace everywhere else, and for every modified Backspace) | Remove an unused `- ` row in one action | Native text-field Backspace | Native text-field Backspace |
-| 1–9 | Right after a task number in a close task list (`=x`, `=*`, `=!`, and their `*`/`!`/`~` groups, including link closes), insert `,` before the digit (`=x1` + `2` → `=x1,2`) when the running Pomodoro has fewer than 10 numbered Task Links; otherwise the digit types normally | Native text-field behavior | Native text-field behavior | Native text-field behavior |
+| 1–9 | Right after a task number in a close task list (`x`, `x*`, `x!`, and their `*`/`!`/`~` groups, including `=x` link closes), insert `,` before the digit (`x1` + `2` → `x1,2`) when the running Pomodoro has fewer than 10 numbered Task Links; otherwise the digit types normally | Native text-field behavior | Native text-field behavior | Native text-field behavior |
 | + | Insert `+` | While route completion is visible, directly after the route being completed: accept the selected route, keep the `+`, and open task completion; the `@@template:` candidate is excluded | Native text-field behavior | Native text-field behavior |
 | Tab | Expand an immediately preceding `--` to `—`; otherwise indent the current column-zero continuation bullet to two spaces (normal focus traversal if neither applies) | Accept the selected completion | In link mode cycle suggestions; in the `@route+` prompt consume the key | Consume the key; do not expand, indent, or capture |
 | Shift-Tab | Outdent the current two-space continuation bullet to column zero (normal reverse focus traversal otherwise) | Same outdent, then close completion | In link mode cycle suggestions backward; in the `@route+` prompt consume the key | Consume the key; do not outdent or capture |
@@ -1934,7 +1934,7 @@ Bob Refs shortcuts:
 | Command-S | Save the current `@@template:` draft | Save the current `@@template:` draft | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-C | Stash a nonempty draft, then clear and close. A Go To (`/`) draft is discarded instead of stashed | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close | Stash a nonempty draft, then clear and close |
 
-When a current Bob preview reports successor offers for `!` completion or `=x` close,
+When a current Bob preview reports successor offers for `!` completion or `x` close,
 Return opens a grouped choice card before the capture is written. Nothing is marked
 initially, including a single offer. Return is Pull In: it chooses marked offers or,
 when none are marked, the highlighted offer. Up/Down or Control-N/Control-P moves the
@@ -2178,17 +2178,16 @@ The `==` token highlights with the same `pomodoro_start` span plus the
 `override` flag, `==#` opens the start picker once Bob reports its override
 context, and preview renders Bob's resolved before → after range and demoted
 row — sourced only from `bob capture --dry-run --no-clip --format json` —
-with a **Restart** / **Swap** footer and matching notifications. Type `=x`, a blank
+with a **Restart** / **Swap** footer and matching notifications. Type `x`, a blank
 line, then `=` to close the running session and start the next one in a single
-draft. A whole-item `=x` closes
+draft. A whole-item `x` closes
 the running Pomodoro; `@route:block-id=x` links an existing task first (dropping
 own-prerequisite Blocked edges the same way `@route:block-id` does; a refused drop
 keeps today's history link), and
 `<text> @route:block-id=x` creates a task inside that session before closing it.
-Appending task numbers chooses each Task Link's outcome: `=x2` keeps only 2 in
-progress, `=x!2` completes 2, `=x1!2` does both, and a note-free `=x0` resets the session to first future while a note-bearing `=x0` defers all (single-quote
-the argument in zsh, since `=` and `!` expand). The same suffix works on link
-forms. Work Log bullets log while closing: type `=x`, then `⌃J` for a `- ` bullet,
+Appending task numbers chooses each Task Link's outcome: `x2` keeps only 2 in
+progress, `x!2` completes 2, `x1!2` does both, and a note-free `x0` resets the session to first future while a note-bearing `x0` defers all (single-quote tokens containing `!`, `*`, or `~` in zsh). The same suffix works on link
+forms. Work Log bullets log while closing: type `x`, then `⌃J` for a `- ` bullet,
 then either `1 wired the lexer` to add `wired the lexer` under link 1, or just
 `wired the lexer` to let Bob file it by position — unnumbered bullets log in
 order to the close's worked tasks, and a single worked task takes them all —
@@ -2198,10 +2197,10 @@ and `⌫` on a bare `- ` row deletes it. Bullets are numbered all or none, and
 a leading number is always a task number, so `- 1 fixed 3 bugs` needs no escape
 (to log text that starts with a number, number every bullet). Numbered entries
 get a cyan index chip matching the card's new entry line, while positional
-entries get none. Text on the `=x` line itself still takes an inline entry
-(`=x wired the lexer` logs to task 1): it shows the bullet to write instead. A trailing `~<K>` drop list on a whole-item start (`=~2`, `=3~2,4`,
+entries get none. Text on the `x` line itself still takes an inline entry
+(`x wired the lexer` logs to task 1): it shows the bullet to write instead. A trailing `~<K>` drop list on a whole-item start (`=~2`, `=3~2,4`,
 `=#bugs~2`) starts the next session without those numbered queued Task Links —
-`~` drops, so `=~2` drops task 2 from the session you start the way `=x~2` drops
+`~` drops, so `=~2` drops task 2 from the session you start the way `x~2` drops
 task 2 from the session you stop, using the numbers the start card shows. The
 start card numbers every queued row, strikes and dims dropped rows in place with
 a `Dropped 2` summary, and teaches `Type ~2 to drop task 2` until a drop is typed.
@@ -2214,7 +2213,7 @@ The footer says **Close**, and the notification summarizes the same
 returned close plus the one successor line when anything was linked. Missing or ambiguous running sessions surface Bob's error in the
 preview. A list left dangling on `,`/`!`/`~` is an editing state, not an error: the
 card stays live on what is typed so far with **Close** disabled until a task
-number follows; a dangling Work Log bullet (`=x` plus `- 1`) previews the rest
+number follows; a dangling Work Log bullet (`x` plus `- 1`) previews the rest
 dimmed with `Type the Work Log entry for task 1` and keeps
 **Close** disabled; a start list left dangling on `~`/`,` previews the trimmed start
 the same way with **Start** disabled instead. A marker-only `@route+block-id` ensures that existing task is Next and

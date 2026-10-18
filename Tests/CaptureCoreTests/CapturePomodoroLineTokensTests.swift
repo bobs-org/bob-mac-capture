@@ -253,13 +253,13 @@ final class CapturePomodoroLineTokensTests: XCTestCase {
     // MARK: - Code, fields, and bold
 
     func testInlineCodeTokenizesDelimitersAsSyntax() throws {
-        let tokens = checkInvariant("- Designed the `=x` grammar", isHeadline: false)
+        let tokens = checkInvariant("- Designed the `x` grammar", isHeadline: false)
 
         XCTAssertEqual(
             roles(tokens),
             [.text, .syntax, .code, .syntax, .text]
         )
-        XCTAssertEqual(tokens[2].text, "=x")
+        XCTAssertEqual(tokens[2].text, "x")
         XCTAssertEqual(tokens[4].text, " grammar")
     }
 

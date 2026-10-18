@@ -396,7 +396,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     }
 
     static func makeMultiOpenWarningRow() -> CaptureAgendaRow {
-        let text = "Multiple open timed sessions — close one so `=x` knows which is running"
+        let text = "Multiple open timed sessions — close one so `x` knows which is running"
         return CaptureAgendaRow(
             kind: .multiOpenWarning,
             text: text,

@@ -672,25 +672,25 @@ final class BobProcessClientTests: XCTestCase {
             ]
         )
 
-        let preview = try await client.captureLivePreview("=*", priorityRollSeed: "fixed")
+        let preview = try await client.captureLivePreview("x*", priorityRollSeed: "fixed")
         guard case .success(let previewSuccess) = preview else {
             return XCTFail("Expected a successful wildcard preview response")
         }
         XCTAssertTrue(previewSuccess.dryRun)
-        XCTAssertEqual(previewSuccess.text, "=*")
+        XCTAssertEqual(previewSuccess.text, "x*")
         XCTAssertTrue(previewSuccess.pomodoroClose?.parkAll == true)
 
-        let submitted = try await client.capture("=*", dryRun: false, readClipboard: false)
+        let submitted = try await client.capture("x*", dryRun: false, readClipboard: false)
         guard case .success(let submittedSuccess) = submitted else {
             return XCTFail("Expected a successful wildcard submission response")
         }
         XCTAssertFalse(submittedSuccess.dryRun)
-        XCTAssertEqual(submittedSuccess.text, "=*")
+        XCTAssertEqual(submittedSuccess.text, "x*")
         XCTAssertTrue(submittedSuccess.pomodoroClose?.parkAll == true)
 
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- =*"))
-        XCTAssertTrue(record.contains("argv=capture --format json --no-clip -- =*"))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- x*"))
+        XCTAssertTrue(record.contains("argv=capture --format json --no-clip -- x*"))
         XCTAssertEqual(record.components(separatedBy: "argv=capture").count - 1, 2)
     }
 
@@ -981,7 +981,7 @@ final class BobProcessClientTests: XCTestCase {
             return XCTFail("Expected a failed live preview response")
         }
         XCTAssertTrue(failure.error.contains("still running"))
-        XCTAssertTrue(failure.error.contains("`=x`, a blank line, then `=3`"))
+        XCTAssertTrue(failure.error.contains("`x`, a blank line, then `=3`"))
     }
 
     func testLivePreviewDecodesStartSwitchBatchFromOneProcess() async throws {
@@ -991,7 +991,7 @@ final class BobProcessClientTests: XCTestCase {
         )
 
         let response = try await client.captureLivePreview(
-            "=x\n\n=",
+            "x\n\n=",
             priorityRollSeed: "fixed"
         )
 
@@ -1093,7 +1093,7 @@ final class BobProcessClientTests: XCTestCase {
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
 
-        let response = try await client.captureComplete("=x =#de", cursor: 6)
+        let response = try await client.captureComplete("x =#de", cursor: 6)
 
         XCTAssertEqual(response.context, "pomodoro_start_name")
         XCTAssertEqual(response.replacement, CaptureRange(start: 5, end: 7))
@@ -1116,7 +1116,7 @@ final class BobProcessClientTests: XCTestCase {
             return XCTFail("Expected a failed live preview response")
         }
         XCTAssertTrue(failure.error.contains("is still running"))
-        XCTAssertTrue(failure.error.contains("=x =#deep-work"))
+        XCTAssertTrue(failure.error.contains("x =#deep-work"))
     }
 
     func testCaptureCompleteOffersNoCandidatesForStart() async throws {

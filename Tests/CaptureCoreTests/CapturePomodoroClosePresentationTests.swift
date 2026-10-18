@@ -22,12 +22,12 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         let worked = presentation.taskRows[0]
         XCTAssertEqual(worked.glyph, .transition)
         XCTAssertEqual(worked.transitionText, "[*] → [/]")
-        XCTAssertEqual(worked.taskText, "Add support for `=x` syntax!")
+        XCTAssertEqual(worked.taskText, "Add support for `x` syntax!")
         XCTAssertEqual(worked.locatorText, "bob.md · ^capture-stop")
         XCTAssertEqual(worked.workLogCount, 2)
         XCTAssertEqual(
             worked.workLogPreviews,
-            ["Designed the `=x` grammar", "Wrote the plan"]
+            ["Designed the `x` grammar", "Wrote the plan"]
         )
         XCTAssertNil(worked.warning)
         XCTAssertTrue(worked.carried)
@@ -183,7 +183,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
     func testEmptyCloseShowsEmptyStateAndNoNotesOrNext() throws {
         let summary = PomodoroCloseSummary(
-            raw: "=x",
+            raw: "x",
             pomodoroLine: 5,
             pomodoroName: "CAPTURE",
             dayRelative: "2026/20260928.md",
@@ -233,7 +233,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
             )
         }
         let summary = PomodoroCloseSummary(
-            raw: "=x",
+            raw: "x",
             pomodoroLine: 5,
             pomodoroName: "CAPTURE",
             tasks: rows
@@ -249,7 +249,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
     func testUnknownRoleDegradesToNeutralRow() throws {
         let summary = PomodoroCloseSummary(
-            raw: "=x",
+            raw: "x",
             pomodoroLine: 5,
             pomodoroName: "CAPTURE",
             tasks: [
@@ -274,7 +274,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
     func testUnresolvedRowKeepsWarningAndBlockLinkLocator() throws {
         let summary = PomodoroCloseSummary(
-            raw: "=x",
+            raw: "x",
             pomodoroLine: 5,
             pomodoroName: "CAPTURE",
             tasks: [
@@ -298,7 +298,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
     func testWorkLogPreviewsStripDatePrefixAndCapAtTwo() throws {
         let summary = PomodoroCloseSummary(
-            raw: "=x",
+            raw: "x",
             pomodoroLine: 5,
             pomodoroName: "CAPTURE",
             tasks: [
@@ -327,7 +327,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
     func testEmbeddedAndMentionedRoles() throws {
         let summary = PomodoroCloseSummary(
-            raw: "=x",
+            raw: "x",
             pomodoroLine: 5,
             pomodoroName: "CAPTURE",
             tasks: [
@@ -365,7 +365,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
     func testExistingNextSessionNamesLine() throws {
         let summary = PomodoroCloseSummary(
-            raw: "=x",
+            raw: "x",
             pomodoroLine: 5,
             pomodoroName: "CAPTURE",
             nextPomodoro: PomodoroCloseNext(line: 14, name: "SASE")
@@ -382,7 +382,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
             from: Data(fixtureText("pomodoro-close-parse-session.json").utf8)
         )
         XCTAssertEqual(response.mode, "pomodoro_close")
-        XCTAssertEqual(response.pomodoroClose?.raw, "=x")
+        XCTAssertEqual(response.pomodoroClose?.raw, "x")
         XCTAssertEqual(response.spans.map(\.kind), ["pomodoro_close"])
 
         let link = try JSONDecoder().decode(
@@ -407,6 +407,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
             "pomodoro-close-select-park.json",
             "pomodoro-close-select-park-star-only.json",
             "pomodoro-close-select-park-all.json",
+            "pomodoro-close-select-park-all-short.json",
             "pomodoro-close-select-park-log.json",
         ] {
             let success = try decodeFixture(name)
@@ -445,18 +446,18 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
               "route_label": "",
               "relative_target": "2026/20260928.md",
               "target": "/tmp/bob/2026/20260928.md",
-              "text": "=x",
+              "text": "x",
               "task_line": "- [x] entry",
               "kind": "pomodoro_close",
               "created": "2026-09-28",
               "scheduled": null,
               "placement": "closed",
-              "pomodoro_close": {"raw": "=x"}
+              "pomodoro_close": {"raw": "x"}
             }
             """#
         )
         let summary = try XCTUnwrap(success.pomodoroClose)
-        XCTAssertEqual(summary.raw, "=x")
+        XCTAssertEqual(summary.raw, "x")
         XCTAssertEqual(summary.pomodoroLine, 0)
         XCTAssertTrue(summary.tasks.isEmpty)
         XCTAssertTrue(summary.carried.isEmpty)
@@ -503,7 +504,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         )
         XCTAssertEqual(
             presentation.taskRows[0].accessibilityLabel,
-            "Task 1, Add support for `=x` syntax!, deferred"
+            "Task 1, Add support for `x` syntax!, deferred"
         )
         XCTAssertEqual(
             presentation.taskRows[1].accessibilityLabel,
@@ -560,11 +561,11 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         let hint = try XCTUnwrap(presentation.teachingHint)
         XCTAssertEqual(
             hint.text,
-            "=* parks all · =! completes all · add numbers to narrow scope (e.g. =*1 or =!1) · =x1,2 keeps only these in progress · =x*2 parks 2 (not carried) · =x!2 completes 2 · =x~2 drops 2 · =x0 defers all (note-free resets instead) · =x 2 wrote the tests logs work to 2"
+            "x* parks all · x! completes all · add numbers to narrow scope (e.g. x*1 or x!1) · x1,2 keeps only these in progress · x*2 parks 2 (not carried) · x!2 completes 2 · x~2 drops 2 · x0 defers all (note-free resets instead) · x 2 wrote the tests logs work to 2"
         )
-        // Short syntax leads with structured colors: `=` pink, `*` teal,
+        // Short syntax leads with structured colors: `x` pink, `*` teal,
         // `!` green; prose stays secondary.
-        XCTAssertEqual(hint.tokens.first?.text, "=")
+        XCTAssertEqual(hint.tokens.first?.text, "x")
         XCTAssertEqual(hint.tokens.first?.category, .pomodoroStart)
         XCTAssertTrue(
             hint.tokens.contains { $0.text == "*" && $0.category == .pomodoroClosePark }
@@ -584,7 +585,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertTrue(
             hint.tokens.contains { $0.text == "~2" && $0.category == .pomodoroCloseDrop }
         )
-        // Plain `=x`: every row keeps its ledger outcome, nothing dims.
+        // Plain `x`: every row keeps its ledger outcome, nothing dims.
         XCTAssertTrue(presentation.taskRows.allSatisfy { !$0.isDimmed })
         XCTAssertEqual(presentation.taskRows[0].badgeSymbolName, "1.circle")
         XCTAssertTrue(presentation.accessibilitySummary.contains(hint.text))
@@ -594,15 +595,40 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         let tokens = CapturePomodoroClosePresentation.hintTokens(numberedRows: 1)
         XCTAssertEqual(
             tokens.map(\.text).joined(),
-            "=* parks all · =! completes all · add a number to narrow scope (e.g. =*1 or =!1) · =x~1 drops it · =x0 defers it (note-free resets instead) · =x wrote the tests logs work to it"
+            "x* parks all · x! completes all · add a number to narrow scope (e.g. x*1 or x!1) · x~1 drops it · x0 defers it (note-free resets instead) · x wrote the tests logs work to it"
         )
+    }
+
+    func testLinkCloseHintUsesTheReportedSuffixSpelling() throws {
+        let taskLinks = (1...2).map { index in
+            PomodoroCloseTaskLink(
+                index: index,
+                ledgerLine: 5 + index,
+                blockLink: "[[bob#^task-\(index)]]",
+                blockID: "task-\(index)",
+                outcome: "in_progress"
+            )
+        }
+        let summary = PomodoroCloseSummary(
+            raw: "=x",
+            pomodoroLine: 5,
+            pomodoroName: "CAPTURE",
+            taskLinks: taskLinks
+        )
+        let success = closeCapture(summary: summary, kind: "pomodoro_link")
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+        let hint = try XCTUnwrap(presentation.teachingHint)
+
+        XCTAssertTrue(hint.text.hasPrefix("=x* parks all · =x! completes all"))
+        XCTAssertEqual(hint.tokens.first?.text, "=x")
+        XCTAssertEqual(hint.tokens.first?.category, .pomodoroStart)
     }
 
     func testTwoLinkHintAvoidsOutOfRangeDrop() throws {
         let tokens = CapturePomodoroClosePresentation.hintTokens(numberedRows: 2)
         let text = tokens.map(\.text).joined()
-        XCTAssertTrue(text.hasPrefix("=* parks all · =! completes all"))
-        XCTAssertTrue(text.contains("add numbers to narrow scope (e.g. =*1 or =!1)"))
+        XCTAssertTrue(text.hasPrefix("x* parks all · x! completes all"))
+        XCTAssertTrue(text.contains("add numbers to narrow scope (e.g. x*1 or x!1)"))
         XCTAssertTrue(text.contains("~2 drops 2"))
         XCTAssertFalse(text.contains("~3"))
     }
@@ -647,7 +673,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
             )
         }
         let summary = PomodoroCloseSummary(
-            raw: "=x1,2",
+            raw: "x1,2",
             inProgress: [1, 2],
             pomodoroLine: 5,
             pomodoroName: "CAPTURE",
@@ -671,7 +697,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
     func testBadgeFallsBackAboveFifty() throws {
         let summary = PomodoroCloseSummary(
-            raw: "=x51",
+            raw: "x51",
             inProgress: [51],
             pomodoroLine: 5,
             pomodoroName: "CAPTURE",
@@ -721,14 +747,14 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
               "route_label": "",
               "relative_target": "2026/20260928.md",
               "target": "/tmp/bob/2026/20260928.md",
-              "text": "=x",
+              "text": "x",
               "task_line": "- [x] entry",
               "kind": "pomodoro_close",
               "created": "2026-09-28",
               "scheduled": null,
               "placement": "closed",
               "pomodoro_close": {
-                "raw": "=x",
+                "raw": "x",
                 "pomodoro_line": 5,
                 "pomodoro_name": "CAPTURE",
                 "tasks": [
@@ -739,7 +765,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
                     "resolved": true,
                     "relative_target": "bob.md",
                     "block_id": "capture-stop",
-                    "text": "Add support for `=x` syntax!",
+                    "text": "Add support for `x` syntax!",
                     "previous_status_symbol": "*",
                     "status_symbol": "/",
                     "status_changed": true,
@@ -777,7 +803,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
             from: Data(fixtureText("pomodoro-close-parse-select.json").utf8)
         )
         XCTAssertEqual(response.mode, "pomodoro_close")
-        XCTAssertEqual(response.pomodoroClose?.raw, "=x1,3!2")
+        XCTAssertEqual(response.pomodoroClose?.raw, "x1,3!2")
         XCTAssertEqual(response.pomodoroClose?.inProgress, [1, 3])
         XCTAssertEqual(response.pomodoroClose?.complete, [2])
         XCTAssertEqual(
@@ -876,7 +902,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
             from: Data(fixtureText("pomodoro-close-parse-park.json").utf8)
         )
         XCTAssertEqual(response.mode, "pomodoro_close")
-        XCTAssertEqual(response.pomodoroClose?.raw, "=x1*2,3!4,5")
+        XCTAssertEqual(response.pomodoroClose?.raw, "x1*2,3!4,5")
         XCTAssertEqual(response.pomodoroClose?.inProgress, [1])
         XCTAssertEqual(response.pomodoroClose?.park, [2, 3])
         XCTAssertEqual(response.pomodoroClose?.complete, [4, 5])
@@ -950,7 +976,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
             CaptureParseResponse.self,
             from: Data(fixtureText("pomodoro-close-parse-drop.json").utf8)
         )
-        XCTAssertEqual(response.pomodoroClose?.raw, "=x1~2")
+        XCTAssertEqual(response.pomodoroClose?.raw, "x1~2")
         XCTAssertEqual(response.pomodoroClose?.inProgress, [1])
         XCTAssertEqual(response.pomodoroClose?.drop, [2])
         XCTAssertEqual(
@@ -989,7 +1015,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
             from: Data(fixtureText("pomodoro-close-parse-log.json").utf8)
         )
         XCTAssertEqual(response.mode, "pomodoro_close")
-        XCTAssertEqual(response.input, "=x\n- 1 wired the lexer\n  - chose a hand-rolled lexer")
+        XCTAssertEqual(response.input, "x\n- 1 wired the lexer\n  - chose a hand-rolled lexer")
         XCTAssertEqual(
             response.spans.map(\.kind),
             ["pomodoro_close", "pomodoro_close_log_index"]
@@ -1008,14 +1034,14 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
     }
 
     func testPositionalParseResolvesLexicalIndicesWithoutIndexSpans() throws {
-        // Real `bob capture-parse` output for `=x3,4` plus two unnumbered
+        // Real `bob capture-parse` output for `x3,4` plus two unnumbered
         // bullets: indices resolve lexically, with no `log_index` spans.
         let response = try JSONDecoder().decode(
             CaptureParseResponse.self,
             from: Data(fixtureText("pomodoro-close-parse-log-positional.json").utf8)
         )
         XCTAssertEqual(response.mode, "pomodoro_close")
-        XCTAssertEqual(response.input, "=x3,4\n- foo bar\n- baz bam")
+        XCTAssertEqual(response.input, "x3,4\n- foo bar\n- baz bam")
         XCTAssertEqual(
             response.spans.map(\.kind),
             ["pomodoro_close", "pomodoro_close_in_progress"]
@@ -1030,7 +1056,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
     }
 
     func testUnresolvedParseOmitsIndicesWithoutIndexSpans() throws {
-        // Real `bob capture-parse` output for plain `=x` plus unnumbered
+        // Real `bob capture-parse` output for plain `x` plus unnumbered
         // bullets: `bob capture` resolves them, so `log` omits `index`.
         let response = try JSONDecoder().decode(
             CaptureParseResponse.self,
@@ -1061,7 +1087,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
     }
 
     func testMixedNumberingParseSurfacesBobDiagnostic() throws {
-        // Real `bob capture-parse` output for `=x` plus `- foo` then
+        // Real `bob capture-parse` output for `x` plus `- foo` then
         // `- 2 bar`: bullets are numbered all or none.
         let response = try JSONDecoder().decode(
             CaptureParseResponse.self,
@@ -1113,7 +1139,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
             from: Data(fixtureText("pomodoro-close-parse-log-chain.json").utf8)
         )
         XCTAssertEqual(response.mode, "pomodoro_close")
-        XCTAssertEqual(response.input, "=x =\n- 1 wired it")
+        XCTAssertEqual(response.input, "x =\n- 1 wired it")
         XCTAssertEqual(response.items.count, 2)
         XCTAssertEqual(response.items[0].mode, "pomodoro_close")
         XCTAssertEqual(
@@ -1123,7 +1149,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertEqual(response.items[1].mode, "pomodoro_start")
         XCTAssertEqual(response.pomodoroClose?.log, [PomodoroCloseLogEntry(index: 1, text: "wired it")])
         // The chain's close item range contains the later start token's
-        // range: bullet child lines attach to the line's `=x`.
+        // range: bullet child lines attach to the line's `x`.
         let closeRange = try XCTUnwrap(response.items.first?.range)
         let startRange = try XCTUnwrap(response.items.last?.range)
         XCTAssertLessThan(closeRange.start, startRange.start)
@@ -1136,7 +1162,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         let response = try JSONDecoder().decode(
             CaptureParseResponse.self,
             from: Data("""
-            {"ok":true,"schema_version":1,"input":"=x\\n- 1 see [[note]]","body":"=x","mode":"pomodoro_close","needs":[],"spans":[{"start":0,"end":2,"kind":"pomodoro_close"},{"start":5,"end":6,"kind":"pomodoro_close_log_index"},{"start":11,"end":13,"kind":"wikilink_delimiter"},{"start":13,"end":17,"kind":"wikilink_target"},{"start":17,"end":19,"kind":"wikilink_delimiter"}],"diagnostics":[],"pomodoro_close":{"raw":"=x","in_progress":null,"complete":[],"log":[{"index":1,"text":"see [[note]]"}]}}
+            {"ok":true,"schema_version":1,"input":"x\\n- 1 see [[note]]","body":"x","mode":"pomodoro_close","needs":[],"spans":[{"start":0,"end":1,"kind":"pomodoro_close"},{"start":4,"end":5,"kind":"pomodoro_close_log_index"},{"start":10,"end":12,"kind":"wikilink_delimiter"},{"start":12,"end":16,"kind":"wikilink_target"},{"start":16,"end":18,"kind":"wikilink_delimiter"}],"diagnostics":[],"pomodoro_close":{"raw":"x","in_progress":null,"complete":[],"log":[{"index":1,"text":"see [[note]]"}]}}
             """.utf8)
         )
         XCTAssertEqual(
@@ -1148,16 +1174,16 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
     }
 
     func testInlineEntryParseDecodesLogWithDefaultIndex() throws {
-        // Real `bob capture-parse --format json -- '=x wired the lexer'`.
+        // Real `bob capture-parse --format json -- 'x wired the lexer'`.
         let response = try JSONDecoder().decode(
             CaptureParseResponse.self,
             from: Data(fixtureText("pomodoro-close-parse-inline.json").utf8)
         )
         XCTAssertEqual(response.mode, "pomodoro_close")
-        XCTAssertEqual(response.input, "=x wired the lexer")
-        XCTAssertEqual(response.body, "=x")
+        XCTAssertEqual(response.input, "x wired the lexer")
+        XCTAssertEqual(response.body, "x")
         XCTAssertEqual(response.spans.map(\.kind), ["pomodoro_close"])
-        XCTAssertEqual(response.pomodoroClose?.raw, "=x")
+        XCTAssertEqual(response.pomodoroClose?.raw, "x")
         XCTAssertEqual(
             response.pomodoroClose?.log,
             [PomodoroCloseLogEntry(index: 1, text: "wired the lexer")]
@@ -1169,13 +1195,13 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
     }
 
     func testInlineEntryParseDecodesExplicitIndexSpan() throws {
-        // Real `bob capture-parse --format json -- '=x1,3 3 fixed the flake'`.
+        // Real `bob capture-parse --format json -- 'x1,3 3 fixed the flake'`.
         let response = try JSONDecoder().decode(
             CaptureParseResponse.self,
             from: Data(fixtureText("pomodoro-close-parse-inline-explicit.json").utf8)
         )
         XCTAssertEqual(response.mode, "pomodoro_close")
-        XCTAssertEqual(response.body, "=x1,3")
+        XCTAssertEqual(response.body, "x1,3")
         XCTAssertEqual(
             response.spans.map(\.kind),
             ["pomodoro_close", "pomodoro_close_in_progress", "pomodoro_close_log_index"]
@@ -1188,7 +1214,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
     }
 
     func testInlineEntryParseIncompleteNeedsLogText() throws {
-        // Real `bob capture-parse --format json -- '=x 2'`.
+        // Real `bob capture-parse --format json -- 'x 2'`.
         let response = try JSONDecoder().decode(
             CaptureParseResponse.self,
             from: Data(fixtureText("pomodoro-close-parse-inline-incomplete.json").utf8)
@@ -1203,7 +1229,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
     }
 
     func testInlineEntryParseChainSplitsCloseAndStart() throws {
-        // Real `bob capture-parse --format json -- '=x wired it ='`.
+        // Real `bob capture-parse --format json -- 'x wired it ='`.
         let response = try JSONDecoder().decode(
             CaptureParseResponse.self,
             from: Data(fixtureText("pomodoro-close-parse-inline-chain.json").utf8)
@@ -1238,7 +1264,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         let presented = try XCTUnwrap(presentation.taskRows.first(where: { $0.index == 1 }))
         XCTAssertEqual(presented.typedWorkLogPreviews, ["wired the lexer"])
         XCTAssertEqual(presented.typedWorkLogDetails, [["chose a hand-rolled lexer"]])
-        XCTAssertTrue(presented.workLogPreviews.contains("Designed the `=x` grammar"))
+        XCTAssertTrue(presented.workLogPreviews.contains("Designed the `x` grammar"))
         XCTAssertFalse(presented.workLogPreviews.contains("wired the lexer"))
         XCTAssertTrue(presented.accessibilityLabel.contains("wired the lexer"))
         XCTAssertTrue(presented.accessibilityLabel.contains("chose a hand-rolled lexer"))
@@ -1248,7 +1274,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
     func testTypedEntriesRenderFirstAndUncapped() throws {
         let summary = PomodoroCloseSummary(
-            raw: "=x",
+            raw: "x",
             pomodoroLine: 5,
             pomodoroName: "CAPTURE",
             tasks: [
@@ -1297,14 +1323,14 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
               "route_label": "",
               "relative_target": "2026/20260928.md",
               "target": "/tmp/bob/2026/20260928.md",
-              "text": "=x",
+              "text": "x",
               "task_line": "- [x] entry",
               "kind": "pomodoro_close",
               "created": "2026-09-28",
               "scheduled": null,
               "placement": "closed",
               "pomodoro_close": {
-                "raw": "=x",
+                "raw": "x",
                 "pomodoro_line": 5,
                 "tasks": [
                   {"role": "worked", "block_link": "[[bob#^a]]", "work_log": ["*2026-09-28* — Old"]}
@@ -1330,7 +1356,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
     func testHintTokensTeachInlineForm() throws {
         let tokens = CapturePomodoroClosePresentation.hintTokens(numberedRows: 2)
-        XCTAssertTrue(tokens.contains { $0.text == "=x" && $0.category == .pomodoroStart })
+        XCTAssertTrue(tokens.contains { $0.text == "x" && $0.category == .pomodoroStart })
         XCTAssertTrue(tokens.contains { $0.text == "2" && $0.category == .pomodoroCloseLog })
         XCTAssertTrue(tokens.map(\.text).joined().contains("wrote the tests logs work to 2"))
         XCTAssertFalse(tokens.map(\.text).joined().contains("⌃J"))
@@ -1355,7 +1381,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertEqual(task.typedWorkLogDetails, [])
         let presentation = try XCTUnwrap(
             CapturePomodoroClosePresentation(capture: closeCapture(summary: PomodoroCloseSummary(
-                raw: "=x",
+                raw: "x",
                 pomodoroLine: 5,
                 pomodoroName: "CAPTURE",
                 tasks: [task]
@@ -1368,7 +1394,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
     func testTypedDetailsRenderUncappedAlignedAndMissingAsEmpty() throws {
         let summary = PomodoroCloseSummary(
-            raw: "=x",
+            raw: "x",
             pomodoroLine: 5,
             pomodoroName: "CAPTURE",
             tasks: [
@@ -1422,7 +1448,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
     func testDuplicateTypedAndHandwrittenEntriesBothAppear() throws {
         let summary = PomodoroCloseSummary(
-            raw: "=x",
+            raw: "x",
             pomodoroLine: 5,
             pomodoroName: "CAPTURE",
             tasks: [
@@ -1453,7 +1479,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
     func testRepeatedTypedEntriesSubtractByOccurrenceCount() throws {
         let summary = PomodoroCloseSummary(
-            raw: "=x",
+            raw: "x",
             pomodoroLine: 5,
             pomodoroName: "CAPTURE",
             tasks: [
@@ -1486,7 +1512,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
     func testStrippedFallbackConsumesOneEntryPerTypedEntry() throws {
         let summary = PomodoroCloseSummary(
-            raw: "=x",
+            raw: "x",
             pomodoroLine: 5,
             pomodoroName: "CAPTURE",
             tasks: [
@@ -1513,7 +1539,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertEqual(row.workLogPreviews, ["Same"])
 
         let unmatched = PomodoroCloseSummary(
-            raw: "=x",
+            raw: "x",
             pomodoroLine: 5,
             pomodoroName: "CAPTURE",
             tasks: [
@@ -1540,7 +1566,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
     func testTaskRowDisplayTitleHidesWikilinkAndCodeMarkup() throws {
         let rawText = "[[ref/chat/x|Alias Title]] and `code`"
         let summary = PomodoroCloseSummary(
-            raw: "=x",
+            raw: "x",
             pomodoroLine: 5,
             pomodoroName: "CAPTURE",
             tasks: [
@@ -1564,7 +1590,10 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func closeCapture(summary: PomodoroCloseSummary) -> CaptureCommandSuccess {
+    private func closeCapture(
+        summary: PomodoroCloseSummary,
+        kind: String = "pomodoro_close"
+    ) -> CaptureCommandSuccess {
         CaptureCommandSuccess(
             ok: true,
             dryRun: false,
@@ -1572,9 +1601,9 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
             routeLabel: "",
             relativeTarget: "2026/20260928.md",
             target: "/tmp/bob/2026/20260928.md",
-            text: "=x",
+            text: summary.raw,
             taskLine: "- [x] entry",
-            kind: "pomodoro_close",
+            kind: kind,
             created: "2026-09-28",
             placement: "closed",
             pomodoroClose: summary
@@ -1595,13 +1624,13 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         return try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
     }
 
-    func testShortAliasWildcardIntentDecodesRawAndSpans() throws {
+    func testBareXWildcardIntentDecodesRawAndSpans() throws {
         let park = try JSONDecoder().decode(
             CaptureParseResponse.self,
-            from: Data(fixtureText("pomodoro-close-parse-alias-park.json").utf8)
+            from: Data(fixtureText("pomodoro-close-parse-park-all-short.json").utf8)
         )
         XCTAssertEqual(park.mode, "pomodoro_close")
-        XCTAssertEqual(park.pomodoroClose?.raw, "=*")
+        XCTAssertEqual(park.pomodoroClose?.raw, "x*")
         XCTAssertNil(park.pomodoroClose?.inProgress)
         XCTAssertEqual(park.pomodoroClose?.park, [])
         XCTAssertTrue(park.pomodoroClose?.parkAll == true)
@@ -1617,9 +1646,9 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
         let complete = try JSONDecoder().decode(
             CaptureParseResponse.self,
-            from: Data(fixtureText("pomodoro-close-parse-alias-complete.json").utf8)
+            from: Data(fixtureText("pomodoro-close-parse-complete-all-short.json").utf8)
         )
-        XCTAssertEqual(complete.pomodoroClose?.raw, "=!")
+        XCTAssertEqual(complete.pomodoroClose?.raw, "x!")
         XCTAssertEqual(complete.pomodoroClose?.complete, [])
         XCTAssertTrue(complete.pomodoroClose?.completeAll == true)
         XCTAssertFalse(complete.pomodoroClose?.parkAll == true)
@@ -1630,24 +1659,24 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
         let explicit = try JSONDecoder().decode(
             CaptureParseResponse.self,
-            from: Data(fixtureText("pomodoro-close-parse-alias-explicit.json").utf8)
+            from: Data(fixtureText("pomodoro-close-parse-park-two.json").utf8)
         )
-        XCTAssertEqual(explicit.pomodoroClose?.raw, "=*2")
+        XCTAssertEqual(explicit.pomodoroClose?.raw, "x*2")
         XCTAssertEqual(explicit.pomodoroClose?.park, [2])
         XCTAssertFalse(explicit.pomodoroClose?.parkAll ?? true)
 
         let mixed = try JSONDecoder().decode(
             CaptureParseResponse.self,
-            from: Data(fixtureText("pomodoro-close-parse-alias-mixed.json").utf8)
+            from: Data(fixtureText("pomodoro-close-parse-park-all-complete-two.json").utf8)
         )
-        XCTAssertEqual(mixed.pomodoroClose?.raw, "=*!2")
+        XCTAssertEqual(mixed.pomodoroClose?.raw, "x*!2")
         XCTAssertEqual(mixed.pomodoroClose?.park, [])
         XCTAssertTrue(mixed.pomodoroClose?.parkAll == true)
         XCTAssertEqual(mixed.pomodoroClose?.complete, [2])
 
         let conflict = try JSONDecoder().decode(
             CaptureParseResponse.self,
-            from: Data(fixtureText("pomodoro-close-parse-alias-conflict.json").utf8)
+            from: Data(fixtureText("pomodoro-close-parse-park-complete-invalid.json").utf8)
         )
         XCTAssertEqual(conflict.mode, "pomodoro_close")
         XCTAssertFalse(conflict.diagnostics.isEmpty)
@@ -1655,15 +1684,15 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
         let incomplete = try JSONDecoder().decode(
             CaptureParseResponse.self,
-            from: Data(fixtureText("pomodoro-close-parse-alias-incomplete.json").utf8)
+            from: Data(fixtureText("pomodoro-close-parse-park-incomplete-list.json").utf8)
         )
         XCTAssertEqual(incomplete.mode, "incomplete")
         XCTAssertEqual(incomplete.needs, ["pomodoro_close_task"])
     }
 
-    func testShortAliasPreviewShowsWildcardOutcomes() throws {
+    func testBareXSelectionPreviewShowsWildcardOutcomes() throws {
         let park = try XCTUnwrap(
-            CapturePomodoroClosePresentation(capture: decodePreview("pomodoro-close-select-alias-park.json"))
+            CapturePomodoroClosePresentation(capture: decodePreview("pomodoro-close-select-park-all-short.json"))
         )
         XCTAssertTrue(park.hasSelection)
         XCTAssertEqual(park.selectionSummary, "Parked 1, 2")
@@ -1674,7 +1703,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertTrue(park.taskRows[0].accessibilityLabel.contains("parked, not carried"))
 
         let complete = try XCTUnwrap(
-            CapturePomodoroClosePresentation(capture: decodePreview("pomodoro-close-select-alias-complete.json"))
+            CapturePomodoroClosePresentation(capture: decodePreview("pomodoro-close-select-complete-all.json"))
         )
         XCTAssertTrue(complete.hasSelection)
         XCTAssertEqual(complete.selectionSummary, "Complete 1, 2")
@@ -1686,7 +1715,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
     func testMixedWildcardExceptionPreviewUsesResolvedRows() throws {
         let presentation = try XCTUnwrap(
             CapturePomodoroClosePresentation(
-                capture: decodePreview("pomodoro-close-select-alias-exception.json")
+                capture: decodePreview("pomodoro-close-select-park-all-complete-two.json")
             )
         )
 
@@ -1695,12 +1724,12 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.completedCount, 1)
         XCTAssertEqual(presentation.taskRows.compactMap(\.outcome), [.parked, .complete, .parked])
         XCTAssertTrue(presentation.taskRows.filter { $0.index != nil }.allSatisfy { $0.source == .listed })
-        XCTAssertEqual(presentation.taskRows[0].taskText, "Add support for `=x` syntax!")
+        XCTAssertEqual(presentation.taskRows[0].taskText, "Add support for `x` syntax!")
         XCTAssertEqual(presentation.taskRows[0].outcome, .parked)
         XCTAssertEqual(presentation.taskRows[1].taskText, "Add capture support for web URLs!")
         XCTAssertEqual(presentation.taskRows[1].outcome, .complete)
         XCTAssertTrue(presentation.taskRows[1].isStruck)
-        XCTAssertEqual(presentation.taskRows[2].taskText, "Plain ready task")
+        XCTAssertEqual(presentation.taskRows[2].taskText, "Plain ready task #now")
         XCTAssertEqual(presentation.taskRows[2].outcome, .parked)
         XCTAssertTrue(presentation.taskRows[3].isStruck)
         XCTAssertNil(presentation.taskRows[3].outcome)
@@ -1721,7 +1750,7 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
 
         let empty = try XCTUnwrap(
             CapturePomodoroClosePresentation(
-                capture: decodePreview("pomodoro-close-select-alias-park-empty.json")
+                capture: decodePreview("pomodoro-close-select-park-all-empty.json")
             )
         )
         XCTAssertTrue(empty.hasSelection)
@@ -1731,25 +1760,18 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertEqual(empty.emptyText, "No Task Links — the session simply closes")
     }
 
-    func testLegacyStarPlaceholderStillTrims() throws {
-        // Older Bob reported `=x*` as incomplete with a `*` placeholder;
-        // updated Bob reports it valid. The trim helper keeps supporting the
-        // stale shape so old binaries still preview.
-        let legacy = try JSONDecoder().decode(
+    func testRetiredEqualsCloseExplainsTheBareXRewrite() throws {
+        let retired = try JSONDecoder().decode(
             CaptureParseResponse.self,
-            from: Data(fixtureText("pomodoro-close-parse-park-incomplete.json").utf8)
+            from: Data(fixtureText("pomodoro-close-parse-retired.json").utf8)
         )
-        // The checked-in legacy fixture is now the real conflict response;
-        // synthesize the historical incomplete shape for the trim check.
-        let historical = """
-        {"ok":true,"schema_version":1,"input":"=x*","body":"=x*","mode":"incomplete","needs":["pomodoro_close_task"],"spans":[{"start":0,"end":2,"kind":"pomodoro_close"},{"start":2,"end":3,"kind":"interactive_placeholder"}],"diagnostics":[]}
-        """
-        let old = try JSONDecoder().decode(
-            CaptureParseResponse.self,
-            from: Data(historical.utf8)
+
+        XCTAssertEqual(retired.mode, "pomodoro_close")
+        XCTAssertEqual(retired.diagnostics.first?.code, "invalid_pomodoro_close")
+        XCTAssertEqual(
+            retired.diagnostics.first?.message,
+            "`=x2!1` is retired: close the running Pomodoro with a bare `x`, without the `=`; write `x2!1`"
         )
-        XCTAssertEqual(old.mode, "incomplete")
-        XCTAssertFalse(legacy.diagnostics.isEmpty)
     }
 
     private func decodePreview(_ name: String) throws -> CaptureCommandSuccess {

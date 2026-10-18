@@ -41,7 +41,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         case neutral
     }
 
-    /// The outcome Bob's `=x[<N>][*<P>][!<M>][~<K>]` selection gives a numbered
+    /// The outcome Bob's `x[<N>][*<P>][!<M>][~<K>]` selection gives a numbered
     /// row, joined from `tasks[].index` to `task_links`. Unknown wire strings
     /// degrade to nil, which renders exactly like today's unnumbered card.
     public enum TaskOutcome: Equatable, Sendable {
@@ -310,7 +310,12 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         overflowTaskCount = taskRows.count - visible.count
         let numberedLinkCount = summary.taskLinks.count
         if !hasSelection, numberedLinkCount > 0 {
-            teachingHint = TeachingHint(tokens: Self.hintTokens(numberedRows: numberedLinkCount))
+            teachingHint = TeachingHint(
+                tokens: Self.hintTokens(
+                    numberedRows: numberedLinkCount,
+                    closePrefix: summary.raw.hasPrefix("=") ? "=x" : "x"
+                )
+            )
             selectionSummary = nil
         } else {
             teachingHint = nil
@@ -660,67 +665,69 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     /// Pomodoro-session pink, `*` and its list are teal, `!` and its list are
     /// green, `<N>` digits are orange, `~<K>` digits are muted gray); prose
     /// carries `.neutral`. Uses only numbers available in the current lineup.
-    /// Leads with the short all-task `=*`/`=!` forms, then shows how numbered
+    /// Leads with the short all-task `x*`/`x!` forms, then shows how numbered
     /// lists narrow the scope before the continue/drop/defer and log examples.
-    static func hintTokens(numberedRows: Int) -> [HintToken] {
+    /// Link and task close cards use `=x` because Bob reports their suffix in
+    /// `raw`; whole-item closes use the bare `x` token.
+    static func hintTokens(numberedRows: Int, closePrefix: String = "x") -> [HintToken] {
         var tokens: [HintToken] = []
         func append(_ text: String, _ category: CaptureSemanticCategory) {
             tokens.append(HintToken(text: text, category: category))
         }
 
         // Short-syntax lead: omitted `*`/`!` lists select all remaining links.
-        append("=", .pomodoroStart)
+        append(closePrefix, .pomodoroStart)
         append("*", .pomodoroClosePark)
         append(" parks all · ", .neutral)
-        append("=", .pomodoroStart)
+        append(closePrefix, .pomodoroStart)
         append("!", .pomodoroCloseComplete)
         append(" completes all", .neutral)
         if numberedRows >= 2 {
             append(" · add numbers to narrow scope (e.g. ", .neutral)
-            append("=", .pomodoroStart)
+            append(closePrefix, .pomodoroStart)
             append("*1", .pomodoroClosePark)
             append(" or ", .neutral)
-            append("=", .pomodoroStart)
+            append(closePrefix, .pomodoroStart)
             append("!1", .pomodoroCloseComplete)
             append(")", .neutral)
             // Drop uses only indices present in the lineup.
             let dropIndex = numberedRows >= 3 ? "3" : "2"
             append(" · ", .neutral)
-            append("=x", .pomodoroStart)
+            append(closePrefix, .pomodoroStart)
             append("1,2", .pomodoroCloseInProgress)
             append(" keeps only these in progress · ", .neutral)
-            append("=x", .pomodoroStart)
+            append(closePrefix, .pomodoroStart)
             append("*2", .pomodoroClosePark)
             append(" parks 2 (not carried) · ", .neutral)
-            append("=x", .pomodoroStart)
+            append(closePrefix, .pomodoroStart)
             append("!2", .pomodoroCloseComplete)
             append(" completes 2 · ", .neutral)
-            append("=x", .pomodoroStart)
+            append(closePrefix, .pomodoroStart)
             append("~\(dropIndex)", .pomodoroCloseDrop)
             append(" drops \(dropIndex) · ", .neutral)
-            append("=x", .pomodoroStart)
+            append(closePrefix, .pomodoroStart)
             append("0", .pomodoroCloseInProgress)
             append(" defers all (note-free resets instead) · ", .neutral)
-            append("=x", .pomodoroStart)
+            append(closePrefix, .pomodoroStart)
             append(" ", .neutral)
             append("2", .pomodoroCloseLog)
             append(" wrote the tests logs work to 2", .neutral)
             return tokens
         }
         append(" · add a number to narrow scope (e.g. ", .neutral)
-        append("=", .pomodoroStart)
+        append(closePrefix, .pomodoroStart)
         append("*1", .pomodoroClosePark)
         append(" or ", .neutral)
-        append("=", .pomodoroStart)
+        append(closePrefix, .pomodoroStart)
         append("!1", .pomodoroCloseComplete)
         append(") · ", .neutral)
-        append("=x", .pomodoroStart)
+        append(closePrefix, .pomodoroStart)
         append("~1", .pomodoroCloseDrop)
         append(" drops it · ", .neutral)
-        append("=x", .pomodoroStart)
+        append(closePrefix, .pomodoroStart)
         append("0", .pomodoroCloseInProgress)
         append(" defers it (note-free resets instead) · ", .neutral)
-        append("=x", .pomodoroStart)
+        append(closePrefix, .pomodoroStart)
         append(" wrote the tests logs work to it", .neutral)
         return tokens
     }
@@ -728,7 +735,7 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     /// The selection summary from `task_links` in ascending order, for example
     /// `"Continue 1 · Parked 2, 3 · Complete 4, 5"`. Empty groups are omitted.
     /// `Continue` means ordinary worked links carried onward and never names a
-    /// task status. `=x0*2` reports `"Continue none · Parked 2"` and never
+    /// task status. `x0*2` reports `"Continue none · Parked 2"` and never
     /// `"In progress none"` while a parked task is being worked. Nil when
     /// every group is empty. Old syntax without `*` keeps its historical
     /// `"In progress"` wording.
@@ -753,13 +760,13 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
             if !inProgress.isEmpty {
                 parts.append("Continue \(joined(inProgress))")
             } else if inProgressEmpty {
-                // `=x0*2`: nothing continues, but work was recorded via parking.
+                // `x0*2`: nothing continues, but work was recorded via parking.
                 parts.append("Continue none")
             }
             parts.append("Parked \(joined(parked))")
         } else {
             if inProgress.isEmpty, inProgressEmpty {
-                // `=x0`: no task stays in progress.
+                // `x0`: no task stays in progress.
                 parts.append("In progress none")
             } else if !inProgress.isEmpty {
                 parts.append("In progress \(joined(inProgress))")
@@ -784,8 +791,8 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
     }
 
     /// The pending summary row for a draft whose Work Log entry dangles:
-    /// either a bullet (`=x` plus `- <n>` with no entry text yet) or the
-    /// inline number on the close line itself (`=x 2`). Teaches the entry;
+    /// either a bullet (`x` plus `- <n>` with no entry text yet) or the
+    /// inline number on the close line itself (`x 2`). Teaches the entry;
     /// the text stays `Type the Work Log entry for task N`.
     public static func pendingLogText(index: Int) -> String {
         "Type the Work Log entry for task \(index)"

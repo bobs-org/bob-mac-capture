@@ -47,7 +47,7 @@ final class CapturePullInDecodingTests: XCTestCase {
             "waits_on":0,"scheduled":"2026-10-20","project":"projects/sase_foo.md","trigger":"dependency"
           }]
         },
-        "pomodoro_close":{"raw":"=x","unblocked":[{
+        "pomodoro_close":{"raw":"x","unblocked":[{
           "note_path":"travel.md","block_id":"book","line":2,"text":"Book flights",
           "previous_status_symbol":"?","previous_status_name":"Blocked","status_symbol":" ",
           "status_name":"Ready","offer":{"key":"opaque:offer#11","n":1,"group":"hand_off",

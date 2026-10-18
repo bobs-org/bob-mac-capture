@@ -2972,7 +2972,7 @@ final class CaptureModelTests: XCTestCase {
       "relative_target":"2026/20261005.md","target":"/tmp/bob/2026/20261005.md",
       "text":"","task_line":"","kind":"pomodoro_close","created":"2026-10-05",
       "placement":"closed",
-      "pomodoro_close":{"raw":"=x!1","complete":[1],"complete_all":false,
+      "pomodoro_close":{"raw":"x!1","complete":[1],"complete_all":false,
       "task_links":[],"pomodoro_line":5,"day_relative":"2026/20261005.md",
       "entry_line":"- [ ] (**0920-0950**) — BOB",
       "planned":{"start":"09:20","end":"09:50","duration_minutes":30,"time_range":"0920-0950"},
@@ -3004,7 +3004,7 @@ final class CaptureModelTests: XCTestCase {
       "relative_target":"2026/20261005.md","target":"/tmp/bob/2026/20261005.md",
       "text":"","task_line":"","kind":"pomodoro_close","created":"2026-10-05",
       "placement":"closed",
-      "pomodoro_close":{"raw":"=x!1",
+      "pomodoro_close":{"raw":"x!1",
       "unblocked":42,"still_blocked":42,"unblocked_check":[]}}
       """
     )
