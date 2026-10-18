@@ -363,6 +363,9 @@ final class CapturePanelModel: ObservableObject {
     /// Task pickers auto-open only when the edits since this draft wrote the
     /// separator or trigger before Bob's replacement part.
     private var editAnalysisBaseline = ""
+#if DEBUG
+    var analysisBaselineForTesting: String { editAnalysisBaseline }
+#endif
     /// The trimmed bare-URL draft Esc dismissed the File-under list for.
     /// The list does not reopen for this URL until the draft changes to a
     /// different URL. Cleared on accept and on successful submit.

@@ -1872,6 +1872,7 @@ final class CapturePanelModelTests: XCTestCase {
             }
             return false
         }
+        await waitUntil { model.analysisBaselineForTesting == "@file:ready" }
         XCTAssertFalse(model.pickerVisible)
 
         model.plainDraft = "@file:"

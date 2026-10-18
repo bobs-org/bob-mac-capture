@@ -565,7 +565,7 @@ final class RefsPanelModelTests: XCTestCase {
         await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
         harness.model.handleTodayLinkCardKey(.submit)
         await harness.waitForModel { $0.todayLinkCard == nil }
-        await harness.waitForModel { $0.pomodoroName(for: path) == "CURRENT" }
+        await harness.waitForModel { $0.pomodoroName(for: path) == "READING" }
         XCTAssertEqual(outcomes, [.linked, .already])
         XCTAssertEqual(fetcher.todayLinkCalls.filter { !$0.dryRun }.count, 2)
     }
