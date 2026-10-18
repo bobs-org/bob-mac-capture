@@ -3383,7 +3383,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(model.completionVisible)
         XCTAssertEqual(
             model.completionResponse?.replacement,
-            CaptureRange(start: 5, end: 7)
+            CaptureRange(start: 4, end: 6)
         )
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 6 --format json -- x =#de"))

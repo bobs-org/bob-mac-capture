@@ -1096,8 +1096,14 @@ final class BobProcessClientTests: XCTestCase {
         let response = try await client.captureComplete("x =#de", cursor: 6)
 
         XCTAssertEqual(response.context, "pomodoro_start_name")
-        XCTAssertEqual(response.replacement, CaptureRange(start: 5, end: 7))
+        XCTAssertEqual(response.replacement, CaptureRange(start: 4, end: 6))
         XCTAssertEqual(response.candidates.first?.replacement, "deep-work")
+        var draft = Array("x =#de".utf8)
+        draft.replaceSubrange(
+            response.replacement.start..<response.replacement.end,
+            with: try XCTUnwrap(response.candidates.first?.replacement).utf8
+        )
+        XCTAssertEqual(String(decoding: draft, as: UTF8.self), "x =#deep-work")
     }
 
     func testNamedStartStillRunningFailureTeachesOneLineSwitch() async throws {

@@ -658,12 +658,52 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         XCTAssertEqual(invalid.mode, "pomodoro_start")
         XCTAssertEqual(invalid.diagnostics.first?.code, "invalid_pomodoro_start")
 
-        let chain = try JSONDecoder().decode(
-            CaptureParseResponse.self,
-            from: Data(fixtureText("pomodoro-start-drop-parse-chain.json").utf8)
-        )
-        XCTAssertEqual(chain.items.map(\.mode), ["pomodoro_close", "pomodoro_start"])
-        XCTAssertEqual(chain.items.last?.pomodoroStart?.drop, [2])
+        let chains: [(String, [(String, Int, Int, String)])] = [
+            (
+                "pomodoro-start-drop-parse-chain.json",
+                [
+                    ("pomodoro_close", 0, 1, "x"),
+                    ("pomodoro_start", 2, 3, "="),
+                    ("pomodoro_start_drop", 3, 5, "~2"),
+                ]
+            ),
+            (
+                "pomodoro-start-named-parse-chain-query.json",
+                [
+                    ("pomodoro_close", 0, 1, "x"),
+                    ("pomodoro_start", 2, 3, "="),
+                    ("pomodoro_name", 4, 6, "de"),
+                ]
+            ),
+            (
+                "pomodoro-start-named-parse-chain.json",
+                [
+                    ("pomodoro_close", 0, 1, "x"),
+                    ("pomodoro_start", 2, 3, "="),
+                    ("pomodoro_name", 4, 8, "bugs"),
+                ]
+            ),
+        ]
+        for (name, expectedSpans) in chains {
+            let chain = try JSONDecoder().decode(
+                CaptureParseResponse.self,
+                from: Data(fixtureText(name).utf8)
+            )
+            XCTAssertEqual(chain.items.map(\.mode), ["pomodoro_close", "pomodoro_start"], name)
+            XCTAssertEqual(chain.spans.count, expectedSpans.count, name)
+            for (span, expected) in zip(chain.spans, expectedSpans) {
+                XCTAssertEqual(span.kind, expected.0, name)
+                XCTAssertEqual(span.start, expected.1, name)
+                XCTAssertEqual(span.end, expected.2, name)
+                let inputBytes = Array(chain.input.utf8)
+                let selected = String(decoding: inputBytes[expected.1..<expected.2], as: UTF8.self)
+                XCTAssertEqual(selected, expected.3, name)
+            }
+            XCTAssertEqual(chain.items[0].range.start, 0, name)
+            XCTAssertEqual(chain.items[0].range.end, 1, name)
+            XCTAssertEqual(chain.items[1].range.start, 2, name)
+            XCTAssertEqual(chain.items[1].range.end, chain.input.utf8.count, name)
+        }
     }
 
     func testOverrideRestartFixtureRewordsCardFooterAndNotification() throws {
