@@ -44,7 +44,8 @@ public enum RefsSelectionPolicy {
 
     /// Moves `step` from `id`: up/down wraps, paging clamps, section
     /// jumps land on the first row of the next or previous section in
-    /// browse mode and are a no-op in search. An unknown or missing
+    /// browse mode and in a Newest listing (searched or not) and are a
+    /// no-op in ranked search. An unknown or missing
     /// selection resolves to the first row.
     public static func move(
         _ step: RefsMove,
@@ -78,7 +79,13 @@ public enum RefsSelectionPolicy {
     }
 
     static func moveSection(_ step: RefsMove, from id: String, in listing: RefsListing) -> String? {
-        guard case .browse = listing.mode else {
+        let isBrowse: Bool
+        if case .browse = listing.mode {
+            isBrowse = true
+        } else {
+            isBrowse = false
+        }
+        guard isBrowse || listing.order == .newest else {
             return id
         }
         let sections = listing.sections

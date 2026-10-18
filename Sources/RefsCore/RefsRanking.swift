@@ -102,8 +102,52 @@ public struct RefsScanMark: Equatable, Sendable {
     }
 }
 
+/// How a listing orders its rows: the ranked browse sections and search
+/// relevance, or Newest, a date-grouped timeline by capture date. Newest
+/// changes order and grouping, never membership.
+public enum RefsListOrder: Equatable, Sendable {
+    case ranked
+    case newest
+}
+
+/// One date group of the Newest timeline. Everything the header needs is
+/// computed once at listing time from the panel calendar, so the views
+/// only draw it.
+public struct RefsAddedGroup: Equatable, Hashable, Sendable {
+    /// What the group spans: one calendar day (Today, Yesterday, a
+    /// weekday), one month, or the rows with no `added` date.
+    public enum Style: Equatable, Hashable, Sendable {
+        case day
+        case month
+        case undated
+    }
+
+    /// Stable across re-ranks: `day-2026-10-16`, `month-2026-09`, `undated`.
+    public let id: String
+    /// Title-cased; the header uppercases it ("Today", "December 2025").
+    public let title: String
+    /// The trailing date on day groups ("Oct 18"); nil otherwise.
+    public let detail: String?
+    public let accessibilityLabel: String
+    public let style: Style
+
+    public init(
+        id: String,
+        title: String,
+        detail: String? = nil,
+        accessibilityLabel: String,
+        style: Style
+    ) {
+        self.id = id
+        self.title = title
+        self.detail = detail
+        self.accessibilityLabel = accessibilityLabel
+        self.style = style
+    }
+}
+
 /// One browse section, in panel order.
-public enum RefsSectionKind: Equatable, CaseIterable, Sendable {
+public enum RefsSectionKind: Equatable, Hashable, Sendable {
     case justScanned
     case today
     case justAdded
@@ -113,6 +157,8 @@ public enum RefsSectionKind: Equatable, CaseIterable, Sendable {
     case recentlyOpened
     case library
     case inHighlights
+    /// A date group of the Newest timeline, in browse and search alike.
+    case added(RefsAddedGroup)
 
     /// The pinned uppercase header title. Never "NEW": the review walk
     /// owns that chip, so the section is "Just added".
@@ -136,6 +182,8 @@ public enum RefsSectionKind: Equatable, CaseIterable, Sendable {
             return "Library"
         case .inHighlights:
             return "In Highlights"
+        case .added(let group):
+            return group.title
         }
     }
 }
@@ -278,6 +326,9 @@ public struct RefsListing: Equatable, Sendable {
     public let highlightsCurrentIDs: Set<String>
     /// Rows in a Highlights Tabs listing, including search mode's nil-kind section.
     public let highlightsTabIDs: Set<String>
+    /// Ranked sections and relevance, or the Newest timeline. Section
+    /// jumps work in a Newest listing whether or not a query is typed.
+    public let order: RefsListOrder
 
     public init(
         mode: Mode,
@@ -290,7 +341,8 @@ public struct RefsListing: Equatable, Sendable {
         unavailableIDs: Set<String> = [],
         unavailableItems: [String: RefItem] = [:],
         highlightsCurrentIDs: Set<String> = [],
-        highlightsTabIDs: Set<String> = []
+        highlightsTabIDs: Set<String> = [],
+        order: RefsListOrder = .ranked
     ) {
         self.mode = mode
         self.scope = scope
@@ -303,6 +355,7 @@ public struct RefsListing: Equatable, Sendable {
         self.unavailableItems = unavailableItems
         self.highlightsCurrentIDs = highlightsCurrentIDs
         self.highlightsTabIDs = highlightsTabIDs
+        self.order = order
     }
 
     /// A content-only refresh of a frozen listing: late data changes row
@@ -333,7 +386,8 @@ public struct RefsListing: Equatable, Sendable {
                 unavailableIDs: unavailable,
                 unavailableItems: mergedUnavailableItems,
                 highlightsCurrentIDs: highlightsCurrentIDs,
-                highlightsTabIDs: highlightsTabIDs
+                highlightsTabIDs: highlightsTabIDs,
+                order: order
             ),
             unavailable
         )
@@ -513,10 +567,13 @@ enum RefsDates {
 public enum RefsRanker {
     /// Ranks items for a query and scope. An empty or whitespace-only
     /// query yields browse sections; anything else yields one ranked list.
+    /// With `order: .newest`, the same rows (the whole scope, or the
+    /// query's matches) are re-ordered into the date-grouped timeline.
     public static func listing(
         _ items: [RefItem],
         query: String,
         scope: RefScope,
+        order: RefsListOrder = .ranked,
         signals: RefsSignals
     ) -> RefsListing {
         let scoped = items.filter { scope.contains($0.kind) }
@@ -524,7 +581,9 @@ public enum RefsRanker {
         let openCount = scoped.filter { openStates.contains($0.state) }.count
         let tokens = RefsText.queryTokens(query)
         if tokens.isEmpty {
-            let sections = browseSections(scoped, signals: signals)
+            let sections = order == .newest
+                ? newestSections(scoped, signals: signals)
+                : browseSections(scoped, signals: signals)
             return RefsListing(
                 mode: .browse,
                 scope: scope,
@@ -532,12 +591,27 @@ public enum RefsRanker {
                 orderedIDs: sections.flatMap(\.ids),
                 matches: [:],
                 totalCount: scoped.count,
-                openCount: openCount
+                openCount: openCount,
+                order: order
             )
         }
         let ranked = searchRows(scoped, tokens: tokens, rawQuery: query, signals: signals)
-        let ids = ranked.map(\.id)
         let matches = Dictionary(uniqueKeysWithValues: ranked.map { ($0.id, $0.match) })
+        if order == .newest {
+            let matched = scoped.filter { matches[$0.id] != nil }
+            let sections = newestSections(matched, signals: signals)
+            return RefsListing(
+                mode: .search(query),
+                scope: scope,
+                sections: sections,
+                orderedIDs: sections.flatMap(\.ids),
+                matches: matches,
+                totalCount: scoped.count,
+                openCount: openCount,
+                order: .newest
+            )
+        }
+        let ids = ranked.map(\.id)
         return RefsListing(
             mode: .search(query),
             scope: scope,

@@ -8,13 +8,19 @@ import RefsCore
 /// Usage:
 ///   swift run refs-rank [--plan plan.json] [--opens open-log.json]
 ///     [--scope chats] [--now 2026-10-08T09:00:00] [--tz America/New_York]
-///     [query...] < ref-list.json
+///     [--newest] [query...] < ref-list.json
 ///
 /// `--now` accepts a full ISO 8601 time with an offset
 /// (`2026-10-08T09:00:00-04:00`, `2026-10-08T13:00:00Z`) or a local
 /// date-time without one (`2026-10-08T09:00:00`), interpreted in
 /// `--tz` (default: the current time zone). That time zone's calendar
 /// ranks the snapshot, so local-day sections match the panel.
+///
+/// `--newest` prints the Newest timeline instead (browse or search): one
+/// `## TITLE (count)  detail` line per date group, then one row per line
+/// as `added_at  state  kind  title`, where `added_at` is the instant in
+/// `--tz` (or the bare `added` day when only the day is known, `undated`
+/// when neither).
 ///
 /// Browse mode prints sections; search mode prints ranked rows as
 /// `rank  tier  score (m P W L F R)  state  kind  title`, each followed
@@ -30,6 +36,7 @@ var opensPath: String?
 var scopeName = "all"
 var nowOverride: String?
 var tzName: String?
+var newest = false
 var queryWords: [String] = []
 
 var arguments = CommandLine.arguments.dropFirst()
@@ -50,6 +57,8 @@ while let argument = arguments.first {
     case "--tz":
         arguments = arguments.dropFirst()
         tzName = arguments.first
+    case "--newest":
+        newest = true
     default:
         if argument.hasPrefix("--") {
             fail("unknown flag \(argument)")
@@ -164,7 +173,9 @@ let signals = RefsSignals(
 let snapshot = RefsSnapshot(fetchedAt: now, records: listResponse.refs)
 let items = RefsCatalog.items(from: snapshot)
 let query = queryWords.joined(separator: " ")
-let listing = RefsRanker.listing(items, query: query, scope: scope, signals: signals)
+let listing = RefsRanker.listing(
+    items, query: query, scope: scope, order: newest ? .newest : .ranked, signals: signals
+)
 let byID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
 
 func padRight(_ text: String, _ width: Int) -> String {
@@ -192,6 +203,43 @@ func stateName(_ item: RefItem) -> String {
     case .unknown:
         return "unknown"
     }
+}
+
+/// `added_at` in the `--tz` zone, else the bare `added` day, else `undated`.
+func addedColumn(_ item: RefItem) -> String {
+    if let at = item.addedAt {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        formatter.timeZone = timeZone
+        return formatter.string(from: at)
+    }
+    return item.added?.isoString ?? "undated"
+}
+
+if newest {
+    switch listing.mode {
+    case .browse:
+        print("\(listing.openCount) open · \(listing.totalCount) total")
+    case .search:
+        print("\(listing.orderedIDs.count) of \(listing.totalCount)")
+    }
+    for section in listing.sections {
+        guard case let .added(group)? = section.kind else {
+            continue
+        }
+        let detail = group.detail.map { "  \($0)" } ?? ""
+        print("## \(group.title.uppercased()) (\(section.ids.count))\(detail)")
+        for id in section.ids {
+            guard let item = byID[id] else {
+                continue
+            }
+            print(
+                "  \(padRight(addedColumn(item), 25))  \(padRight(stateName(item), 8))  "
+                    + "\(padRight(item.kind.label, 7))  \(item.title.text)"
+            )
+        }
+    }
+    exit(0)
 }
 
 switch listing.mode {

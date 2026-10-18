@@ -273,6 +273,9 @@ public struct RefItem: Identifiable, Equatable, Sendable {
     public let published: String?
     public let added: RefDay?
     public let addedSource: String?
+    /// The most precise instant known on the `added` day, or nil when
+    /// only the day is known.
+    public let addedAt: Date?
     public let addedIsApproximate: Bool
     public let finished: RefDay?
     public let annotationCount: Int
@@ -303,6 +306,7 @@ public struct RefItem: Identifiable, Equatable, Sendable {
         published: String? = nil,
         added: RefDay? = nil,
         addedSource: String? = nil,
+        addedAt: Date? = nil,
         addedIsApproximate: Bool = false,
         finished: RefDay? = nil,
         annotationCount: Int = 0,
@@ -333,6 +337,7 @@ public struct RefItem: Identifiable, Equatable, Sendable {
         self.published = published
         self.added = added
         self.addedSource = addedSource
+        self.addedAt = addedAt
         self.addedIsApproximate = addedIsApproximate
         self.finished = finished
         self.annotationCount = annotationCount
@@ -350,6 +355,7 @@ extension RefItem {
     static func make(
         from record: RefRecord,
         gitAddedDates: [String: String],
+        gitAddedAt: [String: String] = [:],
         titleDisambiguator: String? = nil,
         markerIDShareCount: Int = 0
     ) -> RefItem? {
@@ -358,18 +364,22 @@ extension RefItem {
         }
         let added: RefDay?
         let addedSource: String?
+        let addedAt: Date?
         let addedIsApproximate: Bool
         if let raw = record.added {
             added = RefDay(parsing: raw)
             addedSource = record.addedSource
+            addedAt = added == nil ? nil : record.addedAt.flatMap(RefsInstant.parse)
             addedIsApproximate = record.addedSource == "git"
         } else if let gitRaw = gitAddedDates[record.path] {
             added = RefDay(parsing: gitRaw)
             addedSource = "git"
+            addedAt = added == nil ? nil : gitAddedAt[record.path].flatMap(RefsInstant.parse)
             addedIsApproximate = true
         } else {
             added = nil
             addedSource = nil
+            addedAt = nil
             addedIsApproximate = false
         }
         // A git-sourced `finished` date is a bulk backfill shared by hundreds
@@ -401,6 +411,7 @@ extension RefItem {
             published: record.published,
             added: added,
             addedSource: addedSource,
+            addedAt: addedAt,
             addedIsApproximate: addedIsApproximate,
             finished: finished,
             annotationCount: record.annotationCount,
@@ -484,6 +495,7 @@ public enum RefsCatalog {
             RefItem.make(
                 from: $0,
                 gitAddedDates: snapshot.gitAddedDates,
+                gitAddedAt: snapshot.gitAddedAt,
                 markerIDShareCount: $0.markerID.map { markerIDCounts[$0, default: 0] } ?? 0
             )
         }
@@ -515,6 +527,7 @@ public enum RefsCatalog {
                     published: item.published,
                     added: item.added,
                     addedSource: item.addedSource,
+                    addedAt: item.addedAt,
                     addedIsApproximate: item.addedIsApproximate,
                     finished: item.finished,
                     annotationCount: item.annotationCount,
@@ -531,8 +544,27 @@ public enum RefsCatalog {
     }
 }
 
+/// Parses the RFC 3339 instants bob reports in `added_at` and the
+/// snapshot's `git_added_at`. A malformed value is nil, never an error.
+enum RefsInstant {
+    private static let lock = NSLock()
+    private static let formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    static func parse(_ raw: String) -> Date? {
+        lock.lock()
+        defer { lock.unlock() }
+        return formatter.date(from: raw)
+    }
+}
+
 /// One decoded snapshot plus the git-added dates the `-g` pass backfilled.
-/// `gitAddedDates` maps note paths to `YYYY-MM-DD`.
+/// `gitAddedDates` maps note paths to `YYYY-MM-DD`; `gitAddedAt` maps the
+/// same paths to the birth commit's RFC 3339 instant. An older cache has
+/// no `git_added_at` and decodes it as empty.
 public struct RefsSnapshot: Codable, Equatable, Sendable {
     public static let currentSchemaVersion = 1
 
@@ -540,17 +572,20 @@ public struct RefsSnapshot: Codable, Equatable, Sendable {
     public var fetchedAt: Date
     public var records: [RefRecord]
     public var gitAddedDates: [String: String]
+    public var gitAddedAt: [String: String]
 
     public init(
         schemaVersion: Int = RefsSnapshot.currentSchemaVersion,
         fetchedAt: Date,
         records: [RefRecord] = [],
-        gitAddedDates: [String: String] = [:]
+        gitAddedDates: [String: String] = [:],
+        gitAddedAt: [String: String] = [:]
     ) {
         self.schemaVersion = schemaVersion
         self.fetchedAt = fetchedAt
         self.records = records
         self.gitAddedDates = gitAddedDates
+        self.gitAddedAt = gitAddedAt
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -558,13 +593,56 @@ public struct RefsSnapshot: Codable, Equatable, Sendable {
         case fetchedAt = "fetched_at"
         case records
         case gitAddedDates = "git_added_dates"
+        case gitAddedAt = "git_added_at"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        fetchedAt = try container.decode(Date.self, forKey: .fetchedAt)
+        records = try container.decode([RefRecord].self, forKey: .records)
+        gitAddedDates = try container.decode([String: String].self, forKey: .gitAddedDates)
+        gitAddedAt = try container.decodeIfPresent(
+            [String: String].self,
+            forKey: .gitAddedAt
+        ) ?? [:]
     }
 
     /// Note paths with no `added` date that the `-g` pass has not covered
-    /// yet: the only rows worth a git-date refresh.
+    /// yet, plus dateless rows whose git date has no instant yet (an old
+    /// cache refills once): the only rows worth a git-date refresh.
     public var pathsNeedingGitDates: [String] {
         records
-            .filter { $0.added == nil && gitAddedDates[$0.path] == nil }
+            .filter {
+                $0.added == nil
+                    && (gitAddedDates[$0.path] == nil || gitAddedAt[$0.path] == nil)
+            }
             .map(\.path)
+    }
+
+    /// This snapshot with a `-g` response merged in: for each record in
+    /// `needing` that is still dateless here and that bob dated from git,
+    /// the git `added` day and its `added_at` instant. Every other path,
+    /// and the records themselves, are untouched.
+    public func mergingGitDates(
+        from records: [RefRecord],
+        needing: Set<String>
+    ) -> RefsSnapshot {
+        let stillNeeding = Set(pathsNeedingGitDates)
+        var merged = self
+        for record in records {
+            guard let added = record.added,
+                needing.contains(record.path),
+                stillNeeding.contains(record.path),
+                record.addedSource == "git"
+            else {
+                continue
+            }
+            merged.gitAddedDates[record.path] = added
+            if let instant = record.addedAt {
+                merged.gitAddedAt[record.path] = instant
+            }
+        }
+        return merged
     }
 }

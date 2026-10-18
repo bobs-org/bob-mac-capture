@@ -47,7 +47,7 @@ public enum RefsCaption {
         if let pages = signals.pageCounts[item.id] {
             parts.append(("\(pages) pp", []))
         }
-        if section == nil {
+        if match != nil {
             if let secondary = match?.secondary {
                 if !repeatsShownAuthor(secondary, item: item) {
                     parts.append((secondary.text, secondary.ranges))
@@ -114,9 +114,55 @@ public enum RefsCaption {
                 return "read \(absoluteDay(finished, now: signals.now, calendar: signals.calendar))"
             }
             return addedPhrase(item, signals: signals)
+        case .added(let group):
+            return newestPhrase(item, group: group, signals: signals)
         case nil:
             return lastActivityPhrase(item, signals: signals)
         }
+    }
+
+    /// The Newest timeline's date phrase, naming the date that explains
+    /// the row's position: the time of day inside a day group (none for
+    /// an untimed row, because the header already names the day), the
+    /// month and day inside a month group, nothing when undated. Git
+    /// dates keep the `≈` mark.
+    static func newestPhrase(
+        _ item: RefItem,
+        group: RefsAddedGroup,
+        signals: RefsSignals
+    ) -> String {
+        guard let added = item.added else {
+            return ""
+        }
+        let mark = item.addedIsApproximate ? "≈ " : ""
+        switch group.style {
+        case .day:
+            guard let at = item.addedAt else {
+                return ""
+            }
+            return "added \(mark)\(shortTime(at, calendar: signals.calendar))"
+        case .month:
+            let day = absoluteMonthDay(added, now: signals.now, calendar: signals.calendar)
+            return "added \(mark)\(day)"
+        case .undated:
+            return ""
+        }
+    }
+
+    /// The short time of day ("9:41 AM") in the panel calendar's time
+    /// zone and locale. Locale spacing before the day period (U+202F in
+    /// recent CLDR) becomes a plain space, so the string is stable.
+    public static func shortTime(_ date: Date, calendar: Calendar) -> String {
+        let style = Date.FormatStyle(
+            date: .omitted,
+            time: .shortened,
+            locale: calendar.locale ?? .current,
+            calendar: calendar,
+            timeZone: calendar.timeZone
+        )
+        return date.formatted(style)
+            .replacingOccurrences(of: "\u{202F}", with: " ")
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
     }
 
     /// Search mode: the last-activity phrase.
@@ -257,6 +303,17 @@ public enum RefsCaption {
         return names[month - 1]
     }
 
+    static func monthName(_ month: Int) -> String {
+        let names = [
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December",
+        ]
+        guard (1...12).contains(month) else {
+            return "???"
+        }
+        return names[month - 1]
+    }
+
     static func weekdayName(_ weekday: Int) -> String {
         let names = [
             "Sunday", "Monday", "Tuesday", "Wednesday",
@@ -362,6 +419,8 @@ public enum RefsExplanation {
             return listing.highlightsCurrentIDs.contains(item.id)
                 ? "Current tab in Highlights"
                 : "Open in Highlights"
+        case .added:
+            return newestWhyHere(item, signals: signals)
         case .library, nil:
             if let activity = latestActivityDay(item, signals: signals) {
                 let day = RefsCaption.absoluteMonthDay(
@@ -371,6 +430,25 @@ public enum RefsExplanation {
             }
             return "Library"
         }
+    }
+
+    /// Why a row sits where it does in the Newest timeline: the exact
+    /// capture date, with its time when known and a `≈` plus the
+    /// provenance when the date came from vault history.
+    static func newestWhyHere(_ item: RefItem, signals: RefsSignals) -> String {
+        guard let added = item.added else {
+            return "Undated · bob has no added date for this note"
+        }
+        let mark = item.addedIsApproximate ? "≈ " : ""
+        var text = "Added \(mark)"
+            + RefsCaption.absoluteMonthDay(added, now: signals.now, calendar: signals.calendar)
+        if let at = item.addedAt {
+            text += " at \(RefsCaption.shortTime(at, calendar: signals.calendar))"
+        }
+        if item.addedIsApproximate {
+            text += " · from vault history"
+        }
+        return text
     }
 
     static func searchWhyHere(

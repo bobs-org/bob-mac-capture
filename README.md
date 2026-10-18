@@ -1321,11 +1321,17 @@ JSON report `bob` returns.
 ### Data
 
 - Snapshot: `bob ref list -R all -A -f json` (schema version 1), plus `-g`
-  when some row still lacks an `added` date. Every optional field decodes
+  when some row still lacks an `added` date, or has a git date but no git
+  instant yet. Every optional field decodes
   with `decodeIfPresent`, so an older `bob` still works — a `bob` without
   `blocked` decodes every row as not blocked, and a row without `task`
   joins Today on the note path — and unknown fields are ignored. Any
   other schema version is rejected like any other refresh failure.
+  `added_at` is the most precise instant `bob` knows on the row's `added`
+  day (RFC 3339, for example `2026-10-17T09:12:44-04:00`) and is `null`
+  when `bob` knows only the day. It parses once into `RefItem.addedAt`
+  when the catalog is built; an older `bob` decodes it as nil, and a
+  malformed value becomes nil without failing the row.
   Each row's `task` object (`path`, `block_id`, `link`, `mark`,
   `archived`; `block_id` `ref` on frozen v1 trackers) names the
   reference's single ordinary reading task: where it lives is the
@@ -1339,9 +1345,13 @@ JSON report `bob` returns.
   failure. The app decodes every field except `schema_version` loosely,
   ignores unknown fields, and rejects any other schema version like any
   other scan failure.
-- The snapshot (including git-added dates) and the last Today value persist
+- The snapshot (including the git-added dates and their instants) and the
+  last Today value persist
   in `refs-snapshot.json` under `~/Library/Application Support/`
   `org.bobs.bob-mac-capture/`, so a cold launch paints immediately. The
+  `git_added_at` key maps each git-dated note path to its birth commit's
+  RFC 3339 instant; a cache written before the key existed decodes it as
+  empty, and the `-g` pass refills it once. The
   open history (note paths and timestamps only) lives in `refs-open-log.json`
   next to it. Both files are mode 0600 in a 0700 directory.
 - `RefsCore` (the `Sources/RefsCore` target, Foundation plus CaptureCore
@@ -1359,7 +1369,8 @@ the cache at launch, watches the vault root (root `*.md` notes) plus
 (0.5 s debounce), refreshes Today every 10 minutes, after sleep, after
 every capture, and in the background on every panel open, and re-reads
 a stale snapshot on every panel open. The `-g` lane runs only while
-some row still lacks an `added` date and only after the snapshot
+some row still lacks an `added` date (or a git-dated row still lacks its
+instant) and only after the snapshot
 publishes, so the first paint never waits for it; merging is
 git-sourced dates into dateless rows, and a `-g` failure keeps the
 published list and is only logged. One refresh per lane runs at a time;
@@ -1414,11 +1425,46 @@ title-prefix match (prefix bonus +0.15) outscored a Ready non-prefix
 word match, failing the "sinks the dropped row" golden expectation, so
 the constant is −0.20.
 
+**Newest** (`RefsListOrder.newest`) lists every reference of the scope in
+a date-grouped timeline instead of the sections above, with the same
+tiered search when a query is typed. ⌘0 changes order, never membership:
+the rows are exactly the ones the scope (and, with a query, the T0–T3
+search) shows in the ranked order. Rows sort by `added` day, newest first;
+then by `added_at` instant, newest first, with timed rows ahead of
+untimed rows on the same day; then by note path. Rows without an `added`
+date come last, in path order. Consecutive rows form date groups in the
+panel calendar (`signals.now`, `signals.calendar`), so groups never shift
+a day in US evenings:
+
+| Group               | Rule                                  | Header          | Trailing detail |
+| ------------------- | ------------------------------------- | --------------- | --------------- |
+| Today               | day ≥ today (future dates clamp here) | `TODAY`         | `Oct 18`        |
+| Yesterday           | 1 day ago                             | `YESTERDAY`     | `Oct 17`        |
+| Weekday             | 2–6 days ago                          | `THURSDAY`      | `Oct 16`        |
+| Month               | older, same year as today             | `OCTOBER`       | —               |
+| Month, earlier year | older, earlier year                   | `DECEMBER 2025` | —               |
+| Undated             | no `added`                            | `UNDATED`       | —               |
+
+The weekday window matches the caption rule for 2–6 days ago, so a
+weekday group and the month group can share a month. Each group is a
+`RefsSectionKind.added(RefsAddedGroup)` with a stable id (`day-2026-10-16`,
+`month-2026-09`, `undated`), its title and trailing detail, and an
+accessibility label ("Added today, October 18", "Added in December 2025").
+Row captions keep their shape; only the date phrase changes: `added 9:41 AM`
+inside a day group (nothing for an untimed row, because the header names
+the day), `added Oct 7` inside a month group, nothing when undated, and
+the `≈` mark stays on git-sourced dates (`added ≈ 3:12 PM`). Times use
+the panel calendar's time zone and locale. The why-here line is the exact
+capture date (`Added Oct 16 at 9:41 AM`, `Added ≈ Sep 27 at 3:12 PM · from
+vault history`, or `Undated · bob has no added date for this note`);
+Newest search keeps the match reason. Section jumps move between date
+groups in Newest, searched or not.
+
 ### Tuning
 
 `swift run refs-rank [--plan plan.json] [--opens open-log.json]
 [--scope chats] [--now 2026-10-08T09:00:00] [--tz America/New_York]
-[query...] < ref-list.json` ranks a `bob ref list` snapshot with the
+[--newest] [query...] < ref-list.json` ranks a `bob ref list` snapshot with the
 same ranker the panel uses, for tuning against live output on this Mac
 or athena. `--now` accepts a full ISO 8601 time with an offset or a
 local date-time without one, interpreted in `--tz` (default: the current
@@ -1426,6 +1472,12 @@ time zone); that calendar ranks the snapshot. Browse mode prints the
 sections; search mode prints
 `rank  tier  score (m P W L F R)  state  kind  title` with padded columns
 (rank 4, tier 9, state 8, kind 7), each followed by its why-here line.
+`--newest` prints the Newest timeline instead, in browse or search: one
+`## TITLE (count)  detail` line per date group, then one row per line as
+`added_at  state  kind  title`, where `added_at` is the instant in `--tz`
+(the bare day when only the day is known, `undated` when neither), so
+`bob ref list -R all -A -f json -g | swift run refs-rank --newest`
+shows the timeline against live output.
 The target is never bundled: `Scripts/bundle.sh` copies only the
 `BobMacCapture` product.
 

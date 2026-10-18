@@ -109,6 +109,9 @@ public struct RefRecord: Codable, Equatable, Sendable {
     public let published: String?
     public let added: String?
     public let addedSource: String?
+    /// The most precise instant bob knows on the `added` day (RFC 3339),
+    /// or nil when it only knows the day. Absent on an older `bob`.
+    public let addedAt: String?
     public let finished: String?
     public let finishedSource: String?
     public let sourcePDF: String?
@@ -138,6 +141,7 @@ public struct RefRecord: Codable, Equatable, Sendable {
         published: String? = nil,
         added: String? = nil,
         addedSource: String? = nil,
+        addedAt: String? = nil,
         finished: String? = nil,
         finishedSource: String? = nil,
         sourcePDF: String? = nil,
@@ -166,6 +170,7 @@ public struct RefRecord: Codable, Equatable, Sendable {
         self.published = published
         self.added = added
         self.addedSource = addedSource
+        self.addedAt = addedAt
         self.finished = finished
         self.finishedSource = finishedSource
         self.sourcePDF = sourcePDF
@@ -195,6 +200,7 @@ public struct RefRecord: Codable, Equatable, Sendable {
         case published
         case added
         case addedSource = "added_source"
+        case addedAt = "added_at"
         case finished
         case finishedSource = "finished_source"
         case sourcePDF = "source_pdf"
@@ -263,6 +269,7 @@ public struct RefRecord: Codable, Equatable, Sendable {
         published = try container.decodeIfPresent(String.self, forKey: .published)
         added = try container.decodeIfPresent(String.self, forKey: .added)
         addedSource = try container.decodeIfPresent(String.self, forKey: .addedSource)
+        addedAt = try container.decodeIfPresent(String.self, forKey: .addedAt)
         finished = try container.decodeIfPresent(String.self, forKey: .finished)
         finishedSource = try container.decodeIfPresent(String.self, forKey: .finishedSource)
         sourcePDF = try container.decodeIfPresent(String.self, forKey: .sourcePDF)
@@ -303,6 +310,7 @@ public struct RefRecord: Codable, Equatable, Sendable {
         try container.encodeIfPresent(published, forKey: .published)
         try container.encodeIfPresent(added, forKey: .added)
         try container.encodeIfPresent(addedSource, forKey: .addedSource)
+        try container.encodeIfPresent(addedAt, forKey: .addedAt)
         try container.encodeIfPresent(finished, forKey: .finished)
         try container.encodeIfPresent(finishedSource, forKey: .finishedSource)
         try container.encodeIfPresent(sourcePDF, forKey: .sourcePDF)
