@@ -471,8 +471,11 @@ final class RefsInspectorLoaderTests: XCTestCase {
         lock.withLock { isOpenStorage }
       }
 
-      func enter() {
-        lock.withLock { startedStorage += 1 }
+      func enter() -> Int {
+        lock.withLock {
+          startedStorage += 1
+          return startedStorage
+        }
       }
 
       func finish() {
@@ -496,10 +499,10 @@ final class RefsInspectorLoaderTests: XCTestCase {
     let loader = await RefsPDFIntrinsicsLoader(
       cacheDirectory: root,
       reader: { @Sendable _ in
-        probe.enter()
+        let readNumber = probe.enter()
         await probe.waitUntilOpen()
         probe.finish()
-        return RefsPDFIntrinsics(pageCount: 7)
+        return RefsPDFIntrinsics(pageCount: 6 + readNumber)
       }
     )
     try FileManager.default.createDirectory(
@@ -518,13 +521,21 @@ final class RefsInspectorLoaderTests: XCTestCase {
     }
     XCTAssertEqual(probe.started, 1)
     await loader.discard(id: "roundtrip")
+    let second = Task {
+      await loader.intrinsics(for: pdf, id: "roundtrip")
+    }
+    let secondDeadline = ContinuousClock.now + .seconds(5)
+    while probe.started < 2, ContinuousClock.now < secondDeadline {
+      try? await Task.sleep(for: .milliseconds(10))
+    }
+    XCTAssertEqual(probe.started, 2)
     probe.open()
     let firstValue = await first.value
     XCTAssertEqual(firstValue.pageCount, 7)
-    let secondPageCount = await loader.intrinsics(for: pdf, id: "roundtrip").pageCount
-    XCTAssertEqual(secondPageCount, 7)
+    let secondPageCount = await second.value.pageCount
+    XCTAssertEqual(secondPageCount, 8)
     let thirdPageCount = await loader.intrinsics(for: pdf, id: "roundtrip").pageCount
-    XCTAssertEqual(thirdPageCount, 7)
+    XCTAssertEqual(thirdPageCount, 8)
     XCTAssertEqual(probe.finished, 2)
   }
 
