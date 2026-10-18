@@ -891,6 +891,47 @@ final class RefsNewestTests: XCTestCase {
         XCTAssertEqual(merged.gitAddedAt, [:])
     }
 
+    func testCurrentBobGitFixtureCompletesPlainFixtureDatesAndInstants() throws {
+        let decoder = JSONDecoder()
+        let plain = try decoder.decode(
+            RefsListResponse.self,
+            from: RefsModelTests.fixtureData("refs-list.json")
+        )
+        let git = try decoder.decode(
+            RefsListResponse.self,
+            from: RefsModelTests.fixtureData("refs-list-git.json")
+        )
+        let snapshot = RefsSnapshot(
+            fetchedAt: Date(timeIntervalSince1970: 1), records: plain.refs
+        )
+
+        XCTAssertEqual(
+            Set(snapshot.pathsNeedingGitDates),
+            ["ref/blogs/small_opened.md", "ref/books/small_book.md"]
+        )
+
+        let merged = snapshot.mergingGitDates(
+            from: git.refs,
+            needing: Set(snapshot.pathsNeedingGitDates)
+        )
+
+        XCTAssertEqual(
+            merged.gitAddedDates,
+            [
+                "ref/blogs/small_opened.md": "2026-09-11",
+                "ref/books/small_book.md": "2026-08-30",
+            ]
+        )
+        XCTAssertEqual(
+            merged.gitAddedAt,
+            [
+                "ref/blogs/small_opened.md": "2026-09-11T15:12:00-04:00",
+                "ref/books/small_book.md": "2026-08-30T15:12:00-04:00",
+            ]
+        )
+        XCTAssertTrue(merged.pathsNeedingGitDates.isEmpty)
+    }
+
     // MARK: Fixtures
 
     func decodeRecord(_ extra: String) throws -> RefRecord {

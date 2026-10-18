@@ -247,7 +247,16 @@ final class RefsLibraryTests: XCTestCase {
 
     XCTAssertTrue(
       context.library.items.contains {
-        $0.id == "ref/blogs/small_opened.md" && $0.added != nil
+        $0.id == "ref/blogs/small_opened.md"
+          && $0.added == RefDay(year: 2026, month: 9, day: 11)
+          && $0.addedAt == RefsNewestTests.instant("2026-09-11T19:12:00Z")
+      }
+    )
+    XCTAssertTrue(
+      context.library.items.contains {
+        $0.id == "ref/books/small_book.md"
+          && $0.added == RefDay(year: 2026, month: 8, day: 30)
+          && $0.addedAt == RefsNewestTests.instant("2026-08-30T19:12:00Z")
       }
     )
     XCTAssertEqual(fetcher.gitListCount, 1)
@@ -258,7 +267,7 @@ final class RefsLibraryTests: XCTestCase {
     let context = try makeContext()
     let fetcher = ScriptedRefsFetcher(
       plainURL: try fixtureURL("refs-list.json"),
-      gitURL: try patchedGitFixtureWithAddedAt(),
+      gitURL: try fixtureURL("refs-list-git.json"),
       gitGate: gitGate
     )
     context.library.setFetcher(fetcher)
@@ -283,7 +292,16 @@ final class RefsLibraryTests: XCTestCase {
 
     XCTAssertTrue(
       context.library.items.contains {
-        $0.id == "ref/blogs/small_opened.md" && $0.addedAt != nil
+        $0.id == "ref/blogs/small_opened.md"
+          && $0.added == RefDay(year: 2026, month: 9, day: 11)
+          && $0.addedAt == RefsNewestTests.instant("2026-09-11T19:12:00Z")
+      }
+    )
+    XCTAssertTrue(
+      context.library.items.contains {
+        $0.id == "ref/books/small_book.md"
+          && $0.added == RefDay(year: 2026, month: 8, day: 30)
+          && $0.addedAt == RefsNewestTests.instant("2026-08-30T19:12:00Z")
       }
     )
     XCTAssertEqual(fetcher.gitListCount, 1)
@@ -784,23 +802,6 @@ final class RefsLibraryTests: XCTestCase {
       environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         .merging(environment) { _, override in override }
     )
-  }
-
-  private func patchedGitFixtureWithAddedAt() throws -> URL {
-    let data = try Data(contentsOf: fixtureURL("refs-list-git.json"))
-    var root = try JSONSerialization.jsonObject(with: data) as! [String: Any]
-    let refs = (root["refs"] as! [[String: Any]]).map { row -> [String: Any] in
-      var row = row
-      if row["added_source"] as? String == "git" {
-        row["added_at"] = "2026-09-11T15:12:00-04:00"
-      }
-      return row
-    }
-    root["refs"] = refs
-    let url = FileManager.default.temporaryDirectory
-      .appendingPathComponent("\(UUID().uuidString)-refs-list-git.json")
-    try JSONSerialization.data(withJSONObject: root).write(to: url)
-    return url
   }
 
   private func fixtureURL(_ name: String) throws -> URL {
