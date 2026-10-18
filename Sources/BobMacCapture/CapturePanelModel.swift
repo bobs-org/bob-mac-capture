@@ -176,6 +176,7 @@ private struct CapturePullInPreviewSnapshot {
     let planBudget: CapturePlanBudget?
     let offers: [TaskCompleteUnblocked]
     let stillBlocked: [TaskCompleteStillBlocked]
+    let hasOverride: Bool
 }
 
 @MainActor
@@ -373,6 +374,7 @@ final class CapturePanelModel: ObservableObject {
     private var programmaticSelectionOffsetToIgnore: Int?
     private var priorityRollSeed: String?
     private var previewPullInSnapshot: CapturePullInPreviewSnapshot?
+    private var overrideRefusalDraft: String?
     private var focusSequence: UInt64 = 0
     /// Display text of accepted `&` / `*` picker replacements, used for the
     /// calm `dependency_target` hint. Cleared when the draft resets.
@@ -1775,6 +1777,8 @@ final class CapturePanelModel: ObservableObject {
             errorCode = nil
             return
         }
+        let allowsOverride =
+            currentPullInPreview(for: draft, processClient: processClient)?.hasOverride == true
         invalidateRewrite()
         let requestID = UUID()
         let processClientIdentity = processClient.identityToken
@@ -1793,6 +1797,7 @@ final class CapturePanelModel: ObservableObject {
                         priorityRollSeed: seed,
                         pullInSelection: selection,
                         requirePullInChoice: selection == nil,
+                        refuseOverride: !allowsOverride,
                         pullInCapabilityAdvertised: capabilityAdvertised,
                         templateOrigin: currentDraftHasTemplate ? templateOrigin : nil
                     )
@@ -6865,6 +6870,18 @@ final class CapturePanelModel: ObservableObject {
             }
             panelDismisser()
         case .failure(let failure):
+            if failure.code == "pomodoro_override_refused" {
+                errorMessage = nil
+                errorCode = nil
+                overrideRefusalDraft = draft
+                scheduleAnalysis(
+                    cursorUTF8Offset: nil,
+                    requestCompletion: false,
+                    trigger: .selection
+                )
+                statusText = "A Pomodoro is running — review the override, then press Return again"
+                return
+            }
             if failure.code == "pull_in_choice_required" {
                 guard let processClient,
                       plainDraft == draft,
@@ -7046,7 +7063,10 @@ final class CapturePanelModel: ObservableObject {
             pullIn: success.pullIn,
             planBudget: success.planBudget,
             offers: Self.uniquePullInRows(offers),
-            stillBlocked: stillBlocked
+            stillBlocked: stillBlocked,
+            hasOverride: captures.contains { capture in
+                CapturePomodoroStartPresentation(capture: capture)?.isOverride == true
+            }
         )
     }
 
@@ -7232,6 +7252,9 @@ final class CapturePanelModel: ObservableObject {
         }
 
         let draft = plainDraft
+        if overrideRefusalDraft != draft {
+            overrideRefusalDraft = nil
+        }
         let writtenRange = trigger == .edit
             ? captureWrittenByteRange(from: editAnalysisBaseline, to: draft)
             : nil
@@ -7620,6 +7643,10 @@ final class CapturePanelModel: ObservableObject {
                             // A valid draft restores the normal card.
                             self?.closePendingText = nil
                             self?.closePendingAction = "Close"
+                        }
+                        if self?.overrideRefusalDraft == previewDraft {
+                            self?.overrideRefusalDraft = nil
+                            self?.statusText = "A Pomodoro is running — review the override, then press Return again"
                         }
                     case .failure(let failure):
                         self?.previewState = .failed(failure.error)

@@ -471,8 +471,14 @@ backgrounds, 8x enlargements, and a pulse filmstrip.
   Bob that omits the object decodes as a plain `=` start with no behavior change,
   and an unknown override action degrades to a plain start; the app never computes
   ledger ranges itself. The footer's primary Return tints orange whenever the
-  on-screen preview contains an override. Claimed `==` is a retired teaching
-  error.
+  on-screen preview contains an override. An override commits only after its
+  warning was on screen: every real submit passes hidden `--refuse-override`
+  unless that preview belongs to this exact draft, analysis generation, and bob
+  client and shows the override. A `pomodoro_override_refused` answer keeps the
+  draft, re-previews, and asks for Return again. An older bob that rejects the
+  flag is retried without it and that answer is remembered for that executable.
+  Live and explicit previews never pass the flag. Claimed `==` is a retired
+  teaching error.
 - Inline completion calls
   `bob capture-complete --all-tasks --cursor BYTE --format json -- <draft>`; accepted
   ordinary candidates apply the server-provided byte replacement range and
@@ -1166,7 +1172,8 @@ legacy preview and notification copy.
   caption, and named starts with an empty lineup show no hint. Dropped rows read
   "Task 2, …, drops from today" and queued rows "Task 1, …, queued" for VoiceOver.
   A `=` that overrides the running session shows the orange banner on the start
-  card instead of a still-running error. The footer's primary action
+  card instead of a still-running error, and an override commits only after its
+  warning was on screen. The footer's primary action
   becomes **Start** (**Restart** for a restart, **Swap** for a swap), the live-preview, preview, and submit status read
   `Would start …` / `Started …` with the session and line (plus ` · drops 2` /
   ` · dropped 2` once a drop is typed), `Would restart …` / `Restarted …` with
@@ -1964,11 +1971,13 @@ from a picker, or Control-Return on the card itself), that hint is omitted and b
 buttons show a trailing `arrow.up.forward` glyph. The success notification
 reports what was pulled in.
 
-If Bob rejects the exact `--require-pull-in-choice` flag as an unexpected argument
-(exit 2), the app retries once without that guard and shows a note that this Bob lacks
-successor-choice checks. Other failures and explicit stale-key refusals are never
+If Bob rejects the exact `--require-pull-in-choice` or `--refuse-override` flag as an
+unexpected argument (exit 2), the app retries without that guard and remembers the
+answer for that executable. `--require-pull-in-choice` also shows a note that this Bob
+lacks successor-choice checks. Other failures and explicit stale-key refusals are never
 retried. The app only sends explicit offer keys from a matching preview or write-free
-refusal back to `bob capture`.
+refusal back to `bob capture`. An older bob never overrides on `=`, so retrying without
+`--refuse-override` is safe.
 
 When Capture is enabled, the footer shows a **⌃↩ Open** chip just before the primary
 button whenever the live preview's open plan is non-empty, and also while this draft
@@ -2186,8 +2195,8 @@ the running ledger unless a timing is given) while the old session returns to
 first future. Preview renders an orange override banner plus Bob's resolved
 before → after range and demoted row — sourced only from
 `bob capture --dry-run --no-clip --format json` — with a **Restart** / **Swap**
-footer tinted orange and matching notifications. Claimed `==` is a retired
-teaching error. Type `x`, a blank
+footer tinted orange and matching notifications. An override commits only after
+its warning was on screen. Claimed `==` is a retired teaching error. Type `x`, a blank
 line, then `=` to close the running session and start the next one in a single
 draft. A whole-item `x` closes
 the running Pomodoro; `@route:block-id=x` links an existing task first (dropping

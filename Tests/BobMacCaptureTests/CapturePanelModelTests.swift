@@ -639,7 +639,7 @@ final class CapturePanelModelTests: XCTestCase {
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture-parse --format json -- @file+goog-exit"))
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- @file+goog-exit"))
-        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice -- @file+goog-exit"))
+        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- @file+goog-exit"))
         XCTAssertFalse(record.contains(" -- @file+goog-exit!\n"))
     }
 
@@ -678,7 +678,7 @@ final class CapturePanelModelTests: XCTestCase {
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture-parse --format json -- @file+goog-exit!"))
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- @file+goog-exit!"))
-        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice -- @file+goog-exit!"))
+        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- @file+goog-exit!"))
         XCTAssertFalse(record.contains(" -- @file+goog-exit\n"))
     }
 
@@ -950,7 +950,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertFalse(model.pickerVisible)
         XCTAssertEqual(model.lastSuccess?.kind, "pomodoro_link")
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice -- @sase:deep-fix"))
+        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- @sase:deep-fix"))
     }
 
     func testControlPickerAcceptCapturesAndOpensThePlan() async throws {
@@ -1065,7 +1065,7 @@ final class CapturePanelModelTests: XCTestCase {
 
         XCTAssertEqual(model.lastSuccess?.kind, "pomodoro_link")
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice -- @sase:fix-flaky-gkeep"))
+        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- @sase:fix-flaky-gkeep"))
     }
 
     func testControlPickerAcceptKeepsOpenIntentThroughAddBlockIDPrompt() async throws {
@@ -1090,7 +1090,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(openedURL?.host, "bob-open-notes")
         XCTAssertTrue(
             try String(contentsOf: recordURL).contains(
-                "argv=capture --format json --require-pull-in-choice -- @sase:fix-flaky-gkeep"
+                "argv=capture --format json --require-pull-in-choice --refuse-override -- @sase:fix-flaky-gkeep"
             )
         )
     }
@@ -2304,7 +2304,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"))
-        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice -- \(draft)"))
+        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- \(draft)"))
     }
 
     func testFailedCloseDryRunClearsStaleCard() async throws {
@@ -2455,7 +2455,7 @@ final class CapturePanelModelTests: XCTestCase {
                 "\(draft)"
             )
             XCTAssertTrue(
-                record.contains("argv=capture --format json --require-pull-in-choice -- \(draft)"),
+                record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- \(draft)"),
                 "\(draft)"
             )
         }
@@ -2501,7 +2501,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertFalse(model.isSubmitting)
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- x*1\n"))
-        XCTAssertFalse(record.contains("argv=capture --format json --require-pull-in-choice -- x*1,"))
+        XCTAssertFalse(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- x*1,"))
     }
 
     func testClosePendingTrimTrimsOnlyNeedingItems() {
@@ -2941,7 +2941,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.statusText, "Type a task number after ~ — Start is disabled")
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- =\n"))
-        XCTAssertFalse(record.contains("argv=capture --format json --require-pull-in-choice -- =~"))
+        XCTAssertFalse(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- =~"))
 
         // Once the draft becomes valid again, the normal card returns.
         model.plainDraft = "=~2"
@@ -2990,7 +2990,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.statusText, "Type a task number after , — Close is disabled")
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- x1\n"))
-        XCTAssertFalse(record.contains("argv=capture --format json --require-pull-in-choice -- x1,"))
+        XCTAssertFalse(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- x1,"))
 
         // Once the draft becomes valid again, the normal card returns.
         model.plainDraft = "x1"
@@ -3037,7 +3037,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertFalse(model.isSubmitting)
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- x\n"))
-        XCTAssertFalse(record.contains("argv=capture --format json --require-pull-in-choice -- x\n- 1"))
+        XCTAssertFalse(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- x\n- 1"))
     }
 
     func testUnnumberedDraftPreviewsWithoutPendingTrimAndKeepsCloseEnabled() async throws {
@@ -3163,7 +3163,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"))
-        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice -- \(draft)"))
+        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- \(draft)"))
     }
 
     func testOverrideRestartPresentationUsesBobSummaryAndOffersRestartFooterAction() throws {
@@ -3243,6 +3243,138 @@ final class CapturePanelModelTests: XCTestCase {
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"))
         XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice -- \(draft)"))
+        XCTAssertFalse(record.contains("--refuse-override"))
+    }
+
+    func testUnpreviewedEqualsSubmitSendsRefuseOverride() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: recordURL) }
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_POMODORO_RUNNING": "1",
+            ]
+        )
+        model.plainDraft = "="
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- ="))
+        XCTAssertFalse(record.contains("argv=capture --dry-run"))
+    }
+
+    func testOlderBobRetriesSubmitWithoutRefuseOverride() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: recordURL) }
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_POMODORO_RUNNING": "1",
+                "FAKE_BOB_REFUSE_OVERRIDE_FLAG_UNSUPPORTED": "1",
+            ]
+        )
+        model.plainDraft = "="
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertTrue(model.processClient?.refuseOverrideKnownUnsupported == true)
+        let record = try String(contentsOf: recordURL)
+        let invocations = Array(record.components(separatedBy: "argv=capture").dropFirst())
+        XCTAssertEqual(invocations.count, 2)
+        XCTAssertTrue(invocations[0].contains("--refuse-override"))
+        XCTAssertFalse(invocations[1].contains("--refuse-override"))
+    }
+
+    func testUnpreviewedOverrideRefusalKeepsDraftAndSecondReturnCommits() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: recordURL) }
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_OVERRIDE_REFUSAL": "1",
+                "FAKE_BOB_POMODORO_RUNNING": "1",
+            ]
+        )
+        model.plainDraft = "="
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+
+        XCTAssertEqual(model.plainDraft, "=")
+        XCTAssertTrue(model.primaryActionIsOverride)
+        XCTAssertEqual(
+            model.statusText,
+            "A Pomodoro is running — review the override, then press Return again"
+        )
+        XCTAssertNil(model.errorMessage)
+        XCTAssertNil(model.errorCode)
+
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertEqual(
+            model.statusText,
+            "Restarted CAPTURE 0920-0945 → 0935-1000 (25m) at line 5"
+        )
+        let record = try String(contentsOf: recordURL, encoding: .utf8)
+        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- ="))
+        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice -- ="))
+        XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- ="))
+    }
+
+    func testStaleOverridePreviewForAnotherDraftSendsRefuseOverride() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: recordURL) }
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_POMODORO_RUNNING": "1",
+            ]
+        )
+        let previewed = "="
+        model.plainDraft = previewed
+        model.editorTextDidChange(cursorUTF8Offset: previewed.utf8.count)
+        await waitUntil {
+            if case .ready = model.previewState { return true }
+            return false
+        }
+        XCTAssertTrue(model.primaryActionIsOverride)
+
+        let stale = "=#bugs"
+        model.plainDraft = stale
+        model.submit(openAfterCapture: false)
+        await waitUntil { !model.isSubmitting }
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(
+            record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- \(stale)")
+        )
     }
 
     func testOverrideSwapLivePreviewUsesSwapFooterAndStatus() async throws {
@@ -3912,7 +4044,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.lastSuccess?.pomodoroStart?.durationMinutes, 15)
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"))
-        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice -- \(draft)"))
+        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- \(draft)"))
     }
 
     func testLivePreviewWithStartConflictSurfacesActionableError() async throws {
@@ -3975,7 +4107,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertFalse(model.lastSuccess?.dryRun ?? true)
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"))
-        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice -- \(draft)"))
+        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- \(draft)"))
     }
 
     func testLivePreviewWithAdjustmentYieldsOneBlockAndDeduplicatedSummary() async throws {
@@ -4269,7 +4401,7 @@ final class CapturePanelModelTests: XCTestCase {
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture-parse --format json -- @file+goog-exit#coding"))
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- @file+goog-exit#coding"))
-        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice -- @file+goog-exit#coding"))
+        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- @file+goog-exit#coding"))
         XCTAssertFalse(record.contains(" -- @file+goog-exit!\n"))
     }
 
@@ -5163,8 +5295,8 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.lastSuccess?.blockID, "parent-id")
 
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice -- Follow up @file^new-id"))
-        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice -- Add context @file+parent-id"))
+        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- Follow up @file^new-id"))
+        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- Add context @file+parent-id"))
     }
 
     func testPreviewDecodesAuthoredIdOnlyTaskWithoutPomodoroFields() async throws {
@@ -6024,7 +6156,7 @@ final class CapturePanelModelTests: XCTestCase {
             1
         )
         XCTAssertEqual(
-            record.components(separatedBy: "argv=capture --format json --require-pull-in-choice -- ").count - 1,
+            record.components(separatedBy: "argv=capture --format json --require-pull-in-choice --refuse-override -- ").count - 1,
             1
         )
         XCTAssertTrue(record.contains(assignedSuffix))

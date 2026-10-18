@@ -65,7 +65,7 @@ final class CapturePullInChoiceModelTests: XCTestCase {
     XCTAssertEqual(captureCallCount(calls), 2)
     XCTAssertTrue(calls.contains("argv=capture --format json --dry-run -- complete task"))
     XCTAssertTrue(
-      calls.contains("argv=capture --format json --pull-in opaque:two#^suffix -- complete task"))
+      calls.contains("argv=capture --format json --pull-in opaque:two#^suffix --refuse-override -- complete task"))
     XCTAssertFalse(calls.contains("--require-pull-in-choice"))
     let captureBlocks = calls.components(separatedBy: "argv=")
       .dropFirst()
@@ -109,7 +109,7 @@ final class CapturePullInChoiceModelTests: XCTestCase {
     try await waitUntil { !model.isSubmitting }
     XCTAssertEqual(opened, 0)
     XCTAssertTrue(
-      try recordText(record).contains("argv=capture --format json --pull-in none -- complete task"))
+      try recordText(record).contains("argv=capture --format json --pull-in none --refuse-override -- complete task"))
   }
 
   func testShiftReturnSubmitsExplicitNone() async throws {
@@ -125,7 +125,7 @@ final class CapturePullInChoiceModelTests: XCTestCase {
     XCTAssertTrue(controller.perform(.chooseNoPullInOffers))
     try await waitUntil { !model.isSubmitting }
     XCTAssertTrue(
-      try recordText(record).contains("argv=capture --format json --pull-in none -- complete task"))
+      try recordText(record).contains("argv=capture --format json --pull-in none --refuse-override -- complete task"))
     XCTAssertEqual(model.plainDraft, "")
   }
 

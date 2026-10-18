@@ -30,6 +30,37 @@ final class CapturePullInClientTests: XCTestCase {
         XCTAssertEqual(calls.components(separatedBy: "argv=capture").count - 1, 2)
     }
 
+    func testRefuseOverrideIsPassedOnlyWhenRequested() async throws {
+        let record = temporaryRecordURL()
+        let client = try makeClient(record: record)
+
+        _ = try await client.capture("guarded", readClipboard: false, refuseOverride: true)
+        _ = try await client.capture("unguarded", readClipboard: false)
+
+        let calls = try recordText(record)
+        XCTAssertTrue(calls.contains("argv=capture --format json --no-clip --refuse-override -- guarded"))
+        XCTAssertTrue(calls.contains("argv=capture --format json --no-clip -- unguarded"))
+    }
+
+    func testExactOldRefuseOverrideRejectionRetriesOnceAndCachesByExecutableIdentity() async throws {
+        let record = temporaryRecordURL()
+        let client = try makeClient(
+            record: record,
+            extraEnvironment: ["FAKE_BOB_REFUSE_OVERRIDE_FLAG_UNSUPPORTED": "1"]
+        )
+
+        _ = try await client.capture("draft", readClipboard: false, refuseOverride: true)
+        XCTAssertTrue(client.refuseOverrideKnownUnsupported)
+        _ = try await client.capture("draft", readClipboard: false, refuseOverride: true)
+
+        let calls = try recordText(record)
+        let invocations = Array(calls.components(separatedBy: "argv=capture").dropFirst())
+        XCTAssertEqual(invocations.count, 3)
+        XCTAssertTrue(invocations[0].contains("--refuse-override"))
+        XCTAssertFalse(invocations[1].contains("--refuse-override"))
+        XCTAssertFalse(invocations[2].contains("--refuse-override"))
+    }
+
     func testExplicitSelectionRequiresMatchingCapabilityAdvertisement() async throws {
         let record = temporaryRecordURL()
         let client = try makeClient(record: record)

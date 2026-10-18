@@ -34,8 +34,8 @@ public final class BobProcessClient: @unchecked Sendable {
   private let stateQueue = DispatchQueue(label: "org.bobs.bob-mac-capture.process-client")
   private var activeProcesses: [String: ActiveProcess] = [:]
   private var activeGeneration: UInt64 = 0
-  private var pullInGuardIdentity: String?
-  private var pullInGuardUnsupported = false
+  private var unsupportedGuardIdentity: String?
+  private var unsupportedGuardFlags: Set<String> = []
   private var savedTemplatesIdentity: String?
 
   public init(
@@ -53,7 +53,7 @@ public final class BobProcessClient: @unchecked Sendable {
   }
 
   /// Changes if the resolved executable is replaced in place, which
-  /// invalidates the cached compatibility result for its guard flag.
+  /// invalidates the cached compatibility result for its guard flags.
   public var identityToken: String {
     let attributes = try? FileManager.default.attributesOfItem(atPath: executablePath)
     let device = attributes?[.systemNumber].map { String(describing: $0) } ?? "?"
@@ -64,14 +64,11 @@ public final class BobProcessClient: @unchecked Sendable {
   }
 
   public var pullInGuardKnownUnsupported: Bool {
-    let identity = identityToken
-    return stateQueue.sync {
-      if pullInGuardIdentity != identity {
-        pullInGuardIdentity = identity
-        pullInGuardUnsupported = false
-      }
-      return pullInGuardUnsupported
-    }
+    guardFlagKnownUnsupported("--require-pull-in-choice")
+  }
+
+  public var refuseOverrideKnownUnsupported: Bool {
+    guardFlagKnownUnsupported("--refuse-override")
   }
 
   public func captureParse(
@@ -378,6 +375,7 @@ public final class BobProcessClient: @unchecked Sendable {
     priorityRollSeed: String? = nil,
     pullInSelection: CapturePullInSelection? = nil,
     requirePullInChoice: Bool = false,
+    refuseOverride: Bool = false,
     pullInCapabilityAdvertised: Bool = false,
     templateOrigin: String? = nil
   ) async throws -> CaptureCommandResponse {
@@ -406,6 +404,10 @@ public final class BobProcessClient: @unchecked Sendable {
     if requireGuard {
       arguments.append("--require-pull-in-choice")
     }
+    let sendRefuseOverride = refuseOverride && !refuseOverrideKnownUnsupported
+    if sendRefuseOverride {
+      arguments.append("--refuse-override")
+    }
     let currentIdentity = identityToken
     let maySendTemplateOrigin = stateQueue.sync {
       savedTemplatesIdentity == currentIdentity
@@ -421,23 +423,43 @@ public final class BobProcessClient: @unchecked Sendable {
       arguments: arguments,
       environmentOverrides: environmentOverrides,
       lane: lane,
-      allowsGuardFallback: requireGuard
+      allowsGuardFallback: requireGuard || sendRefuseOverride
     )
   }
 
-  private func rememberPullInGuardUnsupported() {
+  private func guardFlagKnownUnsupported(_ flag: String) -> Bool {
     let identity = identityToken
-    stateQueue.sync {
-      pullInGuardIdentity = identity
-      pullInGuardUnsupported = true
+    return stateQueue.sync {
+      if unsupportedGuardIdentity != identity {
+        unsupportedGuardIdentity = identity
+        unsupportedGuardFlags = []
+      }
+      return unsupportedGuardFlags.contains(flag)
     }
   }
 
-  private static func isUnsupportedGuardFlagFailure(exitStatus: Int32, stderr: String) -> Bool {
-    guard exitStatus == 2 else { return false }
+  private func rememberGuardFlagUnsupported(_ flag: String) {
+    let identity = identityToken
+    stateQueue.sync {
+      if unsupportedGuardIdentity != identity {
+        unsupportedGuardIdentity = identity
+        unsupportedGuardFlags = []
+      }
+      unsupportedGuardFlags.insert(flag)
+    }
+  }
+
+  private static func unsupportedGuardFlag(exitStatus: Int32, stderr: String) -> String? {
+    guard exitStatus == 2 else { return nil }
     let normalized = stderr.lowercased()
-    return normalized.contains("unexpected argument '--require-pull-in-choice'")
-      || normalized.contains("unexpected argument \"--require-pull-in-choice\"")
+    for flag in ["--require-pull-in-choice", "--refuse-override"] {
+      if normalized.contains("unexpected argument '\(flag)'")
+        || normalized.contains("unexpected argument \"\(flag)\"")
+      {
+        return flag
+      }
+    }
+    return nil
   }
 
   public func run(
@@ -809,18 +831,19 @@ public final class BobProcessClient: @unchecked Sendable {
 
     if allowsGuardFallback,
       trimmedStdout.isEmpty,
-      Self.isUnsupportedGuardFlagFailure(exitStatus: result.exitStatus, stderr: stderr)
+      let unsupportedFlag = Self.unsupportedGuardFlag(
+        exitStatus: result.exitStatus, stderr: stderr),
+      let flagIndex = arguments.firstIndex(of: unsupportedFlag)
     {
-      rememberPullInGuardUnsupported()
+      rememberGuardFlagUnsupported(unsupportedFlag)
       var retryArguments = arguments
-      if let guardIndex = retryArguments.firstIndex(of: "--require-pull-in-choice") {
-        retryArguments.remove(at: guardIndex)
-        return try await decodeCaptureResult(
-          arguments: retryArguments,
-          environmentOverrides: environmentOverrides,
-          lane: lane
-        )
-      }
+      retryArguments.remove(at: flagIndex)
+      return try await decodeCaptureResult(
+        arguments: retryArguments,
+        environmentOverrides: environmentOverrides,
+        lane: lane,
+        allowsGuardFallback: true
+      )
     }
 
     guard !trimmedStdout.isEmpty else {

@@ -53,6 +53,11 @@ if [[ "${FAKE_BOB_GUARD_FLAG_UNSUPPORTED:-}" == "1" && " $* " == *" --require-pu
   exit 2
 fi
 
+if [[ "${FAKE_BOB_REFUSE_OVERRIDE_FLAG_UNSUPPORTED:-}" == "1" && " $* " == *" --refuse-override "* ]]; then
+  printf "error: unexpected argument '--refuse-override' found\n\nUsage: bob capture [OPTIONS] -- <TEXT>\n" >&2
+  exit 2
+fi
+
 if [[ "${FAKE_BOB_STALE_PULL_IN:-}" == "1" ]]; then
   printf '%s\n' '{"ok":false,"error":"Successor offer is stale","code":"pull_in_stale"}'
   exit 1
@@ -3603,6 +3608,10 @@ JSON
         break
       fi
     done
+    if [[ "${FAKE_BOB_OVERRIDE_REFUSAL:-0}" == "1" && "${dry_run}" == "false" && " $* " == *" --refuse-override "* ]]; then
+      printf '%s\n' '{"ok":false,"error":"refusing capture: override was not previewed","code":"pomodoro_override_refused"}'
+      exit 1
+    fi
     if [[ -n "${FAKE_BOB_CAPTURE_STDOUT:-}" ]]; then
       printf '%s\n' "${FAKE_BOB_CAPTURE_STDOUT}"
       exit "${FAKE_BOB_CAPTURE_EXIT:-0}"
