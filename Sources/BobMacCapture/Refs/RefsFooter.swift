@@ -37,7 +37,8 @@ struct RefsFooter: View {
                     ForEach(
                         Self.hintVariants(
                             openHint: openHint,
-                            tabsFilter: model.tabsFilter
+                            tabsFilter: model.tabsFilter,
+                            newestOn: model.listOrder == .newest
                         ),
                         id: \.self
                     ) {
@@ -52,11 +53,23 @@ struct RefsFooter: View {
         .truncationMode(.tail)
     }
 
-    static func hintsText(openHint: String, tabsFilter: Bool = false) -> String {
-        hintVariants(openHint: openHint, tabsFilter: tabsFilter)[0]
+    static func hintsText(
+        openHint: String,
+        tabsFilter: Bool = false,
+        newestOn: Bool = false
+    ) -> String {
+        hintVariants(
+            openHint: openHint,
+            tabsFilter: tabsFilter,
+            newestOn: newestOn
+        )[0]
     }
 
-    static func hintVariants(openHint: String, tabsFilter: Bool = false) -> [String] {
+    static func hintVariants(
+        openHint: String,
+        tabsFilter: Bool = false,
+        newestOn: Bool = false
+    ) -> [String] {
         if tabsFilter {
             let core =
                 "\(openHint)  ⌃X Close Tab  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘N Today  ⌘K Actions"
@@ -72,9 +85,16 @@ struct RefsFooter: View {
             ]
         }
         let core = "\(openHint)  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘N Today  ⌘K Actions"
+        if newestOn {
+            return [
+                "\(core)  ⌘S Scan  ⌘0 Library  ⌘1–5 Scope  ⌘T Tabs  esc Close",
+                "\(core)  ⌘0 Library  esc Close",
+                "\(core)  ⌘0 Library",
+            ]
+        }
         return [
-            "\(core)  ⌘S Scan  ⌘1–5 Scope  ⌘T Tabs  esc Close",
-            "\(core)  ⌘S Scan  esc Close",
+            "\(core)  ⌘S Scan  ⌘0 Newest  ⌘1–5 Scope  ⌘T Tabs  esc Close",
+            "\(core)  ⌘S Scan  ⌘0 Newest  esc Close",
             "\(core)  esc Close",
         ]
     }

@@ -253,6 +253,42 @@ final class RefsLibraryTests: XCTestCase {
     XCTAssertEqual(fetcher.gitListCount, 1)
   }
 
+  func testRefreshCarriesGitAddedAtAndSkipsASecondGitPass() async throws {
+    let gitGate = RefsCallGate(holding: 1)
+    let context = try makeContext()
+    let fetcher = ScriptedRefsFetcher(
+      plainURL: try fixtureURL("refs-list.json"),
+      gitURL: try patchedGitFixtureWithAddedAt(),
+      gitGate: gitGate
+    )
+    context.library.setFetcher(fetcher)
+
+    context.library.refresh(reason: .manual)
+    await waitUntil(timeout: 15) { fetcher.gitListCount == 1 }
+    gitGate.release()
+    await waitUntil(timeout: 15) {
+      context.library.items.contains {
+        $0.id == "ref/blogs/small_opened.md" && $0.addedAt != nil
+      }
+    }
+
+    context.library.refresh(reason: .manual)
+    await waitUntil(timeout: 15) {
+      if case .idle = context.library.refreshState {
+        return context.library.snapshotRefreshGeneration >= 2
+      }
+      return false
+    }
+    try? await Task.sleep(nanoseconds: 300_000_000)
+
+    XCTAssertTrue(
+      context.library.items.contains {
+        $0.id == "ref/blogs/small_opened.md" && $0.addedAt != nil
+      }
+    )
+    XCTAssertEqual(fetcher.gitListCount, 1)
+  }
+
   func testTodayLoadsAndSchemaMismatchKeepsLastToday() async throws {
     let recordURL = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
@@ -748,6 +784,23 @@ final class RefsLibraryTests: XCTestCase {
       environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         .merging(environment) { _, override in override }
     )
+  }
+
+  private func patchedGitFixtureWithAddedAt() throws -> URL {
+    let data = try Data(contentsOf: fixtureURL("refs-list-git.json"))
+    var root = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+    let refs = (root["refs"] as! [[String: Any]]).map { row -> [String: Any] in
+      var row = row
+      if row["added_source"] as? String == "git" {
+        row["added_at"] = "2026-09-11T15:12:00-04:00"
+      }
+      return row
+    }
+    root["refs"] = refs
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("\(UUID().uuidString)-refs-list-git.json")
+    try JSONSerialization.data(withJSONObject: root).write(to: url)
+    return url
   }
 
   private func fixtureURL(_ name: String) throws -> URL {

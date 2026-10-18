@@ -50,6 +50,10 @@ public enum RefsCommand: Equatable, Sendable {
     case toggleTabs
     /// Sets the Highlights Tabs filter, used by the coordinator.
     case setTabsFilter(Bool)
+    /// Toggles Newest order while keeping query and scope.
+    case toggleNewest
+    /// Sets Newest on or off, used by the token.
+    case setNewest(Bool)
     /// Requests Accessibility access after an explicit card action.
     case requestTabsPermission
     /// Closes the selected Highlights tab. A stale dispatch with no
@@ -251,13 +255,15 @@ public struct RefsInspectorNotesReveal: Equatable, Sendable {
 /// The Refs panel model: the query, the scope, the frozen listing, the
 /// id-based selection, commands, open dispatch, and banners. Library
 /// publications refresh row content in place and never re-rank: re-ranking
-/// happens only on `queryDidChange`, `setScope`, `refresh`, and
+/// happens only on `queryDidChange`, `setScope`, `setNewest`, `refresh`, and
 /// `prepareForPresentation`.
 @MainActor
 public final class RefsPanelModel: ObservableObject {
     @Published public var query: String = ""
     @Published public private(set) var scope: RefScope = .all
     @Published public private(set) var listing: RefsListing
+    /// Library vs Newest order. Tabs is exclusive with Newest.
+    @Published public private(set) var listOrder: RefsListOrder = .ranked
     /// Whether the listing is filtered to the open Highlights tabs.
     @Published public private(set) var tabsFilter = false
     /// The current Tabs read state.
@@ -535,6 +541,7 @@ public final class RefsPanelModel: ObservableObject {
             library.items,
             query: "",
             scope: .all,
+            order: .ranked,
             signals: library.signals
         )
         listing = initialListing
@@ -630,8 +637,9 @@ public final class RefsPanelModel: ObservableObject {
         return openTabsByID[selectedID]
     }
 
-    /// Resets for presentation: a blank query, All scope, a fresh listing,
-    /// and the first row selected. A pending scan banner installs here,
+    /// Resets for presentation: a blank query, All scope, Newest off, a
+    /// fresh listing, and the first row selected. A pending scan banner
+    /// installs here,
     /// and an unseen scan notice is marked seen. The fresh listing
     /// includes Just scanned through `signals.scan`, so its first row
     /// selects that section's first row.
@@ -652,6 +660,7 @@ public final class RefsPanelModel: ObservableObject {
         }
         query = ""
         scope = .all
+        listOrder = .ranked
         tabsFilter = source == .highlightsTabs
         tabsState = tabsFilter ? .loading : .off
         heldTabsOpen = false
@@ -716,6 +725,12 @@ public final class RefsPanelModel: ObservableObject {
         case .setTabsFilter(let enabled):
             setTabsFilter(enabled)
             return true
+        case .toggleNewest:
+            setNewest(listOrder != .newest)
+            return true
+        case .setNewest(let enabled):
+            setNewest(enabled)
+            return true
         case .requestTabsPermission:
             tabsSession.reader.requestTrust()
             beginTabsRefresh(preservingSelection: false)
@@ -771,6 +786,10 @@ public final class RefsPanelModel: ObservableObject {
                 setTabsFilter(false)
                 return true
             }
+            if listOrder == .newest {
+                setNewest(false)
+                return true
+            }
             if scope != .all {
                 scope = .all
                 rerankSelectingFirst()
@@ -784,6 +803,10 @@ public final class RefsPanelModel: ObservableObject {
             }
             if tabsFilter {
                 setTabsFilter(false)
+                return true
+            }
+            if listOrder == .newest {
+                setNewest(false)
                 return true
             }
             guard scope != .all else {
@@ -921,18 +944,43 @@ public final class RefsPanelModel: ObservableObject {
         guard tabsFilter != enabled else { return }
         heldTabsOpen = false
         banner = nil
-        tabsFilter = enabled
         if enabled {
+            listOrder = .ranked
+            tabsFilter = true
             tabsState = .loading
             preserveTabsSelectionOnNextSnapshot = false
             rebuildTabsListing(preservingSelection: false)
             beginTabsRefresh(preservingSelection: false)
         } else {
-            tabsRefreshGeneration &+= 1
-            tabsState = .off
-            preserveTabsSelectionOnNextSnapshot = false
+            leaveTabsFilter()
             rerankSelectingFirst()
         }
+    }
+
+    /// Drops the Tabs filter without re-ranking, so a following Newest
+    /// re-rank is the only one.
+    private func leaveTabsFilter() {
+        tabsFilter = false
+        tabsRefreshGeneration &+= 1
+        tabsState = .off
+        preserveTabsSelectionOnNextSnapshot = false
+    }
+
+    private func setNewest(_ enabled: Bool) {
+        let next: RefsListOrder = enabled ? .newest : .ranked
+        if listOrder == next, !(enabled && tabsFilter) {
+            return
+        }
+        heldTabsOpen = false
+        banner = nil
+        if enabled, tabsFilter {
+            leaveTabsFilter()
+        }
+        listOrder = next
+        rerankSelectingFirst()
+        AccessibilityNotification.Announcement(
+            enabled ? "Newest first" : "Library sections"
+        ).post()
     }
 
     /// Starts a trusted, one-shot tab read. The reader itself never prompts.
@@ -1424,6 +1472,7 @@ public final class RefsPanelModel: ObservableObject {
         selectedID: String?,
         banner: RefsBanner?,
         refreshState: RefsRefreshState,
+        listOrder: RefsListOrder = .ranked,
         scanState: RefsScanState = .idle,
         scanNotice: RefsScanOutcome? = nil,
         inspector: [String: RefsInspectorContent]? = nil,
@@ -1437,6 +1486,10 @@ public final class RefsPanelModel: ObservableObject {
         library.installScanStateForPreviews(scanState)
         self.query = query
         self.scope = scope
+        self.listOrder = listOrder
+        if listOrder == .newest, tabsFilter {
+            leaveTabsFilter()
+        }
         self.banner = banner
         self.scanNotice = scanNotice
         scanNoticeSeen = scanNotice != nil
@@ -1444,7 +1497,13 @@ public final class RefsPanelModel: ObservableObject {
         if tabsFilter {
             rebuildTabsListing(preservingSelection: false)
         } else {
-            listing = RefsRanker.listing(items, query: query, scope: scope, signals: signals)
+            listing = RefsRanker.listing(
+                items,
+                query: query,
+                scope: scope,
+                order: listOrder,
+                signals: signals
+            )
         }
         unavailableIDs = []
         self.selectedID = selectedID
@@ -1468,6 +1527,7 @@ public final class RefsPanelModel: ObservableObject {
         closingIDs: Set<String> = []
     ) {
         tabsFilter = true
+        listOrder = .ranked
         tabsState = state
         tabsHighlightsIsFrontmost = frontmost
         heldTabsOpen = false
@@ -2282,12 +2342,7 @@ public final class RefsPanelModel: ObservableObject {
             rebuildTabsListing(preservingSelection: false)
             return
         }
-        listing = RefsRanker.listing(
-            library.items,
-            query: query,
-            scope: scope,
-            signals: library.signals
-        )
+        listing = libraryListing()
         unavailableIDs = []
         selectedID = RefsSelectionPolicy.initial(in: listing)
     }
@@ -2302,12 +2357,7 @@ public final class RefsPanelModel: ObservableObject {
             rebuildTabsListing(preservingSelection: true)
             return
         }
-        listing = RefsRanker.listing(
-            library.items,
-            query: query,
-            scope: scope,
-            signals: library.signals
-        )
+        listing = libraryListing()
         unavailableIDs = []
         if let keep, listing.orderedIDs.contains(keep) {
             selectedID = keep
@@ -2332,26 +2382,26 @@ public final class RefsPanelModel: ObservableObject {
                 : RefsSelectionPolicy.initial(in: listing)
             return
         }
-        var fresh = RefsRanker.listing(
-            library.items,
-            query: query,
-            scope: scope,
-            signals: library.signals
-        )
+        var fresh = libraryListing()
         if !fresh.orderedIDs.contains(id) {
             query = ""
-            fresh = RefsRanker.listing(
-                library.items,
-                query: query,
-                scope: scope,
-                signals: library.signals
-            )
+            fresh = libraryListing()
         }
         listing = fresh
         unavailableIDs = []
         selectedID = listing.orderedIDs.contains(id)
             ? id
             : RefsSelectionPolicy.initial(in: listing)
+    }
+
+    private func libraryListing(query: String? = nil) -> RefsListing {
+        RefsRanker.listing(
+            library.items,
+            query: query ?? self.query,
+            scope: scope,
+            order: listOrder,
+            signals: library.signals
+        )
     }
 
     /// Drops last-known items the library no longer has: a fresh listing
@@ -2491,12 +2541,7 @@ public final class RefsPanelModel: ObservableObject {
             return
         }
         pruneKnownItems()
-        let fresh = RefsRanker.listing(
-            library.items,
-            query: query,
-            scope: scope,
-            signals: library.signals
-        )
+        let fresh = libraryListing()
         listing = fresh
         unavailableIDs = []
         if selectedID == selectionAtScanStart, !outcome.created.isEmpty {

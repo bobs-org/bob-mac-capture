@@ -2515,6 +2515,141 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertEqual(harness.model.scope, .all)
     }
 
+    func testNewestToggleSelectsFirstAndKeepsMembership() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        let rankedIDs = Set(harness.model.listing.orderedIDs)
+        XCTAssertFalse(rankedIDs.isEmpty)
+        XCTAssertEqual(harness.model.listOrder, .ranked)
+
+        XCTAssertTrue(harness.model.perform(.toggleNewest))
+        XCTAssertEqual(harness.model.listOrder, .newest)
+        XCTAssertEqual(harness.model.listing.order, .newest)
+        XCTAssertEqual(Set(harness.model.listing.orderedIDs), rankedIDs)
+        XCTAssertEqual(
+            harness.model.selectedID,
+            harness.model.listing.orderedIDs.first
+        )
+
+        harness.model.setQuery("small")
+        let searchIDs = Set(harness.model.listing.orderedIDs)
+        XCTAssertFalse(searchIDs.isEmpty)
+        XCTAssertTrue(harness.model.perform(.toggleNewest))
+        XCTAssertEqual(harness.model.listOrder, .ranked)
+        XCTAssertEqual(Set(harness.model.listing.orderedIDs), searchIDs)
+        XCTAssertTrue(harness.model.perform(.toggleNewest))
+        XCTAssertEqual(harness.model.listOrder, .newest)
+        XCTAssertEqual(Set(harness.model.listing.orderedIDs), searchIDs)
+        XCTAssertEqual(
+            harness.model.selectedID,
+            harness.model.listing.orderedIDs.first
+        )
+    }
+
+    func testNewestAndTabsAreExclusiveAndKeepQueryAndScope() async throws {
+        let reader = FakeTabsReader(isTrusted: false)
+        let harness = try makeHarness(tabsReader: reader)
+        await harness.waitForSnapshot()
+        harness.model.setQuery("harness")
+        harness.model.perform(.setScope(.papers))
+
+        XCTAssertTrue(harness.model.perform(.toggleTabs))
+        XCTAssertTrue(harness.model.tabsFilter)
+        XCTAssertEqual(harness.model.listOrder, .ranked)
+
+        XCTAssertTrue(harness.model.perform(.toggleNewest))
+        XCTAssertFalse(harness.model.tabsFilter)
+        XCTAssertEqual(harness.model.listOrder, .newest)
+        XCTAssertEqual(harness.model.query, "harness")
+        XCTAssertEqual(harness.model.scope, .papers)
+
+        XCTAssertTrue(harness.model.perform(.toggleTabs))
+        XCTAssertTrue(harness.model.tabsFilter)
+        XCTAssertEqual(harness.model.listOrder, .ranked)
+        XCTAssertEqual(harness.model.query, "harness")
+        XCTAssertEqual(harness.model.scope, .papers)
+    }
+
+    func testNewestEscapeAndBackspaceAndPresentationReset() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        harness.model.setQuery("small")
+        harness.model.perform(.setScope(.papers))
+        XCTAssertTrue(harness.model.perform(.toggleNewest))
+
+        XCTAssertTrue(harness.model.perform(.escape))
+        XCTAssertEqual(harness.model.query, "")
+        XCTAssertEqual(harness.model.listOrder, .newest)
+        XCTAssertEqual(harness.model.scope, .papers)
+
+        XCTAssertTrue(harness.model.perform(.escape))
+        XCTAssertEqual(harness.model.listOrder, .ranked)
+        XCTAssertEqual(harness.model.scope, .papers)
+
+        XCTAssertTrue(harness.model.perform(.toggleNewest))
+        XCTAssertTrue(harness.model.perform(.deleteBackwardOnEmpty))
+        XCTAssertEqual(harness.model.listOrder, .ranked)
+        XCTAssertEqual(harness.model.scope, .papers)
+        XCTAssertTrue(harness.model.perform(.deleteBackwardOnEmpty))
+        XCTAssertEqual(harness.model.scope, .all)
+
+        XCTAssertTrue(harness.model.perform(.toggleNewest))
+        harness.model.prepareForPresentation()
+        XCTAssertEqual(harness.model.listOrder, .ranked)
+        XCTAssertEqual(harness.model.query, "")
+        XCTAssertEqual(harness.model.scope, .all)
+    }
+
+    func testRefreshKeepsSelectionInNewest() async throws {
+        let harness = try makeHarness()
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        XCTAssertTrue(harness.model.perform(.toggleNewest))
+        let kept = "ref/chat/small_reading.md"
+        XCTAssertTrue(harness.model.perform(.select(id: kept)))
+        let generation = harness.library.snapshotRefreshGeneration
+
+        XCTAssertTrue(harness.model.perform(.refresh))
+        await harness.waitForModel { model in
+            harness.library.snapshotRefreshGeneration > generation
+                && model.selectedID == kept
+                && model.listing.order == .newest
+        }
+        XCTAssertEqual(harness.model.selectedID, kept)
+        XCTAssertEqual(harness.model.listing.order, .newest)
+    }
+
+    func testVisibleScanSelectsFirstCreatedInNewest() async throws {
+        let markerDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: markerDir,
+            withIntermediateDirectories: true
+        )
+        let harness = try makeHarness(environment: [
+            "FAKE_BOB_SCAN_MARKER_DIR": markerDir.path,
+            "FAKE_BOB_REFS_LIST_AFTER_SCAN_FIXTURE": "refs-list-after-scan.json",
+        ])
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        harness.model.panelIsVisible = { true }
+        XCTAssertTrue(harness.model.perform(.toggleNewest))
+
+        XCTAssertTrue(harness.model.perform(.scan))
+        await harness.waitForScan()
+        XCTAssertEqual(harness.model.listOrder, .newest)
+        XCTAssertEqual(harness.model.listing.order, .newest)
+        XCTAssertEqual(
+            harness.model.selectedID,
+            "ref/chat/omni_report.md"
+        )
+        XCTAssertTrue(harness.model.listing.orderedIDs.contains(
+            "ref/papers/harness_notes.md"
+        ))
+    }
+
     func testSyntheticTabsSurviveLibraryPublicationAndBlockNoteActions() async throws {
         let harness = try makeHarness()
         await harness.waitForSnapshot()

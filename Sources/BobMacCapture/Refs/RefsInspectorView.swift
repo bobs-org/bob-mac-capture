@@ -486,6 +486,9 @@ struct RefsInspectorView: View {
             added, now: signals.now, calendar: signals.calendar
         )
         var text = item.addedIsApproximate ? "≈ \(day)" : day
+        if let at = item.addedAt {
+            text += " at \(RefsCaption.shortTime(at, calendar: signals.calendar))"
+        }
         if let source = item.addedSource, !source.isEmpty, source != "git" {
             text += " (\(source))"
         }

@@ -58,8 +58,9 @@ struct RefsFilterField: NSViewRepresentable {
 }
 
 /// The 52 pt search bar drawn directly on the glass: a magnifying
-/// glass, the search field, the scope token when the scope is not All,
-/// and the trailing count plus a refresh spinner.
+/// glass, the search field, the Newest or Tabs token, the scope token
+/// when the scope is not All, and the trailing count plus a refresh
+/// spinner.
 @available(macOS 26.0, *)
 struct RefsSearchBar: View {
     @ObservedObject var model: RefsPanelModel
@@ -96,7 +97,9 @@ struct RefsSearchBar: View {
                 makeFilterField()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            if model.tabsFilter {
+            if model.listOrder == .newest {
+                newestToken
+            } else if model.tabsFilter {
                 tabsToken
             }
             if model.scope != .all {
@@ -110,6 +113,31 @@ struct RefsSearchBar: View {
         }
         .padding(.horizontal, 14)
         .frame(height: RefsVisualTokens.searchBarHeight)
+    }
+
+    /// The Newest token, drawn in the Tabs token's slot before the
+    /// scope token. Activating it turns Newest off.
+    private var newestToken: some View {
+        Button {
+            model.perform(.setNewest(false))
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: RefsNewestToken.symbolName)
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Newest")
+                    .font(.callout.weight(.semibold))
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .foregroundStyle(Color.accentColor)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.accentColor.opacity(0.16), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "Sorted newest first. Activate to show library sections."
+        )
     }
 
     /// The Tabs filter token, drawn before the scope token in the
@@ -172,6 +200,9 @@ struct RefsSearchBar: View {
             .onChange(of: model.tabsFilter) { _, _ in
                 announcer.schedule(countAnnouncement)
             }
+            .onChange(of: model.listOrder) { _, _ in
+                announcer.schedule(countAnnouncement)
+            }
     }
 
     private var countText: String {
@@ -206,6 +237,23 @@ struct RefsSearchBar: View {
             return countText
         }
         return "\(model.listing.orderedIDs.count) of \(model.listing.totalCount) references"
+    }
+}
+
+/// The Newest search-bar token's SF Symbol, with a calendar fallback
+/// when `calendar.day.timeline.left` is missing on this OS.
+enum RefsNewestToken {
+    static let preferredSymbolName = "calendar.day.timeline.left"
+    static let fallbackSymbolName = "calendar"
+
+    static var symbolName: String {
+        if NSImage(
+            systemSymbolName: preferredSymbolName,
+            accessibilityDescription: nil
+        ) != nil {
+            return preferredSymbolName
+        }
+        return fallbackSymbolName
     }
 }
 

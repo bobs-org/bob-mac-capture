@@ -65,6 +65,9 @@ final class RefsPanelDesignTests: XCTestCase {
         try renderReduceTransparency(model: model, now: now)
         try renderCopyCard(model: model, now: now, width: 880)
         try renderCopyCard(model: model, now: now, width: 700)
+        try renderNewestTimeline(model: model, now: now)
+        try renderNewestSearchScoped(model: model, now: now)
+        try renderNewestNarrow(model: model, now: now)
         try renderTabsLoaded(model: model, now: now)
         try renderTabsCollisionSelected(model: model, now: now)
         try renderTabsSearch(model: model, now: now)
@@ -1128,6 +1131,91 @@ final class RefsPanelDesignTests: XCTestCase {
         model.panelDidHide()
     }
 
+    // MARK: - Newest
+
+    private func newestTitles(_ model: RefsPanelModel) -> [String] {
+        model.listing.sections.compactMap { section in
+            guard case .added(let group) = section.kind else {
+                return nil
+            }
+            return group.title.uppercased()
+        }
+    }
+
+    private func renderNewestTimeline(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeFixture(now: now)
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: "ref/chat/morning_notes.md",
+            banner: nil,
+            refreshState: .idle,
+            listOrder: .newest
+        )
+        XCTAssertEqual(model.listOrder, .newest)
+        XCTAssertEqual(model.listing.order, .newest)
+        let titles = newestTitles(model)
+        XCTAssertTrue(titles.contains("TODAY"))
+        XCTAssertTrue(titles.contains("YESTERDAY"))
+        XCTAssertTrue(titles.contains("SATURDAY"))
+        XCTAssertTrue(titles.contains("OCTOBER"))
+        XCTAssertTrue(titles.contains("DECEMBER 2025"))
+        XCTAssertTrue(titles.contains("UNDATED"))
+        XCTAssertNotNil(
+            NSImage(
+                systemSymbolName: RefsNewestToken.symbolName,
+                accessibilityDescription: nil
+            )
+        )
+        try write(model: model, name: "refs-newest-880", width: 880)
+    }
+
+    private func renderNewestSearchScoped(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeFixture(now: now)
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "harness",
+            scope: .papers,
+            selectedID: "ref/papers/harness_buy.md",
+            banner: nil,
+            refreshState: .idle,
+            listOrder: .newest
+        )
+        guard case .search = model.listing.mode else {
+            XCTFail("expected search mode")
+            return
+        }
+        XCTAssertEqual(model.scope, .papers)
+        XCTAssertEqual(model.listOrder, .newest)
+        let match = model.listing.matches["ref/papers/harness_buy.md"]
+        XCTAssertNotNil(match)
+        XCTAssertFalse(match?.titleRanges.isEmpty ?? true)
+        XCTAssertTrue(
+            model.listing.orderedIDs.contains("ref/papers/harness_engineering_paper.md")
+        )
+        try write(model: model, name: "refs-newest-search-880", width: 880)
+    }
+
+    private func renderNewestNarrow(model: RefsPanelModel, now: Date) throws {
+        let fixture = makeFixture(now: now)
+        model.installForPreviews(
+            items: fixture.items,
+            signals: fixture.signals,
+            query: "",
+            scope: .all,
+            selectedID: "ref/chat/morning_notes.md",
+            banner: nil,
+            refreshState: .idle,
+            listOrder: .newest
+        )
+        XCTAssertFalse(RefsVisualTokens.showsInspector(width: 700))
+        XCTAssertEqual(model.listOrder, .newest)
+        try write(model: model, name: "refs-newest-700", width: 700)
+    }
+
     // MARK: - Tabs
 
     /// Nine open tabs against the fixture library: seven unique file
@@ -1533,6 +1621,15 @@ final class RefsPanelDesignTests: XCTestCase {
         return RefDay(year: parts.year ?? 2026, month: parts.month ?? 10, day: parts.day ?? 8)
     }
 
+    private func time(_ date: Date, hour: Int, minute: Int) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        var parts = calendar.dateComponents([.year, .month, .day], from: date)
+        parts.hour = hour
+        parts.minute = minute
+        return calendar.date(from: parts) ?? date
+    }
+
     private func makeLibrary(now: Date) -> RefsLibrary {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -1566,6 +1663,7 @@ final class RefsPanelDesignTests: XCTestCase {
                 parentLabel: "sase",
                 added: day(now, offset: -1),
                 addedSource: "created",
+                addedAt: time(now.addingTimeInterval(-86_400), hour: 16, minute: 15),
                 annotationCount: 3,
                 commentCount: 1,
                 isAgentReport: true
@@ -1582,6 +1680,7 @@ final class RefsPanelDesignTests: XCTestCase {
                 parentLabel: "sase",
                 added: today,
                 addedSource: "created",
+                addedAt: time(now, hour: 9, minute: 41),
                 audioPath: "lib/chat/morning_notes.m4a",
                 isAgentReport: true
             ),
@@ -1597,7 +1696,8 @@ final class RefsPanelDesignTests: XCTestCase {
                 author: "Yangze Liu",
                 published: "2026",
                 added: today,
-                addedSource: "created"
+                addedSource: "created",
+                addedAt: time(now, hour: 8, minute: 2)
             ),
             RefItem(
                 id: "ref/chat/omni_review.md",
@@ -1725,7 +1825,30 @@ final class RefsPanelDesignTests: XCTestCase {
                 pdfPath: "lib/docs/git_dated.pdf",
                 added: day(now, offset: -26),
                 addedSource: "git",
+                addedAt: time(now.addingTimeInterval(-26 * 86_400), hour: 15, minute: 12),
                 addedIsApproximate: true
+            ),
+            RefItem(
+                id: "ref/docs/october_month.md",
+                link: "[[ref/docs/october_month]]",
+                rawTitle: "October Month Group Note",
+                stem: "october_month",
+                kind: .doc,
+                state: .ready,
+                isBlocked: false,
+                pdfPath: "lib/docs/october_month.pdf",
+                added: day(now, offset: -7),
+                addedSource: "created"
+            ),
+            RefItem(
+                id: "ref/docs/undated.md",
+                link: "[[ref/docs/undated]]",
+                rawTitle: "Undated Handbook Errata",
+                stem: "undated",
+                kind: .doc,
+                state: .ready,
+                isBlocked: false,
+                pdfPath: "lib/docs/undated.pdf"
             ),
             RefItem(
                 id: "ref/chat/missing_pdf.md",

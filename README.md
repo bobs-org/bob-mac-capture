@@ -1498,7 +1498,7 @@ the panel never calls `NSApp.activate`. The height is fixed while
 the panel is visible; filtering never resizes it.
 
 Layout, top to bottom: the 52 pt search bar (magnifier, 20 pt field,
-scope token, "`N open · M`" or "`k of M`" count, refresh spinner),
+Newest or Tabs token, scope token, "`N open · M`" or "`k of M`" count, refresh spinner),
 the banner when one is up, the content well (list beside the
 inspector on `.regularMaterial` at radius 12 with a hairline
 stroke), and the 30 pt footer (key hints including "⌘S Scan", plus the library
@@ -1513,7 +1513,12 @@ accent color) with its caption (a stem-only or secondary match
 renders its part in the accent color, and a matched author the
 caption already shows is not repeated), and the Today pill,
 annotation and narration marks, and the state glyph. Section headers
-are 26 pt and pinned. VoiceOver reads each row as one element —
+are 26 pt and pinned. In Newest they are date groups (`TODAY`,
+`YESTERDAY`, a weekday, a month, `UNDATED`) with the count after the
+title and a trailing day on day groups (`Oct 18`). The Newest token is
+an accent capsule (`calendar.day.timeline.left`, falling back to
+`calendar`) with the text "Newest" and an `xmark`; activating it
+returns to library sections. VoiceOver reads each row as one element —
 "Title, Paper, Ready, added today, 22 pages, Today in BLOG
 Pomodoro, never opened" — with the kind said once and the selected
 row carrying `.isSelected`. The inspector fills instantly from the
@@ -1549,7 +1554,8 @@ Diagnostic for hard failures.
 | Ctrl-U | Scroll the preview up by half its height; search keeps focus |
 | Shift-Command-T | Reopen the most recently closed Highlights tab |
 | Command-Up/Command-Down, Home/End | First, last |
-| Option-Up/Option-Down | First row of the previous/next section (browse only) |
+| Option-Up/Option-Down | First row of the previous/next section (browse and Newest) |
+| Command-0 | Toggle Newest: every reference by date added, newest first, grouped by day then month; typing still filters |
 | Command-1 … Command-5 | Scope All, Chats, Papers, Articles, Docs |
 | Command-R | Refresh library, Today, and git dates now; re-rank |
 | Command-S | Scan for new references now (`bob ref scan -w` in the background); a second ⌘S while one runs does nothing |
@@ -1557,8 +1563,8 @@ Diagnostic for hard failures.
 | Command-Y | Open the Copy card for the selected row |
 | Command-N | Open the Link to Today card for the selected reference |
 | Command-Shift-R | Open the Rename card for the selected row |
-| Backspace on an empty query | Remove the scope token |
-| Esc, Ctrl-[ | Link to Today, Rename, or Copy card, then banner, query, scope, close |
+| Backspace on an empty query | Remove the Tabs or Newest token first, then the scope token |
+| Esc, Ctrl-[ | Link to Today, Rename, or Copy card, then banner, query, Tabs or Newest, scope, close |
 | Shift-Tab | Consumed (no-op) |
 
 Return and Command-Y while IME-composing pass through to the text system. Ctrl-D,

@@ -28,7 +28,12 @@ struct RefsSectionHeader: View {
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.tertiary)
             Spacer(minLength: 0)
-            if kind == .justScanned, let at {
+            if case .added(let group) = kind, let detail = group.detail {
+                Text(detail)
+                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
+            } else if kind == .justScanned, let at {
                 TimelineView(.everyMinute) { context in
                     Text(RefsCaption.relativeCompact(at, now: context.date))
                         .font(.caption2)
@@ -47,6 +52,9 @@ struct RefsSectionHeader: View {
     }
 
     private var accessibilityLabel: String {
+        if case .added(let group) = kind {
+            return "\(group.accessibilityLabel), \(count) references"
+        }
         if kind == .justScanned, let at {
             let when = RefsCaption.relativeCompact(at, now: Date())
             return "Just scanned, \(count) references, \(when)"
@@ -217,8 +225,15 @@ struct RefsListView: View {
 
 private extension RefsSection {
     /// A stable identity for `ForEach`: the kind, or "search" for the
-    /// single ranked section.
+    /// single ranked section. Newest groups use their stable group id.
     var sectionID: String {
-        kind.map { "section-\($0)" } ?? "search"
+        switch kind {
+        case .some(.added(let group)):
+            return "section-\(group.id)"
+        case .some(let kind):
+            return "section-\(kind)"
+        case .none:
+            return "search"
+        }
     }
 }

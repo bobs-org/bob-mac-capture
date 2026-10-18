@@ -3,33 +3,37 @@ import Foundation
 
 /// What the panel knows about the key event's context: whether the
 /// query is empty, whether the scope is All, whether the Highlights
-/// Tabs filter is on, whether the field editor holds marked
-/// (IME-composing) text, whether the selection is an open tab, and
-/// whether the listing is in browse mode. A banner in flight needs no
-/// router flag: the model's Esc ladder dismisses it first. Printable keys
-/// always fall through to the search field.
+/// Tabs filter is on, whether Newest is on, whether the field editor
+/// holds marked (IME-composing) text, whether the selection is an open
+/// tab, and whether Option-↑/↓ may jump sections. A banner in flight
+/// needs no router flag: the model's Esc ladder dismisses it first.
+/// Printable keys always fall through to the search field.
 public struct RefsKeyContext: Equatable, Sendable {
     public var queryIsEmpty: Bool
     public var scopeIsAll: Bool
     public var tabsFilterOn: Bool
+    public var newestOn: Bool
     public var markedTextPresent: Bool
     public var selectionIsOpenTab: Bool
-    public var listModeIsBrowse: Bool
+    /// True in browse mode, and in Newest even while a query is typed.
+    public var sectionJumps: Bool
 
     public init(
         queryIsEmpty: Bool = true,
         scopeIsAll: Bool = true,
         tabsFilterOn: Bool = false,
+        newestOn: Bool = false,
         markedTextPresent: Bool = false,
         selectionIsOpenTab: Bool = false,
-        listModeIsBrowse: Bool = true
+        sectionJumps: Bool = true
     ) {
         self.queryIsEmpty = queryIsEmpty
         self.scopeIsAll = scopeIsAll
         self.tabsFilterOn = tabsFilterOn
+        self.newestOn = newestOn
         self.markedTextPresent = markedTextPresent
         self.selectionIsOpenTab = selectionIsOpenTab
-        self.listModeIsBrowse = listModeIsBrowse
+        self.sectionJumps = sectionJumps
     }
 }
 
@@ -45,6 +49,7 @@ public enum RefsKeyRouter {
         static let three: UInt16 = 20
         static let four: UInt16 = 21
         static let five: UInt16 = 23
+        static let zero: UInt16 = 29
         static let r: UInt16 = 15
         static let t: UInt16 = 17
         static let y: UInt16 = 16
@@ -111,7 +116,7 @@ public enum RefsKeyRouter {
             if flags == .command {
                 return .move(.last)
             }
-            if flags == .option, context.listModeIsBrowse {
+            if flags == .option, context.sectionJumps {
                 return .move(.nextSection)
             }
             return nil
@@ -122,7 +127,7 @@ public enum RefsKeyRouter {
             if flags == .command {
                 return .move(.first)
             }
-            if flags == .option, context.listModeIsBrowse {
+            if flags == .option, context.sectionJumps {
                 return .move(.previousSection)
             }
             return nil
@@ -188,6 +193,15 @@ public enum RefsKeyRouter {
             return flags == .command ? .setScope(.articles) : nil
         case KeyCode.five:
             return flags == .command ? .setScope(.docs) : nil
+        case KeyCode.zero:
+            // ⌘0 toggles Newest. Caps Lock never blocks it; Shift-⌘0
+            // and the keypad 0 are unbound. While IME-composing it
+            // belongs to the text system.
+            if context.markedTextPresent {
+                return nil
+            }
+            let commandFlags = flags.subtracting(.capsLock)
+            return commandFlags == .command ? .toggleNewest : nil
         case KeyCode.r:
             if flags == [.command, .shift] {
                 return .showRenameCard
@@ -209,11 +223,11 @@ public enum RefsKeyRouter {
             return commandFlags == .command ? .toggleTabs : nil
         case KeyCode.delete:
             // Only unmodified Backspace on an empty query removes a
-            // token: the Tabs filter first (even under scope All), then
-            // the scope. `perform` re-checks, so a token must be on for
-            // a non-nil result here too.
+            // token: the Tabs or Newest token first (even under scope
+            // All), then the scope. `perform` re-checks, so a token
+            // must be on for a non-nil result here too.
             if flags.isEmpty, context.queryIsEmpty,
-               context.tabsFilterOn || !context.scopeIsAll
+               context.tabsFilterOn || context.newestOn || !context.scopeIsAll
             {
                 return .deleteBackwardOnEmpty
             }

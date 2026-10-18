@@ -36,6 +36,8 @@ final class RefsKeyRouterTests: XCTestCase {
         static let end: UInt16 = 119
         static let `return`: UInt16 = 36
         static let keypadEnter: UInt16 = 76
+        static let keypadZero: UInt16 = 82
+        static let zero: UInt16 = 29
         static let arrowUp: UInt16 = 126
         static let arrowDown: UInt16 = 125
     }
@@ -130,8 +132,8 @@ final class RefsKeyRouterTests: XCTestCase {
     }
 
     func testControlDAndUScrollInspectorInBrowseAndSearch() {
-        let browse = RefsKeyContext(listModeIsBrowse: true)
-        let search = RefsKeyContext(listModeIsBrowse: false)
+        let browse = RefsKeyContext(sectionJumps: true)
+        let search = RefsKeyContext(sectionJumps: false)
         XCTAssertEqual(
             route(KeyCode.d, .control, context: browse),
             .scrollInspector(.down)
@@ -195,8 +197,8 @@ final class RefsKeyRouterTests: XCTestCase {
         ))
     }
 
-    func testOptionArrowsJumpSectionsInBrowseOnly() {
-        let browse = RefsKeyContext(listModeIsBrowse: true)
+    func testOptionArrowsJumpSectionsInBrowseAndNewest() {
+        let browse = RefsKeyContext(sectionJumps: true)
         XCTAssertEqual(
             route(KeyCode.arrowDown, .option, context: browse),
             .move(.nextSection)
@@ -205,9 +207,39 @@ final class RefsKeyRouterTests: XCTestCase {
             route(KeyCode.arrowUp, .option, context: browse),
             .move(.previousSection)
         )
-        let search = RefsKeyContext(listModeIsBrowse: false)
+        let search = RefsKeyContext(sectionJumps: false)
         XCTAssertNil(route(KeyCode.arrowDown, .option, context: search))
         XCTAssertNil(route(KeyCode.arrowUp, .option, context: search))
+        let newestSearch = RefsKeyContext(
+            queryIsEmpty: false,
+            newestOn: true,
+            sectionJumps: true
+        )
+        XCTAssertEqual(
+            route(KeyCode.arrowDown, .option, context: newestSearch),
+            .move(.nextSection)
+        )
+        XCTAssertEqual(
+            route(KeyCode.arrowUp, .option, context: newestSearch),
+            .move(.previousSection)
+        )
+    }
+
+    func testCommandZeroTogglesNewestUnlessComposing() {
+        XCTAssertEqual(route(KeyCode.zero, .command), .toggleNewest)
+        XCTAssertEqual(
+            route(KeyCode.zero, [.command, .capsLock]),
+            .toggleNewest
+        )
+        XCTAssertNil(route(KeyCode.zero))
+        XCTAssertNil(route(KeyCode.zero, [.command, .shift]))
+        XCTAssertNil(route(KeyCode.zero, [.command, .option]))
+        XCTAssertNil(route(KeyCode.keypadZero, .command))
+        XCTAssertNil(route(
+            KeyCode.zero,
+            .command,
+            context: RefsKeyContext(markedTextPresent: true)
+        ))
     }
 
     func testScopes() {
@@ -294,6 +326,24 @@ final class RefsKeyRouterTests: XCTestCase {
             queryIsEmpty: false,
             scopeIsAll: true,
             tabsFilterOn: true
+        )
+        XCTAssertNil(route(KeyCode.delete, [], context: typing))
+    }
+
+    func testDeleteBackwardOnEmptyRemovesNewestBeforeScope() {
+        let newestOn = RefsKeyContext(
+            queryIsEmpty: true,
+            scopeIsAll: true,
+            newestOn: true
+        )
+        XCTAssertEqual(
+            route(KeyCode.delete, [], context: newestOn),
+            .deleteBackwardOnEmpty
+        )
+        let typing = RefsKeyContext(
+            queryIsEmpty: false,
+            scopeIsAll: true,
+            newestOn: true
         )
         XCTAssertNil(route(KeyCode.delete, [], context: typing))
     }

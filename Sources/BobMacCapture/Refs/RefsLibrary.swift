@@ -561,11 +561,14 @@ public final class RefsLibrary: ObservableObject {
                 fileExists: fileExists,
                 spotlight: spotlight
             )
-            // Carry git dates forward only after the sweep: the `-g` lane
-            // can merge while this pass awaits, and reading them earlier
-            // would publish over that merge and re-run the `-g` pass.
+            // Carry git dates and instants forward only after the sweep:
+            // the `-g` lane can merge while this pass awaits, and reading
+            // them earlier would publish over that merge and re-run the
+            // `-g` pass.
             let paths = Set(response.refs.map(\.path))
             next.gitAddedDates = (snapshot?.gitAddedDates ?? [:])
+                .filter { paths.contains($0.key) }
+            next.gitAddedAt = (snapshot?.gitAddedAt ?? [:])
                 .filter { paths.contains($0.key) }
             let items = RefsCatalog.items(from: next)
             snapshot = next
@@ -623,25 +626,13 @@ public final class RefsLibrary: ObservableObject {
         }
         do {
             let git = try await fetcher.list(gitDates: true)
-            guard var latest = snapshot else {
+            guard let latest = snapshot else {
                 return
             }
-            let stillNeeding = Set(latest.pathsNeedingGitDates)
-            var merged = latest.gitAddedDates
-            for record in git.refs {
-                guard let added = record.added,
-                      needing.contains(record.path),
-                      stillNeeding.contains(record.path),
-                      record.addedSource == "git"
-                else {
-                    continue
-                }
-                merged[record.path] = added
-            }
-            latest.gitAddedDates = merged
-            snapshot = latest
-            items = RefsCatalog.items(from: latest)
-            snapshotStore.save(snapshot: latest, today: today)
+            let merged = latest.mergingGitDates(from: git.refs, needing: needing)
+            snapshot = merged
+            items = RefsCatalog.items(from: merged)
+            snapshotStore.save(snapshot: merged, today: today)
         } catch {
             // A `-g` failure keeps the published snapshot and the refresh
             // state as they are; it is logged and nothing else.

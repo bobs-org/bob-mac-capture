@@ -443,9 +443,13 @@ public final class RefsPanelController: NSObject {
                 queryIsEmpty: model.query.isEmpty,
                 scopeIsAll: model.scope == .all,
                 tabsFilterOn: model.tabsFilter,
+                newestOn: model.listOrder == .newest,
                 markedTextPresent: markedTextInFilterField(),
                 selectionIsOpenTab: model.canCloseSelectedTab,
-                listModeIsBrowse: {
+                sectionJumps: {
+                    if model.listOrder == .newest {
+                        return true
+                    }
                     if case .browse = model.listing.mode {
                         return true
                     }

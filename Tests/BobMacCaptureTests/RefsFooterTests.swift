@@ -10,12 +10,12 @@ final class RefsFooterTests: XCTestCase {
         XCTAssertEqual(
             RefsFooter.hintsText(openHint: "↵ Open in Highlights"),
             "↵ Open in Highlights  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘N Today  ⌘K Actions  "
-                + "⌘S Scan  ⌘1–5 Scope  ⌘T Tabs  esc Close"
+                + "⌘S Scan  ⌘0 Newest  ⌘1–5 Scope  ⌘T Tabs  esc Close"
         )
         XCTAssertEqual(
             RefsFooter.hintsText(openHint: "↵ Open note"),
             "↵ Open note  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘N Today  ⌘K Actions  ⌘S Scan  "
-                + "⌘1–5 Scope  ⌘T Tabs  esc Close"
+                + "⌘0 Newest  ⌘1–5 Scope  ⌘T Tabs  esc Close"
         )
         XCTAssertEqual(
             RefsFooter.hintVariants(openHint: "↵ Open note").map {
@@ -146,6 +146,39 @@ final class RefsFooterTests: XCTestCase {
         XCTAssertFalse(
             RefsFooter.hintVariants(openHint: "↵ Open in Highlights")[2]
                 .contains("⌘T Tabs")
+        )
+    }
+
+    func testNewestHintsNameTheLibraryInEveryVariant() {
+        XCTAssertEqual(
+            RefsFooter.hintsText(
+                openHint: "↵ Open in Highlights",
+                newestOn: true
+            ),
+            "↵ Open in Highlights  ⌘↵ Note  ⌥↵ Reveal  ⌘Y Copy  ⌘N Today  "
+                + "⌘K Actions  ⌘S Scan  ⌘0 Library  ⌘1–5 Scope  ⌘T Tabs  esc Close"
+        )
+        let variants = RefsFooter.hintVariants(
+            openHint: "↵ Open in Highlights",
+            newestOn: true
+        )
+        XCTAssertEqual(variants.count, 3)
+        XCTAssertTrue(variants.allSatisfy { $0.contains("⌘0 Library") })
+        XCTAssertFalse(variants.joined().contains("⌘0 Newest"))
+        XCTAssertTrue(variants[0].contains("⌘S Scan"))
+        XCTAssertFalse(variants[1].contains("⌘S Scan"))
+        XCTAssertEqual(variants[2].hasSuffix("⌘0 Library"), true)
+        XCTAssertTrue(
+            RefsFooter.hintVariants(openHint: "↵ Open in Highlights")[0]
+                .contains("⌘0 Newest")
+        )
+        XCTAssertTrue(
+            RefsFooter.hintVariants(openHint: "↵ Open in Highlights")[1]
+                .contains("⌘0 Newest")
+        )
+        XCTAssertFalse(
+            RefsFooter.hintVariants(openHint: "↵ Open in Highlights")[2]
+                .contains("⌘0 Newest")
         )
     }
 }
