@@ -359,6 +359,10 @@ final class CapturePanelModel: ObservableObject {
     // The draft that produced the visible `completionResponse`, so a `+` commit can
     // locate the route text by byte range instead of trusting the view-supplied caret.
     private var completionDraftSnapshot: String?
+    /// The draft the last completion step settled on; the Block ID Picker
+    /// auto-opens only when the edits since this draft wrote the separator
+    /// before Bob's ID part.
+    private var editAnalysisBaseline = ""
     /// The trimmed bare-URL draft Esc dismissed the File-under list for.
     /// The list does not reopen for this URL until the draft changes to a
     /// different URL. Cleared on accept and on successful submit.
@@ -391,9 +395,9 @@ final class CapturePanelModel: ObservableObject {
     /// Latest parse reported the `task_goto` need. Ctrl-C uses this so a `/`
     /// draft is discarded even when the picker has already chipped.
     private var lastAnalysisNeedsTaskGoto = false
-    /// Replacement-range start of the `^` token auto-open is suppressed for
-    /// (set by the two-stage Escape cancel). Cleared when an `.edit` analysis
-    /// leaves the token.
+    /// Replacement-range start of a `^` or block-ID token auto-open is
+    /// suppressed for (set by the two-stage Escape cancel). Cleared when an
+    /// `.edit` analysis leaves the token.
     private var pickerAutoOpenSuppressedStart: Int?
     /// Draft-global UTF-8 byte range of the marker token the open picker
     /// edits (`marker_range` for block-ID sources, `[r.start - 1, r.end)` for
@@ -2729,6 +2733,7 @@ final class CapturePanelModel: ObservableObject {
 
     private func resetAnalysisState() {
         invalidateAnalysis()
+        editAnalysisBaseline = plainDraft
         invalidateRewrite()
         cancelInFlightExplicitPreview()
         parseDiagnostics = []
@@ -3119,6 +3124,7 @@ final class CapturePanelModel: ObservableObject {
         draft: String,
         cursor: Int,
         trigger: CompletionTrigger,
+        writtenRange: CaptureRange?,
         generation: UInt64,
         processClient: BobProcessClient
     ) async {
@@ -3205,7 +3211,8 @@ final class CapturePanelModel: ObservableObject {
                     cursor: cursor,
                     generation: generation,
                     processClient: processClient,
-                    trigger: trigger
+                    trigger: trigger,
+                    writtenRange: writtenRange
                 )
                 return
             }
@@ -3277,20 +3284,19 @@ final class CapturePanelModel: ObservableObject {
     /// Routes `pomodoro_block_id`/`task_block_id`/`project_task_block_id`
     /// responses into the generic picker with intent-aware opening rules.
     /// `project_task_block_id` always carries intent `new`, so it follows the
-    /// New ID rules below with the project-task scope. Link intent mirrors
-    /// `^`: an
-    /// exact part opens nothing, an `.edit` opens the picker (refetching the
-    /// full snapshot at the range start when the caret is past it), and a
-    /// caret-only move or suppression shows the chip. New ID intent opens
-    /// only when the part is empty or the caret is at the part's end (typing
-    /// forward); any other edit shows the chip.
+    /// New ID rules below with the project-task scope. An exact Link part opens
+    /// nothing. Otherwise either intent auto-opens only when this edit wrote
+    /// the separator byte immediately before Bob's ID part; caret-only moves,
+    /// Escape suppression, and other edits show the reopen chip. New ID still
+    /// requires an empty part or the caret at the part's end (typing forward).
     private func handleBlockIDCompletion(
         _ completion: CaptureCompletionResponse,
         draft: String,
         cursor: Int,
         generation: UInt64,
         processClient: BobProcessClient,
-        trigger: CompletionTrigger
+        trigger: CompletionTrigger,
+        writtenRange: CaptureRange?
     ) async {
         // Block-ID responses never populate the inline list, even when empty.
         dismissCompletion()
@@ -3299,6 +3305,7 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         let r = completion.replacement
+        let separatorTyped = captureEditWroteSeparator(writtenRange, before: r.start)
         guard stringRange(in: draft, byteRange: r) != nil,
               stringRange(in: draft, start: r.start, end: min(cursor, r.end)) != nil
         else {
@@ -3316,7 +3323,7 @@ final class CapturePanelModel: ObservableObject {
                 clearPickerInterruption(trigger: trigger)
                 return
             }
-            guard trigger == .edit, pickerAutoOpenSuppressedStart != r.start else {
+            guard trigger == .edit, separatorTyped, pickerAutoOpenSuppressedStart != r.start else {
                 pickerChip = CapturePickerChipState(
                     source: source,
                     draftSnapshot: draft,
@@ -3371,7 +3378,7 @@ final class CapturePanelModel: ObservableObject {
             )
             return
         }
-        guard trigger == .edit, pickerAutoOpenSuppressedStart != r.start else {
+        guard trigger == .edit, separatorTyped, pickerAutoOpenSuppressedStart != r.start else {
             pickerChip = CapturePickerChipState(
                 source: source,
                 draftSnapshot: draft,
@@ -4986,6 +4993,7 @@ final class CapturePanelModel: ObservableObject {
         }
         guard chip.draftSnapshot == plainDraft else {
             // The draft moved on; rerun analysis instead of opening stale.
+            editAnalysisBaseline = ""
             scheduleAnalysis(
                 cursorUTF8Offset: collapsedSelectionUTF8Offset(),
                 requestCompletion: true,
@@ -5528,6 +5536,7 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         clearPickerMarkerHighlight(draftSnapshot: openPicker.draftSnapshot)
+        editAnalysisBaseline = ""
         picker = nil
         pickerPresentation = nil
         pickerIndex = nil
@@ -7206,6 +7215,9 @@ final class CapturePanelModel: ObservableObject {
         }
 
         let draft = plainDraft
+        let writtenRange = trigger == .edit
+            ? captureWrittenByteRange(from: editAnalysisBaseline, to: draft)
+            : nil
         if let cursorUTF8Offset {
             guard cursorUTF8Offset >= 0,
                   cursorUTF8Offset <= draft.utf8.count,
@@ -7305,6 +7317,7 @@ final class CapturePanelModel: ObservableObject {
                                 draft: draft,
                                 trigger: trigger
                             )
+                            self?.editAnalysisBaseline = draft
                         }
                         return
                     }
@@ -7321,15 +7334,23 @@ final class CapturePanelModel: ObservableObject {
                             draft: draft,
                             cursor: cursorUTF8Offset,
                             trigger: trigger,
+                            writtenRange: writtenRange,
                             generation: generation,
                             processClient: processClient
                         )
+                        await MainActor.run {
+                            guard self?.isCurrentAnalysis(generation) == true else {
+                                return
+                            }
+                            self?.editAnalysisBaseline = draft
+                        }
                     } catch {
                         await MainActor.run {
                             guard self?.isCurrentAnalysis(generation) == true else {
                                 return
                             }
                             self?.statusText = String(describing: error)
+                            self?.editAnalysisBaseline = draft
                         }
                     }
                 } else {
@@ -7338,6 +7359,7 @@ final class CapturePanelModel: ObservableObject {
                             return
                         }
                         self?.handleMissingCompletion(trigger: trigger)
+                        self?.editAnalysisBaseline = draft
                     }
                 }
             } catch is CancellationError {

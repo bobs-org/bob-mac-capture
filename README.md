@@ -812,14 +812,17 @@ legacy preview and notification copy.
   as a one-character regex plus a human description); the app only filters locally,
   checks exact case-sensitive membership in Bob's used-ID list, applies Bob's
   character rule, and derives the `-2…-99` next-free variant validated by that rule.
-  Live preview after insert remains the final authority. Opening rules mirror `^`:
-  Link opens on edit unless the part already equals a candidate replacement (then
-  nothing opens) or Escape suppressed auto-open (then the chip shows); New ID opens
-  only when the part is empty or the caret is at the part's end, and any other edit
-  shows the chip instead. A `task_block_id` response without a `block_id` object is
-  treated as no completion. Link refetches the full snapshot at the range start when
-  the caret is past it, exactly like `^`; New ID needs no refetch. Accept inserts the
-  row's ID into Bob's range with the stale-draft guard, announces
+  Live preview after insert remains the final authority. The picker auto-opens only
+  on an edit that writes the `:` / `^` separator byte immediately before Bob's ID
+  part. “Writes” means that byte was changed since the last settled analysis, so a
+  fast `:rea` burst or a paste still counts. Backspace, Delete, and typing inside an
+  existing ID do not open the picker; other non-opening edits show the reopen chip.
+  The existing Link exact-candidate and Escape-suppression rules still apply, as does
+  the New ID rule that the part must be empty or the caret at its end. Reshowing the
+  panel with the picker open and pressing Tab on the chip still open the picker. A `task_block_id`
+  response without a `block_id` object is treated as no completion. Link refetches the
+  full snapshot at the range start when the caret is past it; New ID needs no refetch.
+  Accept inserts the row's ID into Bob's range with the stale-draft guard, announces
   `Inserted @route:id`, and runs an `.edit` analysis without completion;
   Command-accept also captures, and a missing selection announces why instead of
   inserting. In the New ID composer the field only ever holds ID characters: typing a
