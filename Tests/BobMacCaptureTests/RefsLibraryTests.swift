@@ -28,9 +28,15 @@ final class RefsLibraryTests: XCTestCase {
       context.library.items.map(\.id).sorted(),
       seeded.records.map(\.path).sorted()
     )
+    for item in context.library.items {
+      XCTAssertEqual(context.library.item(id: item.id), item)
+    }
 
     await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
     XCTAssertEqual(context.library.items.count, 6)
+    for item in context.library.items {
+      XCTAssertEqual(context.library.item(id: item.id), item)
+    }
     guard case .idle = context.library.refreshState else {
       XCTFail("expected idle after a successful refresh")
       return
@@ -109,11 +115,61 @@ final class RefsLibraryTests: XCTestCase {
     }
     XCTAssertEqual(opened?.addedSource, "git")
     XCTAssertTrue(opened?.addedIsApproximate ?? false)
+    XCTAssertEqual(opened.flatMap { context.library.item(id: $0.id) }, opened)
     let created = context.library.items.first {
       $0.id == "ref/chat/small_reading.md"
     }
     XCTAssertEqual(created?.added?.isoString, "2026-10-01")
     XCTAssertFalse(created?.addedIsApproximate ?? true)
+  }
+
+  func testItemLookupTracksPreviewSnapshotReplacement() throws {
+    let context = try makeContext()
+    let first = RefItem(
+      id: "ref/chat/preview.md",
+      link: "[[ref/chat/preview]]",
+      rawTitle: "First preview row",
+      stem: "preview",
+      kind: .chat,
+      state: .read,
+      isBlocked: false,
+      pdfPath: "lib/preview.pdf"
+    )
+    let duplicate = RefItem(
+      id: first.id,
+      link: first.link,
+      rawTitle: "Second preview row",
+      stem: first.stem,
+      kind: .chat,
+      state: .read,
+      isBlocked: false,
+      pdfPath: first.pdfPath
+    )
+    let replacement = RefItem(
+      id: "ref/chat/replacement.md",
+      link: "[[ref/chat/replacement]]",
+      rawTitle: "Replacement preview row",
+      stem: "replacement",
+      kind: .chat,
+      state: .ready,
+      isBlocked: false,
+      pdfPath: "lib/replacement.pdf"
+    )
+
+    context.library.installSnapshotForPreviews(
+      items: [first, duplicate],
+      signals: RefsSignals(),
+      refreshState: .idle
+    )
+    XCTAssertEqual(context.library.item(id: first.id), first)
+
+    context.library.installSnapshotForPreviews(
+      items: [replacement],
+      signals: RefsSignals(),
+      refreshState: .idle
+    )
+    XCTAssertNil(context.library.item(id: first.id))
+    XCTAssertEqual(context.library.item(id: replacement.id), replacement)
   }
 
   func testGitPassFailureKeepsSnapshotAndStaysIdle() async throws {

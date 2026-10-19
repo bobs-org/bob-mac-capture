@@ -662,24 +662,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let vaultPath = Self.vaultRootURL(bobDirectory: settings.bobDirectory).path
         agendaStore?.vaultRootPath = vaultPath
 
-        vaultWatcher = VaultTargetWatcher(path: vaultPath) { [weak self] in
-            Task { @MainActor in
-                self?.refreshTargetsWhenPossible()
-            }
-        } onBatch: { [weak self] batch in
-            Task { @MainActor in
-                self?.agendaStore?.vaultDidChange(batch)
-            }
-        } onFailure: { [weak self] message in
-            Task { @MainActor in
-                guard let self else {
-                    return
+        vaultWatcher = VaultTargetWatcher(
+            path: vaultPath,
+            onChange: {},
+            onBatch: { [weak self] batch in
+                Task { @MainActor in
+                    guard let self else {
+                        return
+                    }
+                    if RefsWatcherRelevance.isRelevant(batch, vaultRoot: vaultPath) {
+                        self.refreshTargetsWhenPossible()
+                    }
+                    self.agendaStore?.vaultDidChange(batch)
                 }
-                let snapshot = await self.targetsCache.markStale(errorDescription: message)
-                self.panelModel?.updateTargetCacheSnapshot(snapshot)
-                self.settings.diagnosticStatus = "Target watcher stale: \(message)"
+            },
+            onFailure: { [weak self] message in
+                Task { @MainActor in
+                    guard let self else {
+                        return
+                    }
+                    let snapshot = await self.targetsCache.markStale(errorDescription: message)
+                    self.panelModel?.updateTargetCacheSnapshot(snapshot)
+                    self.settings.diagnosticStatus = "Target watcher stale: \(message)"
+                }
             }
-        }
+        )
 
         vaultWatcher?.start()
     }

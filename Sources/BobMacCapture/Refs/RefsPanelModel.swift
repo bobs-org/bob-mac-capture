@@ -613,7 +613,7 @@ public final class RefsPanelModel: ObservableObject {
         {
             return overlay.name
         }
-        guard let item = library.items.first(where: { $0.id == id }) else {
+        guard let item = library.item(id: id) else {
             return nil
         }
         return library.signals.today.entry(for: item)?.pomodoroName
@@ -624,7 +624,7 @@ public final class RefsPanelModel: ObservableObject {
         guard let selectedID else {
             return nil
         }
-        return library.items.first { $0.id == selectedID }
+        return library.item(id: selectedID)
     }
 
     /// The tab metadata for each row in the latest Tabs listing.
@@ -830,7 +830,7 @@ public final class RefsPanelModel: ObservableObject {
             }
             closeRenameCard()
             closeCopyCard()
-            guard listing.orderedIDs.contains(id) else {
+            guard listing.contains(id: id) else {
                 return false
             }
             selectedID = id
@@ -841,7 +841,7 @@ public final class RefsPanelModel: ObservableObject {
             }
             closeRenameCard()
             closeCopyCard()
-            guard listing.orderedIDs.contains(id) else {
+            guard listing.contains(id: id) else {
                 return false
             }
             selectedID = id
@@ -1067,7 +1067,7 @@ public final class RefsPanelModel: ObservableObject {
         tabsListing = ranked
         listing = ranked.listing
         unavailableIDs = []
-        if let keep, listing.orderedIDs.contains(keep) {
+        if let keep, listing.contains(id: keep) {
             selectedID = keep
         } else {
             selectedID = ranked.preselectedID
@@ -1076,7 +1076,7 @@ public final class RefsPanelModel: ObservableObject {
 
     private func closeTab(id: String) -> Bool {
         guard canCloseTab(id: id),
-              listing.orderedIDs.contains(id),
+              listing.contains(id: id),
               let tab = tabsListing?.tabs[id]
         else {
             return false
@@ -1092,7 +1092,7 @@ public final class RefsPanelModel: ObservableObject {
         let title = rowContent(for: id)?.title ?? tab.fileName
         let reopen: RefsClosedTab?
         if let itemID = tab.itemID,
-           let item = library.items.first(where: { $0.id == itemID }),
+           let item = library.item(id: itemID),
            let url = library.pdfURL(for: item)
         {
             reopen = RefsClosedTab(
@@ -1116,7 +1116,7 @@ public final class RefsPanelModel: ObservableObject {
         let updateListing = {
             self.rebuildTabsListing(preservingSelection: false)
             if let nextSelection,
-               self.listing.orderedIDs.contains(nextSelection)
+               self.listing.contains(id: nextSelection)
             {
                 self.selectedID = nextSelection
             }
@@ -1144,6 +1144,7 @@ public final class RefsPanelModel: ObservableObject {
     /// whether the queue is fully idle. Tests use these to prove a
     /// drained queue stops instead of chaining empty workers.
     var closeWorkerLaunchCountForTests = 0
+    var rowContentEvaluationsForTests = 0
     var isCloseIdleForTests: Bool {
         closeQueue.isEmpty && closeWorker == nil
     }
@@ -1249,7 +1250,7 @@ public final class RefsPanelModel: ObservableObject {
         case .failed:
             if tabsFilter {
                 rebuildTabsListing(preservingSelection: false)
-                if listing.orderedIDs.contains(pending.tab.rowID) {
+                if listing.contains(id: pending.tab.rowID) {
                     selectedID = pending.tab.rowID
                 }
                 if panelIsVisible() {
@@ -1363,16 +1364,17 @@ public final class RefsPanelModel: ObservableObject {
     /// The list and inspector content for one frozen row, or nil when the
     /// id is not in the listing.
     public func rowContent(for id: String) -> RefsRowContent? {
-        guard listing.orderedIDs.contains(id) else {
+        rowContentEvaluationsForTests += 1
+        guard listing.contains(id: id) else {
             return nil
         }
         let signals = library.signals
         let match = listing.matches[id]
-        let section = listing.sections.first { $0.ids.contains(id) }.flatMap(\.kind)
+        let section = listing.sectionKind(for: id)
         let openTab = tabsFilter ? tabsListing?.tabs[id] : nil
         if let openTab, isSynthetic(openTab) {
             let candidates = openTab.candidateIDs.compactMap { candidateID in
-                library.items.first { $0.id == candidateID }
+                library.item(id: candidateID)
             }
             let caption = openTab.match == .none
                 ? "Not in your library"
@@ -1391,7 +1393,7 @@ public final class RefsPanelModel: ObservableObject {
                 isUnavailable: false
             )
         }
-        guard let item = library.items.first(where: { $0.id == id }) else {
+        guard let item = library.item(id: id) else {
             return RefsRowContent(
                 item: nil,
                 openTab: openTab,
@@ -1441,7 +1443,7 @@ public final class RefsPanelModel: ObservableObject {
                 return
             }
             guard let pending = pendingOpen,
-                let item = library.items.first(where: { $0.id == pending.id })
+                let item = library.item(id: pending.id)
             else {
                 return
             }
@@ -1659,7 +1661,7 @@ public final class RefsPanelModel: ObservableObject {
         closeRenameCard()
         closeCopyCard()
         guard let item = selectedItem,
-              listing.orderedIDs.contains(item.id),
+              listing.contains(id: item.id),
               !unavailableIDs.contains(item.id)
         else {
             return
@@ -1709,7 +1711,7 @@ public final class RefsPanelModel: ObservableObject {
     public func openRenameCard() {
         guard !isRenaming, !isLinkingToday,
               let item = selectedItem,
-              listing.orderedIDs.contains(item.id),
+              listing.contains(id: item.id),
               !unavailableIDs.contains(item.id)
         else {
             return
@@ -1847,7 +1849,7 @@ public final class RefsPanelModel: ObservableObject {
     public func openTodayLinkCard() {
         guard !isRenaming, !isLinkingToday,
               let item = selectedItem,
-              listing.orderedIDs.contains(item.id),
+              listing.contains(id: item.id),
               !unavailableIDs.contains(item.id)
         else {
             return
@@ -2359,7 +2361,7 @@ public final class RefsPanelModel: ObservableObject {
         }
         listing = libraryListing()
         unavailableIDs = []
-        if let keep, listing.orderedIDs.contains(keep) {
+        if let keep, listing.contains(id: keep) {
             selectedID = keep
         } else {
             selectedID = RefsSelectionPolicy.initial(in: listing)
@@ -2373,23 +2375,23 @@ public final class RefsPanelModel: ObservableObject {
         pruneKnownItems()
         if tabsFilter {
             rebuildTabsListing(preservingSelection: false)
-            if !listing.orderedIDs.contains(id) {
+            if !listing.contains(id: id) {
                 query = ""
                 rebuildTabsListing(preservingSelection: false)
             }
-            selectedID = listing.orderedIDs.contains(id)
+            selectedID = listing.contains(id: id)
                 ? id
                 : RefsSelectionPolicy.initial(in: listing)
             return
         }
         var fresh = libraryListing()
-        if !fresh.orderedIDs.contains(id) {
+        if !fresh.contains(id: id) {
             query = ""
             fresh = libraryListing()
         }
         listing = fresh
         unavailableIDs = []
-        selectedID = listing.orderedIDs.contains(id)
+        selectedID = listing.contains(id: id)
             ? id
             : RefsSelectionPolicy.initial(in: listing)
     }
@@ -2546,12 +2548,12 @@ public final class RefsPanelModel: ObservableObject {
         unavailableIDs = []
         if selectedID == selectionAtScanStart, !outcome.created.isEmpty {
             let createdIDs = outcome.created.map(\.path)
-            if let first = createdIDs.first(where: { fresh.orderedIDs.contains($0) }) {
+            if let first = createdIDs.first(where: { fresh.contains(id: $0) }) {
                 selectedID = first
                 return
             }
         }
-        if let keep = selectedID, fresh.orderedIDs.contains(keep) {
+        if let keep = selectedID, fresh.contains(id: keep) {
             selectedID = keep
         } else {
             selectedID = RefsSelectionPolicy.initial(in: fresh)
@@ -2585,7 +2587,7 @@ public final class RefsPanelModel: ObservableObject {
             )
             return true
         }
-        guard listing.orderedIDs.contains(id) else {
+        guard listing.contains(id: id) else {
             return false
         }
         if tabsFilter, let tab = tabsListing?.tabs[id], isSynthetic(tab) {
@@ -2595,7 +2597,7 @@ public final class RefsPanelModel: ObservableObject {
             showNoteActionWarning(for: tab)
             return true
         }
-        guard let item = library.items.first(where: { $0.id == id }) else {
+        guard let item = library.item(id: id) else {
             return false
         }
         switch target {
@@ -2625,7 +2627,7 @@ public final class RefsPanelModel: ObservableObject {
     }
 
     private func openStored(_ pending: PendingOpen) {
-        guard let item = library.items.first(where: { $0.id == pending.id }) else {
+        guard let item = library.item(id: pending.id) else {
             banner = RefsBanner(
                 kind: .warning,
                 message: "“\(pending.id)” is no longer in your library.",
@@ -2649,7 +2651,7 @@ public final class RefsPanelModel: ObservableObject {
 
     private func reopenClosedTab(_ closed: RefsClosedTab) -> Bool {
         if let itemID = closed.itemID,
-           let item = library.items.first(where: { $0.id == itemID })
+           let item = library.item(id: itemID)
         {
             pendingClosedTab = nil
             return openInHighlights(

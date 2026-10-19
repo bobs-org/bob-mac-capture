@@ -1231,8 +1231,9 @@ legacy preview and notification copy.
   item-specific rolls from that seed for batch drafts, and the seed resets only after a
   successful capture or discard.
 - Capture targets are cached at launch, refreshed when the panel opens, and invalidated
-  by a coalesced FSEvents watcher. Watcher or refresh failures mark the cache stale
-  without clearing the last good route list.
+  by a coalesced FSEvents watcher. Dot-path-only batches (`.git/`, `.obsidian/`, and
+  `.trash/`) no longer trigger a targets refresh. Watcher or refresh failures mark the
+  cache stale without clearing the last good route list.
 - Every `bob` invocation is bounded by a 20-second timeout (`BobProcessClient.defaultTimeout`)
   that terminates and reaps a wedged process instead of leaving the panel waiting
   indefinitely; a fired timeout surfaces as an actionable `BobClientError.timedOut`. Quit
@@ -1379,7 +1380,9 @@ backfill on its own lane, Today, a one-shot Spotlight sweep for
 last-used dates and page counts, and missing-PDF checks. It paints from
 the cache at launch, watches the vault root (root `*.md` notes) plus
 `<vault>/ref`, `<vault>/lib`, and `<vault>/done`
-(0.5 s debounce), refreshes Today every 10 minutes, after sleep, after
+(0.5 s debounce). Dot-path-only batches (`.git/`, `.obsidian/`, and `.trash/`) no
+longer trigger a Refs refresh; any visible path, including a PDF in `lib/`, still
+does. The library refreshes Today every 10 minutes, after sleep, after
 every capture, and in the background on every panel open, and re-reads
 a stale snapshot on every panel open. The `-g` lane runs only while
 some row still lacks an `added` date (or a git-dated row still lacks its
@@ -1909,9 +1912,10 @@ including the next panel show.
   read "Task 1, In Progress, …" and chips announce what they expand. Return in an
   empty editor never acts on an agenda row, and keyboard focus never leaves the
   editor.
-- Signposts. Intervals `agenda-refresh`, `agenda-measure`, and `agenda-plan`, plus
-  events `agenda-unchanged`, `agenda-published`, and `agenda-hold-released` —
-  metadata only (see Diagnostics and Signposts).
+- Signposts. Intervals `agenda-refresh`, `agenda-measure`, `agenda-plan`,
+  `refs-panel-show`, `refs-panel-prepare`, and `refs-panel-order`, plus events
+  `agenda-unchanged`, `agenda-published`, and `agenda-hold-released` — metadata only
+  (see Diagnostics and Signposts).
 
 ## Keyboard
 

@@ -722,6 +722,117 @@ final class RefsRankingTests: XCTestCase {
 
     // MARK: Stability and selection
 
+    func testListingIndexedLookupsMatchLinearSearchesAcrossShapes() {
+        let added = RefsAddedGroup(
+            id: "day-2026-10-08",
+            title: "Today",
+            detail: "Oct 8",
+            accessibilityLabel: "Today",
+            style: .day
+        )
+        func listing(
+            mode: RefsListing.Mode,
+            sections: [RefsSection],
+            orderedIDs: [String],
+            order: RefsListOrder = .ranked,
+            highlightsCurrentIDs: Set<String> = [],
+            highlightsTabIDs: Set<String> = []
+        ) -> RefsListing {
+            RefsListing(
+                mode: mode,
+                scope: .all,
+                sections: sections,
+                orderedIDs: orderedIDs,
+                matches: [:],
+                totalCount: orderedIDs.count,
+                openCount: 0,
+                highlightsCurrentIDs: highlightsCurrentIDs,
+                highlightsTabIDs: highlightsTabIDs,
+                order: order
+            )
+        }
+
+        let listings = [
+            listing(
+                mode: .browse,
+                sections: [
+                    RefsSection(kind: .today, ids: ["a", "shared"]),
+                    RefsSection(kind: .ready, ids: ["b", "shared"]),
+                ],
+                orderedIDs: ["a", "b", "shared"]
+            ),
+            listing(
+                mode: .search("alpha"),
+                sections: [RefsSection(kind: nil, ids: ["alpha", "beta"])],
+                orderedIDs: ["alpha", "beta"]
+            ),
+            listing(
+                mode: .browse,
+                sections: [
+                    RefsSection(kind: .added(added), ids: ["newest"]),
+                    RefsSection(
+                        kind: .added(RefsAddedGroup(
+                            id: "undated",
+                            title: "Undated",
+                            accessibilityLabel: "Undated",
+                            style: .undated
+                        )),
+                        ids: ["undated"]
+                    ),
+                ],
+                orderedIDs: ["newest", "undated"],
+                order: .newest
+            ),
+            listing(
+                mode: .browse,
+                sections: [RefsSection(kind: .inHighlights, ids: ["tab", "current"])],
+                orderedIDs: ["tab", "current"],
+                highlightsCurrentIDs: ["current"],
+                highlightsTabIDs: ["tab", "current"]
+            ),
+        ]
+
+        for listing in listings {
+            let ids = Set(listing.orderedIDs + listing.sections.flatMap(\.ids) + ["unknown"])
+            for id in ids {
+                XCTAssertEqual(listing.contains(id: id), listing.orderedIDs.contains(id))
+                let expectedIndex = listing.sections.firstIndex {
+                    $0.ids.contains(id)
+                }
+                XCTAssertEqual(listing.sectionIndex(for: id), expectedIndex)
+                XCTAssertEqual(
+                    listing.sectionKind(for: id),
+                    expectedIndex.flatMap { listing.sections[$0].kind }
+                )
+            }
+        }
+
+        XCTAssertEqual(listings[0].sectionIndex(for: "shared"), 0)
+        XCTAssertEqual(listings[0].sectionKind(for: "shared"), .today)
+    }
+
+    func testRefreshingContentKeepsListingLookupsInSync() {
+        let listing = RefsListing(
+            mode: .browse,
+            scope: .all,
+            sections: [
+                RefsSection(kind: .reading, ids: ["gone", "kept"]),
+                RefsSection(kind: .ready, ids: ["gone"]),
+            ],
+            orderedIDs: ["gone", "kept"],
+            matches: [:],
+            totalCount: 2,
+            openCount: 2
+        )
+
+        let refreshed = listing.refreshingContent(availableIDs: ["kept"]).listing
+        XCTAssertTrue(refreshed.contains(id: "gone"))
+        XCTAssertTrue(refreshed.unavailableIDs.contains("gone"))
+        XCTAssertEqual(refreshed.sectionIndex(for: "gone"), 0)
+        XCTAssertEqual(refreshed.sectionKind(for: "gone"), .reading)
+        XCTAssertFalse(refreshed.contains(id: "unknown"))
+    }
+
     func testRefreshingContentKeepsOrderAndReportsUnavailable() throws {
         let items = try goldenItems()
         let listing = RefsRanker.listing(

@@ -106,9 +106,17 @@ public final class RefsPanelController: NSObject {
         let token = CaptureSignpost.begin("refs-panel-show")
         defer { CaptureSignpost.end(token) }
         glassToast.dismiss()
-        model.prepareForPresentation(source: source)
-        model.refreshForOpen()
-        orderFront()
+        do {
+            let prepareToken = CaptureSignpost.begin("refs-panel-prepare")
+            defer { CaptureSignpost.end(prepareToken) }
+            model.prepareForPresentation(source: source)
+            model.refreshForOpen()
+        }
+        do {
+            let orderToken = CaptureSignpost.begin("refs-panel-order")
+            defer { CaptureSignpost.end(orderToken) }
+            orderFront()
+        }
     }
 
     /// Re-shows the panel after an open error without resetting it: the

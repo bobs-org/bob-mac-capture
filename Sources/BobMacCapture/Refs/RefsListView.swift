@@ -87,7 +87,7 @@ struct RefsListView: View {
                 ForEach(model.listing.sections, id: \.sectionID) { section in
                     Section {
                         ForEach(section.ids, id: \.self) { id in
-                            row(for: id)
+                            previewRow(for: id)
                         }
                     } header: {
                         if let kind = section.kind {
@@ -160,6 +160,46 @@ struct RefsListView: View {
     }
 
     private func row(for id: String) -> some View {
+        let content = model.rowContent(for: id)
+        let isSelected = model.selectedID == id
+        let pomodoroName = model.pomodoroName(for: id)
+        let onSelect: () -> Void = {
+            model.perform(.select(id: id))
+        }
+        let onActivate: () -> Void = {
+            model.perform(.activate(id: id))
+        }
+        let onClose = closeHandler(for: id)
+
+        return ZStack(alignment: .topLeading) {
+            if let content {
+                RefsRowView(
+                    content: content,
+                    isSelected: isSelected,
+                    pomodoroName: pomodoroName,
+                    onSelect: onSelect,
+                    onActivate: onActivate,
+                    onClose: onClose
+                )
+                .opacity(dimRows ? 0.6 : 1)
+                // The selected row keeps its frame live in the panel-root
+                // coordinate space, so the ⌘K menu pops below it. Deselected
+                // rows report nil, which never clears the current rect.
+                .onGeometryChange(for: CGRect?.self) { proxy in
+                    model.selectedID == id
+                        ? proxy.frame(in: .named("refsPanel")) : nil
+                } action: { rect in
+                    if let rect {
+                        model.selectedRowRect = rect
+                    }
+                }
+            }
+        }
+        .transition(removalTransition)
+    }
+
+    /// Preview fixtures keep their previous static-stack rendering path.
+    private func previewRow(for id: String) -> some View {
         guard let content = model.rowContent(for: id) else {
             return AnyView(EmptyView())
         }

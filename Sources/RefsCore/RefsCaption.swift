@@ -363,7 +363,7 @@ public enum RefsExplanation {
         if case let .search(query) = listing.mode {
             return searchWhyHere(item, query: query, listing: listing, signals: signals)
         }
-        let section = listing.sections.first { $0.ids.contains(item.id) }.flatMap { $0.kind }
+        let section = listing.sectionKind(for: item.id)
         switch section {
         case .justScanned:
             if let at = signals.scan?.at {

@@ -129,7 +129,11 @@ public enum RefsLibraryError: Error, Sendable {
 @MainActor
 public final class RefsLibrary: ObservableObject {
     /// The working set the panel ranks, newest snapshot first.
-    @Published public private(set) var items: [RefItem] = []
+    @Published public private(set) var items: [RefItem] = [] {
+        didSet {
+            rebuildItemIndex()
+        }
+    }
     /// Today, open stats, Spotlight facts, missing PDFs, and the clock.
     @Published public private(set) var signals: RefsSignals
     /// The snapshot refresh state the footer reads.
@@ -158,6 +162,7 @@ public final class RefsLibrary: ObservableObject {
     private let now: () -> Date
 
     private var snapshot: RefsSnapshot?
+    private var itemIndicesByID: [String: Int] = [:]
     private var today = RefsToday()
     private var openEvents: [RefsOpenEvent] = []
 
@@ -239,6 +244,15 @@ public final class RefsLibrary: ObservableObject {
     /// Re-points the fetcher (Recheck Bob) without refreshing.
     public func setFetcher(_ fetcher: RefsFetching?) {
         self.fetcher = fetcher
+    }
+
+    /// Returns the first matching item, preserving the old
+    /// `items.first(where:)` behavior for duplicate ids.
+    public func item(id: String) -> RefItem? {
+        guard let index = itemIndicesByID[id], items.indices.contains(index) else {
+            return nil
+        }
+        return items[index]
     }
 
     /// Restarts the refs watcher for the current vault root.
@@ -778,13 +792,33 @@ public final class RefsLibrary: ObservableObject {
             root.appendingPathComponent("lib").path,
             root.appendingPathComponent("done").path,
         ]
-        let watcher = VaultTargetWatcher(paths: paths, latency: 0.5) { [weak self] in
-            Task { await self?.handleWatcherChange() }
-        } onFailure: { [weak self] message in
-            Task { await self?.watcherFailed(message) }
-        }
+        let watcher = VaultTargetWatcher(
+            paths: paths,
+            latency: 0.5,
+            onChange: {},
+            onBatch: { [weak self] batch in
+                guard RefsWatcherRelevance.isRelevant(
+                    batch,
+                    vaultRoot: root.path
+                ) else {
+                    return
+                }
+                Task { await self?.handleWatcherChange() }
+            },
+            onFailure: { [weak self] message in
+                Task { await self?.watcherFailed(message) }
+            }
+        )
         self.watcher = watcher
         watcher.start()
+    }
+
+    private func rebuildItemIndex() {
+        var indices: [String: Int] = [:]
+        for (index, item) in items.enumerated() where indices[item.id] == nil {
+            indices[item.id] = index
+        }
+        itemIndicesByID = indices
     }
 
     private func watcherFailed(_ message: String) {

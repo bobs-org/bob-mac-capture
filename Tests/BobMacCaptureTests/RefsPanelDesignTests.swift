@@ -27,6 +27,41 @@ final class RefsPanelDesignTests: XCTestCase {
         + "cap has to clip it and end in an ellipsis the reader can "
         + "recover from the hover tooltip."
 
+    func testLiveListBuildsOnlyRowsNearViewport() throws {
+        let now = fixedNow()
+        let items = (0..<1_000).map { index in
+            let stem = "lazy-row-\(index)"
+            return RefItem(
+                id: "ref/chat/\(stem).md",
+                link: "[[ref/chat/\(stem)]]",
+                rawTitle: "Lazy list row \(index)",
+                stem: stem,
+                kind: .chat,
+                state: .read,
+                isBlocked: false,
+                pdfPath: "lib/\(stem).pdf",
+                added: day(now, offset: -index)
+            )
+        }
+        let library = makeLibrary(now: now)
+        library.installSnapshotForPreviews(
+            items: items,
+            signals: RefsSignals(now: now),
+            refreshState: .idle
+        )
+        let model = RefsPanelModel(
+            library: library,
+            opener: StubOpener(),
+            highlights: StubLocator()
+        )
+        let host = NSHostingView(rootView: RefsListView(model: model))
+        host.frame = NSRect(x: 0, y: 0, width: 700, height: 620)
+        host.layoutSubtreeIfNeeded()
+
+        XCTAssertGreaterThan(model.rowContentEvaluationsForTests, 0)
+        XCTAssertLessThan(model.rowContentEvaluationsForTests, 150)
+    }
+
     func testRefsPanelStatesToPNG() async throws {
         let now = fixedNow()
         let library = makeLibrary(now: now)

@@ -28,8 +28,8 @@ public struct VaultChangeFlags: OptionSet, Sendable {
 }
 
 /// One debounced vault change batch: the union of changed paths plus the
-/// OR of their flags. The targets cache refreshes on every batch; the
-/// agenda store refreshes only when the relevance filter accepts it.
+/// OR of their flags. Watcher consumers apply their own relevance checks
+/// before refreshing targets or the agenda.
 public struct VaultChangeBatch: Equatable, Sendable {
     public var paths: [String]
     public var flags: VaultChangeFlags

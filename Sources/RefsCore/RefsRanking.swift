@@ -330,6 +330,9 @@ public struct RefsListing: Equatable, Sendable {
     /// jumps work in a Newest listing whether or not a query is typed.
     public let order: RefsListOrder
 
+    private let orderedIDSet: Set<String>
+    private let sectionIndicesByID: [String: Int]
+
     public init(
         mode: Mode,
         scope: RefScope,
@@ -348,6 +351,14 @@ public struct RefsListing: Equatable, Sendable {
         self.scope = scope
         self.sections = sections
         self.orderedIDs = orderedIDs
+        orderedIDSet = Set(orderedIDs)
+        var sectionIndicesByID: [String: Int] = [:]
+        for (index, section) in sections.enumerated() {
+            for id in section.ids where sectionIndicesByID[id] == nil {
+                sectionIndicesByID[id] = index
+            }
+        }
+        self.sectionIndicesByID = sectionIndicesByID
         self.matches = matches
         self.totalCount = totalCount
         self.openCount = openCount
@@ -356,6 +367,43 @@ public struct RefsListing: Equatable, Sendable {
         self.highlightsCurrentIDs = highlightsCurrentIDs
         self.highlightsTabIDs = highlightsTabIDs
         self.order = order
+    }
+
+    /// Whether an id is present in the frozen row order.
+    public func contains(id: String) -> Bool {
+        orderedIDSet.contains(id)
+    }
+
+    /// The first section containing an id, matching a linear search of
+    /// `sections` when ids appear more than once.
+    public func sectionIndex(for id: String) -> Int? {
+        sectionIndicesByID[id]
+    }
+
+    /// The kind of the first section containing an id. A nil result means
+    /// either no section contains the id or that section is untyped.
+    public func sectionKind(for id: String) -> RefsSectionKind? {
+        guard let index = sectionIndex(for: id) else {
+            return nil
+        }
+        return sections[index].kind
+    }
+
+    /// Derived lookup storage is deliberately excluded so equality keeps
+    /// the same meaning as the listing's original public fields.
+    public static func == (lhs: RefsListing, rhs: RefsListing) -> Bool {
+        lhs.mode == rhs.mode
+            && lhs.scope == rhs.scope
+            && lhs.sections == rhs.sections
+            && lhs.orderedIDs == rhs.orderedIDs
+            && lhs.matches == rhs.matches
+            && lhs.totalCount == rhs.totalCount
+            && lhs.openCount == rhs.openCount
+            && lhs.unavailableIDs == rhs.unavailableIDs
+            && lhs.unavailableItems == rhs.unavailableItems
+            && lhs.highlightsCurrentIDs == rhs.highlightsCurrentIDs
+            && lhs.highlightsTabIDs == rhs.highlightsTabIDs
+            && lhs.order == rhs.order
     }
 
     /// A content-only refresh of a frozen listing: late data changes row

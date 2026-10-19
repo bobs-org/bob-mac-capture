@@ -194,9 +194,8 @@ final class VaultTargetWatcher {
         queue.asyncAfter(deadline: .now() + latency, execute: item)
     }
 
-    /// Delivers one batch per debounce window: the union of paths and the
-    /// OR of flags. The targets cache refreshes on every batch exactly as
-    /// before; the batch also feeds the agenda relevance filter.
+    /// Delivers one batch per debounce window: the union of changed paths and the
+    /// OR of their flags. Each consumer applies its own relevance filter.
     private func deliverBatch() {
         let batch = VaultChangeBatch(
             paths: pendingPaths.sorted(),

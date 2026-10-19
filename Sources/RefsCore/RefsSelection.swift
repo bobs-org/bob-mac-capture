@@ -89,7 +89,7 @@ public enum RefsSelectionPolicy {
             return id
         }
         let sections = listing.sections
-        guard let current = sections.firstIndex(where: { $0.ids.contains(id) }) else {
+        guard let current = listing.sectionIndex(for: id) else {
             return listing.orderedIDs.first
         }
         let next: Int = {
