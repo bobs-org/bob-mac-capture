@@ -1367,7 +1367,9 @@ JSON report `bob` returns.
   RFC 3339 instant; a cache written before the key existed decodes it as
   empty, and the `-g` pass refills it once. The
   open history (note paths and timestamps only) lives in `refs-open-log.json`
-  next to it. Both files are mode 0600 in a 0700 directory.
+  next to it. NEW marks (`new` or `seen`, plus the instant) live in
+  `refs-new-marks.json` beside the open log. All three files are mode 0600
+  in a 0700 directory.
 - `RefsCore` (the `Sources/RefsCore` target, Foundation plus CaptureCore
   only) owns the decoding, the `RefItem`/`RefKind`/`RefState`/`RefScope`
   model, the ranking, captions, and inspector extraction, the
@@ -1414,12 +1416,18 @@ re-ranks.
 
 An empty query shows browse sections in order — Just scanned (this scan's
 created references, in `bob`'s order, uncapped, while the scan mark is at
-most 15 minutes old), Today (ledger order),
-Just added (ready/next, unopened, added within 3 days, capped at 5),
+most 15 minutes old), NEW (Ready/Next rows that are marked new, or unmarked
+unopened arrivals within 3 local days, newest first by new-since,
+uncapped), Today
+(ledger order),
 Reading, Next (blocked rows last), Ready by added desc (blocked rows
 last), Recently opened (read/dropped/unknown opened within 14 days,
-capped at 5), then the Library by last activity. Day counts use the
-panel calendar, so Just added, Recently opened, recency, and Library
+capped at 5), then the Library by last activity. NEW is Mac-local
+presentation state: it never runs `bob`, never writes the vault, and is
+not the review walk's NEW freshness tier. A marked row's new-since is
+the mark instant; an arrived row uses `addedAt` when known, else the
+start of its `added` day. Day counts use the
+panel calendar, so NEW, Recently opened, recency, and Library
 activity never shift by a day in US evenings. Each item appears in the
 first section that admits it; over-cap rows fall through; empty sections
 are omitted; the final tie-break everywhere is the note path. Tabs mode
@@ -1476,10 +1484,26 @@ vault history`, or `Undated · bob has no added date for this note`);
 Newest search keeps the match reason. Section jumps move between date
 groups in Newest, searched or not.
 
+### NEW
+
+A row is NEW when it is Ready or Next (blocked included) and either a
+⌥N `new` mark still holds — no open-log event or Spotlight last-used
+date after the mark — or it has no mark, its `added` day is within 3
+local days, and it has never been opened or annotated. A `seen` mark
+hides NEW. Ways out: open the PDF, ⌥N, the reading task leaving
+Ready/Next, aging past the window (unmarked rows only), or a successful
+Link to Today from Bob Refs. Links made in Obsidian or Capture leave
+the row NEW. NEW never runs `bob`, never writes the vault, and never
+changes reading state, task lanes, Today, or review freshness; it is
+not the review walk's NEW freshness tier. ⌥N stores the smallest mark
+that produces the flipped state, so a second press restores the start
+and an arrived row still ages out on schedule.
+
 ### Tuning
 
 `swift run refs-rank [--plan plan.json] [--opens open-log.json]
-[--scope chats] [--now 2026-10-08T09:00:00] [--tz America/New_York]
+[--new-marks refs-new-marks.json] [--scope chats]
+[--now 2026-10-08T09:00:00] [--tz America/New_York]
 [--newest] [query...] < ref-list.json` ranks a `bob ref list` snapshot with the
 same ranker the panel uses, for tuning against live output on this Mac
 or athena. `--now` accepts a full ISO 8601 time with an offset or a
@@ -1494,6 +1518,8 @@ sections; search mode prints
 (the bare day when only the day is known, `undated` when neither), so
 `bob ref list -R all -A -f json -g | swift run refs-rank --newest`
 shows the timeline against live output.
+`--new-marks refs-new-marks.json` loads Mac-local NEW marks into the
+same ranker.
 The target is never bundled: `Scripts/bundle.sh` copies only the
 `BobMacCapture` product.
 
@@ -1523,22 +1549,25 @@ failed · ⌘R to retry" when a refresh failed, the scan outcome — "Added
 N references", "No new references", or "Scan failed · ⌘S to retry" —
 "Updating…", or "Updated …"). The list column takes
 `round(width × 0.52)` of the panel width and the inspector shows at
-760 pt and above. Rows are 44 pt and two lines: the unopened dot,
-the kind tile, the rich title (code spans styled, matches in the
+760 pt and above. Rows are 44 pt and two lines: the New dot (accent, only while the
+row is NEW),
+the kind tile, the rich title (semibold while NEW; code spans styled, matches in the
 accent color) with its caption (a stem-only or secondary match
 renders its part in the accent color, and a matched author the
 caption already shows is not repeated), and the Today pill,
 annotation and narration marks, and the state glyph. Section headers
-are 26 pt and pinned. In Newest they are date groups (`TODAY`,
+are 26 pt and pinned. The NEW header leads with the same accent
+dot; while a NEW-section row is selected it trails "⌥N Mark Seen"
+or "⌥N Mark New". In Newest they are date groups (`TODAY`,
 `YESTERDAY`, a weekday, a month, `UNDATED`) with the count after the
 title and a trailing day on day groups (`Oct 18`). The Newest token is
 an accent capsule (`calendar.day.timeline.left`, falling back to
 `calendar`) with the text "Newest" and an `xmark`; activating it
 returns to library sections. VoiceOver reads each row as one element —
 "Title, Paper, Ready, added today, 22 pages, Today in BLOG
-Pomodoro, never opened" — with the kind said once and the selected
+Pomodoro, new" — with the kind said once and the selected
 row carrying `.isSelected`. The inspector fills instantly from the
-list item (hero, kind/state/Today chips, title, byline, an
+list item (hero, kind/state/New/Today chips, title, byline, an
 Added/Finished/Pages/Opened/Notes/Reading task/Narration facts grid
 with absent rows omitted, the why-here line, and the vault PDF path;
 see "Inspector" below for the hydrated column); a missing PDF shows an
@@ -1578,6 +1607,7 @@ Diagnostic for hard failures.
 | Command-K | Actions menu for the selected row |
 | Command-Y | Open the Copy card for the selected row |
 | Command-N | Open the Link to Today card for the selected reference |
+| Option-N | Mark the selected Ready or Next reference Seen, or New again; the row stays put until the next re-rank; other rows beep |
 | Command-Shift-R | Open the Rename card for the selected row |
 | Backspace on an empty query | Remove the Tabs or Newest token first, then the scope token |
 | Esc, Ctrl-[ | Link to Today, Rename, or Copy card, then banner, query, Tabs or Newest, scope, close |
@@ -1654,11 +1684,12 @@ filters rows and offers a new Pomodoro name. Arrow keys move through
 matches, Shift-Return creates or reuses the exact typed name, and clicking
 a row links it. The card stays open while choosing another reference.
 The selected row gains its Today pill immediately, then the library refresh
-replaces that optimistic pill. A glass toast confirms the lane and ledger
-change; if the panel was hidden when Bob returned, Bob Refs posts the same
-outcome as a system notification. VoiceOver announces visible successes.
-Escape closes the card, and a link already in progress finishes if the
-panel hides.
+replaces that optimistic pill. A successful (non-guarded) link from Bob Refs
+marks that row seen, so it leaves NEW on the next unfrozen ranking. A glass
+toast confirms the lane and ledger change; if the panel was hidden when Bob
+returned, Bob Refs posts the same outcome as a system notification. VoiceOver
+announces visible successes. Escape closes the card, and a link already in
+progress finishes if the panel hides.
 
 ### Opening Bob Refs
 
@@ -1793,17 +1824,20 @@ The ⌘K actions menu pops up below the selected row (at the list's
 center when the row frame is unknown): Open in Highlights (↵), Close Tab
 (⌃X, matched Tabs rows), Open
 Note (⌘↵), Reveal in Finder (⌥↵), Copy… (⌘Y), Rename… (⌘⇧R),
-Link to Today… (⌘N), Open
+Link to Today… (⌘N), Mark as Seen or Mark as New (⌥N, Ready and Next
+rows), Open
 Source URL (only with `urls`), Open Narration (only with `audio`, in
 the default app), Open in Default App, Refresh Library (⌘R), and Scan
 for New References (⌘S, last; disabled while a scan runs). Copy…,
-Rename…, and Link to Today… open their matching cards.
+Rename…, and Link to Today… open their matching cards. ⌥N flips NEW
+in place; ineligible rows beep. A seen row stays in NEW until the next
+unfrozen ranking.
 
 ### Privacy
 
 Refs files live outside the vault, every file mode 0600 in 0700
-directories: the snapshot cache and open log
-(`refs-snapshot.json`, `refs-open-log.json`) under
+directories: the snapshot cache, open log, and NEW marks
+(`refs-snapshot.json`, `refs-open-log.json`, `refs-new-marks.json`) under
 `~/Library/Application Support/org.bobs.bob-mac-capture/`, and the
 intrinsics cache (`intrinsics.json`) with thumbnails
 (`thumbs/<sha256>.png`) under
@@ -1923,6 +1957,7 @@ Bob Refs shortcuts:
 
 | Key | Action |
 | --- | --- |
+| Option-N | Mark the selected Ready or Next reference Seen, or New again; the row stays put until the next re-rank; other rows beep |
 | Command-T | Toggle the Tabs filter; the query and kind scope stay in place |
 | Shift-Command-O | While Highlights is frontmost, open Bob Refs in Tabs; configurable to Command-E or Off |
 | Ctrl-X | Close the selected tab in Highlights (Tabs only) |

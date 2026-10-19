@@ -6,61 +6,82 @@ import SwiftUI
 /// "4m ago"), refreshed each minute.
 @available(macOS 26.0, *)
 struct RefsSectionHeader: View {
-    let kind: RefsSectionKind
-    let count: Int
-    /// When the scan finished, for the `.justScanned` trailing time.
-    /// Nil for every other section.
-    let at: Date?
+  let kind: RefsSectionKind
+  let count: Int
+  /// When the scan finished, for the `.justScanned` trailing time.
+  /// Nil for every other section.
+  let at: Date?
+  /// Trailing ⌥N hint on the NEW header while its row is selected.
+  let newHint: String?
 
-    init(kind: RefsSectionKind, count: Int, at: Date? = nil) {
-        self.kind = kind
-        self.count = count
-        self.at = at
-    }
+  init(
+    kind: RefsSectionKind,
+    count: Int,
+    at: Date? = nil,
+    newHint: String? = nil
+  ) {
+    self.kind = kind
+    self.count = count
+    self.at = at
+    self.newHint = newHint
+  }
 
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(kind.title.uppercased())
-                .font(.caption.weight(.semibold))
-                .tracking(0.5)
-                .foregroundStyle(.secondary)
-            Text("\(count)")
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.tertiary)
-            Spacer(minLength: 0)
-            if case .added(let group) = kind, let detail = group.detail {
-                Text(detail)
-                    .font(.caption2)
-                    .monospacedDigit()
-                    .foregroundStyle(.tertiary)
-            } else if kind == .justScanned, let at {
-                TimelineView(.everyMinute) { context in
-                    Text(RefsCaption.relativeCompact(at, now: context.date))
-                        .font(.caption2)
-                        .monospacedDigit()
-                        .foregroundStyle(.tertiary)
-                }
-            }
+  var body: some View {
+    HStack(spacing: 6) {
+      if kind == .new {
+        Circle()
+          .fill(Color.accentColor)
+          .frame(
+            width: RefsVisualTokens.newDotSize,
+            height: RefsVisualTokens.newDotSize
+          )
+      }
+      Text(kind.title.uppercased())
+        .font(.caption.weight(.semibold))
+        .tracking(0.5)
+        .foregroundStyle(.secondary)
+      Text("\(count)")
+        .font(.caption2.monospacedDigit())
+        .foregroundStyle(.tertiary)
+      Spacer(minLength: 0)
+      if kind == .new, let newHint {
+        Text(newHint)
+          .font(.caption2)
+          .monospacedDigit()
+          .foregroundStyle(.tertiary)
+      } else if case .added(let group) = kind, let detail = group.detail {
+        Text(detail)
+          .font(.caption2)
+          .monospacedDigit()
+          .foregroundStyle(.tertiary)
+      } else if kind == .justScanned, let at {
+        TimelineView(.everyMinute) { context in
+          Text(RefsCaption.relativeCompact(at, now: context.date))
+            .font(.caption2)
+            .monospacedDigit()
+            .foregroundStyle(.tertiary)
         }
-        .padding(.horizontal, 14)
-        .frame(height: RefsVisualTokens.sectionHeaderHeight)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.regularMaterial)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityAddTraits(.isHeader)
+      }
     }
+    .padding(.horizontal, 14)
+    .frame(height: RefsVisualTokens.sectionHeaderHeight)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(.regularMaterial)
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel(accessibilityLabel)
+    .accessibilityAddTraits(.isHeader)
+  }
 
-    private var accessibilityLabel: String {
-        if case .added(let group) = kind {
-            return "\(group.accessibilityLabel), \(count) references"
-        }
-        if kind == .justScanned, let at {
-            let when = RefsCaption.relativeCompact(at, now: Date())
-            return "Just scanned, \(count) references, \(when)"
-        }
-        return "\(kind.title), \(count) references"
+  private var accessibilityLabel: String {
+    if case .added(let group) = kind {
+      return "\(group.accessibilityLabel), \(count) references"
     }
+    if kind == .justScanned, let at {
+      let when = RefsCaption.relativeCompact(at, now: Date())
+      return "Just scanned, \(count) references, \(when)"
+    }
+    return "\(kind.title), \(count) references"
+  }
 }
 
 /// The list column: a scroll view of pinned sections whose selection
@@ -71,209 +92,212 @@ struct RefsSectionHeader: View {
 /// `withAnimation`.
 @available(macOS 26.0, *)
 struct RefsListView: View {
-    @ObservedObject var model: RefsPanelModel
-    /// Design fixtures lay the same rows out in a static stack:
-    /// `ImageRenderer` snapshots `ScrollView` content blank, so the
-    /// live scroll view never appears in a fixture.
-    var previewMode = false
-    /// Dims every row for stale Tabs rows after a failed re-read, on
-    /// top of each row's own treatment.
-    var dimRows = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @ObservedObject var model: RefsPanelModel
+  /// Design fixtures lay the same rows out in a static stack:
+  /// `ImageRenderer` snapshots `ScrollView` content blank, so the
+  /// live scroll view never appears in a fixture.
+  var previewMode = false
+  /// Dims every row for stale Tabs rows after a failed re-read, on
+  /// top of each row's own treatment.
+  var dimRows = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
-        if previewMode {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(model.listing.sections, id: \.sectionID) { section in
-                    Section {
-                        ForEach(section.ids, id: \.self) { id in
-                            previewRow(for: id)
-                        }
-                    } header: {
-                        if let kind = section.kind {
-                            RefsSectionHeader(
-                                kind: kind,
-                                count: section.ids.count,
-                                at: headerScanDate(for: kind)
-                            )
-                        }
-                    }
+  var body: some View {
+    if previewMode {
+      VStack(alignment: .leading, spacing: 0) {
+        ForEach(model.listing.sections, id: \.sectionID) { section in
+          Section {
+            ForEach(section.ids, id: \.self) { id in
+              previewRow(for: id)
+            }
+          } header: {
+            if let kind = section.kind {
+              RefsSectionHeader(
+                kind: kind,
+                count: section.ids.count,
+                at: headerScanDate(for: kind),
+                newHint: kind == .new ? model.newSectionHint : nil
+              )
+            }
+          }
+        }
+      }
+      .padding(.vertical, RefsVisualTokens.listVerticalPadding)
+      .accessibilityLabel("References")
+    } else {
+      ScrollViewReader { proxy in
+        GeometryReader { geometry in
+          ScrollView(.vertical) {
+            LazyVStack(
+              alignment: .leading,
+              spacing: 0,
+              pinnedViews: [.sectionHeaders]
+            ) {
+              ForEach(model.listing.sections, id: \.sectionID) { section in
+                Section {
+                  ForEach(section.ids, id: \.self) { id in
+                    row(for: id)
+                      .id(id)
+                  }
+                } header: {
+                  if let kind = section.kind {
+                    RefsSectionHeader(
+                      kind: kind,
+                      count: section.ids.count,
+                      at: headerScanDate(for: kind),
+                      newHint: kind == .new
+                        ? model.newSectionHint : nil
+                    )
+                  }
                 }
+              }
             }
             .padding(.vertical, RefsVisualTokens.listVerticalPadding)
-            .accessibilityLabel("References")
-        } else {
-            ScrollViewReader { proxy in
-                GeometryReader { geometry in
-                    ScrollView(.vertical) {
-                        LazyVStack(
-                            alignment: .leading,
-                            spacing: 0,
-                            pinnedViews: [.sectionHeaders]
-                        ) {
-                            ForEach(model.listing.sections, id: \.sectionID) { section in
-                                Section {
-                                    ForEach(section.ids, id: \.self) { id in
-                                        row(for: id)
-                                            .id(id)
-                                    }
-                                } header: {
-                                    if let kind = section.kind {
-                                        RefsSectionHeader(
-                                            kind: kind,
-                                            count: section.ids.count,
-                                            at: headerScanDate(for: kind)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.vertical, RefsVisualTokens.listVerticalPadding)
-                    }
-                    .onChange(of: model.selectedID) { _, selected in
-                        if let selected {
-                            proxy.scrollTo(selected)
-                        }
-                    }
-                    .onChange(of: model.listing.orderedIDs) { _, _ in
-                        if let selected = model.selectedID {
-                            proxy.scrollTo(selected)
-                        }
-                    }
-                    .onAppear {
-                        reportBudget(height: geometry.size.height)
-                    }
-                    .onChange(of: geometry.size.height) { _, height in
-                        reportBudget(height: height)
-                    }
-                    .accessibilityLabel("References")
-                }
+          }
+          .onChange(of: model.selectedID) { _, selected in
+            if let selected {
+              proxy.scrollTo(selected)
             }
-        }
-    }
-
-    private func headerScanDate(for kind: RefsSectionKind) -> Date? {
-        guard kind == .justScanned else {
-            return nil
-        }
-        return model.signals.scan?.at
-    }
-
-    private func row(for id: String) -> some View {
-        let content = model.rowContent(for: id)
-        let isSelected = model.selectedID == id
-        let pomodoroName = model.pomodoroName(for: id)
-        let onSelect: () -> Void = {
-            model.perform(.select(id: id))
-        }
-        let onActivate: () -> Void = {
-            model.perform(.activate(id: id))
-        }
-        let onClose = closeHandler(for: id)
-
-        return ZStack(alignment: .topLeading) {
-            if let content {
-                RefsRowView(
-                    content: content,
-                    isSelected: isSelected,
-                    pomodoroName: pomodoroName,
-                    onSelect: onSelect,
-                    onActivate: onActivate,
-                    onClose: onClose
-                )
-                .opacity(dimRows ? 0.6 : 1)
-                // The selected row keeps its frame live in the panel-root
-                // coordinate space, so the ⌘K menu pops below it. Deselected
-                // rows report nil, which never clears the current rect.
-                .onGeometryChange(for: CGRect?.self) { proxy in
-                    model.selectedID == id
-                        ? proxy.frame(in: .named("refsPanel")) : nil
-                } action: { rect in
-                    if let rect {
-                        model.selectedRowRect = rect
-                    }
-                }
+          }
+          .onChange(of: model.listing.orderedIDs) { _, _ in
+            if let selected = model.selectedID {
+              proxy.scrollTo(selected)
             }
+          }
+          .onAppear {
+            reportBudget(height: geometry.size.height)
+          }
+          .onChange(of: geometry.size.height) { _, height in
+            reportBudget(height: height)
+          }
+          .accessibilityLabel("References")
         }
-        .transition(removalTransition)
+      }
     }
+  }
 
-    /// Preview fixtures keep their previous static-stack rendering path.
-    private func previewRow(for id: String) -> some View {
-        guard let content = model.rowContent(for: id) else {
-            return AnyView(EmptyView())
-        }
+  private func headerScanDate(for kind: RefsSectionKind) -> Date? {
+    guard kind == .justScanned else {
+      return nil
+    }
+    return model.signals.scan?.at
+  }
+
+  private func row(for id: String) -> some View {
+    let content = model.rowContent(for: id)
+    let isSelected = model.selectedID == id
+    let pomodoroName = model.pomodoroName(for: id)
+    let onSelect: () -> Void = {
+      model.perform(.select(id: id))
+    }
+    let onActivate: () -> Void = {
+      model.perform(.activate(id: id))
+    }
+    let onClose = closeHandler(for: id)
+
+    return ZStack(alignment: .topLeading) {
+      if let content {
+        RefsRowView(
+          content: content,
+          isSelected: isSelected,
+          pomodoroName: pomodoroName,
+          onSelect: onSelect,
+          onActivate: onActivate,
+          onClose: onClose
+        )
+        .opacity(dimRows ? 0.6 : 1)
         // The selected row keeps its frame live in the panel-root
         // coordinate space, so the ⌘K menu pops below it. Deselected
-        // rows report nil, which never clears the current rect: the
-        // next selection overwrites it, and a fresh presentation
-        // clears it.
-        return AnyView(
-            RefsRowView(
-                content: content,
-                isSelected: model.selectedID == id,
-                pomodoroName: model.pomodoroName(for: id),
-                onSelect: {
-                    model.perform(.select(id: id))
-                },
-                onActivate: {
-                    model.perform(.activate(id: id))
-                },
-                onClose: closeHandler(for: id)
-            )
-            .opacity(dimRows ? 0.6 : 1)
-            .transition(removalTransition)
-            .onGeometryChange(for: CGRect?.self) { proxy in
-                model.selectedID == id
-                    ? proxy.frame(in: .named("refsPanel")) : nil
-            } action: { rect in
-                if let rect {
-                    model.selectedRowRect = rect
-                }
-            }
-        )
-    }
-
-    /// The row close button, or nil when this id is not a closable tab.
-    private func closeHandler(for id: String) -> (() -> Void)? {
-        guard model.canCloseTab(id: id) else {
-            return nil
+        // rows report nil, which never clears the current rect.
+        .onGeometryChange(for: CGRect?.self) { proxy in
+          model.selectedID == id
+            ? proxy.frame(in: .named("refsPanel")) : nil
+        } action: { rect in
+          if let rect {
+            model.selectedRowRect = rect
+          }
         }
-        return { _ = model.perform(.closeTab(id: id)) }
+      }
     }
+    .transition(removalTransition)
+  }
 
-    /// Close removals fade and collapse so the rows below glide up.
-    /// Reduce Motion keeps the fade and drops the collapse. Insertions
-    /// are identity so a query re-rank never animates in.
-    private var removalTransition: AnyTransition {
-        if reduceMotion {
-            return .opacity
-        }
-        return .asymmetric(
-            insertion: .identity,
-            removal: .opacity.combined(with: .scale(scale: 0.35, anchor: .top))
-        )
+  /// Preview fixtures keep their previous static-stack rendering path.
+  private func previewRow(for id: String) -> some View {
+    guard let content = model.rowContent(for: id) else {
+      return AnyView(EmptyView())
     }
+    // The selected row keeps its frame live in the panel-root
+    // coordinate space, so the ⌘K menu pops below it. Deselected
+    // rows report nil, which never clears the current rect: the
+    // next selection overwrites it, and a fresh presentation
+    // clears it.
+    return AnyView(
+      RefsRowView(
+        content: content,
+        isSelected: model.selectedID == id,
+        pomodoroName: model.pomodoroName(for: id),
+        onSelect: {
+          model.perform(.select(id: id))
+        },
+        onActivate: {
+          model.perform(.activate(id: id))
+        },
+        onClose: closeHandler(for: id)
+      )
+      .opacity(dimRows ? 0.6 : 1)
+      .transition(removalTransition)
+      .onGeometryChange(for: CGRect?.self) { proxy in
+        model.selectedID == id
+          ? proxy.frame(in: .named("refsPanel")) : nil
+      } action: { rect in
+        if let rect {
+          model.selectedRowRect = rect
+        }
+      }
+    )
+  }
 
-    private func reportBudget(height: CGFloat) {
-        let budget = max(1, Int(height / RefsVisualTokens.rowHeight))
-        if model.visibleRowBudget != budget {
-            model.visibleRowBudget = budget
-        }
+  /// The row close button, or nil when this id is not a closable tab.
+  private func closeHandler(for id: String) -> (() -> Void)? {
+    guard model.canCloseTab(id: id) else {
+      return nil
     }
+    return { _ = model.perform(.closeTab(id: id)) }
+  }
+
+  /// Close removals fade and collapse so the rows below glide up.
+  /// Reduce Motion keeps the fade and drops the collapse. Insertions
+  /// are identity so a query re-rank never animates in.
+  private var removalTransition: AnyTransition {
+    if reduceMotion {
+      return .opacity
+    }
+    return .asymmetric(
+      insertion: .identity,
+      removal: .opacity.combined(with: .scale(scale: 0.35, anchor: .top))
+    )
+  }
+
+  private func reportBudget(height: CGFloat) {
+    let budget = max(1, Int(height / RefsVisualTokens.rowHeight))
+    if model.visibleRowBudget != budget {
+      model.visibleRowBudget = budget
+    }
+  }
 }
 
-private extension RefsSection {
-    /// A stable identity for `ForEach`: the kind, or "search" for the
-    /// single ranked section. Newest groups use their stable group id.
-    var sectionID: String {
-        switch kind {
-        case .some(.added(let group)):
-            return "section-\(group.id)"
-        case .some(let kind):
-            return "section-\(kind)"
-        case .none:
-            return "search"
-        }
+extension RefsSection {
+  /// A stable identity for `ForEach`: the kind, or "search" for the
+  /// single ranked section. Newest groups use their stable group id.
+  fileprivate var sectionID: String {
+    switch kind {
+    case .some(.added(let group)):
+      return "section-\(group.id)"
+    case .some(let kind):
+      return "section-\(kind)"
+    case .none:
+      return "search"
     }
+  }
 }

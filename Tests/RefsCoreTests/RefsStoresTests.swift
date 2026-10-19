@@ -4,12 +4,13 @@ import XCTest
 @testable import RefsCore
 
 /// Store tests: snapshot round-trips, corruption quarantine, file modes, the
-/// open-log prune rules, and frecency math.
+/// open-log prune rules, NEW marks, and frecency math.
 final class RefsStoresTests: XCTestCase {
   private var tempDirectory: URL!
   private var snapshotURL: URL!
   private var snapshotQuarantineURL: URL!
   private var openLogURL: URL!
+  private var newMarksURL: URL!
 
   override func setUpWithError() throws {
     tempDirectory = FileManager.default.temporaryDirectory
@@ -25,6 +26,10 @@ final class RefsStoresTests: XCTestCase {
     )
     openLogURL = support.appendingPathComponent(
       RefsOpenLogStore.fileName,
+      isDirectory: false
+    )
+    newMarksURL = support.appendingPathComponent(
+      RefsNewMarkStore.fileName,
       isDirectory: false
     )
     try FileManager.default.createDirectory(
@@ -262,6 +267,99 @@ final class RefsStoresTests: XCTestCase {
     XCTAssertEqual(stats.frecency("ref/chat/missing.md"), 0)
     XCTAssertEqual(stats.maxFrecency, 1.5, accuracy: 1e-9)
     XCTAssertEqual(RefsOpenStats(events: [], now: now).maxFrecency, 0)
+  }
+
+  func testNewMarksMissingFileStartsEmptyWithoutCreatingTheDirectory() {
+    let store = RefsNewMarkStore(fileURL: newMarksURL)
+    XCTAssertTrue(store.load().isEmpty)
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: newMarksURL.deletingLastPathComponent().path
+      )
+    )
+  }
+
+  func testNewMarksApplyLoadRenameAndRemove() {
+    let now = Date(timeIntervalSince1970: 1_760_000_000)
+    let store = RefsNewMarkStore(fileURL: newMarksURL, now: { now })
+    store.apply(
+      path: "ref/a.md",
+      mark: RefsNewMark(state: .new, at: now)
+    )
+    store.apply(
+      path: "ref/b.md",
+      mark: RefsNewMark(state: .seen, at: now.addingTimeInterval(-10))
+    )
+
+    XCTAssertEqual(store.load().mark(for: "ref/a.md")?.state, .new)
+    XCTAssertEqual(store.load().mark(for: "ref/b.md")?.state, .seen)
+    XCTAssertEqual(try posixPermissions(at: newMarksURL), 0o600)
+    XCTAssertEqual(
+      try posixPermissions(at: newMarksURL.deletingLastPathComponent()),
+      0o700
+    )
+
+    store.rename(from: "ref/a.md", to: "ref/c.md")
+    XCTAssertNil(store.load().mark(for: "ref/a.md"))
+    XCTAssertEqual(store.load().mark(for: "ref/c.md")?.state, .new)
+    XCTAssertEqual(store.load().mark(for: "ref/c.md")?.at, now)
+
+    store.apply(path: "ref/c.md", mark: nil)
+    XCTAssertNil(store.load().mark(for: "ref/c.md"))
+    XCTAssertEqual(store.load().mark(for: "ref/b.md")?.state, .seen)
+  }
+
+  func testNewMarksPruneStaleThenKeepTheNewestTwoThousand() {
+    let now = Date(timeIntervalSince1970: 1_760_000_000)
+    let store = RefsNewMarkStore(fileURL: newMarksURL, now: { now })
+    store.apply(
+      path: "ref/old.md",
+      mark: RefsNewMark(
+        state: .new,
+        at: now.addingTimeInterval(TimeInterval(-366 * 24 * 3_600))
+      )
+    )
+    for index in 0..<2_005 {
+      store.apply(
+        path: "ref/n\(index).md",
+        mark: RefsNewMark(
+          state: .seen,
+          at: now.addingTimeInterval(TimeInterval(index))
+        )
+      )
+    }
+
+    let loaded = store.load()
+    XCTAssertNil(loaded.mark(for: "ref/old.md"))
+    XCTAssertNil(loaded.mark(for: "ref/n4.md"))
+    XCTAssertEqual(loaded.mark(for: "ref/n5.md")?.state, .seen)
+    XCTAssertEqual(loaded.mark(for: "ref/n2004.md")?.state, .seen)
+  }
+
+  func testNewMarksUnknownStateIsLossyAndCorruptionQuarantines() throws {
+    try FileManager.default.createDirectory(
+      at: newMarksURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    let mixed = """
+      {"schema_version":1,"marks":[\
+      {"path":"ref/ok.md","state":"new","at":100},\
+      {"path":"ref/bad.md","state":"weird","at":200}\
+      ]}
+      """
+    try mixed.write(to: newMarksURL, atomically: true, encoding: .utf8)
+    let store = RefsNewMarkStore(fileURL: newMarksURL)
+    XCTAssertEqual(store.load().mark(for: "ref/ok.md")?.state, .new)
+    XCTAssertNil(store.load().mark(for: "ref/bad.md"))
+
+    try "not json".write(to: newMarksURL, atomically: true, encoding: .utf8)
+    let errors = RefsErrorLog()
+    let corrupt = RefsNewMarkStore(
+      fileURL: newMarksURL,
+      onError: { errors.append($0) }
+    )
+    XCTAssertTrue(corrupt.load().isEmpty)
+    XCTAssertEqual(errors.messages, [RefsNewMarkStore.unreadableQuarantinedMessage])
   }
 
   private func posixPermissions(at url: URL) throws -> UInt16 {

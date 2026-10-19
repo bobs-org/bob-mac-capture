@@ -550,6 +550,26 @@ final class RefsInspectorLoaderTests: XCTestCase {
       try XCTUnwrap(chatSections.dropFirst().first),
       [.copy, .rename, .linkToday]
     )
+    let readyNew = RefsActionsMenu.sections(
+      for: fixtures.paper,
+      audioURL: nil,
+      newState: .isNew
+    )
+    XCTAssertEqual(
+      Array(try XCTUnwrap(readyNew.dropFirst().first).prefix(4)),
+      [.copy, .rename, .linkToday, .markSeen]
+    )
+    let readySeen = RefsActionsMenu.sections(
+      for: fixtures.paper,
+      audioURL: nil,
+      newState: .isNotNew
+    )
+    XCTAssertTrue(try XCTUnwrap(readySeen.dropFirst().first).contains(.markNew))
+    XCTAssertEqual(RefsAction.markSeen.title, "Mark as Seen")
+    XCTAssertEqual(RefsAction.markSeen.keyEquivalent, "n")
+    XCTAssertEqual(RefsAction.markSeen.keyEquivalentModifierMask, .option)
+    XCTAssertEqual(RefsAction.markNew.title, "Mark as New")
+    XCTAssertEqual(RefsAction.markNew.keyEquivalentModifierMask, .option)
 
     let paperURL = fixtures.library.audioURL(for: fixtures.paper)
     XCTAssertNotNil(paperURL)
@@ -598,6 +618,9 @@ final class RefsInspectorLoaderTests: XCTestCase {
       ),
       openLogStore: RefsOpenLogStore(
         fileURL: root.appendingPathComponent("refs-open-log.json")
+      ),
+      newMarkStore: RefsNewMarkStore(
+        fileURL: root.appendingPathComponent("refs-new-marks.json")
       ),
       vaultRoot: { vault },
       fileExists: { _ in true },
@@ -668,6 +691,9 @@ final class RefsInspectorLoaderTests: XCTestCase {
       openLogStore: RefsOpenLogStore(
         fileURL: root.appendingPathComponent("refs-open-log.json")
       ),
+      newMarkStore: RefsNewMarkStore(
+        fileURL: root.appendingPathComponent("refs-new-marks.json")
+      ),
       vaultRoot: { root.appendingPathComponent("vault") },
       fileExists: { _ in true },
       spotlight: StubSpotlight(),
@@ -733,6 +759,9 @@ final class RefsInspectorLoaderTests: XCTestCase {
       ),
       openLogStore: RefsOpenLogStore(
         fileURL: root.appendingPathComponent("refs-open-log.json")
+      ),
+      newMarkStore: RefsNewMarkStore(
+        fileURL: root.appendingPathComponent("refs-new-marks.json")
       ),
       vaultRoot: { vault },
       fileExists: { _ in true },
@@ -812,6 +841,9 @@ final class RefsInspectorLoaderTests: XCTestCase {
       openLogStore: RefsOpenLogStore(
         fileURL: root.appendingPathComponent("refs-open-log.json")
       ),
+      newMarkStore: RefsNewMarkStore(
+        fileURL: root.appendingPathComponent("refs-new-marks.json")
+      ),
       vaultRoot: { vault },
       fileExists: { _ in true },
       spotlight: StubSpotlight(),
@@ -874,7 +906,8 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
   private let lock = NSLock()
   private(set) var showPaths: [String] = []
   private(set) var renameCalls: [(notePath: String, name: String)] = []
-  private(set) var todayLinkCalls: [(notePath: String, selector: RefsTodayLinkSelector, dryRun: Bool)] = []
+  private(set) var todayLinkCalls:
+    [(notePath: String, selector: RefsTodayLinkSelector, dryRun: Bool)] = []
   var showError: Error?
   var renameError: Error?
   var renameResponse = RefsRenameResponse()
@@ -882,7 +915,8 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
   var todayLinkResponse = RefsTodayLinkResponse()
   var todayLinkError: Error?
   var todayLinkDelayNanoseconds: UInt64 = 0
-  var todayLinkHandler: (@Sendable (String, RefsTodayLinkSelector, Bool) async throws -> RefsTodayLinkResponse)?
+  var todayLinkHandler:
+    (@Sendable (String, RefsTodayLinkSelector, Bool) async throws -> RefsTodayLinkResponse)?
   var listResponse = RefsListResponse(schemaVersion: 1)
   var listError: Error?
   var planResponse = RefsPlanResponse(schemaVersion: 2)

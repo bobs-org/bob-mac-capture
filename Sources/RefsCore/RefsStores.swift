@@ -313,6 +313,199 @@ public struct RefsOpenLogStore: Sendable {
   }
 }
 
+public struct RefsNewMarksFile: Codable, Equatable, Sendable {
+  public static let currentSchemaVersion = 1
+
+  public var schemaVersion: Int
+  public var marks: [RefsNewMarkEntry]
+
+  public init(
+    schemaVersion: Int = RefsNewMarksFile.currentSchemaVersion,
+    marks: [RefsNewMarkEntry] = []
+  ) {
+    self.schemaVersion = schemaVersion
+    self.marks = marks
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion = "schema_version"
+    case marks
+  }
+
+  private struct RawMark: Codable {
+    var path: String
+    var state: String
+    var at: Date
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+    let raw = try container.decode([RawMark].self, forKey: .marks)
+    marks = raw.compactMap { row in
+      guard let state = RefsNewMarkState(rawValue: row.state) else {
+        return nil
+      }
+      return RefsNewMarkEntry(path: row.path, state: state, at: row.at)
+    }
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(schemaVersion, forKey: .schemaVersion)
+    try container.encode(
+      marks.map { RawMark(path: $0.path, state: $0.state.rawValue, at: $0.at) },
+      forKey: .marks
+    )
+  }
+}
+
+/// Mac-local NEW marks: note paths, `new`/`seen`, and timestamps.
+/// Pruning drops marks older than 365 days, then keeps the newest 2000.
+public struct RefsNewMarkStore: Sendable {
+  public static let bundleIdentifier = "org.bobs.bob-mac-capture"
+  public static let fileName = "refs-new-marks.json"
+  public static let quarantineFileName = "refs-new-marks.corrupt.json"
+  public static let maxEvents = 2000
+  public static let maxAgeDays = 365
+
+  public static let unreadableQuarantinedMessage =
+    "Refs new marks unreadable; quarantined and started empty"
+  public static let unreadableStartedEmptyMessage =
+    "Refs new marks unreadable; started empty"
+
+  private let fileURL: URL
+  private let fileManager: FileManager
+  private let onError: @Sendable (String) -> Void
+  private let now: @Sendable () -> Date
+
+  public init(
+    fileURL: URL,
+    fileManager: FileManager = .default,
+    onError: @escaping @Sendable (String) -> Void = { _ in },
+    now: @escaping @Sendable () -> Date = { Date() }
+  ) {
+    self.fileURL = fileURL
+    self.fileManager = fileManager
+    self.onError = onError
+    self.now = now
+  }
+
+  public static func defaultFileURL(fileManager: FileManager = .default) throws -> URL {
+    let support = try fileManager.url(
+      for: .applicationSupportDirectory,
+      in: .userDomainMask,
+      appropriateFor: nil,
+      create: false
+    )
+    return
+      support
+      .appendingPathComponent(bundleIdentifier, isDirectory: true)
+      .appendingPathComponent(fileName, isDirectory: false)
+  }
+
+  public static func saveFailureMessage(for error: Error) -> String {
+    "Refs new marks not saved: \(error.localizedDescription)"
+  }
+
+  public func load() -> RefsNewMarks {
+    RefsNewMarks(entries: loadEntries())
+  }
+
+  /// Loads, replaces or removes that path's entry, prunes, and saves,
+  /// so concurrent writers cannot lose each other's marks.
+  public func apply(path: String, mark: RefsNewMark?) {
+    var marks = loadEntries()
+    marks.removeAll { $0.path == path }
+    if let mark {
+      marks.append(RefsNewMarkEntry(path: path, state: mark.state, at: mark.at))
+    }
+    save(pruned(marks))
+  }
+
+  /// Rewrites matching history paths while retaining each entry's
+  /// state and instant.
+  public func rename(from oldPath: String, to newPath: String) {
+    var marks = loadEntries()
+    var changed = false
+    for index in marks.indices where marks[index].path == oldPath {
+      marks[index] = RefsNewMarkEntry(
+        path: newPath,
+        state: marks[index].state,
+        at: marks[index].at
+      )
+      changed = true
+    }
+    if changed {
+      save(marks)
+    }
+  }
+
+  func pruned(_ marks: [RefsNewMarkEntry]) -> [RefsNewMarkEntry] {
+    let cutoff = now().addingTimeInterval(TimeInterval(-Self.maxAgeDays * 24 * 3_600))
+    let fresh = marks.filter { $0.at >= cutoff }
+    guard fresh.count > Self.maxEvents else {
+      return fresh
+    }
+    return Array(fresh.sorted { $0.at < $1.at }.suffix(Self.maxEvents))
+  }
+
+  private func loadEntries() -> [RefsNewMarkEntry] {
+    guard fileManager.fileExists(atPath: fileURL.path) else {
+      return []
+    }
+
+    do {
+      let data = try Data(contentsOf: fileURL)
+      let file = try RefsStoreCodecs.decoder().decode(RefsNewMarksFile.self, from: data)
+      guard file.schemaVersion == RefsNewMarksFile.currentSchemaVersion else {
+        quarantineUnreadableFile()
+        return []
+      }
+      return file.marks
+    } catch {
+      quarantineUnreadableFile()
+      return []
+    }
+  }
+
+  private func save(_ marks: [RefsNewMarkEntry]) {
+    do {
+      try RefsStoreCodecs.ensureParentDirectory(for: fileURL, fileManager: fileManager)
+      let file = RefsNewMarksFile(marks: marks)
+      let data = try RefsStoreCodecs.encoder().encode(file)
+      try RefsStoreCodecs.writeAtomically(
+        data,
+        to: fileURL,
+        fileManager: fileManager
+      )
+    } catch {
+      onError(Self.saveFailureMessage(for: error))
+    }
+  }
+
+  private var parentDirectoryURL: URL {
+    fileURL.deletingLastPathComponent()
+  }
+
+  private var quarantineURL: URL {
+    parentDirectoryURL.appendingPathComponent(
+      Self.quarantineFileName,
+      isDirectory: false
+    )
+  }
+
+  private func quarantineUnreadableFile() {
+    do {
+      try RefsStoreCodecs.removeItemIfExists(at: quarantineURL, fileManager: fileManager)
+      try fileManager.moveItem(at: fileURL, to: quarantineURL)
+      onError(Self.unreadableQuarantinedMessage)
+    } catch {
+      onError(Self.unreadableStartedEmptyMessage)
+    }
+  }
+}
+
 /// Read model over the open log: last-opened dates, open counts, and the
 /// frecency decay `Σ 0.5^(ageDays / frecencyHalfLifeDays)` the ranker
 /// weights.

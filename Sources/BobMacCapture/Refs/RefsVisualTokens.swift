@@ -11,182 +11,189 @@ import SwiftUI
 /// (rule, card, and chip) and orange (note glyph) mean your highlights
 /// and notes in the inspector.
 enum RefsVisualTokens {
-    // MARK: - Window
+  // MARK: - Window
 
-    /// Fixed panel width in points, clamped to the screen.
-    static let panelWidth: CGFloat = 880
-    /// Fixed panel height in points, clamped to the screen.
-    static let panelHeight: CGFloat = 560
-    /// Margin kept around the panel on every side.
-    static let screenMargin: CGFloat = 80
-    /// Fraction of the visible height left above the panel's top edge.
-    static let topFraction: CGFloat = 0.16
-    /// Glass corner radius.
-    static let glassRadius: CGFloat = 20
-    /// Outer padding between the glass and the content well.
-    static let outerPadding: CGFloat = 8
-    /// Content-well radius, concentric with the glass.
-    static let wellRadius: CGFloat = 12
+  /// Fixed panel width in points, clamped to the screen.
+  static let panelWidth: CGFloat = 880
+  /// Fixed panel height in points, clamped to the screen.
+  static let panelHeight: CGFloat = 560
+  /// Margin kept around the panel on every side.
+  static let screenMargin: CGFloat = 80
+  /// Fraction of the visible height left above the panel's top edge.
+  static let topFraction: CGFloat = 0.16
+  /// Glass corner radius.
+  static let glassRadius: CGFloat = 20
+  /// Outer padding between the glass and the content well.
+  static let outerPadding: CGFloat = 8
+  /// Content-well radius, concentric with the glass.
+  static let wellRadius: CGFloat = 12
 
-    /// Width at and above which the inspector column shows.
-    static let inspectorThreshold: CGFloat = 760
-    /// Fraction of the panel width the list column takes.
-    static let listFraction: CGFloat = 0.52
+  /// Width at and above which the inspector column shows.
+  static let inspectorThreshold: CGFloat = 760
+  /// Fraction of the panel width the list column takes.
+  static let listFraction: CGFloat = 0.52
 
-    // MARK: - Pieces
+  // MARK: - Pieces
 
-    static let searchBarHeight: CGFloat = 52
-    static let sectionHeaderHeight: CGFloat = 26
-    static let rowHeight: CGFloat = 44
-    static let footerHeight: CGFloat = 30
-    static let listVerticalPadding: CGFloat = 6
-    static let inspectorPadding: CGFloat = 18
-    static let inspectorSpacing: CGFloat = 14
-    static let heroTileSize: CGFloat = 44
-    static let heroTileRadius: CGFloat = 11
-    static let thumbnailWidth: CGFloat = 112
-    static let thumbnailHeight: CGFloat = 145
-    static let thumbnailRadius: CGFloat = 6
-    static let kindTileSize: CGFloat = 28
-    static let kindTileRadius: CGFloat = 7
-    static let factLabelWidth: CGFloat = 84
-    /// Context kept above a newly revealed notes page, so the last line
-    /// of the previous page stays visible.
-    static let inspectorRevealContext: CGFloat = 24
-    static let inspectorQuoteRuleWidth: CGFloat = 2
-    static let inspectorQuoteInset: CGFloat = 10
-    static let inspectorHighlightLineLimit = 4
-    static let inspectorPageRunGap: CGFloat = 4
-    /// Vertical spacing between HIGHLIGHTS entries.
-    static let inspectorEntrySpacing: CGFloat = 8
-    /// Sticky-note glyph on the note card and the header chip.
-    static let inspectorNoteSymbol = "note.text"
-    /// Orange glyph tint: the darker sibling of the yellow card.
-    static let inspectorNoteTint: Color = .orange
-    static let inspectorNoteFillOpacity = 0.14
-    static let inspectorNoteStrokeOpacity = 0.30
-    static let inspectorNoteStrokeOpacityIncreased = 0.60
-    static let inspectorNoteRadius: CGFloat = 8
-    static let inspectorNoteVerticalPadding: CGFloat = 6
-    /// Gap between a quote and its note card.
-    static let inspectorNoteGap: CGFloat = 6
+  static let searchBarHeight: CGFloat = 52
+  static let sectionHeaderHeight: CGFloat = 26
+  static let rowHeight: CGFloat = 44
+  static let footerHeight: CGFloat = 30
+  static let listVerticalPadding: CGFloat = 6
+  static let inspectorPadding: CGFloat = 18
+  static let inspectorSpacing: CGFloat = 14
+  static let heroTileSize: CGFloat = 44
+  static let heroTileRadius: CGFloat = 11
+  static let thumbnailWidth: CGFloat = 112
+  static let thumbnailHeight: CGFloat = 145
+  static let thumbnailRadius: CGFloat = 6
+  static let kindTileSize: CGFloat = 28
+  static let kindTileRadius: CGFloat = 7
+  static let factLabelWidth: CGFloat = 84
+  /// Context kept above a newly revealed notes page, so the last line
+  /// of the previous page stays visible.
+  static let inspectorRevealContext: CGFloat = 24
+  static let inspectorQuoteRuleWidth: CGFloat = 2
+  static let inspectorQuoteInset: CGFloat = 10
+  static let inspectorHighlightLineLimit = 4
+  static let inspectorPageRunGap: CGFloat = 4
+  /// Vertical spacing between HIGHLIGHTS entries.
+  static let inspectorEntrySpacing: CGFloat = 8
+  /// Sticky-note glyph on the note card and the header chip.
+  static let inspectorNoteSymbol = "note.text"
+  /// Orange glyph tint: the darker sibling of the yellow card.
+  static let inspectorNoteTint: Color = .orange
+  static let inspectorNoteFillOpacity = 0.14
+  static let inspectorNoteStrokeOpacity = 0.30
+  static let inspectorNoteStrokeOpacityIncreased = 0.60
+  static let inspectorNoteRadius: CGFloat = 8
+  static let inspectorNoteVerticalPadding: CGFloat = 6
+  /// Gap between a quote and its note card.
+  static let inspectorNoteGap: CGFloat = 6
 
-    // MARK: - Copy card
+  // MARK: - Copy card
 
-    static let copyCardHeaderHeight: CGFloat = 44
-    static let copyCardRowHeight: CGFloat = 24
-    static let copyCardPickerRowHeight: CGFloat = 36
-    static let copyCardSeparatorHeight: CGFloat = 9
-    static let copyCardNotesHeaderHeight: CGFloat = 22
-    static let copyCardMessageLineHeight: CGFloat = 20
-    static let copyCardVerticalPadding: CGFloat = 36
-    static let copyCardKeycapSize: CGFloat = 18
-    static let copyCardKeycapCornerRadius: CGFloat = 4.5
-    static let copyCardLabelWidth: CGFloat = 92
-    static let copyCardRowCornerRadius: CGFloat = 8
-    static let copyHUDMaxValueWidth: CGFloat = 380
+  static let copyCardHeaderHeight: CGFloat = 44
+  static let copyCardRowHeight: CGFloat = 24
+  static let copyCardPickerRowHeight: CGFloat = 36
+  static let copyCardSeparatorHeight: CGFloat = 9
+  static let copyCardNotesHeaderHeight: CGFloat = 22
+  static let copyCardMessageLineHeight: CGFloat = 20
+  static let copyCardVerticalPadding: CGFloat = 36
+  static let copyCardKeycapSize: CGFloat = 18
+  static let copyCardKeycapCornerRadius: CGFloat = 4.5
+  static let copyCardLabelWidth: CGFloat = 92
+  static let copyCardRowCornerRadius: CGFloat = 8
+  static let copyHUDMaxValueWidth: CGFloat = 380
 
-    /// Metrics the Copy card feeds `RefsCopyCardLayout`.
-    static var copyCardMetrics: RefsCopyCardMetrics {
-        RefsCopyCardMetrics(
-            headerHeight: Double(copyCardHeaderHeight),
-            rowHeight: Double(copyCardRowHeight),
-            separatorHeight: Double(copyCardSeparatorHeight),
-            notesHeaderHeight: Double(copyCardNotesHeaderHeight),
-            messageLineHeight: Double(copyCardMessageLineHeight),
-            verticalPadding: Double(copyCardVerticalPadding)
-        )
+  /// Metrics the Copy card feeds `RefsCopyCardLayout`.
+  static var copyCardMetrics: RefsCopyCardMetrics {
+    RefsCopyCardMetrics(
+      headerHeight: Double(copyCardHeaderHeight),
+      rowHeight: Double(copyCardRowHeight),
+      separatorHeight: Double(copyCardSeparatorHeight),
+      notesHeaderHeight: Double(copyCardNotesHeaderHeight),
+      messageLineHeight: Double(copyCardMessageLineHeight),
+      verticalPadding: Double(copyCardVerticalPadding)
+    )
+  }
+
+  // MARK: - Geometry
+
+  /// The clamped panel size for a visible frame.
+  static func panelSize(for visibleFrame: NSRect) -> NSSize {
+    NSSize(
+      width: min(panelWidth, visibleFrame.width - screenMargin),
+      height: min(panelHeight, visibleFrame.height - screenMargin)
+    )
+  }
+
+  /// Whether the inspector column shows at a panel width.
+  static func showsInspector(width: CGFloat) -> Bool {
+    width >= inspectorThreshold
+  }
+
+  /// The list column width for a panel width.
+  static func listWidth(panelWidth: CGFloat) -> CGFloat {
+    round(panelWidth * listFraction)
+  }
+
+  /// The panel frame for a visible frame: centered horizontally, the
+  /// top edge below the top of the screen by `topFraction` of its
+  /// height, then clamped inside the visible frame. Recomputed on
+  /// every show.
+  static func panelFrame(for visibleFrame: NSRect) -> NSRect {
+    let size = panelSize(for: visibleFrame)
+    let x = visibleFrame.minX + (visibleFrame.width - size.width) / 2
+    var y = visibleFrame.maxY - round(visibleFrame.height * topFraction)
+    y -= size.height
+    y = min(max(y, visibleFrame.minY), visibleFrame.maxY - size.height)
+    return NSRect(origin: NSPoint(x: x, y: y), size: size)
+  }
+
+  // MARK: - Kind and state
+
+  /// The kind tint: purple chat, teal paper, brown article, indigo
+  /// doc, secondary for everything else. Status hues never encode
+  /// kind; pink means Today only; the accent means selection,
+  /// matches, and the New dot.
+  static let newDotSize: CGFloat = 6
+  static let newDotGutterWidth: CGFloat = 8
+  static let newDotHiddenScale: CGFloat = 0.3
+  static let newDotAppearResponse: Double = 0.3
+  static let newDotAppearDamping: Double = 0.6
+  static let newDotDisappearDuration: Double = 0.16
+  static let newDotReduceMotionDuration: Double = 0.12
+  static func tint(for kind: RefKind) -> Color {
+    switch kind {
+    case .chat:
+      return .purple
+    case .paper:
+      return .teal
+    case .article:
+      return .brown
+    case .doc:
+      return .indigo
+    case .book, .slides, .other:
+      return .secondary
     }
+  }
 
-    // MARK: - Geometry
-
-    /// The clamped panel size for a visible frame.
-    static func panelSize(for visibleFrame: NSRect) -> NSSize {
-        NSSize(
-            width: min(panelWidth, visibleFrame.width - screenMargin),
-            height: min(panelHeight, visibleFrame.height - screenMargin)
-        )
+  /// The palette status for an item: `isBlocked` overrides the
+  /// displayed glyph and label but not the lane.
+  static func paletteStatus(for item: RefItem) -> CapturePickerTaskStatus {
+    if item.isBlocked {
+      return .blocked
     }
-
-    /// Whether the inspector column shows at a panel width.
-    static func showsInspector(width: CGFloat) -> Bool {
-        width >= inspectorThreshold
+    switch item.state {
+    case .reading:
+      return .inProgress
+    case .next:
+      return .next
+    case .ready:
+      return .todo
+    case .read:
+      return .done
+    case .dropped:
+      return .canceled
+    case .unknown:
+      return .other("unknown")
     }
+  }
 
-    /// The list column width for a panel width.
-    static func listWidth(panelWidth: CGFloat) -> CGFloat {
-        round(panelWidth * listFraction)
+  /// The scope a scope token stands for, for its glyph and tint.
+  static func kind(for scope: RefScope) -> RefKind {
+    switch scope {
+    case .all:
+      return .other(raw: nil)
+    case .chats:
+      return .chat
+    case .papers:
+      return .paper
+    case .articles:
+      return .article
+    case .docs:
+      return .doc
     }
-
-    /// The panel frame for a visible frame: centered horizontally, the
-    /// top edge below the top of the screen by `topFraction` of its
-    /// height, then clamped inside the visible frame. Recomputed on
-    /// every show.
-    static func panelFrame(for visibleFrame: NSRect) -> NSRect {
-        let size = panelSize(for: visibleFrame)
-        let x = visibleFrame.minX + (visibleFrame.width - size.width) / 2
-        var y = visibleFrame.maxY - round(visibleFrame.height * topFraction)
-        y -= size.height
-        y = min(max(y, visibleFrame.minY), visibleFrame.maxY - size.height)
-        return NSRect(origin: NSPoint(x: x, y: y), size: size)
-    }
-
-    // MARK: - Kind and state
-
-    /// The kind tint: purple chat, teal paper, brown article, indigo
-    /// doc, secondary for everything else. Status hues never encode
-    /// kind; pink means Today only; the accent means selection,
-    /// matches, and the unopened dot.
-    static func tint(for kind: RefKind) -> Color {
-        switch kind {
-        case .chat:
-            return .purple
-        case .paper:
-            return .teal
-        case .article:
-            return .brown
-        case .doc:
-            return .indigo
-        case .book, .slides, .other:
-            return .secondary
-        }
-    }
-
-    /// The palette status for an item: `isBlocked` overrides the
-    /// displayed glyph and label but not the lane.
-    static func paletteStatus(for item: RefItem) -> CapturePickerTaskStatus {
-        if item.isBlocked {
-            return .blocked
-        }
-        switch item.state {
-        case .reading:
-            return .inProgress
-        case .next:
-            return .next
-        case .ready:
-            return .todo
-        case .read:
-            return .done
-        case .dropped:
-            return .canceled
-        case .unknown:
-            return .other("unknown")
-        }
-    }
-
-    /// The scope a scope token stands for, for its glyph and tint.
-    static func kind(for scope: RefScope) -> RefKind {
-        switch scope {
-        case .all:
-            return .other(raw: nil)
-        case .chats:
-            return .chat
-        case .papers:
-            return .paper
-        case .articles:
-            return .article
-        case .docs:
-            return .doc
-        }
-    }
+  }
 }

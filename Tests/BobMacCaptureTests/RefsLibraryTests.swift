@@ -777,6 +777,54 @@ final class RefsLibraryTests: XCTestCase {
     XCTAssertEqual(outcome.problem?.code, "bob_unavailable")
   }
 
+  func testToggleNewPersistsTheSmallestMark() throws {
+    let context = try makeContext()
+    let now = Date()
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+    let parts = calendar.dateComponents([.year, .month, .day], from: now)
+    let item = RefItem(
+      id: "ref/chat/fresh.md",
+      link: "[[ref/chat/fresh]]",
+      rawTitle: "Fresh",
+      stem: "fresh",
+      kind: .chat,
+      state: .ready,
+      isBlocked: false,
+      pdfPath: "lib/fresh.pdf",
+      added: RefDay(
+        year: parts.year ?? 2026, month: parts.month ?? 10, day: parts.day ?? 8
+      ),
+      addedSource: "created"
+    )
+    context.library.installSnapshotForPreviews(
+      items: [item],
+      signals: RefsSignals(now: now, calendar: calendar),
+      refreshState: .idle
+    )
+
+    guard case .apply(let seen, let becameSeen) = context.library.toggleNew(id: item.id)
+    else {
+      XCTFail("expected apply")
+      return
+    }
+    XCTAssertEqual(seen?.state, .seen)
+    XCTAssertFalse(becameSeen)
+    XCTAssertEqual(context.library.signals.newMarks.mark(for: item.id)?.state, .seen)
+
+    guard case .apply(let cleared, let becameNew) = context.library.toggleNew(id: item.id)
+    else {
+      XCTFail("expected apply")
+      return
+    }
+    XCTAssertNil(cleared)
+    XCTAssertTrue(becameNew)
+    XCTAssertNil(context.library.signals.newMarks.mark(for: item.id))
+
+    context.library.markSeenIfNew(id: item.id)
+    XCTAssertEqual(context.library.signals.newMarks.mark(for: item.id)?.state, .seen)
+  }
+
   // MARK: - Helpers
 
   private func instant(_ raw: String) -> Date {
@@ -815,6 +863,9 @@ final class RefsLibraryTests: XCTestCase {
       fetcher: BobRefsFetcher(client: try bobClient(environment: environment)),
       snapshotStore: RefsSnapshotStore(fileURL: snapshotURL),
       openLogStore: RefsOpenLogStore(fileURL: openLogURL),
+      newMarkStore: RefsNewMarkStore(
+        fileURL: root.appendingPathComponent("refs-new-marks.json")
+      ),
       vaultRoot: { vault },
       fileExists: fileExists,
       spotlight: spotlight,
