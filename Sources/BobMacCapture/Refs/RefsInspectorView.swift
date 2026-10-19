@@ -700,7 +700,7 @@ struct RefsInspectorView: View {
     }
 
     private func quoteView(_ quote: String) -> some View {
-        Text(quoteText(quote))
+        Text(RefsQuoteText.attributed(RefsQuoteExcerpt.preview(quote)))
             .font(.callout)
             .foregroundStyle(.primary)
             .lineSpacing(2)
@@ -712,7 +712,7 @@ struct RefsInspectorView: View {
                     .fill(.yellow)
                     .frame(width: RefsVisualTokens.inspectorQuoteRuleWidth)
             }
-            .help(quote)
+            .help(RefsQuoteEmphasis.plainText(quote))
     }
 
     private func noteCard(_ comment: String) -> some View {
@@ -760,18 +760,6 @@ struct RefsInspectorView: View {
                 Color.yellow.opacity(RefsVisualTokens.inspectorNoteFillOpacity)
             )
         )
-    }
-
-    private func quoteText(_ text: String) -> AttributedString {
-        var result = AttributedString()
-        for run in RefsQuoteEmphasis.runs(text) {
-            var part = AttributedString(run.text)
-            if run.isStrong {
-                part.inlinePresentationIntent = .stronglyEmphasized
-            }
-            result += part
-        }
-        return result
     }
 
     private func sectionLabel(_ text: String) -> some View {

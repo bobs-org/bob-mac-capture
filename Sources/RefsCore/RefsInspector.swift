@@ -387,7 +387,7 @@ public struct RefsInspectorFeed: Equatable, Sendable {
             ).isEmpty else {
                 return ""
             }
-            return RefsQuoteEmphasis.runs(quote).map(\.text).joined()
+            return RefsQuoteEmphasis.plainText(quote)
         }
     }
 
@@ -498,6 +498,13 @@ public struct RefsInspectorFeed: Equatable, Sendable {
 /// empty pairs disappear. Single `*`, `_`, `__`, and backticks are
 /// never emphasis.
 public enum RefsQuoteEmphasis {
+    /// The quote with every paired `**` delimiter stripped, so
+    /// tooltips and VoiceOver read the words without the markup.
+    /// Unpaired markers stay literal, matching `runs`.
+    public static func plainText(_ text: String) -> String {
+        runs(text).map(\.text).joined()
+    }
+
     public static func runs(_ text: String) -> [RefsTextRun] {
         guard !text.isEmpty else {
             return []
@@ -580,6 +587,74 @@ public enum RefsQuoteEmphasis {
             }
         }
         return result
+    }
+
+    /// The lower bound of the first opening `**` delimiter, or nil
+    /// when no strong run starts. Uses the same pairing rule as
+    /// `runs`, so the excerpt and the attributed builder agree on
+    /// where the first run begins.
+    static func firstStrongOpening(in text: String) -> String.Index? {
+        var index = text.startIndex
+        while index < text.endIndex {
+            if pairedClose(in: text, openingAt: index) != nil {
+                return index
+            }
+            index = text.index(after: index)
+        }
+        return nil
+    }
+}
+
+/// A clip-friendly excerpt of a quote for the 4-line inspector
+/// preview: when the first strong run starts late, the preview
+/// opens with a short `…` lead-in so the emphasis stays visible.
+/// Spacing and every delimiter are kept, so the attributed builder
+/// still sees the runs.
+public enum RefsQuoteExcerpt {
+    /// A run starting within this many plain characters needs no
+    /// lead-in.
+    public static let leadThreshold = 140
+    /// How many words before the run the lead-in keeps at most.
+    public static let leadInWords = 8
+
+    public static func preview(_ quote: String) -> String {
+        guard let opening = RefsQuoteEmphasis.firstStrongOpening(in: quote) else {
+            return quote
+        }
+        let plainPrefix = RefsQuoteEmphasis.plainText(String(quote[..<opening]))
+        guard plainPrefix.count >= leadThreshold else {
+            return quote
+        }
+        let lineStart: String.Index
+        if let newline = quote[..<opening].lastIndex(of: "\n") {
+            lineStart = quote.index(after: newline)
+        } else {
+            lineStart = quote.startIndex
+        }
+        let start = leadInStart(lineStart: lineStart, opening: opening, in: quote)
+        return "… " + quote[start...]
+    }
+
+    private static func leadInStart(
+        lineStart: String.Index,
+        opening: String.Index,
+        in quote: String
+    ) -> String.Index {
+        var starts: [String.Index] = []
+        var index = lineStart
+        while index < opening {
+            while index < opening, quote[index].isWhitespace {
+                index = quote.index(after: index)
+            }
+            guard index < opening else {
+                break
+            }
+            starts.append(index)
+            while index < opening, !quote[index].isWhitespace {
+                index = quote.index(after: index)
+            }
+        }
+        return starts.suffix(leadInWords).first ?? lineStart
     }
 }
 

@@ -508,6 +508,94 @@ final class RefsInspectorTests: XCTestCase {
         )
     }
 
+    func testQuoteEmphasisPlainText() {
+        XCTAssertEqual(RefsQuoteEmphasis.plainText("plain text"), "plain text")
+        XCTAssertEqual(
+            RefsQuoteEmphasis.plainText("Say **this** now"),
+            "Say this now"
+        )
+        XCTAssertEqual(RefsQuoteEmphasis.plainText("hello **"), "hello **")
+        XCTAssertEqual(RefsQuoteEmphasis.plainText(""), "")
+        XCTAssertEqual(
+            entry(page: "1", quote: "Say **this** now").accessibilityLabel,
+            "Highlight, Page 1: Say this now"
+        )
+    }
+
+    func testQuoteExcerptWithoutRunIsUnchanged() {
+        XCTAssertEqual(RefsQuoteExcerpt.preview("plain text"), "plain text")
+        XCTAssertEqual(RefsQuoteExcerpt.preview("hello **"), "hello **")
+        XCTAssertEqual(RefsQuoteExcerpt.preview(""), "")
+    }
+
+    func testQuoteExcerptWithEarlyRunIsUnchanged() {
+        let quote = "Say **this** now, then keep reading for a while longer."
+        XCTAssertEqual(RefsQuoteExcerpt.preview(quote), quote)
+    }
+
+    func testQuoteExcerptWithLateRunKeepsALeadIn() {
+        let quote =
+            "The first hundred pages set the scene in full, introducing every "
+            + "minor character and every side plot in turn, before the narrator "
+            + "turns at last to the part that really matters, which is **the hinge "
+            + "of the whole argument** and everything after it."
+        XCTAssertEqual(
+            RefsQuoteExcerpt.preview(quote),
+            "… to the part that really matters, which is **the hinge of the "
+                + "whole argument** and everything after it."
+        )
+    }
+
+    func testQuoteExcerptLeadInNeverCrossesALineBreak() {
+        let first = String(repeating: "setting the scene in full ", count: 8)
+        let quote = first + "\n**the hinge** and everything after it."
+        XCTAssertEqual(
+            RefsQuoteExcerpt.preview(quote),
+            "… **the hinge** and everything after it."
+        )
+    }
+
+    func testQuoteExcerptWithFewWordsBeforeTheRunKeepsThemAll() {
+        let scene = String(repeating: "setting the scene in full detail ", count: 5)
+        let quote = scene + "a short line\ntiny lead **the hinge** tail."
+        XCTAssertEqual(
+            RefsQuoteExcerpt.preview(quote),
+            "… tiny lead **the hinge** tail."
+        )
+    }
+
+    func testQuoteExcerptKeepsDelimitersAndSpacing() {
+        let scene = String(repeating: "setting the scene in full detail ", count: 5)
+        let quote = scene + "keep  double  spaces **the  hinge** tail."
+        let excerpt = RefsQuoteExcerpt.preview(quote)
+        XCTAssertTrue(excerpt.hasPrefix("… "))
+        XCTAssertTrue(excerpt.contains("**the  hinge**"))
+        XCTAssertTrue(excerpt.contains("keep  double  spaces "))
+        XCTAssertEqual(
+            RefsQuoteEmphasis.runs(excerpt).filter(\.isStrong).map(\.text),
+            ["the  hinge"]
+        )
+    }
+
+    func testQuoteExcerptWithFullyStrongQuoteIsUnchanged() {
+        let quote = "**" + String(repeating: "wholly emphasized passage ", count: 8) + "**"
+        XCTAssertEqual(RefsQuoteExcerpt.preview(quote), quote)
+    }
+
+    func testQuoteExcerptWithUnpairedMarkerIsUnchanged() {
+        let quote = String(repeating: "setting the scene in full detail ", count: 5)
+            + "an unpaired ** marker at the end"
+        XCTAssertEqual(RefsQuoteExcerpt.preview(quote), quote)
+    }
+
+    func testQuoteExcerptCountsPlainCharactersWithUnicode() {
+        let scene = String(repeating: "don’t stop 🎉 believing the scene ", count: 5)
+        let quote = scene + "nearly there **the hinge** tail."
+        let excerpt = RefsQuoteExcerpt.preview(quote)
+        XCTAssertTrue(excerpt.hasPrefix("… "))
+        XCTAssertTrue(excerpt.contains("**the hinge**"))
+    }
+
     func testPagingRevealsTheNextPageOfASevenEntryFeed() {
         var page = RefsNotesPage(size: 3)
         let feed = makeFeed(count: 7)

@@ -143,7 +143,7 @@ struct RefsCopyCardView: View {
                             .font(.callout)
                             .lineLimit(1)
                     }
-                    Text(quoteLines?.first ?? entry.line1)
+                    Text(RefsQuoteText.attributed(quoteLines?.first ?? entry.line1))
                         .font(.callout.italic())
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -152,7 +152,7 @@ struct RefsCopyCardView: View {
                 }
                 let line2 = quoteLines.map { $0.dropFirst().joined(separator: "\n") } ?? entry.line2
                 if !line2.isEmpty {
-                    Text(line2)
+                    Text(RefsQuoteText.attributed(line2))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
