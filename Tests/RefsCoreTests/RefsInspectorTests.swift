@@ -244,11 +244,43 @@ final class RefsInspectorTests: XCTestCase {
             "p. 4"
         )
         XCTAssertEqual(
+            RefsShowAnnotation(pageLabel: "Pages 11–12").displayPageLabel,
+            "Pages 11–12"
+        )
+        XCTAssertEqual(
+            RefsShowAnnotation(pageLabel: "pp. 11–12").displayPageLabel,
+            "pp. 11–12"
+        )
+        XCTAssertEqual(
+            RefsShowAnnotation(pageLabel: "PP. 11–12").displayPageLabel,
+            "PP. 11–12"
+        )
+        XCTAssertEqual(
             RefsShowAnnotation(pageLabel: "3").displayPageLabel,
             "Page 3"
         )
         XCTAssertNil(RefsShowAnnotation(pageLabel: "  ").displayPageLabel)
         XCTAssertNil(RefsShowAnnotation(pageLabel: nil).displayPageLabel)
+    }
+
+    func testHighlightPickerPreservesPluralPageLabels() throws {
+        let pages = RefsHighlightPicker.Entry(annotation: RefsShowAnnotation(
+            pageLabel: "Pages 11–12", kind: "highlight", quote: "Merged quote"
+        ))
+        XCTAssertEqual(pages.pageLabel, "pp. 11–12")
+        XCTAssertEqual(pages.confirmationTitle, "Copied Highlight · pp. 11–12")
+
+        let short = RefsHighlightPicker.Entry(annotation: RefsShowAnnotation(
+            pageLabel: "pp. 11–12", kind: "highlight", quote: "Merged quote"
+        ))
+        XCTAssertEqual(short.pageLabel, "pp. 11–12")
+        XCTAssertEqual(short.confirmationTitle, "Copied Highlight · pp. 11–12")
+
+        let list = RefsHighlightPicker.Entry(annotation: RefsShowAnnotation(
+            pageLabel: "pp. 3, 5", kind: "highlight", quote: "Merged quote"
+        ))
+        XCTAssertEqual(list.pageLabel, "pp. 3, 5")
+        XCTAssertEqual(list.confirmationTitle, "Copied Highlight · pp. 3, 5")
     }
 
     func testHighlightsFixtureProjectsUncommentedHighlights() throws {

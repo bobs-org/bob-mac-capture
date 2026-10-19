@@ -224,9 +224,10 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
     }
 
     /// The page label as the inspector shows it: nil for nil or blank;
-    /// as-is when it already starts with `page`, `p.`, or `p `
-    /// (case-insensitive, the same prefixes as bob's
-    /// `is_sidecar_page_label`); otherwise `Page <label>`.
+    /// as-is when it already starts with `page`, `p.`, `p `, or the
+    /// plural `pp.` continuation-group form (case-insensitive, the
+    /// same prefixes as bob's `is_sidecar_page_label` plus the
+    /// renderer-emitted `pp.` range); otherwise `Page <label>`.
     public var displayPageLabel: String? {
         guard let raw = pageLabel?.trimmingCharacters(
             in: .whitespacesAndNewlines
@@ -234,8 +235,8 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
             return nil
         }
         let lowered = raw.lowercased()
-        if lowered.hasPrefix("page") || lowered.hasPrefix("p.")
-            || lowered.hasPrefix("p ")
+        if lowered.hasPrefix("page") || lowered.hasPrefix("pp.")
+            || lowered.hasPrefix("p.") || lowered.hasPrefix("p ")
         {
             return raw
         }
