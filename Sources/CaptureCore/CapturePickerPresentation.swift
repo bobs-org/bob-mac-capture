@@ -684,7 +684,16 @@ public func pomodoroStartPickerStatus(override: CaptureCompleteOverride?) -> Str
         return plain
     }
     let range = running.timeRange.flatMap { $0.isEmpty ? nil : $0 } ?? ""
-    let name = running.pomodoroName.flatMap { $0.isEmpty ? nil : $0 }
+    let authoredName = running.pomodoroName.flatMap { $0.isEmpty ? nil : $0 }
+    let derivedName: String? = {
+        guard let homes = running.homes,
+              let chip = homes.chip, !chip.isEmpty,
+              !homes.label.isEmpty else {
+            return nil
+        }
+        return homes.label
+    }()
+    let name = authoredName ?? derivedName
     if override?.keepsLedger == true, !range.isEmpty {
         if let name {
             return "Pick a Pomodoro to take over \(name)'s \(enDashRange(range))"

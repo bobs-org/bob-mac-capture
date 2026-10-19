@@ -494,4 +494,52 @@ final class PomodoroStartPickerStatusTests: XCTestCase {
             "Pick a Pomodoro to take over 0920–0945"
         )
     }
+
+    func testUnnamedKeptLedgerOverrideUsesVisibleHomesLabel() {
+        let homes = CaptureAgendaHomes(
+            state: .forecast,
+            kind: .work,
+            label: "sase",
+            chip: "sase",
+            hue: .blue
+        )
+        let override = CaptureCompleteOverride(
+            keepsLedger: true,
+            running: CaptureCompleteOverrideRunning(
+                pomodoroName: nil,
+                line: 5,
+                timeRange: "0920-0945",
+                homes: homes
+            )
+        )
+
+        XCTAssertEqual(
+            pomodoroStartPickerStatus(override: override),
+            "Pick a Pomodoro to take over sase's 0920–0945"
+        )
+    }
+
+    func testUnnamedFreshLedgerOverrideUsesVisibleHomesLabel() {
+        let homes = CaptureAgendaHomes(
+            state: .forecast,
+            kind: .work,
+            label: "sase",
+            chip: "sase",
+            hue: .blue
+        )
+        let override = CaptureCompleteOverride(
+            keepsLedger: false,
+            running: CaptureCompleteOverrideRunning(
+                pomodoroName: nil,
+                line: 5,
+                timeRange: "0920-0945",
+                homes: homes
+            )
+        )
+
+        XCTAssertEqual(
+            pomodoroStartPickerStatus(override: override),
+            "Pick a Pomodoro to start now · sase returns to first future"
+        )
+    }
 }

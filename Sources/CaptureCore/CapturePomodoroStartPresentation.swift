@@ -234,7 +234,12 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         captureText: String = ""
     ) {
         isDryRun = dryRun
-        pomodoroName = summary.pomodoroName ?? "next session"
+        let override = summary.overrideOutcome
+        let authoredName = summary.pomodoroName.flatMap { $0.isEmpty ? nil : $0 }
+        let restartName = override?.action == "restart"
+            ? overrideHomesDisplayName(override?.previous?.homes)
+            : nil
+        pomodoroName = authoredName ?? restartName ?? "next session"
         start = summary.start
         end = summary.end
         durationMinutes = summary.durationMinutes
@@ -243,7 +248,6 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         createdPomodoro = summary.createdPomodoro
         timeRange = summary.timeRange
 
-        let override = summary.overrideOutcome
         switch override?.action {
         case "restart":
             variant = .restart
@@ -470,7 +474,7 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         // display-only); named sessions keep today's text, and unlinked or
         // label-less sessions fall back to today's text.
         let named = previous?.pomodoroName.flatMap { $0.isEmpty ? nil : $0 }
-        let derived = (previous?.homes?.label).flatMap { $0.isEmpty ? nil : $0 }
+        let derived = overrideHomesDisplayName(previous?.homes)
         let display = named ?? derived
         let overdue = previous?.overdue ?? false
         let headline: String
@@ -654,8 +658,20 @@ private func demotedNameText(_ name: String?, homes: CaptureAgendaHomes? = nil) 
     if let name, !name.isEmpty {
         return name
     }
-    if let label = homes?.label, !label.isEmpty {
+    if let label = overrideHomesDisplayName(homes) {
         return label
     }
     return "session"
+}
+
+/// An override may display the derived label only when Bob's homes object
+/// says the chip is visible. The authored `label` alone does not override a
+/// null chip (for example, a suppressed display).
+private func overrideHomesDisplayName(_ homes: CaptureAgendaHomes?) -> String? {
+    guard let homes,
+          let chip = homes.chip, !chip.isEmpty,
+          !homes.label.isEmpty else {
+        return nil
+    }
+    return homes.label
 }

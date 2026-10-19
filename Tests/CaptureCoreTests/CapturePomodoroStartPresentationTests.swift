@@ -828,13 +828,81 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
 
         XCTAssertEqual(
-          success.pomodoroStart?.overrideOutcome?.previous?.homes?.label, "bob")
+          success.pomodoroStart?.overrideOutcome?.previous?.homes?.label, "sase")
         XCTAssertEqual(presentation.variant, .restart)
+        XCTAssertEqual(presentation.pomodoroName, "sase")
+        XCTAssertEqual(presentation.title, "Restart sase")
+        XCTAssertEqual(
+            presentation.statusText,
+            "Would restart sase 0900-0930 → 0915-0940 (25m) at line 2"
+        )
+        XCTAssertTrue(presentation.accessibilitySummary.contains("Restarts sase"))
+        XCTAssertEqual(presentation.notificationTitle, "Restarted sase")
+        XCTAssertEqual(presentation.notificationDetail, presentation.statusText)
         let warning = try XCTUnwrap(presentation.overrideWarning)
-        XCTAssertEqual(warning.headline, "Overrides the running bob")
-        XCTAssertEqual(warning.rangeText, "0920–0945")
+        XCTAssertEqual(warning.headline, "Overrides the running sase")
+        XCTAssertEqual(warning.rangeText, "0900–0930")
         XCTAssertEqual(warning.detail, "Its clock restarts without closing it")
         XCTAssertEqual(warning.closeFirst, "x =")
+    }
+
+    func testOverrideUnnamedWithNullChipDoesNotUseHomesLabelAsRestartName() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"",
+             "relative_target":"2026/20261009.md","target":"/tmp/bob/2026/20261009.md",
+             "text":"=","task_line":"- [ ] (**0935-1000** [t:: 25m])",
+             "kind":"pomodoro_start","created":"2026-10-09","scheduled":null,
+             "placement":"started",
+             "pomodoro_start":{"start":"0935","end":"1000","duration_minutes":25,
+              "offset_units":0,"pomodoro_line":3,"created_pomodoro":false,
+              "time_range":"0935-1000","tasks":[],
+              "override":{"action":"restart","ledger":"fresh",
+               "previous":{"pomodoro_line":3,"start":"0920","end":"0945",
+                "duration_minutes":25,"time_range":"0920-0945",
+                "homes":{"state":"forecast","kind":"work","label":"bob","chip":null,"parts":[]}},
+               "close_first":"x ="}}}
+            """
+        )
+
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+        XCTAssertEqual(presentation.pomodoroName, "next session")
+        XCTAssertEqual(presentation.title, "Restart next session")
+        XCTAssertEqual(presentation.overrideWarning?.headline, "Overrides the running session")
+    }
+
+    func testSwapUsesDerivedNameOnlyForTheDisplacedAndDemotedSessions() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"",
+             "relative_target":"2026/20261009.md","target":"/tmp/bob/2026/20261009.md",
+             "text":"=#","task_line":"- [ ] (**0935-1000** [t:: 25m])",
+             "kind":"pomodoro_start","created":"2026-10-09","scheduled":null,
+             "placement":"started",
+             "pomodoro_start":{"start":"0935","end":"1000","duration_minutes":25,
+              "offset_units":0,"pomodoro_name":null,"pomodoro_line":5,
+              "created_pomodoro":false,"time_range":"0935-1000","tasks":[],
+              "override":{"action":"swap","ledger":"kept",
+               "previous":{"start":"0920","end":"0945","time_range":"0920-0945",
+                "homes":{"state":"forecast","kind":"work","label":"bob","chip":"bob","parts":[]}},
+               "demoted":{"task_links":1,"homes":{"state":"forecast","kind":"work",
+                "label":"sase","chip":"sase","parts":[]}}}}}
+            """
+        )
+
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+        XCTAssertEqual(presentation.variant, .swap)
+        XCTAssertEqual(presentation.pomodoroName, "next session")
+        XCTAssertEqual(presentation.title, "Swap in next session")
+        XCTAssertEqual(
+            presentation.statusText,
+            "Would swap in next session 0920-0945 (takes over bob) at line 5"
+        )
+        XCTAssertEqual(
+            presentation.demotedText,
+            "sase → first future · keeps 1 Task Link"
+        )
+        XCTAssertEqual(presentation.notificationTitle, "Swapped in next session")
     }
 
     func testOverrideUnnamedWithoutHomesFallsBackToSession() throws {

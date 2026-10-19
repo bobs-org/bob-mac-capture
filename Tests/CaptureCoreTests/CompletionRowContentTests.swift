@@ -1225,7 +1225,23 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(running.pomodoroName, "CAPTURE")
         XCTAssertEqual(running.line, 5)
         XCTAssertEqual(running.timeRange, "0920-0945")
+        XCTAssertNil(running.homes, "named legacy payload keeps decoding without homes")
         XCTAssertEqual(response.candidates.count, 4)
+    }
+
+    func testUnnamedOverrideCompleteFixtureDecodesHomesAndKeepsLedgerStatus() throws {
+        let response = try decodeCompletionFixture("pomodoro-start-override-complete-unnamed.json")
+
+        let override = try XCTUnwrap(response.overrideInfo)
+        XCTAssertTrue(override.keepsLedger)
+        let running = try XCTUnwrap(override.running)
+        XCTAssertNil(running.pomodoroName)
+        XCTAssertEqual(running.homes?.label, "sase")
+        XCTAssertEqual(running.homes?.chip, "sase")
+        XCTAssertEqual(
+            pomodoroStartPickerStatus(override: override),
+            "Pick a Pomodoro to take over sase's 0900–0930"
+        )
     }
 
     func testOverrideCompleteFreshFixtureDecodesFreshLedger() throws {
@@ -1235,6 +1251,22 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertFalse(override.keepsLedger)
         XCTAssertEqual(override.running?.pomodoroName, "CAPTURE")
         XCTAssertEqual(override.running?.timeRange, "0920-0945")
+        XCTAssertNil(override.running?.homes, "named legacy payload keeps decoding without homes")
+    }
+
+    func testUnnamedFreshOverrideCompleteFixtureDecodesHomesAndStatus() throws {
+        let response = try decodeCompletionFixture("pomodoro-start-override-complete-fresh-unnamed.json")
+
+        let override = try XCTUnwrap(response.overrideInfo)
+        XCTAssertFalse(override.keepsLedger)
+        let running = try XCTUnwrap(override.running)
+        XCTAssertNil(running.pomodoroName)
+        XCTAssertEqual(running.homes?.label, "sase")
+        XCTAssertEqual(running.homes?.chip, "sase")
+        XCTAssertEqual(
+            pomodoroStartPickerStatus(override: override),
+            "Pick a Pomodoro to start now · sase returns to first future"
+        )
     }
 
     func testRunningStartNameFixtureCarriesOverride() throws {

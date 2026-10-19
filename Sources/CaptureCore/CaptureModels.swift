@@ -5208,11 +5208,19 @@ public struct CaptureCompleteOverrideRunning: Codable, Equatable, Sendable {
   public let pomodoroName: String?
   public let line: Int?
   public let timeRange: String?
+  /// Derived homes for an unnamed running session. Older Bob omits this field.
+  public let homes: CaptureAgendaHomes?
 
-  public init(pomodoroName: String? = nil, line: Int? = nil, timeRange: String? = nil) {
+  public init(
+    pomodoroName: String? = nil,
+    line: Int? = nil,
+    timeRange: String? = nil,
+    homes: CaptureAgendaHomes? = nil
+  ) {
     self.pomodoroName = pomodoroName
     self.line = line
     self.timeRange = timeRange
+    self.homes = homes
   }
 
   public init(from decoder: Decoder) throws {
@@ -5220,12 +5228,14 @@ public struct CaptureCompleteOverrideRunning: Codable, Equatable, Sendable {
     pomodoroName = try container.decodeIfPresent(String.self, forKey: .pomodoroName)
     line = try container.decodeIfPresent(Int.self, forKey: .line)
     timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange)
+    homes = try container.decodeIfPresent(CaptureAgendaHomes.self, forKey: .homes)
   }
 
   private enum CodingKeys: String, CodingKey {
     case pomodoroName = "pomodoro_name"
     case line
     case timeRange = "time_range"
+    case homes
   }
 }
 
