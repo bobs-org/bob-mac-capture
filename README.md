@@ -1398,11 +1398,23 @@ footer reads as "Update failed · ⌘R to retry". Only Highlights and
 default-app opens append to the open log. `RefsPanelModel` holds the
 query, scope, frozen listing, and id-based selection: typed text reaches
 the model on every keystroke, late library data refreshes row content
-in place and never reorders (⌘R re-ranks from the new data once the
+in place; arrivals that land while the panel is open join the visible
+list on their own when the Tabs filter is off, no rename, Today-link,
+or copy card is open or in flight, there is no pending open, and the
+selected id is nil or still available (otherwise they join at the next
+re-rank, with a "1 new reference" / "N new references" VoiceOver
+announcement when they join; ⌘R re-ranks from the new data once the
 refresh completes, keeping the selection when it still exists), an
 open error re-shows the panel with the query, selection,
 and pending open intact, and Return on a vanished row shows "No longer
-in your library" instead of opening whatever slid into its index. A ⌘S scan
+in your library" instead of opening whatever slid into its index. A `refs-pull`
+lane runs `bob vault-sync -q` on every Refs panel show (throttled to one
+pull per 5 s) and before every ⌘R refresh (single-flight, unthrottled);
+a trigger that arrives while a pull is running joins that pull, no pull
+runs during a scan or rename, and a pull failure is only logged — it never
+touches `refreshState`, banners, or the footer. The pull itself never
+refreshes; the existing vault watcher sees the fast-forward and runs the
+normal snapshot refresh. A ⌘S scan
 runs on its own `refs-scan` lane with a 300 s timeout and never cancels
 another lane's work, and no other lane cancels it. Watcher changes are
 deferred while a scan runs — they record that one happened and refresh
@@ -1980,7 +1992,8 @@ including the next panel show.
   empty editor never acts on an agenda row, and keyboard focus never leaves the
   editor.
 - Signposts. Intervals `agenda-refresh`, `agenda-measure`, `agenda-plan`,
-  `refs-panel-show`, `refs-panel-prepare`, and `refs-panel-order`, plus events
+  `refs-panel-show`, `refs-panel-prepare`, `refs-panel-order`, `refs-pull`,
+  `refs-refresh`, and `refs-scan`, plus events
   `agenda-unchanged`, `agenda-published`, and `agenda-hold-released` — metadata only
   (see Diagnostics and Signposts).
 
@@ -2770,9 +2783,11 @@ The app emits `os_signpost` intervals/events (subsystem `org.bobs.bob-mac-captur
 category `capture`) around hotkey receipt, panel ordering, editor focus, parse,
 completion, preview, submit, block-ID focus claims, plain-text paste
 (`paste-plain-text`), notification scheduling, install-restart notification
-requests (`install-restart-notification-requested`), and the idle agenda
+requests (`install-restart-notification-requested`), the idle agenda
 (intervals `agenda-refresh`, `agenda-measure`, `agenda-plan`; events
-`agenda-unchanged`, `agenda-published`, `agenda-hold-released`), visible in
+`agenda-unchanged`, `agenda-published`, `agenda-hold-released`), and Bob Refs
+(intervals `refs-pull`, `refs-refresh`, `refs-scan`, `refs-panel-show`,
+`refs-panel-prepare`, `refs-panel-order`), visible in
 Instruments' Points of Interest / os_signpost templates. These, and the bounded
 Recent Activity list in Settings, are metadata-only by construction — see Privacy
 above.

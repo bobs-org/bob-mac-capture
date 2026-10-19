@@ -3746,6 +3746,182 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertFalse(harness.model.canCloseTab(id: item.id))
   }
 
+  func testRefreshForOpenPullsOnceAndThrottlesSecondShow() async throws {
+    let fetcher = FakeRefsFetcher()
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [Self.renameRecord(path: "ref/chat/alpha.md", stem: "alpha")]
+    )
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await harness.waitForSnapshot(ids: ["ref/chat/alpha.md"])
+    harness.model.prepareForPresentation()
+    harness.model.refreshForOpen()
+    await harness.waitForModel { _ in fetcher.pullCalls == 1 }
+    harness.model.refreshForOpen()
+    try? await Task.sleep(nanoseconds: 300_000_000)
+    XCTAssertEqual(fetcher.pullCalls, 1)
+  }
+
+  func testRefreshAwaitsPullBeforeManualRefresh() async throws {
+    let recordURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    let harness = try makeHarness(environment: ["FAKE_BOB_RECORD_PATH": recordURL.path])
+    await harness.waitForSnapshot()
+    harness.model.prepareForPresentation()
+    try FileManager.default.removeItem(at: recordURL)
+    XCTAssertTrue(harness.model.perform(.refresh))
+    await harness.waitForModel { _ in argvCount(recordURL, prefix: "argv=vault-sync -q") == 1 }
+    await harness.waitForModel { _ in argvCount(recordURL, prefix: "argv=ref list") >= 1 }
+    let record = (try? String(contentsOf: recordURL)) ?? ""
+    guard let pullRange = record.range(of: "argv=vault-sync -q"),
+      let listRange = record.range(of: "argv=ref list")
+    else {
+      XCTFail("expected both pull and list in the record")
+      return
+    }
+    XCTAssertTrue(pullRange.lowerBound < listRange.lowerBound)
+  }
+
+  func testFailedPullStillRefreshesAndLeavesStateAlone() async throws {
+    let fetcher = FakeRefsFetcher()
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [Self.renameRecord(path: "ref/chat/alpha.md", stem: "alpha")]
+    )
+    fetcher.pullError = RefsTestError.boom
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await harness.waitForSnapshot(ids: ["ref/chat/alpha.md"])
+    harness.model.prepareForPresentation()
+    XCTAssertNil(harness.model.banner)
+    let listsBefore = fetcher.listCalls
+    XCTAssertTrue(harness.model.perform(.refresh))
+    await harness.waitForModel { _ in fetcher.pullCalls >= 1 }
+    await harness.waitForModel { _ in fetcher.listCalls > listsBefore }
+    await harness.waitForSnapshot(ids: ["ref/chat/alpha.md"])
+    guard case .idle = harness.library.refreshState else {
+      XCTFail("a failed pull must leave refreshState idle")
+      return
+    }
+    XCTAssertNil(harness.model.banner)
+  }
+
+  func testArrivalJoinsOpenListingKeepingSelection() async throws {
+    let fetcher = FakeRefsFetcher()
+    let first = Self.renameRecord(path: "ref/chat/alpha.md", stem: "alpha")
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [first])
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await harness.waitForSnapshot(ids: ["ref/chat/alpha.md"])
+    harness.model.prepareForPresentation()
+    let selectedBefore = harness.model.selectedID
+    XCTAssertEqual(selectedBefore, "ref/chat/alpha.md")
+    let before = harness.model.listing.orderedIDs
+    XCTAssertEqual(before, ["ref/chat/alpha.md"])
+
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [first, Self.renameRecord(path: "ref/chat/beta.md", stem: "beta")]
+    )
+    harness.library.refresh(reason: .manual)
+    await harness.waitForSnapshot(ids: ["ref/chat/alpha.md", "ref/chat/beta.md"])
+    await harness.waitForModel { $0.listing.orderedIDs.contains("ref/chat/beta.md") }
+    XCTAssertEqual(harness.model.selectedID, "ref/chat/alpha.md")
+  }
+
+  func testContentOnlyPublishDoesNotReorder() async throws {
+    let harness = try makeHarness()
+    await harness.waitForSnapshot()
+    harness.model.prepareForPresentation()
+    let before = harness.model.listing.orderedIDs
+    // A signals-only publish (Today) refreshes row content in place.
+    harness.library.refreshToday(reason: .manual)
+    try? await Task.sleep(nanoseconds: 500_000_000)
+    XCTAssertEqual(harness.model.listing.orderedIDs, before)
+  }
+
+  func testOpenCopyCardBlocksArrivalRerank() async throws {
+    let fetcher = FakeRefsFetcher()
+    let first = Self.renameRecord(path: "ref/chat/alpha.md", stem: "alpha")
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [first])
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await harness.waitForSnapshot(ids: ["ref/chat/alpha.md"])
+    harness.model.prepareForPresentation()
+    harness.model.openCopyCard()
+    XCTAssertNotNil(harness.model.copyCard)
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [first, Self.renameRecord(path: "ref/chat/beta.md", stem: "beta")]
+    )
+    harness.library.refresh(reason: .manual)
+    await harness.waitForSnapshot(ids: ["ref/chat/alpha.md", "ref/chat/beta.md"])
+    try? await Task.sleep(nanoseconds: 500_000_000)
+    XCTAssertFalse(harness.model.listing.orderedIDs.contains("ref/chat/beta.md"))
+  }
+
+  func testOpenRenameCardBlocksArrivalRerank() async throws {
+    let path = "ref/chat/alpha.md"
+    let fetcher = FakeRefsFetcher()
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1, refs: [Self.renameRecord(path: path, stem: "alpha")])
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await harness.waitForSnapshot(ids: [path])
+    harness.model.prepareForPresentation()
+    harness.model.openRenameCard()
+    XCTAssertNotNil(harness.model.renameCard)
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [
+        Self.renameRecord(path: path, stem: "alpha"),
+        Self.renameRecord(path: "ref/chat/beta.md", stem: "beta"),
+      ]
+    )
+    harness.library.refresh(reason: .manual)
+    await harness.waitForSnapshot(ids: [path, "ref/chat/beta.md"])
+    try? await Task.sleep(nanoseconds: 500_000_000)
+    XCTAssertFalse(harness.model.listing.orderedIDs.contains("ref/chat/beta.md"))
+  }
+
+  func testTabsFilterBlocksArrivalRerank() async throws {
+    let fetcher = FakeRefsFetcher()
+    let first = Self.renameRecord(path: "ref/chat/alpha.md", stem: "alpha")
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [first])
+    let reader = FakeTabsReader(isTrusted: true)
+    let harness = try makeRenameHarness(fetcher: fetcher, tabsReader: reader)
+    await harness.waitForSnapshot(ids: ["ref/chat/alpha.md"])
+    harness.model.prepareForPresentation(source: .highlightsTabs)
+    await harness.waitForModel { $0.tabsState == .loaded || $0.tabsState == .noDocuments }
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [first, Self.renameRecord(path: "ref/chat/beta.md", stem: "beta")]
+    )
+    harness.library.refresh(reason: .manual)
+    await harness.waitForSnapshot(ids: ["ref/chat/alpha.md", "ref/chat/beta.md"])
+    try? await Task.sleep(nanoseconds: 500_000_000)
+    // Tabs mode never joins arrivals into the open listing.
+    XCTAssertFalse(harness.model.listing.orderedIDs.contains("ref/chat/beta.md"))
+  }
+
+  func testVanishedSelectionBlocksArrivalRerank() async throws {
+    let fetcher = FakeRefsFetcher()
+    let alpha = Self.renameRecord(path: "ref/chat/alpha.md", stem: "alpha")
+    let beta = Self.renameRecord(path: "ref/chat/beta.md", stem: "beta")
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [alpha, beta])
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await harness.waitForSnapshot(ids: ["ref/chat/alpha.md", "ref/chat/beta.md"])
+    harness.model.prepareForPresentation()
+    XCTAssertTrue(harness.model.perform(.select(id: "ref/chat/alpha.md")))
+    // Alpha vanishes while gamma arrives: the vanished selection stays
+    // dimmed in the frozen listing instead of re-ranking.
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [beta, Self.renameRecord(path: "ref/chat/gamma.md", stem: "gamma")]
+    )
+    harness.library.refresh(reason: .manual)
+    await harness.waitForSnapshot(ids: ["ref/chat/beta.md", "ref/chat/gamma.md"])
+    await harness.waitForModel { $0.unavailableIDs.contains("ref/chat/alpha.md") }
+    XCTAssertTrue(harness.model.listing.orderedIDs.contains("ref/chat/alpha.md"))
+    XCTAssertFalse(harness.model.listing.orderedIDs.contains("ref/chat/gamma.md"))
+  }
+
   private static func tabsSnapshot(
     _ items: [RefItem],
     vault: URL,

@@ -825,6 +825,175 @@ final class RefsLibraryTests: XCTestCase {
     XCTAssertEqual(context.library.signals.newMarks.mark(for: item.id)?.state, .seen)
   }
 
+  func testPanelOpenPullThrottlesSecondShowWithinFiveSeconds() async throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    let vault = root.appendingPathComponent("vault")
+    try FileManager.default.createDirectory(
+      at: vault.appendingPathComponent("ref"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: vault.appendingPathComponent("lib"), withIntermediateDirectories: true)
+    let fetcher = FakeRefsFetcher()
+    let library = RefsLibrary(
+      fetcher: fetcher,
+      snapshotStore: RefsSnapshotStore(
+        fileURL: root.appendingPathComponent("refs-snapshot.json")),
+      openLogStore: RefsOpenLogStore(
+        fileURL: root.appendingPathComponent("refs-open-log.json")),
+      newMarkStore: RefsNewMarkStore(
+        fileURL: root.appendingPathComponent("refs-new-marks.json")),
+      vaultRoot: { vault },
+      fileExists: { _ in true },
+      spotlight: FakeSpotlight(),
+      now: { Date() }
+    )
+    library.requestPullForPanelOpen()
+    await waitUntil(timeout: 5) { fetcher.pullCalls == 1 }
+    library.requestPullForPanelOpen()
+    try? await Task.sleep(nanoseconds: 300_000_000)
+    XCTAssertEqual(fetcher.pullCalls, 1)
+  }
+
+  func testConcurrentPullTriggersShareOnePull() async throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    let vault = root.appendingPathComponent("vault")
+    try FileManager.default.createDirectory(
+      at: vault.appendingPathComponent("ref"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: vault.appendingPathComponent("lib"), withIntermediateDirectories: true)
+    let fetcher = FakeRefsFetcher()
+    fetcher.pullDelayNanoseconds = 500_000_000
+    let library = RefsLibrary(
+      fetcher: fetcher,
+      snapshotStore: RefsSnapshotStore(
+        fileURL: root.appendingPathComponent("refs-snapshot.json")),
+      openLogStore: RefsOpenLogStore(
+        fileURL: root.appendingPathComponent("refs-open-log.json")),
+      newMarkStore: RefsNewMarkStore(
+        fileURL: root.appendingPathComponent("refs-new-marks.json")),
+      vaultRoot: { vault },
+      fileExists: { _ in true },
+      spotlight: FakeSpotlight(),
+      now: { Date() }
+    )
+    library.requestPullForPanelOpen()
+    // Second trigger while the first pull is still in flight joins it.
+    try? await Task.sleep(nanoseconds: 50_000_000)
+    library.requestPullForPanelOpen()
+    await waitUntil(timeout: 5) { fetcher.pullCalls == 1 }
+    await library.pullAndWait()
+    try? await Task.sleep(nanoseconds: 100_000_000)
+    XCTAssertEqual(fetcher.pullCalls, 1)
+  }
+
+  func testPullSkippedWhileScanOrRenameInFlight() async throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    let vault = root.appendingPathComponent("vault")
+    try FileManager.default.createDirectory(
+      at: vault.appendingPathComponent("ref"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: vault.appendingPathComponent("lib"), withIntermediateDirectories: true)
+    let fetcher = FakeRefsFetcher()
+    fetcher.scanDelayNanoseconds = 2_000_000_000
+    let library = RefsLibrary(
+      fetcher: fetcher,
+      snapshotStore: RefsSnapshotStore(
+        fileURL: root.appendingPathComponent("refs-snapshot.json")),
+      openLogStore: RefsOpenLogStore(
+        fileURL: root.appendingPathComponent("refs-open-log.json")),
+      newMarkStore: RefsNewMarkStore(
+        fileURL: root.appendingPathComponent("refs-new-marks.json")),
+      vaultRoot: { vault },
+      fileExists: { _ in true },
+      spotlight: FakeSpotlight(),
+      now: { Date() }
+    )
+    XCTAssertTrue(library.scan())
+    library.requestPullForPanelOpen()
+    await library.pullAndWait()
+    XCTAssertEqual(fetcher.pullCalls, 0)
+    // Let the scan finish so it does not leak into other tests.
+    await waitUntil(timeout: 10) {
+      if case .finished = library.scanState { return true }
+      return false
+    }
+  }
+
+  func testFailedPullLeavesRefreshStateIdle() async throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    let vault = root.appendingPathComponent("vault")
+    try FileManager.default.createDirectory(
+      at: vault.appendingPathComponent("ref"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: vault.appendingPathComponent("lib"), withIntermediateDirectories: true)
+    let fetcher = FakeRefsFetcher()
+    fetcher.pullError = RefsTestError.boom
+    let library = RefsLibrary(
+      fetcher: fetcher,
+      snapshotStore: RefsSnapshotStore(
+        fileURL: root.appendingPathComponent("refs-snapshot.json")),
+      openLogStore: RefsOpenLogStore(
+        fileURL: root.appendingPathComponent("refs-open-log.json")),
+      newMarkStore: RefsNewMarkStore(
+        fileURL: root.appendingPathComponent("refs-new-marks.json")),
+      vaultRoot: { vault },
+      fileExists: { _ in true },
+      spotlight: FakeSpotlight(),
+      now: { Date() }
+    )
+    await library.pullAndWait()
+    XCTAssertEqual(fetcher.pullCalls, 1)
+    guard case .idle = library.refreshState else {
+      XCTFail("a failed pull must leave refreshState idle")
+      return
+    }
+  }
+
+  func testUnsupportedPullLeavesRefreshStateIdle() async throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    let vault = root.appendingPathComponent("vault")
+    try FileManager.default.createDirectory(
+      at: vault.appendingPathComponent("ref"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: vault.appendingPathComponent("lib"), withIntermediateDirectories: true)
+    let library = RefsLibrary(
+      fetcher: TimedOutRefsFetcher(),
+      snapshotStore: RefsSnapshotStore(
+        fileURL: root.appendingPathComponent("refs-snapshot.json")),
+      openLogStore: RefsOpenLogStore(
+        fileURL: root.appendingPathComponent("refs-open-log.json")),
+      newMarkStore: RefsNewMarkStore(
+        fileURL: root.appendingPathComponent("refs-new-marks.json")),
+      vaultRoot: { vault },
+      fileExists: { _ in true },
+      spotlight: FakeSpotlight(),
+      now: { Date() }
+    )
+    await library.pullAndWait()
+    guard case .idle = library.refreshState else {
+      XCTFail("an unsupported pull must leave refreshState idle")
+      return
+    }
+  }
+
+  func testBobFetcherPullRunsVaultSyncLane() async throws {
+    let recordURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    let context = try makeContext(environment: ["FAKE_BOB_RECORD_PATH": recordURL.path])
+    await context.library.pullAndWait()
+    await waitUntil(timeout: 5) {
+      ((try? String(contentsOf: recordURL)) ?? "").contains("argv=vault-sync -q")
+    }
+    guard case .idle = context.library.refreshState else {
+      XCTFail("a pull must never touch refreshState")
+      return
+    }
+  }
+
   // MARK: - Helpers
 
   private func instant(_ raw: String) -> Date {

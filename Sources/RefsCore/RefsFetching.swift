@@ -4,7 +4,8 @@ import Foundation
 /// The `bob` calls the Refs library refreshes from. Lanes match the
 /// refresh table: `refs-list` for the snapshot, `refs-git` for the added-
 /// date backfill, `refs-plan` for Today, `refs-show` for the inspector's
-/// per-note hydration, and `refs-rename` for the non-cancelling rename.
+/// per-note hydration, `refs-rename` for the non-cancelling rename, and
+/// `refs-pull` for the vault fast-forward before a panel show or refresh.
 public protocol RefsFetching: Sendable {
   func list(gitDates: Bool) async throws -> RefsListResponse
   func plan() async throws -> RefsPlanResponse
@@ -14,6 +15,7 @@ public protocol RefsFetching: Sendable {
   func linkToToday(
     notePath: String, selector: RefsTodayLinkSelector, dryRun: Bool
   ) async throws -> RefsTodayLinkResponse
+  func pull() async throws
 }
 
 public enum RefsFetchingError: Error, Sendable {
@@ -27,6 +29,13 @@ public extension RefsFetching {
   func linkToToday(
     notePath: String, selector: RefsTodayLinkSelector, dryRun: Bool
   ) async throws -> RefsTodayLinkResponse {
+    throw RefsFetchingError.unsupported
+  }
+
+  /// Older fake fetchers need not implement the pull lane unless a
+  /// pull test exercises it. The production fetcher runs
+  /// `bob vault-sync -q` on the `refs-pull` lane.
+  func pull() async throws {
     throw RefsFetchingError.unsupported
   }
 }
@@ -107,6 +116,24 @@ public final class BobRefsFetcher: RefsFetching, @unchecked Sendable {
       cancelsPreviousInLane: dryRun,
       timeout: dryRun ? BobProcessClient.defaultTimeout : Self.todayLinkTimeout
     )
+  }
+
+  /// Fast-forwards the local vault before a panel show or refresh.
+  /// `bob vault-sync` returns quietly when the maintenance lock is held,
+  /// so this never fights the 15 s LaunchAgent, a scan, or a rename.
+  public func pull() async throws {
+    let result = try await client.run(
+      arguments: ["vault-sync", "-q"],
+      lane: "refs-pull",
+      cancelsPreviousInLane: false
+    )
+    guard result.exitStatus == 0 else {
+      throw BobClientError.processFailed(
+        command: result.command,
+        exitStatus: result.exitStatus,
+        stderr: result.stderr
+      )
+    }
   }
 
 }

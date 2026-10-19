@@ -496,6 +496,10 @@ public final class RefsPanelModel: ObservableObject {
   /// Set by ⌘R (and Retry) so the next completed refresh builds a fresh
   /// listing instead of a content-only update.
   private var pendingRefreshRerank = false
+  /// The library item ids the visible listing was last ranked from.
+  /// `libraryDidPublish` diffs the current ids against this set to find
+  /// arrivals that landed while the panel was open.
+  private var rankedItemIDs: Set<String> = []
   /// Every item ever published, by id, so a freshly vanished row still
   /// draws its last known title. Current publications win on conflict;
   /// every fresh listing prunes rows the library no longer has.
@@ -553,6 +557,7 @@ public final class RefsPanelModel: ObservableObject {
       signals: library.signals
     )
     listing = initialListing
+    rankedItemIDs = Set(library.items.map(\.id))
     selectedID = RefsSelectionPolicy.initial(in: initialListing)
     inspectorLoader = RefsInspectorLoader(
       library: library,
@@ -829,10 +834,15 @@ public final class RefsPanelModel: ObservableObject {
     case .refresh:
       // The fresh listing lands when the refresh completes (see
       // `libraryDidPublish`): re-ranking now would pin the old data.
+      // Await the single-flight `refs-pull` fast-forward first so ⌘R
+      // can pull; a failed or unsupported pull still refreshes.
       pendingRefreshRerank = true
-      library.refresh(reason: .manual)
-      if tabsFilter {
-        beginTabsRefresh(preservingSelection: true)
+      Task { [weak self] in
+        await self?.library.pullAndWait()
+        self?.library.refresh(reason: .manual)
+        if self?.tabsFilter == true {
+          self?.beginTabsRefresh(preservingSelection: true)
+        }
       }
       return true
     case .select(let id):
@@ -948,9 +958,13 @@ public final class RefsPanelModel: ObservableObject {
   }
 
   /// Background refresh for every panel open: Today refreshes every
-  /// time while the snapshot keeps its 60 s staleness rule.
+  /// time while the snapshot keeps its 60 s staleness rule. Also starts
+  /// a throttled `refs-pull` fast-forward so references pushed from
+  /// athena or apollo show up without waiting for the 15 s LaunchAgent.
+  /// Never blocks presentation.
   public func refreshForOpen(maxAge: TimeInterval = 60) {
     library.refreshToday(reason: .panelOpen)
+    library.requestPullForPanelOpen()
     refreshIfStale(maxAge: maxAge)
   }
 
@@ -1069,6 +1083,7 @@ public final class RefsPanelModel: ObservableObject {
 
   private func rebuildTabsListing(preservingSelection: Bool) {
     let keep = preservingSelection ? selectedID : nil
+    rankedItemIDs = Set(library.items.map(\.id))
     let ranked = RefsTabsRanker.listing(
       tabs: matchedTabs.filter { !closingRowIDs.contains($0.rowID) },
       items: library.items,
@@ -1559,6 +1574,7 @@ public final class RefsPanelModel: ObservableObject {
     self.scanNotice = scanNotice
     scanNoticeSeen = scanNotice != nil
     knownItems = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+    rankedItemIDs = Set(items.map(\.id))
     if tabsFilter {
       rebuildTabsListing(preservingSelection: false)
     } else {
@@ -2489,7 +2505,8 @@ public final class RefsPanelModel: ObservableObject {
   }
 
   private func libraryListing(query: String? = nil) -> RefsListing {
-    RefsRanker.listing(
+    rankedItemIDs = Set(library.items.map(\.id))
+    return RefsRanker.listing(
       library.items,
       query: query ?? self.query,
       scope: scope,
@@ -2545,8 +2562,23 @@ public final class RefsPanelModel: ObservableObject {
     // items and signals separately). Keep flags for every id that is
     // still missing from the library instead.
     unavailableIDs = unavailable.union(unavailableIDs.subtracting(available))
+    let arrivals = Set(library.items.map(\.id)).subtracting(rankedItemIDs)
+    let arrivalsCanJoin =
+      !arrivals.isEmpty && !tabsFilter && copyCard == nil && renameCard == nil
+      && todayLinkCard == nil && !isRenaming && !isLinkingToday && pendingOpen == nil
+      && (selectedID == nil || available.contains(selectedID!))
     if pendingRefreshRerank, library.refreshState != .refreshing {
       freshListingKeepingSelection()
+      if arrivalsCanJoin {
+        AccessibilityNotification.Announcement(
+          arrivals.count == 1 ? "1 new reference" : "\(arrivals.count) new references"
+        ).post()
+      }
+    } else if arrivalsCanJoin {
+      freshListingKeepingSelection()
+      AccessibilityNotification.Announcement(
+        arrivals.count == 1 ? "1 new reference" : "\(arrivals.count) new references"
+      ).post()
     } else if next.orderedIDs.isEmpty {
       selectedID = nil
     }

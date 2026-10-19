@@ -5056,6 +5056,20 @@ JSON
       cat "${fixtures_dir}/${plan_fixture}"
     fi
     ;;
+  vault-sync)
+    # `bob vault-sync -q` for the Refs `refs-pull` lane. Quiet success by
+    # default; FAKE_BOB_VAULT_SYNC_EXIT fails it so tests can prove a
+    # failed pull still refreshes and leaves refreshState alone.
+    if [[ -n "${FAKE_BOB_VAULT_SYNC_DELAY_SECONDS:-}" ]]; then
+      sleep "${FAKE_BOB_VAULT_SYNC_DELAY_SECONDS}" &
+      wait $!
+    fi
+    if [[ -n "${FAKE_BOB_VAULT_SYNC_EXIT:-}" ]]; then
+      printf 'fake vault-sync failed\n' >&2
+      exit "${FAKE_BOB_VAULT_SYNC_EXIT}"
+    fi
+    exit 0
+    ;;
   *)
     printf 'unknown fake command: %s\n' "${command}" >&2
     exit 64

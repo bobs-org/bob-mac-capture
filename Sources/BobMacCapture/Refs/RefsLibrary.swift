@@ -153,6 +153,9 @@ public final class RefsLibrary: ObservableObject {
   /// Seconds between background Today refreshes.
   public static let todayRefreshInterval: TimeInterval = 600
 
+  /// Minimum seconds between panel-open pulls on the `refs-pull` lane.
+  public static let pullThrottleInterval: TimeInterval = 5
+
   private var fetcher: RefsFetching?
   private let snapshotStore: RefsSnapshotStore
   private let openLogStore: RefsOpenLogStore
@@ -177,6 +180,8 @@ public final class RefsLibrary: ObservableObject {
   private var scanInFlight = false
   private var renameInFlight = false
   private var deferredWatcherRefresh = false
+  private var pullTask: Task<Void, Never>?
+  private var lastPullStartedAt: Date?
 
   private var watcher: VaultTargetWatcher?
   private var todayTimer: Timer?
@@ -320,6 +325,62 @@ public final class RefsLibrary: ObservableObject {
     let snapshotSucceeded = await waitForSnapshotPasses()
     let todaySucceeded = await waitForTodayPasses()
     return (snapshotSucceeded, todaySucceeded)
+  }
+
+  /// Fast-forwards the vault on the `refs-pull` lane without
+  /// refreshing: the existing vault watcher sees the fast-forward and
+  /// runs the normal snapshot refresh. Single-flight: a trigger that
+  /// arrives while a pull is running joins that pull. Throttled for
+  /// panel opens; `pullAndWait` is the unthrottled ⌘R path. Skipped
+  /// while a scan or rename is in flight. Failures are only logged and
+  /// never touch `refreshState`, banners, or the footer.
+  public func requestPullForPanelOpen() {
+    guard !scanInFlight, !renameInFlight else {
+      return
+    }
+    if let last = lastPullStartedAt,
+      now().timeIntervalSince(last) < Self.pullThrottleInterval
+    {
+      return
+    }
+    guard pullTask == nil else {
+      return
+    }
+    lastPullStartedAt = now()
+    pullTask = Task { [weak self] in await self?.runPullPass() }
+  }
+
+  /// Awaits the single-flight `refs-pull` lane without throttling, then
+  /// returns. Skipped while a scan or rename is in flight. Never throws:
+  /// failures are only logged so a ⌘R refresh still runs.
+  public func pullAndWait() async {
+    if let existing = pullTask {
+      await existing.value
+      return
+    }
+    guard !scanInFlight, !renameInFlight else {
+      return
+    }
+    guard fetcher != nil else {
+      return
+    }
+    lastPullStartedAt = now()
+    pullTask = Task { [weak self] in await self?.runPullPass() }
+    await pullTask?.value
+  }
+
+  private func runPullPass() async {
+    defer { pullTask = nil }
+    guard let fetcher else {
+      return
+    }
+    let token = CaptureSignpost.begin("refs-pull")
+    defer { CaptureSignpost.end(token) }
+    do {
+      try await fetcher.pull()
+    } catch {
+      NSLog("refs-pull lane failed: %@", Self.boundedMessage(for: error))
+    }
   }
 
   /// Runs `bob ref scan -w -f json` on its own `refs-scan` lane.

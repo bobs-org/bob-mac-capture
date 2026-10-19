@@ -1353,10 +1353,14 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
     (@Sendable (String, RefsTodayLinkSelector, Bool) async throws -> RefsTodayLinkResponse)?
   var listResponse = RefsListResponse(schemaVersion: 1)
   var listError: Error?
+  private(set) var listCalls = 0
   var planResponse = RefsPlanResponse(schemaVersion: 2)
   var planError: Error?
   var showDelayNanoseconds: UInt64 = 50_000_000
   var renameDelayNanoseconds: UInt64 = 0
+  private(set) var pullCalls = 0
+  var pullError: Error?
+  var pullDelayNanoseconds: UInt64 = 0
   /// When set, the returned row uses this path instead of the
   /// requested one, so exact-path matching can fail.
   var showRowPath: String?
@@ -1364,6 +1368,7 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
   var showResponse: RefsShowResponse?
 
   func list(gitDates: Bool) async throws -> RefsListResponse {
+    lock.withLock { listCalls += 1 }
     if let listError { throw listError }
     return listResponse
   }
@@ -1396,6 +1401,16 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
       throw renameError
     }
     return renameResponse
+  }
+
+  func pull() async throws {
+    lock.withLock { pullCalls += 1 }
+    if pullDelayNanoseconds > 0 {
+      try await Task.sleep(nanoseconds: pullDelayNanoseconds)
+    }
+    if let pullError {
+      throw pullError
+    }
   }
 
   func linkToToday(
