@@ -697,6 +697,9 @@ public enum RefsCopyFormat {
 
     public static func shortPageLabel(_ label: String?) -> String? {
         guard let label else { return nil }
+        if label.lowercased().hasPrefix("pages ") {
+            return "pp. \(label.dropFirst(6))"
+        }
         if label.lowercased().hasPrefix("page ") {
             return "p. \(label.dropFirst(5))"
         }

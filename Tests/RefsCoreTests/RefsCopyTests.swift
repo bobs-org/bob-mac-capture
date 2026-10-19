@@ -294,6 +294,8 @@ final class RefsCopyTests: XCTestCase {
             "Note: Standalone\nSecond\n— p. 4 · [[x#^a]]"
         )
         XCTAssertEqual(RefsCopyFormat.shortPageLabel("Page 11"), "p. 11")
+        XCTAssertEqual(RefsCopyFormat.shortPageLabel("Pages 11–12"), "pp. 11–12")
+        XCTAssertEqual(RefsCopyFormat.shortPageLabel("pages 11, 14"), "pp. 11, 14")
         XCTAssertEqual(RefsCopyFormat.shortPageLabel("Appendix A"), "Appendix A")
         XCTAssertEqual(
             RefsCopyFormat.noteBlock(RefsShowAnnotation(quote: "  \n ", comment: "Kept")),
