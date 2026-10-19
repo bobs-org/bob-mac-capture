@@ -725,7 +725,7 @@ struct RefsInspectorView: View {
                 )
               )
               .background {
-                if notesPage.batchStart == entry.index {
+                if !previewMode, notesPage.batchStart == entry.index {
                   RefsInspectorRevealAnchor(
                     generation: notesPage.generation
                   )
@@ -767,7 +767,11 @@ struct RefsInspectorView: View {
       Text(text)
         .font(.caption.monospacedDigit())
     }
-    .background(RefsInspectorDisclosureAnchor())
+    .background {
+      if !previewMode {
+        RefsInspectorDisclosureAnchor()
+      }
+    }
     .foregroundStyle(disclosureHover ? .secondary : .tertiary)
     .pointerStyle(.link)
     .onHover { disclosureHover = $0 }

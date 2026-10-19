@@ -29,7 +29,8 @@ final class RefsPanelDesignTests: XCTestCase {
 
   /// Long enough to overflow six body lines at the wide inspector
   /// width, so the wide highlight truncates with a trailing
-  /// ellipsis.
+  /// ellipsis. The readable column is ~720 pt of body type, so this
+  /// passage is several times the six-line budget.
   private static let wideLongHighlightQuote =
     "Agents that write down what they know, and then read it back "
     + "before they act, stay consistent across a long session, and the "
@@ -39,7 +40,11 @@ final class RefsPanelDesignTests: XCTestCase {
     + "characters, and this excerpt runs several times that length on "
     + "purpose: only a genuinely long passage proves the wide cap clips "
     + "where it should and ends in an ellipsis the reader can still "
-    + "recover from the hover tooltip."
+    + "recover from the hover tooltip. "
+    + "A second pass through the same idea keeps the column full: the "
+    + "agent rereads the stored note, checks the hinge of the argument, "
+    + "and only then writes the next step, so the six-line cap has to "
+    + "bite well before this sentence finishes describing the loop."
 
   func testLiveListBuildsOnlyRowsNearViewport() throws {
     let now = fixedNow()
@@ -1145,7 +1150,8 @@ final class RefsPanelDesignTests: XCTestCase {
       RefsShowAnnotation(
         pageLabel: "Page 6",
         kind: "highlight",
-        quote: "Sixth highlight is also still hidden."
+        quote: "Sixth highlight is also still hidden.",
+        comment: "Keep this for the disclosure note clause."
       ),
       RefsShowAnnotation(
         pageLabel: "Page 7",
@@ -1197,6 +1203,7 @@ final class RefsPanelDesignTests: XCTestCase {
     let crop = "ref/docs/gastown_readme.assets/h-crop.jpg"
     let attached = "ref/docs/gastown_readme.assets/note.png"
     let alpha = "ref/docs/gastown_readme.assets/diagram.png"
+    let missing = "ref/docs/gastown_readme.assets/missing.jpg"
     let highlights = [
       RefsShowAnnotation(
         pageLabel: "Page 5",
@@ -1223,9 +1230,8 @@ final class RefsPanelDesignTests: XCTestCase {
       ),
       RefsShowAnnotation(
         pageLabel: "Page 14",
-        kind: "highlight",
-        quote: "An unresolved HEIC stays honest.",
-        unresolvedImages: ["camera-roll.heic"]
+        kind: "image",
+        asset: missing
       ),
     ]
     let previewImages = [
@@ -1260,7 +1266,7 @@ final class RefsPanelDesignTests: XCTestCase {
     XCTAssertEqual(
       content.feed.entries(visible: 5).map(\.kind),
       [
-        .image, .highlight, .highlight, .note, .highlight,
+        .image, .highlight, .highlight, .note, .image,
       ])
     XCTAssertNotNil(content.images[crop])
     XCTAssertNotNil(content.images[alpha])

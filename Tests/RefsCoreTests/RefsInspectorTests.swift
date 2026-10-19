@@ -506,18 +506,21 @@ final class RefsInspectorTests: XCTestCase {
     }
 
     func testFeedImageCountsAppearOnlyForHiddenResolvableImages() {
-        let feed = RefsInspectorFeed(highlights: [
-            highlight(page: "1"),
-            RefsShowAnnotation(
-                pageLabel: "2",
-                kind: "image",
-                comment: "A note.",
-                asset: "crop.jpg",
-                images: ["attached.png"],
-                unresolvedImages: ["missing.heic"]
-            ),
-            RefsShowAnnotation(kind: "note", images: ["note-image.png"]),
-        ])
+        let feed = RefsInspectorFeed(
+            highlights: [
+                highlight(page: "1"),
+                RefsShowAnnotation(
+                    pageLabel: "2",
+                    kind: "image",
+                    comment: "A note.",
+                    asset: "crop.jpg",
+                    images: ["attached.png"],
+                    unresolvedImages: ["missing.heic"]
+                ),
+                RefsShowAnnotation(kind: "note", images: ["note-image.png"]),
+            ],
+            availableImages: ["crop.jpg", "attached.png", "note-image.png"]
+        )
 
         XCTAssertEqual(feed.hiddenImageCount(visible: 1), 3)
         XCTAssertEqual(feed.hiddenImageCount(visible: 2), 1)
@@ -533,6 +536,54 @@ final class RefsInspectorTests: XCTestCase {
         XCTAssertEqual(
             feed.moreText(visible: 2, nextBatch: 1),
             "+1 more · 1 with a note · 1 image · ⌃D shows it"
+        )
+    }
+
+    func testFeedAvailabilityCountsAndAccessibilityForMixedImages() {
+        let feed = RefsInspectorFeed(
+            highlights: [
+                RefsShowAnnotation(
+                    pageLabel: "5",
+                    kind: "image",
+                    comment: "Figure.",
+                    asset: "crop.jpg",
+                    images: ["ok.png", "gone.png", "../secret.jpg"],
+                    unresolvedImages: ["camera.heic"]
+                ),
+                RefsShowAnnotation(
+                    pageLabel: "6",
+                    kind: "image",
+                    asset: "missing-crop.jpg"
+                ),
+                RefsShowAnnotation(
+                    pageLabel: "7",
+                    kind: "note",
+                    comment: "Standalone note."
+                ),
+            ],
+            availableImages: ["crop.jpg", "ok.png"]
+        )
+        let entries = feed.entries(visible: 3)
+
+        XCTAssertEqual(feed.hiddenImageCount(visible: 0), 2)
+        XCTAssertEqual(feed.hiddenImageCount(visible: 1), 0)
+        XCTAssertEqual(feed.notedCount, 2)
+        XCTAssertEqual(
+            feed.moreText(visible: 0, nextBatch: 5),
+            "+3 more · 2 with notes · 2 images · ⌃D shows the rest"
+        )
+        XCTAssertEqual(
+            entries[0].accessibilityLabel,
+            "Image highlight, Page 5. Your note: Figure., 1 attached image, "
+                + "2 attached images unavailable, 1 image unavailable"
+        )
+        XCTAssertEqual(
+            entries[1].accessibilityLabel,
+            "Image highlight, Page 6, 1 image unavailable"
+        )
+        XCTAssertEqual(
+            entries[2].accessibilityLabel,
+            "Note, Page 7: Standalone note."
         )
     }
 
@@ -572,27 +623,32 @@ final class RefsInspectorTests: XCTestCase {
     }
 
     func testFeedEntryKindsNoteCardsAndImageAccessibility() {
-        let feed = RefsInspectorFeed(highlights: [
-            RefsShowAnnotation(
-                pageLabel: "5",
-                kind: "image",
-                comment: "Figure note.",
-                asset: "crop.jpg",
-                images: ["attached.png"],
-                unresolvedImages: ["missing.heic"]
-            ),
-            RefsShowAnnotation(
-                pageLabel: "6",
-                kind: "highlight",
-                quote: "Quoted text",
-                images: ["attached-1.png", "attached-2.png"]
-            ),
-            RefsShowAnnotation(
-                pageLabel: "7",
-                kind: "note",
-                comment: "Standalone note."
-            ),
-        ])
+        let feed = RefsInspectorFeed(
+            highlights: [
+                RefsShowAnnotation(
+                    pageLabel: "5",
+                    kind: "image",
+                    comment: "Figure note.",
+                    asset: "crop.jpg",
+                    images: ["attached.png"],
+                    unresolvedImages: ["missing.heic"]
+                ),
+                RefsShowAnnotation(
+                    pageLabel: "6",
+                    kind: "highlight",
+                    quote: "Quoted text",
+                    images: ["attached-1.png", "attached-2.png"]
+                ),
+                RefsShowAnnotation(
+                    pageLabel: "7",
+                    kind: "note",
+                    comment: "Standalone note."
+                ),
+            ],
+            availableImages: [
+                "crop.jpg", "attached.png", "attached-1.png", "attached-2.png",
+            ]
+        )
         let entries = feed.entries(visible: 3)
 
         XCTAssertEqual(entries.map(\.kind), [.image, .highlight, .note])
@@ -615,13 +671,16 @@ final class RefsInspectorTests: XCTestCase {
             "Note, Page 7: Standalone note."
         )
 
-        let blankNote = RefsInspectorFeed(highlights: [
-            RefsShowAnnotation(
-                kind: "note",
-                images: ["attached.png"],
-                unresolvedImages: ["no.png"]
-            ),
-        ]).entries(visible: 1)[0]
+        let blankNote = RefsInspectorFeed(
+            highlights: [
+                RefsShowAnnotation(
+                    kind: "note",
+                    images: ["attached.png"],
+                    unresolvedImages: ["no.png"]
+                ),
+            ],
+            availableImages: ["attached.png"]
+        ).entries(visible: 1)[0]
         XCTAssertEqual(
             blankNote.accessibilityLabel,
             "Note, 1 attached image, 1 image unavailable"

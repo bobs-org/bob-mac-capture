@@ -1820,7 +1820,9 @@ one thumbnail PNG each). What each kind shows:
   Attached images sit inside the note card, 8 pt apart, fitted to the
   card's inner width. A missing, unreadable, or unresolved image is a
   one-line "Image unavailable" row with the file's base name, never a
-  box. Standalone notes join the feed as note cards with no quote.
+  box. If a header succeeds and the bitmap later fails, the reserved
+  frame stays and the unavailable caption sits inside it. Standalone
+  notes join the feed as note cards with no quote.
   Same-page entries share one page label. Quotes render balanced
   `**bold**` runs as strong emphasis, and a hover tooltip on a
   highlight shows its full text. The preview shows the first page (5
@@ -1871,8 +1873,8 @@ intrinsics cache (`intrinsics-v2.json`) with thumbnails
 removes the legacy `intrinsics.json` and `thumbs/`, so stale
 224 × 290 thumbnails are never upscaled. Annotation images that
 `bob ref show` names are read from the vault, read-only, and the
-decoded previews stay in memory only; nothing new is written to
-disk. The References
+decoded previews stay in a bounded in-memory cache; nothing new is
+written to disk. The References
 settings persist a small set of `UserDefaults` keys (the ⌃⇧⌘R
 binding flag, the Highlights-frontmost open key, the Highlights Tabs
 key (`refsHighlightsTabsKey`, default `shiftCmdO`), the Highlights

@@ -156,6 +156,95 @@ public actor RefsAnnotationImageLoader: RefsAnnotationImageProviding {
   }
 }
 
+/// Cache identity for a decoded annotation image: the resolved vault
+/// root, vault-relative path, file version (size and mtime), and the
+/// clamped pixel limit.
+public struct RefsDecodedImageKey: Hashable, Sendable {
+  public var vaultRoot: String
+  public var path: String
+  public var fileVersion: String
+  public var maxPixel: Int
+
+  public init(vaultRoot: String, path: String, fileVersion: String, maxPixel: Int) {
+    self.vaultRoot = vaultRoot
+    self.path = path
+    self.fileVersion = fileVersion
+    self.maxPixel = max(maxPixel, 1)
+  }
+}
+
+/// Deterministic LRU of decoded bitmaps with an explicit byte budget.
+/// Tests assert eviction against this type, not platform `NSCache`
+/// order.
+@MainActor
+public final class RefsDecodedImageBudget {
+  public static let defaultByteLimit = RefsAnnotationImageLoader.bitmapCacheByteLimit
+
+  private let byteLimit: Int
+  private var order: [RefsDecodedImageKey] = []
+  private var storage: [RefsDecodedImageKey: (image: NSImage, cost: Int)] = [:]
+  public private(set) var byteCost = 0
+
+  public init(byteLimit: Int = defaultByteLimit) {
+    self.byteLimit = max(byteLimit, 1)
+  }
+
+  public var count: Int { storage.count }
+
+  public func image(for key: RefsDecodedImageKey) -> NSImage? {
+    guard let entry = storage[key] else {
+      return nil
+    }
+    touch(key)
+    return entry.image
+  }
+
+  public func insert(_ image: NSImage, cost: Int, for key: RefsDecodedImageKey) {
+    let cost = max(cost, 1)
+    if let old = storage.removeValue(forKey: key) {
+      byteCost -= old.cost
+      order.removeAll { $0 == key }
+    }
+    while !order.isEmpty, byteCost + cost > byteLimit {
+      evict(order[0])
+    }
+    if cost > byteLimit {
+      removeAll()
+    }
+    storage[key] = (image, cost)
+    order.append(key)
+    byteCost += cost
+  }
+
+  public func removeAll() {
+    storage = [:]
+    order = []
+    byteCost = 0
+  }
+
+  public static func byteCost(for image: NSImage) -> Int {
+    let width =
+      image.representations.map(\.pixelsWide).max()
+      ?? max(1, Int(image.size.width.rounded()))
+    let height =
+      image.representations.map(\.pixelsHigh).max()
+      ?? max(1, Int(image.size.height.rounded()))
+    return max(1, width * height * 4)
+  }
+
+  private func touch(_ key: RefsDecodedImageKey) {
+    order.removeAll { $0 == key }
+    order.append(key)
+  }
+
+  private func evict(_ key: RefsDecodedImageKey) {
+    if let old = storage.removeValue(forKey: key) {
+      byteCost -= old.cost
+    }
+    order.removeAll { $0 == key }
+  }
+}
+
 /// Main-actor cache of decoded annotation images. Preview-installed
 /// images are returned for any `maxPixel`. Vault-relative paths resolve
 /// through `RefsVaultAssetPath` against `library.vaultRootURL`.
@@ -163,12 +252,20 @@ public actor RefsAnnotationImageLoader: RefsAnnotationImageProviding {
 public final class RefsInspectorImageStore {
   private let library: RefsLibrary
   private let provider: RefsAnnotationImageProviding
-  private var loaded: [String: NSImage] = [:]
+  private let budget: RefsDecodedImageBudget
   private var previewImages: [String: NSImage] = [:]
+  private var inFlight: [RefsDecodedImageKey: (generation: UInt64, task: Task<NSImage?, Never>)] =
+    [:]
+  private var generation: UInt64 = 0
 
-  public init(library: RefsLibrary, provider: RefsAnnotationImageProviding) {
+  public init(
+    library: RefsLibrary,
+    provider: RefsAnnotationImageProviding,
+    budget: RefsDecodedImageBudget? = nil
+  ) {
     self.library = library
     self.provider = provider
+    self.budget = budget ?? RefsDecodedImageBudget()
   }
 
   /// Synchronous hit: a preview-installed image or one already loaded.
@@ -176,22 +273,51 @@ public final class RefsInspectorImageStore {
     if let preview = previewImages[path] {
       return preview
     }
-    return loaded[cacheKey(path: path, maxPixel: maxPixel)]
+    guard let key = cacheKey(path: path, maxPixel: maxPixel) else {
+      return nil
+    }
+    return budget.image(for: key)
   }
 
   public func loadImage(path: String, maxPixel: Int) async -> NSImage? {
     if let cached = cachedImage(path: path, maxPixel: maxPixel) {
       return cached
     }
-    guard let url = RefsVaultAssetPath.resolve(path, root: library.vaultRootURL)
+    guard let url = RefsVaultAssetPath.resolve(path, root: library.vaultRootURL),
+      let key = cacheKey(path: path, maxPixel: maxPixel)
     else {
       return nil
     }
-    let pixel = max(maxPixel, 1)
-    guard let image = await provider.image(for: url, maxPixel: pixel) else {
+    let pixel = key.maxPixel
+    let gen = generation
+    let task: Task<NSImage?, Never>
+    if let existing = inFlight[key], existing.generation == gen {
+      task = existing.task
+    } else {
+      let provider = self.provider
+      task = Task {
+        let image = await provider.image(for: url, maxPixel: pixel)
+        if Task.isCancelled {
+          return nil
+        }
+        return image
+      }
+      inFlight[key] = (generation: gen, task: task)
+    }
+    let image = await task.value
+    if inFlight[key]?.generation == gen {
+      inFlight[key] = nil
+    }
+    guard gen == generation else {
       return nil
     }
-    loaded[cacheKey(path: path, maxPixel: pixel)] = image
+    if let image {
+      budget.insert(
+        image,
+        cost: RefsDecodedImageBudget.byteCost(for: image),
+        for: key
+      )
+    }
     return image
   }
 
@@ -200,8 +326,13 @@ public final class RefsInspectorImageStore {
   }
 
   public func reset() {
-    loaded = [:]
+    generation &+= 1
+    budget.removeAll()
     previewImages = [:]
+    for entry in inFlight.values {
+      entry.task.cancel()
+    }
+    inFlight = [:]
   }
 
   /// Pixel size, DPI, and alpha from a preview `NSImage`, so design
@@ -242,7 +373,35 @@ public final class RefsInspectorImageStore {
     )
   }
 
-  private func cacheKey(path: String, maxPixel: Int) -> String {
-    "\(path)|\(maxPixel)"
+  public static func clampedPixel(_ maxPixel: Int) -> Int {
+    max(maxPixel, 1)
+  }
+
+  private func cacheKey(path: String, maxPixel: Int) -> RefsDecodedImageKey? {
+    let root = library.vaultRootURL
+    guard RefsVaultAssetPath.resolve(path, root: root) != nil else {
+      return nil
+    }
+    return RefsDecodedImageKey(
+      vaultRoot: root.standardizedFileURL.path,
+      path: path,
+      fileVersion: Self.fileVersion(for: path, root: root),
+      maxPixel: maxPixel
+    )
+  }
+
+  private static func fileVersion(for path: String, root: URL) -> String {
+    guard let url = RefsVaultAssetPath.resolve(path, root: root) else {
+      return "0:0"
+    }
+    let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+    let size = (attributes?[.size] as? NSNumber)?.uint64Value ?? 0
+    let millis: Int64
+    if let date = attributes?[.modificationDate] as? Date {
+      millis = Int64((date.timeIntervalSince1970 * 1000).rounded())
+    } else {
+      millis = 0
+    }
+    return "\(size):\(millis)"
   }
 }

@@ -391,17 +391,23 @@ public struct RefsNotesPage: Equatable, Sendable {
 
 /// The inspector's HIGHLIGHTS feed: highlights, image highlights, and
 /// standalone notes in annotation order. Entries with user notes or
-/// attached images show a note card.
+/// attached images show a note card. `availableImages` is the set of
+/// vault-relative paths whose metrics were prefetched successfully.
 public struct RefsInspectorFeed: Equatable, Sendable {
     public let highlights: [RefsShowAnnotation]
+    public let availableImages: Set<String>
 
     public var total: Int { highlights.count }
 
     /// How many entries in the feed carry a note card.
     public var notedCount: Int { entries(visible: total).filter(\.hasNoteCard).count }
 
-    public init(highlights: [RefsShowAnnotation]) {
+    public init(
+        highlights: [RefsShowAnnotation],
+        availableImages: Set<String> = []
+    ) {
         self.highlights = highlights
+        self.availableImages = availableImages
     }
 
     public struct Entry: Equatable, Sendable {
@@ -414,6 +420,7 @@ public struct RefsInspectorFeed: Equatable, Sendable {
         public let index: Int
         public let annotation: RefsShowAnnotation
         public let showsPageLabel: Bool
+        public let availableImages: Set<String>
 
         public var kind: Kind {
             switch annotation.kind {
@@ -485,11 +492,34 @@ public struct RefsInspectorFeed: Equatable, Sendable {
                 }
             }
 
-            if !attachedImages.isEmpty {
-                label += ", \(Self.imageCountPhrase(attachedImages.count, prefix: "attached "))"
+            let availableAttached = attachedImages.filter {
+                availableImages.contains($0)
             }
-            if !unresolvedImages.isEmpty {
-                label += ", \(Self.imageCountPhrase(unresolvedImages.count, suffix: " unavailable"))"
+            let failedAttached = attachedImages.filter {
+                !availableImages.contains($0)
+            }
+            if !availableAttached.isEmpty {
+                label += ", \(Self.imageCountPhrase(availableAttached.count, prefix: "attached "))"
+            }
+            if !failedAttached.isEmpty {
+                let failedPhrase = Self.imageCountPhrase(
+                    failedAttached.count,
+                    prefix: "attached ",
+                    suffix: " unavailable"
+                )
+                label += ", \(failedPhrase)"
+            }
+            var unavailable = unresolvedImages.filter { path in
+                !failedAttached.contains(path)
+            }
+            if let imagePath, !availableImages.contains(imagePath),
+                !failedAttached.contains(imagePath),
+                !unavailable.contains(imagePath)
+            {
+                unavailable.append(imagePath)
+            }
+            if !unavailable.isEmpty {
+                label += ", \(Self.imageCountPhrase(unavailable.count, suffix: " unavailable"))"
             }
             return label
         }
@@ -548,7 +578,8 @@ public struct RefsInspectorFeed: Equatable, Sendable {
             result.append(Entry(
                 index: offset,
                 annotation: annotation,
-                showsPageLabel: showsPageLabel
+                showsPageLabel: showsPageLabel,
+                availableImages: availableImages
             ))
         }
         return result
@@ -625,13 +656,17 @@ public struct RefsInspectorFeed: Equatable, Sendable {
         return entries(visible: total).dropFirst(clamped).filter(\.hasNoteCard).count
     }
 
-    /// Number of primary image highlights and attached image paths in
-    /// hidden entries. Unresolved paths are excluded because they have
-    /// no image to reveal.
+    /// Number of available primary image highlights and attached image
+    /// paths in hidden entries. Missing, unreadable, invalid, and
+    /// unresolved paths are excluded because they have no image to
+    /// reveal.
     public func hiddenImageCount(visible: Int) -> Int {
         let clamped = min(max(visible, 0), total)
         return entries(visible: total).dropFirst(clamped).reduce(into: 0) { count, entry in
-            count += (entry.imagePath == nil ? 0 : 1) + entry.attachedImages.count
+            if let path = entry.imagePath, availableImages.contains(path) {
+                count += 1
+            }
+            count += entry.attachedImages.filter { availableImages.contains($0) }.count
         }
     }
 

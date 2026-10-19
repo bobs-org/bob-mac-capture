@@ -491,7 +491,10 @@ public struct RefsInspectorContent: Equatable, Sendable {
     }
 
     public var feed: RefsInspectorFeed {
-        RefsInspectorFeed(highlights: highlights)
+        RefsInspectorFeed(
+            highlights: highlights,
+            availableImages: Set(images.keys)
+        )
     }
 }
 

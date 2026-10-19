@@ -16,6 +16,7 @@ struct RefsInspectorImageView: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var loaded: NSImage?
   @State private var appeared: Bool
+  @State private var decodeFailed: Bool
 
   init(
     path: String,
@@ -32,10 +33,12 @@ struct RefsInspectorImageView: View {
     let cached = store?.cachedImage(path: path, maxPixel: Self.maxPixel(for: displaySize))
     _loaded = State(initialValue: cached)
     _appeared = State(initialValue: previewMode || cached != nil)
+    _decodeFailed = State(initialValue: false)
   }
 
   var body: some View {
     let bitmap = loaded ?? store?.cachedImage(path: path, maxPixel: maxPixel)
+    let failed = decodeFailed && bitmap == nil
     ZStack {
       if metrics.hasAlpha {
         RoundedRectangle(
@@ -44,7 +47,9 @@ struct RefsInspectorImageView: View {
         )
         .fill(Color.white)
       }
-      if let bitmap, appeared || previewMode || reduceMotion {
+      if failed {
+        lateFailure
+      } else if let bitmap, appeared || previewMode || reduceMotion {
         Image(nsImage: bitmap)
           .resizable()
           .interpolation(.high)
@@ -74,21 +79,38 @@ struct RefsInspectorImageView: View {
       .stroke(.primary.opacity(0.08), lineWidth: 0.5)
     )
     .help(fileName)
-    .accessibilityHidden(true)
+    .accessibilityHidden(!failed)
+    .accessibilityLabel(
+      failed ? "Image unavailable, \(fileName)" : ""
+    )
     .task(id: taskID) {
+      let requestID = taskID
+      decodeFailed = false
+      loaded = store?.cachedImage(path: path, maxPixel: maxPixel)
+      appeared = previewMode || loaded != nil
       guard !previewMode, let store else {
         return
       }
       let image = await store.loadImage(path: path, maxPixel: maxPixel)
-      loaded = image
-      if reduceMotion {
-        appeared = true
-      } else {
-        withAnimation(
-          .easeOut(duration: RefsVisualTokens.inspectorImageFadeDuration)
-        ) {
+      guard !Task.isCancelled, requestID == taskID else {
+        return
+      }
+      if let image {
+        loaded = image
+        decodeFailed = false
+        if reduceMotion {
           appeared = true
+        } else {
+          withAnimation(
+            .easeOut(duration: RefsVisualTokens.inspectorImageFadeDuration)
+          ) {
+            appeared = true
+          }
         }
+      } else {
+        loaded = nil
+        decodeFailed = true
+        appeared = true
       }
     }
   }
@@ -103,6 +125,21 @@ struct RefsInspectorImageView: View {
       Image(systemName: "photo")
         .font(.title2)
         .foregroundStyle(.tertiary)
+    }
+  }
+
+  /// A readable header followed by a nil bitmap keeps this reserved
+  /// frame and puts the unavailable caption inside it, so layout does
+  /// not collapse after publication.
+  private var lateFailure: some View {
+    ZStack {
+      RoundedRectangle(
+        cornerRadius: RefsVisualTokens.thumbnailRadius,
+        style: .continuous
+      )
+      .fill(.secondary.opacity(0.08))
+      RefsInspectorImageUnavailableRow(fileName: fileName)
+        .padding(8)
     }
   }
 

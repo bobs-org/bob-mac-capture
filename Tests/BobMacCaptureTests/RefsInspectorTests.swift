@@ -373,6 +373,11 @@ final class RefsInspectorLoaderTests: XCTestCase {
     XCTAssertFalse(
       images.metricURLs.contains(where: { $0.path.contains("secret") })
     )
+    XCTAssertEqual(content.feed.hiddenImageCount(visible: 0), 2)
+    XCTAssertEqual(
+      content.feed.entries(visible: 5)[3].accessibilityLabel,
+      "Highlight with note: Missing crop., 1 attached image unavailable"
+    )
   }
 
   func testLoaderWaitsForImageMetricsBeforePublishing() async throws {
@@ -443,6 +448,146 @@ final class RefsInspectorLoaderTests: XCTestCase {
       store.cachedImage(path: "ref/docs/any.jpg", maxPixel: 4096)?.size,
       preview.size
     )
+  }
+
+  func testDecodedImageBudgetEvictsLeastRecentToStayWithinLimit() {
+    let budget = RefsDecodedImageBudget(byteLimit: 100)
+    let first = makeTestImage(size: NSSize(width: 10, height: 10), color: .systemRed)
+    let second = makeTestImage(size: NSSize(width: 12, height: 8), color: .systemBlue)
+    let keyA = RefsDecodedImageKey(
+      vaultRoot: "/vault",
+      path: "a.jpg",
+      fileVersion: "1:1",
+      maxPixel: 20
+    )
+    let keyB = RefsDecodedImageKey(
+      vaultRoot: "/vault",
+      path: "b.jpg",
+      fileVersion: "1:1",
+      maxPixel: 20
+    )
+    budget.insert(first, cost: 80, for: keyA)
+    budget.insert(second, cost: 80, for: keyB)
+    XCTAssertNil(budget.image(for: keyA))
+    XCTAssertNotNil(budget.image(for: keyB))
+    XCTAssertEqual(budget.count, 1)
+    XCTAssertEqual(budget.byteCost, 80)
+  }
+
+  func testImageStoreReloadsWhenTheFileChanges() async throws {
+    let fixtures = makeFixtures()
+    let vault = fixtures.library.vaultRootURL
+    let relative = "ref/docs/crop.jpg"
+    let url = vault.appendingPathComponent(relative)
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    defer { try? FileManager.default.removeItem(at: vault) }
+    let first = makeTestImage(size: NSSize(width: 40, height: 20), color: .systemTeal)
+    let second = makeTestImage(size: NSSize(width: 80, height: 40), color: .systemOrange)
+    try writePNG(first, to: url)
+    try FileManager.default.setAttributes(
+      [.modificationDate: Date(timeIntervalSince1970: 1_700_000_000)],
+      ofItemAtPath: url.path
+    )
+    let images = StubAnnotationImages()
+    images.imageByLastComponent = ["crop.jpg": first]
+    let store = RefsInspectorImageStore(
+      library: fixtures.library,
+      provider: images
+    )
+
+    let loadedFirst = await store.loadImage(path: relative, maxPixel: 80)
+    XCTAssertEqual(loadedFirst?.size, first.size)
+    XCTAssertEqual(images.imageURLCount, 1)
+
+    try writePNG(second, to: url)
+    try FileManager.default.setAttributes(
+      [.modificationDate: Date(timeIntervalSince1970: 1_700_000_002)],
+      ofItemAtPath: url.path
+    )
+    images.imageByLastComponent = ["crop.jpg": second]
+    let loadedSecond = await store.loadImage(path: relative, maxPixel: 80)
+    XCTAssertEqual(loadedSecond?.size, second.size)
+    XCTAssertEqual(images.imageURLCount, 2)
+    XCTAssertEqual(
+      store.cachedImage(path: relative, maxPixel: 80)?.size,
+      second.size
+    )
+  }
+
+  func testImageStoreResetDropsOutstandingLoads() async throws {
+    let fixtures = makeFixtures()
+    let images = StubAnnotationImages()
+    let bitmap = makeTestImage(size: NSSize(width: 40, height: 20), color: .systemTeal)
+    images.imageByLastComponent = ["crop.jpg": bitmap]
+    images.beginHoldingImages()
+    let store = RefsInspectorImageStore(
+      library: fixtures.library,
+      provider: images
+    )
+    defer { images.releaseHeldImages() }
+
+    let pending = Task {
+      await store.loadImage(path: "ref/docs/crop.jpg", maxPixel: 80)
+    }
+    let requested = await waitUntil(timeout: 1.5) { images.imageURLCount == 1 }
+    XCTAssertTrue(requested)
+    store.reset()
+    images.releaseHeldImages()
+    let result = await pending.value
+    XCTAssertNil(result)
+    XCTAssertNil(store.cachedImage(path: "ref/docs/crop.jpg", maxPixel: 80))
+  }
+
+  func testImageStoreCoalescesInFlightLoads() async throws {
+    let fixtures = makeFixtures()
+    let images = StubAnnotationImages()
+    let bitmap = makeTestImage(size: NSSize(width: 40, height: 20), color: .systemTeal)
+    images.imageByLastComponent = ["crop.jpg": bitmap]
+    images.beginHoldingImages()
+    let store = RefsInspectorImageStore(
+      library: fixtures.library,
+      provider: images
+    )
+    defer { images.releaseHeldImages() }
+
+    async let first = store.loadImage(path: "ref/docs/crop.jpg", maxPixel: 80)
+    async let second = store.loadImage(path: "ref/docs/crop.jpg", maxPixel: 80)
+    let requested = await waitUntil(timeout: 1.5) { images.imageURLCount == 1 }
+    XCTAssertTrue(requested)
+    images.releaseHeldImages()
+    let (left, right) = await (first, second)
+    XCTAssertEqual(left?.size, bitmap.size)
+    XCTAssertEqual(right?.size, bitmap.size)
+    XCTAssertEqual(images.imageURLCount, 1)
+  }
+
+  func testImageStoreBudgetBoundsRetention() async throws {
+    let fixtures = makeFixtures()
+    let images = StubAnnotationImages()
+    let first = makeTestImage(size: NSSize(width: 40, height: 20), color: .systemTeal)
+    let second = makeTestImage(size: NSSize(width: 30, height: 16), color: .systemOrange)
+    images.imageByLastComponent = [
+      "crop.jpg": first,
+      "note.png": second,
+    ]
+    let budget = RefsDecodedImageBudget(
+      byteLimit: RefsDecodedImageBudget.byteCost(for: first)
+    )
+    let store = RefsInspectorImageStore(
+      library: fixtures.library,
+      provider: images,
+      budget: budget
+    )
+
+    _ = await store.loadImage(path: "ref/docs/crop.jpg", maxPixel: 80)
+    XCTAssertNotNil(store.cachedImage(path: "ref/docs/crop.jpg", maxPixel: 80))
+    _ = await store.loadImage(path: "ref/docs/note.png", maxPixel: 80)
+    XCTAssertNil(store.cachedImage(path: "ref/docs/crop.jpg", maxPixel: 80))
+    XCTAssertNotNil(store.cachedImage(path: "ref/docs/note.png", maxPixel: 80))
+    XCTAssertEqual(budget.count, 1)
   }
 
   func testAnnotationImageLoaderReadsRasterPng() async throws {
@@ -528,7 +673,7 @@ final class RefsInspectorLoaderTests: XCTestCase {
   func testRevealMoreWithOnlyHighlightsEmitsRange() throws {
     let model = makePreviewModel()
     let item = previewChat()
-    let highlights = (1...5).map { index in
+    let highlights = (1...8).map { index in
       RefsShowAnnotation(
         pageLabel: "\(index)",
         kind: "highlight",
@@ -554,7 +699,7 @@ final class RefsInspectorLoaderTests: XCTestCase {
     XCTAssertTrue(model.revealMoreInspectorNotes())
     XCTAssertEqual(received.count, 1)
     let reveal = try XCTUnwrap(received.first)
-    XCTAssertEqual(reveal.range, 3..<5)
+    XCTAssertEqual(reveal.range, 5..<8)
     XCTAssertEqual(reveal.id, item.id)
     _ = cancellable
   }
@@ -1303,13 +1448,40 @@ final class StubAnnotationImages: RefsAnnotationImageProviding, @unchecked Senda
   private let lock = NSLock()
   private(set) var metricURLs: [URL] = []
   private(set) var imageURLs: [URL] = []
+  private(set) var imageCompletions: [URL] = []
   var metricsByLastComponent: [String: RefsImageMetrics] = [:]
   var imageByLastComponent: [String: NSImage] = [:]
   var metricsDelayNanoseconds: UInt64 = 0
   var imageDelayNanoseconds: UInt64 = 0
+  private var holdingImages = false
+  private var holdWaiters: [CheckedContinuation<Void, Never>] = []
 
   var metricURLLastComponents: [String] {
     lock.withLock { metricURLs.map(\.lastPathComponent) }
+  }
+
+  var imageURLCount: Int {
+    lock.withLock { imageURLs.count }
+  }
+
+  var imageCompletionCount: Int {
+    lock.withLock { imageCompletions.count }
+  }
+
+  func beginHoldingImages() {
+    lock.withLock { holdingImages = true }
+  }
+
+  func releaseHeldImages() {
+    let waiters: [CheckedContinuation<Void, Never>]
+    lock.lock()
+    holdingImages = false
+    waiters = holdWaiters
+    holdWaiters = []
+    lock.unlock()
+    for waiter in waiters {
+      waiter.resume()
+    }
   }
 
   func metrics(for url: URL) async -> RefsImageMetrics? {
@@ -1322,23 +1494,40 @@ final class StubAnnotationImages: RefsAnnotationImageProviding, @unchecked Senda
 
   func image(for url: URL, maxPixel: Int) async -> NSImage? {
     lock.withLock { imageURLs.append(url) }
+    let shouldHold = lock.withLock { holdingImages }
+    if shouldHold {
+      await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+        lock.lock()
+        if holdingImages {
+          holdWaiters.append(cont)
+          lock.unlock()
+        } else {
+          lock.unlock()
+          cont.resume()
+        }
+      }
+    }
     if imageDelayNanoseconds > 0 {
       try? await Task.sleep(nanoseconds: imageDelayNanoseconds)
     }
-    return lock.withLock { imageByLastComponent[url.lastPathComponent] }
+    let image = lock.withLock { imageByLastComponent[url.lastPathComponent] }
+    lock.withLock { imageCompletions.append(url) }
+    return image
   }
 }
 
 func makeTestImage(size: NSSize, color: NSColor, hasAlpha: Bool = false) -> NSImage {
   let pixelsWide = max(1, Int(size.width.rounded()))
   let pixelsHigh = max(1, Int(size.height.rounded()))
+  // Four-sample RGBA is the supported bitmap for `NSRect.fill()` after
+  // `color.setFill()`. A three-sample RGB bitmap traps (signal 5).
   let rep = NSBitmapImageRep(
     bitmapDataPlanes: nil,
     pixelsWide: pixelsWide,
     pixelsHigh: pixelsHigh,
     bitsPerSample: 8,
-    samplesPerPixel: hasAlpha ? 4 : 3,
-    hasAlpha: hasAlpha,
+    samplesPerPixel: 4,
+    hasAlpha: true,
     isPlanar: false,
     colorSpaceName: .deviceRGB,
     bytesPerRow: 0,
@@ -1356,6 +1545,49 @@ func makeTestImage(size: NSSize, color: NSColor, hasAlpha: Bool = false) -> NSIm
   let image = NSImage(size: size)
   image.addRepresentation(rep)
   return image
+}
+
+func writePNG(_ image: NSImage, to url: URL) throws {
+  let tiff = try XCTUnwrap(image.tiffRepresentation)
+  let rep = try XCTUnwrap(NSBitmapImageRep(data: tiff))
+  let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+  try png.write(to: url)
+}
+
+@discardableResult
+func waitUntil(
+  timeout: TimeInterval,
+  file: StaticString = #filePath,
+  line: UInt = #line,
+  _ predicate: @escaping () -> Bool
+) async -> Bool {
+  let deadline = Date().addingTimeInterval(timeout)
+  while Date() < deadline {
+    if predicate() {
+      return true
+    }
+    try? await Task.sleep(nanoseconds: 20_000_000)
+  }
+  XCTFail("timed out waiting", file: file, line: line)
+  return false
+}
+
+@discardableResult
+func waitUntilRunLoop(
+  timeout: TimeInterval,
+  file: StaticString = #filePath,
+  line: UInt = #line,
+  _ predicate: () -> Bool
+) -> Bool {
+  let deadline = Date().addingTimeInterval(timeout)
+  while Date() < deadline {
+    if predicate() {
+      return true
+    }
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.02))
+  }
+  XCTFail("timed out waiting", file: file, line: line)
+  return false
 }
 
 final class StubIntrinsics: RefsPDFIntrinsicsProviding, @unchecked Sendable {

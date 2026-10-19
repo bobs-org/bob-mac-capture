@@ -498,67 +498,39 @@ final class RefsInspectorScrollTests: XCTestCase {
   }
 
   func testHostedRevealKeepsDocumentHeightWhileImageBitmapsLoad() {
-    let images = StubAnnotationImages()
-    let metrics = RefsImageMetrics(pixelWidth: 800, pixelHeight: 400)
-    images.metricsByLastComponent = ["crop.jpg": metrics]
-    images.imageDelayNanoseconds = 400_000_000
-    images.imageByLastComponent = [
-      "crop.jpg": makeTestImage(
-        size: NSSize(width: 800, height: 400),
-        color: .systemOrange
-      )
-    ]
-    let highlights =
-      Self.eightNotes().prefix(5).map { $0 }
-      + [
-        RefsShowAnnotation(
-          pageLabel: "Page 6",
-          kind: "image",
-          asset: "ref/docs/crop.jpg"
-        ),
-        RefsShowAnnotation(
-          pageLabel: "Page 7",
-          kind: "highlight",
-          quote: "A later quote on the revealed page."
-        ),
-      ]
-    let harness = makeHostedHarness(
-      highlights: highlights,
-      imageProvider: images,
-      imageMetrics: ["ref/docs/crop.jpg": metrics]
+    assertHostedImageRevealStable(
+      width: 1344,
+      height: 798,
+      failDecode: false,
+      pinAboveBottom: false
     )
-    defer { harness.panel.orderOut(nil) }
-    settle(harness.panel)
-    focusSearch(harness)
-    let selected = tryUnwrapSelected(harness)
-    scrollInspectorToBottom(in: harness.panel)
+  }
 
-    XCTAssertNil(
-      harness.controller.processKeyEvent(
-        keyEvent(keyCode: Self.dKey, modifiers: .control, characters: "d")
-      )
+  func testHostedCompactRevealKeepsDocumentHeightWhileImageBitmapsLoad() {
+    assertHostedImageRevealStable(
+      width: 880,
+      height: 560,
+      failDecode: false,
+      pinAboveBottom: false
     )
-    XCTAssertEqual(
-      harness.model.inspectorNotesPage(for: selected).visibleCount(total: 7),
-      7
-    )
-    waitForInspectorOffset(in: harness.panel) { $0 > 0 }
-    harness.panel.contentView?.layoutSubtreeIfNeeded()
-    let heightBefore = inspectorDocumentHeight(in: harness.panel)
-    XCTAssertGreaterThan(heightBefore, 0)
+  }
 
-    let deadline = Date().addingTimeInterval(1.2)
-    while Date() < deadline {
-      RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
-      if !images.imageURLs.isEmpty {
-        break
-      }
-    }
-    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
-    harness.panel.contentView?.layoutSubtreeIfNeeded()
-    let heightAfter = inspectorDocumentHeight(in: harness.panel)
-    XCTAssertEqual(heightBefore, heightAfter, accuracy: 1)
-    XCTAssertFalse(images.imageURLs.isEmpty)
+  func testHostedRevealKeepsDocumentHeightWhenImageDecodeFails() {
+    assertHostedImageRevealStable(
+      width: 1344,
+      height: 798,
+      failDecode: true,
+      pinAboveBottom: false
+    )
+  }
+
+  func testHostedDisclosureVisibleAboveBottomRevealsHeldImages() {
+    assertHostedImageRevealStable(
+      width: 1344,
+      height: 798,
+      failDecode: false,
+      pinAboveBottom: true
+    )
   }
 
   func testHostedTwoRapidRevealsStackTwoPages() {
@@ -587,6 +559,137 @@ final class RefsInspectorScrollTests: XCTestCase {
       harness.model.inspectorNotesPage(for: selected).generation,
       2
     )
+  }
+
+  /// Reveal page two while the bitmap is held, record height, then
+  /// release and assert the reserved frame did not jump.
+  private func assertHostedImageRevealStable(
+    width: CGFloat,
+    height: CGFloat,
+    failDecode: Bool,
+    pinAboveBottom: Bool
+  ) {
+    let images = StubAnnotationImages()
+    let metrics = RefsImageMetrics(pixelWidth: 800, pixelHeight: 400)
+    images.metricsByLastComponent = ["crop.jpg": metrics]
+    if !failDecode {
+      images.imageByLastComponent = [
+        "crop.jpg": makeTestImage(
+          size: NSSize(width: 800, height: 400),
+          color: .systemOrange
+        )
+      ]
+    }
+    images.beginHoldingImages()
+    let highlights =
+      Self.eightNotes().prefix(5).map { $0 }
+      + [
+        RefsShowAnnotation(
+          pageLabel: "Page 6",
+          kind: "image",
+          asset: "ref/docs/crop.jpg"
+        ),
+        RefsShowAnnotation(
+          pageLabel: "Page 7",
+          kind: "highlight",
+          quote: "A later quote on the revealed page."
+        ),
+      ]
+    let harness = makeHostedHarness(
+      width: width,
+      height: height,
+      highlights: highlights,
+      notesPageSize: 5,
+      imageProvider: images,
+      imageMetrics: ["ref/docs/crop.jpg": metrics]
+    )
+    defer {
+      images.releaseHeldImages()
+      harness.panel.orderOut(nil)
+    }
+    settle(harness.panel)
+    focusSearch(harness)
+    let selected = tryUnwrapSelected(harness)
+    if pinAboveBottom {
+      scrollInspectorAboveBottom(in: harness.panel, by: 8)
+      let measured = tryUnwrapMeasured(harness.panel)
+      XCTAssertLessThan(
+        measured.geometry.offsetY, measured.geometry.maxOffset - 1)
+      XCTAssertTrue(
+        RefsPanelController.isDisclosureRowFullyVisible(
+          measured: measured,
+          in: harness.panel.contentView
+        ))
+    } else {
+      scrollInspectorToBottom(in: harness.panel)
+    }
+
+    XCTAssertNil(
+      harness.controller.processKeyEvent(
+        keyEvent(keyCode: Self.dKey, modifiers: .control, characters: "d")
+      )
+    )
+    XCTAssertEqual(
+      harness.model.inspectorNotesPage(for: selected).visibleCount(total: 7),
+      7
+    )
+    XCTAssertEqual(
+      harness.model.inspectorNotesPage(for: selected).generation,
+      1
+    )
+    XCTAssertTrue(
+      waitUntilRunLoop(timeout: 1.5) {
+        revealAnchor(in: harness.panel, generation: 1) != nil
+      }
+    )
+    harness.panel.contentView?.layoutSubtreeIfNeeded()
+    let heightBefore = inspectorDocumentHeight(in: harness.panel)
+    XCTAssertGreaterThan(heightBefore, 0)
+    XCTAssertTrue(
+      waitUntilRunLoop(timeout: 1.5) { images.imageURLCount >= 1 }
+    )
+
+    images.releaseHeldImages()
+    XCTAssertTrue(
+      waitUntilRunLoop(timeout: 1.5) { images.imageCompletionCount >= 1 }
+    )
+    harness.panel.contentView?.layoutSubtreeIfNeeded()
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+    let heightAfter = inspectorDocumentHeight(in: harness.panel)
+    XCTAssertEqual(heightBefore, heightAfter, accuracy: 1)
+    assertFollowedReveal(in: harness.panel, generation: 1)
+  }
+
+  private func revealAnchor(
+    in panel: RefsPanel,
+    generation: Int
+  ) -> RefsInspectorRevealAnchorView? {
+    RefsPanelController.findRevealAnchor(
+      generation: generation,
+      in: panel.contentView
+    )
+  }
+
+  private func assertFollowedReveal(in panel: RefsPanel, generation: Int) {
+    let measured = tryUnwrapMeasured(panel)
+    guard let anchor = revealAnchor(in: panel, generation: generation),
+      let documentView = measured.scrollView.documentView
+    else {
+      XCTFail("reveal anchor missing after bitmap completion")
+      return
+    }
+    let rect = anchor.convert(anchor.bounds, to: documentView)
+    XCTAssertGreaterThan(rect.height, 0.5)
+    let documentHeight = documentView.frame.height
+    let batchTop: CGFloat =
+      documentView.isFlipped
+      ? rect.minY : documentHeight - rect.maxY
+    let raw = min(
+      measured.geometry.maxOffset,
+      batchTop - RefsVisualTokens.inspectorRevealContext
+    )
+    let target = measured.geometry.clamped(raw)
+    XCTAssertEqual(inspectorOffset(in: panel), target, accuracy: 2)
   }
 
   // MARK: - Hosted harness

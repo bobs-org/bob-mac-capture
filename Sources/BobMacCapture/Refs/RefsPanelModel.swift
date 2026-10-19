@@ -1571,6 +1571,8 @@ public final class RefsPanelModel: ObservableObject {
       )
     }
     unavailableIDs = []
+    revealedPageID = nil
+    revealedPage = nil
     self.selectedID = selectedID
     if let inspector {
       inspectorLoader.installContentForPreviews(
