@@ -3770,6 +3770,12 @@ final class RefsPanelModelTests: XCTestCase {
       .appendingPathComponent(UUID().uuidString)
     let harness = try makeHarness(environment: ["FAKE_BOB_RECORD_PATH": recordURL.path])
     await harness.waitForSnapshot()
+    // Drain the git-date backfill (`ref list -g`) that follows every fresh
+    // snapshot: it would otherwise land in the record after the clear below
+    // and read as the manual refresh running before the pull.
+    await harness.waitForModel { _ in
+      argvCount(recordURL, prefix: "argv=ref list") >= 2
+    }
     harness.model.prepareForPresentation()
     try FileManager.default.removeItem(at: recordURL)
     XCTAssertTrue(harness.model.perform(.refresh))
