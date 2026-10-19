@@ -188,7 +188,7 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
     /// Removes every cached value and thumbnail derived for a moved
     /// reference path from both the memory and disk caches. This is a
     /// one-shot invalidation: later loads of the same path cache again.
-    public func discard(id: String) {
+    public func discard(id: String) async {
         discardGenerations[id, default: 0] &+= 1
         let keys = memory.keys.filter { $0.path == id }
         for key in keys {
