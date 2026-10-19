@@ -249,14 +249,14 @@ final class RefsLibraryTests: XCTestCase {
       context.library.items.contains {
         $0.id == "ref/blogs/small_opened.md"
           && $0.added == RefDay(year: 2026, month: 9, day: 11)
-          && $0.addedAt == RefsNewestTests.instant("2026-09-11T19:12:00Z")
+          && $0.addedAt == instant("2026-09-11T19:12:00Z")
       }
     )
     XCTAssertTrue(
       context.library.items.contains {
         $0.id == "ref/books/small_book.md"
           && $0.added == RefDay(year: 2026, month: 8, day: 30)
-          && $0.addedAt == RefsNewestTests.instant("2026-08-30T19:12:00Z")
+          && $0.addedAt == instant("2026-08-30T19:12:00Z")
       }
     )
     XCTAssertEqual(fetcher.gitListCount, 1)
@@ -294,14 +294,14 @@ final class RefsLibraryTests: XCTestCase {
       context.library.items.contains {
         $0.id == "ref/blogs/small_opened.md"
           && $0.added == RefDay(year: 2026, month: 9, day: 11)
-          && $0.addedAt == RefsNewestTests.instant("2026-09-11T19:12:00Z")
+          && $0.addedAt == instant("2026-09-11T19:12:00Z")
       }
     )
     XCTAssertTrue(
       context.library.items.contains {
         $0.id == "ref/books/small_book.md"
           && $0.added == RefDay(year: 2026, month: 8, day: 30)
-          && $0.addedAt == RefsNewestTests.instant("2026-08-30T19:12:00Z")
+          && $0.addedAt == instant("2026-08-30T19:12:00Z")
       }
     )
     XCTAssertEqual(fetcher.gitListCount, 1)
@@ -722,6 +722,12 @@ final class RefsLibraryTests: XCTestCase {
   }
 
   // MARK: - Helpers
+
+  private func instant(_ raw: String) -> Date {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime]
+    return formatter.date(from: raw)!
+  }
 
   private struct Context {
     let library: RefsLibrary

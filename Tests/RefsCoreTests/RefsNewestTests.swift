@@ -9,11 +9,11 @@ import XCTest
 /// git-instant snapshot key, and section jumps. Time is fixed at
 /// 2026-10-18 14:00 in `America/New_York` with the `en_US_POSIX` locale.
 final class RefsNewestTests: XCTestCase {
-    static let zone = TimeZone(identifier: "America/New_York")!
+    static let newYork = TimeZone(identifier: "America/New_York")!
 
     static let calendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = zone
+        calendar.timeZone = newYork
         calendar.locale = Locale(identifier: "en_US_POSIX")
         return calendar
     }()
