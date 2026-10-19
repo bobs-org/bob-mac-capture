@@ -268,7 +268,7 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
             restartWasText = nil
         }
         if variant == .swap, let demoted = override?.demoted {
-            let demotedName = demotedNameText(demoted.pomodoroName)
+            let demotedName = demotedNameText(demoted.pomodoroName, homes: demoted.homes)
             let links = demoted.taskLinks == 1
                 ? "keeps 1 Task Link"
                 : "keeps \(demoted.taskLinks) Task Links"
@@ -295,7 +295,8 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         case .swap:
             title = "\(dryRun ? "Swap in" : "Swapped in") \(pomodoroName)"
             if takesOverLedger {
-                let previousName = demotedNameText(override?.previous?.pomodoroName)
+                let previousName = demotedNameText(
+                  override?.previous?.pomodoroName, homes: override?.previous?.homes)
                 statusText =
                     "\(dryRun ? "Would swap in" : "Swapped in") \(pomodoroName) \(previousRange) (takes over \(previousName))\(created) at line \(pomodoroLine)\(dropSuffix)"
             } else {
@@ -367,9 +368,11 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
                 spoken += ", \(was)"
             }
         case .swap:
-            let previousName = demotedNameText(override?.previous?.pomodoroName)
+            let previousName = demotedNameText(
+              override?.previous?.pomodoroName, homes: override?.previous?.homes)
             let taken = previousRange.isEmpty ? "" : ", takes over \(previousRange) from \(previousName)"
-            let demotedName = demotedNameText(override?.demoted?.pomodoroName)
+            let demotedName = demotedNameText(
+              override?.demoted?.pomodoroName, homes: override?.demoted?.homes)
             spoken =
                 "Swaps in \(pomodoroName)\(taken), \(demotedName) returns to first future, line \(pomodoroLine)"
             if summary.createdPomodoro {
@@ -416,7 +419,8 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         case .swap:
             notificationTitle = "Swapped in \(pomodoroName)"
             let takenRange = takesOverLedger ? previousRange : "\(start)-\(end)"
-            let demotedName = demotedNameText(override?.demoted?.pomodoroName)
+            let demotedName = demotedNameText(
+              override?.demoted?.pomodoroName, homes: override?.demoted?.homes)
             notificationBody =
                 "\(enDashRange(takenRange)) · \(demotedName) back to first future\(notificationDropSuffix)"
         case .start:
@@ -462,14 +466,20 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
         guard variant == .restart || variant == .swap else {
             return nil
         }
+        // Unnamed running sessions show their derived homes label (R7
+        // display-only); named sessions keep today's text, and unlinked or
+        // label-less sessions fall back to today's text.
         let named = previous?.pomodoroName.flatMap { $0.isEmpty ? nil : $0 }
+        let derived = (previous?.homes?.label).flatMap { $0.isEmpty ? nil : $0 }
+        let display = named ?? derived
         let overdue = previous?.overdue ?? false
         let headline: String
         if overdue {
-            headline = named.map { "Overrides \($0), still open past its end" }
+            headline = display.map { "Overrides \($0), still open past its end" }
                 ?? "Overrides the session, still open past its end"
         } else {
             headline = named.map { "Overrides the running \($0)" }
+                ?? derived.map { "Overrides the running \($0)" }
                 ?? "Overrides the running session"
         }
         let rangeText = enDashRange(previous?.timeRange ?? "")
@@ -638,10 +648,14 @@ public struct CapturePomodoroStartPresentation: Equatable, Sendable {
 }
 
 /// Display name for an override previous/demoted session: Bob's canonical
-/// name, falling back to `"session"` when the session was unnamed.
-private func demotedNameText(_ name: String?) -> String {
-    guard let name, !name.isEmpty else {
-        return "session"
+/// name, else the derived homes label for an unnamed session (R7
+/// display-only), falling back to `"session"` when both are absent.
+private func demotedNameText(_ name: String?, homes: CaptureAgendaHomes? = nil) -> String {
+    if let name, !name.isEmpty {
+        return name
     }
-    return name
+    if let label = homes?.label, !label.isEmpty {
+        return label
+    }
+    return "session"
 }

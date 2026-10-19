@@ -3,7 +3,7 @@ import Foundation
 /// Additive R9 `homes` object on a Pomodoro entry. bob owns every fact;
 /// the app only decodes and draws. Unknown enum strings land on `.other`
 /// instead of failing the snapshot. A missing object is `nil`.
-public struct CaptureAgendaHomes: Decodable, Equatable, Sendable {
+public struct CaptureAgendaHomes: Codable, Equatable, Sendable {
     public let state: CaptureAgendaHomesState
     public let kind: CaptureAgendaHomesKind
     public let label: String
@@ -46,6 +46,16 @@ public struct CaptureAgendaHomes: Decodable, Equatable, Sendable {
         ) ?? []
     }
 
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(state, forKey: .state)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(label, forKey: .label)
+        try container.encodeIfPresent(chip, forKey: .chip)
+        try container.encodeIfPresent(hue, forKey: .hue)
+        try container.encode(parts, forKey: .parts)
+    }
+
     private enum CodingKeys: String, CodingKey {
         case state
         case kind
@@ -57,7 +67,7 @@ public struct CaptureAgendaHomes: Decodable, Equatable, Sendable {
 }
 
 /// One home share inside `homes.parts`.
-public struct CaptureAgendaHomePart: Decodable, Equatable, Sendable {
+public struct CaptureAgendaHomePart: Codable, Equatable, Sendable {
     public let key: String
     public let label: String
     public let kind: CaptureAgendaHomePartKind
@@ -106,6 +116,19 @@ public struct CaptureAgendaHomePart: Decodable, Equatable, Sendable {
         minutes = try container.decodeIfPresent(Int.self, forKey: .minutes)
     }
 
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(key, forKey: .key)
+        try container.encode(label, forKey: .label)
+        try container.encode(kind, forKey: .kind)
+        try container.encodeIfPresent(area, forKey: .area)
+        try container.encodeIfPresent(areaLabel, forKey: .areaLabel)
+        try container.encodeIfPresent(hue, forKey: .hue)
+        try container.encode(tasks, forKey: .tasks)
+        try container.encode(share, forKey: .share)
+        try container.encodeIfPresent(minutes, forKey: .minutes)
+    }
+
     private enum CodingKeys: String, CodingKey {
         case key
         case label
@@ -120,7 +143,7 @@ public struct CaptureAgendaHomePart: Decodable, Equatable, Sendable {
 }
 
 /// `homes.state`. Unknown strings decode to `.other`.
-public enum CaptureAgendaHomesState: Hashable, Sendable, Decodable {
+public enum CaptureAgendaHomesState: Hashable, Sendable, Codable {
     case attributed
     case forecast
     case other(String)
@@ -136,10 +159,22 @@ public enum CaptureAgendaHomesState: Hashable, Sendable, Decodable {
             self = .other(raw)
         }
     }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .attributed:
+            try container.encode("attributed")
+        case .forecast:
+            try container.encode("forecast")
+        case .other(let raw):
+            try container.encode(raw)
+        }
+    }
 }
 
 /// `homes.kind`. Unknown strings decode to `.other`.
-public enum CaptureAgendaHomesKind: Hashable, Sendable, Decodable {
+public enum CaptureAgendaHomesKind: Hashable, Sendable, Codable {
     case work
     case review
     case unlinked
@@ -158,10 +193,24 @@ public enum CaptureAgendaHomesKind: Hashable, Sendable, Decodable {
             self = .other(raw)
         }
     }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .work:
+            try container.encode("work")
+        case .review:
+            try container.encode("review")
+        case .unlinked:
+            try container.encode("unlinked")
+        case .other(let raw):
+            try container.encode(raw)
+        }
+    }
 }
 
 /// A part's `kind`. Unknown strings decode to `.other`.
-public enum CaptureAgendaHomePartKind: Hashable, Sendable, Decodable {
+public enum CaptureAgendaHomePartKind: Hashable, Sendable, Codable {
     case project
     case area
     case bucket
@@ -180,11 +229,25 @@ public enum CaptureAgendaHomePartKind: Hashable, Sendable, Decodable {
             self = .other(raw)
         }
     }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .project:
+            try container.encode("project")
+        case .area:
+            try container.encode("area")
+        case .bucket:
+            try container.encode("bucket")
+        case .other(let raw):
+            try container.encode(raw)
+        }
+    }
 }
 
 /// R8 area-hue slots. Unknown strings decode to `.other`. Hex values
 /// match `docs/pomodoro-homes.md`; views pick light or dark by appearance.
-public enum PomodoroHomeHue: Hashable, Sendable, Decodable {
+public enum PomodoroHomeHue: Hashable, Sendable, Codable {
     case blue
     case orange
     case aqua
@@ -216,6 +279,30 @@ public enum PomodoroHomeHue: Hashable, Sendable, Decodable {
             self = .red
         default:
             self = .other(raw)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .blue:
+            try container.encode("blue")
+        case .orange:
+            try container.encode("orange")
+        case .aqua:
+            try container.encode("aqua")
+        case .yellow:
+            try container.encode("yellow")
+        case .magenta:
+            try container.encode("magenta")
+        case .green:
+            try container.encode("green")
+        case .violet:
+            try container.encode("violet")
+        case .red:
+            try container.encode("red")
+        case .other(let raw):
+            try container.encode(raw)
         }
     }
 

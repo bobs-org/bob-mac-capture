@@ -132,19 +132,27 @@ final class RefsTodayLinkTests: XCTestCase {
     XCTAssertTrue(card.selectsCreate)
   }
 
-  func testHomesListingDecodesAndFiltersOnDerivedLabel() throws {
+  func testHomesListingDecodesAndNeverRoutesOnDerivedLabel() throws {
     var card = makeCard()
     let homes = try fixture("homes")
     XCTAssertEqual(homes.schemaVersion, 1)
     XCTAssertEqual(homes.pomodoros[0].homes?.chip, nil)
-    XCTAssertEqual(homes.pomodoros[1].homes?.chip, "bob · dev +1")
+    XCTAssertEqual(homes.pomodoros[1].homes?.chip, "bob · dev")
     XCTAssertEqual(homes.pomodoros[2].homes?.label, "sase")
     XCTAssertEqual(homes.pomodoros[3].homes?.kind, .unlinked)
     card.applyListing(homes)
+    // Derived homes are display-only (R7): typing a derived label matches
+    // no authored row, so the Create row keeps its place for `SASE`.
     card.editQuery("sase")
-    XCTAssertEqual(card.visiblePomodoros.map(\.ref), ["6:unnamed-label"])
+    XCTAssertTrue(card.visiblePomodoros.isEmpty)
+    XCTAssertTrue(card.offersCreate)
+    XCTAssertTrue(card.selectsCreate)
+    // Authored names still match; rows keep displaying the derived label.
     card.editQuery("hack")
     XCTAssertEqual(card.visiblePomodoros.map(\.ref), ["4:named-chip"])
+    XCTAssertEqual(
+      RefsTodayLinkPresentation.rowTitle(
+        try XCTUnwrap(card.visiblePomodoros.first)), "HACK")
   }
 
   func testPreviewTokensRejectOldSelectionsAndRepeatedSelectors() throws {
@@ -289,7 +297,7 @@ final class RefsTodayLinkTests: XCTestCase {
     XCTAssertNil(RefsTodayLinkPresentation.namedHomeChip(homes.pomodoros[0]))
     XCTAssertEqual(RefsTodayLinkPresentation.rowTitle(homes.pomodoros[1]), "HACK")
     XCTAssertEqual(
-      RefsTodayLinkPresentation.namedHomeChip(homes.pomodoros[1]), "bob · dev +1")
+      RefsTodayLinkPresentation.namedHomeChip(homes.pomodoros[1]), "bob · dev")
     XCTAssertEqual(RefsTodayLinkPresentation.namedHomeHue(homes.pomodoros[1]), .orange)
     XCTAssertEqual(RefsTodayLinkPresentation.rowTitle(homes.pomodoros[2]), "sase")
     XCTAssertTrue(RefsTodayLinkPresentation.rowTitleIsDerived(homes.pomodoros[2]))
@@ -304,7 +312,7 @@ final class RefsTodayLinkTests: XCTestCase {
     XCTAssertTrue(
       RefsTodayLinkPresentation.rowAccessibilityLabel(
         homes.pomodoros[1], selected: false, now: now, timeZone: zone
-      ).contains("for bob · dev +1"))
+      ).contains("for bob · dev"))
     XCTAssertEqual(
       RefsTodayLinkPresentation.createTitle(query: " deep   work "), "New Pomodoro DEEP WORK")
     XCTAssertEqual(RefsTodayLinkPresentation.hints(query: ""), "↑↓ select   ↵ link   esc cancel")
@@ -367,6 +375,36 @@ final class RefsTodayLinkTests: XCTestCase {
       message: "Something changed", hint: "Try again")
     XCTAssertEqual(failure.title, "Reference link failed")
     XCTAssertEqual(failure.body, "Something changed\nTry again")
+  }
+
+  func testUnnamedDerivedLabelNamesToastDestination() throws {
+    var json = try fixtureJSON("linked")
+    var pomodoros = try XCTUnwrap(json["pomodoros"] as? [[String: Any]])
+    XCTAssertGreaterThan(pomodoros.count, 0)
+    pomodoros[0]["name"] = nil
+    pomodoros[0]["homes"] = [
+      "state": "forecast", "kind": "work", "label": "sase", "chip": "sase",
+      "hue": "orange",
+      "parts": [
+        ["key": "sase.md", "label": "sase", "kind": "project", "hue": "orange",
+         "tasks": 1, "share": 100]
+      ],
+    ]
+    json["pomodoros"] = pomodoros
+    var capture = try XCTUnwrap(json["capture"] as? [String: Any])
+    capture["pomodoro_name"] = nil
+    var destination = try XCTUnwrap(capture["pomodoro_link_destination"] as? [String: Any])
+    destination["name"] = nil
+    capture["pomodoro_link_destination"] = destination
+    json["capture"] = capture
+    let response = try decodeJSON(json)
+    let toast = try XCTUnwrap(
+      RefsTodayLinkPresentation.toast(response: response, title: "Attention Is All You Need"))
+    XCTAssertEqual(toast.title, "Linked under sase")
+    XCTAssertTrue(
+      try XCTUnwrap(
+        RefsTodayLinkPresentation.announcement(response: response, title: "Paper"))
+        .contains("under sase"))
   }
 
   func testSharedChipsGuardPreviewAndRetainedLanes() throws {

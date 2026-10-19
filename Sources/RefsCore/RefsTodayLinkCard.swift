@@ -109,24 +109,16 @@ public struct RefsTodayLinkCard: Equatable, Sendable {
     let tokens = needle.split(separator: " ").map(String.init)
     var tiers = [[RefsTodayLinkPomodoro]](repeating: [], count: 4)
     for row in pomodoros {
+      // Derived homes are display-only (R7): the query matches authored
+      // names and time ranges only, never `homes.label`.
       let name = Self.canonicalName(row.name ?? "").lowercased()
-      let home = Self.canonicalName(row.homes?.label ?? "").lowercased()
       let rowSlug = row.slug ?? Self.matchSlug(name)
-      let homeSlug = Self.matchSlug(home)
       if !name.isEmpty, rowSlug == slug {
-        tiers[0].append(row)
-      } else if !home.isEmpty, homeSlug == slug {
         tiers[0].append(row)
       } else if !name.isEmpty, rowSlug.hasPrefix(slug) || name.hasPrefix(needle) {
         tiers[1].append(row)
-      } else if !home.isEmpty, homeSlug.hasPrefix(slug) || home.hasPrefix(needle) {
-        tiers[1].append(row)
       } else if !name.isEmpty,
         tokens.allSatisfy({ FuzzyMatcher.match(token: $0, in: FuzzyField(name)) != nil })
-      {
-        tiers[2].append(row)
-      } else if !home.isEmpty,
-        tokens.allSatisfy({ FuzzyMatcher.match(token: $0, in: FuzzyField(home)) != nil })
       {
         tiers[2].append(row)
       } else if Self.matchesTime(needle, row: row) {

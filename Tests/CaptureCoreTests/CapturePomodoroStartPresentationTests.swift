@@ -823,16 +823,41 @@ final class CapturePomodoroStartPresentationTests: XCTestCase {
         XCTAssertTrue(success.pomodoroStart?.overrideOutcome?.previous?.overdue == true)
     }
 
-    func testOverrideUnnamedFixtureNamesTheRunningSession() throws {
+    func testOverrideUnnamedFixtureShowsDerivedLabel() throws {
         let success = try decodeFixture("pomodoro-start-override-unnamed.json")
         let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
 
+        XCTAssertEqual(
+          success.pomodoroStart?.overrideOutcome?.previous?.homes?.label, "bob")
         XCTAssertEqual(presentation.variant, .restart)
         let warning = try XCTUnwrap(presentation.overrideWarning)
-        XCTAssertEqual(warning.headline, "Overrides the running session")
+        XCTAssertEqual(warning.headline, "Overrides the running bob")
         XCTAssertEqual(warning.rangeText, "0920–0945")
         XCTAssertEqual(warning.detail, "Its clock restarts without closing it")
         XCTAssertEqual(warning.closeFirst, "x =")
+    }
+
+    func testOverrideUnnamedWithoutHomesFallsBackToSession() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"",
+             "relative_target":"2026/20261009.md","target":"/tmp/bob/2026/20261009.md",
+             "text":"=","task_line":"- [ ] (**0935-1000** [t:: 25m])",
+             "kind":"pomodoro_start","created":"2026-10-09","scheduled":null,
+             "placement":"started",
+             "pomodoro_start":{"start":"0935","end":"1000","duration_minutes":25,
+              "offset_units":0,"pomodoro_line":3,"created_pomodoro":false,
+              "time_range":"0935-1000","tasks":[],
+              "override":{"action":"restart","ledger":"fresh",
+               "previous":{"pomodoro_line":3,"start":"0920","end":"0945",
+                "duration_minutes":25,"time_range":"0920-0945"},
+               "close_first":"x ="}}}
+            """
+        )
+        let presentation = try XCTUnwrap(CapturePomodoroStartPresentation(capture: success))
+        XCTAssertNil(success.pomodoroStart?.overrideOutcome?.previous?.homes)
+        XCTAssertEqual(
+          presentation.overrideWarning?.headline, "Overrides the running session")
     }
 
     func testPlainStartHasNoOverrideBanner() throws {

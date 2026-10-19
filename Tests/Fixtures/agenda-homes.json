@@ -49,8 +49,8 @@
       "homes": {
         "state": "forecast",
         "kind": "work",
-        "label": "bob · dev +1",
-        "chip": "bob · dev +1",
+        "label": "bob · dev",
+        "chip": "bob · dev",
         "hue": "orange",
         "parts": [
           {

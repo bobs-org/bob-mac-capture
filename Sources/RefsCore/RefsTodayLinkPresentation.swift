@@ -159,6 +159,34 @@ public enum RefsTodayLinkPresentation {
     }
   }
 
+  /// Destination display name: Bob's authored name when present, else the
+  /// target row's derived homes label (R7 display-only), else Untitled.
+  /// Rows still display the derived label; routing never uses it.
+  public static func destinationDisplayName(
+    response: RefsTodayLinkResponse, capture: CaptureCommandSuccess
+  ) -> String {
+    if let name = capture.pomodoroName, !name.isEmpty { return name }
+    if let name = capture.pomodoroLinkDestination?.name, !name.isEmpty { return name }
+    if let line = capture.pomodoroLinkDestination?.line,
+      let row = response.pomodoros.first(where: { $0.line == line })
+    {
+      return PomodoroHomesPresentation.displayName(authored: row.name, homes: row.homes)
+    }
+    return untitled
+  }
+
+  static func sourceDisplayName(
+    response: RefsTodayLinkResponse, capture: CaptureCommandSuccess
+  ) -> String {
+    if let name = capture.pomodoroLinkSource?.name, !name.isEmpty { return name }
+    if let line = capture.pomodoroLinkSource?.line,
+      let row = response.pomodoros.first(where: { $0.line == line })
+    {
+      return PomodoroHomesPresentation.displayName(authored: row.name, homes: row.homes)
+    }
+    return untitled
+  }
+
   public static func toast(response: RefsTodayLinkResponse, title: String) -> RefsTodayLinkToast? {
     guard response.ok == true, let capture = response.capture else { return nil }
     if let guardCopy = CaptureLinkGuardPresentation(capture: capture) {
@@ -166,7 +194,7 @@ public enum RefsTodayLinkPresentation {
         style: .guarded, title: guardCopy.notificationTitle, value: title, detail: guardCopy.detail)
     }
     guard let link = CapturePomodoroLinkPresentation(capture: capture) else { return nil }
-    let destination = capture.pomodoroName ?? capture.pomodoroLinkDestination?.name ?? untitled
+    let destination = destinationDisplayName(response: response, capture: capture)
     var detail = [laneChip(capture: capture)].compactMap { $0 }
     let style: RefsTodayLinkToast.Style
     let headline: String
@@ -174,7 +202,8 @@ public enum RefsTodayLinkPresentation {
     case "moved":
       style = .moved
       headline = "Moved to \(destination)"
-      detail.insert("from \(capture.pomodoroLinkSource?.name ?? untitled)", at: 0)
+      detail.insert(
+        "from \(sourceDisplayName(response: response, capture: capture))", at: 0)
     case "already_current":
       style = .already
       headline = "Already in \(destination)"

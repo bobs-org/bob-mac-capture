@@ -45,6 +45,7 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
     public let nameIsDerived: Bool
     public let homeChip: String?
     public let homeHue: PomodoroHomeHue?
+    public let homeIsForecast: Bool
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -55,7 +56,8 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         notesChip: String? = nil,
         nameIsDerived: Bool = false,
         homeChip: String? = nil,
-        homeHue: PomodoroHomeHue? = nil
+        homeHue: PomodoroHomeHue? = nil,
+        homeIsForecast: Bool = false
     ) {
         self.kind = kind
         self.text = text
@@ -66,6 +68,7 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         self.nameIsDerived = nameIsDerived
         self.homeChip = homeChip
         self.homeHue = homeHue
+        self.homeIsForecast = homeIsForecast
     }
 }
 
@@ -96,6 +99,9 @@ public struct CaptureAgendaRow: Equatable, Sendable {
     /// says the same thing). Drawn as a muted accessory with a hue dot.
     public let homeChip: String?
     public let homeHue: PomodoroHomeHue?
+    /// True when the chip's homes state is forecast: the view draws a
+    /// hollow ring (R7) instead of a filled dot.
+    public let homeIsForecast: Bool
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -111,7 +117,8 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         planBudget: CapturePlanBudgetPresentation? = nil,
         nameIsDerived: Bool = false,
         homeChip: String? = nil,
-        homeHue: PomodoroHomeHue? = nil
+        homeHue: PomodoroHomeHue? = nil,
+        homeIsForecast: Bool = false
     ) {
         self.kind = kind
         self.text = text
@@ -127,6 +134,7 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         self.nameIsDerived = nameIsDerived
         self.homeChip = homeChip
         self.homeHue = homeHue
+        self.homeIsForecast = homeIsForecast
         key = CaptureAgendaRowKey(
             kind: kind,
             text: text,
@@ -136,7 +144,8 @@ public struct CaptureAgendaRow: Equatable, Sendable {
             notesChip: notesChip,
             nameIsDerived: nameIsDerived,
             homeChip: homeChip,
-            homeHue: homeHue
+            homeHue: homeHue,
+            homeIsForecast: homeIsForecast
         )
     }
 }
@@ -280,8 +289,10 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         )
         let ordered = Self.orderEntries(entries)
         warningRow = openCount >= 2 ? Self.makeMultiOpenWarningRow() : nil
-        let laterNames = ordered.filter { $0.role == .later }.map(Self.displayName)
-        stripFullRow = Self.makeStripRow(names: laterNames)
+        let laterEntries = ordered.filter { $0.role == .later }
+        let laterNames = laterEntries.map(Self.displayName)
+        let laterSpoken = laterEntries.map(Self.spokenName)
+        stripFullRow = Self.makeStripRow(names: laterNames, spokenNames: laterSpoken)
         guard snapshot.date == today else {
             state = .loading
             planBudgetRow = nil
@@ -475,15 +486,16 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
     }
 
     /// The Later name strip for the given member names. Names past the
-    /// character budget fold into a `+N` overflow token.
-    static func makeStripRow(names: [String]) -> CaptureAgendaRow {
+    /// character budget fold into a `+N` overflow token. The spoken text
+    /// uses each entry's spoken name, so derived labels read "for <label>".
+    static func makeStripRow(names: [String], spokenNames: [String]? = nil) -> CaptureAgendaRow {
         let text = Self.stripText(names: names)
         return CaptureAgendaRow(
             kind: .strip,
             text: text,
             depth: 0,
             lineLimit: CaptureAgendaLayoutMetrics.stripLineLimit,
-            accessibilityLabel: Self.stripAccessibilityText(names: names)
+            accessibilityLabel: Self.stripAccessibilityText(names: spokenNames ?? names)
         )
     }
 
@@ -540,6 +552,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         let derived = nameIsDerived(entry)
         let homeChip = namedHomeChip(entry)
         let homeHue = homeChip == nil ? nil : entry.homes?.hue
+        let homeIsForecast = homeChip != nil && entry.homes?.state == .forecast
         let header = makeHeaderRow(
             entry: entry,
             name: name,
@@ -547,6 +560,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             derived: derived,
             homeChip: homeChip,
             homeHue: homeHue,
+            homeIsForecast: homeIsForecast,
             now: now
         )
         let sessionNotes = entry.notes.map { note in
@@ -591,6 +605,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             derived: derived,
             homeChip: homeChip,
             homeHue: homeHue,
+            homeIsForecast: homeIsForecast,
             spoken: spokenName(entry)
         )
         return CaptureAgendaGroup(
@@ -621,6 +636,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         derived: Bool,
         homeChip: String?,
         homeHue: PomodoroHomeHue?,
+        homeIsForecast: Bool = false,
         now: Date?
     ) -> CaptureAgendaRow {
         let accessory: String?
@@ -671,7 +687,8 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             accessibilityLabel: label,
             nameIsDerived: derived,
             homeChip: homeChip,
-            homeHue: homeHue
+            homeHue: homeHue,
+            homeIsForecast: homeIsForecast
         )
     }
 
@@ -725,6 +742,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         derived: Bool,
         homeChip: String?,
         homeHue: PomodoroHomeHue?,
+        homeIsForecast: Bool = false,
         spoken: String
     ) -> CaptureAgendaRow {
         let titles = tasks.map { spokenKeepText($0.title) }.joined(separator: " · ")
@@ -740,7 +758,8 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             accessibilityLabel: "\(spoken), \(chip)",
             nameIsDerived: derived,
             homeChip: homeChip,
-            homeHue: homeHue
+            homeHue: homeHue,
+            homeIsForecast: homeIsForecast
         )
     }
 

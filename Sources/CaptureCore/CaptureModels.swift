@@ -954,6 +954,9 @@ public struct PomodoroStartPrevious: Codable, Equatable, Sendable {
   public let durationMinutes: Int
   public let timeRange: String
   public let overdue: Bool
+  /// Derived R9 homes for an unnamed running session (surfaces phase
+  /// adds it; named sessions omit it). Older bob omits it; decode as nil.
+  public let homes: CaptureAgendaHomes?
 
   public init(
     pomodoroName: String? = nil,
@@ -962,7 +965,8 @@ public struct PomodoroStartPrevious: Codable, Equatable, Sendable {
     end: String = "",
     durationMinutes: Int = 0,
     timeRange: String = "",
-    overdue: Bool = false
+    overdue: Bool = false,
+    homes: CaptureAgendaHomes? = nil
   ) {
     self.pomodoroName = pomodoroName
     self.pomodoroLine = pomodoroLine
@@ -971,6 +975,7 @@ public struct PomodoroStartPrevious: Codable, Equatable, Sendable {
     self.durationMinutes = durationMinutes
     self.timeRange = timeRange
     self.overdue = overdue
+    self.homes = homes
   }
 
   public init(from decoder: Decoder) throws {
@@ -982,6 +987,7 @@ public struct PomodoroStartPrevious: Codable, Equatable, Sendable {
     durationMinutes = try container.decodeIfPresent(Int.self, forKey: .durationMinutes) ?? 0
     timeRange = try container.decodeIfPresent(String.self, forKey: .timeRange) ?? ""
     overdue = try container.decodeIfPresent(Bool.self, forKey: .overdue) ?? false
+    homes = try container.decodeIfPresent(CaptureAgendaHomes.self, forKey: .homes)
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -992,6 +998,7 @@ public struct PomodoroStartPrevious: Codable, Equatable, Sendable {
     case durationMinutes = "duration_minutes"
     case timeRange = "time_range"
     case overdue
+    case homes
   }
 }
 
@@ -1004,19 +1011,23 @@ public struct PomodoroStartDemoted: Codable, Equatable, Sendable {
   public let entryLine: String
   public let taskLinks: Int
   public let hasNotes: Bool
+  /// Derived R9 homes for an unnamed demoted session. Older bob omits it.
+  public let homes: CaptureAgendaHomes?
 
   public init(
     pomodoroName: String? = nil,
     pomodoroLine: Int = 0,
     entryLine: String = "",
     taskLinks: Int = 0,
-    hasNotes: Bool = false
+    hasNotes: Bool = false,
+    homes: CaptureAgendaHomes? = nil
   ) {
     self.pomodoroName = pomodoroName
     self.pomodoroLine = pomodoroLine
     self.entryLine = entryLine
     self.taskLinks = taskLinks
     self.hasNotes = hasNotes
+    self.homes = homes
   }
 
   public init(from decoder: Decoder) throws {
@@ -1026,6 +1037,7 @@ public struct PomodoroStartDemoted: Codable, Equatable, Sendable {
     entryLine = try container.decodeIfPresent(String.self, forKey: .entryLine) ?? ""
     taskLinks = try container.decodeIfPresent(Int.self, forKey: .taskLinks) ?? 0
     hasNotes = try container.decodeIfPresent(Bool.self, forKey: .hasNotes) ?? false
+    homes = try container.decodeIfPresent(CaptureAgendaHomes.self, forKey: .homes)
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -1034,6 +1046,7 @@ public struct PomodoroStartDemoted: Codable, Equatable, Sendable {
     case entryLine = "entry_line"
     case taskLinks = "task_links"
     case hasNotes = "has_notes"
+    case homes
   }
 }
 

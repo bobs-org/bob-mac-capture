@@ -45,7 +45,7 @@ final class CaptureAgendaHomesTests: XCTestCase {
 
         let namedChip = snapshot.pomodoros[1]
         XCTAssertEqual(namedChip.name, "HACK")
-        XCTAssertEqual(namedChip.homes?.chip, "bob · dev +1")
+        XCTAssertEqual(namedChip.homes?.chip, "bob · dev")
         XCTAssertEqual(namedChip.homes?.hue, .orange)
 
         let unnamed = snapshot.pomodoros[2]
@@ -93,13 +93,15 @@ final class CaptureAgendaHomesTests: XCTestCase {
 
         let hack = presentation.groups[1]
         XCTAssertFalse(hack.headerRow.nameIsDerived)
-        XCTAssertEqual(hack.headerRow.homeChip, "bob · dev +1")
+        XCTAssertEqual(hack.headerRow.homeChip, "bob · dev")
         XCTAssertEqual(hack.headerRow.homeHue, .orange)
-        XCTAssertEqual(hack.oneRowRow.homeChip, "bob · dev +1")
-        XCTAssertEqual(hack.headerRow.accessibilityLabel, "Header, HACK, for bob · dev +1")
+        XCTAssertTrue(hack.headerRow.homeIsForecast)
+        XCTAssertEqual(hack.oneRowRow.homeChip, "bob · dev")
+        XCTAssertTrue(hack.oneRowRow.homeIsForecast)
+        XCTAssertEqual(hack.headerRow.accessibilityLabel, "Header, HACK, for bob · dev")
         XCTAssertEqual(
             hack.accessibilityLabel,
-            "Next Pomodoro HACK, for bob · dev +1, 0 tasks"
+            "Next Pomodoro HACK, for bob · dev, 0 tasks"
         )
 
         let sase = presentation.groups[2]
@@ -116,6 +118,8 @@ final class CaptureAgendaHomesTests: XCTestCase {
         XCTAssertNil(unlinked.headerRow.homeChip)
 
         XCTAssertEqual(presentation.stripFullRow.text, "Later · sase · Untitled Pomodoro")
+        XCTAssertEqual(
+          presentation.stripFullRow.accessibilityLabel, "Later: for sase, Untitled Pomodoro")
 
         let notes = CaptureAgendaPomodoro(
             line: 40,
@@ -125,8 +129,8 @@ final class CaptureAgendaHomesTests: XCTestCase {
             homes: CaptureAgendaHomes(
                 state: .forecast,
                 kind: .work,
-                label: "bob · dev +1",
-                chip: "bob · dev +1",
+                label: "bob · dev",
+                chip: "bob · dev",
                 hue: .orange
             )
         )
@@ -134,8 +138,9 @@ final class CaptureAgendaHomesTests: XCTestCase {
             CaptureAgendaSnapshot(ok: true, date: today, pomodoros: [notes])
         )
         let folded = CaptureAgendaFitPlanner.headerWithNotesChip(group: withNotes.groups[0])
-        XCTAssertEqual(folded.homeChip, "bob · dev +1")
+        XCTAssertEqual(folded.homeChip, "bob · dev")
         XCTAssertEqual(folded.homeHue, .orange)
+        XCTAssertTrue(folded.homeIsForecast)
         XCTAssertEqual(folded.notesChip, "1 notes")
     }
 

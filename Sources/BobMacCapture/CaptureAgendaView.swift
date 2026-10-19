@@ -704,7 +704,7 @@ struct CaptureAgendaRowView: View {
                 .tracking(row.nameIsDerived ? 0 : 0.3)
                 .lineLimit(row.lineLimit)
             if let chip = row.homeChip {
-                PomodoroHomeChipView(chip: chip, hue: row.homeHue)
+                PomodoroHomeChipView(chip: chip, hue: row.homeHue, hollow: row.homeIsForecast)
             }
             Spacer(minLength: 12)
             headerAccessoryView
@@ -900,7 +900,7 @@ struct CaptureAgendaRowView: View {
             )
             .lineLimit(row.lineLimit)
             if let chip = row.homeChip {
-                PomodoroHomeChipView(chip: chip, hue: row.homeHue)
+                PomodoroHomeChipView(chip: chip, hue: row.homeHue, hollow: row.homeIsForecast)
             }
             Spacer(minLength: 12)
             chipButton(

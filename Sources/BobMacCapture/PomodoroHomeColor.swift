@@ -37,17 +37,33 @@ extension Color {
 }
 
 /// Muted home-chip accessory: a 7pt area-hue dot plus the label.
+/// Forecast homes draw a hollow ring (R7); attributed homes draw filled.
 @available(macOS 26.0, *)
 struct PomodoroHomeChipView: View {
     let chip: String
     let hue: PomodoroHomeHue?
+    /// True for forecast homes: draw a ring instead of a filled dot.
+    let hollow: Bool
     @Environment(\.colorScheme) private var colorScheme
+
+    init(chip: String, hue: PomodoroHomeHue?, hollow: Bool = false) {
+        self.chip = chip
+        self.hue = hue
+        self.hollow = hollow
+    }
 
     var body: some View {
         HStack(spacing: 4) {
-            Circle()
-                .fill(PomodoroHomeColor.color(for: hue, scheme: colorScheme))
-                .frame(width: 7, height: 7)
+            Group {
+                if hollow {
+                    Circle()
+                        .stroke(PomodoroHomeColor.color(for: hue, scheme: colorScheme), lineWidth: 1.5)
+                } else {
+                    Circle()
+                        .fill(PomodoroHomeColor.color(for: hue, scheme: colorScheme))
+                }
+            }
+            .frame(width: 7, height: 7)
             Text(chip)
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(.secondary)

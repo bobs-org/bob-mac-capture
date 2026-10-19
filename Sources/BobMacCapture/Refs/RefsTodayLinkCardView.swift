@@ -200,7 +200,8 @@ struct RefsTodayLinkCardView: View {
                     if let chip = RefsTodayLinkPresentation.namedHomeChip(row) {
                         PomodoroHomeChipView(
                             chip: chip,
-                            hue: RefsTodayLinkPresentation.namedHomeHue(row)
+                            hue: RefsTodayLinkPresentation.namedHomeHue(row),
+                            hollow: row.homes?.state == .forecast
                         )
                     }
                     pillLabels(row)
