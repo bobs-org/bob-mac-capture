@@ -29,10 +29,10 @@ enum RefsVisualTokens {
   // MARK: - Pieces
 
   static let searchBarHeight: CGFloat = 52
-  static let sectionHeaderHeight: CGFloat = 26
-  static let rowHeight: CGFloat = 44
+  static let sectionHeaderHeight: CGFloat = RefsListGeometry.sectionHeaderHeight
+  static let rowHeight: CGFloat = RefsListGeometry.rowHeight
   static let footerHeight: CGFloat = 30
-  static let listVerticalPadding: CGFloat = 6
+  static let listVerticalPadding: CGFloat = RefsListGeometry.verticalPadding
   static let inspectorPadding: CGFloat = 18
   static let inspectorSpacing: CGFloat = 14
   static let heroTileSize: CGFloat = 44

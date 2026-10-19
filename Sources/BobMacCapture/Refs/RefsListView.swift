@@ -85,7 +85,10 @@ struct RefsSectionHeader: View {
 }
 
 /// The list column: a scroll view of pinned sections whose selection
-/// stays visible without animation. Reports its visible row budget to
+/// stays fully visible below the pinned header without animation.
+/// Every show, and every re-rank that selects the first row, returns
+/// the list to its top; moving up lands the selected row just under
+/// its section header. Reports its visible row budget to
 /// the model so paging moves by one less than fits. Tab-close
 /// removals fold out through a short transition; query re-ranks stay
 /// unanimated because only the model's close path wraps in
@@ -93,6 +96,11 @@ struct RefsSectionHeader: View {
 @available(macOS 26.0, *)
 struct RefsListView: View {
   @ObservedObject var model: RefsPanelModel
+  @State private var scrollPosition = ScrollPosition(edge: .top)
+  /// Reference box for the viewport measurement. A class held in
+  /// `@State` so per-frame scroll updates never re-evaluate the list
+  /// body.
+  @State private var viewportBox = ViewportBox()
   /// Design fixtures lay the same rows out in a static stack:
   /// `ImageRenderer` snapshots `ScrollView` content blank, so the
   /// live scroll view never appears in a fixture.
@@ -125,54 +133,98 @@ struct RefsListView: View {
       .padding(.vertical, RefsVisualTokens.listVerticalPadding)
       .accessibilityLabel("References")
     } else {
-      ScrollViewReader { proxy in
-        GeometryReader { geometry in
-          ScrollView(.vertical) {
-            LazyVStack(
-              alignment: .leading,
-              spacing: 0,
-              pinnedViews: [.sectionHeaders]
-            ) {
-              ForEach(model.listing.sections, id: \.sectionID) { section in
-                Section {
-                  ForEach(section.ids, id: \.self) { id in
-                    row(for: id)
-                      .id(id)
-                  }
-                } header: {
-                  if let kind = section.kind {
-                    RefsSectionHeader(
-                      kind: kind,
-                      count: section.ids.count,
-                      at: headerScanDate(for: kind),
-                      newHint: kind == .new
-                        ? model.newSectionHint : nil
-                    )
-                  }
+      GeometryReader { geometry in
+        ScrollView(.vertical) {
+          LazyVStack(
+            alignment: .leading,
+            spacing: 0,
+            pinnedViews: [.sectionHeaders]
+          ) {
+            ForEach(model.listing.sections, id: \.sectionID) { section in
+              Section {
+                ForEach(section.ids, id: \.self) { id in
+                  row(for: id)
+                    .id(id)
+                }
+              } header: {
+                if let kind = section.kind {
+                  RefsSectionHeader(
+                    kind: kind,
+                    count: section.ids.count,
+                    at: headerScanDate(for: kind),
+                    newHint: kind == .new
+                      ? model.newSectionHint : nil
+                  )
                 }
               }
             }
-            .padding(.vertical, RefsVisualTokens.listVerticalPadding)
           }
-          .onChange(of: model.selectedID) { _, selected in
-            if let selected {
-              proxy.scrollTo(selected)
-            }
-          }
-          .onChange(of: model.listing.orderedIDs) { _, _ in
-            if let selected = model.selectedID {
-              proxy.scrollTo(selected)
-            }
-          }
-          .onAppear {
-            reportBudget(height: geometry.size.height)
-          }
-          .onChange(of: geometry.size.height) { _, height in
-            reportBudget(height: height)
-          }
-          .accessibilityLabel("References")
+          .padding(.vertical, RefsVisualTokens.listVerticalPadding)
         }
+        .scrollPosition($scrollPosition)
+        .onScrollGeometryChange(for: Viewport.self) { scrollGeometry in
+          Viewport(
+            offset: scrollGeometry.contentOffset.y + scrollGeometry.contentInsets.top,
+            height: scrollGeometry.containerSize.height,
+            topInset: scrollGeometry.contentInsets.top
+          )
+        } action: { old, new in
+          viewportBox.offset = new.offset
+          viewportBox.height = new.height
+          viewportBox.topInset = new.topInset
+          if old.height <= 0, new.height > 0 {
+            revealSelection()
+          }
+        }
+        .onChange(of: model.selectedID) { _, _ in
+          revealSelection()
+        }
+        .onChange(of: model.listing.orderedIDs) { _, _ in
+          revealSelection()
+        }
+        .onChange(of: model.presentationCount) { _, _ in
+          revealSelection()
+        }
+        .onAppear {
+          reportBudget(height: geometry.size.height)
+        }
+        .onChange(of: geometry.size.height) { _, height in
+          reportBudget(height: height)
+        }
+        .accessibilityLabel("References")
       }
+    }
+  }
+
+  /// Scrolls the selected row fully below the pinned section header.
+  /// A first-row selection always returns the list to its top; any
+  /// other row scrolls the minimum distance that clears the header
+  /// band above and the viewport bottom below. It inherits the
+  /// caller's transaction exactly as `scrollTo` did, so the tab-close
+  /// path stays animated and everything else stays instant.
+  private func revealSelection() {
+    guard let selected = model.selectedID else {
+      return
+    }
+    guard
+      let target = RefsListScrollPolicy.reveal(
+        selected,
+        in: model.listing,
+        offset: viewportBox.offset,
+        viewportHeight: viewportBox.height
+      )
+    else {
+      return
+    }
+    switch target {
+    case .top:
+      if scrollPosition == ScrollPosition(edge: .top) {
+        scrollPosition.scrollTo(y: -viewportBox.topInset)
+      } else {
+        scrollPosition.scrollTo(edge: .top)
+      }
+    case .offset(let y):
+      scrollPosition.scrollTo(y: y - viewportBox.topInset)
     }
   }
 
@@ -285,6 +337,23 @@ struct RefsListView: View {
       model.visibleRowBudget = budget
     }
   }
+}
+
+/// The list viewport tracked by `onScrollGeometryChange`: the offset
+/// measured from the content top, the viewport height, and the top
+/// content inset for the `contentOffset` conversion.
+private struct Viewport: Equatable {
+  var offset: CGFloat
+  var height: CGFloat
+  var topInset: CGFloat
+}
+
+/// Reference box for the viewport measurement. A class so per-frame
+/// scroll updates never re-evaluate the list body.
+private final class ViewportBox {
+  var offset: CGFloat = 0
+  var height: CGFloat = 0
+  var topInset: CGFloat = 0
 }
 
 extension RefsSection {

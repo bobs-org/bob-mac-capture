@@ -1576,7 +1576,10 @@ accent color) with its caption (a stem-only or secondary match
 renders its part in the accent color, and a matched author the
 caption already shows is not repeated), and the Today pill,
 annotation and narration marks, and the state glyph. Section headers
-are 26 pt and pinned. The NEW header leads with the same accent
+are 26 pt and pinned. The selected row always stays fully visible
+below the pinned header; every show, and every re-rank that selects
+the first row, returns the list to its top; moving up lands the
+selected row just under its section header. The NEW header leads with the same accent
 dot; while a NEW-section row is selected it trails "⌥N Mark Seen"
 or "⌥N Mark New". In Newest they are date groups (`TODAY`,
 `YESTERDAY`, a weekday, a month, `UNDATED`) with the count after the
