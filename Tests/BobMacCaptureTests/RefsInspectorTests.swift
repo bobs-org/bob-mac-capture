@@ -183,7 +183,7 @@ final class RefsInspectorLoaderTests: XCTestCase {
     await waitForContent(loader, id: fixtures.paper.id)
     let content = try XCTUnwrap(loader.content(for: fixtures.paper.id))
     XCTAssertTrue(content.showFailed)
-    XCTAssertEqual(content.notes, [])
+    XCTAssertEqual(content.highlights, [])
   }
 
   func testShowRowIsSingleFlightForConcurrentCallers() async throws {
@@ -236,7 +236,6 @@ final class RefsInspectorLoaderTests: XCTestCase {
 
     let content = try XCTUnwrap(loader.content(for: fixtures.paper.id))
     XCTAssertTrue(content.showFailed)
-    XCTAssertEqual(content.notes, [])
     XCTAssertEqual(content.highlights, [])
     // The basic column still fills: pages and the outline land even
     // when `ref show` fails.
@@ -272,17 +271,18 @@ final class RefsInspectorLoaderTests: XCTestCase {
     let content = try XCTUnwrap(loader.content(for: fixtures.paper.id))
 
     XCTAssertEqual(
-      content.notes.map(\.comment),
-      ["Keep this in the notes section."]
-    )
-    XCTAssertEqual(
       content.highlights.map(\.quote),
       [
+        "Commented highlights keep their place in Your notes.",
         "Uncommented highlights belong under Highlights.",
         "A whitespace-only comment still counts as uncommented.",
         "Same-page highlights share one page label.",
         "The second highlight on this page has no extra label.",
       ]
+    )
+    XCTAssertEqual(
+      content.highlights.filter(\.hasComment).map(\.comment),
+      ["Keep this in the notes section."]
     )
     XCTAssertFalse(content.showFailed)
   }
@@ -310,7 +310,8 @@ final class RefsInspectorLoaderTests: XCTestCase {
       RefsShowAnnotation(
         pageLabel: "\(index)",
         kind: "highlight",
-        quote: "Quote \(index)"
+        quote: "Quote \(index)",
+        comment: (index == 2 || index == 4) ? "Note \(index)" : nil
       )
     }
     model.installForPreviews(
@@ -349,7 +350,7 @@ final class RefsInspectorLoaderTests: XCTestCase {
       refreshState: .idle,
       inspector: [
         item.id: RefsInspectorContent(
-          notes: [
+          highlights: [
             RefsShowAnnotation(
               pageLabel: "1",
               kind: "highlight",
@@ -362,13 +363,11 @@ final class RefsInspectorLoaderTests: XCTestCase {
               quote: "Two",
               comment: "Note two"
             ),
-          ],
-          highlights: [
             RefsShowAnnotation(
               pageLabel: "3",
               kind: "highlight",
               quote: "Three"
-            )
+            ),
           ]
         )
       ]

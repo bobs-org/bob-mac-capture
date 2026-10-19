@@ -283,157 +283,188 @@ final class RefsInspectorTests: XCTestCase {
         XCTAssertEqual(list.confirmationTitle, "Copied Highlight · pp. 3, 5")
     }
 
-    func testHighlightsFixtureProjectsUncommentedHighlights() throws {
+    func testHighlightsFixtureProjectsInspectorHighlights() throws {
         let response = try JSONDecoder().decode(
             RefsShowResponse.self,
             from: fixtureData("refs-show-highlights.json")
         )
         let row = try XCTUnwrap(response.refs.first)
 
-        XCTAssertEqual(row.commentedHighlights.count, 1)
         XCTAssertEqual(
-            row.commentedHighlights.first?.comment,
-            "Keep this in the notes section."
-        )
-        XCTAssertEqual(
-            row.uncommentedHighlights.map(\.quote),
+            row.inspectorHighlights.map(\.quote),
             [
+                "Commented highlights keep their place in Your notes.",
                 "Uncommented highlights belong under Highlights.",
                 "A whitespace-only comment still counts as uncommented.",
                 "Same-page highlights share one page label.",
                 "The second highlight on this page has no extra label.",
             ]
         )
+        XCTAssertEqual(
+            row.inspectorHighlights.filter(\.hasComment).map(\.comment),
+            ["Keep this in the notes section."]
+        )
+        XCTAssertEqual(row.commentedHighlights.count, 1)
         XCTAssertEqual(row.highlightPickerEntries.count, 6)
     }
 
-    func testFeedEntriesShowPageLabelsPerSectionRun() {
-        let feed = RefsInspectorFeed(
-            notes: [
-                highlight(page: "Page 2", comment: "A"),
-                highlight(page: "Page 6", comment: "B"),
-            ],
-            highlights: [
-                highlight(page: "Page 1"),
-                highlight(page: "Page 2"),
-                highlight(page: "Page 3"),
-                highlight(page: "Page 3"),
-                highlight(page: "Page 3"),
-            ]
+    func testIsInspectorHighlightMembership() {
+        XCTAssertTrue(
+            RefsShowAnnotation(
+                kind: "highlight", quote: "A quote"
+            ).isInspectorHighlight
         )
-        let entries = feed.entries(visible: 7)
+        XCTAssertTrue(
+            RefsShowAnnotation(
+                kind: "highlight", quote: "A quote", comment: "A note"
+            ).isInspectorHighlight
+        )
+        XCTAssertTrue(
+            RefsShowAnnotation(
+                kind: "highlight", quote: "", comment: "A note"
+            ).isInspectorHighlight
+        )
+        XCTAssertFalse(
+            RefsShowAnnotation(
+                kind: "highlight", quote: "", comment: nil
+            ).isInspectorHighlight
+        )
+        XCTAssertFalse(
+            RefsShowAnnotation(
+                kind: "highlight", quote: "", comment: "  \n\t"
+            ).isInspectorHighlight
+        )
+        XCTAssertFalse(
+            RefsShowAnnotation(kind: "note", comment: "Standalone").isInspectorHighlight
+        )
+        XCTAssertFalse(
+            RefsShowAnnotation(
+                kind: "image", quote: "a figure"
+            ).isInspectorHighlight
+        )
+    }
 
-        XCTAssertEqual(entries.map(\.index), Array(0...6))
-        XCTAssertEqual(
-            entries.map(\.section),
-            [.notes, .notes, .highlights, .highlights, .highlights, .highlights, .highlights]
-        )
+    func testFeedPageRunsOverOneStream() {
+        let feed = RefsInspectorFeed(highlights: [
+            highlight(page: "P1", comment: "Noted"),
+            highlight(page: "P2"),
+            highlight(page: "P2", comment: "Noted"),
+            highlight(page: "P3"),
+            highlight(page: nil),
+            highlight(page: "P3"),
+        ])
+        let entries = feed.entries(visible: 6)
+
+        XCTAssertEqual(entries.map(\.index), Array(0...5))
         XCTAssertEqual(
             entries.map(\.showsPageLabel),
-            [true, true, true, true, true, false, false]
+            [true, true, false, true, false, true]
         )
-    }
-
-    func testFeedHighlightOnTheLastNotePageStillShowsItsLabel() {
-        let feed = RefsInspectorFeed(
-            notes: [highlight(page: "Page 2", comment: "Note")],
-            highlights: [highlight(page: "Page 2")]
+        XCTAssertEqual(
+            entries.map(\.hasNote),
+            [true, false, true, false, false, false]
         )
-        let entries = feed.entries(visible: 2)
-
-        XCTAssertTrue(entries[0].showsPageLabel)
-        XCTAssertEqual(entries[1].section, .highlights)
-        XCTAssertTrue(entries[1].showsPageLabel)
-    }
-
-    func testFeedNilPageLabelNeverShows() {
-        let feed = RefsInspectorFeed(
-            notes: [highlight(page: nil, comment: "Note")],
-            highlights: [highlight(page: nil), highlight(page: "Page 1")]
-        )
-        let entries = feed.entries(visible: 3)
-
-        XCTAssertEqual(entries.map(\.showsPageLabel), [false, false, true])
-    }
-
-    func testFeedVisibleClampsAtZeroAndTotal() {
-        let feed = feed(notes: 2, highlights: 3)
         XCTAssertEqual(feed.entries(visible: -1), [])
         XCTAssertEqual(feed.entries(visible: 0), [])
-        XCTAssertEqual(feed.entries(visible: 5).count, 5)
-        XCTAssertEqual(feed.entries(visible: 99).count, 5)
+        XCTAssertEqual(feed.entries(visible: 6).count, 6)
+        XCTAssertEqual(feed.entries(visible: 99).count, 6)
     }
 
     func testFeedMoreTextStrings() {
         XCTAssertEqual(
-            feed(notes: 0, highlights: 27).moreText(visible: 3, nextBatch: 3),
+            makeFeed(count: 27).moreText(visible: 3, nextBatch: 3),
             "+24 more · ⌃D shows 3 more"
         )
         XCTAssertEqual(
-            feed(notes: 16, highlights: 6).moreText(visible: 3, nextBatch: 3),
-            "+13 notes · 6 highlights · ⌃D shows 3 more"
+            makeFeed(count: 27).moreText(visible: 3, nextBatch: 3),
+            RefsNotesPage.moreText(hidden: 24, nextBatch: 3)
         )
         XCTAssertEqual(
-            feed(notes: 3, highlights: 5).moreText(visible: 3, nextBatch: 3),
-            "+5 highlights · ⌃D shows 3 more"
+            makeFeed(count: 29, noted: [8, 13]).moreText(visible: 3, nextBatch: 3),
+            "+26 more · 2 with notes · ⌃D shows 3 more"
         )
         XCTAssertEqual(
-            feed(notes: 1, highlights: 1).moreText(visible: 1, nextBatch: 1),
-            "+1 highlight · ⌃D shows it"
+            makeFeed(count: 7, noted: [1, 4]).moreText(visible: 3, nextBatch: 3),
+            "+4 more · 1 with a note · ⌃D shows 3 more"
         )
         XCTAssertEqual(
-            feed(notes: 2, highlights: 2).moreText(visible: 1, nextBatch: 1),
-            "+1 note · 2 highlights · ⌃D shows 1 more"
+            makeFeed(count: 2, noted: [1]).moreText(visible: 1, nextBatch: 1),
+            "+1 more · 1 with a note · ⌃D shows it"
         )
         XCTAssertEqual(
-            feed(notes: 8, highlights: 0).moreText(visible: 3, nextBatch: 3),
-            RefsNotesPage.moreText(hidden: 5, nextBatch: 3)
+            makeFeed(count: 8, noted: Set(0..<8)).moreText(visible: 6, nextBatch: 3),
+            "+2 more · 2 with notes · ⌃D shows the rest"
         )
         XCTAssertEqual(
-            feed(notes: 8, highlights: 0).moreText(visible: 3, nextBatch: 3),
-            "+5 more · ⌃D shows 3 more"
+            makeFeed(count: 7, noted: [1]).moreText(visible: 3, nextBatch: 3),
+            "+4 more · ⌃D shows 3 more"
         )
-        XCTAssertNil(feed(notes: 2, highlights: 1).moreText(visible: 3, nextBatch: 3))
+        XCTAssertNil(makeFeed(count: 3).moreText(visible: 3, nextBatch: 3))
     }
 
-    func testFeedHiddenAccessibilityLabelAndRevealAnnouncement() {
+    func testFeedHiddenAccessibilityLabelRevealAnnouncementAndHeader() {
         XCTAssertEqual(
-            feed(notes: 8, highlights: 0).hiddenAccessibilityLabel(visible: 3),
-            "5 more notes"
-        )
-        XCTAssertEqual(
-            feed(notes: 0, highlights: 27).hiddenAccessibilityLabel(visible: 3),
+            makeFeed(count: 27).hiddenAccessibilityLabel(visible: 3),
             "24 more highlights"
         )
         XCTAssertEqual(
-            feed(notes: 16, highlights: 6).hiddenAccessibilityLabel(visible: 3),
-            "13 more notes and 6 highlights"
+            makeFeed(count: 29, noted: [8, 13]).hiddenAccessibilityLabel(visible: 3),
+            "26 more highlights, 2 with notes"
         )
         XCTAssertEqual(
-            feed(notes: 2, highlights: 0).hiddenAccessibilityLabel(visible: 1),
-            "1 more note"
+            makeFeed(count: 2, noted: [1]).hiddenAccessibilityLabel(visible: 1),
+            "1 more highlight, 1 with a note"
         )
-        XCTAssertEqual(
-            feed(notes: 1, highlights: 1).hiddenAccessibilityLabel(visible: 1),
-            "1 more highlight"
-        )
-        XCTAssertEqual(
-            feed(notes: 2, highlights: 2).hiddenAccessibilityLabel(visible: 1),
-            "1 more note and 2 highlights"
-        )
-        XCTAssertNil(feed(notes: 2, highlights: 1).hiddenAccessibilityLabel(visible: 3))
+        XCTAssertNil(makeFeed(count: 3).hiddenAccessibilityLabel(visible: 3))
 
         XCTAssertEqual(
-            feed(notes: 8, highlights: 0).revealAnnouncement(visible: 6),
-            "Showing 6 of 8 notes"
+            makeFeed(count: 29).revealAnnouncement(visible: 6),
+            "Showing 6 of 29 highlights"
+        )
+
+        XCTAssertEqual(
+            makeFeed(count: 29, noted: [8, 13]).headerAccessibilityLabel,
+            "Highlights, 29, 2 with notes"
+        )
+        XCTAssertEqual(makeFeed(count: 7).headerAccessibilityLabel, "Highlights, 7")
+        XCTAssertEqual(
+            makeFeed(count: 1, noted: [0]).headerAccessibilityLabel,
+            "Highlights, 1, 1 with a note"
+        )
+    }
+
+    func testEntryAccessibilityLabelShapes() {
+        XCTAssertEqual(
+            entry(page: "3", quote: "The quote").accessibilityLabel,
+            "Highlight, Page 3: The quote"
         )
         XCTAssertEqual(
-            feed(notes: 0, highlights: 27).revealAnnouncement(visible: 6),
-            "Showing 6 of 27 highlights"
+            entry(page: nil, quote: "The quote").accessibilityLabel,
+            "Highlight: The quote"
         )
         XCTAssertEqual(
-            feed(notes: 2, highlights: 27).revealAnnouncement(visible: 6),
-            "Showing 6 of 29 notes and highlights"
+            entry(page: "3", quote: "The quote", comment: "Keep.").accessibilityLabel,
+            "Highlight with note, Page 3: The quote. Your note: Keep."
+        )
+        XCTAssertEqual(
+            entry(page: nil, quote: "The quote", comment: "Keep.").accessibilityLabel,
+            "Highlight with note: The quote. Your note: Keep."
+        )
+        XCTAssertEqual(
+            entry(page: "3", quote: "", comment: "Keep.").accessibilityLabel,
+            "Highlight with note, Page 3. Your note: Keep."
+        )
+        XCTAssertEqual(
+            entry(page: nil, quote: "", comment: "Keep.").accessibilityLabel,
+            "Highlight with note. Your note: Keep."
+        )
+        XCTAssertEqual(
+            entry(page: "1", quote: "Say **this** now").accessibilityLabel,
+            "Highlight, Page 1: Say this now"
+        )
+        XCTAssertEqual(
+            entry(page: "2", quote: "The quote", comment: "  Keep this.  ").accessibilityLabel,
+            "Highlight with note, Page 2: The quote. Your note: Keep this."
         )
     }
 
@@ -477,26 +508,11 @@ final class RefsInspectorTests: XCTestCase {
         )
     }
 
-    func testPagingAcrossTheNotesHighlightsBoundary() {
+    func testPagingRevealsTheNextPageOfASevenEntryFeed() {
         var page = RefsNotesPage(size: 3)
-        let feed = feed(notes: 2, highlights: 5)
+        let feed = makeFeed(count: 7)
         XCTAssertEqual(page.reveal(total: feed.total), 3..<6)
-        let entries = feed.entries(visible: 6)
-        XCTAssertEqual(entries.filter { $0.section == .notes }.count, 2)
-        XCTAssertEqual(entries.filter { $0.section == .highlights }.count, 4)
-    }
-
-    func testRevealAnchorPinsTheHighlightsHeaderAtTheBoundary() {
-        let mixed = feed(notes: 2, highlights: 5)
-        XCTAssertEqual(mixed.revealAnchor(batchStart: 2), .highlightsHeader)
-        XCTAssertEqual(mixed.revealAnchor(batchStart: 3), .entry(3))
-        XCTAssertEqual(mixed.revealAnchor(batchStart: 1), .entry(1))
-
-        let highlightsOnly = feed(notes: 0, highlights: 5)
-        XCTAssertEqual(highlightsOnly.revealAnchor(batchStart: 3), .entry(3))
-
-        let notesOnly = feed(notes: 4, highlights: 0)
-        XCTAssertEqual(notesOnly.revealAnchor(batchStart: 4), .entry(4))
+        XCTAssertEqual(feed.entries(visible: 6).count, 6)
     }
 
     // MARK: - Show fetcher
@@ -772,15 +788,26 @@ final class RefsInspectorTests: XCTestCase {
         )
     }
 
-    private func feed(notes: Int, highlights: Int) -> RefsInspectorFeed {
+    private func makeFeed(count: Int, noted: Set<Int> = []) -> RefsInspectorFeed {
         RefsInspectorFeed(
-            notes: (0..<notes).map {
-                highlight(page: "\($0)", comment: "Comment \($0)")
-            },
-            highlights: (0..<highlights).map {
-                highlight(page: "\($0)")
+            highlights: (0..<count).map { index in
+                highlight(
+                    page: "\(index)",
+                    comment: noted.contains(index) ? "Comment \(index)" : nil
+                )
             }
         )
+    }
+
+    private func entry(
+        page: String?,
+        quote: String,
+        comment: String? = nil
+    ) -> RefsInspectorFeed.Entry {
+        let feed = RefsInspectorFeed(highlights: [
+            highlight(page: page, quote: quote, comment: comment)
+        ])
+        return feed.entries(visible: 1)[0]
     }
 
     private func highlight(

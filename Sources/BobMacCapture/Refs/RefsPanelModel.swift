@@ -1575,11 +1575,11 @@ public final class RefsPanelModel: ObservableObject {
         return RefsNotesPage(size: notesPageSize)
     }
 
-    /// Reveals the next page of the selected row's notes and
-    /// highlights. Returns false unless the selected id has hydrated
-    /// content that still hides entries. On success it stores the
-    /// page, announces the new count, and emits on
-    /// `inspectorNoteReveals` for the controller's follow-tail scroll.
+    /// Reveals the next page of the selected row's highlights.
+    /// Returns false unless the selected id has hydrated content that
+    /// still hides entries. On success it stores the page, announces
+    /// the new count, and emits on `inspectorNoteReveals` for the
+    /// controller's follow-tail scroll.
     @discardableResult
     public func revealMoreInspectorNotes() -> Bool {
         guard let id = selectedID,

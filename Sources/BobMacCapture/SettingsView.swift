@@ -47,12 +47,12 @@ struct SettingsView: View {
                     in: 1...20
                 ) {
                     LabeledContent(
-                        "Preview notes per page",
+                        "Preview highlights per page",
                         value: "\(settings.refsInspectorNotesPageSize)"
                     )
                 }
                 Text(
-                    "The preview shows this many of your notes and highlights at first; "
+                    "The preview shows this many highlights at first; "
                         + "Control-D at the bottom of the preview shows this many more."
                 )
                 .font(.caption)

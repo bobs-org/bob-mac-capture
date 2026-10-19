@@ -7,7 +7,9 @@ import SwiftUI
 /// Every size constant from the panel spec (§6–§9) as named statics, plus
 /// the pure panel-geometry math the controller and the geometry tests
 /// share. Colors are adaptive system colors only, so dark mode and
-/// increased contrast carry through without bespoke handling.
+/// increased contrast carry through without bespoke handling; yellow
+/// (rule, card, and chip) and orange (note glyph) mean your highlights
+/// and notes in the inspector.
 enum RefsVisualTokens {
     // MARK: - Window
 
@@ -53,11 +55,21 @@ enum RefsVisualTokens {
     static let inspectorRevealContext: CGFloat = 24
     static let inspectorQuoteRuleWidth: CGFloat = 2
     static let inspectorQuoteInset: CGFloat = 10
-    static let inspectorNoteQuoteLineLimit = 3
     static let inspectorHighlightLineLimit = 4
     static let inspectorPageRunGap: CGFloat = 4
-    /// Vertical spacing inside a YOUR NOTES or HIGHLIGHTS block.
+    /// Vertical spacing between HIGHLIGHTS entries.
     static let inspectorEntrySpacing: CGFloat = 8
+    /// Sticky-note glyph on the note card and the header chip.
+    static let inspectorNoteSymbol = "note.text"
+    /// Orange glyph tint: the darker sibling of the yellow card.
+    static let inspectorNoteTint: Color = .orange
+    static let inspectorNoteFillOpacity = 0.14
+    static let inspectorNoteStrokeOpacity = 0.30
+    static let inspectorNoteStrokeOpacityIncreased = 0.60
+    static let inspectorNoteRadius: CGFloat = 8
+    static let inspectorNoteVerticalPadding: CGFloat = 6
+    /// Gap between a quote and its note card.
+    static let inspectorNoteGap: CGFloat = 6
 
     // MARK: - Copy card
 

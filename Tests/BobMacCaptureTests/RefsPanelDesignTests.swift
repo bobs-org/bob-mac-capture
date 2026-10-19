@@ -57,9 +57,6 @@ final class RefsPanelDesignTests: XCTestCase {
         try renderInspectorNotesRevealed(model: model, now: now)
         try renderInspectorPaper(model: model, now: now)
         try renderInspectorEncrypted(model: model, now: now)
-        try renderInspectorHighlights(model: model, now: now)
-        try renderInspectorNotesAndHighlights(model: model, now: now)
-        try renderInspectorHighlightsPending(model: model, now: now)
         try await renderUnavailable(model: model, now: now)
         try renderStemMatch(model: model, now: now)
         try renderReduceTransparency(model: model, now: now)
@@ -616,7 +613,7 @@ final class RefsPanelDesignTests: XCTestCase {
                     ]
                 ),
                 outline: ["Review question", "Evidence", "Risks", "Decision"],
-                notes: [
+                highlights: [
                     RefsShowAnnotation(
                         pageLabel: "Page 1",
                         kind: "highlight",
@@ -674,7 +671,7 @@ final class RefsPanelDesignTests: XCTestCase {
                     bullets: ["Retrieval quality beats index size here."]
                 ),
                 outline: ["Review question", "Evidence"],
-                notes: (1...8).map { index in
+                highlights: (1...8).map { index in
                     RefsShowAnnotation(
                         pageLabel: "\(index)",
                         kind: "highlight",
@@ -689,13 +686,14 @@ final class RefsPanelDesignTests: XCTestCase {
         )
         XCTAssertTrue(model.revealMoreInspectorNotes())
         let page = model.inspectorNotesPage(for: id)
+        let content = try XCTUnwrap(model.inspectorContent(for: id))
         XCTAssertEqual(page.visibleCount(total: 8), 6)
         XCTAssertEqual(
-            RefsNotesPage.moreText(
-                hidden: page.hiddenCount(total: 8),
-                nextBatch: page.nextBatchCount(total: 8)
+            content.feed.moreText(
+                visible: page.visibleCount(total: content.feed.total),
+                nextBatch: page.nextBatchCount(total: content.feed.total)
             ),
-            "+2 more · ⌃D shows the rest"
+            "+2 more · 2 with notes · ⌃D shows the rest"
         )
         try write(model: model, name: "refs-inspector-notes-revealed-880", width: 880)
     }
@@ -721,7 +719,7 @@ final class RefsPanelDesignTests: XCTestCase {
                         + "for itself within a week."
                 ),
                 outline: ["Introduction", "Method", "Results"],
-                notes: [RefsShowAnnotation(
+                highlights: [RefsShowAnnotation(
                     pageLabel: "7",
                     kind: "highlight",
                     quote: "Shared scaffolding pays for itself within a week.",
@@ -751,7 +749,7 @@ final class RefsPanelDesignTests: XCTestCase {
             banner: nil,
             refreshState: .idle,
             inspector: [id: RefsInspectorContent(
-                notes: [RefsShowAnnotation(
+                highlights: [RefsShowAnnotation(
                     pageLabel: "2",
                     kind: "highlight",
                     quote: "Machines take me by surprise with great frequency.",
@@ -767,9 +765,26 @@ final class RefsPanelDesignTests: XCTestCase {
         try write(model: model, name: "refs-inspector-encrypted-880", width: 880)
     }
 
-    /// Zero notes and seven highlights: the HIGHLIGHTS header, a bold
-    /// run, a four-line truncation, and the first-page disclosure.
-    private func renderInspectorHighlights(
+    /// Unified HIGHLIGHTS renders: first page, one reveal, and all
+    /// noted. Separate from the monolith so a later failure there
+    /// cannot swallow these.
+    func testRefsInspectorHighlightsToPNG() async throws {
+        let now = fixedNow()
+        let library = makeLibrary(now: now)
+        let model = RefsPanelModel(
+            library: library,
+            opener: StubOpener(),
+            highlights: StubLocator()
+        )
+        try renderInspectorHighlightsUnified(model: model, now: now)
+        try renderInspectorHighlightsRevealed(model: model, now: now)
+        try renderInspectorHighlightsNoted(model: model, now: now)
+    }
+
+    /// Seven highlights in page order: a bold run, a one-line note
+    /// card, a four-line truncation, a same-page run, and the first
+    /// page's disclosure.
+    private func renderInspectorHighlightsUnified(
         model: RefsPanelModel,
         now: Date
     ) throws {
@@ -784,22 +799,24 @@ final class RefsPanelDesignTests: XCTestCase {
             RefsShowAnnotation(
                 pageLabel: "Page 2",
                 kind: "highlight",
+                quote: "The pipeline drains while the child runs, so the fetcher never blocks on a full pipe.",
+                comment: "Pin this for the memory design doc."
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 3",
+                kind: "highlight",
                 quote: Self.longHighlightQuote
             ),
             RefsShowAnnotation(
                 pageLabel: "Page 3",
                 kind: "highlight",
-                quote: "A short highlight on a later page."
+                quote: "Same-page highlights share one page label."
             ),
             RefsShowAnnotation(
                 pageLabel: "Page 4",
                 kind: "highlight",
-                quote: "Fourth highlight, still hidden on the first page."
-            ),
-            RefsShowAnnotation(
-                pageLabel: "Page 5",
-                kind: "highlight",
-                quote: "Fifth highlight waits behind the disclosure row."
+                quote: "A later highlight still waits behind the row.",
+                comment: "Keep the tier invariant. Cite this in the rollout note."
             ),
             RefsShowAnnotation(
                 pageLabel: "Page 6",
@@ -825,19 +842,58 @@ final class RefsPanelDesignTests: XCTestCase {
         let feed = try XCTUnwrap(model.inspectorContent(for: id)?.feed)
         XCTAssertEqual(
             feed.moreText(visible: 3, nextBatch: 3),
-            "+4 more · ⌃D shows 3 more"
+            "+4 more · 1 with a note · ⌃D shows 3 more"
         )
         try write(model: model, name: "refs-inspector-highlights-880", width: 880)
     }
 
-    /// Two notes and six highlights after one reveal: both headers,
-    /// grouped page labels, and the rest disclosure.
-    private func renderInspectorNotesAndHighlights(
+    /// The same seven-highlight article after one reveal: the same-page
+    /// run, the second card, and `+1 more · ⌃D shows it`.
+    private func renderInspectorHighlightsRevealed(
         model: RefsPanelModel,
         now: Date
     ) throws {
         let fixture = makeFixture(now: now)
-        let id = "ref/chat/today_report.md"
+        let id = "ref/blogs/harness_engineering_article.md"
+        let highlights = [
+            RefsShowAnnotation(
+                pageLabel: "Page 1",
+                kind: "highlight",
+                quote: "**Factual memory tells the agent what it knows.**"
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 2",
+                kind: "highlight",
+                quote: "The pipeline drains while the child runs, so the fetcher never blocks on a full pipe.",
+                comment: "Pin this for the memory design doc."
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 3",
+                kind: "highlight",
+                quote: Self.longHighlightQuote
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 3",
+                kind: "highlight",
+                quote: "Same-page highlights share one page label."
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 4",
+                kind: "highlight",
+                quote: "A later highlight still waits behind the row.",
+                comment: "Keep the tier invariant. Cite this in the rollout note."
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 6",
+                kind: "highlight",
+                quote: "Sixth highlight is also still hidden."
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 7",
+                kind: "highlight",
+                quote: "Seventh highlight closes the stack."
+            ),
+        ]
         model.installForPreviews(
             items: fixture.items,
             signals: fixture.signals,
@@ -846,54 +902,7 @@ final class RefsPanelDesignTests: XCTestCase {
             selectedID: id,
             banner: nil,
             refreshState: .idle,
-            inspector: [id: RefsInspectorContent(
-                notes: [
-                    RefsShowAnnotation(
-                        pageLabel: "Page 2",
-                        kind: "highlight",
-                        quote: "The pipeline drains while the child runs.",
-                        comment: "Key insight for the fetcher."
-                    ),
-                    RefsShowAnnotation(
-                        pageLabel: "Page 6",
-                        kind: "highlight",
-                        quote: "A weak fuzzy match never beats a title word.",
-                        comment: "Keep the tier invariant."
-                    ),
-                ],
-                highlights: [
-                    RefsShowAnnotation(
-                        pageLabel: "Page 3",
-                        kind: "highlight",
-                        quote: "**Factual memory tells the agent what it knows.**"
-                    ),
-                    RefsShowAnnotation(
-                        pageLabel: "Page 3",
-                        kind: "highlight",
-                        quote: "Same-page highlights share one page label."
-                    ),
-                    RefsShowAnnotation(
-                        pageLabel: "Page 3",
-                        kind: "highlight",
-                        quote: "The third highlight on this page has no extra label."
-                    ),
-                    RefsShowAnnotation(
-                        pageLabel: "Page 4",
-                        kind: "highlight",
-                        quote: Self.longHighlightQuote
-                    ),
-                    RefsShowAnnotation(
-                        pageLabel: "Page 5",
-                        kind: "highlight",
-                        quote: "A later highlight still waits behind the row."
-                    ),
-                    RefsShowAnnotation(
-                        pageLabel: "Page 7",
-                        kind: "highlight",
-                        quote: "The last highlight is also still hidden."
-                    ),
-                ]
-            )]
+            inspector: [id: RefsInspectorContent(highlights: highlights)]
         )
         XCTAssertTrue(model.revealMoreInspectorNotes())
         let content = try XCTUnwrap(model.inspectorContent(for: id))
@@ -903,23 +912,44 @@ final class RefsPanelDesignTests: XCTestCase {
                 visible: page.visibleCount(total: content.feed.total),
                 nextBatch: page.nextBatchCount(total: content.feed.total)
             ),
-            "+2 more · ⌃D shows the rest"
+            "+1 more · ⌃D shows it"
         )
         try write(
             model: model,
-            name: "refs-inspector-notes-and-highlights-880",
+            name: "refs-inspector-highlights-revealed-880",
             width: 880
         )
     }
 
-    /// Three notes fill the first page, so HIGHLIGHTS is still pending
-    /// behind a named disclosure row.
-    private func renderInspectorHighlightsPending(
+    /// Three highlights, all noted: a normal quote, an empty quote
+    /// with a multi-line comment, and a bold quote. Header chip 3, no
+    /// disclosure.
+    private func renderInspectorHighlightsNoted(
         model: RefsPanelModel,
         now: Date
     ) throws {
         let fixture = makeFixture(now: now)
-        let id = "ref/chat/omni_review.md"
+        let id = "ref/chat/today_report.md"
+        let highlights = [
+            RefsShowAnnotation(
+                pageLabel: "Page 1",
+                kind: "highlight",
+                quote: "The pipeline drains while the child runs.",
+                comment: "Key insight for the fetcher."
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 2",
+                kind: "highlight",
+                quote: "",
+                comment: "A card sits directly under this page label.\nThe quote was empty, so the note is the whole entry."
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 3",
+                kind: "highlight",
+                quote: "**Factual memory tells the agent what it knows.**",
+                comment: "Keep the tier invariant."
+            ),
+        ]
         model.installForPreviews(
             items: fixture.items,
             signals: fixture.signals,
@@ -928,66 +958,12 @@ final class RefsPanelDesignTests: XCTestCase {
             selectedID: id,
             banner: nil,
             refreshState: .idle,
-            inspector: [id: RefsInspectorContent(
-                notes: [
-                    RefsShowAnnotation(
-                        pageLabel: "Page 1",
-                        kind: "highlight",
-                        quote: "Omnigent keeps the capture draft.",
-                        comment: "First note on the opening page."
-                    ),
-                    RefsShowAnnotation(
-                        pageLabel: "Page 2",
-                        kind: "highlight",
-                        quote: "A second comment stays in Your notes.",
-                        comment: "Second note, still on the first page."
-                    ),
-                    RefsShowAnnotation(
-                        pageLabel: "Page 4",
-                        kind: "highlight",
-                        quote: "The third note fills the preview.",
-                        comment: "Third note, last of the first page."
-                    ),
-                ],
-                highlights: [
-                    RefsShowAnnotation(
-                        pageLabel: "Page 5",
-                        kind: "highlight",
-                        quote: "**Factual memory tells the agent what it knows.**"
-                    ),
-                    RefsShowAnnotation(
-                        pageLabel: "Page 5",
-                        kind: "highlight",
-                        quote: "Same-page highlights share one page label."
-                    ),
-                    RefsShowAnnotation(
-                        pageLabel: "Page 5",
-                        kind: "highlight",
-                        quote: Self.longHighlightQuote
-                    ),
-                    RefsShowAnnotation(
-                        pageLabel: "Page 6",
-                        kind: "highlight",
-                        quote: "A later highlight is still hidden."
-                    ),
-                    RefsShowAnnotation(
-                        pageLabel: "Page 8",
-                        kind: "highlight",
-                        quote: "The last pending highlight waits too."
-                    ),
-                ]
-            )]
+            inspector: [id: RefsInspectorContent(highlights: highlights)]
         )
         let feed = try XCTUnwrap(model.inspectorContent(for: id)?.feed)
-        XCTAssertEqual(
-            feed.moreText(visible: 3, nextBatch: 3),
-            "+5 highlights · ⌃D shows 3 more"
-        )
-        try write(
-            model: model,
-            name: "refs-inspector-highlights-pending-880",
-            width: 880
-        )
+        XCTAssertNil(feed.moreText(visible: 3, nextBatch: 3))
+        XCTAssertEqual(feed.notedCount, 3)
+        try write(model: model, name: "refs-inspector-highlights-noted-880", width: 880)
     }
 
     /// A solid thumbnail stand-in: `ImageRenderer` never hosts PDFKit,

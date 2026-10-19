@@ -1563,7 +1563,7 @@ Diagnostic for hard failures.
 | Up/Down, Ctrl-P/Ctrl-N, Ctrl-K/Ctrl-J | Move (wraps) |
 | Page Up/Page Down | Page the results list by one less than fits |
 | Ctrl-X | Close the selected tab in Highlights (Tabs only); elsewhere passes through to search |
-| Ctrl-D | Scroll the preview down by half its height; at the very bottom, Ctrl-D shows the next page of your notes and highlights; search keeps focus |
+| Ctrl-D | Scroll the preview down by half its height; at the very bottom, Ctrl-D shows the next page of highlights; search keeps focus |
 | Ctrl-U | Scroll the preview up by half its height; search keeps focus |
 | Shift-Command-T | Reopen the most recently closed Highlights tab |
 | Command-Up/Command-Down, Home/End | First, last |
@@ -1585,7 +1585,7 @@ Ctrl-U, and Ctrl-X also pass through while IME-composing; once recognized Ctrl-D
 and Ctrl-U consume the key even when the preview is hidden, short, empty, or
 already at an edge. In Tabs, Ctrl-X closes the selected tab; Ctrl-D always
 scrolls. At the very bottom of the preview, Ctrl-D shows the next page of
-your notes and highlights (clicking the disclosure row does the same);
+highlights (clicking the disclosure row does the same);
 when nothing is hidden it is still consumed and does nothing.
 Shift-Command-T reopens the most recently closed tab, or does nothing
 when none remain; it also passes through while IME-composing.
@@ -1685,8 +1685,8 @@ panel hides.
 - Settings › References also shows the resolved Highlights app (name,
   version, and path, or "Not found"), with Choose… (limited to `.app`)
   and Use Default, plus Reset Open History… behind a confirmation
-  dialog. It also sets Preview notes per page (1–20, default 3) for the
-  inspector, counting notes and highlights alike, or
+  dialog. It also sets Preview highlights per page (1–20, default 3) for
+  the inspector, or
   `defaults write org.bobs.bob-mac-capture refsInspectorNotesPageSize -int 5`.
 - Diagnostics: a failed global or takeover registration reports
   "Refs hotkey conflict: …"; free the shortcut and use Recheck Bob.
@@ -1756,15 +1756,17 @@ one thumbnail PNG each). What each kind shows:
 - Every hydrated row adds reading time to Pages
   ("22 · ≈ 70 min · 3 Pomodoros", 230 words per minute, Pomodoros of
   25 minutes), Tasks ("2 open") from `ref show`, the top-level
-  outline headings (up to 6), and your annotations in two sections:
-  YOUR NOTES (highlights that carry a comment) then HIGHLIGHTS
-  (highlights that do not), paged as one sequence. Each section shows
-  one page label per run of same-page entries. Quotes render balanced
+  outline headings (up to 6), and your annotations in one HIGHLIGHTS
+  section in note order. A highlight that carries your comment shows
+  it beneath the quote on a pale-yellow note card marked with the
+  sticky-note glyph; the header's note chip counts noted highlights,
+  and the disclosure row says how many hidden highlights carry notes.
+  Same-page entries share one page label. Quotes render balanced
   `**bold**` runs as strong emphasis, and a hover tooltip on a
   highlight shows its full text. The preview shows the first page (3
-  by default, Settings › References › Preview notes per page); the
-  disclosure row (`+N more · ⌃D shows …`) or Ctrl-D at the very bottom
-  reveals the next page of notes and highlights until all show.
+  by default, Settings › References › Preview highlights per page);
+  the disclosure row (`+N more · ⌃D shows …`) or Ctrl-D at the very
+  bottom reveals the next page of highlights until all show.
   Revealed pages reset on every selection change and on every show.
   Page labels show as bob writes them (`Page 1` stays `Page 1`).
 - Chats name consolidated reports and researcher drafts in the

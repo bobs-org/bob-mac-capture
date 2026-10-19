@@ -2040,7 +2040,7 @@ final class RefsPanelModelTests: XCTestCase {
             banner: nil,
             refreshState: .idle,
             inspector: [items[0].id: RefsInspectorContent(
-                notes: Self.twoNotes()
+                highlights: Self.twoNotes()
             )]
         )
         XCTAssertFalse(harness.model.revealMoreInspectorNotes())
@@ -2059,7 +2059,7 @@ final class RefsPanelModelTests: XCTestCase {
             banner: nil,
             refreshState: .idle,
             inspector: [items[0].id: RefsInspectorContent(
-                notes: Self.eightNotes()
+                highlights: Self.eightNotes()
             )]
         )
         var received: [RefsInspectorNotesReveal] = []
@@ -2098,8 +2098,8 @@ final class RefsPanelModelTests: XCTestCase {
             banner: nil,
             refreshState: .idle,
             inspector: [
-                items[0].id: RefsInspectorContent(notes: Self.eightNotes()),
-                items[1].id: RefsInspectorContent(notes: Self.eightNotes()),
+                items[0].id: RefsInspectorContent(highlights: Self.eightNotes()),
+                items[1].id: RefsInspectorContent(highlights: Self.eightNotes()),
             ]
         )
         XCTAssertTrue(harness.model.revealMoreInspectorNotes())
@@ -2150,7 +2150,7 @@ final class RefsPanelModelTests: XCTestCase {
             banner: nil,
             refreshState: .idle,
             inspector: [items[0].id: RefsInspectorContent(
-                notes: Self.eightNotes()
+                highlights: Self.eightNotes()
             )]
         )
         // installForPreviews keeps the explicitly set page size: a fresh

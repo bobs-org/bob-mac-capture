@@ -7,9 +7,8 @@ import Foundation
 /// other key is ignored. All three inspector fields are lossy and use
 /// `decodeIfPresent`, and undecodable rows are skipped instead of
 /// failing the whole response. The inspector still projects
-/// `commentedHighlights` for "Your notes" and `uncommentedHighlights`
-/// for "Highlights"; the Copy card's H picker reads the unfiltered
-/// annotation list.
+/// `inspectorHighlights` as one HIGHLIGHTS section in note order; the
+/// Copy card's H picker reads the unfiltered annotation list.
 public struct RefsShowResponse: Decodable, Equatable, Sendable, SchemaVersioned {
     public let schemaVersion: Int
     public let refs: [RefsShowRow]
@@ -85,19 +84,20 @@ public struct RefsShowRow: Decodable, Equatable, Sendable {
         ownNotes = try container.decodeIfPresent(String.self, forKey: .ownNotes) ?? ""
     }
 
-    /// Every commented highlight, in note order: the inspector's
-    /// "Your notes" block pages through these. Images and standalone
+    /// Every commented highlight, in note order. The Copy card's
+    /// numbered note rows and A copy use these; the inspector no
+    /// longer pages them as their own block. Images and standalone
     /// notes never appear here.
     public var commentedHighlights: [RefsShowAnnotation] {
         annotations.filter(\.hasComment)
     }
 
-    /// Every uncommented highlight with a non-empty quote, in note
-    /// order: the inspector's "Highlights" block pages through these.
-    /// A whitespace-only comment still counts as uncommented. Images,
-    /// standalone notes, and empty quotes never appear here.
-    public var uncommentedHighlights: [RefsShowAnnotation] {
-        annotations.filter(\.isUncommentedHighlight)
+    /// Every highlight the inspector's one HIGHLIGHTS section shows, in
+    /// note order: a highlight with a non-empty quote or a comment.
+    /// Images, standalone notes, and empty quotes with no comment never
+    /// appear here.
+    public var inspectorHighlights: [RefsShowAnnotation] {
+        annotations.filter(\.isInspectorHighlight)
     }
 
     /// Standalone user notes in annotation order. Blank notes are ignored.
@@ -168,18 +168,19 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
         link = try container.decodeIfPresent(String.self, forKey: .link)
     }
 
-    /// A highlight with no user comment and a non-empty quote: the
-    /// inspector's "Highlights" block shows these. A whitespace-only
-    /// comment counts as uncommented.
-    public var isUncommentedHighlight: Bool {
-        guard kind == "highlight", !hasComment else {
+    /// Membership in the inspector's one HIGHLIGHTS section: a
+    /// highlight with a non-empty trimmed quote or a comment. A
+    /// whitespace-only comment counts as no comment, so the entry
+    /// shows as a plain highlight.
+    public var isInspectorHighlight: Bool {
+        guard kind == "highlight" else {
             return false
         }
-        return hasNonEmptyQuote
+        return hasNonEmptyQuote || hasComment
     }
 
-    /// A highlight carrying a user comment: the only annotation kind the
-    /// inspector's "Your notes" block shows.
+    /// A highlight carrying a user comment: the inspector shows a note
+    /// card under that highlight's quote.
     public var hasComment: Bool {
         guard kind == "highlight" else {
             return false
@@ -330,37 +331,69 @@ public struct RefsNotesPage: Equatable, Sendable {
     }
 }
 
-/// The inspector's annotation feed: commented highlights first, then
-/// uncommented highlights, paged as one sequence.
+/// The inspector's HIGHLIGHTS feed: every highlight in note order,
+/// with or without a comment. A highlight that carries a comment
+/// shows a note card under its quote.
 public struct RefsInspectorFeed: Equatable, Sendable {
-    public let notes: [RefsShowAnnotation]
     public let highlights: [RefsShowAnnotation]
 
-    public var total: Int { notes.count + highlights.count }
+    public var total: Int { highlights.count }
 
-    public init(
-        notes: [RefsShowAnnotation],
-        highlights: [RefsShowAnnotation]
-    ) {
-        self.notes = notes
+    /// How many highlights in the feed carry a note card.
+    public var notedCount: Int { highlights.filter(\.hasComment).count }
+
+    public init(highlights: [RefsShowAnnotation]) {
         self.highlights = highlights
-    }
-
-    public enum Section: Equatable, Sendable {
-        case notes
-        case highlights
     }
 
     public struct Entry: Equatable, Sendable {
         public let index: Int
-        public let section: Section
         public let annotation: RefsShowAnnotation
         public let showsPageLabel: Bool
+
+        public var hasNote: Bool { annotation.hasComment }
+
+        /// VoiceOver label for this entry. The page is always included
+        /// when `displayPageLabel` is non-nil, even when the visual
+        /// label is grouped into a run. `**` delimiters are stripped
+        /// through `RefsQuoteEmphasis`; the comment is trimmed.
+        public var accessibilityLabel: String {
+            let quote = displayedQuote
+            let comment = annotation.comment?.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ) ?? ""
+            let page = annotation.displayPageLabel
+            if hasNote {
+                if quote.isEmpty {
+                    if let page {
+                        return "Highlight with note, \(page). Your note: \(comment)"
+                    }
+                    return "Highlight with note. Your note: \(comment)"
+                }
+                if let page {
+                    return "Highlight with note, \(page): \(quote). Your note: \(comment)"
+                }
+                return "Highlight with note: \(quote). Your note: \(comment)"
+            }
+            if let page {
+                return "Highlight, \(page): \(quote)"
+            }
+            return "Highlight: \(quote)"
+        }
+
+        private var displayedQuote: String {
+            guard let quote = annotation.quote, !quote.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).isEmpty else {
+                return ""
+            }
+            return RefsQuoteEmphasis.runs(quote).map(\.text).joined()
+        }
     }
 
-    /// The first `visible` entries in feed order (notes first), clamped
-    /// to `0...total`. `showsPageLabel` follows the page-run rule
-    /// within each section and is false when `displayPageLabel` is nil.
+    /// The first `visible` entries in note order, clamped to
+    /// `0...total`. `showsPageLabel` follows the page-run rule over
+    /// the single stream and is false when `displayPageLabel` is nil.
     public func entries(visible: Int) -> [Entry] {
         let clamped = min(max(visible, 0), total)
         guard clamped > 0 else {
@@ -368,104 +401,9 @@ public struct RefsInspectorFeed: Equatable, Sendable {
         }
         var result: [Entry] = []
         result.reserveCapacity(clamped)
-        let noteCount = min(clamped, notes.count)
-        appendEntries(
-            from: notes,
-            count: noteCount,
-            section: .notes,
-            indexOffset: 0,
-            into: &result
-        )
-        let highlightCount = clamped - noteCount
-        if highlightCount > 0 {
-            appendEntries(
-                from: highlights,
-                count: highlightCount,
-                section: .highlights,
-                indexOffset: notes.count,
-                into: &result
-            )
-        }
-        return result
-    }
-
-    /// The disclosure-row text for hidden entries, or nil when none
-    /// are hidden. Named kinds appear only when both sections still
-    /// hide entries, or when only highlights are hidden and none of
-    /// them are visible yet. Every other case reuses
-    /// `RefsNotesPage.moreText`.
-    public func moreText(visible: Int, nextBatch: Int) -> String? {
-        let counts = hiddenCounts(visible: visible)
-        let hidden = counts.notes + counts.highlights
-        guard hidden > 0 else {
-            return nil
-        }
-        let clause = revealClause(hidden: hidden, nextBatch: nextBatch)
-        if counts.notes > 0, counts.highlights > 0 {
-            return "+\(Self.counted(counts.notes, "note")) · "
-                + "\(Self.counted(counts.highlights, "highlight")) · \(clause)"
-        }
-        if counts.highlights > 0, visibleHighlightCount(visible: visible) == 0 {
-            return "+\(Self.counted(counts.highlights, "highlight")) · \(clause)"
-        }
-        return RefsNotesPage.moreText(hidden: hidden, nextBatch: nextBatch)
-    }
-
-    /// VoiceOver label for the disclosure row, or nil when nothing is
-    /// hidden.
-    public func hiddenAccessibilityLabel(visible: Int) -> String? {
-        let counts = hiddenCounts(visible: visible)
-        if counts.notes > 0, counts.highlights > 0 {
-            return "\(Self.counted(counts.notes, "more note")) and "
-                + "\(Self.counted(counts.highlights, "highlight"))"
-        }
-        if counts.notes > 0 {
-            return "\(counts.notes) more \(counts.notes == 1 ? "note" : "notes")"
-        }
-        if counts.highlights > 0 {
-            return "\(counts.highlights) more "
-                + "\(counts.highlights == 1 ? "highlight" : "highlights")"
-        }
-        return nil
-    }
-
-    /// VoiceOver announcement after a reveal.
-    public func revealAnnouncement(visible: Int) -> String {
-        let clamped = min(max(visible, 0), total)
-        if highlights.isEmpty {
-            return "Showing \(clamped) of \(notes.count) notes"
-        }
-        if notes.isEmpty {
-            return "Showing \(clamped) of \(highlights.count) highlights"
-        }
-        return "Showing \(clamped) of \(total) notes and highlights"
-    }
-
-    public enum RevealAnchor: Equatable, Sendable {
-        case entry(Int)
-        case highlightsHeader
-    }
-
-    /// Where the follow-tail scroll should pin. The HIGHLIGHTS header
-    /// when the batch starts on the first highlight; otherwise the
-    /// entry at `batchStart`.
-    public func revealAnchor(batchStart: Int) -> RevealAnchor {
-        if batchStart == notes.count, !highlights.isEmpty {
-            return .highlightsHeader
-        }
-        return .entry(batchStart)
-    }
-
-    private func appendEntries(
-        from annotations: [RefsShowAnnotation],
-        count: Int,
-        section: Section,
-        indexOffset: Int,
-        into result: inout [Entry]
-    ) {
         var previousLabel: String?
-        for offset in 0..<count {
-            let annotation = annotations[offset]
+        for offset in 0..<clamped {
+            let annotation = highlights[offset]
             let label = annotation.displayPageLabel
             let showsPageLabel: Bool
             if label == nil {
@@ -477,27 +415,67 @@ public struct RefsInspectorFeed: Equatable, Sendable {
             }
             previousLabel = label
             result.append(Entry(
-                index: indexOffset + offset,
-                section: section,
+                index: offset,
                 annotation: annotation,
                 showsPageLabel: showsPageLabel
             ))
         }
+        return result
     }
 
-    private func hiddenCounts(visible: Int) -> (notes: Int, highlights: Int) {
-        let clamped = min(max(visible, 0), total)
-        let visibleNotes = min(clamped, notes.count)
-        let visibleHighlights = clamped - visibleNotes
-        return (
-            notes.count - visibleNotes,
-            highlights.count - visibleHighlights
-        )
+    /// The disclosure-row text for hidden entries, or nil when none
+    /// are hidden. Hidden noted highlights add a notes clause; every
+    /// other case reuses `RefsNotesPage.moreText`.
+    public func moreText(visible: Int, nextBatch: Int) -> String? {
+        let hidden = hiddenCount(visible: visible)
+        guard hidden > 0 else {
+            return nil
+        }
+        let noted = hiddenNotedCount(visible: visible)
+        if noted == 0 {
+            return RefsNotesPage.moreText(hidden: hidden, nextBatch: nextBatch)
+        }
+        return "+\(hidden) more · \(Self.notedPhrase(noted)) · "
+            + revealClause(hidden: hidden, nextBatch: nextBatch)
     }
 
-    private func visibleHighlightCount(visible: Int) -> Int {
+    /// VoiceOver label for the disclosure row, or nil when nothing is
+    /// hidden.
+    public func hiddenAccessibilityLabel(visible: Int) -> String? {
+        let hidden = hiddenCount(visible: visible)
+        guard hidden > 0 else {
+            return nil
+        }
+        let noun = hidden == 1 ? "highlight" : "highlights"
+        let lead = "\(hidden) more \(noun)"
+        let noted = hiddenNotedCount(visible: visible)
+        if noted == 0 {
+            return lead
+        }
+        return "\(lead), \(Self.notedPhrase(noted))"
+    }
+
+    /// VoiceOver announcement after a reveal.
+    public func revealAnnouncement(visible: Int) -> String {
         let clamped = min(max(visible, 0), total)
-        return max(clamped - notes.count, 0)
+        return "Showing \(clamped) of \(total) highlights"
+    }
+
+    /// VoiceOver label for the HIGHLIGHTS header.
+    public var headerAccessibilityLabel: String {
+        if notedCount == 0 {
+            return "Highlights, \(total)"
+        }
+        return "Highlights, \(total), \(Self.notedPhrase(notedCount))"
+    }
+
+    private func hiddenCount(visible: Int) -> Int {
+        max(total - min(max(visible, 0), total), 0)
+    }
+
+    private func hiddenNotedCount(visible: Int) -> Int {
+        let clamped = min(max(visible, 0), total)
+        return highlights.dropFirst(clamped).filter(\.hasComment).count
     }
 
     private func revealClause(hidden: Int, nextBatch: Int) -> String {
@@ -510,8 +488,8 @@ public struct RefsInspectorFeed: Equatable, Sendable {
         return "⌃D shows the rest"
     }
 
-    private static func counted(_ count: Int, _ singular: String) -> String {
-        "\(count) \(count == 1 ? singular : "\(singular)s")"
+    private static func notedPhrase(_ count: Int) -> String {
+        count == 1 ? "1 with a note" : "\(count) with notes"
     }
 }
 

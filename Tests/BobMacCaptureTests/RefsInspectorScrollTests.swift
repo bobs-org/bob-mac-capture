@@ -333,7 +333,7 @@ final class RefsInspectorScrollTests: XCTestCase {
     }
 
     func testHostedNotesAboveBottomScrollsHalfPageAndRevealsNothing() {
-        let harness = makeHostedHarness(width: 880, notes: Self.eightNotes())
+        let harness = makeHostedHarness(width: 880, highlights: Self.eightNotes())
         defer { harness.panel.orderOut(nil) }
         settle(harness.panel)
         focusSearch(harness)
@@ -358,7 +358,7 @@ final class RefsInspectorScrollTests: XCTestCase {
     }
 
     func testHostedNotesAtBottomRevealPages() {
-        let harness = makeHostedHarness(width: 880, notes: Self.eightNotes())
+        let harness = makeHostedHarness(width: 880, highlights: Self.eightNotes())
         defer { harness.panel.orderOut(nil) }
         settle(harness.panel)
         focusSearch(harness)
@@ -405,7 +405,7 @@ final class RefsInspectorScrollTests: XCTestCase {
     func testHostedShortContentRevealsWithNoOffsetChange() throws {
         let harness = makeHostedHarness(
             width: 880,
-            notes: Self.eightNotes(),
+            highlights: Self.eightNotes(),
             shortContent: true,
             notesPageSize: 1
         )
@@ -436,7 +436,7 @@ final class RefsInspectorScrollTests: XCTestCase {
     }
 
     func testHostedTwoRapidRevealsStackTwoPages() {
-        let harness = makeHostedHarness(width: 880, notes: Self.eightNotes())
+        let harness = makeHostedHarness(width: 880, highlights: Self.eightNotes())
         defer { harness.panel.orderOut(nil) }
         settle(harness.panel)
         focusSearch(harness)
@@ -473,7 +473,7 @@ final class RefsInspectorScrollTests: XCTestCase {
 
     private func makeHostedHarness(
         width: CGFloat,
-        notes: [RefsShowAnnotation]? = nil,
+        highlights: [RefsShowAnnotation]? = nil,
         shortContent: Bool = false,
         notesPageSize: Int? = nil
     ) -> HostedHarness {
@@ -522,9 +522,9 @@ final class RefsInspectorScrollTests: XCTestCase {
                     paragraph: "Short preview."
                 ),
                 outline: [],
-                notes: notes ?? []
+                highlights: highlights ?? []
             )
-        } else if let notes {
+        } else if let highlights {
             inspectorContent = RefsInspectorContent(
                 summary: RefsSummary(
                     label: "SUMMARY",
@@ -534,7 +534,7 @@ final class RefsInspectorScrollTests: XCTestCase {
                     )
                 ),
                 outline: (0..<80).map { "Heading \($0)" },
-                notes: notes
+                highlights: highlights
             )
         } else {
             inspectorContent = RefsInspectorContent(

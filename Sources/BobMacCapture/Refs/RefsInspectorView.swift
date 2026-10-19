@@ -103,6 +103,7 @@ struct RefsInspectorView: View {
     var onRevealMoreNotes: () -> Void = {}
     /// Collision and unmatched inspector hint: switch and close.
     static let tabFallbackHint = "↵ switches to this tab · ⌃X closes it"
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @State private var disclosureHover = false
 
     var body: some View {
@@ -123,7 +124,7 @@ struct RefsInspectorView: View {
                 facts(for: item)
                 summarySection
                 contentsSection
-                notesSection
+                highlightsSection
                 if content.isMissingPDF {
                     missingCallout(for: item)
                 }
@@ -573,45 +574,54 @@ struct RefsInspectorView: View {
     }
 
     @ViewBuilder
-    private var notesSection: some View {
+    private var highlightsSection: some View {
         if let inspector {
             let feed = inspector.feed
             let visible = notesPage.visibleCount(total: feed.total)
             let entries = feed.entries(visible: visible)
-            let noteEntries = entries.filter { $0.section == .notes }
-            let highlightEntries = entries.filter { $0.section == .highlights }
             let nextBatch = notesPage.nextBatchCount(total: feed.total)
             let more = feed.moreText(visible: visible, nextBatch: nextBatch)
             let hiddenLabel = feed.hiddenAccessibilityLabel(visible: visible)
-            if !feed.notes.isEmpty {
-                annotationBlock(
-                    title: "YOUR NOTES",
-                    accessibilityTitle: "Your notes",
-                    total: feed.notes.count,
-                    entries: noteEntries,
-                    feed: feed,
-                    more: highlightEntries.isEmpty ? more : nil,
-                    hiddenLabel: highlightEntries.isEmpty ? hiddenLabel : nil,
-                    fadeHeaderWithFirstEntry: false,
-                    headerAnchor: nil,
-                    entryView: { noteView($0) }
-                )
-            }
-            if !highlightEntries.isEmpty {
-                annotationBlock(
-                    title: "HIGHLIGHTS",
-                    accessibilityTitle: "Highlights",
-                    total: feed.highlights.count,
-                    entries: highlightEntries,
-                    feed: feed,
-                    more: more,
-                    hiddenLabel: hiddenLabel,
-                    fadeHeaderWithFirstEntry: true,
-                    headerAnchor: .highlightsHeader,
-                    entryView: { highlightView($0) }
-                )
-            }
-            if feed.notes.isEmpty, highlightEntries.isEmpty, inspector.showFailed {
+            if !entries.isEmpty {
+                VStack(
+                    alignment: .leading,
+                    spacing: RefsVisualTokens.inspectorEntrySpacing
+                ) {
+                    HStack(spacing: 6) {
+                        Text("HIGHLIGHTS")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Text("\(feed.total)")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                        if feed.notedCount > 0 {
+                            noteChip(count: feed.notedCount)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(feed.headerAccessibilityLabel)
+                    .accessibilityAddTraits(.isHeader)
+                    ForEach(entries, id: \.index) { entry in
+                        highlightEntryView(entry)
+                            .padding(.top, pageRunTopPadding(entry, in: entries))
+                            .modifier(RefsInspectorNoteFade(
+                                isRevealed: entry.index >= notesPage.size,
+                                delay: revealDelay(for: entry.index),
+                                previewMode: previewMode
+                            ))
+                            .background {
+                                if notesPage.batchStart == entry.index {
+                                    RefsInspectorRevealAnchor(
+                                        generation: notesPage.generation
+                                    )
+                                }
+                            }
+                    }
+                    if let more {
+                        disclosureRow(text: more, hiddenLabel: hiddenLabel)
+                    }
+                }
+            } else if inspector.showFailed {
                 Text("Notes unavailable")
                     .font(.callout)
                     .foregroundStyle(.tertiary)
@@ -620,96 +630,9 @@ struct RefsInspectorView: View {
         }
     }
 
-    private func annotationBlock<EntryView: View>(
-        title: String,
-        accessibilityTitle: String,
-        total: Int,
-        entries: [RefsInspectorFeed.Entry],
-        feed: RefsInspectorFeed,
-        more: String?,
-        hiddenLabel: String?,
-        fadeHeaderWithFirstEntry: Bool,
-        headerAnchor: RefsInspectorFeed.RevealAnchor?,
-        @ViewBuilder entryView: @escaping (RefsInspectorFeed.Entry) -> EntryView
-    ) -> some View {
-        let headerFade = headerFadeValues(
-            entries: entries,
-            enabled: fadeHeaderWithFirstEntry
-        )
-        return VStack(
-            alignment: .leading,
-            spacing: RefsVisualTokens.inspectorEntrySpacing
-        ) {
-            HStack(spacing: 6) {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text("\(total)")
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.tertiary)
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(accessibilityTitle), \(total)")
-            .accessibilityAddTraits(.isHeader)
-            .modifier(RefsInspectorNoteFade(
-                isRevealed: headerFade.isRevealed,
-                delay: headerFade.delay,
-                previewMode: previewMode
-            ))
-            .background {
-                if let headerAnchor {
-                    revealAnchorBackground(feed: feed, target: headerAnchor)
-                }
-            }
-            ForEach(entries, id: \.index) { entry in
-                entryView(entry)
-                    .padding(.top, pageRunTopPadding(entry, in: entries))
-                    .modifier(RefsInspectorNoteFade(
-                        isRevealed: entry.index >= notesPage.size,
-                        delay: revealDelay(for: entry.index),
-                        previewMode: previewMode
-                    ))
-                    .background {
-                        revealAnchorBackground(
-                            feed: feed,
-                            target: .entry(entry.index)
-                        )
-                    }
-            }
-            if let more {
-                disclosureRow(text: more, hiddenLabel: hiddenLabel)
-            }
-        }
-    }
-
-    private func headerFadeValues(
-        entries: [RefsInspectorFeed.Entry],
-        enabled: Bool
-    ) -> (isRevealed: Bool, delay: Double) {
-        guard enabled, let first = entries.first else {
-            return (false, 0)
-        }
-        return (
-            first.index >= notesPage.size,
-            revealDelay(for: first.index)
-        )
-    }
-
     private func revealDelay(for index: Int) -> Double {
         let batchStart = notesPage.batchStart ?? notesPage.size
         return index >= batchStart ? Double(index - batchStart) * 0.04 : 0
-    }
-
-    @ViewBuilder
-    private func revealAnchorBackground(
-        feed: RefsInspectorFeed,
-        target: RefsInspectorFeed.RevealAnchor
-    ) -> some View {
-        if let start = notesPage.batchStart,
-           feed.revealAnchor(batchStart: start) == target
-        {
-            RefsInspectorRevealAnchor(generation: notesPage.generation)
-        }
     }
 
     private func pageRunTopPadding(
@@ -743,63 +666,100 @@ struct RefsInspectorView: View {
         }
     }
 
-    private func noteView(_ entry: RefsInspectorFeed.Entry) -> some View {
-        let note = entry.annotation
+    private func highlightEntryView(_ entry: RefsInspectorFeed.Entry) -> some View {
+        let annotation = entry.annotation
+        let quote = visibleQuote(annotation)
         return VStack(alignment: .leading, spacing: 4) {
-            if entry.showsPageLabel, let pageLabel = note.displayPageLabel {
+            if entry.showsPageLabel, let pageLabel = annotation.displayPageLabel {
                 Text(pageLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if let quote = note.quote, !quote.isEmpty {
-                Text(quoteText(quote))
-                    .font(.callout)
-                    .italic()
-                    .foregroundStyle(.secondary)
-                    .lineLimit(RefsVisualTokens.inspectorNoteQuoteLineLimit)
-                    .padding(.leading, RefsVisualTokens.inspectorQuoteInset)
-                    .overlay(alignment: .leading) {
-                        Rectangle()
-                            .fill(.yellow)
-                            .frame(width: RefsVisualTokens.inspectorQuoteRuleWidth)
-                    }
+            if let quote {
+                quoteView(quote)
             }
-            if let comment = note.comment, !comment.isEmpty {
-                Text(comment)
-                    .font(.callout)
+            if entry.hasNote, let comment = annotation.comment {
+                noteCard(comment)
+                    .padding(
+                        .top,
+                        quote == nil ? 0 : RefsVisualTokens.inspectorNoteGap - 4
+                    )
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(noteAccessibilityLabel(entry))
+        .accessibilityLabel(entry.accessibilityLabel)
     }
 
-    private func highlightView(_ entry: RefsInspectorFeed.Entry) -> some View {
-        let highlight = entry.annotation
-        let quote = highlight.quote ?? ""
-        return VStack(alignment: .leading, spacing: 4) {
-            if entry.showsPageLabel, let pageLabel = highlight.displayPageLabel {
-                Text(pageLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if !quote.isEmpty {
-                Text(quoteText(quote))
-                    .font(.callout)
-                    .foregroundStyle(.primary)
-                    .lineSpacing(2)
-                    .lineLimit(RefsVisualTokens.inspectorHighlightLineLimit)
-                    .truncationMode(.tail)
-                    .padding(.leading, RefsVisualTokens.inspectorQuoteInset)
-                    .overlay(alignment: .leading) {
-                        Rectangle()
-                            .fill(.yellow)
-                            .frame(width: RefsVisualTokens.inspectorQuoteRuleWidth)
-                    }
-                    .help(quote)
-            }
+    private func visibleQuote(_ annotation: RefsShowAnnotation) -> String? {
+        guard let quote = annotation.quote, !quote.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).isEmpty else {
+            return nil
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(highlightAccessibilityLabel(entry))
+        return quote
+    }
+
+    private func quoteView(_ quote: String) -> some View {
+        Text(quoteText(quote))
+            .font(.callout)
+            .foregroundStyle(.primary)
+            .lineSpacing(2)
+            .lineLimit(RefsVisualTokens.inspectorHighlightLineLimit)
+            .truncationMode(.tail)
+            .padding(.leading, RefsVisualTokens.inspectorQuoteInset)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(.yellow)
+                    .frame(width: RefsVisualTokens.inspectorQuoteRuleWidth)
+            }
+            .help(quote)
+    }
+
+    private func noteCard(_ comment: String) -> some View {
+        let stroke = colorSchemeContrast == .increased
+            ? RefsVisualTokens.inspectorNoteStrokeOpacityIncreased
+            : RefsVisualTokens.inspectorNoteStrokeOpacity
+        let shape = RoundedRectangle(
+            cornerRadius: RefsVisualTokens.inspectorNoteRadius,
+            style: .continuous
+        )
+        return HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: RefsVisualTokens.inspectorNoteSymbol)
+                .font(.callout.weight(.medium))
+                .imageScale(.small)
+                .foregroundStyle(RefsVisualTokens.inspectorNoteTint)
+            Text(comment)
+                .font(.callout)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, RefsVisualTokens.inspectorQuoteInset)
+        .padding(.vertical, RefsVisualTokens.inspectorNoteVerticalPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            shape.fill(
+                Color.yellow.opacity(RefsVisualTokens.inspectorNoteFillOpacity)
+            )
+        )
+        .overlay(
+            shape.strokeBorder(Color.yellow.opacity(stroke), lineWidth: 0.5)
+        )
+    }
+
+    private func noteChip(count: Int) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: RefsVisualTokens.inspectorNoteSymbol)
+            Text("\(count)")
+        }
+        .font(.caption2.weight(.semibold).monospacedDigit())
+        .foregroundStyle(RefsVisualTokens.inspectorNoteTint)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 1.5)
+        .background(
+            Capsule().fill(
+                Color.yellow.opacity(RefsVisualTokens.inspectorNoteFillOpacity)
+            )
+        )
     }
 
     private func quoteText(_ text: String) -> AttributedString {
@@ -812,47 +772,6 @@ struct RefsInspectorView: View {
             result += part
         }
         return result
-    }
-
-    private func noteAccessibilityLabel(_ entry: RefsInspectorFeed.Entry) -> String {
-        let note = entry.annotation
-        let quote = displayedQuote(note.quote)
-        let comment = note.comment?.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        ) ?? ""
-        if quote.isEmpty {
-            if let page = note.displayPageLabel {
-                return "\(page): Your note: \(comment)"
-            }
-            return comment.isEmpty ? "Your note" : "Your note: \(comment)"
-        }
-        let lead: String
-        if let page = note.displayPageLabel {
-            lead = "\(page): \(quote)"
-        } else {
-            lead = quote
-        }
-        if comment.isEmpty {
-            return lead
-        }
-        return "\(lead). Your note: \(comment)"
-    }
-
-    private func highlightAccessibilityLabel(
-        _ entry: RefsInspectorFeed.Entry
-    ) -> String {
-        let quote = displayedQuote(entry.annotation.quote)
-        if let page = entry.annotation.displayPageLabel {
-            return "Highlight, \(page): \(quote)"
-        }
-        return "Highlight: \(quote)"
-    }
-
-    private func displayedQuote(_ quote: String?) -> String {
-        guard let quote, !quote.isEmpty else {
-            return ""
-        }
-        return RefsQuoteEmphasis.runs(quote).map(\.text).joined()
     }
 
     private func sectionLabel(_ text: String) -> some View {

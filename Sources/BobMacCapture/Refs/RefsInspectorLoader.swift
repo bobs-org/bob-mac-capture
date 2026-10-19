@@ -441,7 +441,6 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
 public struct RefsInspectorContent: Equatable, Sendable {
     public var summary: RefsSummary?
     public var outline: [String]
-    public var notes: [RefsShowAnnotation]
     public var highlights: [RefsShowAnnotation]
     public var openTaskCount: Int
     public var readingTime: RefsReadingTime?
@@ -452,7 +451,6 @@ public struct RefsInspectorContent: Equatable, Sendable {
     public init(
         summary: RefsSummary? = nil,
         outline: [String] = [],
-        notes: [RefsShowAnnotation] = [],
         highlights: [RefsShowAnnotation] = [],
         openTaskCount: Int = 0,
         readingTime: RefsReadingTime? = nil,
@@ -462,7 +460,6 @@ public struct RefsInspectorContent: Equatable, Sendable {
     ) {
         self.summary = summary
         self.outline = outline
-        self.notes = notes
         self.highlights = highlights
         self.openTaskCount = openTaskCount
         self.readingTime = readingTime
@@ -472,7 +469,7 @@ public struct RefsInspectorContent: Equatable, Sendable {
     }
 
     public var feed: RefsInspectorFeed {
-        RefsInspectorFeed(notes: notes, highlights: highlights)
+        RefsInspectorFeed(highlights: highlights)
     }
 }
 
@@ -643,8 +640,7 @@ public final class RefsInspectorLoader: ObservableObject {
             }
         }
         if let row = showRow {
-            built.notes = row.commentedHighlights
-            built.highlights = row.uncommentedHighlights
+            built.highlights = row.inspectorHighlights
             built.openTaskCount = row.openTasks.count
             built.showFailed = false
         } else {
