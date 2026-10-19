@@ -1003,8 +1003,8 @@ legacy preview and notification copy.
   fresh `=<X>#` timing), open rows read `Takes over 0920–0945`, and the
   running row keeps `Running 0920–0945` while teaching
   `Already running — = restarts it; pick another Pomodoro to swap in`
-  (`Restarts it now` with fresh timing). An empty `=#` reports no override
-  until a name is typed, so the existing status and discovery rows stand.
+  (`Restarts it now` with fresh timing). The swap-picker status and rows appear
+  as soon as `=#` or `=3#` is typed while a session runs, before a name is entered.
   Under a plain `=#` the running row now
   teaches `Already running. Restart it with =, or close it first with x.`
   An older Bob that reports no

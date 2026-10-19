@@ -1083,6 +1083,7 @@ final class BobProcessClientTests: XCTestCase {
 
         XCTAssertEqual(response.context, "pomodoro_start_name")
         XCTAssertEqual(response.candidates.count, 4)
+        XCTAssertEqual(response.overrideInfo?.running?.pomodoroName, "BUGS")
         XCTAssertEqual(response.candidates[0].replacement, "deep-work")
         XCTAssertTrue(response.candidates[0].nextUp)
         let running = response.candidates[3]

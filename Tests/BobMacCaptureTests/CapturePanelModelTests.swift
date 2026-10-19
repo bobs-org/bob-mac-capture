@@ -3594,7 +3594,7 @@ final class CapturePanelModelTests: XCTestCase {
 
         XCTAssertEqual(model.completionResponse?.candidates.first?.replacement, "deep-work")
         XCTAssertEqual(model.completionResponse?.candidates.last?.replacement, "bugs")
-        XCTAssertEqual(model.statusText, "Pick a Pomodoro to start, or type a new name")
+        XCTAssertEqual(model.statusText, "Pick a Pomodoro to take over BUGS's 0840–0905")
         XCTAssertTrue(model.completionVisible)
     }
 

@@ -3333,10 +3333,8 @@ JSON
     elif [[ "${draft}" == "=#" ]]; then
       # Named-start rows for the worked-example ledger (real
       # `bob capture-complete` output; only the cursor varies).
-      # `FAKE_BOB_OVERRIDE=1` serves the swap-picker rows (override object
-      # present). Real bob omits that object on an empty `=#`; the fixture
-      # is the `=#bugs` cursor-2 list. `FAKE_BOB_POMODORO_RUNNING=1` serves
-      # the running-ledger variant without override, matching empty `=#`.
+      # The empty name field already carries the swap preview while a
+      # session runs, matching real bob for `=#` at cursor 2.
       if [[ "${FAKE_BOB_OVERRIDE:-0}" == "1" ]]; then
         sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-override-complete.json"
       elif [[ "${FAKE_BOB_POMODORO_RUNNING:-0}" == "1" ]]; then
@@ -3345,15 +3343,16 @@ JSON
         sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-named-complete.json"
       fi
     elif [[ "${draft}" == "=#bugs" ]]; then
-      # Named-start rows with a destination name, so Bob's state-based
-      # override object is present (real `bob capture-complete` on
-      # `=#bugs` at cursor 2; only the cursor varies).
-      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-override-complete.json"
+      # Named-start rows with a destination name (real bob on `=#bugs`;
+      # only the cursor varies).
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-override-complete-named.json"
     elif [[ "${draft}" == "=3#plan" ]]; then
-      # Fresh-timing override rows (real `bob capture-complete` on
-      # `=3#plan` at cursor 3; only the cursor varies).
-      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-override-complete-fresh.json"
+      # Fresh-timing named-start rows (real bob on `=3#plan`; only the
+      # cursor varies).
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-override-complete-fresh-named.json"
     elif [[ "${draft}" == "=3#" ]]; then
+      # Empty fresh-timing name fields carry the running-session override,
+      # matching real bob for `=3#` at cursor 3.
       if [[ "${FAKE_BOB_OVERRIDE:-0}" == "1" ]]; then
         sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/pomodoro-start-override-complete-fresh.json"
       else

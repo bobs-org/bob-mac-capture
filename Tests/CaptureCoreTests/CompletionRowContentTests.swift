@@ -1237,11 +1237,15 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(override.running?.timeRange, "0920-0945")
     }
 
-    func testPlainStartNameFixtureCarriesNoOverride() throws {
+    func testRunningStartNameFixtureCarriesOverride() throws {
         let response = try decodeCompletionFixture("pomodoro-start-named-complete-running.json")
 
         XCTAssertEqual(response.context, "pomodoro_start_name")
-        XCTAssertNil(response.overrideInfo)
+        let override = try XCTUnwrap(response.overrideInfo)
+        XCTAssertTrue(override.keepsLedger)
+        XCTAssertEqual(override.running?.pomodoroName, "BUGS")
+        XCTAssertEqual(override.running?.line, 7)
+        XCTAssertEqual(override.running?.timeRange, "0840-0905")
     }
 
     private func decodeCompletionFixture(_ name: String) throws -> CaptureCompletionResponse {
