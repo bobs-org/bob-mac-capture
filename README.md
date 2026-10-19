@@ -1719,7 +1719,7 @@ progress finishes if the panel hides.
 - Settings › References also shows the resolved Highlights app (name,
   version, and path, or "Not found"), with Choose… (limited to `.app`)
   and Use Default, plus Reset Open History… behind a confirmation
-  dialog. It also sets Preview highlights per page (1–20, default 3) for
+  dialog. It also sets Preview highlights per page (1–20, default 5) for
   the inspector, or
   `defaults write org.bobs.bob-mac-capture refsInspectorNotesPageSize -int 5`.
 - Diagnostics: a failed global or takeover registration reports
@@ -1797,7 +1797,7 @@ one thumbnail PNG each). What each kind shows:
   and the disclosure row says how many hidden highlights carry notes.
   Same-page entries share one page label. Quotes render balanced
   `**bold**` runs as strong emphasis, and a hover tooltip on a
-  highlight shows its full text. The preview shows the first page (3
+  highlight shows its full text. The preview shows the first page (5
   by default, Settings › References › Preview highlights per page);
   the disclosure row (`+N more · ⌃D shows …`) or Ctrl-D at the very
   bottom reveals the next page of highlights until all show.

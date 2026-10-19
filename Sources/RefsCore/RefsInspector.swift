@@ -100,6 +100,14 @@ public struct RefsShowRow: Decodable, Equatable, Sendable {
         annotations.filter(\.isInspectorHighlight)
     }
 
+    /// Every annotation shown in the inspector's generalized preview
+    /// feed, in note order. This extends the highlight-only feed with
+    /// image highlights and standalone notes without changing the
+    /// Copy card's existing projections.
+    public var inspectorEntries: [RefsShowAnnotation] {
+        annotations.filter(\.isInspectorEntry)
+    }
+
     /// Standalone user notes in annotation order. Blank notes are ignored.
     public var standaloneNotes: [RefsShowAnnotation] {
         annotations.filter(\.isStandaloneNote)
@@ -132,6 +140,9 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
     public let comment: String?
     public let blockID: String?
     public let link: String?
+    public let asset: String?
+    public let images: [String]
+    public let unresolvedImages: [String]
 
     public init(
         pageLabel: String? = nil,
@@ -139,7 +150,10 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
         quote: String? = nil,
         comment: String? = nil,
         blockID: String? = nil,
-        link: String? = nil
+        link: String? = nil,
+        asset: String? = nil,
+        images: [String] = [],
+        unresolvedImages: [String] = []
     ) {
         self.pageLabel = pageLabel
         self.kind = kind
@@ -147,6 +161,9 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
         self.comment = comment
         self.blockID = blockID
         self.link = link
+        self.asset = Self.trimmedNonEmpty(asset)
+        self.images = Self.cleaned(images)
+        self.unresolvedImages = Self.cleaned(unresolvedImages)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -156,6 +173,9 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
         case comment
         case blockID = "block_id"
         case link
+        case asset
+        case images
+        case unresolvedImages = "unresolved_images"
     }
 
     public init(from decoder: Decoder) throws {
@@ -166,6 +186,15 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
         comment = try container.decodeIfPresent(String.self, forKey: .comment)
         blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
         link = try container.decodeIfPresent(String.self, forKey: .link)
+        let decodedAsset = (try? container.decodeIfPresent(String.self, forKey: .asset)) ?? nil
+        asset = Self.trimmedNonEmpty(decodedAsset)
+        let decodedImages = (try? container.decodeIfPresent([String].self, forKey: .images)) ?? nil
+        images = Self.cleaned(decodedImages ?? [])
+        let decodedUnresolved = (try? container.decodeIfPresent(
+            [String].self,
+            forKey: .unresolvedImages
+        )) ?? nil
+        unresolvedImages = Self.cleaned(decodedUnresolved ?? [])
     }
 
     /// Membership in the inspector's one HIGHLIGHTS section: a
@@ -177,6 +206,23 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
             return false
         }
         return hasNonEmptyQuote || hasComment
+    }
+
+    /// Membership in the generalized inspector feed. Image highlights
+    /// need a resolvable asset; ordinary highlights can carry text or
+    /// note images; standalone notes follow the selected include
+    /// decision and need at least one piece of content.
+    public var isInspectorEntry: Bool {
+        switch kind {
+        case "highlight":
+            return hasNonEmptyQuote || hasComment || !images.isEmpty || !unresolvedImages.isEmpty
+        case "image":
+            return Self.trimmedNonEmpty(asset) != nil
+        case "note":
+            return isStandaloneNote || !images.isEmpty || !unresolvedImages.isEmpty
+        default:
+            return false
+        }
     }
 
     /// A highlight carrying a user comment: the inspector shows a note
@@ -224,6 +270,18 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
         return !quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private static func trimmedNonEmpty(_ value: String?) -> String? {
+        guard let value else {
+            return nil
+        }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func cleaned(_ values: [String]) -> [String] {
+        values.compactMap(trimmedNonEmpty)
+    }
+
     /// The page label as the inspector shows it: nil for nil or blank;
     /// as-is when it already starts with `page`, `p.`, `p `, or the
     /// plural `pp.` continuation-group form (case-insensitive, the
@@ -250,7 +308,7 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
 /// `visibleCount(total:)` and the model stores one per selection.
 public struct RefsNotesPage: Equatable, Sendable {
     /// The first page size, and the fallback when settings are missing.
-    public static let defaultSize = 3
+    public static let defaultSize = 5
     /// The allowed page-size range, shared with Settings.
     public static let sizeRange = 1...20
 
@@ -331,27 +389,60 @@ public struct RefsNotesPage: Equatable, Sendable {
     }
 }
 
-/// The inspector's HIGHLIGHTS feed: every highlight in note order,
-/// with or without a comment. A highlight that carries a comment
-/// shows a note card under its quote.
+/// The inspector's HIGHLIGHTS feed: highlights, image highlights, and
+/// standalone notes in annotation order. Entries with user notes or
+/// attached images show a note card.
 public struct RefsInspectorFeed: Equatable, Sendable {
     public let highlights: [RefsShowAnnotation]
 
     public var total: Int { highlights.count }
 
-    /// How many highlights in the feed carry a note card.
-    public var notedCount: Int { highlights.filter(\.hasComment).count }
+    /// How many entries in the feed carry a note card.
+    public var notedCount: Int { entries(visible: total).filter(\.hasNoteCard).count }
 
     public init(highlights: [RefsShowAnnotation]) {
         self.highlights = highlights
     }
 
     public struct Entry: Equatable, Sendable {
+        public enum Kind: Equatable, Sendable {
+            case highlight
+            case image
+            case note
+        }
+
         public let index: Int
         public let annotation: RefsShowAnnotation
         public let showsPageLabel: Bool
 
-        public var hasNote: Bool { annotation.hasComment }
+        public var kind: Kind {
+            switch annotation.kind {
+            case "image": .image
+            case "note": .note
+            default: .highlight
+            }
+        }
+
+        /// The image-highlight crop. Ordinary annotations have no
+        /// primary image; their image paths are in `attachedImages`.
+        public var imagePath: String? {
+            kind == .image ? annotation.asset : nil
+        }
+
+        public var attachedImages: [String] { annotation.images }
+        public var unresolvedImages: [String] { annotation.unresolvedImages }
+
+        public var hasNoteCard: Bool {
+            if kind == .note {
+                return true
+            }
+            return hasCommentText || !attachedImages.isEmpty || !unresolvedImages.isEmpty
+        }
+
+        /// Kept for existing view callers; note cards now include
+        /// comments, attached images, unresolved images, and standalone
+        /// note entries.
+        public var hasNote: Bool { hasNoteCard }
 
         /// VoiceOver label for this entry. The page is always included
         /// when `displayPageLabel` is non-nil, even when the visual
@@ -363,22 +454,62 @@ public struct RefsInspectorFeed: Equatable, Sendable {
                 in: .whitespacesAndNewlines
             ) ?? ""
             let page = annotation.displayPageLabel
-            if hasNote {
-                if quote.isEmpty {
-                    if let page {
-                        return "Highlight with note, \(page). Your note: \(comment)"
+            var label: String
+            switch kind {
+            case .highlight:
+                if hasNoteCard {
+                    let prefix = page.map { "Highlight with note, \($0)" }
+                        ?? "Highlight with note"
+                    if !quote.isEmpty {
+                        label = "\(prefix): \(quote)"
+                    } else {
+                        label = prefix
                     }
-                    return "Highlight with note. Your note: \(comment)"
+                    if !comment.isEmpty {
+                        label += ". Your note: \(comment)"
+                    }
+                } else if let page {
+                    label = "Highlight, \(page): \(quote)"
+                } else {
+                    label = "Highlight: \(quote)"
                 }
-                if let page {
-                    return "Highlight with note, \(page): \(quote). Your note: \(comment)"
+            case .image:
+                label = page.map { "Image highlight, \($0)" } ?? "Image highlight"
+                if !comment.isEmpty {
+                    label += ". Your note: \(comment)"
                 }
-                return "Highlight with note: \(quote). Your note: \(comment)"
+            case .note:
+                label = page.map { "Note, \($0)" } ?? "Note"
+                if !comment.isEmpty {
+                    label += ": \(comment)"
+                }
             }
-            if let page {
-                return "Highlight, \(page): \(quote)"
+
+            if !attachedImages.isEmpty {
+                label += ", \(Self.imageCountPhrase(attachedImages.count, prefix: "attached "))"
             }
-            return "Highlight: \(quote)"
+            if !unresolvedImages.isEmpty {
+                label += ", \(Self.imageCountPhrase(unresolvedImages.count, suffix: " unavailable"))"
+            }
+            return label
+        }
+
+        private var hasCommentText: Bool {
+            guard let comment = annotation.comment?.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ) else {
+                return false
+            }
+            return !comment.isEmpty
+        }
+
+        private static func imageCountPhrase(
+            _ count: Int,
+            prefix: String = "",
+            suffix: String = ""
+        ) -> String {
+            let noun = count == 1 ? "image" : "images"
+            return "\(count) \(prefix)\(noun)\(suffix)"
         }
 
         private var displayedQuote: String {
@@ -424,18 +555,26 @@ public struct RefsInspectorFeed: Equatable, Sendable {
     }
 
     /// The disclosure-row text for hidden entries, or nil when none
-    /// are hidden. Hidden noted highlights add a notes clause; every
-    /// other case reuses `RefsNotesPage.moreText`.
+    /// are hidden. Hidden notes and images add clauses while image-free
+    /// highlights retain the previous strings.
     public func moreText(visible: Int, nextBatch: Int) -> String? {
         let hidden = hiddenCount(visible: visible)
         guard hidden > 0 else {
             return nil
         }
         let noted = hiddenNotedCount(visible: visible)
-        if noted == 0 {
+        let images = hiddenImageCount(visible: visible)
+        if noted == 0 && images == 0 {
             return RefsNotesPage.moreText(hidden: hidden, nextBatch: nextBatch)
         }
-        return "+\(hidden) more · \(Self.notedPhrase(noted)) · "
+        var clauses: [String] = []
+        if noted > 0 {
+            clauses.append(Self.notedPhrase(noted))
+        }
+        if images > 0 {
+            clauses.append(Self.imagePhrase(images))
+        }
+        return "+\(hidden) more · \(clauses.joined(separator: " · ")) · "
             + revealClause(hidden: hidden, nextBatch: nextBatch)
     }
 
@@ -449,10 +588,18 @@ public struct RefsInspectorFeed: Equatable, Sendable {
         let noun = hidden == 1 ? "highlight" : "highlights"
         let lead = "\(hidden) more \(noun)"
         let noted = hiddenNotedCount(visible: visible)
-        if noted == 0 {
+        let images = hiddenImageCount(visible: visible)
+        if noted == 0 && images == 0 {
             return lead
         }
-        return "\(lead), \(Self.notedPhrase(noted))"
+        var clauses: [String] = []
+        if noted > 0 {
+            clauses.append(Self.notedPhrase(noted))
+        }
+        if images > 0 {
+            clauses.append(Self.imagePhrase(images))
+        }
+        return "\(lead), \(clauses.joined(separator: ", "))"
     }
 
     /// VoiceOver announcement after a reveal.
@@ -475,7 +622,17 @@ public struct RefsInspectorFeed: Equatable, Sendable {
 
     private func hiddenNotedCount(visible: Int) -> Int {
         let clamped = min(max(visible, 0), total)
-        return highlights.dropFirst(clamped).filter(\.hasComment).count
+        return entries(visible: total).dropFirst(clamped).filter(\.hasNoteCard).count
+    }
+
+    /// Number of primary image highlights and attached image paths in
+    /// hidden entries. Unresolved paths are excluded because they have
+    /// no image to reveal.
+    public func hiddenImageCount(visible: Int) -> Int {
+        let clamped = min(max(visible, 0), total)
+        return entries(visible: total).dropFirst(clamped).reduce(into: 0) { count, entry in
+            count += (entry.imagePath == nil ? 0 : 1) + entry.attachedImages.count
+        }
     }
 
     private func revealClause(hidden: Int, nextBatch: Int) -> String {
@@ -490,6 +647,10 @@ public struct RefsInspectorFeed: Equatable, Sendable {
 
     private static func notedPhrase(_ count: Int) -> String {
         count == 1 ? "1 with a note" : "\(count) with notes"
+    }
+
+    private static func imagePhrase(_ count: Int) -> String {
+        count == 1 ? "1 image" : "\(count) images"
     }
 }
 

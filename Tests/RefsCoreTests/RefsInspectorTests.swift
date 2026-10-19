@@ -113,6 +113,54 @@ final class RefsInspectorTests: XCTestCase {
         XCTAssertEqual(response.refs.first?.annotations.first?.kind, "note")
     }
 
+    func testShowDecodesImageFieldsLossilyAndCleansPaths() throws {
+        let row = try JSONDecoder().decode(
+            RefsShowRow.self,
+            from: Data(
+                """
+                {"path":"ref/papers/images.md","annotations":[
+                  {"kind":"image","asset":" ref/a.jpg ","images":[" ref/b.png ","  "],"unresolved_images":[" missing.heic "]},
+                  {"kind":"highlight","quote":"No image fields"},
+                  {"kind":"highlight","quote":"Null fields","asset":null,"images":null,"unresolved_images":null},
+                  {"kind":"highlight","quote":"Survives malformed image fields","asset":42,"images":"not-an-array","unresolved_images":[7]}
+                ]}
+                """.utf8
+            )
+        )
+
+        XCTAssertEqual(row.annotations.count, 4)
+        XCTAssertEqual(row.annotations[0].asset, "ref/a.jpg")
+        XCTAssertEqual(row.annotations[0].images, ["ref/b.png"])
+        XCTAssertEqual(row.annotations[0].unresolvedImages, ["missing.heic"])
+        XCTAssertNil(row.annotations[1].asset)
+        XCTAssertEqual(row.annotations[1].images, [])
+        XCTAssertEqual(row.annotations[1].unresolvedImages, [])
+        XCTAssertNil(row.annotations[2].asset)
+        XCTAssertEqual(row.annotations[2].images, [])
+        XCTAssertEqual(row.annotations[2].unresolvedImages, [])
+        XCTAssertEqual(row.annotations[3].quote, "Survives malformed image fields")
+        XCTAssertNil(row.annotations[3].asset)
+        XCTAssertEqual(row.annotations[3].images, [])
+        XCTAssertEqual(row.annotations[3].unresolvedImages, [])
+    }
+
+    func testShowDecodesTheTwoVaultImageShapes() throws {
+        let response = try JSONDecoder().decode(
+            RefsShowResponse.self,
+            from: Data(
+                """
+                {"schema_version":1,"refs":[{"path":"ref/docs/gastown_readme.md","annotations":[{"page_label":"Page 5","kind":"image","quote":null,"comment":null,"asset":"ref/docs/gastown_readme.assets/h-9584a9d023de.jpg","images":[],"unresolved_images":[],"block_id":"h-9584a9d023de"}]},{"path":"ref/blogs/gas_town_emergency_user_manual.md","annotations":[{"page_label":"Page 9","kind":"highlight","quote":"Gas Town crew, Mayor, and Beads Crew tmux sessions","comment":null,"asset":null,"images":["ref/blogs/gas_town_emergency_user_manual.assets/20261019_062455-ec3b885e.png"],"unresolved_images":[],"block_id":"h-36fa970fb80b"}]}]}
+                """.utf8
+            )
+        )
+
+        XCTAssertEqual(response.refs.count, 2)
+        XCTAssertEqual(response.refs[0].annotations.first?.asset,
+                       "ref/docs/gastown_readme.assets/h-9584a9d023de.jpg")
+        XCTAssertEqual(response.refs[1].annotations.first?.images,
+                       ["ref/blogs/gas_town_emergency_user_manual.assets/20261019_062455-ec3b885e.png"])
+    }
+
     func testCommentedHighlightsKeepOnlyCommentedHighlights() throws {
         let row = RefsShowRow(
             path: "ref/chat/x.md",
@@ -163,7 +211,7 @@ final class RefsInspectorTests: XCTestCase {
     // MARK: - Notes paging
 
     func testNotesPageDefaultsAndClampsSize() throws {
-        XCTAssertEqual(RefsNotesPage.defaultSize, 3)
+        XCTAssertEqual(RefsNotesPage.defaultSize, 5)
         XCTAssertEqual(RefsNotesPage(size: 3).size, 3)
         XCTAssertEqual(RefsNotesPage(size: 0).size, 1)
         XCTAssertEqual(RefsNotesPage(size: 1).size, 1)
@@ -344,6 +392,30 @@ final class RefsInspectorTests: XCTestCase {
         )
     }
 
+    func testInspectorEntriesIncludeImageHighlightsAndStandaloneNotes() {
+        let row = RefsShowRow(
+            path: "ref/chat/x.md",
+            annotations: [
+                RefsShowAnnotation(kind: "highlight", quote: "Quote"),
+                RefsShowAnnotation(kind: "highlight", images: ["attached.png"]),
+                RefsShowAnnotation(kind: "image", asset: "crop.jpg"),
+                RefsShowAnnotation(kind: "image", asset: "  "),
+                RefsShowAnnotation(kind: "note", comment: "Standalone"),
+                RefsShowAnnotation(kind: "note", images: ["note.png"]),
+                RefsShowAnnotation(kind: "note", comment: "  "),
+                RefsShowAnnotation(kind: "other", quote: "Ignored"),
+            ]
+        )
+
+        XCTAssertEqual(row.inspectorEntries.map(\.kind), [
+            "highlight", "highlight", "image", "note", "note",
+        ])
+        XCTAssertEqual(row.inspectorHighlights.map(\.quote), ["Quote"])
+        XCTAssertEqual(row.inspectorEntries[3].comment, "Standalone")
+        XCTAssertEqual(row.inspectorEntries[4].images, ["note.png"])
+        XCTAssertEqual(row.commentedHighlights, [])
+    }
+
     func testFeedPageRunsOverOneStream() {
         let feed = RefsInspectorFeed(highlights: [
             highlight(page: "P1", comment: "Noted"),
@@ -433,6 +505,37 @@ final class RefsInspectorTests: XCTestCase {
         )
     }
 
+    func testFeedImageCountsAppearOnlyForHiddenResolvableImages() {
+        let feed = RefsInspectorFeed(highlights: [
+            highlight(page: "1"),
+            RefsShowAnnotation(
+                pageLabel: "2",
+                kind: "image",
+                comment: "A note.",
+                asset: "crop.jpg",
+                images: ["attached.png"],
+                unresolvedImages: ["missing.heic"]
+            ),
+            RefsShowAnnotation(kind: "note", images: ["note-image.png"]),
+        ])
+
+        XCTAssertEqual(feed.hiddenImageCount(visible: 1), 3)
+        XCTAssertEqual(feed.hiddenImageCount(visible: 2), 1)
+        XCTAssertEqual(feed.hiddenImageCount(visible: 3), 0)
+        XCTAssertEqual(
+            feed.moreText(visible: 1, nextBatch: 2),
+            "+2 more · 2 with notes · 3 images · ⌃D shows the rest"
+        )
+        XCTAssertEqual(
+            feed.hiddenAccessibilityLabel(visible: 1),
+            "2 more highlights, 2 with notes, 3 images"
+        )
+        XCTAssertEqual(
+            feed.moreText(visible: 2, nextBatch: 1),
+            "+1 more · 1 with a note · 1 image · ⌃D shows it"
+        )
+    }
+
     func testEntryAccessibilityLabelShapes() {
         XCTAssertEqual(
             entry(page: "3", quote: "The quote").accessibilityLabel,
@@ -465,6 +568,63 @@ final class RefsInspectorTests: XCTestCase {
         XCTAssertEqual(
             entry(page: "2", quote: "The quote", comment: "  Keep this.  ").accessibilityLabel,
             "Highlight with note, Page 2: The quote. Your note: Keep this."
+        )
+    }
+
+    func testFeedEntryKindsNoteCardsAndImageAccessibility() {
+        let feed = RefsInspectorFeed(highlights: [
+            RefsShowAnnotation(
+                pageLabel: "5",
+                kind: "image",
+                comment: "Figure note.",
+                asset: "crop.jpg",
+                images: ["attached.png"],
+                unresolvedImages: ["missing.heic"]
+            ),
+            RefsShowAnnotation(
+                pageLabel: "6",
+                kind: "highlight",
+                quote: "Quoted text",
+                images: ["attached-1.png", "attached-2.png"]
+            ),
+            RefsShowAnnotation(
+                pageLabel: "7",
+                kind: "note",
+                comment: "Standalone note."
+            ),
+        ])
+        let entries = feed.entries(visible: 3)
+
+        XCTAssertEqual(entries.map(\.kind), [.image, .highlight, .note])
+        XCTAssertEqual(entries[0].imagePath, "crop.jpg")
+        XCTAssertEqual(entries[0].attachedImages, ["attached.png"])
+        XCTAssertEqual(entries[0].unresolvedImages, ["missing.heic"])
+        XCTAssertEqual(entries.map(\.hasNoteCard), [true, true, true])
+        XCTAssertEqual(entries.map(\.hasNote), [true, true, true])
+        XCTAssertEqual(feed.notedCount, 3)
+        XCTAssertEqual(
+            entries[0].accessibilityLabel,
+            "Image highlight, Page 5. Your note: Figure note., 1 attached image, 1 image unavailable"
+        )
+        XCTAssertEqual(
+            entries[1].accessibilityLabel,
+            "Highlight with note, Page 6: Quoted text, 2 attached images"
+        )
+        XCTAssertEqual(
+            entries[2].accessibilityLabel,
+            "Note, Page 7: Standalone note."
+        )
+
+        let blankNote = RefsInspectorFeed(highlights: [
+            RefsShowAnnotation(
+                kind: "note",
+                images: ["attached.png"],
+                unresolvedImages: ["no.png"]
+            ),
+        ]).entries(visible: 1)[0]
+        XCTAssertEqual(
+            blankNote.accessibilityLabel,
+            "Note, 1 attached image, 1 image unavailable"
         )
     }
 

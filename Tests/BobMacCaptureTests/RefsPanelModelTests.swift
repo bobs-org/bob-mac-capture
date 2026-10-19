@@ -2225,7 +2225,7 @@ final class RefsPanelModelTests: XCTestCase {
       refreshState: .idle,
       inspector: [
         items[0].id: RefsInspectorContent(
-          highlights: Self.eightNotes()
+          highlights: Self.thirteenNotes()
         )
       ]
     )
@@ -2238,15 +2238,15 @@ final class RefsPanelModelTests: XCTestCase {
     let firstReveal = try XCTUnwrap(received.first)
     XCTAssertEqual(firstReveal.id, items[0].id)
     XCTAssertEqual(firstReveal.generation, 1)
-    XCTAssertEqual(firstReveal.range, 3..<6)
+    XCTAssertEqual(firstReveal.range, 5..<10)
     XCTAssertEqual(
-      harness.model.inspectorNotesPage(for: items[0].id).visibleCount(total: 8),
-      6
+      harness.model.inspectorNotesPage(for: items[0].id).visibleCount(total: 13),
+      10
     )
     XCTAssertTrue(harness.model.revealMoreInspectorNotes())
     XCTAssertEqual(received.count, 2)
     let secondReveal = try XCTUnwrap(received.dropFirst().first)
-    XCTAssertEqual(secondReveal.range, 6..<8)
+    XCTAssertEqual(secondReveal.range, 10..<13)
     XCTAssertEqual(secondReveal.generation, 2)
     XCTAssertFalse(harness.model.revealMoreInspectorNotes())
     _ = cancellable
@@ -2282,7 +2282,7 @@ final class RefsPanelModelTests: XCTestCase {
     )
     XCTAssertEqual(
       harness.model.inspectorNotesPage(for: items[0].id).visibleCount(total: 8),
-      3
+      5
     )
     XCTAssertTrue(harness.model.perform(.move(.previous)))
     XCTAssertEqual(harness.model.selectedID, items[0].id)
@@ -2322,8 +2322,7 @@ final class RefsPanelModelTests: XCTestCase {
         )
       ]
     )
-    // installForPreviews keeps the explicitly set page size: a fresh
-    // page shows 5, not the default 3.
+    // installForPreviews keeps the explicitly set page size.
     XCTAssertEqual(
       harness.model.inspectorNotesPage(for: items[0].id).visibleCount(total: 8),
       5
@@ -2627,6 +2626,17 @@ final class RefsPanelModelTests: XCTestCase {
 
   private static func eightNotes() -> [RefsShowAnnotation] {
     (1...8).map { index in
+      RefsShowAnnotation(
+        pageLabel: "\(index)",
+        kind: "highlight",
+        quote: "Quote \(index)",
+        comment: "Comment \(index)"
+      )
+    }
+  }
+
+  private static func thirteenNotes() -> [RefsShowAnnotation] {
+    (1...13).map { index in
       RefsShowAnnotation(
         pageLabel: "\(index)",
         kind: "highlight",

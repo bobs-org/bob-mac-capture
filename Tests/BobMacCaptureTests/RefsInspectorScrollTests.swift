@@ -358,11 +358,11 @@ final class RefsInspectorScrollTests: XCTestCase {
       harness.model.inspectorNotesPage(for: selected).visibleCount(
         total: 8
       ),
-      3
+      5
     )
   }
 
-  func testHostedNotesAtBottomRevealPages() {
+  func testHostedNotesAtBottomRevealsTheRemainingEntries() {
     let harness = makeHostedHarness(width: 880, highlights: Self.eightNotes())
     defer { harness.panel.orderOut(nil) }
     settle(harness.panel)
@@ -379,7 +379,7 @@ final class RefsInspectorScrollTests: XCTestCase {
     )
     XCTAssertEqual(
       harness.model.inspectorNotesPage(for: selected).visibleCount(total: 8),
-      6
+      8
     )
     XCTAssertEqual(
       harness.model.inspectorNotesPage(for: selected).generation,
@@ -389,19 +389,6 @@ final class RefsInspectorScrollTests: XCTestCase {
     let newBottom = inspectorOffset(in: harness.panel)
     waitForInspectorSettled(in: harness.panel, around: newBottom, tolerance: 2)
 
-    XCTAssertNil(
-      harness.controller.processKeyEvent(
-        keyEvent(keyCode: Self.dKey, modifiers: .control, characters: "d")
-      )
-    )
-    XCTAssertEqual(
-      harness.model.inspectorNotesPage(for: selected).visibleCount(total: 8),
-      8
-    )
-    XCTAssertEqual(
-      harness.model.inspectorNotesPage(for: selected).generation,
-      2
-    )
     XCTAssertEqual(harness.model.selectedID, selected)
     XCTAssertEqual(harness.model.query, query)
     XCTAssertTrue(tryUnwrapFilter(harness.panel).holdsFirstResponder)
@@ -441,7 +428,7 @@ final class RefsInspectorScrollTests: XCTestCase {
   }
 
   func testHostedTwoRapidRevealsStackTwoPages() {
-    let harness = makeHostedHarness(width: 880, highlights: Self.eightNotes())
+    let harness = makeHostedHarness(width: 880, highlights: Self.thirteenNotes())
     defer { harness.panel.orderOut(nil) }
     settle(harness.panel)
     focusSearch(harness)
@@ -459,8 +446,8 @@ final class RefsInspectorScrollTests: XCTestCase {
       )
     )
     XCTAssertEqual(
-      harness.model.inspectorNotesPage(for: selected).visibleCount(total: 8),
-      8
+      harness.model.inspectorNotesPage(for: selected).visibleCount(total: 13),
+      13
     )
     XCTAssertEqual(
       harness.model.inspectorNotesPage(for: selected).generation,
@@ -759,6 +746,17 @@ final class RefsInspectorScrollTests: XCTestCase {
 
   private static func eightNotes() -> [RefsShowAnnotation] {
     (1...8).map { index in
+      RefsShowAnnotation(
+        pageLabel: "\(index)",
+        kind: "highlight",
+        quote: "Quote \(index)",
+        comment: "Comment \(index)"
+      )
+    }
+  }
+
+  private static func thirteenNotes() -> [RefsShowAnnotation] {
+    (1...13).map { index in
       RefsShowAnnotation(
         pageLabel: "\(index)",
         kind: "highlight",

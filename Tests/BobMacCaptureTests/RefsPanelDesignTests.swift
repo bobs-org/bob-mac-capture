@@ -733,7 +733,7 @@ final class RefsPanelDesignTests: XCTestCase {
             bullets: ["Retrieval quality beats index size here."]
           ),
           outline: ["Review question", "Evidence"],
-          highlights: (1...8).map { index in
+          highlights: (1...13).map { index in
             RefsShowAnnotation(
               pageLabel: "\(index)",
               kind: "highlight",
@@ -750,13 +750,13 @@ final class RefsPanelDesignTests: XCTestCase {
     XCTAssertTrue(model.revealMoreInspectorNotes())
     let page = model.inspectorNotesPage(for: id)
     let content = try XCTUnwrap(model.inspectorContent(for: id))
-    XCTAssertEqual(page.visibleCount(total: 8), 6)
+    XCTAssertEqual(page.visibleCount(total: 13), 10)
     XCTAssertEqual(
       content.feed.moreText(
         visible: page.visibleCount(total: content.feed.total),
         nextBatch: page.nextBatchCount(total: content.feed.total)
       ),
-      "+2 more · 2 with notes · ⌃D shows the rest"
+      "+3 more · 3 with notes · ⌃D shows the rest"
     )
     try write(model: model, name: "refs-inspector-notes-revealed-880", width: 880)
   }
@@ -919,7 +919,7 @@ final class RefsPanelDesignTests: XCTestCase {
     try write(model: model, name: "refs-inspector-highlights-880", width: 880)
   }
 
-  /// The same seven-highlight article after one reveal: the same-page
+  /// The same eleven-highlight article after one reveal: the same-page
   /// run, the second card, and `+1 more · ⌃D shows it`.
   private func renderInspectorHighlightsRevealed(
     model: RefsPanelModel,
@@ -965,6 +965,26 @@ final class RefsPanelDesignTests: XCTestCase {
         pageLabel: "Page 7",
         kind: "highlight",
         quote: "Seventh highlight closes the stack."
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 8",
+        kind: "highlight",
+        quote: "Eighth highlight follows the same-page run."
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 9",
+        kind: "highlight",
+        quote: "Ninth highlight adds another page."
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 10",
+        kind: "highlight",
+        quote: "Tenth highlight is visible after one reveal."
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 11",
+        kind: "highlight",
+        quote: "Eleventh highlight remains hidden."
       ),
     ]
     model.installForPreviews(

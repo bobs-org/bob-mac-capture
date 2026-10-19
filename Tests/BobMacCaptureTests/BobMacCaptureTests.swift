@@ -4050,7 +4050,7 @@ final class BobMacCaptureTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
 
         let settings = AppSettings(defaults: defaults)
-        XCTAssertEqual(settings.refsInspectorNotesPageSize, 3)
+        XCTAssertEqual(settings.refsInspectorNotesPageSize, 5)
 
         settings.refsInspectorNotesPageSize = 5
         XCTAssertEqual(defaults.integer(forKey: "refsInspectorNotesPageSize"), 5)
@@ -4065,7 +4065,7 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertEqual(defaults.integer(forKey: "refsInspectorNotesPageSize"), 1)
 
         defaults.set("not an integer", forKey: "refsInspectorNotesPageSize")
-        XCTAssertEqual(AppSettings(defaults: defaults).refsInspectorNotesPageSize, 3)
+        XCTAssertEqual(AppSettings(defaults: defaults).refsInspectorNotesPageSize, 5)
         defaults.removePersistentDomain(forName: suiteName)
     }
 
