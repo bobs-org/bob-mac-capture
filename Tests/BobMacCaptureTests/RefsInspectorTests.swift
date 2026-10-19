@@ -437,18 +437,85 @@ final class RefsInspectorLoaderTests: XCTestCase {
     }
     XCTAssertEqual(try permissions(of: root), 0o700)
     XCTAssertEqual(
-      try permissions(of: root.appendingPathComponent("thumbs")), 0o700
+      try permissions(of: root.appendingPathComponent("thumbs-v2")), 0o700
     )
     XCTAssertEqual(
-      try permissions(of: root.appendingPathComponent("intrinsics.json")),
+      try permissions(of: root.appendingPathComponent("intrinsics-v2.json")),
       0o600
     )
     let thumbs = try FileManager.default.contentsOfDirectory(
-      at: root.appendingPathComponent("thumbs"),
+      at: root.appendingPathComponent("thumbs-v2"),
       includingPropertiesForKeys: nil
     )
     XCTAssertEqual(thumbs.count, 1)
     XCTAssertEqual(try permissions(of: XCTUnwrap(thumbs.first)), 0o600)
+  }
+
+  func testThumbnailSizeMatchesWideLayout() {
+    // Both inspector layouts draw from the one 300 x 388 px image
+    // (150 x 194 pt at 2x); compact downsamples it to 112 x 145.
+    XCTAssertEqual(
+      RefsPDFIntrinsicsLoader.thumbnailSize,
+      CGSize(width: 300, height: 388)
+    )
+  }
+
+  func testIntrinsicsRemovesLegacyCacheOnSetup() async throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    // Pre-seed the legacy v1 files: stale 224 x 290 thumbnails are
+    // never upscaled, so the first v2 setup removes them.
+    try FileManager.default.createDirectory(
+      at: root.appendingPathComponent("thumbs"),
+      withIntermediateDirectories: true
+    )
+    FileManager.default.createFile(
+      atPath: root.appendingPathComponent("thumbs/old.png").path,
+      contents: Data("fake".utf8)
+    )
+    FileManager.default.createFile(
+      atPath: root.appendingPathComponent("intrinsics.json").path,
+      contents: Data("{}".utf8)
+    )
+    let loader = await RefsPDFIntrinsicsLoader(
+      cacheDirectory: root,
+      reader: { @Sendable _ in
+        RefsPDFIntrinsics(
+          pageCount: 5,
+          thumbnailPNG: Data([0x89, 0x50, 0x4E, 0x47])
+        )
+      }
+    )
+    try FileManager.default.createDirectory(
+      at: root, withIntermediateDirectories: true
+    )
+    let pdf = root.appendingPathComponent("note.pdf")
+    FileManager.default.createFile(
+      atPath: pdf.path, contents: Data("fake".utf8)
+    )
+    let loaded = await loader.intrinsics(for: pdf, id: "legacy-check")
+    XCTAssertEqual(loaded.pageCount, 5)
+
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: root.appendingPathComponent("intrinsics.json").path
+      )
+    )
+    XCTAssertFalse(
+      FileManager.default.fileExists(
+        atPath: root.appendingPathComponent("thumbs").path
+      )
+    )
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: root.appendingPathComponent("intrinsics-v2.json").path
+      )
+    )
+    XCTAssertTrue(
+      FileManager.default.fileExists(
+        atPath: root.appendingPathComponent("thumbs-v2").path
+      )
+    )
   }
 
   func testIntrinsicsDiscardDropsInFlightAndAllowsFutureLoads() async throws {

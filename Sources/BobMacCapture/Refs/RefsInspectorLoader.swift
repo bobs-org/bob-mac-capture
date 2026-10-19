@@ -86,12 +86,12 @@ private final class TimeoutRace: @unchecked Sendable {
 
 /// Reads PDF intrinsics with PDFKit: the page count, the outline (top
 /// level, descending once when the root has a single child with
-/// children), a page-1 thumbnail at 2x for 112 x 145 pt using the
+/// children), a page-1 thumbnail at 2x for 150 x 194 pt using the
 /// crop box, lead text from up to 3 pages, and a word estimate from up
 /// to 5 pages scaled by the page count. Results cache by
 /// (path, fileSize, mtime) in memory (LRU of 64) and on disk
-/// (`intrinsics.json` capped at 1000 entries plus a
-/// `thumbs/<sha256>.png` per thumbnail), all mode 0600 in 0700
+/// (`intrinsics-v2.json` capped at 1000 entries plus a
+/// `thumbs-v2/<sha256>.png` per thumbnail), all mode 0600 in 0700
 /// directories like the other Refs stores. A locked document reports
 /// encrypted; a load over 3 s reports failed without waiting for the
 /// abandoned read, which finishes off the actor. Failures never
@@ -105,8 +105,15 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
     public static let memoryCapacity = 64
     /// Disk entry capacity.
     public static let diskCapacity = 1_000
-    /// Thumbnail size: 112 x 145 pt at 2x.
-    public static let thumbnailSize = CGSize(width: 224, height: 290)
+    /// Thumbnail size: 150 x 194 pt at 2x. Both inspector layouts
+    /// draw from this one image (compact downsamples it to 112 x 145).
+    public static let thumbnailSize = CGSize(width: 300, height: 388)
+    /// Disk cache version: stale 224 x 290 thumbnails are never
+    /// upscaled, so v2 writes beside new names and removes the
+    /// legacy files on setup.
+    public static let diskFileName = "intrinsics-v2.json"
+    /// Disk thumbnail directory, like `diskFileName`.
+    public static let thumbsDirectoryName = "thumbs-v2"
 
     private struct Key: Hashable, Sendable {
         var path: String
@@ -325,11 +332,11 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
     // MARK: - Disk cache
 
     private func diskFile() -> URL {
-        cacheDirectory.appendingPathComponent("intrinsics.json")
+        cacheDirectory.appendingPathComponent(Self.diskFileName)
     }
 
     private func thumbFile(sha: String) -> URL {
-        cacheDirectory.appendingPathComponent("thumbs/\(sha).png")
+        cacheDirectory.appendingPathComponent("\(Self.thumbsDirectoryName)/\(sha).png")
     }
 
     private func thumbSHA(key: Key) -> String {
@@ -363,10 +370,13 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
         )
     }
 
-    /// The cache directory and its `thumbs` child, both mode 0700
-    /// like the other Refs stores. Best effort.
+    /// The cache directory and its `thumbs-v2` child, both mode
+    /// 0700 like the other Refs stores, plus removal of the legacy
+    /// v1 files (`intrinsics.json`, `thumbs/`) so stale 224 x 290
+    /// thumbnails are never upscaled. Best effort, and only ever
+    /// inside this cache directory.
     private func ensureCacheDirectories() {
-        for directory in [cacheDirectory, cacheDirectory.appendingPathComponent("thumbs")] {
+        for directory in [cacheDirectory, cacheDirectory.appendingPathComponent(Self.thumbsDirectoryName)] {
             try? FileManager.default.createDirectory(
                 at: directory,
                 withIntermediateDirectories: true,
@@ -377,6 +387,12 @@ public actor RefsPDFIntrinsicsLoader: RefsPDFIntrinsicsProviding {
                 ofItemAtPath: directory.path
             )
         }
+        try? FileManager.default.removeItem(
+            at: cacheDirectory.appendingPathComponent("intrinsics.json")
+        )
+        try? FileManager.default.removeItem(
+            at: cacheDirectory.appendingPathComponent("thumbs")
+        )
     }
 
     /// Locks a cache file to mode 0600. Best effort.

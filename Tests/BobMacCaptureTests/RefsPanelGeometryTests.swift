@@ -48,7 +48,7 @@ final class RefsPanelGeometryTests: XCTestCase {
         let visible = NSRect(x: 0, y: 0, width: 1280, height: 800)
         XCTAssertEqual(
             RefsVisualTokens.panelSize(for: visible),
-            NSSize(width: 880, height: 560)
+            NSSize(width: 1184, height: 728)
         )
     }
 
@@ -56,7 +56,7 @@ final class RefsPanelGeometryTests: XCTestCase {
         let visible = NSRect(x: 0, y: 0, width: 700, height: 500)
         XCTAssertEqual(
             RefsVisualTokens.panelSize(for: visible),
-            NSSize(width: 620, height: 420)
+            NSSize(width: 604, height: 428)
         )
     }
 
@@ -69,24 +69,36 @@ final class RefsPanelGeometryTests: XCTestCase {
 
     func testListColumnWidth() {
         XCTAssertEqual(RefsVisualTokens.listWidth(panelWidth: 880), 458)
+        // The list column caps at 560 on reading-room widths.
+        XCTAssertEqual(RefsVisualTokens.listWidth(panelWidth: 1344), 560)
     }
 
-    func testTopEdgePosition() {
-        // A 1512 × 944 visible frame: the top edge sits 16% of the
-        // height below the top, centered horizontally.
+    func testReadingRoomFrameOnMacBook() {
+        // Bryan's MacBook (1440 × 870 at 0,0): 48 pt side margins,
+        // 36 pt top and bottom.
+        let visible = NSRect(x: 0, y: 0, width: 1440, height: 870)
+        XCTAssertEqual(
+            RefsVisualTokens.panelFrame(for: visible),
+            NSRect(x: 48, y: 36, width: 1344, height: 798)
+        )
+    }
+
+    func testCenteredPosition() {
+        // A 1512 × 944 visible frame: the reading-room size,
+        // centered on both axes.
         let visible = NSRect(x: 0, y: 0, width: 1512, height: 944)
         let frame = RefsVisualTokens.panelFrame(for: visible)
-        XCTAssertEqual(frame.width, 880)
-        XCTAssertEqual(frame.height, 560)
-        XCTAssertEqual(frame.minX, 316)
-        XCTAssertEqual(frame.maxY, 944 - round(944 * 0.16))
+        XCTAssertEqual(frame.width, 1416)
+        XCTAssertEqual(frame.height, 872)
+        XCTAssertEqual(frame.minX, 48)
+        XCTAssertEqual(frame.minY, 36)
     }
 
     func testFrameClampsInsideSmallVisibleFrame() {
         let visible = NSRect(x: 0, y: 0, width: 700, height: 500)
         let frame = RefsVisualTokens.panelFrame(for: visible)
-        XCTAssertEqual(frame.width, 620)
-        XCTAssertEqual(frame.height, 420)
+        XCTAssertEqual(frame.width, 604)
+        XCTAssertEqual(frame.height, 428)
         XCTAssertGreaterThanOrEqual(frame.minX, visible.minX)
         XCTAssertGreaterThanOrEqual(frame.minY, visible.minY)
         XCTAssertLessThanOrEqual(frame.maxX, visible.maxX)

@@ -245,8 +245,43 @@ final class RefsInspectorScrollTests: XCTestCase {
       ))
   }
 
+  func testContainsRow() {
+    let geometry = RefsInspectorScrollGeometry(
+      offsetY: 100,
+      contentHeight: 1400,
+      viewportHeight: 400,
+      topInset: 0,
+      bottomInset: 0
+    )
+    // Fully inside, including the exact edges.
+    XCTAssertTrue(geometry.containsRow(top: 120, bottom: 140))
+    XCTAssertTrue(geometry.containsRow(top: 100, bottom: 500))
+    // Partially visible is not contained.
+    XCTAssertFalse(geometry.containsRow(top: 80, bottom: 120))
+    XCTAssertFalse(geometry.containsRow(top: 480, bottom: 520))
+    // Fully outside.
+    XCTAssertFalse(geometry.containsRow(top: 0, bottom: 50))
+    XCTAssertFalse(geometry.containsRow(top: 600, bottom: 700))
+    // Tolerance admits a row one point proud of the viewport.
+    XCTAssertTrue(geometry.containsRow(top: 99, bottom: 501))
+    XCTAssertFalse(
+      geometry.containsRow(top: 99, bottom: 501, tolerance: 0)
+    )
+    XCTAssertFalse(
+      geometry.containsRow(top: 98, bottom: 140)
+    )
+    // Invalid geometry never contains.
+    XCTAssertFalse(
+      RefsInspectorScrollGeometry.invalid.containsRow(top: 0, bottom: 10)
+    )
+    // Non-finite inputs never contain.
+    XCTAssertFalse(
+      geometry.containsRow(top: .infinity, bottom: 140)
+    )
+  }
+
   func testHostedControlDUScrollsInspectorWhileSearchKeepsFocus() {
-    let harness = makeHostedHarness(width: 880)
+    let harness = makeHostedHarness()
     defer { harness.panel.orderOut(nil) }
     settle(harness.panel)
     focusSearch(harness)
@@ -287,7 +322,7 @@ final class RefsInspectorScrollTests: XCTestCase {
   }
 
   func testHostedControlDConsumesAtBoundaryAndWhenInspectorHidden() {
-    let wide = makeHostedHarness(width: 880)
+    let wide = makeHostedHarness(width: 880, height: 560)
     defer { wide.panel.orderOut(nil) }
     settle(wide.panel)
     focusSearch(wide)
@@ -326,7 +361,7 @@ final class RefsInspectorScrollTests: XCTestCase {
   }
 
   func testHostedHandleKeyDownPassesThroughWhenPanelIsNotKey() {
-    let harness = makeHostedHarness(width: 880)
+    let harness = makeHostedHarness()
     defer { harness.panel.orderOut(nil) }
     let event = keyEvent(
       keyCode: Self.dKey,
@@ -338,7 +373,7 @@ final class RefsInspectorScrollTests: XCTestCase {
   }
 
   func testHostedNotesAboveBottomScrollsHalfPageAndRevealsNothing() {
-    let harness = makeHostedHarness(width: 880, highlights: Self.eightNotes())
+    let harness = makeHostedHarness(highlights: Self.eightNotes())
     defer { harness.panel.orderOut(nil) }
     settle(harness.panel)
     focusSearch(harness)
@@ -362,8 +397,44 @@ final class RefsInspectorScrollTests: XCTestCase {
     )
   }
 
+  func testHostedDisclosureVisibleAboveBottomReveals() {
+    let harness = makeHostedHarness(highlights: Self.eightNotes())
+    defer { harness.panel.orderOut(nil) }
+    settle(harness.panel)
+    focusSearch(harness)
+    let selected = tryUnwrapSelected(harness)
+    XCTAssertEqual(harness.model.inspectorNotesPage(for: selected).generation, 0)
+    // Rest just above the bottom: the footer below the disclosure
+    // row keeps the offset off the bottom while the row stays
+    // fully on screen.
+    scrollInspectorAboveBottom(in: harness.panel, by: 8)
+    let measured = tryUnwrapMeasured(harness.panel)
+    XCTAssertLessThan(
+      measured.geometry.offsetY, measured.geometry.maxOffset - 1)
+    XCTAssertTrue(
+      RefsPanelController.isDisclosureRowFullyVisible(
+        measured: measured,
+        in: harness.panel.contentView
+      ))
+
+    XCTAssertNil(
+      harness.controller.processKeyEvent(
+        keyEvent(keyCode: Self.dKey, modifiers: .control, characters: "d")
+      )
+    )
+    XCTAssertEqual(
+      harness.model.inspectorNotesPage(for: selected).visibleCount(total: 8),
+      8
+    )
+    XCTAssertEqual(
+      harness.model.inspectorNotesPage(for: selected).generation,
+      1
+    )
+    XCTAssertTrue(tryUnwrapFilter(harness.panel).holdsFirstResponder)
+  }
+
   func testHostedNotesAtBottomRevealsTheRemainingEntries() {
-    let harness = makeHostedHarness(width: 880, highlights: Self.eightNotes())
+    let harness = makeHostedHarness(highlights: Self.eightNotes())
     defer { harness.panel.orderOut(nil) }
     settle(harness.panel)
     focusSearch(harness)
@@ -396,7 +467,6 @@ final class RefsInspectorScrollTests: XCTestCase {
 
   func testHostedShortContentRevealsWithNoOffsetChange() throws {
     let harness = makeHostedHarness(
-      width: 880,
       highlights: Self.eightNotes(),
       shortContent: true,
       notesPageSize: 1
@@ -428,7 +498,7 @@ final class RefsInspectorScrollTests: XCTestCase {
   }
 
   func testHostedTwoRapidRevealsStackTwoPages() {
-    let harness = makeHostedHarness(width: 880, highlights: Self.thirteenNotes())
+    let harness = makeHostedHarness(highlights: Self.thirteenNotes())
     defer { harness.panel.orderOut(nil) }
     settle(harness.panel)
     focusSearch(harness)
@@ -464,7 +534,8 @@ final class RefsInspectorScrollTests: XCTestCase {
   }
 
   private func makeHostedHarness(
-    width: CGFloat,
+    width: CGFloat = 1344,
+    height: CGFloat = 798,
     highlights: [RefsShowAnnotation]? = nil,
     shortContent: Bool = false,
     notesPageSize: Int? = nil
@@ -556,7 +627,7 @@ final class RefsInspectorScrollTests: XCTestCase {
     let controller = RefsPanelController(model: model)
     let panel = controller.makePanelIfNeeded()
     panel.setFrame(
-      NSRect(x: 80, y: 80, width: width, height: 560),
+      NSRect(x: 80, y: 80, width: width, height: height),
       display: true
     )
     panel.orderFrontRegardless()
@@ -692,6 +763,67 @@ final class RefsInspectorScrollTests: XCTestCase {
     scroll.reflectScrolledClipView(clip)
     panel.contentView?.layoutSubtreeIfNeeded()
     RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+  }
+
+  /// Pins the inspector `delta` points above the bottom, so the
+  /// disclosure row can sit fully on screen while the offset is
+  /// off the bottom.
+  private func scrollInspectorAboveBottom(in panel: RefsPanel, by delta: CGFloat) {
+    guard let scroll = inspectorScroll(in: panel),
+      let documentView = scroll.documentView
+    else {
+      XCTFail("no inspector scroll view to pin above the bottom")
+      return
+    }
+    let clip = scroll.contentView
+    let content = documentView.frame.height
+    let viewport = clip.bounds.height
+    let flipped = documentView.isFlipped
+    let maxOffset = max(content - viewport + clip.contentInsets.bottom, -clip.contentInsets.top)
+    let target = max(maxOffset - delta, -clip.contentInsets.top)
+    let y = flipped ? target : content - viewport - target
+    clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
+    scroll.reflectScrolledClipView(clip)
+    panel.contentView?.layoutSubtreeIfNeeded()
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+  }
+
+  /// The live inspector scroll measurement, mirroring the
+  /// controller's own, for disclosure-visibility assertions.
+  private func tryUnwrapMeasured(
+    _ panel: RefsPanel
+  ) -> (
+    scrollView: NSScrollView,
+    geometry: RefsInspectorScrollGeometry,
+    flipped: Bool
+  ) {
+    guard let scroll = inspectorScroll(in: panel),
+      let documentView = scroll.documentView
+    else {
+      XCTFail("no inspector scroll view to measure")
+      return (
+        scrollView: NSScrollView(),
+        geometry: .invalid,
+        flipped: true
+      )
+    }
+    let clip = scroll.contentView
+    let content = documentView.frame.height
+    let viewport = clip.bounds.height
+    let flipped = documentView.isFlipped
+    let offset = flipped
+      ? clip.bounds.origin.y : content - viewport - clip.bounds.origin.y
+    return (
+      scrollView: scroll,
+      geometry: RefsInspectorScrollGeometry(
+        offsetY: offset,
+        contentHeight: content,
+        viewportHeight: viewport,
+        topInset: clip.contentInsets.top,
+        bottomInset: clip.contentInsets.bottom
+      ),
+      flipped: flipped
+    )
   }
 
   private func settleShort(_ panel: RefsPanel) {

@@ -13,25 +13,18 @@ import SwiftUI
 enum RefsVisualTokens {
   // MARK: - Window
 
-  /// Fixed panel width in points, clamped to the screen.
+  /// Compact reference size in points. The live panel no longer uses
+  /// a fixed size (see `panelSize(for:)`); 880 keeps its meaning as
+  /// the compact reference the fixtures and list-only math use.
   static let panelWidth: CGFloat = 880
-  /// Fixed panel height in points, clamped to the screen.
+  /// Compact reference height, like `panelWidth`.
   static let panelHeight: CGFloat = 560
-  /// Margin kept around the panel on every side.
-  static let screenMargin: CGFloat = 80
-  /// Fraction of the visible height left above the panel's top edge.
-  static let topFraction: CGFloat = 0.16
   /// Glass corner radius.
   static let glassRadius: CGFloat = 20
   /// Outer padding between the glass and the content well.
   static let outerPadding: CGFloat = 8
   /// Content-well radius, concentric with the glass.
   static let wellRadius: CGFloat = 12
-
-  /// Width at and above which the inspector column shows.
-  static let inspectorThreshold: CGFloat = 760
-  /// Fraction of the panel width the list column takes.
-  static let listFraction: CGFloat = 0.52
 
   // MARK: - Pieces
 
@@ -47,6 +40,21 @@ enum RefsVisualTokens {
   static let thumbnailWidth: CGFloat = 112
   static let thumbnailHeight: CGFloat = 145
   static let thumbnailRadius: CGFloat = 6
+  /// Wide-layout thumbnail in points (US-letter ratio, like the
+  /// compact size); the loader renders one 300 x 388 px image and
+  /// both layouts draw from it.
+  static let wideThumbnailWidth: CGFloat = 150
+  static let wideThumbnailHeight: CGFloat = 194
+  /// Wide-layout section spacing.
+  static let wideInspectorSpacing: CGFloat = 18
+  /// Wide-layout spacing between HIGHLIGHTS entries.
+  static let wideInspectorEntrySpacing: CGFloat = 12
+  /// Wide-layout title line limit.
+  static let wideInspectorTitleLineLimit = 3
+  /// Wide-layout quote line limit.
+  static let wideInspectorQuoteLineLimit = 6
+  /// Wide-layout quote line spacing.
+  static let wideInspectorQuoteLineSpacing: CGFloat = 3
   static let kindTileSize: CGFloat = 28
   static let kindTileRadius: CGFloat = 7
   static let factLabelWidth: CGFloat = 84
@@ -100,35 +108,28 @@ enum RefsVisualTokens {
 
   // MARK: - Geometry
 
-  /// The clamped panel size for a visible frame.
+  /// The reading-room panel size for a visible frame. Delegates to
+  /// `RefsPanelGeometry` so the controller, the views, and the pure
+  /// geometry tests share one contract.
   static func panelSize(for visibleFrame: NSRect) -> NSSize {
-    NSSize(
-      width: min(panelWidth, visibleFrame.width - screenMargin),
-      height: min(panelHeight, visibleFrame.height - screenMargin)
-    )
+    let size = RefsPanelGeometry.panelSize(visible: visibleFrame)
+    return NSSize(width: size.width, height: size.height)
   }
 
   /// Whether the inspector column shows at a panel width.
   static func showsInspector(width: CGFloat) -> Bool {
-    width >= inspectorThreshold
+    RefsPanelGeometry.showsInspector(panelWidth: width)
   }
 
   /// The list column width for a panel width.
   static func listWidth(panelWidth: CGFloat) -> CGFloat {
-    round(panelWidth * listFraction)
+    RefsPanelGeometry.listWidth(panelWidth: panelWidth)
   }
 
-  /// The panel frame for a visible frame: centered horizontally, the
-  /// top edge below the top of the screen by `topFraction` of its
-  /// height, then clamped inside the visible frame. Recomputed on
-  /// every show.
+  /// The panel frame for a visible frame: the reading-room size,
+  /// centered on both axes. Recomputed on every show.
   static func panelFrame(for visibleFrame: NSRect) -> NSRect {
-    let size = panelSize(for: visibleFrame)
-    let x = visibleFrame.minX + (visibleFrame.width - size.width) / 2
-    var y = visibleFrame.maxY - round(visibleFrame.height * topFraction)
-    y -= size.height
-    y = min(max(y, visibleFrame.minY), visibleFrame.maxY - size.height)
-    return NSRect(origin: NSPoint(x: x, y: y), size: size)
+    RefsPanelGeometry.panelFrame(visible: visibleFrame)
   }
 
   // MARK: - Kind and state

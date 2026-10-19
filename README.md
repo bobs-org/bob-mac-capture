@@ -1526,13 +1526,16 @@ The target is never bundled: `Scripts/bundle.sh` copies only the
 ### The panel
 
 `RefsPanelController` owns a borderless non-activating glass panel
-(`RefsPanel`, 880 × 560 pt clamped to the screen; the Copy card covers
+(`RefsPanel`, a near-full-screen reading room: `min(1440, visible
+width − 96)` by `min(1000, visible height − 72)`, centered on both
+axes — 1344 × 798 pt on a 1440 × 870 pt MacBook; the Copy card covers
 the list below 760 pt wide). The SwiftUI content sits in an
 `NSGlassEffectView` (corner radius 20); the SwiftUI root itself
 carries no glass modifier so the `ImageRenderer` design fixtures
 stay reviewable. Under Reduce Transparency an opaque window
-background paints beneath the content. It prewarms at launch,
-recomputes its frame on every show, fades in over 0.12 s while the
+background paints beneath the content. It prewarms at launch
+(already at the show size), recomputes its frame on every show,
+fades in over 0.12 s while the
 content scales from 0.98 to 1.0 on every show (fade only under
 Reduce Motion), hides at once with no fade-out, and hides when it
 resigns key, like Spotlight. Highlights stays frontmost throughout:
@@ -1548,8 +1551,13 @@ status: "Scanning library…" with a spinner while a scan runs, "Update
 failed · ⌘R to retry" when a refresh failed, the scan outcome — "Added
 N references", "No new references", or "Scan failed · ⌘S to retry" —
 "Updating…", or "Updated …"). The list column takes
-`round(width × 0.52)` of the panel width and the inspector shows at
-760 pt and above. Rows are 44 pt and two lines: the New dot (accent, only while the
+`min(round(width × 0.52), 560)` of the panel width (560 pt at
+reading-room widths, 458 pt at the compact 880 pt reference) and the
+inspector shows at
+760 pt and above. The inspector picks one of two layouts from the
+panel width: wide when its column reaches 568 pt (24 pt padding, a
+readable column of at most 720 pt centered in the inspector), compact
+otherwise (today's 18 pt padding). Rows are 44 pt and two lines: the New dot (accent, only while the
 row is NEW),
 the kind tile, the rich title (semibold while NEW; code spans styled, matches in the
 accent color) with its caption (a stem-only or secondary match
@@ -1595,7 +1603,7 @@ Diagnostic for hard failures.
 | Up/Down, Ctrl-P/Ctrl-N, Ctrl-K/Ctrl-J | Move (wraps) |
 | Page Up/Page Down | Page the results list by one less than fits |
 | Ctrl-X | Close the selected tab in Highlights (Tabs only); elsewhere passes through to search |
-| Ctrl-D | Scroll the preview down by half its height; at the very bottom, Ctrl-D shows the next page of highlights; search keeps focus |
+| Ctrl-D | Scroll the preview down by half its height; while the `+N more` row is on screen, Ctrl-D shows the next page of highlights at once; search keeps focus |
 | Ctrl-U | Scroll the preview up by half its height; search keeps focus |
 | Shift-Command-T | Reopen the most recently closed Highlights tab |
 | Command-Up/Command-Down, Home/End | First, last |
@@ -1617,8 +1625,10 @@ Return and Command-Y while IME-composing pass through to the text system. Ctrl-D
 Ctrl-U, and Ctrl-X also pass through while IME-composing; once recognized Ctrl-D
 and Ctrl-U consume the key even when the preview is hidden, short, empty, or
 already at an edge. In Tabs, Ctrl-X closes the selected tab; Ctrl-D always
-scrolls. At the very bottom of the preview, Ctrl-D shows the next page of
-highlights (clicking the disclosure row does the same);
+scrolls. While the `+N more` row is fully visible in the viewport —
+or at the very bottom of the preview — Ctrl-D shows the next page of
+highlights at once (clicking the disclosure row does the same);
+elsewhere it scrolls half a viewport, and
 when nothing is hidden it is still consumed and does nothing.
 Shift-Command-T reopens the most recently closed tab, or does nothing
 when none remain; it also passes through while IME-composing.
@@ -1780,10 +1790,16 @@ file path, size, and mtime in memory (64) and under
 `~/Library/Caches/org.bobs.bob-mac-capture/refs/` (1,000 entries plus
 one thumbnail PNG each). What each kind shows:
 
-- Papers, articles, and docs show a 112 × 145 pt page-1 thumbnail
-  (fixed space is reserved while it loads, so nothing jumps) and the
-  outline. Papers also show the Abstract excerpt; articles and docs
-  show no excerpt.
+- Papers, articles, and docs show a page-1 thumbnail (fixed space
+  is reserved while it loads, so nothing jumps) and the outline:
+  150 × 194 pt beside the facts in the wide layout, 112 × 145 pt
+  above them in compact. Both draw from the one 300 × 388 px image
+  the loader caches. Papers also show the Abstract excerpt; articles
+  and docs show no excerpt. The wide layout sets the title in
+  semibold title2 (3 lines) and the summary and quotes in body
+  (quotes carry 3 pt of line spacing and clip at 6 lines); compact
+  keeps semibold title3 (4 lines), callout quotes at 4 lines, and
+  today's spacing.
 - Chats keep the kind tile and lead with the outline plus the
   Bottom-line excerpt: the first paragraph (or up to 3 bullets) under
   Bottom line, TL;DR, Summary, Executive summary, or Key findings.
@@ -1799,8 +1815,8 @@ one thumbnail PNG each). What each kind shows:
   `**bold**` runs as strong emphasis, and a hover tooltip on a
   highlight shows its full text. The preview shows the first page (5
   by default, Settings › References › Preview highlights per page);
-  the disclosure row (`+N more · ⌃D shows …`) or Ctrl-D at the very
-  bottom reveals the next page of highlights until all show.
+  the disclosure row (`+N more · ⌃D shows …`) or Ctrl-D while that
+  row is visible reveals the next page of highlights until all show.
   Revealed pages reset on every selection change and on every show.
   Page labels show as bob writes them (`Page 1` stays `Page 1`).
 - Chats name consolidated reports and researcher drafts in the
@@ -1839,9 +1855,11 @@ Refs files live outside the vault, every file mode 0600 in 0700
 directories: the snapshot cache, open log, and NEW marks
 (`refs-snapshot.json`, `refs-open-log.json`, `refs-new-marks.json`) under
 `~/Library/Application Support/org.bobs.bob-mac-capture/`, and the
-intrinsics cache (`intrinsics.json`) with thumbnails
-(`thumbs/<sha256>.png`) under
-`~/Library/Caches/org.bobs.bob-mac-capture/refs/`. The References
+intrinsics cache (`intrinsics-v2.json`) with thumbnails
+(`thumbs-v2/<sha256>.png`) under
+`~/Library/Caches/org.bobs.bob-mac-capture/refs/`. The first v2 run
+removes the legacy `intrinsics.json` and `thumbs/`, so stale
+224 × 290 thumbnails are never upscaled. The References
 settings persist a small set of `UserDefaults` keys (the ⌃⇧⌘R
 binding flag, the Highlights-frontmost open key, the Highlights Tabs
 key (`refsHighlightsTabsKey`, default `shiftCmdO`), the Highlights

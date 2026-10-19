@@ -27,6 +27,20 @@ final class RefsPanelDesignTests: XCTestCase {
     + "cap has to clip it and end in an ellipsis the reader can "
     + "recover from the hover tooltip."
 
+  /// Long enough to overflow six body lines at the wide inspector
+  /// width, so the wide highlight truncates with a trailing
+  /// ellipsis.
+  private static let wideLongHighlightQuote =
+    "Agents that write down what they know, and then read it back "
+    + "before they act, stay consistent across a long session, and the "
+    + "reading room gives those notes a wider column so six body lines "
+    + "carry far more of the thought before the line cap has to clip it. "
+    + "The median uncommented highlight is about one hundred thirty "
+    + "characters, and this excerpt runs several times that length on "
+    + "purpose: only a genuinely long passage proves the wide cap clips "
+    + "where it should and ends in an ellipsis the reader can still "
+    + "recover from the hover tooltip."
+
   func testLiveListBuildsOnlyRowsNearViewport() throws {
     let now = fixedNow()
     let items = (0..<1_000).map { index in
@@ -98,6 +112,7 @@ final class RefsPanelDesignTests: XCTestCase {
     try renderReduceTransparency(model: model, now: now)
     try renderCopyCard(model: model, now: now, width: 880)
     try renderCopyCard(model: model, now: now, width: 700)
+    try renderCopyCard(model: model, now: now, width: 1344)
     try renderNewestTimeline(model: model, now: now)
     try renderNewestSearchScoped(model: model, now: now)
     try renderNewestNarrow(model: model, now: now)
@@ -118,7 +133,7 @@ final class RefsPanelDesignTests: XCTestCase {
 
   // MARK: - Renders
 
-  private func renderBrowse(model: RefsPanelModel, now: Date) throws {
+  private func renderBrowse(model: RefsPanelModel, now: Date, width: CGFloat = 880) throws {
     let fixture = makeFixture(now: now)
     model.installForPreviews(
       items: fixture.items,
@@ -139,7 +154,7 @@ final class RefsPanelDesignTests: XCTestCase {
     XCTAssertTrue(kinds.contains(.ready))
     XCTAssertTrue(kinds.contains(.recentlyOpened))
     XCTAssertTrue(kinds.contains(.library))
-    try write(model: model, name: "refs-browse-880", width: 880)
+    try write(model: model, name: "refs-browse-\(Int(width))", width: width)
   }
 
   private func renderNewSeenInPlace(model: RefsPanelModel, now: Date) throws {
@@ -651,7 +666,7 @@ final class RefsPanelDesignTests: XCTestCase {
   /// The full inspector for a chat: the tile hero, the Bottom-line
   /// bullets, the outline (the main visual for chats), and commented
   /// highlights.
-  private func renderInspectorChat(model: RefsPanelModel, now: Date) throws {
+  private func renderInspectorChat(model: RefsPanelModel, now: Date, width: CGFloat = 880) throws {
     let fixture = makeFixture(now: now)
     let id = "ref/chat/today_report.md"
     model.installForPreviews(
@@ -712,7 +727,7 @@ final class RefsPanelDesignTests: XCTestCase {
       ]
     )
     XCTAssertNotNil(model.inspectorContent(for: id))
-    try write(model: model, name: "refs-inspector-chat-880", width: 880)
+    try write(model: model, name: "refs-inspector-chat-\(Int(width))", width: width)
   }
 
   private func renderInspectorNotesRevealed(model: RefsPanelModel, now: Date) throws {
@@ -763,7 +778,7 @@ final class RefsPanelDesignTests: XCTestCase {
 
   /// The full inspector for a paper: the thumbnail stand-in, the
   /// abstract, and the notes.
-  private func renderInspectorPaper(model: RefsPanelModel, now: Date) throws {
+  private func renderInspectorPaper(model: RefsPanelModel, now: Date, width: CGFloat = 880) throws {
     let fixture = makeFixture(now: now)
     let id = "ref/papers/harness_buy.md"
     model.installForPreviews(
@@ -799,7 +814,7 @@ final class RefsPanelDesignTests: XCTestCase {
       thumbnails: [id: standInThumbnail()]
     )
     XCTAssertNotNil(model.inspectorThumbnail(for: id))
-    try write(model: model, name: "refs-inspector-paper-880", width: 880)
+    try write(model: model, name: "refs-inspector-paper-\(Int(width))", width: width)
   }
 
   /// The encrypted inspector: the thumbnail slot carries the
@@ -923,7 +938,8 @@ final class RefsPanelDesignTests: XCTestCase {
   /// run, the second card, and `+1 more · ⌃D shows it`.
   private func renderInspectorHighlightsRevealed(
     model: RefsPanelModel,
-    now: Date
+    now: Date,
+    width: CGFloat = 880
   ) throws {
     let fixture = makeFixture(now: now)
     let id = "ref/blogs/harness_engineering_article.md"
@@ -1009,8 +1025,8 @@ final class RefsPanelDesignTests: XCTestCase {
     )
     try write(
       model: model,
-      name: "refs-inspector-highlights-revealed-880",
-      width: 880
+      name: "refs-inspector-highlights-revealed-\(Int(width))",
+      width: width
     )
   }
 
@@ -1019,7 +1035,8 @@ final class RefsPanelDesignTests: XCTestCase {
   /// disclosure.
   private func renderInspectorHighlightsNoted(
     model: RefsPanelModel,
-    now: Date
+    now: Date,
+    width: CGFloat = 880
   ) throws {
     let fixture = makeFixture(now: now)
     let id = "ref/chat/today_report.md"
@@ -1057,26 +1074,119 @@ final class RefsPanelDesignTests: XCTestCase {
     let feed = try XCTUnwrap(model.inspectorContent(for: id)?.feed)
     XCTAssertNil(feed.moreText(visible: 3, nextBatch: 3))
     XCTAssertEqual(feed.notedCount, 3)
-    try write(model: model, name: "refs-inspector-highlights-noted-880", width: 880)
+    try write(model: model, name: "refs-inspector-highlights-noted-\(Int(width))", width: width)
+  }
+
+  /// Reading-room renders at 1344 pt: the wide inspector (hero with
+  /// the 150 x 194 thumbnail beside the facts, body typography, the
+  /// 720 pt readable column) across browse, chat, paper, and the
+  /// highlight feed states. The 880-pt renders stay as the compact
+  /// references.
+  func testRefsWidePanelToPNG() throws {
+    let now = fixedNow()
+    let library = makeLibrary(now: now)
+    let model = RefsPanelModel(
+      library: library,
+      opener: StubOpener(),
+      highlights: StubLocator()
+    )
+    try renderBrowse(model: model, now: now, width: 1344)
+    try renderInspectorChat(model: model, now: now, width: 1344)
+    try renderInspectorPaper(model: model, now: now, width: 1344)
+    try renderWideHighlightsUnified(model: model, now: now)
+    try renderInspectorHighlightsRevealed(
+      model: model, now: now, width: 1344
+    )
+    try renderInspectorHighlightsNoted(model: model, now: now, width: 1344)
+  }
+
+  /// Seven highlights at the wide width: a bold run, a one-line
+  /// note card, a six-body-line truncation, a same-page run, and
+  /// the first page's disclosure.
+  private func renderWideHighlightsUnified(
+    model: RefsPanelModel,
+    now: Date
+  ) throws {
+    let fixture = makeFixture(now: now)
+    let id = "ref/blogs/harness_engineering_article.md"
+    let highlights = [
+      RefsShowAnnotation(
+        pageLabel: "Page 1",
+        kind: "highlight",
+        quote: "**Factual memory tells the agent what it knows.**"
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 2",
+        kind: "highlight",
+        quote:
+          "The pipeline drains while the child runs, so the fetcher never blocks on a full pipe.",
+        comment: "Pin this for the memory design doc."
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 3",
+        kind: "highlight",
+        quote: Self.wideLongHighlightQuote
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 3",
+        kind: "highlight",
+        quote: "Same-page highlights share one page label."
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 4",
+        kind: "highlight",
+        quote: "A later highlight still waits behind the row.",
+        comment: "Keep the tier invariant. Cite this in the rollout note."
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 6",
+        kind: "highlight",
+        quote: "Sixth highlight is also still hidden."
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 7",
+        kind: "highlight",
+        quote: "Seventh highlight closes the stack."
+      ),
+    ]
+    model.installForPreviews(
+      items: fixture.items,
+      signals: fixture.signals,
+      query: "",
+      scope: .all,
+      selectedID: id,
+      banner: nil,
+      refreshState: .idle,
+      inspector: [id: RefsInspectorContent(highlights: highlights)]
+    )
+    let feed = try XCTUnwrap(model.inspectorContent(for: id)?.feed)
+    XCTAssertEqual(
+      feed.moreText(visible: 5, nextBatch: 2),
+      "+2 more · 1 with a note · ⌃D shows the rest"
+    )
+    try write(model: model, name: "refs-inspector-highlights-1344", width: 1344)
   }
 
   /// A solid thumbnail stand-in: `ImageRenderer` never hosts PDFKit,
   /// so the paper render draws this instead of a real page image.
+  /// Sized 300 x 388 px like the loader's thumbnail, so both the
+  /// wide (150 x 194 pt) and compact (112 x 145 pt) slots draw from
+  /// the same image.
   private func standInThumbnail() -> NSImage {
-    let size = NSSize(width: 224, height: 290)
+    let size = NSSize(width: 300, height: 388)
     let image = NSImage(size: size)
     image.lockFocus()
     NSColor.systemTeal.withAlphaComponent(0.25).setFill()
     NSRect(origin: .zero, size: size).fill()
     NSColor.tertiaryLabelColor.setFill()
-    for index in 0..<8 {
+    for index in 0..<10 {
       let bar = NSRect(
-        x: 20,
-        y: 30 + index * 28,
-        width: 184 - index * 12,
-        height: 10
+        x: 24,
+        y: 30 + index * 34,
+        width: 252 - index * 14,
+        height: 12
       )
-      NSBezierPath(roundedRect: bar, xRadius: 5, yRadius: 5).fill()
+      NSBezierPath(roundedRect: bar, xRadius: 6, yRadius: 6).fill()
     }
     image.unlockFocus()
     return image
@@ -1195,7 +1305,8 @@ final class RefsPanelDesignTests: XCTestCase {
     XCTAssertNotNil(model.copyCard)
     try write(
       model: model,
-      name: width >= 760 ? "refs-copy-card-wide-880" : "refs-copy-card-narrow-700",
+      name: width >= 760
+        ? "refs-copy-card-wide-\(Int(width))" : "refs-copy-card-narrow-\(Int(width))",
       width: width
     )
     model.panelDidHide()

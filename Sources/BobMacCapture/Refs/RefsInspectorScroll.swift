@@ -61,6 +61,24 @@ struct RefsInspectorScrollGeometry: Equatable, Sendable {
         }
         return abs(offsetY - maxOffset) <= tolerance
     }
+
+    /// Whether a document row from `top` to `bottom` (both measured
+    /// from the content top, like `offsetY`) lies fully inside the
+    /// visible document rect, within `tolerance`. The disclosure row
+    /// uses this so Ctrl+D reveals as soon as the `+N more` row is
+    /// on screen instead of waiting for the very bottom. Invalid
+    /// geometry never contains.
+    func containsRow(top: CGFloat, bottom: CGFloat, tolerance: CGFloat = 1) -> Bool {
+        guard isValid,
+              top.isFinite,
+              bottom.isFinite,
+              tolerance.isFinite
+        else {
+            return false
+        }
+        return top >= offsetY - tolerance
+            && bottom <= offsetY + viewportHeight + tolerance
+    }
 }
 
 /// Keyboard target and bounds for the inspector scroll view. Successive

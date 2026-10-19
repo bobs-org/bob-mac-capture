@@ -183,11 +183,12 @@ public struct RefsPanelView: View {
     @ViewBuilder
     private func columns(panelWidth: CGFloat, dimRows: Bool = false) -> some View {
         if RefsVisualTokens.showsInspector(width: panelWidth) {
+            let layout = RefsPanelGeometry.inspectorLayout(panelWidth: panelWidth)
             HStack(spacing: 0) {
                 RefsListView(model: model, previewMode: previewMode, dimRows: dimRows)
                     .frame(width: RefsVisualTokens.listWidth(panelWidth: panelWidth))
                 inspectorDivider
-                inspector
+                inspector(layout: layout)
             }
         } else {
             Group {
@@ -216,14 +217,14 @@ public struct RefsPanelView: View {
     }
 
     @ViewBuilder
-    private var inspector: some View {
+    private func inspector(layout: RefsInspectorLayout) -> some View {
         Group {
             if model.todayLinkCard != nil {
-                todayLinkCard
+                readableCard(todayLinkCard, layout: layout)
             } else if model.renameCard != nil {
-                renameCard
+                readableCard(renameCard, layout: layout)
             } else if model.copyCard != nil {
-                copyCard
+                readableCard(copyCard, layout: layout)
             } else if let selected = model.selectedID,
                let content = model.rowContent(for: selected)
             {
@@ -232,6 +233,7 @@ public struct RefsPanelView: View {
                     signals: model.signals,
                     inspector: model.inspectorContent(for: selected),
                     thumbnail: model.inspectorThumbnail(for: selected),
+                    layout: layout,
                     previewMode: previewMode,
                     notesPage: model.inspectorNotesPage(for: selected),
                     onRevealMoreNotes: { model.revealMoreInspectorNotes() }
@@ -252,6 +254,26 @@ public struct RefsPanelView: View {
             copyCardAnimation,
             value: model.copyCard != nil || model.renameCard != nil || model.todayLinkCard != nil
         )
+    }
+
+    /// Constrains the Copy, Rename, and Today Link cards to the same
+    /// readable content column as the wide inspector (max 720,
+    /// centered), so nothing stretches edge to edge on large
+    /// displays. Compact keeps today's full-column cards.
+    @ViewBuilder
+    private func readableCard<Content: View>(
+        _ content: Content,
+        layout: RefsInspectorLayout
+    ) -> some View {
+        if layout.mode == .wide {
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                content.frame(width: layout.contentWidth, alignment: .leading)
+                Spacer(minLength: 0)
+            }
+        } else {
+            content
+        }
     }
 
     private var copyCard: some View {

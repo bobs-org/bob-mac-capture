@@ -301,14 +301,18 @@ public final class RefsPanelController: NSObject {
     }
 
     /// The panel configuration, static so geometry tests assert it
-    /// without showing anything.
+    /// without showing anything. Seeds its content rect from the
+    /// reading-room geometry for the current visible frame, so the
+    /// prewarmed panel already has the show size; `orderFront`
+    /// still recomputes the frame on every show.
     static func makePanel() -> RefsPanel {
+        let size = RefsPanelGeometry.panelSize(visible: visibleFrame())
         let panel = RefsPanel(
             contentRect: NSRect(
                 x: 0,
                 y: 0,
-                width: RefsVisualTokens.panelWidth,
-                height: RefsVisualTokens.panelHeight
+                width: size.width,
+                height: size.height
             ),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -610,6 +614,21 @@ public final class RefsPanelController: NSObject {
         return nil
     }
 
+    static func findDisclosureAnchor(in view: NSView?) -> RefsInspectorDisclosureAnchorView? {
+        guard let view else {
+            return nil
+        }
+        if let anchor = view as? RefsInspectorDisclosureAnchorView {
+            return anchor
+        }
+        for subview in view.subviews {
+            if let found = findDisclosureAnchor(in: subview) {
+                return found
+            }
+        }
+        return nil
+    }
+
     /// Measures the inspector scroll geometry, or nil when there is no
     /// inspector scroll view (narrow panel).
     private func measureInspectorScroll() -> (
@@ -670,7 +689,12 @@ public final class RefsPanelController: NSObject {
             return
         }
         if direction == .down,
-           (revealFollowPending || measured.geometry.isAtBottom()),
+           (revealFollowPending
+               || measured.geometry.isAtBottom()
+               || Self.isDisclosureRowFullyVisible(
+                   measured: measured,
+                   in: panel?.contentView
+               )),
            model.revealMoreInspectorNotes()
         {
             return
@@ -683,6 +707,35 @@ public final class RefsPanelController: NSObject {
             target,
             scrollView: measured.scrollView,
             flipped: measured.flipped
+        )
+    }
+
+    /// Whether the disclosure (`+N more`) row lies fully inside the
+    /// viewport, in document coordinates, flipped-aware like
+    /// `followReveal`.
+    static func isDisclosureRowFullyVisible(
+        measured: (
+            scrollView: NSScrollView,
+            geometry: RefsInspectorScrollGeometry,
+            flipped: Bool
+        ),
+        in view: NSView?
+    ) -> Bool {
+        guard let anchor = findDisclosureAnchor(in: view),
+              let documentView = measured.scrollView.documentView
+        else {
+            return false
+        }
+        let rect = anchor.convert(anchor.bounds, to: documentView)
+        guard rect.height > 0.5 else {
+            return false
+        }
+        let documentHeight = documentView.frame.height
+        let top: CGFloat = documentView.isFlipped
+            ? rect.minY : documentHeight - rect.maxY
+        return measured.geometry.containsRow(
+            top: top,
+            bottom: top + rect.height
         )
     }
 

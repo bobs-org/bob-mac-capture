@@ -44,6 +44,25 @@ struct RefsInspectorRevealAnchor: NSViewRepresentable {
   }
 }
 
+/// Layout marker for the disclosure (`+N more`) row: the controller
+/// converts its frame into document coordinates to reveal the next
+/// notes page as soon as the row is fully visible, instead of
+/// waiting for the very bottom. Never hit-tests, so the search
+/// field keeps focus.
+final class RefsInspectorDisclosureAnchorView: NSView {
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    nil
+  }
+}
+
+struct RefsInspectorDisclosureAnchor: NSViewRepresentable {
+  func makeNSView(context: Context) -> RefsInspectorDisclosureAnchorView {
+    RefsInspectorDisclosureAnchorView()
+  }
+
+  func updateNSView(_ nsView: RefsInspectorDisclosureAnchorView, context: Context) {}
+}
+
 /// Fades revealed notes in once: opacity 0→1 plus a 6 pt rise,
 /// `easeOut(0.22)`, staggered by batch position. Layout is never
 /// animated, so the follow-scroll measures the final height at once.
@@ -82,15 +101,22 @@ private struct RefsInspectorNoteFade: ViewModifier {
 /// The full inspector column (§10): it fills instantly from the list
 /// item and upgrades lazily as the loader hydrates summaries,
 /// outlines, notes, and thumbnails. Papers, articles, and docs show a
-/// fixed 112 x 145 pt thumbnail slot (reserved even while loading, so
-/// nothing jumps); chats keep the kind tile and lead with the
-/// outline. Absence stays absence: missing facts omit their row.
+/// thumbnail slot (112 x 145 pt compact, 150 x 194 pt wide; reserved
+/// even while loading, so nothing jumps); chats keep the kind tile
+/// and lead with the outline. Absence stays absence: missing facts
+/// omit their row.
 @available(macOS 26.0, *)
 struct RefsInspectorView: View {
   let content: RefsRowContent
   let signals: RefsSignals
   var inspector: RefsInspectorContent? = nil
   var thumbnail: NSImage? = nil
+  /// The pure width mode, computed once per panel width by
+  /// `RefsPanelView.columns(panelWidth:)`. Defaults to the compact
+  /// layout, so existing call sites and fixtures keep today's look.
+  var layout: RefsInspectorLayout = RefsPanelGeometry.inspectorLayout(
+    panelWidth: RefsVisualTokens.panelWidth
+  )
   /// Design fixtures lay the column out statically: `ImageRenderer`
   /// snapshots `ScrollView` content blank, so the live scroll view
   /// never appears in a fixture.
@@ -117,12 +143,24 @@ struct RefsInspectorView: View {
     }
   }
 
+  /// Whether the wide reading-room layout applies.
+  private var isWide: Bool {
+    layout.mode == .wide
+  }
+
+  /// Body copy in the wide layout, today's size in compact.
+  private var bodyFont: Font {
+    isWide ? .body : .callout
+  }
+
   private var column: some View {
-    VStack(alignment: .leading, spacing: RefsVisualTokens.inspectorSpacing) {
+    VStack(alignment: .leading, spacing: isWide ? RefsVisualTokens.wideInspectorSpacing : RefsVisualTokens.inspectorSpacing) {
       if let item = content.item {
         hero(for: item)
-        byline(for: item)
-        facts(for: item)
+        if !isWide {
+          byline(for: item)
+          facts(for: item)
+        }
         summarySection
         contentsSection
         highlightsSection
@@ -150,8 +188,12 @@ struct RefsInspectorView: View {
           .accessibilityLabel(content.caption)
       }
     }
-    .padding(RefsVisualTokens.inspectorPadding)
-    .frame(maxWidth: .infinity, alignment: .leading)
+    .frame(
+      width: isWide ? layout.contentWidth : nil,
+      alignment: .leading
+    )
+    .padding(layout.padding)
+    .frame(maxWidth: .infinity, alignment: isWide ? .center : .leading)
   }
 
   /// The minimal card for collision and unmatched Tabs rows: the
@@ -211,19 +253,48 @@ struct RefsInspectorView: View {
       }
       VStack(alignment: .leading, spacing: 8) {
         chips(for: item)
-        Text(
-          CapturePickerRichText.displayText(
-            item.title.text,
-            segments: item.title.segments,
-            matches: content.match?.titleRanges ?? []
-          )
-        )
-        .font(.title3.weight(.semibold))
-        .lineLimit(4)
+        titleView(for: item)
+        // Wide pairs the taller thumbnail with content instead of
+        // whitespace: the byline and facts sit beside it.
+        if isWide {
+          byline(for: item)
+          facts(for: item)
+        }
       }
     }
     .accessibilityElement(children: .combine)
     .accessibilityLabel("\(item.title.text), \(item.kind.label)")
+  }
+
+  private func titleView(for item: RefItem) -> some View {
+    Text(
+      CapturePickerRichText.displayText(
+        item.title.text,
+        segments: item.title.segments,
+        matches: content.match?.titleRanges ?? []
+      )
+    )
+    .font(
+      isWide
+        ? .title2.weight(.semibold) : .title3.weight(.semibold)
+    )
+    .lineLimit(
+      isWide ? RefsVisualTokens.wideInspectorTitleLineLimit : 4
+    )
+  }
+
+  /// The thumbnail point size for the layout: both draw from the
+  /// loader's one 300 x 388 px image.
+  private var thumbnailPointSize: CGSize {
+    isWide
+      ? CGSize(
+        width: RefsVisualTokens.wideThumbnailWidth,
+        height: RefsVisualTokens.wideThumbnailHeight
+      )
+      : CGSize(
+        width: RefsVisualTokens.thumbnailWidth,
+        height: RefsVisualTokens.thumbnailHeight
+      )
   }
 
   /// Papers, articles, and docs show the page-1 thumbnail; every
@@ -243,8 +314,8 @@ struct RefsInspectorView: View {
           .resizable()
           .aspectRatio(contentMode: .fill)
           .frame(
-            width: RefsVisualTokens.thumbnailWidth,
-            height: RefsVisualTokens.thumbnailHeight
+            width: thumbnailPointSize.width,
+            height: thumbnailPointSize.height
           )
           .clipShape(
             RoundedRectangle(
@@ -265,8 +336,8 @@ struct RefsInspectorView: View {
           .foregroundStyle(.tertiary)
           .multilineTextAlignment(.center)
           .frame(
-            width: RefsVisualTokens.thumbnailWidth,
-            height: RefsVisualTokens.thumbnailHeight
+            width: thumbnailPointSize.width,
+            height: thumbnailPointSize.height
           )
           .background(
             .secondary.opacity(0.08),
@@ -284,8 +355,8 @@ struct RefsInspectorView: View {
         RoundedRectangle(cornerRadius: RefsVisualTokens.thumbnailRadius)
           .fill(.secondary.opacity(0.08))
           .frame(
-            width: RefsVisualTokens.thumbnailWidth,
-            height: RefsVisualTokens.thumbnailHeight
+            width: thumbnailPointSize.width,
+            height: thumbnailPointSize.height
           )
           .overlay(
             RoundedRectangle(
@@ -574,11 +645,11 @@ struct RefsInspectorView: View {
         sectionLabel(summary.label)
         if let paragraph = summary.paragraph {
           Text(paragraph)
-            .font(.callout)
+            .font(bodyFont)
         }
         ForEach(summary.bullets.indices, id: \.self) { index in
           Text("•  \(summary.bullets[index])")
-            .font(.callout)
+            .font(bodyFont)
         }
       }
       .accessibilityElement(children: .combine)
@@ -619,7 +690,9 @@ struct RefsInspectorView: View {
       if !entries.isEmpty {
         VStack(
           alignment: .leading,
-          spacing: RefsVisualTokens.inspectorEntrySpacing
+          spacing: isWide
+            ? RefsVisualTokens.wideInspectorEntrySpacing
+            : RefsVisualTokens.inspectorEntrySpacing
         ) {
           HStack(spacing: 6) {
             Text("HIGHLIGHTS")
@@ -688,6 +761,7 @@ struct RefsInspectorView: View {
       Text(text)
         .font(.caption.monospacedDigit())
     }
+    .background(RefsInspectorDisclosureAnchor())
     .foregroundStyle(disclosureHover ? .secondary : .tertiary)
     .pointerStyle(.link)
     .onHover { disclosureHover = $0 }
@@ -739,10 +813,16 @@ struct RefsInspectorView: View {
 
   private func quoteView(_ quote: String) -> some View {
     Text(RefsQuoteText.attributed(RefsQuoteExcerpt.preview(quote)))
-      .font(.callout)
+      .font(bodyFont)
       .foregroundStyle(.primary)
-      .lineSpacing(2)
-      .lineLimit(RefsVisualTokens.inspectorHighlightLineLimit)
+      .lineSpacing(
+        isWide ? RefsVisualTokens.wideInspectorQuoteLineSpacing : 2
+      )
+      .lineLimit(
+        isWide
+          ? RefsVisualTokens.wideInspectorQuoteLineLimit
+          : RefsVisualTokens.inspectorHighlightLineLimit
+      )
       .truncationMode(.tail)
       .padding(.leading, RefsVisualTokens.inspectorQuoteInset)
       .overlay(alignment: .leading) {
@@ -768,7 +848,7 @@ struct RefsInspectorView: View {
         .imageScale(.small)
         .foregroundStyle(RefsVisualTokens.inspectorNoteTint)
       Text(comment)
-        .font(.callout)
+        .font(bodyFont)
         .foregroundStyle(.primary)
         .fixedSize(horizontal: false, vertical: true)
     }
