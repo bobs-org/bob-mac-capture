@@ -463,6 +463,10 @@ public struct RefsInspectorContent: Equatable, Sendable {
     public var pageCount: Int?
     public var showFailed: Bool
     public var previewMessage: String?
+    /// Vault-relative image paths to the metrics that reserve each
+    /// image's frame. Paths that fail to resolve or read are absent,
+    /// so the view shows the unavailable row.
+    public var images: [String: RefsImageMetrics]
 
     public init(
         summary: RefsSummary? = nil,
@@ -472,7 +476,8 @@ public struct RefsInspectorContent: Equatable, Sendable {
         readingTime: RefsReadingTime? = nil,
         pageCount: Int? = nil,
         showFailed: Bool = false,
-        previewMessage: String? = nil
+        previewMessage: String? = nil,
+        images: [String: RefsImageMetrics] = [:]
     ) {
         self.summary = summary
         self.outline = outline
@@ -482,6 +487,7 @@ public struct RefsInspectorContent: Equatable, Sendable {
         self.pageCount = pageCount
         self.showFailed = showFailed
         self.previewMessage = previewMessage
+        self.images = images
     }
 
     public var feed: RefsInspectorFeed {
@@ -505,9 +511,12 @@ public final class RefsInspectorLoader: ObservableObject {
 
     @Published public private(set) var content: [String: RefsInspectorContent] = [:]
     @Published public private(set) var thumbnails: [String: NSImage] = [:]
+    /// Decoded annotation images for the inspector views.
+    public let imageStore: RefsInspectorImageStore
 
     private let library: RefsLibrary
     private let intrinsics: RefsPDFIntrinsicsProviding
+    private let imageProvider: RefsAnnotationImageProviding
     private var current: Task<Void, Never>?
     /// Preview-installed ids stay pinned until reset or another install.
     private var previewContentIDs: Set<String> = []
@@ -527,10 +536,17 @@ public final class RefsInspectorLoader: ObservableObject {
 
     public init(
         library: RefsLibrary,
-        intrinsics: RefsPDFIntrinsicsProviding = RefsPDFIntrinsicsLoader()
+        intrinsics: RefsPDFIntrinsicsProviding = RefsPDFIntrinsicsLoader(),
+        images: RefsAnnotationImageProviding? = nil
     ) {
         self.library = library
         self.intrinsics = intrinsics
+        let provider = images ?? RefsAnnotationImageLoader()
+        self.imageProvider = provider
+        self.imageStore = RefsInspectorImageStore(
+            library: library,
+            provider: provider
+        )
     }
 
     /// The hydrated content for an id, or nil while it loads.
@@ -576,6 +592,7 @@ public final class RefsInspectorLoader: ObservableObject {
         inFlightShows.values.forEach { $0.cancel() }
         inFlightShows = [:]
         contentOrder = []
+        imageStore.reset()
     }
 
     /// Drops inspector state for a renamed note before its destination
@@ -601,15 +618,36 @@ public final class RefsInspectorLoader: ObservableObject {
 
     /// Installs canned content for design tests and previews, skipping
     /// every process. Installed ids stay pinned across later requests
-    /// until reset or the next install.
+    /// until reset or the next install. Preview `images` are returned
+    /// for any `maxPixel`; their metrics fill `content.images` for
+    /// paths the row actually references.
     public func installContentForPreviews(
         _ content: [String: RefsInspectorContent],
-        thumbnails: [String: NSImage] = [:]
+        thumbnails: [String: NSImage] = [:],
+        images: [String: NSImage] = [:]
     ) {
         cancel()
-        self.content = content
+        imageStore.reset()
+        var installed = content
+        if !images.isEmpty {
+            let derived = Dictionary(
+                uniqueKeysWithValues: images.map { path, image in
+                    (path, RefsInspectorImageStore.metrics(from: image))
+                }
+            )
+            for (id, var value) in installed {
+                for path in Self.imagePaths(in: value.highlights) {
+                    if value.images[path] == nil, let metrics = derived[path] {
+                        value.images[path] = metrics
+                    }
+                }
+                installed[id] = value
+            }
+            imageStore.installImagesForPreviews(images)
+        }
+        self.content = installed
         self.thumbnails = thumbnails
-        previewContentIDs = Set(content.keys)
+        previewContentIDs = Set(installed.keys)
     }
 
     /// Seeds the `ref show` cache so Copy card tests can open H without
@@ -656,11 +694,15 @@ public final class RefsInspectorLoader: ObservableObject {
             }
         }
         if let row = showRow {
-            built.highlights = row.inspectorHighlights
+            built.highlights = row.inspectorEntries
             built.openTaskCount = row.openTasks.count
             built.showFailed = false
+            built.images = await prefetchImageMetrics(in: row.inspectorEntries)
         } else {
             built.showFailed = true
+        }
+        guard !Task.isCancelled else {
+            return
         }
         rememberContent(id: item.id, value: built)
         var pageCounts: [String: Int] = [:]
@@ -674,6 +716,58 @@ public final class RefsInspectorLoader: ObservableObject {
                 outlineHeadings: headings
             )
         }
+    }
+
+    /// Reads every image header before content publishes, so the
+    /// inspector reserves each image's exact frame on the first
+    /// layout pass. Paths that fail to resolve (including `..`) are
+    /// never handed to the provider.
+    private func prefetchImageMetrics(
+        in annotations: [RefsShowAnnotation]
+    ) async -> [String: RefsImageMetrics] {
+        let paths = Self.imagePaths(in: annotations)
+        guard !paths.isEmpty else {
+            return [:]
+        }
+        let root = library.vaultRootURL
+        let provider = imageProvider
+        return await withTaskGroup(
+            of: (String, RefsImageMetrics?).self,
+            returning: [String: RefsImageMetrics].self
+        ) { group in
+            for path in paths {
+                group.addTask {
+                    guard let url = RefsVaultAssetPath.resolve(path, root: root) else {
+                        return (path, nil)
+                    }
+                    let metrics = await provider.metrics(for: url)
+                    return (path, metrics)
+                }
+            }
+            var collected: [String: RefsImageMetrics] = [:]
+            for await (path, metrics) in group {
+                if let metrics {
+                    collected[path] = metrics
+                }
+            }
+            return collected
+        }
+    }
+
+    private static func imagePaths(in annotations: [RefsShowAnnotation]) -> [String] {
+        var seen = Set<String>()
+        var unique: [String] = []
+        for annotation in annotations {
+            var candidates: [String] = []
+            if let asset = annotation.asset {
+                candidates.append(asset)
+            }
+            candidates.append(contentsOf: annotation.images)
+            for path in candidates where seen.insert(path).inserted {
+                unique.append(path)
+            }
+        }
+        return unique
     }
 
     private func loadIntrinsics(for item: RefItem) async -> RefsPDFIntrinsics? {

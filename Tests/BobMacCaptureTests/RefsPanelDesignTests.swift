@@ -113,6 +113,10 @@ final class RefsPanelDesignTests: XCTestCase {
     try renderCopyCard(model: model, now: now, width: 880)
     try renderCopyCard(model: model, now: now, width: 700)
     try renderCopyCard(model: model, now: now, width: 1344)
+    try renderInspectorImages(model: model, now: now, width: 880)
+    try renderInspectorImages(model: model, now: now, width: 1344)
+    try renderInspectorImagesRevealed(model: model, now: now, width: 880)
+    try renderInspectorImagesRevealed(model: model, now: now, width: 1344)
     try renderNewestTimeline(model: model, now: now)
     try renderNewestSearchScoped(model: model, now: now)
     try renderNewestNarrow(model: model, now: now)
@@ -1165,6 +1169,218 @@ final class RefsPanelDesignTests: XCTestCase {
       "+2 more · 1 with a note · ⌃D shows the rest"
     )
     try write(model: model, name: "refs-inspector-highlights-1344", width: 1344)
+  }
+
+  /// Image highlights, attached images, a standalone note, an
+  /// unavailable row, and a transparent PNG on the white backing.
+  private func renderInspectorImages(
+    model: RefsPanelModel,
+    now: Date,
+    width: CGFloat
+  ) throws {
+    let fixture = makeFixture(now: now)
+    let id = "ref/docs/gastown_readme.md"
+    let items =
+      fixture.items + [
+        RefItem(
+          id: id,
+          link: "[[ref/docs/gastown_readme]]",
+          rawTitle: "Gas Town README",
+          stem: "gastown_readme",
+          kind: .doc,
+          state: .ready,
+          isBlocked: false,
+          pdfPath: "lib/docs/gastown_readme.pdf",
+          added: day(now, offset: -2)
+        )
+      ]
+    let crop = "ref/docs/gastown_readme.assets/h-crop.jpg"
+    let attached = "ref/docs/gastown_readme.assets/note.png"
+    let alpha = "ref/docs/gastown_readme.assets/diagram.png"
+    let highlights = [
+      RefsShowAnnotation(
+        pageLabel: "Page 5",
+        kind: "image",
+        asset: crop
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 9",
+        kind: "highlight",
+        quote: "Gas Town crew, Mayor, and Beads Crew tmux sessions",
+        comment: "Keep this screenshot with the quote.",
+        images: [attached, alpha]
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 10",
+        kind: "highlight",
+        quote: "",
+        images: [attached]
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 12",
+        kind: "note",
+        comment: "A standalone note sits in the feed in note order."
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 14",
+        kind: "highlight",
+        quote: "An unresolved HEIC stays honest.",
+        unresolvedImages: ["camera-roll.heic"]
+      ),
+    ]
+    let previewImages = [
+      crop: makeTestImage(
+        size: NSSize(width: 400, height: 160),
+        color: .systemOrange
+      ),
+      attached: makeTestImage(
+        size: NSSize(width: 240, height: 80),
+        color: .systemBlue
+      ),
+      alpha: makeTransparentTestImage(size: NSSize(width: 120, height: 60)),
+    ]
+    model.installForPreviews(
+      items: items,
+      signals: fixture.signals,
+      query: "",
+      scope: .all,
+      selectedID: id,
+      banner: nil,
+      refreshState: .idle,
+      inspector: [
+        id: RefsInspectorContent(
+          outline: ["Setup", "Mayor"],
+          highlights: highlights,
+          pageCount: 16
+        )
+      ],
+      images: previewImages
+    )
+    let content = try XCTUnwrap(model.inspectorContent(for: id))
+    XCTAssertEqual(
+      content.feed.entries(visible: 5).map(\.kind),
+      [
+        .image, .highlight, .highlight, .note, .highlight,
+      ])
+    XCTAssertNotNil(content.images[crop])
+    XCTAssertNotNil(content.images[alpha])
+    XCTAssertTrue(content.images[alpha]?.hasAlpha ?? false)
+    try write(
+      model: model,
+      name: "refs-inspector-images-\(Int(width))",
+      width: width
+    )
+  }
+
+  /// The second page holds an image highlight: the reserved frame is
+  /// already in the snapshot, so a later bitmap cannot jump layout.
+  private func renderInspectorImagesRevealed(
+    model: RefsPanelModel,
+    now: Date,
+    width: CGFloat
+  ) throws {
+    let fixture = makeFixture(now: now)
+    let id = "ref/blogs/gas_town_emergency_user_manual.md"
+    let items =
+      fixture.items + [
+        RefItem(
+          id: id,
+          link: "[[ref/blogs/gas_town_emergency_user_manual]]",
+          rawTitle: "Gas Town Emergency User Manual",
+          stem: "gas_town_emergency_user_manual",
+          kind: .article,
+          state: .ready,
+          isBlocked: false,
+          pdfPath: "lib/blogs/gas_town_emergency_user_manual.pdf",
+          added: day(now, offset: -1)
+        )
+      ]
+    let revealed = "ref/blogs/gas_town_emergency_user_manual.assets/shot.png"
+    var highlights = (1...5).map { index in
+      RefsShowAnnotation(
+        pageLabel: "Page \(index)",
+        kind: "highlight",
+        quote: "Quote \(index) stays on the first page."
+      )
+    }
+    highlights.append(
+      RefsShowAnnotation(
+        pageLabel: "Page 6",
+        kind: "image",
+        asset: revealed
+      )
+    )
+    highlights.append(
+      RefsShowAnnotation(
+        pageLabel: "Page 7",
+        kind: "highlight",
+        quote: "A later quote after the image."
+      )
+    )
+    model.installForPreviews(
+      items: items,
+      signals: fixture.signals,
+      query: "",
+      scope: .all,
+      selectedID: id,
+      banner: nil,
+      refreshState: .idle,
+      inspector: [
+        id: RefsInspectorContent(
+          highlights: highlights,
+          pageCount: 18
+        )
+      ],
+      images: [
+        revealed: makeTestImage(
+          size: NSSize(width: 360, height: 140),
+          color: .systemPurple
+        )
+      ]
+    )
+    XCTAssertTrue(model.revealMoreInspectorNotes())
+    let content = try XCTUnwrap(model.inspectorContent(for: id))
+    let page = model.inspectorNotesPage(for: id)
+    XCTAssertEqual(page.visibleCount(total: content.feed.total), 7)
+    XCTAssertEqual(content.feed.entries(visible: 7).last?.kind, .highlight)
+    try write(
+      model: model,
+      name: "refs-inspector-images-revealed-\(Int(width))",
+      width: width
+    )
+  }
+
+  private func makeTransparentTestImage(size: NSSize) -> NSImage {
+    let pixelsWide = max(1, Int(size.width.rounded()))
+    let pixelsHigh = max(1, Int(size.height.rounded()))
+    let rep = NSBitmapImageRep(
+      bitmapDataPlanes: nil,
+      pixelsWide: pixelsWide,
+      pixelsHigh: pixelsHigh,
+      bitsPerSample: 8,
+      samplesPerPixel: 4,
+      hasAlpha: true,
+      isPlanar: false,
+      colorSpaceName: .deviceRGB,
+      bytesPerRow: 0,
+      bitsPerPixel: 0
+    )!
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+    NSColor.clear.setFill()
+    NSRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh).fill()
+    NSColor.systemBlue.setFill()
+    let inset = NSRect(
+      x: CGFloat(pixelsWide) * 0.15,
+      y: CGFloat(pixelsHigh) * 0.15,
+      width: CGFloat(pixelsWide) * 0.7,
+      height: CGFloat(pixelsHigh) * 0.7
+    )
+    NSBezierPath(ovalIn: inset).fill()
+    NSGraphicsContext.restoreGraphicsState()
+    let image = NSImage(size: size)
+    image.addRepresentation(rep)
+    return image
   }
 
   /// A solid thumbnail stand-in: `ImageRenderer` never hosts PDFKit,

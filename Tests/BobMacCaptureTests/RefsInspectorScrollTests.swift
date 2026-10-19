@@ -497,6 +497,70 @@ final class RefsInspectorScrollTests: XCTestCase {
     )
   }
 
+  func testHostedRevealKeepsDocumentHeightWhileImageBitmapsLoad() {
+    let images = StubAnnotationImages()
+    let metrics = RefsImageMetrics(pixelWidth: 800, pixelHeight: 400)
+    images.metricsByLastComponent = ["crop.jpg": metrics]
+    images.imageDelayNanoseconds = 400_000_000
+    images.imageByLastComponent = [
+      "crop.jpg": makeTestImage(
+        size: NSSize(width: 800, height: 400),
+        color: .systemOrange
+      )
+    ]
+    let highlights =
+      Self.eightNotes().prefix(5).map { $0 }
+      + [
+        RefsShowAnnotation(
+          pageLabel: "Page 6",
+          kind: "image",
+          asset: "ref/docs/crop.jpg"
+        ),
+        RefsShowAnnotation(
+          pageLabel: "Page 7",
+          kind: "highlight",
+          quote: "A later quote on the revealed page."
+        ),
+      ]
+    let harness = makeHostedHarness(
+      highlights: highlights,
+      imageProvider: images,
+      imageMetrics: ["ref/docs/crop.jpg": metrics]
+    )
+    defer { harness.panel.orderOut(nil) }
+    settle(harness.panel)
+    focusSearch(harness)
+    let selected = tryUnwrapSelected(harness)
+    scrollInspectorToBottom(in: harness.panel)
+
+    XCTAssertNil(
+      harness.controller.processKeyEvent(
+        keyEvent(keyCode: Self.dKey, modifiers: .control, characters: "d")
+      )
+    )
+    XCTAssertEqual(
+      harness.model.inspectorNotesPage(for: selected).visibleCount(total: 7),
+      7
+    )
+    waitForInspectorOffset(in: harness.panel) { $0 > 0 }
+    harness.panel.contentView?.layoutSubtreeIfNeeded()
+    let heightBefore = inspectorDocumentHeight(in: harness.panel)
+    XCTAssertGreaterThan(heightBefore, 0)
+
+    let deadline = Date().addingTimeInterval(1.2)
+    while Date() < deadline {
+      RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.05))
+      if !images.imageURLs.isEmpty {
+        break
+      }
+    }
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
+    harness.panel.contentView?.layoutSubtreeIfNeeded()
+    let heightAfter = inspectorDocumentHeight(in: harness.panel)
+    XCTAssertEqual(heightBefore, heightAfter, accuracy: 1)
+    XCTAssertFalse(images.imageURLs.isEmpty)
+  }
+
   func testHostedTwoRapidRevealsStackTwoPages() {
     let harness = makeHostedHarness(highlights: Self.thirteenNotes())
     defer { harness.panel.orderOut(nil) }
@@ -538,7 +602,9 @@ final class RefsInspectorScrollTests: XCTestCase {
     height: CGFloat = 798,
     highlights: [RefsShowAnnotation]? = nil,
     shortContent: Bool = false,
-    notesPageSize: Int? = nil
+    notesPageSize: Int? = nil,
+    imageProvider: RefsAnnotationImageProviding? = nil,
+    imageMetrics: [String: RefsImageMetrics] = [:]
   ) -> HostedHarness {
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
@@ -562,7 +628,8 @@ final class RefsInspectorScrollTests: XCTestCase {
       library: library,
       opener: FakeOpener(),
       highlights: FakeLocator(appURL: nil),
-      pasteboard: FakePasteboard()
+      pasteboard: FakePasteboard(),
+      imageProvider: imageProvider
     )
     if let notesPageSize {
       model.notesPageSize = notesPageSize
@@ -588,7 +655,8 @@ final class RefsInspectorScrollTests: XCTestCase {
           paragraph: "Short preview."
         ),
         outline: [],
-        highlights: highlights ?? []
+        highlights: highlights ?? [],
+        images: imageMetrics
       )
     } else if let highlights {
       inspectorContent = RefsInspectorContent(
@@ -600,7 +668,8 @@ final class RefsInspectorScrollTests: XCTestCase {
           )
         ),
         outline: (0..<80).map { "Heading \($0)" },
-        highlights: highlights
+        highlights: highlights,
+        images: imageMetrics
       )
     } else {
       inspectorContent = RefsInspectorContent(
@@ -611,7 +680,8 @@ final class RefsInspectorScrollTests: XCTestCase {
             count: 40
           )
         ),
-        outline: (0..<80).map { "Heading \($0)" }
+        outline: (0..<80).map { "Heading \($0)" },
+        images: imageMetrics
       )
     }
     model.installForPreviews(
@@ -695,6 +765,10 @@ final class RefsInspectorScrollTests: XCTestCase {
 
   private func inspectorOffset(in panel: RefsPanel) -> CGFloat {
     inspectorScroll(in: panel)?.documentVisibleRect.origin.y ?? 0
+  }
+
+  private func inspectorDocumentHeight(in panel: RefsPanel) -> CGFloat {
+    inspectorScroll(in: panel)?.documentView?.frame.height ?? 0
   }
 
   private func listOffset(in panel: RefsPanel) -> CGFloat {
@@ -811,7 +885,8 @@ final class RefsInspectorScrollTests: XCTestCase {
     let content = documentView.frame.height
     let viewport = clip.bounds.height
     let flipped = documentView.isFlipped
-    let offset = flipped
+    let offset =
+      flipped
       ? clip.bounds.origin.y : content - viewport - clip.bounds.origin.y
     return (
       scrollView: scroll,

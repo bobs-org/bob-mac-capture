@@ -532,7 +532,8 @@ public final class RefsPanelModel: ObservableObject {
     highlights: RefsHighlightsLocating,
     pasteboard: RefsPasteboardWriting = SystemRefsPasteboard(),
     tabs: HighlightsTabsSession? = nil,
-    isAdHocSigned: @escaping () -> Bool = { false }
+    isAdHocSigned: @escaping () -> Bool = { false },
+    imageProvider: RefsAnnotationImageProviding? = nil
   ) {
     self.library = library
     self.opener = opener
@@ -553,7 +554,10 @@ public final class RefsPanelModel: ObservableObject {
     )
     listing = initialListing
     selectedID = RefsSelectionPolicy.initial(in: initialListing)
-    inspectorLoader = RefsInspectorLoader(library: library)
+    inspectorLoader = RefsInspectorLoader(
+      library: library,
+      images: imageProvider
+    )
     inspectorLoader.objectWillChange.sink { [weak self] _ in
       self?.objectWillChange.send()
     }.store(in: &subscriptions)
@@ -1536,7 +1540,8 @@ public final class RefsPanelModel: ObservableObject {
     scanState: RefsScanState = .idle,
     scanNotice: RefsScanOutcome? = nil,
     inspector: [String: RefsInspectorContent]? = nil,
-    thumbnails: [String: NSImage]? = nil
+    thumbnails: [String: NSImage]? = nil,
+    images: [String: NSImage] = [:]
   ) {
     library.installSnapshotForPreviews(
       items: items,
@@ -1570,7 +1575,8 @@ public final class RefsPanelModel: ObservableObject {
     if let inspector {
       inspectorLoader.installContentForPreviews(
         inspector,
-        thumbnails: thumbnails ?? [:]
+        thumbnails: thumbnails ?? [:],
+        images: images
       )
     } else {
       inspectorLoader.reset()

@@ -111,6 +111,9 @@ struct RefsInspectorView: View {
   let signals: RefsSignals
   var inspector: RefsInspectorContent? = nil
   var thumbnail: NSImage? = nil
+  /// Decoded annotation images; design fixtures install them through
+  /// `installForPreviews(..., images:)`.
+  var imageStore: RefsInspectorImageStore? = nil
   /// The pure width mode, computed once per panel width by
   /// `RefsPanelView.columns(panelWidth:)`. Defaults to the compact
   /// layout, so existing call sites and fixtures keep today's look.
@@ -154,7 +157,10 @@ struct RefsInspectorView: View {
   }
 
   private var column: some View {
-    VStack(alignment: .leading, spacing: isWide ? RefsVisualTokens.wideInspectorSpacing : RefsVisualTokens.inspectorSpacing) {
+    VStack(
+      alignment: .leading,
+      spacing: isWide ? RefsVisualTokens.wideInspectorSpacing : RefsVisualTokens.inspectorSpacing
+    ) {
       if let item = content.item {
         hero(for: item)
         if !isWide {
@@ -785,19 +791,69 @@ struct RefsInspectorView: View {
           .font(.caption)
           .foregroundStyle(.secondary)
       }
-      if let quote {
-        quoteView(quote)
+      switch entry.kind {
+      case .highlight:
+        if let quote {
+          quoteView(quote)
+        }
+      case .image:
+        imageHighlightBody(entry)
+      case .note:
+        EmptyView()
       }
-      if entry.hasNote, let comment = annotation.comment {
-        noteCard(comment)
+      if entry.hasNoteCard {
+        noteCard(entry)
           .padding(
             .top,
-            quote == nil ? 0 : RefsVisualTokens.inspectorNoteGap - 4
+            needsNoteGap(entry) ? RefsVisualTokens.inspectorNoteGap - 4 : 0
           )
       }
     }
     .accessibilityElement(children: .combine)
     .accessibilityLabel(entry.accessibilityLabel)
+  }
+
+  private func needsNoteGap(_ entry: RefsInspectorFeed.Entry) -> Bool {
+    switch entry.kind {
+    case .highlight:
+      return visibleQuote(entry.annotation) != nil
+    case .image:
+      return true
+    case .note:
+      return false
+    }
+  }
+
+  /// The image takes the quote's slot, with the same 2 pt yellow
+  /// rule on its left. A missing file is a one-line unavailable row,
+  /// never a reserved box.
+  @ViewBuilder
+  private func imageHighlightBody(_ entry: RefsInspectorFeed.Entry) -> some View {
+    if let path = entry.imagePath, let metrics = imageMetrics(for: path) {
+      fittedImage(path: path, metrics: metrics, maxWidth: quoteSlotWidth)
+        .padding(.leading, RefsVisualTokens.inspectorQuoteInset)
+        .overlay(alignment: .leading) {
+          Rectangle()
+            .fill(.yellow)
+            .frame(width: RefsVisualTokens.inspectorQuoteRuleWidth)
+        }
+    } else if let path = entry.imagePath {
+      RefsInspectorImageUnavailableRow(fileName: imageFileName(path))
+        .padding(.leading, RefsVisualTokens.inspectorQuoteInset)
+        .overlay(alignment: .leading) {
+          Rectangle()
+            .fill(.yellow)
+            .frame(width: RefsVisualTokens.inspectorQuoteRuleWidth)
+        }
+    }
+  }
+
+  private var quoteSlotWidth: CGFloat {
+    max(1, layout.contentWidth - RefsVisualTokens.inspectorQuoteInset)
+  }
+
+  private var noteCardInnerWidth: CGFloat {
+    max(1, layout.contentWidth - 2 * RefsVisualTokens.inspectorQuoteInset)
   }
 
   private func visibleQuote(_ annotation: RefsShowAnnotation) -> String? {
@@ -833,7 +889,7 @@ struct RefsInspectorView: View {
       .help(RefsQuoteEmphasis.plainText(quote))
   }
 
-  private func noteCard(_ comment: String) -> some View {
+  private func noteCard(_ entry: RefsInspectorFeed.Entry) -> some View {
     let stroke =
       colorSchemeContrast == .increased
       ? RefsVisualTokens.inspectorNoteStrokeOpacityIncreased
@@ -842,15 +898,33 @@ struct RefsInspectorView: View {
       cornerRadius: RefsVisualTokens.inspectorNoteRadius,
       style: .continuous
     )
-    return HStack(alignment: .firstTextBaseline, spacing: 6) {
-      Image(systemName: RefsVisualTokens.inspectorNoteSymbol)
-        .font(.callout.weight(.medium))
-        .imageScale(.small)
-        .foregroundStyle(RefsVisualTokens.inspectorNoteTint)
-      Text(comment)
-        .font(bodyFont)
-        .foregroundStyle(.primary)
-        .fixedSize(horizontal: false, vertical: true)
+    let comment =
+      entry.annotation.comment?.trimmingCharacters(
+        in: .whitespacesAndNewlines
+      ) ?? ""
+    return VStack(alignment: .leading, spacing: RefsVisualTokens.inspectorImageStackSpacing) {
+      HStack(alignment: .firstTextBaseline, spacing: 6) {
+        Image(systemName: RefsVisualTokens.inspectorNoteSymbol)
+          .font(.callout.weight(.medium))
+          .imageScale(.small)
+          .foregroundStyle(RefsVisualTokens.inspectorNoteTint)
+        if !comment.isEmpty {
+          Text(comment)
+            .font(bodyFont)
+            .foregroundStyle(.primary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      ForEach(entry.attachedImages, id: \.self) { path in
+        if let metrics = imageMetrics(for: path) {
+          fittedImage(path: path, metrics: metrics, maxWidth: noteCardInnerWidth)
+        } else {
+          RefsInspectorImageUnavailableRow(fileName: imageFileName(path))
+        }
+      }
+      ForEach(entry.unresolvedImages, id: \.self) { path in
+        RefsInspectorImageUnavailableRow(fileName: imageFileName(path))
+      }
     }
     .padding(.horizontal, RefsVisualTokens.inspectorQuoteInset)
     .padding(.vertical, RefsVisualTokens.inspectorNoteVerticalPadding)
@@ -863,6 +937,33 @@ struct RefsInspectorView: View {
     .overlay(
       shape.strokeBorder(Color.yellow.opacity(stroke), lineWidth: 0.5)
     )
+  }
+
+  private func fittedImage(
+    path: String,
+    metrics: RefsImageMetrics,
+    maxWidth: CGFloat
+  ) -> some View {
+    let size = RefsImageFit.displaySize(
+      pointSize: metrics.pointSize,
+      maxWidth: maxWidth,
+      maxHeight: layout.imageMaxHeight
+    )
+    return RefsInspectorImageView(
+      path: path,
+      metrics: metrics,
+      displaySize: size,
+      store: imageStore,
+      previewMode: previewMode
+    )
+  }
+
+  private func imageMetrics(for path: String) -> RefsImageMetrics? {
+    inspector?.images[path]
+  }
+
+  private func imageFileName(_ path: String) -> String {
+    URL(fileURLWithPath: path).lastPathComponent
   }
 
   private func noteChip(count: Int) -> some View {

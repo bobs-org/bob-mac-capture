@@ -78,6 +78,10 @@ enum RefsVisualTokens {
   static let inspectorNoteVerticalPadding: CGFloat = 6
   /// Gap between a quote and its note card.
   static let inspectorNoteGap: CGFloat = 6
+  /// Vertical gap between stacked attached images inside a note card.
+  static let inspectorImageStackSpacing: CGFloat = 8
+  /// Cross-fade from the image placeholder to the decoded bitmap.
+  static let inspectorImageFadeDuration = 0.15
 
   // MARK: - Copy card
 

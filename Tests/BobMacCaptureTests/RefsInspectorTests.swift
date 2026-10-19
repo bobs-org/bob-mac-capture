@@ -271,11 +271,23 @@ final class RefsInspectorLoaderTests: XCTestCase {
     let content = try XCTUnwrap(loader.content(for: fixtures.paper.id))
 
     XCTAssertEqual(
+      content.highlights.map(\.kind),
+      [
+        "highlight",
+        "highlight",
+        "highlight",
+        "note",
+        "highlight",
+        "highlight",
+      ]
+    )
+    XCTAssertEqual(
       content.highlights.map(\.quote),
       [
         "Commented highlights keep their place in Your notes.",
         "Uncommented highlights belong under Highlights.",
         "A whitespace-only comment still counts as uncommented.",
+        nil,
         "Same-page highlights share one page label.",
         "The second highlight on this page has no extra label.",
       ]
@@ -284,7 +296,217 @@ final class RefsInspectorLoaderTests: XCTestCase {
       content.highlights.filter(\.hasComment).map(\.comment),
       ["Keep this in the notes section."]
     )
+    XCTAssertEqual(
+      content.highlights.first(where: { $0.kind == "note" })?.comment,
+      "A standalone note stays out of the inspector."
+    )
     XCTAssertFalse(content.showFailed)
+  }
+
+  func testLoaderPublishesImageMetricsWithInspectorEntries() async throws {
+    let fixtures = makeFixtures()
+    let images = StubAnnotationImages()
+    let crop = RefsImageMetrics(pixelWidth: 400, pixelHeight: 200)
+    let attached = RefsImageMetrics(pixelWidth: 240, pixelHeight: 80, hasAlpha: true)
+    images.metricsByLastComponent = [
+      "crop.jpg": crop,
+      "note.png": attached,
+    ]
+    fixtures.fetcher.showDelayNanoseconds = 0
+    fixtures.fetcher.showResponse = RefsShowResponse(
+      schemaVersion: 1,
+      refs: [
+        RefsShowRow(
+          path: fixtures.paper.id,
+          annotations: [
+            RefsShowAnnotation(
+              pageLabel: "Page 5",
+              kind: "image",
+              asset: "ref/docs/crop.jpg"
+            ),
+            RefsShowAnnotation(
+              pageLabel: "Page 9",
+              kind: "highlight",
+              quote: "A quote with a photo.",
+              images: ["ref/docs/note.png"]
+            ),
+            RefsShowAnnotation(
+              kind: "note",
+              comment: "A standalone thought."
+            ),
+            RefsShowAnnotation(
+              kind: "highlight",
+              quote: "Missing crop.",
+              images: ["ref/docs/missing.png"]
+            ),
+            RefsShowAnnotation(
+              kind: "highlight",
+              quote: "Escapes the vault.",
+              images: ["../secret.jpg"]
+            ),
+          ]
+        )
+      ]
+    )
+    let loader = RefsInspectorLoader(
+      library: fixtures.library,
+      intrinsics: fixtures.intrinsics,
+      images: images
+    )
+
+    loader.request(fixtures.paper)
+    await waitForContent(loader, id: fixtures.paper.id)
+    let content = try XCTUnwrap(loader.content(for: fixtures.paper.id))
+
+    XCTAssertEqual(
+      content.highlights.map(\.kind),
+      ["image", "highlight", "note", "highlight", "highlight"]
+    )
+    XCTAssertEqual(content.images["ref/docs/crop.jpg"], crop)
+    XCTAssertEqual(content.images["ref/docs/note.png"], attached)
+    XCTAssertNil(content.images["ref/docs/missing.png"])
+    XCTAssertNil(content.images["../secret.jpg"])
+    XCTAssertEqual(
+      Set(images.metricURLLastComponents),
+      ["crop.jpg", "note.png", "missing.png"]
+    )
+    XCTAssertFalse(
+      images.metricURLs.contains(where: { $0.path.contains("secret") })
+    )
+  }
+
+  func testLoaderWaitsForImageMetricsBeforePublishing() async throws {
+    let fixtures = makeFixtures()
+    let images = StubAnnotationImages()
+    images.metricsDelayNanoseconds = 400_000_000
+    images.metricsByLastComponent = [
+      "crop.jpg": RefsImageMetrics(pixelWidth: 100, pixelHeight: 40)
+    ]
+    fixtures.fetcher.showDelayNanoseconds = 0
+    fixtures.fetcher.showResponse = RefsShowResponse(
+      schemaVersion: 1,
+      refs: [
+        RefsShowRow(
+          path: fixtures.paper.id,
+          annotations: [
+            RefsShowAnnotation(
+              kind: "image",
+              asset: "ref/docs/crop.jpg"
+            )
+          ]
+        )
+      ]
+    )
+    let loader = RefsInspectorLoader(
+      library: fixtures.library,
+      intrinsics: fixtures.intrinsics,
+      images: images
+    )
+
+    loader.request(fixtures.paper)
+    try await Task.sleep(nanoseconds: 250_000_000)
+    XCTAssertNil(loader.content(for: fixtures.paper.id))
+
+    await waitForContent(loader, id: fixtures.paper.id)
+    let content = try XCTUnwrap(loader.content(for: fixtures.paper.id))
+    XCTAssertEqual(
+      content.images["ref/docs/crop.jpg"]?.pixelWidth,
+      100
+    )
+  }
+
+  func testImageStoreCachesLoadsAndPreviewImages() async throws {
+    let fixtures = makeFixtures()
+    let images = StubAnnotationImages()
+    let bitmap = makeTestImage(size: NSSize(width: 40, height: 20), color: .systemTeal)
+    images.imageByLastComponent = ["crop.jpg": bitmap]
+    let store = RefsInspectorImageStore(
+      library: fixtures.library,
+      provider: images
+    )
+
+    XCTAssertNil(store.cachedImage(path: "ref/docs/crop.jpg", maxPixel: 80))
+    let loaded = await store.loadImage(path: "ref/docs/crop.jpg", maxPixel: 80)
+    XCTAssertEqual(loaded?.size, bitmap.size)
+    XCTAssertNotNil(store.cachedImage(path: "ref/docs/crop.jpg", maxPixel: 80))
+    XCTAssertEqual(images.imageURLs.count, 1)
+    _ = await store.loadImage(path: "ref/docs/crop.jpg", maxPixel: 80)
+    XCTAssertEqual(images.imageURLs.count, 1)
+
+    let preview = makeTestImage(size: NSSize(width: 12, height: 8), color: .systemOrange)
+    store.installImagesForPreviews(["ref/docs/any.jpg": preview])
+    XCTAssertEqual(
+      store.cachedImage(path: "ref/docs/any.jpg", maxPixel: 1)?.size,
+      preview.size
+    )
+    XCTAssertEqual(
+      store.cachedImage(path: "ref/docs/any.jpg", maxPixel: 4096)?.size,
+      preview.size
+    )
+  }
+
+  func testAnnotationImageLoaderReadsRasterPng() async throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let url = root.appendingPathComponent("sample.png")
+    let source = makeTestImage(
+      size: NSSize(width: 64, height: 32),
+      color: .systemRed
+    )
+    let tiff = try XCTUnwrap(source.tiffRepresentation)
+    let rep = try XCTUnwrap(NSBitmapImageRep(data: tiff))
+    let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+    try png.write(to: url)
+
+    let loader = RefsAnnotationImageLoader()
+    let loadedMetrics = await loader.metrics(for: url)
+    let metrics = try XCTUnwrap(loadedMetrics)
+    XCTAssertEqual(metrics.pixelWidth, 64)
+    XCTAssertEqual(metrics.pixelHeight, 32)
+    let loadedThumbnail = await loader.image(for: url, maxPixel: 16)
+    let thumbnail = try XCTUnwrap(loadedThumbnail)
+    XCTAssertLessThanOrEqual(
+      max(thumbnail.size.width, thumbnail.size.height),
+      16
+    )
+  }
+
+  func testAnnotationImageLoaderReadsSvgOnMainActor() async throws {
+    let root = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let url = root.appendingPathComponent("mark.svg")
+    let svg = """
+      <svg xmlns="http://www.w3.org/2000/svg" width="80" height="40">
+        <rect width="80" height="40" fill="#f00"/>
+      </svg>
+      """
+    try Data(svg.utf8).write(to: url)
+
+    let loader = RefsAnnotationImageLoader()
+    let loadedMetrics = await loader.metrics(for: url)
+    let metrics = try XCTUnwrap(loadedMetrics)
+    XCTAssertEqual(metrics.pixelWidth, 80)
+    XCTAssertEqual(metrics.pixelHeight, 40)
+    XCTAssertTrue(metrics.hasAlpha)
+    let loadedImage = await loader.image(for: url, maxPixel: 16)
+    let image = try XCTUnwrap(loadedImage)
+    XCTAssertGreaterThan(image.size.width, 0)
+  }
+
+  func testImageStoreRejectsEscapingPaths() async throws {
+    let fixtures = makeFixtures()
+    let images = StubAnnotationImages()
+    let store = RefsInspectorImageStore(
+      library: fixtures.library,
+      provider: images
+    )
+    let loaded = await store.loadImage(path: "../secret.jpg", maxPixel: 80)
+    XCTAssertNil(loaded)
+    XCTAssertTrue(images.imageURLs.isEmpty)
   }
 
   func testShowFailureLeavesHighlightsEmpty() async throws {
@@ -1075,6 +1297,65 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
         )
       ])
   }
+}
+
+final class StubAnnotationImages: RefsAnnotationImageProviding, @unchecked Sendable {
+  private let lock = NSLock()
+  private(set) var metricURLs: [URL] = []
+  private(set) var imageURLs: [URL] = []
+  var metricsByLastComponent: [String: RefsImageMetrics] = [:]
+  var imageByLastComponent: [String: NSImage] = [:]
+  var metricsDelayNanoseconds: UInt64 = 0
+  var imageDelayNanoseconds: UInt64 = 0
+
+  var metricURLLastComponents: [String] {
+    lock.withLock { metricURLs.map(\.lastPathComponent) }
+  }
+
+  func metrics(for url: URL) async -> RefsImageMetrics? {
+    lock.withLock { metricURLs.append(url) }
+    if metricsDelayNanoseconds > 0 {
+      try? await Task.sleep(nanoseconds: metricsDelayNanoseconds)
+    }
+    return lock.withLock { metricsByLastComponent[url.lastPathComponent] }
+  }
+
+  func image(for url: URL, maxPixel: Int) async -> NSImage? {
+    lock.withLock { imageURLs.append(url) }
+    if imageDelayNanoseconds > 0 {
+      try? await Task.sleep(nanoseconds: imageDelayNanoseconds)
+    }
+    return lock.withLock { imageByLastComponent[url.lastPathComponent] }
+  }
+}
+
+func makeTestImage(size: NSSize, color: NSColor, hasAlpha: Bool = false) -> NSImage {
+  let pixelsWide = max(1, Int(size.width.rounded()))
+  let pixelsHigh = max(1, Int(size.height.rounded()))
+  let rep = NSBitmapImageRep(
+    bitmapDataPlanes: nil,
+    pixelsWide: pixelsWide,
+    pixelsHigh: pixelsHigh,
+    bitsPerSample: 8,
+    samplesPerPixel: hasAlpha ? 4 : 3,
+    hasAlpha: hasAlpha,
+    isPlanar: false,
+    colorSpaceName: .deviceRGB,
+    bytesPerRow: 0,
+    bitsPerPixel: 0
+  )!
+  NSGraphicsContext.saveGraphicsState()
+  NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+  if hasAlpha {
+    NSColor.clear.setFill()
+    NSRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh).fill()
+  }
+  color.setFill()
+  NSRect(x: 0, y: 0, width: pixelsWide, height: pixelsHigh).fill()
+  NSGraphicsContext.restoreGraphicsState()
+  let image = NSImage(size: size)
+  image.addRepresentation(rep)
+  return image
 }
 
 final class StubIntrinsics: RefsPDFIntrinsicsProviding, @unchecked Sendable {

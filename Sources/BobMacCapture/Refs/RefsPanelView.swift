@@ -233,6 +233,7 @@ public struct RefsPanelView: View {
                     signals: model.signals,
                     inspector: model.inspectorContent(for: selected),
                     thumbnail: model.inspectorThumbnail(for: selected),
+                    imageStore: model.inspectorLoader.imageStore,
                     layout: layout,
                     previewMode: previewMode,
                     notesPage: model.inspectorNotesPage(for: selected),

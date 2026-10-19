@@ -1807,10 +1807,20 @@ one thumbnail PNG each). What each kind shows:
   ("22 · ≈ 70 min · 3 Pomodoros", 230 words per minute, Pomodoros of
   25 minutes), Tasks ("2 open") from `ref show`, the top-level
   outline headings (up to 6), and your annotations in one HIGHLIGHTS
-  section in note order. A highlight that carries your comment shows
-  it beneath the quote on a pale-yellow note card marked with the
-  sticky-note glyph; the header's note chip counts noted highlights,
-  and the disclosure row says how many hidden highlights carry notes.
+  section in note order: ordinary highlights, image highlights, and
+  standalone notes. A highlight that carries your comment, an attached
+  image, or an unresolved image shows a pale-yellow note card marked
+  with the sticky-note glyph; the header's note chip counts those
+  cards, and the disclosure row says how many hidden entries carry
+  notes and, when hidden entries hold resolvable images, how many
+  images (`+12 more · 3 with notes · 2 images · ⌃D shows 5 more`).
+  Image highlights render in the quote slot (the 2 pt yellow rule on
+  the left) fitted to the column, never upscaled, with a reserved
+  frame from the file's header so Ctrl-D's follow-tail never jumps.
+  Attached images sit inside the note card, 8 pt apart, fitted to the
+  card's inner width. A missing, unreadable, or unresolved image is a
+  one-line "Image unavailable" row with the file's base name, never a
+  box. Standalone notes join the feed as note cards with no quote.
   Same-page entries share one page label. Quotes render balanced
   `**bold**` runs as strong emphasis, and a hover tooltip on a
   highlight shows its full text. The preview shows the first page (5
@@ -1859,7 +1869,10 @@ intrinsics cache (`intrinsics-v2.json`) with thumbnails
 (`thumbs-v2/<sha256>.png`) under
 `~/Library/Caches/org.bobs.bob-mac-capture/refs/`. The first v2 run
 removes the legacy `intrinsics.json` and `thumbs/`, so stale
-224 × 290 thumbnails are never upscaled. The References
+224 × 290 thumbnails are never upscaled. Annotation images that
+`bob ref show` names are read from the vault, read-only, and the
+decoded previews stay in memory only; nothing new is written to
+disk. The References
 settings persist a small set of `UserDefaults` keys (the ⌃⇧⌘R
 binding flag, the Highlights-frontmost open key, the Highlights Tabs
 key (`refsHighlightsTabsKey`, default `shiftCmdO`), the Highlights
