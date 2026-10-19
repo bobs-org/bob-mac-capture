@@ -2313,9 +2313,9 @@ final class CapturePanelModelTests: XCTestCase {
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
-        // A live close card is showing; then the draft becomes `=3`, whose
-        // dry run fails with the still-running error. The stale card must go
-        // away with the red error.
+        // A live close card is showing; then the draft becomes `x3`, whose
+        // dry run fails because `x3` names task 3, but CAPTURE has 2 numbered
+        // Task Links (1–2). The stale card must go away with the red error.
         model.plainDraft = "x"
         model.editorTextDidChange(cursorUTF8Offset: 1)
         await waitUntil {
@@ -2324,7 +2324,7 @@ final class CapturePanelModelTests: XCTestCase {
         }
         XCTAssertNotNil(model.closePresentation)
 
-        model.plainDraft = "=3"
+        model.plainDraft = "x3"
         model.editorTextDidChange(cursorUTF8Offset: 2)
         await waitUntil {
             if case .failed = model.previewState { return true }
@@ -2994,7 +2994,7 @@ final class CapturePanelModelTests: XCTestCase {
 
         // Once the draft becomes valid again, the normal card returns.
         model.plainDraft = "x1"
-        model.editorTextDidChange(cursorUTF8Offset: 3)
+        model.editorTextDidChange(cursorUTF8Offset: 2)
         await waitUntil {
             if case .ready = model.previewState { return model.closePendingText == nil }
             return false
@@ -3291,8 +3291,9 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.plainDraft, "")
         XCTAssertTrue(model.processClient?.refuseOverrideKnownUnsupported == true)
         let record = try String(contentsOf: recordURL)
-        let invocations = Array(record.components(separatedBy: "argv=capture").dropFirst())
-        XCTAssertEqual(invocations.count, 2)
+        let invocations = record.split(separator: "\n").filter { $0.hasPrefix("argv=capture --") }
+        XCTAssertEqual(invocations.count, 2, record)
+        guard invocations.count == 2 else { return }
         XCTAssertTrue(invocations[0].contains("--refuse-override"))
         XCTAssertFalse(invocations[1].contains("--refuse-override"))
     }
@@ -3537,11 +3538,11 @@ final class CapturePanelModelTests: XCTestCase {
             ]
         )
         // A caret on the `=<X>` suffix offers no name completion: Bob is never
-        // even asked. The dry run still runs (and fails on the running ledger).
+        // even asked. The dry run still runs and previews the counted restart.
         model.plainDraft = "=3"
         model.editorTextDidChange(cursorUTF8Offset: 2)
         await waitUntil {
-            if case .failed = model.previewState { return true }
+            if case .ready = model.previewState { return true }
             return false
         }
 
@@ -3856,7 +3857,7 @@ final class CapturePanelModelTests: XCTestCase {
             ]
         )
         model.plainDraft = "x"
-        model.editorTextDidChange(cursorUTF8Offset: 2)
+        model.editorTextDidChange(cursorUTF8Offset: 1)
         await waitUntil {
             if case .ready = model.previewState { return true }
             return false
@@ -3890,7 +3891,7 @@ final class CapturePanelModelTests: XCTestCase {
         )
         // Inside the `x` suffix there is nothing to complete.
         model.plainDraft = "x"
-        model.editorTextDidChange(cursorUTF8Offset: 2)
+        model.editorTextDidChange(cursorUTF8Offset: 1)
         await waitUntil {
             if case .ready = model.previewState { return true }
             return false
@@ -3905,7 +3906,7 @@ final class CapturePanelModelTests: XCTestCase {
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
         model.plainDraft = "x"
-        model.editorTextDidChange(cursorUTF8Offset: 2)
+        model.editorTextDidChange(cursorUTF8Offset: 1)
 
         await waitUntil {
             if case .ready(let preview) = model.previewState {

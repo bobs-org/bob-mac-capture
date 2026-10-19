@@ -832,17 +832,18 @@ public final class RefsPanelModel: ObservableObject {
       rerankSelectingFirst()
       return true
     case .refresh:
-      // The fresh listing lands when the refresh completes (see
-      // `libraryDidPublish`): re-ranking now would pin the old data.
-      // Await the single-flight `refs-pull` fast-forward first so ⌘R
-      // can pull; a failed or unsupported pull still refreshes.
-      pendingRefreshRerank = true
+      // Start the Tabs read synchronously so a close supersedes it; only the
+      // library refresh waits for the single-flight `refs-pull` fast-forward.
+      // The re-rank flag is set once the pull is done so an arrival during the
+      // pull cannot consume ⌘R's re-rank with pre-pull data. A failed or
+      // unsupported pull still refreshes.
+      if tabsFilter {
+        beginTabsRefresh(preservingSelection: true)
+      }
       Task { [weak self] in
         await self?.library.pullAndWait()
+        self?.pendingRefreshRerank = true
         self?.library.refresh(reason: .manual)
-        if self?.tabsFilter == true {
-          self?.beginTabsRefresh(preservingSelection: true)
-        }
       }
       return true
     case .select(let id):

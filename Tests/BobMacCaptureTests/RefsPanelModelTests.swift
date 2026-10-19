@@ -1850,6 +1850,9 @@ final class RefsPanelModelTests: XCTestCase {
     let bumped = "ref/papers/small_ready.md"
     let beforeIndex = harness.model.listing.orderedIDs.firstIndex(of: bumped)!
     XCTAssertGreaterThan(beforeIndex, 0)
+    await harness.waitForModel { _ in
+      harness.library.items.contains { $0.id == "ref/blogs/small_opened.md" && $0.added != nil }
+    }
 
     // New data: the paper was added today, so it joins NEW.
     try harness.serveAddedVariant(path: bumped, added: todayDateString())
@@ -3887,6 +3890,8 @@ final class RefsPanelModelTests: XCTestCase {
     let reader = FakeTabsReader(isTrusted: true)
     let harness = try makeRenameHarness(fetcher: fetcher, tabsReader: reader)
     await harness.waitForSnapshot(ids: ["ref/chat/alpha.md"])
+    reader.setNextResult(.snapshot(Self.tabsSnapshot(
+      harness.library.items, vault: harness.vault, frontmost: false)))
     harness.model.prepareForPresentation(source: .highlightsTabs)
     await harness.waitForModel { $0.tabsState == .loaded || $0.tabsState == .noDocuments }
     fetcher.listResponse = RefsListResponse(
