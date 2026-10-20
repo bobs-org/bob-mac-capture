@@ -386,9 +386,9 @@ public enum RefsExplanation {
       return "Added by your scan"
     case .today:
       if let name = signals.today.entry(for: item)?.pomodoroName, !name.isEmpty {
-        return "In Today · \(name) Pomodoro"
+        return "Now · \(name) Pomodoro"
       }
-      return "In Today"
+      return "Now"
     case .new:
       if let newness = RefsRanker.newness(item, signals: signals) {
         switch newness {

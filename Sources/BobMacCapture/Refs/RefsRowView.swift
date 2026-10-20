@@ -69,9 +69,9 @@ struct RefsStateGlyph: View {
   }
 }
 
-/// The pink Today pill, matching capture's NOW pill: a capsule with a
+/// The pink Now pill, matching capture's NOW pill: a capsule with a
 /// white timer glyph and the Pomodoro name, truncated at 12
-/// characters, or "TODAY" when the name is empty.
+/// characters, or "NOW" when the name is empty.
 @available(macOS 26.0, *)
 struct RefsTodayPill: View {
   let pomodoroName: String
@@ -88,12 +88,12 @@ struct RefsTodayPill: View {
     .padding(.horizontal, 8)
     .padding(.vertical, 4)
     .background(.pink, in: Capsule())
-    .accessibilityLabel("Today in \(label) Pomodoro")
+    .accessibilityLabel("Now in \(label) Pomodoro")
   }
 
   private var label: String {
     if pomodoroName.isEmpty {
-      return "TODAY"
+      return "NOW"
     }
     if pomodoroName.count > 12 {
       return String(pomodoroName.prefix(12)) + "…"
@@ -439,8 +439,8 @@ struct RefsRowView: View {
       content.caption.replacingOccurrences(of: " pp", with: " pages"),
     ]
     if let pomodoroName {
-      let name = pomodoroName.isEmpty ? "TODAY" : pomodoroName
-      parts.append("Today in \(name) Pomodoro")
+      let name = pomodoroName.isEmpty ? "NOW" : pomodoroName
+      parts.append("Now in \(name) Pomodoro")
     }
     if content.isNew {
       parts.append("new")

@@ -126,11 +126,12 @@ An empty query shows browse sections in order — Just scanned (this scan's
 created references, in `bob`'s order, uncapped, while the scan mark is at
 most 15 minutes old), NEW (Ready/Next rows that are marked new, or unmarked
 unopened arrivals within 3 local days, newest first by new-since,
-uncapped), Today
-(ledger order),
+uncapped), Now (references whose reading task has a Task Link under today's open
+Pomodoros, in ledger order),
 Reading, Next (blocked rows last), Ready by added desc (blocked rows
 last), Recently opened (read/dropped/unknown opened within 14 days,
-capped at 5), then the Library by last activity. NEW is Mac-local
+capped at 5), then the Library by last activity. The Now section header
+reads `NOW`, distinct from Newest's `TODAY` date group. NEW is Mac-local
 presentation state: it never runs `bob`, never writes the vault, and is
 not the review walk's NEW freshness tier. A marked row's new-since is
 the mark instant; an arrived row uses `addedAt` when known, else the
@@ -147,7 +148,7 @@ T1 title/stem word prefix (any length; a 2-character prefix counts),
 T2 fuzzy (`q >= 0.55`; two characters need a contiguous non-word
 substring, one character needs a word prefix), T3 author/area/kind/outline
 heading. Within a tier, `score = m + P + W + L + F + R`: mean token
-quality, prefix bonus 0.15, whole-word bonus 0.10, lane prior (Today
+quality, prefix bonus 0.15, whole-word bonus 0.10, lane prior (Now
 0.20, reading 0.15, next 0.12, ready 0.08, blocked −0.02, dropped −0.20,
 read/unknown 0), frecency weight 0.25 (half-life
 `frecencyHalfLifeDays`), and added-date recency weight 0.10; ties break
@@ -270,9 +271,12 @@ row is NEW),
 the kind tile, the rich title (semibold while NEW; code spans styled, matches in the
 accent color) with its caption (a stem-only or secondary match
 renders its part in the accent color, and a matched author the
-caption already shows is not repeated), and the Today pill,
+caption already shows is not repeated), and the pink Now pill (the
+Pomodoro name, or `NOW` when it is unnamed),
 annotation and narration marks, and the state glyph. Section headers
-are 26 pt and pinned. The selected row always stays fully visible
+are 26 pt and pinned. Ranked headers read `NEW`, `NOW`, `READING`, …;
+Newest headers read `TODAY`, `YESTERDAY`, … . The selected row always
+stays fully visible
 below the pinned header; a show keeps the selected row when it remains
 listed, and a re-rank that selects the first row returns the list to its
 top. Moving up lands the selected row just under its section header. The NEW header leads with the same accent
@@ -283,10 +287,10 @@ title and a trailing day on day groups (`Oct 18`). The Newest token is
 an accent capsule (`calendar.day.timeline.left`, falling back to
 `calendar`) with the text "Newest" and an `xmark`; activating it
 returns to library sections. VoiceOver reads each row as one element —
-"Title, Paper, Ready, added today, 22 pages, Today in BLOG
+"Title, Paper, Ready, added today, 22 pages, Now in BLOG
 Pomodoro, new" — with the kind said once and the selected
 row carrying `.isSelected`. The inspector fills instantly from the
-list item (hero, kind/state/New/Today chips, title, byline, an
+list item (hero, kind/state/New/Now chips, title, byline, an
 Added/Finished/Pages/Opened/Notes/Reading task/Narration facts grid
 with absent rows omitted, the why-here line, and the vault PDF path;
 see [Bob Refs inspector](refs-inspector.md) for the hydrated column); a missing PDF shows an
@@ -406,7 +410,7 @@ default, and each preview; Return links to the default, while typing
 filters rows and offers a new Pomodoro name. Arrow keys move through
 matches, Shift-Return creates or reuses the exact typed name, and clicking
 a row links it. The card stays open while choosing another reference.
-The selected row gains its Today pill immediately, then the library refresh
+The selected row gains its Now pill immediately, then the library refresh
 replaces that optimistic pill. A successful (non-guarded) link from Bob Refs
 marks that row seen, so it leaves NEW on the next unfrozen ranking. A glass
 toast confirms the lane and ledger change; if the panel was hidden when Bob

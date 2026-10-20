@@ -140,7 +140,7 @@ enum RefsVisualTokens {
 
   /// The kind tint: purple chat, teal paper, brown article, indigo
   /// doc, secondary for everything else. Status hues never encode
-  /// kind; pink means Today only; the accent means selection,
+  /// kind; pink means the Now lane only; the accent means selection,
   /// matches, and the New dot.
   static let newDotSize: CGFloat = 6
   static let newDotGutterWidth: CGFloat = 8

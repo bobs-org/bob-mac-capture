@@ -294,9 +294,9 @@ public final class RefsLibrary: ObservableObject {
     refresh(reason: .panelOpen)
   }
 
-  /// Refreshes Today in the background: every panel open, every
-  /// successful capture, and every 10 minutes. The reason rides along
-  /// so a trigger during a refresh re-runs the same lane.
+  /// Refreshes the ledger's Today value in the background: every panel
+  /// open, every successful capture, and every 10 minutes. The reason
+  /// rides along so a trigger during a refresh re-runs the same lane.
   public func refreshToday(reason: RefsRefreshReason) {
     guard todayTask == nil else {
       todayFollowUp = true

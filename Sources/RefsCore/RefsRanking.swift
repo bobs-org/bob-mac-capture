@@ -127,7 +127,7 @@ public struct RefsAddedGroup: Equatable, Hashable, Sendable {
 
   /// Stable across re-ranks: `day-2026-10-16`, `month-2026-09`, `undated`.
   public let id: String
-  /// Title-cased; the header uppercases it ("Today", "December 2025").
+  /// Title-cased; the header uppercases it (a day name, "December 2025").
   public let title: String
   /// The trailing date on day groups ("Oct 18"); nil otherwise.
   public let detail: String?
@@ -153,6 +153,8 @@ public struct RefsAddedGroup: Equatable, Hashable, Sendable {
 public enum RefsSectionKind: Equatable, Hashable, Sendable {
   case justScanned
   case new
+  /// References linked under today's open Pomodoros (the ledger's Today);
+  /// the header reads NOW to distinguish it from Newest's TODAY date group.
   case today
   case reading
   case next
@@ -175,7 +177,7 @@ public enum RefsSectionKind: Equatable, Hashable, Sendable {
     case .new:
       return "New"
     case .today:
-      return "Today"
+      return "Now"
     case .reading:
       return "Reading"
     case .next:

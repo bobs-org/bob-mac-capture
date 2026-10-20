@@ -673,6 +673,7 @@ final class RefsRankingTests: XCTestCase {
     let now = Self.fixedNow
     let items = [
       makeItem(id: "today", title: "Field notes", state: .reading, added: "2026-10-07"),
+      makeItem(id: "unnamedToday", title: "Unlabelled session", state: .reading),
       makeItem(id: "added", title: "Fresh arrival", state: .ready, added: "2026-10-08"),
       makeItem(id: "reading", title: "Deep Dive", state: .reading, added: "2026-09-20"),
       makeItem(
@@ -687,7 +688,7 @@ final class RefsRankingTests: XCTestCase {
       makeItem(id: "lib", title: "Old paper", kind: .paper, added: "2026-09-02"),
     ]
     let signals = makeSignals(
-      today: [("today", "BLOG")],
+      today: [("today", "BLOG"), ("unnamedToday", "")],
       opens: [
         RefsOpenEvent(path: "reading", at: now.addingTimeInterval(-2 * 3_600)),
         RefsOpenEvent(path: "recent", at: now.addingTimeInterval(-3 * 86_400)),
@@ -698,7 +699,11 @@ final class RefsRankingTests: XCTestCase {
 
     XCTAssertEqual(
       RefsExplanation.whyHere(byID["today"]!, listing: listing, signals: signals),
-      "In Today · BLOG Pomodoro"
+      "Now · BLOG Pomodoro"
+    )
+    XCTAssertEqual(
+      RefsExplanation.whyHere(byID["unnamedToday"]!, listing: listing, signals: signals),
+      "Now"
     )
     XCTAssertEqual(
       RefsExplanation.whyHere(byID["added"]!, listing: listing, signals: signals),
@@ -723,6 +728,27 @@ final class RefsRankingTests: XCTestCase {
     XCTAssertEqual(
       RefsExplanation.whyHere(byID["lib"]!, listing: listing, signals: signals),
       "Library · last activity Sep 2"
+    )
+  }
+
+  func testTodaySectionAndNewestDateGroupHaveDistinctHeaders() {
+    let item = makeItem(
+      id: "linkedToday", title: "Linked today", state: .reading, added: "2026-10-08"
+    )
+    let signals = makeSignals(today: [(item.id, "BLOG")])
+    let ranked = RefsRanker.listing([item], query: "", scope: .all, signals: signals)
+    let newest = RefsRanker.listing(
+      [item], query: "", scope: .all, order: .newest, signals: signals
+    )
+
+    XCTAssertEqual(ranked.sectionKind(for: item.id), .today)
+    XCTAssertEqual(ranked.sectionKind(for: item.id)?.title.uppercased(), "NOW")
+    guard case let .added(group)? = newest.sectionKind(for: item.id) else {
+      return XCTFail("the same-day reference belongs in a Newest date group")
+    }
+    XCTAssertEqual(group.title.uppercased(), "TODAY")
+    XCTAssertNotEqual(
+      ranked.sectionKind(for: item.id)?.title.uppercased(), group.title.uppercased()
     )
   }
 

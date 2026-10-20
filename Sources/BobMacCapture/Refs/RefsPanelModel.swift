@@ -647,7 +647,7 @@ public final class RefsPanelModel: ObservableObject {
   }
 
   /// The Today Pomodoro name for an id, or nil when the row is not
-  /// in Today. An empty name reads "TODAY" in the pill. The join runs
+  /// in Today. An empty name reads "NOW" in the pill. The join runs
   /// through the row's located task, so two references sharing one
   /// parent note do not both claim the pill.
   public func pomodoroName(for id: String) -> String? {
