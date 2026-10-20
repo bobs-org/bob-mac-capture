@@ -254,6 +254,23 @@ public struct RefsInspectorNotesReveal: Equatable, Sendable {
   }
 }
 
+/// Applied inputs for one materialized list row. Tests record these
+/// through `RefsRowRenderProbe` to see what the lazy stack painted.
+struct RefsRowRenderState: Equatable {
+  var isSelected: Bool
+  var section: RefsSectionKind?
+  var caption: String
+}
+
+/// Test-only sink of applied row render state. Nil in production.
+final class RefsRowRenderProbe {
+  private(set) var rows: [String: RefsRowRenderState] = [:]
+
+  func record(_ id: String, _ state: RefsRowRenderState) {
+    rows[id] = state
+  }
+}
+
 /// The Refs panel model: the query, the scope, the frozen listing, the
 /// id-based selection, commands, open dispatch, and banners. Library
 /// publications refresh row content in place and never re-rank: re-ranking
@@ -1175,6 +1192,7 @@ public final class RefsPanelModel: ObservableObject {
   /// drained queue stops instead of chaining empty workers.
   var closeWorkerLaunchCountForTests = 0
   var rowContentEvaluationsForTests = 0
+  var rowRenderProbeForTests: RefsRowRenderProbe?
   var isCloseIdleForTests: Bool {
     closeQueue.isEmpty && closeWorker == nil
   }

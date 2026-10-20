@@ -92,7 +92,9 @@ struct RefsSectionHeader: View {
 /// the model so paging moves by one less than fits. Tab-close
 /// removals fold out through a short transition; query re-ranks stay
 /// unanimated because only the model's close path wraps in
-/// `withAnimation`.
+/// `withAnimation`. A re-rank that moves a row to another section
+/// rebuilds it, so its highlight and caption always match the new
+/// listing.
 @available(macOS 26.0, *)
 struct RefsListView: View {
   @ObservedObject var model: RefsPanelModel
@@ -142,9 +144,8 @@ struct RefsListView: View {
           ) {
             ForEach(model.listing.sections, id: \.sectionID) { section in
               Section {
-                ForEach(section.ids, id: \.self) { id in
-                  row(for: id)
-                    .id(id)
+                ForEach(section.rowKeys, id: \.self) { key in
+                  row(for: key.id)
                 }
               } header: {
                 if let kind = section.kind {
@@ -269,6 +270,16 @@ struct RefsListView: View {
             model.selectedRowRect = rect
           }
         }
+        .onChange(
+          of: RefsRowRenderState(
+            isSelected: isSelected,
+            section: content.section,
+            caption: content.caption
+          ),
+          initial: true
+        ) { _, state in
+          model.rowRenderProbeForTests?.record(id, state)
+        }
       }
     }
     .transition(removalTransition)
@@ -369,4 +380,16 @@ extension RefsSection {
       return "search"
     }
   }
+
+  fileprivate var rowKeys: [RefsListRowKey] {
+    ids.map { RefsListRowKey(section: sectionID, id: $0) }
+  }
+}
+
+/// Live-list row identity: the same ref in a new section is a new
+/// subview, so a cross-section re-rank cannot keep a stale highlight
+/// or caption.
+private struct RefsListRowKey: Hashable {
+  let section: String
+  let id: String
 }
