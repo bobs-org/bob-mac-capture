@@ -74,7 +74,7 @@ decoded previews stay in a bounded in-memory cache; nothing new is
 written to disk. The References
 settings persist a small set of `UserDefaults` keys (the ⌃⇧⌘O
 binding flag, the Highlights-frontmost open key, the Highlights Tabs
-key (`refsHighlightsTabsKey`, default `shiftCmdO`), the Highlights
+key (`refsHighlightsTabsKey`, default `cmdT`), the Highlights
 override path, and the preview notes page size). Accessibility is used
 only against Highlights: it reads window and tab attributes, selects a
 tab button, and presses a window's close button. Bob Refs quits

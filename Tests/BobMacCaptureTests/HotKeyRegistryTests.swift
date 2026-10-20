@@ -215,6 +215,15 @@ final class HotKeyRegistryTests: XCTestCase {
             HotKeyConfiguration.highlightsCommandE.modifiers,
             UInt32(cmdKey)
         )
+        XCTAssertEqual(
+            HotKeyConfiguration.highlightsCommandT.keyCode,
+            UInt32(kVK_ANSI_T)
+        )
+        XCTAssertEqual(
+            HotKeyConfiguration.highlightsCommandT.modifiers,
+            UInt32(cmdKey)
+        )
+        XCTAssertEqual(HotKeyConfiguration.highlightsCommandT.displayName, "Command-T")
     }
 
     func testCapturePresetsDoNotCollideWithRefs() {
@@ -226,13 +235,15 @@ final class HotKeyRegistryTests: XCTestCase {
                 claimsRefsChord,
                 "\(capture.displayName) must not claim the Refs chord"
             )
-            let claimsTabsChord =
-                capture.keyCode == HotKeyConfiguration.highlightsShiftCommandO.keyCode
-                && capture.modifiers == HotKeyConfiguration.highlightsShiftCommandO.modifiers
-            XCTAssertFalse(
-                claimsTabsChord,
-                "\(capture.displayName) must not claim the Highlights Tabs chord"
-            )
+            for tabsConfiguration in RefsHighlightsTabsKey.allCases.compactMap(\.configuration) {
+                let claimsTabsChord =
+                    capture.keyCode == tabsConfiguration.keyCode
+                    && capture.modifiers == tabsConfiguration.modifiers
+                XCTAssertFalse(
+                    claimsTabsChord,
+                    "\(capture.displayName) must not claim the Highlights Tabs chord"
+                )
+            }
         }
     }
 

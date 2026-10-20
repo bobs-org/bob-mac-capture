@@ -47,6 +47,12 @@ struct HotKeyConfiguration: Equatable {
         modifiers: UInt32(cmdKey),
         displayName: "Command-E"
     )
+
+    static let highlightsCommandT = HotKeyConfiguration(
+        keyCode: UInt32(kVK_ANSI_T),
+        modifiers: UInt32(cmdKey),
+        displayName: "Command-T"
+    )
 }
 
 protocol HotKeyRegistering {

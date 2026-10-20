@@ -198,6 +198,53 @@ final class RefsEntryPointsTests: XCTestCase {
     )
   }
 
+  func testCommandTTakeoverStepsAsideWhileRefsIsVisible() {
+    let fixture = makeTakeover(
+      frontmost: HighlightsLocator.bundleIdentifier,
+      openKey: .cmdO,
+      tabsKey: .cmdT
+    )
+
+    fixture.takeover.start()
+
+    XCTAssertEqual(
+      fixture.registrar.configuration(for: .refsHighlightsTabs),
+      .highlightsCommandT
+    )
+    fixture.refsVisible = true
+    fixture.takeover.sync()
+
+    XCTAssertFalse(fixture.isTabsTakeoverRegistered)
+    XCTAssertEqual(
+      fixture.registrar.configuration(for: .refsHighlightsOpen),
+      .highlightsCommandO
+    )
+
+    fixture.refsVisible = false
+    fixture.takeover.sync()
+
+    XCTAssertEqual(
+      fixture.registrar.configuration(for: .refsHighlightsTabs),
+      .highlightsCommandT
+    )
+  }
+
+  func testShiftCommandOTakeoverStaysRegisteredWhileRefsIsVisible() {
+    let fixture = makeTakeover(
+      frontmost: HighlightsLocator.bundleIdentifier,
+      openKey: .cmdO,
+      tabsKey: .shiftCmdO
+    )
+    fixture.refsVisible = true
+
+    fixture.takeover.start()
+
+    XCTAssertEqual(
+      fixture.registrar.configuration(for: .refsHighlightsTabs),
+      .highlightsShiftCommandO
+    )
+  }
+
   func testTakeoverStaysOffForOtherApps() {
     let fixture = makeTakeover(
       frontmost: "com.apple.Safari",
@@ -350,7 +397,7 @@ final class RefsEntryPointsTests: XCTestCase {
     let settings = AppSettings(defaults: defaults)
     XCTAssertTrue(settings.refsHotkeyEnabled)
     XCTAssertEqual(settings.refsHighlightsOpenKey, .cmdO)
-    XCTAssertEqual(settings.refsHighlightsTabsKey, .shiftCmdO)
+    XCTAssertEqual(settings.refsHighlightsTabsKey, .cmdT)
     XCTAssertEqual(settings.refsHighlightsAppPath, "")
 
     settings.refsHotkeyEnabled = false
@@ -375,7 +422,7 @@ final class RefsEntryPointsTests: XCTestCase {
     defaults.set("bogus", forKey: "refsHighlightsOpenKey")
     XCTAssertEqual(AppSettings(defaults: defaults).refsHighlightsOpenKey, .cmdO)
     defaults.set("bogus", forKey: "refsHighlightsTabsKey")
-    XCTAssertEqual(AppSettings(defaults: defaults).refsHighlightsTabsKey, .shiftCmdO)
+    XCTAssertEqual(AppSettings(defaults: defaults).refsHighlightsTabsKey, .cmdT)
   }
 
   func testVaultRootFallsBackToHomeBob() {
@@ -496,7 +543,7 @@ final class RefsEntryPointsTests: XCTestCase {
     let originalTabsKey = delegate.settings.refsHighlightsTabsKey
     let originalPath = delegate.settings.refsHighlightsAppPath
     delegate.settings.refsHighlightsOpenKey = .cmdO
-    delegate.settings.refsHighlightsTabsKey = .shiftCmdO
+    delegate.settings.refsHighlightsTabsKey = .cmdT
     delegate.settings.refsHighlightsAppPath = ""
     delegate.highlightsTakeover = fixture.takeover
     delegate.observeRefsSettings()
@@ -513,7 +560,7 @@ final class RefsEntryPointsTests: XCTestCase {
     )
     XCTAssertEqual(
       fixture.registrar.configuration(for: .refsHighlightsTabs),
-      .highlightsShiftCommandO
+      .highlightsCommandT
     )
 
     delegate.settings.refsHighlightsTabsKey = .cmdE
@@ -702,6 +749,7 @@ final class RefsEntryPointsTests: XCTestCase {
     var frontmost: String?
     var openKey: RefsHighlightsOpenKey
     var tabsKey: RefsHighlightsTabsKey
+    var refsVisible = false
     var override: String?
     var deactivatedAppBundleID: String?
     var deactivationSamples = 0
@@ -714,6 +762,7 @@ final class RefsEntryPointsTests: XCTestCase {
         frontmostBundleID: { [weak self] in self?.frontmost },
         openKey: { [weak self] in self?.openKey ?? .cmdO },
         tabsKey: { [weak self] in self?.tabsKey ?? .off },
+        isRefsVisible: { [weak self] in self?.refsVisible == true },
         overrideBundleID: { [weak self] in self?.override },
         deactivatedBundleID: { [weak self] _ in self?.deactivatedAppBundleID },
         onHighlightsDeactivated: { [weak self] in

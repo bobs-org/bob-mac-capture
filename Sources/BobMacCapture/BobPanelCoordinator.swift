@@ -89,7 +89,9 @@ final class BobPanelCoordinator {
     }
 
     /// Opens Refs in Tabs, enables Tabs in an already visible library, or
-    /// hides the panel when Tabs is already showing.
+    /// hides the panel when Tabs is already showing. When Command-T is the
+    /// takeover key, it unregisters while Refs is visible so the panel's own
+    /// Command-T handler switches between Tabs and the library.
     func toggleRefsTabs() {
         guard isRefsVisible() else {
             showRefs(source: .highlightsTabs)

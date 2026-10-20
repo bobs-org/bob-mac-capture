@@ -13,6 +13,20 @@ import XCTest
 /// navigation and editing, and open history.
 @MainActor
 final class RefsPanelModelTests: XCTestCase {
+  func testPanelVisibilityChangeFiresWhenShownAndHidden() async throws {
+    let harness = try makeHarness()
+    await harness.waitForSnapshot()
+    let controller = RefsPanelController(model: harness.model)
+    var changes = 0
+    controller.onVisibilityChange = { changes += 1 }
+
+    controller.show()
+    XCTAssertEqual(changes, 1)
+
+    controller.hide()
+    XCTAssertEqual(changes, 2)
+  }
+
   func testPrepareSelectsFirstRowOfFirstSection() async throws {
     let harness = try makeHarness()
     await harness.waitForSnapshot()

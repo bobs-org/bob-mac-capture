@@ -1,7 +1,8 @@
 import AppKit
 
 /// Registers the Highlights-frontmost Refs keys only while Highlights or
-/// the Settings override app is frontmost.
+/// the Settings override app is frontmost. A key shared with the visible
+/// Refs panel steps aside so the panel can handle it.
 @MainActor
 final class HighlightsTakeover {
     private let notificationCenter: NotificationCenter
@@ -9,6 +10,7 @@ final class HighlightsTakeover {
     private let frontmostBundleID: () -> String?
     private let openKey: () -> RefsHighlightsOpenKey
     private let tabsKey: () -> RefsHighlightsTabsKey
+    private let isRefsVisible: () -> Bool
     private let overrideBundleID: () -> String?
     private let deactivatedBundleID: (Notification) -> String?
     private let onHighlightsDeactivated: () -> Void
@@ -21,6 +23,7 @@ final class HighlightsTakeover {
         frontmostBundleID: @escaping () -> String?,
         openKey: @escaping () -> RefsHighlightsOpenKey,
         tabsKey: @escaping () -> RefsHighlightsTabsKey = { .off },
+        isRefsVisible: @escaping () -> Bool = { false },
         overrideBundleID: @escaping () -> String?,
         deactivatedBundleID: @escaping (Notification) -> String? = { notification in
             let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
@@ -36,6 +39,7 @@ final class HighlightsTakeover {
         self.frontmostBundleID = frontmostBundleID
         self.openKey = openKey
         self.tabsKey = tabsKey
+        self.isRefsVisible = isRefsVisible
         self.overrideBundleID = overrideBundleID
         self.deactivatedBundleID = deactivatedBundleID
         self.onHighlightsDeactivated = onHighlightsDeactivated
@@ -115,7 +119,10 @@ final class HighlightsTakeover {
             return
         }
         sync(action: .refsHighlightsOpen, configuration: openKey.configuration)
-        sync(action: .refsHighlightsTabs, configuration: tabsKey.configuration)
+        let tabsConfiguration = tabsKey.yieldsToVisiblePanel && isRefsVisible()
+            ? nil
+            : tabsKey.configuration
+        sync(action: .refsHighlightsTabs, configuration: tabsConfiguration)
     }
 
     private var expectedBundleID: String {

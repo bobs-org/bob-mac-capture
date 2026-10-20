@@ -438,14 +438,17 @@ progress finishes if the panel hides.
   Highlights' File › Open… still opens its own dialog. The panel never
   activates, so Highlights stays frontmost and the same key closes the
   panel again.
-- While Highlights is frontmost, Shift-Command-O opens Bob Refs in Tabs
-  (default). Settings › References can change this key to Command-E or
-  Off. It registers only for Highlights or the override app; the global
-  Control-Shift-Command-O and Command-O library flows are unchanged.
+- While Highlights is frontmost and Bob Refs is hidden, Command-T opens
+  Bob Refs in Tabs (default). Settings › References can change this key to
+  Shift-Command-O, Command-E, or Off. It registers only for Highlights or
+  the override app; the global Control-Shift-Command-O and Command-O
+  library flows are unchanged. While Bob Refs is showing, Command-T
+  switches between Tabs and the library instead of closing the panel;
+  Escape closes it.
 - Ordinary shows restore the remembered query, scope, filters, selection,
   revealed pages, and scroll positions, except when a newly added reference
   resets the view and selects it (including an arrival in the first 10
-  seconds of an untouched show). Shift-Command-O does the same when
+  seconds of an untouched show). The configured Tabs key does the same when
   Tabs is already on; when Tabs is off, it enables Tabs while keeping the
   query and scope, turning Newest off, and selecting the current Highlights
   tab when available. A Tabs show defers a new-reference reset to the next
@@ -477,9 +480,11 @@ Tabs lists every document open in Highlights. A matched tab uses its
 reference note row. A collision or a file outside the library stays in
 the list as a dim row with its filename and a clear match status.
 
-Press Shift-Command-O while Highlights is frontmost to open Tabs, or
-Command-T in Bob Refs to toggle the filter. The filter combines with the
-kind scopes and keeps the current query. The current tab comes first;
+Press Command-T while Highlights is frontmost and Bob Refs is hidden to
+open Tabs; Settings › References can change this to Shift-Command-O,
+Command-E, or Off. In Bob Refs, Command-T toggles the filter between Tabs
+and the library. The filter combines with the kind scopes and keeps the
+current query. The current tab comes first;
 the rest follow most-recently-active order, with tab-bar order as the
 tie-break and unmatched tabs last. When Highlights is frontmost, the
 previous tab is preselected.

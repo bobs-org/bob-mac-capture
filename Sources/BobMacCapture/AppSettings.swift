@@ -119,7 +119,8 @@ final class AppSettings: ObservableObject {
         {
             refsHighlightsTabsKey = key
         } else {
-            refsHighlightsTabsKey = .shiftCmdO
+            // The Highlights Tabs key defaults to Command-T.
+            refsHighlightsTabsKey = .cmdT
         }
         refsHighlightsAppPath = defaults.string(forKey: Keys.refsHighlightsAppPath) ?? ""
         agendaEnabled = defaults.object(forKey: Keys.agendaEnabled) == nil

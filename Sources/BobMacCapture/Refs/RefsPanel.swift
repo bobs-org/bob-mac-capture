@@ -53,6 +53,7 @@ public final class RefsPanelController: NSObject {
     /// Refs hides through the coordinator after a successful copy, which
     /// may restore the retained Capture draft.
     var copyDismisser: () -> Void = {}
+    var onVisibilityChange: () -> Void = {}
 
     public init(model: RefsPanelModel) {
         self.model = model
@@ -148,6 +149,7 @@ public final class RefsPanelController: NSObject {
         panel.invalidateShadow()
         installMonitorsIfNeeded()
         focusFilterField()
+        onVisibilityChange()
     }
 
     /// Hides at once, with no fade-out. Key status returns to the
@@ -157,6 +159,7 @@ public final class RefsPanelController: NSObject {
         glassToast.dismiss()
         panel?.orderOut(nil)
         model.panelDidHide()
+        onVisibilityChange()
     }
 
     private func copySucceeded(_ row: RefsCopyRow) {

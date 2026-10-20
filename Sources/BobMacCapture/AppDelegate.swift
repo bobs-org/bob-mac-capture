@@ -579,6 +579,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     refsLibrary = library
     refsPanelModel = model
     refsPanelController = controller
+    controller.onVisibilityChange = { [weak self] in
+      self?.highlightsTakeover?.sync()
+    }
     controller.prewarm()
     library.start()
 
@@ -613,6 +616,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       frontmostBundleID: { NSWorkspace.shared.frontmostApplication?.bundleIdentifier },
       openKey: { settings.refsHighlightsOpenKey },
       tabsKey: { settings.refsHighlightsTabsKey },
+      isRefsVisible: { [weak self] in self?.refsPanelController?.isVisible == true },
       overrideBundleID: {
         Self.highlightsOverrideBundleID(path: settings.refsHighlightsAppPath)
       },

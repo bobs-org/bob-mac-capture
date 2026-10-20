@@ -72,6 +72,8 @@ struct SettingsView: View {
                     "In Highlights, show open tabs with",
                     selection: $settings.refsHighlightsTabsKey
                 ) {
+                    Text(RefsHighlightsTabsKey.cmdT.displayName)
+                        .tag(RefsHighlightsTabsKey.cmdT)
                     Text(RefsHighlightsTabsKey.shiftCmdO.displayName)
                         .tag(RefsHighlightsTabsKey.shiftCmdO)
                     Text(RefsHighlightsTabsKey.cmdE.displayName)
