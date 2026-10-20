@@ -67,6 +67,12 @@ JSON report `bob` returns.
 
 ### Updates
 
+Bob Refs remembers its query, kind scope, Newest and Tabs filters, selected
+reference, revealed highlight pages, and list and preview positions in memory
+for the app's lifetime. Every ordinary show restores that view using fresh
+library or Tabs data. Ctrl-U resets it to the fresh-launch defaults;
+quitting or restarting starts fresh.
+
 `RefsLibrary` owns the refresh service: the snapshot, the `-g`
 backfill on its own lane, Today, a one-shot Spotlight sweep for
 last-used dates and page counts, and missing-PDF checks. It paints from
@@ -267,9 +273,9 @@ renders its part in the accent color, and a matched author the
 caption already shows is not repeated), and the Today pill,
 annotation and narration marks, and the state glyph. Section headers
 are 26 pt and pinned. The selected row always stays fully visible
-below the pinned header; every show, and every re-rank that selects
-the first row, returns the list to its top; moving up lands the
-selected row just under its section header. The NEW header leads with the same accent
+below the pinned header; a show keeps the selected row when it remains
+listed, and a re-rank that selects the first row returns the list to its
+top. Moving up lands the selected row just under its section header. The NEW header leads with the same accent
 dot; while a NEW-section row is selected it trails "⌥N Mark Seen"
 or "⌥N Mark New". In Newest they are date groups (`TODAY`,
 `YESTERDAY`, a weekday, a month, `UNDATED`) with the count after the
@@ -309,7 +315,8 @@ Diagnostic for hard failures.
 | Page Up/Page Down | Page the results list by one less than fits |
 | Ctrl-X | Close the selected tab in Highlights (Tabs only); elsewhere passes through to search |
 | Ctrl-D | Scroll the preview down by half its height; while the `+N more` row is on screen, Ctrl-D shows the next page of highlights at once; search keeps focus |
-| Ctrl-U | Scroll the preview up by half its height; search keeps focus |
+| Ctrl-U | Reset query, scope, filters, selection, revealed pages, and list and preview positions to fresh-launch defaults |
+| Ctrl-Shift-U | Scroll the preview up by half its height; search keeps focus |
 | Shift-Command-T | Reopen the most recently closed Highlights tab |
 | Command-Up/Command-Down, Home/End | First, last |
 | Option-Up/Option-Down | First row of the previous/next section (browse and Newest) |
@@ -323,12 +330,13 @@ Diagnostic for hard failures.
 | Option-N | Mark the selected Ready or Next reference Seen, or New again; the row stays put until the next re-rank; other rows beep |
 | Command-Shift-R | Open the Rename card for the selected row |
 | Backspace on an empty query | Remove the Tabs or Newest token first, then the scope token |
-| Esc, Ctrl-[ | Link to Today, Rename, or Copy card, then banner, query, Tabs or Newest, scope, close |
+| Esc, Ctrl-[ | Link to Today, Rename, or Copy card, then banner, then close while keeping the view |
 | Shift-Tab | Consumed (no-op) |
 
 Return and Command-Y while IME-composing pass through to the text system. Ctrl-D,
-Ctrl-U, and Ctrl-X also pass through while IME-composing; once recognized Ctrl-D
-and Ctrl-U consume the key even when the preview is hidden, short, empty, or
+Ctrl-U, Ctrl-Shift-U, and Ctrl-X also pass through while IME-composing. Ctrl-U
+always resets the view (even when it already has defaults), and Ctrl-D and
+Ctrl-Shift-U consume the key even when the preview is hidden, short, empty, or
 already at an edge. In Tabs, Ctrl-X closes the selected tab; Ctrl-D always
 scrolls. While the `+N more` row is fully visible in the viewport —
 or at the very bottom of the preview — Ctrl-D shows the next page of
@@ -422,6 +430,13 @@ progress finishes if the panel hides.
   (default). Settings › References can change this key to Command-E or
   Off. It registers only for Highlights or the override app; the global
   Control-Shift-Command-O and Command-O library flows are unchanged.
+- Ordinary shows restore the remembered query, scope, filters, selection,
+  revealed pages, and scroll positions. Shift-Command-O does the same when
+  Tabs is already on; when Tabs is off, it enables Tabs while keeping the
+  query and scope, turning Newest off, and selecting the current Highlights
+  tab when available. Ctrl-U resets the view to fresh-launch defaults.
+- Clicking a scan notification opens the default view with Just scanned
+  at the top and its first row selected.
 - The menu-bar item offers Bob Refs… directly below Capture, with the
   same shortcut shown for display.
 - Only one Bob panel is ever visible: opening Refs while Capture is
@@ -453,6 +468,10 @@ kind scopes and keeps the current query. The current tab comes first;
 the rest follow most-recently-active order, with tab-bar order as the
 tie-break and unmatched tabs last. When Highlights is frontmost, the
 previous tab is preselected.
+
+When Tabs remains on across a show, the selected row is kept while that
+tab is still open. After Bob Refs switches to a tab, the next Tabs show
+uses the current Highlights tab as its preselection once.
 
 Return, Tab, or double-click switches to the existing tab. Switching
 keeps its page, does not change reading state, and does not add an entry

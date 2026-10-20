@@ -86,9 +86,9 @@ struct RefsSectionHeader: View {
 
 /// The list column: a scroll view of pinned sections whose selection
 /// stays fully visible below the pinned header without animation.
-/// Every show, and every re-rank that selects the first row, returns
-/// the list to its top; moving up lands the selected row just under
-/// its section header. Reports its visible row budget to
+/// A show keeps the selected row when it remains listed; a re-rank that
+/// selects the first row returns the list to its top. Moving up lands
+/// the selected row just under its section header. Reports its visible row budget to
 /// the model so paging moves by one less than fits. Tab-close
 /// removals fold out through a short transition; query re-ranks stay
 /// unanimated because only the model's close path wraps in
@@ -184,6 +184,10 @@ struct RefsListView: View {
           revealSelection()
         }
         .onChange(of: model.presentationCount) { _, _ in
+          revealSelection()
+        }
+        .onChange(of: model.listResetGeneration) { _, _ in
+          scrollPosition.scrollTo(edge: .top)
           revealSelection()
         }
         .onAppear {

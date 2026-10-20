@@ -228,6 +228,7 @@ public struct RefsPanelView: View {
             } else if let selected = model.selectedID,
                let content = model.rowContent(for: selected)
             {
+                let inspectorGeneration = model.inspectorGeneration
                 RefsInspectorView(
                     content: content,
                     signals: model.signals,
@@ -237,10 +238,17 @@ public struct RefsPanelView: View {
                     layout: layout,
                     previewMode: previewMode,
                     notesPage: model.inspectorNotesPage(for: selected),
-                    onRevealMoreNotes: { model.revealMoreInspectorNotes() }
+                    onRevealMoreNotes: { model.revealMoreInspectorNotes() },
+                    restoreOffset: model.inspectorRestoreOffset(for: selected),
+                    onOffsetChange: { offset in
+                      model.noteInspectorOffset(
+                        id: selected,
+                        generation: inspectorGeneration,
+                        offset: offset
+                      )
+                    }
                 )
-                .id("\(selected)#\(model.presentationCount)")
-                .onAppear { model.inspectorRequested() }
+                .id("\(selected)#\(model.inspectorGeneration)")
                 .onChange(of: selected) { _, _ in model.inspectorRequested() }
                 .transition(.opacity)
             } else {

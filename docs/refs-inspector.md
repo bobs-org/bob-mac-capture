@@ -55,7 +55,9 @@ one thumbnail PNG each). What each kind shows:
   by default, Settings › References › Preview highlights per page);
   the disclosure row (`+N more · ⌃D shows …`) or Ctrl-D while that
   row is visible reveals the next page of highlights until all show.
-  Revealed pages reset on every selection change and on every show.
+  Revealed pages reset on selection changes and when the user changes the
+  page size. They survive a show. The preview also keeps its scroll position
+  across shows and while the Copy, Rename, or Link to Today card is open.
   Page labels show as bob writes them (`Page 1` stays `Page 1`).
 - Chats name consolidated reports and researcher drafts in the
   byline from the stem (`__final`, `__x`).

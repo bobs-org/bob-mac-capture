@@ -21,7 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       self?.showCapturePanel()
     },
     showRefs: { [weak self] in
-      self?.panelCoordinator?.showRefs()
+      self?.panelCoordinator?.showRefs(source: .scanResults)
     }
   )
 

@@ -6,11 +6,11 @@ import XCTest
 @testable import BobMacCapture
 
 /// Hosted reveal tests for the Refs list: the selected row stays fully
-/// visible below the pinned section header, every show returns the
-/// list to its top, and moving up lands the row just under its header.
+/// visible below the pinned section header, shows keep the last selected
+/// row visible, and Ctrl-U resets the list to its top.
 @MainActor
 final class RefsListScrollHostedTests: XCTestCase {
-  func testHostedShowAfterScrollingDownReturnsToTop() {
+  func testHostedShowKeepsLastSelectionVisible() {
     let harness = makeHostedHarness()
     defer { harness.panel.orderOut(nil) }
     settle(harness.panel)
@@ -18,8 +18,24 @@ final class RefsListScrollHostedTests: XCTestCase {
 
     harness.model.perform(.move(.last))
     waitForListOffset(in: harness.panel, model: harness.model) { $0 > 200 }
+    let last = harness.model.listing.orderedIDs.last
 
     harness.model.prepareForPresentation()
+    waitForListOffset(in: harness.panel, model: harness.model) { $0 > 200 }
+    XCTAssertEqual(
+      harness.model.selectedID, last,
+      listDiagnostics(in: harness.panel, model: harness.model))
+  }
+
+  func testHostedResetReturnsSelectionAndListToTop() {
+    let harness = makeHostedHarness()
+    defer { harness.panel.orderOut(nil) }
+    settle(harness.panel)
+
+    harness.model.perform(.move(.last))
+    waitForListOffset(in: harness.panel, model: harness.model) { $0 > 200 }
+    XCTAssertTrue(harness.model.perform(.resetView))
+
     waitForListOffset(in: harness.panel, model: harness.model) { $0 <= 0.5 }
     XCTAssertEqual(
       harness.model.selectedID, harness.model.listing.orderedIDs.first,
@@ -37,7 +53,7 @@ final class RefsListScrollHostedTests: XCTestCase {
     // A Just scanned section arrives above the old first row while the
     // scroll binding already holds the top edge.
     installScannedFixture(harness)
-    harness.model.prepareForPresentation()
+    harness.model.prepareForPresentation(source: .scanResults)
     waitForListOffset(in: harness.panel, model: harness.model) { $0 <= 0.5 }
     XCTAssertEqual(harness.model.listing.sections.first?.kind, .justScanned)
     XCTAssertNotEqual(harness.model.listing.orderedIDs.first, oldFirst)

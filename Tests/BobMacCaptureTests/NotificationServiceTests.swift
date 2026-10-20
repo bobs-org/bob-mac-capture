@@ -1376,6 +1376,34 @@ final class NotificationServiceTests: XCTestCase {
         XCTAssertTrue(opened.isEmpty)
     }
 
+    @MainActor
+    func testRefsScanNotificationOpensTheScanResultsView() {
+        var receivedSource: RefsPresentationSource?
+        let coordinator = BobPanelCoordinator(
+            isCaptureVisible: { false },
+            isRefsVisible: { false },
+            closeCaptureRetainingDraft: {},
+            presentCapture: {},
+            presentRefs: {},
+            presentRefsWithSource: { receivedSource = $0 },
+            hideRefs: {}
+        )
+        let route = NotificationService.route(
+            forActionIdentifier: UNNotificationDefaultActionIdentifier,
+            categoryIdentifier: NotificationService.refsScanCategoryIdentifier,
+            userInfo: [:]
+        )
+
+        NotificationService.execute(
+            route,
+            opener: { _ in },
+            showCapture: {},
+            showRefs: { coordinator.showRefs(source: .scanResults) }
+        )
+
+        XCTAssertEqual(receivedSource, .scanResults)
+    }
+
     func testTargetURLsOpenOnDefaultClickSingularPluralAndLegacyMetadata() {
         let batchUserInfo: [AnyHashable: Any] = [
             NotificationService.targetPathKey: "/Users/bryan/bob/work.md",

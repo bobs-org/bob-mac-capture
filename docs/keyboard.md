@@ -16,6 +16,9 @@ These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspecto
 | Shift-Command-O | While Highlights is frontmost, open Bob Refs in Tabs; configurable to Command-E or Off |
 | Ctrl-X | Close the selected tab in Highlights (Tabs only) |
 | Ctrl-D | Scroll the preview down by half its height |
+| Ctrl-U | Reset the query, filters, selection, revealed pages, and scroll positions |
+| Ctrl-Shift-U | Scroll the preview up by half its height |
+| Escape / Ctrl-[ | Close cards and banners, then the panel while keeping its view |
 | Shift-Command-T | Reopen the most recently closed Highlights tab |
 
 ## Editor and completion keys

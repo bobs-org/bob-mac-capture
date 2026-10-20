@@ -76,7 +76,8 @@ public enum RefsKeyRouter {
   }
 
   /// Maps one key press to a panel command, or nil to pass it through.
-  /// Control-X closes a selected Tabs row; Control-D always scrolls;
+  /// Control-X closes a selected Tabs row; Control-D and Control-Shift-U
+  /// always scroll the inspector; Control-U resets the view.
   /// Shift-Command-T reopens the newest closed tab. Option-N toggles
   /// NEW except while IME-composing.
   public static func command(
@@ -184,6 +185,9 @@ public enum RefsKeyRouter {
       return nil
     case KeyCode.u:
       if flags == .control {
+        return context.markedTextPresent ? nil : .resetView
+      }
+      if flags == [.control, .shift] {
         return context.markedTextPresent ? nil : .scrollInspector(.up)
       }
       return nil

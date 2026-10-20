@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// Half-viewport inspector movement: Control-D is down, Control-U is up.
+/// Half-viewport inspector movement: Control-D is down, Control-Shift-U is up.
 public enum RefsInspectorScrollDirection: Equatable, Sendable {
     case up
     case down
@@ -25,6 +25,29 @@ struct RefsInspectorScrollGeometry: Equatable, Sendable {
         topInset: 0,
         bottomInset: 0
     )
+
+    /// Measures the preview place from its content top for either kind of
+    /// document view. The controller and native anchor share this math.
+    static func offsetFromContentTop(
+        contentHeight: CGFloat,
+        viewportHeight: CGFloat,
+        clipOriginY: CGFloat,
+        isFlipped: Bool
+    ) -> CGFloat {
+        isFlipped
+            ? clipOriginY
+            : contentHeight - viewportHeight - clipOriginY
+    }
+
+    /// Converts a top-relative preview place back to the clip-view origin.
+    static func clipOriginY(
+        forContentTopOffset offset: CGFloat,
+        contentHeight: CGFloat,
+        viewportHeight: CGFloat,
+        isFlipped: Bool
+    ) -> CGFloat {
+        isFlipped ? offset : contentHeight - viewportHeight - offset
+    }
 
     var isValid: Bool {
         viewportHeight > 0
@@ -50,6 +73,18 @@ struct RefsInspectorScrollGeometry: Equatable, Sendable {
             return offset
         }
         return min(max(offset, minOffset), maxOffset)
+    }
+
+    /// The target to restore after layout: nil while more content is
+    /// needed to reach the saved place, otherwise the clamped place.
+    func restoreTarget(offset: CGFloat, contentIsFinal: Bool) -> CGFloat? {
+        guard isValid, offset.isFinite else {
+            return nil
+        }
+        guard contentIsFinal || maxOffset >= offset else {
+            return nil
+        }
+        return clamped(offset)
     }
 
     /// Whether the measured offset rests at the bottom, within

@@ -21,6 +21,8 @@ public enum RefsPresentationSource: Equatable, Sendable {
   case library
   /// Show the current Highlights tabs.
   case highlightsTabs
+  /// Show the default view after the user opens a scan notification.
+  case scanResults
 }
 
 /// The state of the Highlights Tabs filter.
@@ -50,6 +52,8 @@ public enum RefsCommand: Equatable, Sendable {
   case toggleTabs
   /// Sets the Highlights Tabs filter, used by the coordinator.
   case setTabsFilter(Bool)
+  /// Resets the Refs view to its fresh-launch defaults.
+  case resetView
   /// Toggles Newest order while keeping query and scope.
   case toggleNewest
   /// Sets Newest on or off, used by the token.
@@ -274,8 +278,8 @@ final class RefsRowRenderProbe {
 /// The Refs panel model: the query, the scope, the frozen listing, the
 /// id-based selection, commands, open dispatch, and banners. Library
 /// publications refresh row content in place and never re-rank: re-ranking
-/// happens only on `queryDidChange`, `setScope`, `setNewest`, `refresh`, and
-/// `prepareForPresentation`.
+/// happens on `queryDidChange`, `setScope`, `setNewest`, `refresh`, and
+/// presentation restoration.
 @MainActor
 public final class RefsPanelModel: ObservableObject {
   @Published public var query: String = ""
@@ -308,6 +312,7 @@ public final class RefsPanelModel: ObservableObject {
       if oldValue != selectedID {
         revealedPageID = nil
         revealedPage = nil
+        inspectorPlace = nil
         if copyCard?.frozenItemID != selectedID {
           closeCopyCard()
         }
@@ -338,8 +343,7 @@ public final class RefsPanelModel: ObservableObject {
     }
   }
   /// The revealed page plus the id it belongs to: one entry, cleared
-  /// on every selection change and on every panel presentation
-  /// (reveal_memory = reset). Read through
+  /// on selection or page-size changes. Read through
   /// `inspectorNotesPage(for:)`, which returns a fresh page for any
   /// other id.
   @Published private(set) var revealedPageID: String?
@@ -349,6 +353,10 @@ public final class RefsPanelModel: ObservableObject {
   /// Counts presentations: `prepareForPresentation` bumps it, so the
   /// panel view replays its scale-in on every show, not once per process.
   @Published public private(set) var presentationCount = 0
+  /// Changes only on a full view reset, remounting the inspector at its top.
+  @Published public private(set) var inspectorGeneration = 0
+  /// Requests a list-to-top reset even when the first row is already selected.
+  @Published public private(set) var listResetGeneration = 0
   /// The selected row's frame in the panel root's SwiftUI coordinate
   /// space, kept live by the list. The ⌘K menu pops below it, or at
   /// the list's center when it is unknown.
@@ -494,6 +502,8 @@ public final class RefsPanelModel: ObservableObject {
   private var pendingClosedTab: RefsClosedTab?
   private var tabsRefreshGeneration: UInt64 = 0
   private var preserveTabsSelectionOnNextSnapshot = false
+  private var tabsSelectionConsumed = false
+  private var inspectorPlace: (id: String, generation: Int, offset: CGFloat)?
   private var heldTabsOpen = false
   private let inspectorScrollSubject = PassthroughSubject<
     RefsInspectorScrollDirection, Never
@@ -670,12 +680,9 @@ public final class RefsPanelModel: ObservableObject {
     return openTabsByID[selectedID]
   }
 
-  /// Resets for presentation: a blank query, All scope, Newest off, a
-  /// fresh listing, and the first row selected. A pending scan banner
-  /// installs here,
-  /// and an unseen scan notice is marked seen. The fresh listing
-  /// includes Just scanned through `signals.scan`, so its first row
-  /// selects that section's first row.
+  /// Restores the remembered view on ordinary shows. Scan-result shows
+  /// start from fresh-launch defaults. Per-show cards, banners, and
+  /// presentation animation are still handled here.
   public func prepareForPresentation(source: RefsPresentationSource = .library) {
     presentationCount += 1
     selectedRowRect = nil
@@ -691,22 +698,26 @@ public final class RefsPanelModel: ObservableObject {
     } else {
       closeRenameCard()
     }
-    query = ""
-    scope = .all
-    listOrder = .ranked
-    tabsFilter = source == .highlightsTabs
-    tabsState = tabsFilter ? .loading : .off
     heldTabsOpen = false
     pendingClosedTab = nil
     preserveTabsSelectionOnNextSnapshot = false
     banner = nil
     pendingOpen = nil
-    revealedPageID = nil
-    revealedPage = nil
-    rerankSelectingFirst()
-    if tabsFilter {
-      beginTabsRefresh(preservingSelection: false)
+
+    switch source {
+    case .library:
+      restoreLastViewForPresentation()
+    case .highlightsTabs:
+      if tabsFilter {
+        restoreTabsForPresentation()
+      } else {
+        tabsSelectionConsumed = false
+        enterTabsFilter(preservingSelection: false)
+      }
+    case .scanResults:
+      resetToDefaults(tabs: false)
     }
+
     if let pending = pendingScanBanner {
       banner = pending
       pendingScanBanner = nil
@@ -714,6 +725,52 @@ public final class RefsPanelModel: ObservableObject {
     if scanNotice != nil, !scanNoticeSeen {
       scanNoticeSeen = true
     }
+    inspectorRequested()
+  }
+
+  private func restoreLastViewForPresentation() {
+    guard tabsFilter else {
+      tabsState = .off
+      freshListingKeepingSelection()
+      return
+    }
+    restoreTabsForPresentation()
+  }
+
+  private func restoreTabsForPresentation() {
+    let preservingSelection = !tabsSelectionConsumed
+    tabsSelectionConsumed = false
+    tabsState = .loading
+    rebuildTabsListing(preservingSelection: preservingSelection)
+    beginTabsRefresh(preservingSelection: preservingSelection)
+  }
+
+  private func resetToDefaults(tabs: Bool) {
+    query = ""
+    scope = .all
+    listOrder = .ranked
+    heldTabsOpen = false
+    pendingClosedTab = nil
+    preserveTabsSelectionOnNextSnapshot = false
+    banner = nil
+    pendingOpen = nil
+    tabsSelectionConsumed = false
+    revealedPageID = nil
+    revealedPage = nil
+    inspectorPlace = nil
+    inspectorGeneration &+= 1
+    listResetGeneration &+= 1
+    if tabs {
+      tabsFilter = true
+      tabsState = .loading
+    } else {
+      leaveTabsFilter()
+    }
+    rerankSelectingFirst()
+    if tabs {
+      beginTabsRefresh(preservingSelection: false)
+    }
+    AccessibilityNotification.Announcement("Bob Refs reset").post()
   }
 
   /// Re-ranks on every query edit, selects the first row, and dismisses
@@ -757,6 +814,12 @@ public final class RefsPanelModel: ObservableObject {
       return true
     case .setTabsFilter(let enabled):
       setTabsFilter(enabled)
+      return true
+    case .resetView:
+      if isRenaming || isLinkingToday {
+        return true
+      }
+      resetToDefaults(tabs: false)
       return true
     case .toggleNewest:
       setNewest(listOrder != .newest)
@@ -807,25 +870,6 @@ public final class RefsPanelModel: ObservableObject {
       }
       if banner != nil {
         banner = nil
-        return true
-      }
-      if !query.isEmpty {
-        query = ""
-        heldTabsOpen = false
-        rerankSelectingFirst()
-        return true
-      }
-      if tabsFilter {
-        setTabsFilter(false)
-        return true
-      }
-      if listOrder == .newest {
-        setNewest(false)
-        return true
-      }
-      if scope != .all {
-        scope = .all
-        rerankSelectingFirst()
         return true
       }
       hidePanel()
@@ -991,16 +1035,21 @@ public final class RefsPanelModel: ObservableObject {
     heldTabsOpen = false
     banner = nil
     if enabled {
-      listOrder = .ranked
-      tabsFilter = true
-      tabsState = .loading
-      preserveTabsSelectionOnNextSnapshot = false
-      rebuildTabsListing(preservingSelection: false)
-      beginTabsRefresh(preservingSelection: false)
+      enterTabsFilter(preservingSelection: false)
     } else {
       leaveTabsFilter()
       rerankSelectingFirst()
     }
+  }
+
+  private func enterTabsFilter(preservingSelection: Bool) {
+    heldTabsOpen = false
+    listOrder = .ranked
+    tabsFilter = true
+    tabsState = .loading
+    preserveTabsSelectionOnNextSnapshot = false
+    rebuildTabsListing(preservingSelection: preservingSelection)
+    beginTabsRefresh(preservingSelection: preservingSelection)
   }
 
   /// Drops the Tabs filter without re-ranking, so a following Newest
@@ -1366,7 +1415,7 @@ public final class RefsPanelModel: ObservableObject {
       guard let self else { return }
       switch result {
       case .selected:
-        break
+        self.tabsSelectionConsumed = true
       case .notFound:
         self.panelRepresenter()
         self.banner = RefsBanner(
@@ -1657,6 +1706,30 @@ public final class RefsPanelModel: ObservableObject {
       return
     }
     inspectorLoader.request(item)
+  }
+
+  /// Records the current preview place without publishing a model change.
+  public func noteInspectorOffset(id: String, generation: Int, offset: CGFloat) {
+    guard selectedID == id,
+      generation == inspectorGeneration,
+      offset.isFinite
+    else {
+      return
+    }
+    inspectorPlace = (id, generation, offset)
+  }
+
+  /// The remembered place for the selected reference, when it is still
+  /// valid for this inspector generation and is meaningfully below top.
+  public func inspectorRestoreOffset(for id: String) -> CGFloat? {
+    guard let place = inspectorPlace,
+      place.id == id,
+      place.generation == inspectorGeneration,
+      place.offset > 0.5
+    else {
+      return nil
+    }
+    return place.offset
   }
 
   /// The hydrated inspector content for an id, or nil while it loads.

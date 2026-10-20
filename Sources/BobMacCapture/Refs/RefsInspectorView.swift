@@ -5,17 +5,216 @@ import SwiftUI
 /// Marker inside the live inspector's scroll content: its
 /// `enclosingScrollView` is the inspector's native scroll view.
 final class RefsInspectorScrollAnchorView: NSView {
+  private var pendingRestoreOffset: CGFloat?
+  private var restoreResolved = true
+  private var contentIsFinal = false
+  private var onOffsetChange: (CGFloat) -> Void = { _ in }
+  private weak var observedClipView: NSClipView?
+  private weak var observedScrollView: NSScrollView?
+  private var boundsObserver: NSObjectProtocol?
+  private var liveScrollObserver: NSObjectProtocol?
+
+  init(
+    restoreOffset: CGFloat?,
+    contentIsFinal: Bool,
+    onOffsetChange: @escaping (CGFloat) -> Void
+  ) {
+    pendingRestoreOffset = restoreOffset
+    restoreResolved = restoreOffset == nil
+    self.contentIsFinal = contentIsFinal
+    self.onOffsetChange = onOffsetChange
+    super.init(frame: .zero)
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
+  }
+
   override func hitTest(_ point: NSPoint) -> NSView? {
     nil
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    installObserversIfNeeded()
+    attemptPendingRestore()
+    recordOffsetIfReady()
+  }
+
+  override func viewWillMove(toWindow newWindow: NSWindow?) {
+    if newWindow == nil {
+      removeObservers()
+    }
+    super.viewWillMove(toWindow: newWindow)
+  }
+
+  override func setFrameSize(_ newSize: NSSize) {
+    super.setFrameSize(newSize)
+    installObserversIfNeeded()
+    attemptPendingRestore()
+    recordOffsetIfReady()
+  }
+
+  override func layout() {
+    super.layout()
+    installObserversIfNeeded()
+    attemptPendingRestore()
+    recordOffsetIfReady()
+  }
+
+  deinit {
+    removeObservers()
+  }
+
+  func update(contentIsFinal: Bool, onOffsetChange: @escaping (CGFloat) -> Void) {
+    let becameFinal = !self.contentIsFinal && contentIsFinal
+    self.contentIsFinal = contentIsFinal
+    self.onOffsetChange = onOffsetChange
+    guard becameFinal else {
+      attemptPendingRestore()
+      return
+    }
+    DispatchQueue.main.async { [weak self] in
+      self?.attemptPendingRestore()
+    }
+  }
+
+  /// A user or keyboard scroll takes ownership from the one-shot restore.
+  func cancelPendingRestore() {
+    guard pendingRestoreOffset != nil else {
+      return
+    }
+    pendingRestoreOffset = nil
+    restoreResolved = true
+    recordOffsetIfReady()
+  }
+
+  private func installObserversIfNeeded() {
+    guard let scrollView = enclosingScrollView else {
+      return
+    }
+    let clipView = scrollView.contentView
+    guard observedClipView !== clipView || observedScrollView !== scrollView else {
+      return
+    }
+    removeObservers()
+    observedClipView = clipView
+    observedScrollView = scrollView
+    clipView.postsBoundsChangedNotifications = true
+    boundsObserver = NotificationCenter.default.addObserver(
+      forName: NSView.boundsDidChangeNotification,
+      object: clipView,
+      queue: .main
+    ) { [weak self] _ in
+      self?.clipBoundsDidChange()
+    }
+    liveScrollObserver = NotificationCenter.default.addObserver(
+      forName: NSScrollView.willStartLiveScrollNotification,
+      object: scrollView,
+      queue: .main
+    ) { [weak self] _ in
+      self?.cancelPendingRestore()
+    }
+  }
+
+  private func removeObservers() {
+    if let boundsObserver {
+      NotificationCenter.default.removeObserver(boundsObserver)
+    }
+    if let liveScrollObserver {
+      NotificationCenter.default.removeObserver(liveScrollObserver)
+    }
+    boundsObserver = nil
+    liveScrollObserver = nil
+    observedClipView = nil
+    observedScrollView = nil
+  }
+
+  private func clipBoundsDidChange() {
+    attemptPendingRestore()
+    recordOffsetIfReady()
+  }
+
+  private func attemptPendingRestore() {
+    guard let offset = pendingRestoreOffset,
+      let scrollView = enclosingScrollView,
+      let documentView = scrollView.documentView
+    else {
+      return
+    }
+    let clipView = scrollView.contentView
+    let contentHeight = documentView.frame.height
+    let viewportHeight = clipView.bounds.height
+    let flipped = documentView.isFlipped
+    let offsetY = RefsInspectorScrollGeometry.offsetFromContentTop(
+      contentHeight: contentHeight,
+      viewportHeight: viewportHeight,
+      clipOriginY: clipView.bounds.origin.y,
+      isFlipped: flipped
+    )
+    let geometry = RefsInspectorScrollGeometry(
+      offsetY: offsetY,
+      contentHeight: contentHeight,
+      viewportHeight: viewportHeight,
+      topInset: clipView.contentInsets.top,
+      bottomInset: clipView.contentInsets.bottom
+    )
+    guard let target = geometry.restoreTarget(
+      offset: offset,
+      contentIsFinal: contentIsFinal
+    ) else {
+      return
+    }
+    let originY = RefsInspectorScrollGeometry.clipOriginY(
+      forContentTopOffset: target,
+      contentHeight: contentHeight,
+      viewportHeight: viewportHeight,
+      isFlipped: flipped
+    )
+    clipView.scroll(to: NSPoint(x: clipView.bounds.origin.x, y: originY))
+    scrollView.reflectScrolledClipView(clipView)
+    pendingRestoreOffset = nil
+    restoreResolved = true
+    recordOffsetIfReady()
+  }
+
+  private func recordOffsetIfReady() {
+    guard restoreResolved,
+      let scrollView = enclosingScrollView,
+      let documentView = scrollView.documentView
+    else {
+      return
+    }
+    let clipView = scrollView.contentView
+    let offset = RefsInspectorScrollGeometry.offsetFromContentTop(
+      contentHeight: documentView.frame.height,
+      viewportHeight: clipView.bounds.height,
+      clipOriginY: clipView.bounds.origin.y,
+      isFlipped: documentView.isFlipped
+    )
+    guard offset.isFinite else {
+      return
+    }
+    onOffsetChange(offset)
   }
 }
 
 struct RefsInspectorScrollAnchor: NSViewRepresentable {
+  var restoreOffset: CGFloat?
+  var contentIsFinal: Bool
+  var onOffsetChange: (CGFloat) -> Void
+
   func makeNSView(context: Context) -> RefsInspectorScrollAnchorView {
-    RefsInspectorScrollAnchorView()
+    RefsInspectorScrollAnchorView(
+      restoreOffset: restoreOffset,
+      contentIsFinal: contentIsFinal,
+      onOffsetChange: onOffsetChange
+    )
   }
 
-  func updateNSView(_ nsView: RefsInspectorScrollAnchorView, context: Context) {}
+  func updateNSView(_ nsView: RefsInspectorScrollAnchorView, context: Context) {
+    nsView.update(contentIsFinal: contentIsFinal, onOffsetChange: onOffsetChange)
+  }
 }
 
 /// Layout marker for the first note of the latest revealed page: the
@@ -130,6 +329,10 @@ struct RefsInspectorView: View {
   /// Runs the model's reveal; the controller follows the tail for
   /// keyboard and click reveals alike.
   var onRevealMoreNotes: () -> Void = {}
+  /// The selected reference's remembered top-relative preview place.
+  var restoreOffset: CGFloat? = nil
+  /// Reports native preview scrolling without publishing model changes.
+  var onOffsetChange: (CGFloat) -> Void = { _ in }
   /// Collision and unmatched inspector hint: switch and close.
   static let tabFallbackHint = "↵ switches to this tab · ⌃X closes it"
   @Environment(\.colorSchemeContrast) private var colorSchemeContrast
@@ -141,7 +344,13 @@ struct RefsInspectorView: View {
       column
     } else {
       ScrollView(.vertical) {
-        column.background(RefsInspectorScrollAnchor())
+        column.background(
+          RefsInspectorScrollAnchor(
+            restoreOffset: restoreOffset,
+            contentIsFinal: inspector != nil,
+            onOffsetChange: onOffsetChange
+          )
+        )
       }
     }
   }

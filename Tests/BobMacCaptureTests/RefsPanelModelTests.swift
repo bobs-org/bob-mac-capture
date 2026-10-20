@@ -1994,13 +1994,9 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(harness.model.query, "re")
 
     XCTAssertTrue(harness.model.perform(.escape))
-    XCTAssertEqual(harness.model.query, "")
-
-    XCTAssertTrue(harness.model.perform(.escape))
-    XCTAssertEqual(harness.model.scope, .all)
-
-    XCTAssertTrue(harness.model.perform(.escape))
     XCTAssertEqual(harness.dismissed, 1)
+    XCTAssertEqual(harness.model.query, "re")
+    XCTAssertEqual(harness.model.scope, .chats)
   }
 
   func testDeleteBackwardOnEmptyRemovesScope() async throws {
@@ -2255,7 +2251,7 @@ final class RefsPanelModelTests: XCTestCase {
     _ = cancellable
   }
 
-  func testRevealResetsOnSelectionChangeAndPresentation() async throws {
+  func testRevealResetsOnSelectionChangeAndSurvivesPresentation() async throws {
     let harness = try makeHarness()
     await harness.waitForSnapshot()
     let items = Self.twoPreviewItems()
@@ -2298,7 +2294,7 @@ final class RefsPanelModelTests: XCTestCase {
     let current = harness.model.selectedID!
     XCTAssertEqual(
       harness.model.inspectorNotesPage(for: current).generation,
-      0
+      1
     )
   }
 
@@ -2429,7 +2425,7 @@ final class RefsPanelModelTests: XCTestCase {
     await harness.waitForScan()
     XCTAssertEqual(notified.count, 1)
     XCTAssertNil(harness.model.banner)
-    harness.model.prepareForPresentation()
+    harness.model.prepareForPresentation(source: .scanResults)
     XCTAssertEqual(
       harness.model.selectedID,
       "ref/chat/omni_report.md"
@@ -2649,30 +2645,106 @@ final class RefsPanelModelTests: XCTestCase {
     }
   }
 
-  func testTabsAndLibraryPresentationSourcesResetTheFilter() async throws {
+  func testTabsAndLibraryPresentationSourcesRestoreTheFilter() async throws {
     let reader = FakeTabsReader(isTrusted: false)
     let harness = try makeHarness(tabsReader: reader, isAdHocSigned: true)
     await harness.waitForSnapshot()
 
     harness.model.setQuery("keep")
     harness.model.perform(.setScope(.papers))
+    harness.model.perform(.toggleNewest)
+    XCTAssertEqual(harness.model.listOrder, .newest)
     harness.model.prepareForPresentation(source: .highlightsTabs)
 
     XCTAssertTrue(harness.model.tabsFilter)
-    XCTAssertEqual(harness.model.query, "")
-    XCTAssertEqual(harness.model.scope, .all)
+    XCTAssertEqual(harness.model.query, "keep")
+    XCTAssertEqual(harness.model.scope, .papers)
+    XCTAssertEqual(harness.model.listOrder, .ranked)
     XCTAssertEqual(harness.model.tabsState, .needsPermission(adHoc: true))
     XCTAssertEqual(reader.readCount, 0)
 
     harness.model.prepareForPresentation(source: .library)
 
+    XCTAssertTrue(harness.model.tabsFilter)
+    XCTAssertEqual(harness.model.tabsState, .needsPermission(adHoc: true))
+    XCTAssertEqual(harness.model.query, "keep")
+    XCTAssertEqual(harness.model.scope, .papers)
+
+    XCTAssertTrue(harness.model.perform(.toggleTabs))
+    harness.model.prepareForPresentation(source: .library)
     XCTAssertFalse(harness.model.tabsFilter)
     XCTAssertEqual(harness.model.tabsState, .off)
-    XCTAssertEqual(harness.model.query, "")
-    XCTAssertEqual(harness.model.scope, .all)
+    XCTAssertEqual(harness.model.query, "keep")
+    XCTAssertEqual(harness.model.scope, .papers)
   }
 
-  func testTabsToggleKeepsQueryAndScopeAndEscapePeelsTabsBeforeScope() async throws {
+  func testResetViewRestoresDefaultsAndAlwaysConsumes() async throws {
+    let harness = try makeHarness()
+    await harness.waitForSnapshot()
+    let kept = "ref/chat/small_reading.md"
+    harness.model.installForPreviews(
+      items: harness.library.items,
+      signals: harness.library.signals,
+      query: "small",
+      scope: .chats,
+      selectedID: kept,
+      banner: RefsBanner(kind: .error, message: "boom", actions: []),
+      refreshState: .idle,
+      listOrder: .newest
+    )
+    let initialGeneration = harness.model.inspectorGeneration
+    harness.model.noteInspectorOffset(
+      id: kept,
+      generation: initialGeneration,
+      offset: 90
+    )
+    XCTAssertEqual(harness.model.inspectorRestoreOffset(for: kept), 90)
+
+    XCTAssertTrue(harness.model.perform(.resetView))
+    XCTAssertEqual(harness.model.query, "")
+    XCTAssertEqual(harness.model.scope, .all)
+    XCTAssertEqual(harness.model.listOrder, .ranked)
+    XCTAssertFalse(harness.model.tabsFilter)
+    XCTAssertEqual(harness.model.selectedID, harness.model.listing.orderedIDs.first)
+    XCTAssertNil(harness.model.banner)
+    XCTAssertNil(harness.model.inspectorRestoreOffset(for: kept))
+    XCTAssertEqual(harness.model.inspectorGeneration, initialGeneration + 1)
+
+    XCTAssertTrue(harness.model.perform(.resetView))
+    XCTAssertEqual(harness.model.inspectorGeneration, initialGeneration + 2)
+  }
+
+  func testLibraryPresentationRestoresQueryScopeOrderAndSelection() async throws {
+    let harness = try makeHarness()
+    await harness.waitForSnapshot()
+    let kept = "ref/chat/small_reading.md"
+    harness.model.setQuery("small")
+    XCTAssertTrue(harness.model.perform(.setScope(.chats)))
+    XCTAssertTrue(harness.model.perform(.toggleNewest))
+    XCTAssertTrue(harness.model.perform(.select(id: kept)))
+
+    harness.model.prepareForPresentation(source: .library)
+
+    XCTAssertEqual(harness.model.query, "small")
+    XCTAssertEqual(harness.model.scope, .chats)
+    XCTAssertEqual(harness.model.listOrder, .newest)
+    XCTAssertEqual(harness.model.selectedID, kept)
+    XCTAssertTrue(harness.model.listing.contains(id: kept))
+  }
+
+  func testInspectorOffsetRejectsStaleSelectionAndGeneration() async throws {
+    let harness = try makeHarness()
+    await harness.waitForSnapshot()
+    let kept = "ref/chat/small_reading.md"
+    harness.model.perform(.select(id: kept))
+    let generation = harness.model.inspectorGeneration
+    harness.model.noteInspectorOffset(id: kept, generation: generation, offset: 80)
+    harness.model.noteInspectorOffset(id: "other", generation: generation, offset: 120)
+    harness.model.noteInspectorOffset(id: kept, generation: generation - 1, offset: 150)
+    XCTAssertEqual(harness.model.inspectorRestoreOffset(for: kept), 80)
+  }
+
+  func testTabsToggleKeepsQueryAndScopeAndEscapeKeepsTheView() async throws {
     let reader = FakeTabsReader(isTrusted: false)
     let harness = try makeHarness(tabsReader: reader)
     await harness.waitForSnapshot()
@@ -2685,13 +2757,16 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(harness.model.scope, .papers)
 
     XCTAssertTrue(harness.model.perform(.escape))
-    XCTAssertEqual(harness.model.query, "")
+    XCTAssertEqual(harness.model.query, "harness")
     XCTAssertTrue(harness.model.tabsFilter)
     XCTAssertEqual(harness.model.scope, .papers)
-    XCTAssertTrue(harness.model.perform(.escape))
+    XCTAssertEqual(harness.dismissed, 1)
+
+    harness.model.setQuery("")
+    XCTAssertTrue(harness.model.perform(.deleteBackwardOnEmpty))
     XCTAssertFalse(harness.model.tabsFilter)
     XCTAssertEqual(harness.model.scope, .papers)
-    XCTAssertTrue(harness.model.perform(.escape))
+    XCTAssertTrue(harness.model.perform(.deleteBackwardOnEmpty))
     XCTAssertEqual(harness.model.scope, .all)
 
     harness.model.perform(.setScope(.papers))
@@ -2759,7 +2834,7 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(harness.model.scope, .papers)
   }
 
-  func testNewestEscapeAndBackspaceAndPresentationReset() async throws {
+  func testNewestEscapeAndBackspaceAndPresentationRestore() async throws {
     let harness = try makeHarness()
     await harness.waitForSnapshot()
     harness.model.prepareForPresentation()
@@ -2768,24 +2843,27 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertTrue(harness.model.perform(.toggleNewest))
 
     XCTAssertTrue(harness.model.perform(.escape))
-    XCTAssertEqual(harness.model.query, "")
+    XCTAssertEqual(harness.model.query, "small")
+    XCTAssertEqual(harness.model.listOrder, .newest)
+    XCTAssertEqual(harness.model.scope, .papers)
+    XCTAssertEqual(harness.dismissed, 1)
+
+    harness.model.prepareForPresentation()
+    XCTAssertEqual(harness.model.query, "small")
     XCTAssertEqual(harness.model.listOrder, .newest)
     XCTAssertEqual(harness.model.scope, .papers)
 
-    XCTAssertTrue(harness.model.perform(.escape))
-    XCTAssertEqual(harness.model.listOrder, .ranked)
-    XCTAssertEqual(harness.model.scope, .papers)
-
-    XCTAssertTrue(harness.model.perform(.toggleNewest))
+    harness.model.setQuery("")
     XCTAssertTrue(harness.model.perform(.deleteBackwardOnEmpty))
     XCTAssertEqual(harness.model.listOrder, .ranked)
     XCTAssertEqual(harness.model.scope, .papers)
+
     XCTAssertTrue(harness.model.perform(.deleteBackwardOnEmpty))
     XCTAssertEqual(harness.model.scope, .all)
 
     XCTAssertTrue(harness.model.perform(.toggleNewest))
     harness.model.prepareForPresentation()
-    XCTAssertEqual(harness.model.listOrder, .ranked)
+    XCTAssertEqual(harness.model.listOrder, .newest)
     XCTAssertEqual(harness.model.query, "")
     XCTAssertEqual(harness.model.scope, .all)
   }
@@ -2918,6 +2996,43 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(harness.opener.highlightsOpens.count, 1)
     XCTAssertTrue(harness.openLogStore.load().isEmpty)
     XCTAssertEqual(harness.library.signals.opens.count(item.id), 0)
+  }
+
+  func testTabSwitchUsesTheSwitcherPreselectionOnceOnTheNextShow() async throws {
+    let reader = FakeTabsReader(isTrusted: true)
+    let harness = try makeHarness(tabsReader: reader)
+    await harness.waitForSnapshot()
+    let items = Array(harness.library.items.prefix(2))
+    XCTAssertEqual(items.count, 2)
+    reader.setNextResult(
+      .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: false))
+    )
+
+    harness.model.prepareForPresentation(source: .highlightsTabs)
+    await harness.waitForModel { $0.tabsState == .loaded }
+    let switched = try XCTUnwrap(items.last?.id)
+    XCTAssertTrue(harness.model.perform(.select(id: switched)))
+    XCTAssertTrue(harness.model.perform(.open(.highlights)))
+    await harness.waitForModel { _ in reader.selectedTargets.count == 1 }
+
+    let nextSnapshot = Self.tabsSnapshot(
+      [items[1], items[0]],
+      vault: harness.vault,
+      frontmost: true
+    )
+    reader.setNextResult(.snapshot(nextSnapshot))
+    harness.model.prepareForPresentation(source: .library)
+    await harness.waitForModel { $0.tabsState == .loaded }
+    let preselected = try XCTUnwrap(harness.model.tabsListing?.preselectedID)
+    XCTAssertEqual(preselected, items[0].id)
+    XCTAssertEqual(harness.model.selectedID, preselected)
+
+    reader.setNextResult(
+      .snapshot(Self.tabsSnapshot([items[1], items[0]], vault: harness.vault, frontmost: false))
+    )
+    harness.model.prepareForPresentation(source: .library)
+    await harness.waitForModel { $0.tabsState == .loaded }
+    XCTAssertEqual(harness.model.selectedID, preselected)
   }
 
   func testUnmatchedSwitchSelectsTheTabAndShowsClosedBanner() async throws {
@@ -3307,6 +3422,11 @@ final class RefsPanelModelTests: XCTestCase {
     harness.model.editRenameDraft("rename_guard_test")
     harness.model.handleRenameCardKey(.submit)
     await harness.waitForModel { $0.isRenaming }
+    let resetGeneration = harness.model.inspectorGeneration
+    harness.model.query = "rename in progress"
+    XCTAssertTrue(harness.model.perform(.resetView))
+    XCTAssertEqual(harness.model.query, "rename in progress")
+    XCTAssertEqual(harness.model.inspectorGeneration, resetGeneration)
     XCTAssertFalse(harness.model.canCloseTab(id: rowID))
     XCTAssertFalse(harness.model.canCloseSelectedTab)
 
@@ -3359,6 +3479,11 @@ final class RefsPanelModelTests: XCTestCase {
     await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
     harness.model.handleTodayLinkCardKey(.submit)
     await harness.waitForModel { $0.isLinkingToday }
+    let resetGeneration = harness.model.inspectorGeneration
+    harness.model.query = "link in progress"
+    XCTAssertTrue(harness.model.perform(.resetView))
+    XCTAssertEqual(harness.model.query, "link in progress")
+    XCTAssertEqual(harness.model.inspectorGeneration, resetGeneration)
     XCTAssertFalse(harness.model.canCloseTab(id: rowID))
 
     let selectedBefore = harness.model.selectedID

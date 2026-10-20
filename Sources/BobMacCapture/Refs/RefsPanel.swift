@@ -99,8 +99,8 @@ public final class RefsPanelController: NSObject {
         _ = makePanelIfNeeded()
     }
 
-    /// Shows the panel: resets the model, recomputes the frame, fades
-    /// in, and focuses the search field. Highlights stays frontmost:
+    /// Shows the panel: restores the model's remembered view, recomputes
+    /// the frame, fades in, and focuses the search field. Highlights stays frontmost:
     /// this never calls `NSApp.activate`.
     public func show(source: RefsPresentationSource = .library) {
         let token = CaptureSignpost.begin("refs-panel-show")
@@ -426,6 +426,10 @@ public final class RefsPanelController: NSObject {
         guard let command = command(for: event) else {
             return event
         }
+        if command == .resetView {
+            cancelRevealFollow()
+            Self.findInspectorScrollAnchor(in: panel?.contentView)?.cancelPendingRestore()
+        }
         return model.perform(command) ? nil : event
     }
 
@@ -518,7 +522,9 @@ public final class RefsPanelController: NSObject {
     }
 
     private func focusFilterField() {
-        Self.findFilterField(in: panel?.contentView)?.requestFirstResponder()
+        if let field = Self.findFilterField(in: panel?.contentView) {
+            requestFilterFocus(field)
+        }
         // Retry once the runloop turns over: the field editor may not
         // exist yet on the first pass.
         Task { [weak self] in
@@ -531,8 +537,17 @@ public final class RefsPanelController: NSObject {
             else {
                 return
             }
-            field.requestFirstResponder()
+            requestFilterFocus(field)
         }
+    }
+
+    private func requestFilterFocus(_ field: CapturePickerFilterNSTextField) {
+        field.requestFirstResponder()
+        guard let editor = field.currentEditor() as? NSTextView else {
+            return
+        }
+        let end = (editor.string as NSString).length
+        editor.setSelectedRange(NSRange(location: end, length: 0))
     }
 
     static func findFilterField(in view: NSView?) -> CapturePickerFilterNSTextField? {
@@ -597,6 +612,21 @@ public final class RefsPanelController: NSObject {
         return nil
     }
 
+    static func findInspectorScrollAnchor(in view: NSView?) -> RefsInspectorScrollAnchorView? {
+        guard let view else {
+            return nil
+        }
+        if let anchor = view as? RefsInspectorScrollAnchorView {
+            return anchor
+        }
+        for subview in view.subviews {
+            if let found = findInspectorScrollAnchor(in: subview) {
+                return found
+            }
+        }
+        return nil
+    }
+
     static func findRevealAnchor(generation: Int, in view: NSView?) -> RefsInspectorRevealAnchorView? {
         guard let view else {
             return nil
@@ -645,8 +675,12 @@ public final class RefsPanelController: NSObject {
         let content = documentView.frame.height
         let viewport = clip.bounds.height
         let flipped = documentView.isFlipped
-        let offset = flipped
-            ? clip.bounds.origin.y : content - viewport - clip.bounds.origin.y
+        let offset = RefsInspectorScrollGeometry.offsetFromContentTop(
+            contentHeight: content,
+            viewportHeight: viewport,
+            clipOriginY: clip.bounds.origin.y,
+            isFlipped: flipped
+        )
         let geometry = RefsInspectorScrollGeometry(
             offsetY: offset,
             contentHeight: content,
@@ -669,7 +703,12 @@ public final class RefsPanelController: NSObject {
         let clip = scrollView.contentView
         let content = documentView.frame.height
         let viewport = clip.bounds.height
-        let y = flipped ? target : content - viewport - target
+        let y = RefsInspectorScrollGeometry.clipOriginY(
+            forContentTopOffset: target,
+            contentHeight: content,
+            viewportHeight: viewport,
+            isFlipped: flipped
+        )
         clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
         scrollView.reflectScrolledClipView(clip)
     }
@@ -682,6 +721,7 @@ public final class RefsPanelController: NSObject {
     }
 
     func scrollInspector(_ direction: RefsInspectorScrollDirection) {
+        Self.findInspectorScrollAnchor(in: panel?.contentView)?.cancelPendingRestore()
         if direction == .up {
             cancelRevealFollow()
         }

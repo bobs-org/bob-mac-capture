@@ -6,7 +6,7 @@ import XCTest
 @testable import BobMacCapture
 
 /// Planner math for half-viewport inspector scrolling, plus a hosted
-/// view test that drives the routed Control-D/U path while search is
+/// view test that drives the routed Control-D/Control-Shift-U path while search is
 /// first responder.
 @MainActor
 final class RefsInspectorScrollTests: XCTestCase {
@@ -42,6 +42,41 @@ final class RefsInspectorScrollTests: XCTestCase {
     XCTAssertEqual(planner.command(.down), 0)
     XCTAssertEqual(planner.command(.up), 0)
     XCTAssertEqual(planner.offset, 0)
+  }
+
+  func testRestoreTargetWaitsClampsAndHonorsInsets() {
+    let short = RefsInspectorScrollGeometry(
+      offsetY: 0,
+      contentHeight: 500,
+      viewportHeight: 400,
+      topInset: 0,
+      bottomInset: 0
+    )
+    XCTAssertNil(short.restoreTarget(offset: 300, contentIsFinal: false))
+    XCTAssertEqual(short.restoreTarget(offset: 300, contentIsFinal: true), 100)
+
+    let tall = RefsInspectorScrollGeometry(
+      offsetY: 0,
+      contentHeight: 900,
+      viewportHeight: 400,
+      topInset: 0,
+      bottomInset: 0
+    )
+    XCTAssertEqual(tall.restoreTarget(offset: 300, contentIsFinal: false), 300)
+    XCTAssertNil(RefsInspectorScrollGeometry.invalid.restoreTarget(
+      offset: 300,
+      contentIsFinal: true
+    ))
+
+    let inset = RefsInspectorScrollGeometry(
+      offsetY: 0,
+      contentHeight: 1400,
+      viewportHeight: 400,
+      topInset: 12,
+      bottomInset: 8
+    )
+    XCTAssertEqual(inset.restoreTarget(offset: -30, contentIsFinal: true), -12)
+    XCTAssertEqual(inset.restoreTarget(offset: 2_000, contentIsFinal: true), 1_008)
   }
 
   func testCommandAfterUserOffsetUsesMeasuredPosition() {
@@ -311,7 +346,7 @@ final class RefsInspectorScrollTests: XCTestCase {
 
     XCTAssertNil(
       harness.controller.processKeyEvent(
-        keyEvent(keyCode: Self.uKey, modifiers: .control, characters: "u")
+        keyEvent(keyCode: Self.uKey, modifiers: [.control, .shift], characters: "u")
       )
     )
     waitForInspectorOffset(in: harness.panel) { $0 < afterDown - 8 }
@@ -319,6 +354,65 @@ final class RefsInspectorScrollTests: XCTestCase {
       inspectorOffset(in: harness.panel), afterDown, inspectorDiagnostics(in: harness.panel))
     XCTAssertEqual(harness.model.selectedID, selected)
     XCTAssertTrue(field.holdsFirstResponder)
+  }
+
+  func testHostedShowKeepsPreviewOffsetAndMovesFilterCaretToEnd() {
+    let harness = makeHostedHarness()
+    defer { harness.panel.orderOut(nil) }
+    settle(harness.panel)
+    focusSearch(harness)
+
+    for _ in 0..<3 {
+      XCTAssertNil(
+        harness.controller.processKeyEvent(
+          keyEvent(keyCode: Self.dKey, modifiers: .control, characters: "d")
+        )
+      )
+    }
+    waitForInspectorOffset(in: harness.panel) { $0 > 100 }
+    let rememberedOffset = inspectorOffset(in: harness.panel)
+
+    harness.controller.hide()
+    harness.controller.show()
+    waitForInspectorSettled(in: harness.panel, around: rememberedOffset, tolerance: 1)
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.08))
+
+    let field = tryUnwrapFilter(harness.panel)
+    let editor = field.currentEditor() as? NSTextView
+    XCTAssertEqual(
+      editor?.selectedRange().location,
+      (harness.model.query as NSString).length
+    )
+    XCTAssertTrue(field.holdsFirstResponder)
+
+    let beforeCard = inspectorOffset(in: harness.panel)
+    XCTAssertTrue(harness.model.perform(.showCopyCard))
+    harness.panel.contentView?.layoutSubtreeIfNeeded()
+    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.08))
+    XCTAssertTrue(harness.model.perform(.escape))
+    waitForInspectorSettled(in: harness.panel, around: beforeCard, tolerance: 1)
+  }
+
+  func testHostedControlUResetsPreviewAndQuery() {
+    let harness = makeHostedHarness()
+    defer { harness.panel.orderOut(nil) }
+    settle(harness.panel)
+    focusSearch(harness)
+    for _ in 0..<3 {
+      _ = harness.controller.processKeyEvent(
+        keyEvent(keyCode: Self.dKey, modifiers: .control, characters: "d")
+      )
+    }
+    waitForInspectorOffset(in: harness.panel) { $0 > 100 }
+
+    XCTAssertNil(
+      harness.controller.processKeyEvent(
+        keyEvent(keyCode: Self.uKey, modifiers: .control, characters: "u")
+      )
+    )
+    waitForInspectorOffset(in: harness.panel) { $0 <= 0.5 }
+    XCTAssertEqual(harness.model.query, "")
+    XCTAssertEqual(harness.model.selectedID, harness.model.listing.orderedIDs.first)
   }
 
   func testHostedControlDConsumesAtBoundaryAndWhenInspectorHidden() {
