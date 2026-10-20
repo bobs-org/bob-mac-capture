@@ -1,4 +1,5 @@
 import CaptureCore
+import Combine
 import XCTest
 
 @testable import BobMacCapture
@@ -75,6 +76,89 @@ final class CaptureSavedTemplateShelfTests: XCTestCase {
         XCTAssertEqual(shelf.count, 3)
     }
 
+    func testShowRefreshSkipsInsideWindowAndRunsOutside() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        var current = Date(timeIntervalSince1970: 1_000)
+        let shelf = SavedTemplateShelf(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            ),
+            now: { current }
+        )
+
+        shelf.refresh(reason: .launch)
+        await waitUntil { shelf.availability == .available }
+        XCTAssertEqual(recordArgvCount(recordURL), 1)
+
+        current = Date(timeIntervalSince1970: 1_003)
+        shelf.refresh(reason: .show)
+        try? await Task.sleep(for: .milliseconds(80))
+        XCTAssertEqual(recordArgvCount(recordURL), 1)
+
+        current = Date(timeIntervalSince1970: 1_000 + CaptureShowRefreshWindow.pullThrottleInterval + 0.01)
+        shelf.refresh(reason: .show)
+        await waitUntil { self.recordArgvCount(recordURL) == 2 }
+        XCTAssertEqual(recordArgvCount(recordURL), 2)
+    }
+
+    func testNonShowRefreshReasonsAreNeverSkipped() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        var current = Date(timeIntervalSince1970: 1_000)
+        let shelf = SavedTemplateShelf(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: [
+                    "HOME": "/tmp",
+                    "PATH": "/usr/bin:/bin",
+                    "FAKE_BOB_RECORD_PATH": recordURL.path,
+                ]
+            ),
+            now: { current }
+        )
+
+        shelf.refresh(reason: .launch)
+        await waitUntil { shelf.availability == .available }
+        current = Date(timeIntervalSince1970: 1_001)
+        for reason in [
+            SavedTemplateShelfRefreshReason.submit,
+            .mutation,
+            .recheck,
+        ] {
+            let before = recordArgvCount(recordURL)
+            shelf.refresh(reason: reason)
+            await waitUntil { self.recordArgvCount(recordURL) == before + 1 }
+            current = current.addingTimeInterval(0.5)
+        }
+    }
+
+    func testIdenticalListDoesNotRepublishTemplates() async throws {
+        let shelf = SavedTemplateShelf(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+            )
+        )
+        shelf.refresh(reason: .launch)
+        await waitUntil { shelf.availability == .available }
+
+        var published = 0
+        let cancellable = shelf.$templates.sink { _ in published += 1 }
+        XCTAssertEqual(published, 1)
+        let firstRefresh = shelf.lastRefreshedAt
+        shelf.refresh(reason: .submit)
+        await waitUntil { shelf.lastRefreshedAt != firstRefresh }
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(published, 1)
+        XCTAssertNotNil(cancellable)
+    }
+
     func testReplaceCacheForTestsSeedsEntriesWithoutBob() {
         let shelf = SavedTemplateShelf()
         shelf.replaceCacheForTests(templates: [
@@ -87,6 +171,13 @@ final class CaptureSavedTemplateShelfTests: XCTestCase {
             CaptureSavedTemplate(index: 1, id: "one", text: "Buy {0}", fieldCount: 1, lineCount: 1)
         ])
         XCTAssertEqual(shelf.template(id: "one")?.text, "Buy {0}")
+    }
+
+    private func recordArgvCount(_ url: URL) -> Int {
+        guard let text = try? String(contentsOf: url) else {
+            return 0
+        }
+        return text.split(separator: "\n").filter { $0.hasPrefix("argv=") }.count
     }
 
     private func fakeBobPath() throws -> String {

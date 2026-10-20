@@ -283,6 +283,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     private var isApplyingContentHeight = false
     private var metricsArrivedDuringApplication = false
     private var panelPlacement = CapturePanelPlacement()
+    private var cachedEditor = CaptureEditorTextConfiguration.CachedEditorTextView()
 
     init(model: CapturePanelModel) {
         self.model = model
@@ -333,7 +334,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
     func show() {
         let token = CaptureSignpost.begin("panel-order")
+        let prepareToken = CaptureSignpost.begin(CaptureSignpost.capturePrepare)
         model.prepareForPresentation()
+        CaptureSignpost.end(prepareToken)
         // Stale-while-revalidate: the cached agenda paints first, then one
         // background refresh checks it. This replaces the old per-show
         // `capture-pomodoros` spawn, so a show costs at most one agenda
@@ -347,7 +350,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         // default, which would rewrite `--3` as `–3`/`—3` before Bob ever sees
         // the draft. Disable only dash substitution; smart quotes and the
         // app's own Tab `--` → `—` snippet stay enabled.
-        CaptureEditorTextConfiguration.configureEditorTextViews(in: panel.contentView)
+        CaptureEditorTextConfiguration.configureEditorTextViews(
+            in: panel.contentView,
+            panel: panel,
+            cache: &cachedEditor
+        )
         installKeyMonitorIfNeeded()
         model.requestFocus(.editor)
         CaptureSignpost.end(token)
@@ -707,7 +714,11 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         updateAvailableScreenHeight()
         updateTitlebarSafeAreaInset()
         created.contentView?.layoutSubtreeIfNeeded()
-        CaptureEditorTextConfiguration.configureEditorTextViews(in: created.contentView)
+        CaptureEditorTextConfiguration.configureEditorTextViews(
+            in: created.contentView,
+            panel: created,
+            cache: &cachedEditor
+        )
         updateAgendaBudget()
         applyLatestContentMetricsIfPossible()
         return created
@@ -1774,6 +1785,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     }
 
     private func hidePanel() {
+        let token = CaptureSignpost.begin(CaptureSignpost.captureDismiss)
+        defer { CaptureSignpost.end(token) }
         CaptureSignpost.event("panel-dismiss")
         model.prepareForDismissal()
         panel?.orderOut(nil)
@@ -1816,7 +1829,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     pullInFilterFocused: self.model.pullInChoiceVisible
                         && (Self.findPickerFilterField(
                             in: self.panel?.contentView,
-                            identifier: pullInFilterFieldAccessibilityIdentifier
+                            identifier: pullInFilterFieldAccessibilityIdentifier,
+                            firstResponder: self.panel?.firstResponder
                         )?.holdsFirstResponder ?? false),
                     pullInFilterIsEmpty: self.model.pullInChoice?.filterText.isEmpty ?? true,
                     keyIsRepeat: event.isARepeat,
@@ -1845,7 +1859,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         guard let panel,
               let field = Self.findPickerFilterField(
                 in: panel.contentView,
-                identifier: pullInFilterFieldAccessibilityIdentifier
+                identifier: pullInFilterFieldAccessibilityIdentifier,
+                firstResponder: panel.firstResponder
               ),
               field.holdsFirstResponder
         else {
@@ -1917,12 +1932,40 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
 
     static func findPickerFilterField(
         in view: NSView?,
-        identifier: String = pickerFilterFieldAccessibilityIdentifier
+        identifier: String = pickerFilterFieldAccessibilityIdentifier,
+        firstResponder: NSResponder? = nil
     ) -> CapturePickerFilterNSTextField? {
-        findTextField(
+        let responder = firstResponder ?? view?.window?.firstResponder
+        if let field = pickerFilterField(
+            fromFirstResponder: responder,
+            identifier: identifier
+        ) {
+            return field
+        }
+        return findTextField(
             in: view,
             identifier: identifier
         )
+    }
+
+    /// Cheap path: the filter field itself, or its field editor whose
+    /// delegate is that field. Misses fall back to the view-tree walk.
+    static func pickerFilterField(
+        fromFirstResponder firstResponder: NSResponder?,
+        identifier: String
+    ) -> CapturePickerFilterNSTextField? {
+        if let field = firstResponder as? CapturePickerFilterNSTextField,
+           field.accessibilityIdentifier() == identifier
+        {
+            return field
+        }
+        if let textView = firstResponder as? NSTextView,
+           let field = textView.delegate as? CapturePickerFilterNSTextField,
+           field.accessibilityIdentifier() == identifier
+        {
+            return field
+        }
+        return nil
     }
 
     /// While the picker is visible the filter field owns keystrokes. A key
@@ -1931,7 +1974,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     private func repairPickerFilterFocusIfNeeded() {
         guard let panel else { return }
         if model.pickerVisible,
-           let field = Self.findPickerFilterField(in: panel.contentView),
+           let field = Self.findPickerFilterField(
+            in: panel.contentView,
+            firstResponder: panel.firstResponder
+           ),
            !field.holdsFirstResponder
         {
             field.requestFirstResponder()
@@ -1942,7 +1988,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
            model.focusRequest.target == .pullInFilter,
            let field = Self.findPickerFilterField(
                in: panel.contentView,
-               identifier: pullInFilterFieldAccessibilityIdentifier
+               identifier: pullInFilterFieldAccessibilityIdentifier,
+               firstResponder: panel.firstResponder
            ),
            !field.holdsFirstResponder
         {

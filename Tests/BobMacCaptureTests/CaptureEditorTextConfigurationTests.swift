@@ -54,4 +54,75 @@ final class CaptureEditorTextConfigurationTests: XCTestCase {
         // Must not trap when the panel has no content view yet.
         CaptureEditorTextConfiguration.configureEditorTextViews(in: nil)
     }
+
+    func testCachedConfigureSkipsWalkWhileEditorStaysInPanel() {
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        let editor = NSTextView(frame: NSRect(x: 0, y: 0, width: 100, height: 40))
+        editor.isEditable = true
+        editor.isAutomaticDashSubstitutionEnabled = true
+        panel.contentView?.addSubview(editor)
+
+        var cache = CaptureEditorTextConfiguration.CachedEditorTextView()
+        CaptureEditorTextConfiguration.configureEditorTextViews(
+            in: panel.contentView,
+            panel: panel,
+            cache: &cache
+        )
+        XCTAssertFalse(editor.isAutomaticDashSubstitutionEnabled)
+        XCTAssertTrue(cache.textView === editor)
+
+        editor.isAutomaticDashSubstitutionEnabled = true
+        CaptureEditorTextConfiguration.configureEditorTextViews(
+            in: panel.contentView,
+            panel: panel,
+            cache: &cache
+        )
+        XCTAssertTrue(
+            editor.isAutomaticDashSubstitutionEnabled,
+            "A still-attached cached editor must not be walked and reconfigured"
+        )
+
+        let otherPanel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        CaptureEditorTextConfiguration.configureEditorTextViews(
+            in: panel.contentView,
+            panel: otherPanel,
+            cache: &cache
+        )
+        XCTAssertFalse(editor.isAutomaticDashSubstitutionEnabled)
+    }
+
+    @MainActor
+    func testPickerFilterFieldUsesFirstResponderField() {
+        let field = CapturePickerFilterNSTextField()
+        field.setAccessibilityIdentifier(pickerFilterFieldAccessibilityIdentifier)
+
+        XCTAssertTrue(
+            CapturePanelController.pickerFilterField(
+                fromFirstResponder: field,
+                identifier: pickerFilterFieldAccessibilityIdentifier
+            ) === field
+        )
+        XCTAssertNil(
+            CapturePanelController.pickerFilterField(
+                fromFirstResponder: field,
+                identifier: pullInFilterFieldAccessibilityIdentifier
+            )
+        )
+        XCTAssertNil(
+            CapturePanelController.pickerFilterField(
+                fromFirstResponder: NSTextView(),
+                identifier: pickerFilterFieldAccessibilityIdentifier
+            )
+        )
+    }
 }

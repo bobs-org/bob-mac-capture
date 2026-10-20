@@ -32,6 +32,10 @@ destinations are not saved. Settings shows the count and file path, can reveal t
 in Finder, and has a confirmed **Clear Templates…** action that also removes the
 quarantine copy.
 
+The shelf refreshes on launch, after a capture or mutation, and on Recheck Bob.
+A panel show also refreshes, except when the last refresh started less than 5 s
+ago; those other reasons always run.
+
 An older bob that does not know `capture-templates` hides the shelf and asks you to
 update bob. The app only sends `--template-origin` after a successful template-list
 request from that same bob executable. This identity check matters because an older

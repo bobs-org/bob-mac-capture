@@ -588,7 +588,7 @@ private struct ParentTaskPickerIndexEntry: Sendable {
         var best: ParentTaskFieldMatch?
         func consider(weight: Int, field: FuzzyField?, target: ParentTaskMatchTarget) {
             guard let field,
-                  let match = FuzzyMatcher.match(token: token, in: field)
+                  let match = FuzzyMatcher.matchPreFolded(token: token, in: field)
             else {
                 return
             }

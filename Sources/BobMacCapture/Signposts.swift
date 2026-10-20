@@ -42,4 +42,7 @@ enum CaptureSignpost {
     static let agendaUnchanged: StaticString = "agenda-unchanged"
     static let agendaPublished: StaticString = "agenda-published"
     static let agendaHoldReleased: StaticString = "agenda-hold-released"
+    static let capturePrepare: StaticString = "capture-prepare"
+    static let captureDismiss: StaticString = "capture-dismiss"
+    static let templatesRefresh: StaticString = "templates-refresh"
 }

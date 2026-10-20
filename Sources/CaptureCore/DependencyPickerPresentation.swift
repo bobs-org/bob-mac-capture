@@ -640,7 +640,7 @@ private struct DependencyPickerIndexEntry: Sendable {
         var best: DependencyFieldMatch?
         func consider(weight: Int, field: FuzzyField?, target: DependencyMatchTarget) {
             guard let field,
-                  let match = FuzzyMatcher.match(token: token, in: field)
+                  let match = FuzzyMatcher.matchPreFolded(token: token, in: field)
             else {
                 return
             }

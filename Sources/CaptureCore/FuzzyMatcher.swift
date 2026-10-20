@@ -100,13 +100,22 @@ public enum FuzzyMatcher: Sendable {
     /// penalty. Ties prefer the earliest end position, then the earliest
     /// start.
     public static func match(token: String, in field: FuzzyField) -> FuzzyFieldMatch? {
-        let wanted = folded(token).map { $0 }
+        matchPreFolded(token: folded(token), in: field)
+    }
+
+    /// Matches a token that `FuzzyQuery` (or `folded(_:)`) already folded, so
+    /// the hot path never re-folds query tokens.
+    static func matchPreFolded(token: String, in field: FuzzyField) -> FuzzyFieldMatch? {
+        let wanted = Array(token)
         let needed = wanted.count
         guard needed > 0 else {
             return FuzzyFieldMatch(score: 0, positions: [])
         }
         let available = field.folded.count
         guard needed <= available else {
+            return nil
+        }
+        guard isSubsequence(wanted, of: field.folded) else {
             return nil
         }
 
@@ -210,6 +219,20 @@ public enum FuzzyMatcher: Sendable {
             }
         }
         return FuzzyFieldMatch(score: endScore, positions: positions)
+    }
+
+    /// Exact: the DP returns nil iff no in-order alignment exists.
+    private static func isSubsequence(_ wanted: [Character], of haystack: [Character]) -> Bool {
+        var index = 0
+        for character in haystack {
+            if character == wanted[index] {
+                index += 1
+                if index == wanted.count {
+                    return true
+                }
+            }
+        }
+        return false
     }
 
     /// Folds one character for comparison: case, diacritics, and width are

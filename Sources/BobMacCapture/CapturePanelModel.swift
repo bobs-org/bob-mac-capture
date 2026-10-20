@@ -750,7 +750,9 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func publishAgendaPlan(_ presentation: CaptureAgendaPresentation) {
-        agendaPresentation = presentation
+        if agendaPresentation != presentation {
+            agendaPresentation = presentation
+        }
         let plan = CaptureAgendaHeightResolver.resolve(
             presentation: presentation,
             budget: agendaBudget,
@@ -758,11 +760,11 @@ final class CapturePanelModel: ObservableObject {
             width: max(1, agendaContentWidth),
             measurer: agendaMeasurer
         )
-        let changed = agendaPlan != plan
-        agendaPlan = plan
-        if changed {
-            agendaPlanDidChange?()
+        guard agendaPlan != plan else {
+            return
         }
+        agendaPlan = plan
+        agendaPlanDidChange?()
     }
 
     /// True while the close-comma assist may fire: the running Pomodoro
@@ -1573,7 +1575,13 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func updateTargetCacheSnapshot(_ snapshot: CaptureTargetsSnapshot) {
-        targetCacheSnapshot = snapshot
+        let contentChanged =
+            targetCacheSnapshot.targets != snapshot.targets
+            || targetCacheSnapshot.stale != snapshot.stale
+            || targetCacheSnapshot.errorDescription != snapshot.errorDescription
+        if contentChanged {
+            targetCacheSnapshot = snapshot
+        }
         if let error = snapshot.errorDescription {
             statusText = snapshot.stale ? "Target cache stale" : error
         }

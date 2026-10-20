@@ -45,7 +45,9 @@ requests (`install-restart-notification-requested`), the idle agenda
 `refs-panel-prepare`, `refs-panel-order`, `refs-library-publish`; event
 `refs-today-skipped`), and the Ctrl+Tab panel switch
 (interval `panel-switch`; event `panel-switch-key`), visible in
-Instruments' Points of Interest / os_signpost templates. These, and the bounded
+Instruments' Points of Interest / os_signpost templates. Capture show and hide add
+intervals `capture-prepare` and `capture-dismiss`; the template shelf refresh
+adds interval `templates-refresh`. These, and the bounded
 Recent Activity list in Settings, are metadata-only by construction — see
 [Permissions](permissions.md#privacy).
 

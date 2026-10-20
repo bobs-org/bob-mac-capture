@@ -43,6 +43,7 @@ final class SavedTemplateShelf: ObservableObject {
     private var generation: UInt64 = 0
     private var isRefreshing = false
     private var followUpQueued = false
+    private var lastRefreshStartedAt: Date?
     private let now: () -> Date
 
     init(
@@ -80,7 +81,21 @@ final class SavedTemplateShelf: ObservableObject {
     }
 
     func refresh(reason: SavedTemplateShelfRefreshReason) {
-        _ = reason
+        guard processClient != nil else {
+            return
+        }
+        if reason == .show,
+           CaptureShowRefreshWindow.shouldSkipShowTriggeredRefresh(
+            lastStartedAt: lastRefreshStartedAt,
+            now: now()
+           )
+        {
+            return
+        }
+        startRefresh()
+    }
+
+    private func startRefresh() {
         guard let client = processClient else {
             return
         }
@@ -88,10 +103,13 @@ final class SavedTemplateShelf: ObservableObject {
             followUpQueued = true
             return
         }
+        lastRefreshStartedAt = now()
         generation &+= 1
         isRefreshing = true
         let generation = self.generation
         Task { [weak self] in
+            let token = CaptureSignpost.begin(CaptureSignpost.templatesRefresh)
+            defer { CaptureSignpost.end(token) }
             do {
                 let response = try await client.savedTemplates()
                 await MainActor.run {
@@ -152,11 +170,21 @@ final class SavedTemplateShelf: ObservableObject {
         guard generation == self.generation else {
             return
         }
-        templates = response.templates
-        capacity = response.capacity
-        saving = response.saving
-        file = response.file
-        availability = .available
+        if templates != response.templates {
+            templates = response.templates
+        }
+        if capacity != response.capacity {
+            capacity = response.capacity
+        }
+        if saving != response.saving {
+            saving = response.saving
+        }
+        if file != response.file {
+            file = response.file
+        }
+        if availability != .available {
+            availability = .available
+        }
         lastRefreshedAt = now()
         endRefresh(generation: generation)
     }
@@ -166,11 +194,21 @@ final class SavedTemplateShelf: ObservableObject {
             return
         }
         if case .unsupportedCommand = error {
-            templates = []
-            capacity = 0
-            saving = false
-            file = ""
-            availability = .unsupported
+            if !templates.isEmpty {
+                templates = []
+            }
+            if capacity != 0 {
+                capacity = 0
+            }
+            if saving {
+                saving = false
+            }
+            if !file.isEmpty {
+                file = ""
+            }
+            if availability != .unsupported {
+                availability = .unsupported
+            }
             lastRefreshedAt = now()
             isRefreshing = false
             followUpQueued = false
@@ -183,7 +221,7 @@ final class SavedTemplateShelf: ObservableObject {
         guard generation == self.generation else {
             return
         }
-        if templates.isEmpty {
+        if templates.isEmpty, availability != .failed(message) {
             availability = .failed(message)
         }
         endRefresh(generation: generation)
@@ -197,7 +235,7 @@ final class SavedTemplateShelf: ObservableObject {
         isRefreshing = false
         followUpQueued = false
         if followUp {
-            refresh(reason: .show)
+            startRefresh()
         }
     }
 }

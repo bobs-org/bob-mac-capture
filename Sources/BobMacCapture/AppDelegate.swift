@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var agendaCancellables: Set<AnyCancellable> = []
   private var vaultWatcher: VaultTargetWatcher?
   private let targetsCache = CaptureTargetsCache()
+  private var lastTargetsRefreshStartedAt: Date?
   private var processClient: BobProcessClient?
   private var settingsSceneRepresentation: SettingsSceneRepresentation?
   private var settingsCancellables: Set<AnyCancellable> = []
@@ -168,7 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     configureRefsStack(signingState: signingState)
     configureVaultWatcher()
     observeBobSettings()
-    refreshTargetsWhenPossible()
+    refreshTargetsWhenPossible(reason: .launch)
     CaptureSignpost.event("launch-complete")
     if BobMacCaptureLaunchContext.requestsInstallRestartNotification(
       ProcessInfo.processInfo.arguments
@@ -438,10 +439,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
-  private func refreshTargetsWhenPossible() {
+  private func refreshTargetsWhenPossible(reason: CaptureTargetsRefreshReason) {
     guard let processClient else {
       return
     }
+    if reason == .show,
+      CaptureShowRefreshWindow.shouldSkipShowTriggeredRefresh(
+        lastStartedAt: lastTargetsRefreshStartedAt,
+        now: Date()
+      )
+    {
+      return
+    }
+    lastTargetsRefreshStartedAt = Date()
 
     Task {
       let snapshot = await CaptureSignpost.measure("targets") {
@@ -694,7 +704,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
           }
           if RefsWatcherRelevance.isRelevant(batch, vaultRoot: vaultPath) {
-            self.refreshTargetsWhenPossible()
+            self.refreshTargetsWhenPossible(reason: .watcher)
           }
           self.agendaStore?.vaultDidChange(batch)
         }
@@ -725,7 +735,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // One refresh updates both the shared cache and the panel snapshot. Starting
     // the model refresh as well would launch two `capture-targets` processes in
     // the same cancellation lane every time the panel opens.
-    refreshTargetsWhenPossible()
+    refreshTargetsWhenPossible(reason: .show)
   }
 
   /// Ctrl+Tab hop from either panel, deferred to the next main-queue
@@ -742,7 +752,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       return
     }
     if result == .capture {
-      refreshTargetsWhenPossible()
+      refreshTargetsWhenPossible(reason: .show)
     }
   }
 
@@ -813,6 +823,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     agendaStore?.processClient = processClient
     agendaStore?.reset()
     configureVaultWatcher()
+    refreshTargetsWhenPossible(reason: .recheck)
   }
 
   @objc private func recheckBob() {

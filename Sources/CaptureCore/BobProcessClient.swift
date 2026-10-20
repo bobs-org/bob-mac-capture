@@ -52,9 +52,20 @@ public final class BobProcessClient: @unchecked Sendable {
     JSONDecoder()
   }
 
+  /// Test seam: when set, `identityToken` uses this instead of stating the
+  /// executable. Production leaves it nil.
+  var identityTokenProvider: (() -> String)?
+
   /// Changes if the resolved executable is replaced in place, which
   /// invalidates the cached compatibility result for its guard flags.
   public var identityToken: String {
+    if let identityTokenProvider {
+      return identityTokenProvider()
+    }
+    return fileIdentityToken()
+  }
+
+  private func fileIdentityToken() -> String {
     let attributes = try? FileManager.default.attributesOfItem(atPath: executablePath)
     let device = attributes?[.systemNumber].map { String(describing: $0) } ?? "?"
     let inode = attributes?[.systemFileNumber].map { String(describing: $0) } ?? "?"
@@ -428,11 +439,15 @@ public final class BobProcessClient: @unchecked Sendable {
   }
 
   private func guardFlagKnownUnsupported(_ flag: String) -> Bool {
-    let identity = identityToken
-    return stateQueue.sync {
+    stateQueue.sync {
+      if unsupportedGuardFlags.isEmpty {
+        return false
+      }
+      let identity = identityToken
       if unsupportedGuardIdentity != identity {
         unsupportedGuardIdentity = identity
         unsupportedGuardFlags = []
+        return false
       }
       return unsupportedGuardFlags.contains(flag)
     }

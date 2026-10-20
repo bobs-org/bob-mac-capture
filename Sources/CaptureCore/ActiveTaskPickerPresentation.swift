@@ -406,7 +406,7 @@ private struct ActiveTaskPickerIndexEntry: Sendable {
         var best: ActiveTaskFieldMatch?
         func consider(weight: Int, field: FuzzyField?, target: ActiveTaskMatchTarget) {
             guard let field,
-                  let match = FuzzyMatcher.match(token: token, in: field)
+                  let match = FuzzyMatcher.matchPreFolded(token: token, in: field)
             else {
                 return
             }

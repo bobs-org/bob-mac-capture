@@ -6,6 +6,13 @@ import AppKit
 /// backing `NSTextView`; automatic quote substitution and the app's own
 /// Tab `--` → `—` snippet are intentionally untouched.
 enum CaptureEditorTextConfiguration {
+    /// Weak identity of the editor `NSTextView` last configured for a panel,
+    /// so later shows skip the view-tree walk while that view is still in it.
+    struct CachedEditorTextView {
+        weak var textView: NSTextView?
+        var identifier: ObjectIdentifier?
+    }
+
     /// Disables smart dashes on one text view, preserving every other
     /// substitution setting (notably smart quotes).
     static func configure(_ textView: NSTextView) {
@@ -25,6 +32,43 @@ enum CaptureEditorTextConfiguration {
         }
         for subview in view.subviews {
             configureEditorTextViews(in: subview)
+        }
+    }
+
+    /// Reconfigures only when the cached editor is gone or no longer in
+    /// `panel`. Otherwise the previous show already applied the policy.
+    static func configureEditorTextViews(
+        in view: NSView?,
+        panel: NSPanel?,
+        cache: inout CachedEditorTextView
+    ) {
+        if let textView = cache.textView,
+           cache.identifier == ObjectIdentifier(textView),
+           textView.window === panel
+        {
+            return
+        }
+        cache.textView = nil
+        cache.identifier = nil
+        configureEditorTextViews(in: view, cachingInto: &cache)
+    }
+
+    private static func configureEditorTextViews(
+        in view: NSView?,
+        cachingInto cache: inout CachedEditorTextView
+    ) {
+        guard let view else {
+            return
+        }
+        if let textView = view as? NSTextView, textView.isEditable {
+            configure(textView)
+            if cache.textView == nil {
+                cache.textView = textView
+                cache.identifier = ObjectIdentifier(textView)
+            }
+        }
+        for subview in view.subviews {
+            configureEditorTextViews(in: subview, cachingInto: &cache)
         }
     }
 }

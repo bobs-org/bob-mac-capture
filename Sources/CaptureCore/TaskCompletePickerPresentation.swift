@@ -619,7 +619,7 @@ struct TaskCompletePickerIndexEntry: Sendable {
         var best: TaskCompleteFieldMatch?
         func consider(weight: Int, field: FuzzyField?, target: TaskCompleteMatchTarget) {
             guard let field,
-                  let match = FuzzyMatcher.match(token: token, in: field)
+                  let match = FuzzyMatcher.matchPreFolded(token: token, in: field)
             else {
                 return
             }

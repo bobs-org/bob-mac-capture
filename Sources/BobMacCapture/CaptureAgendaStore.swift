@@ -231,7 +231,9 @@ public final class CaptureAgendaStore: ObservableObject {
             CaptureSignpost.event(CaptureSignpost.agendaUnchanged)
             lastRefreshedAt = now()
             if hasCurrentSnapshot {
-                status = .ready
+                if status != .ready {
+                    status = .ready
+                }
                 // A transient failure nils the count while keeping the
                 // bytes, so the next byte-identical refresh re-publishes
                 // the last good snapshot's count through the idempotent

@@ -516,7 +516,7 @@ public struct BlockIDPickerIndex: Sendable {
             var positions: [Int] = []
             var matchesAll = true
             for token in tokens {
-                guard let match = FuzzyMatcher.match(token: token, in: idField) else {
+                guard let match = FuzzyMatcher.matchPreFolded(token: token, in: idField) else {
                     matchesAll = false
                     break
                 }
@@ -966,7 +966,7 @@ private struct BlockIDLinkEntry: Sendable {
         var best: BlockIDFieldMatch?
         func consider(weight: Int, field: FuzzyField?, target: BlockIDMatchTarget) {
             guard let field,
-                  let match = FuzzyMatcher.match(token: token, in: field)
+                  let match = FuzzyMatcher.matchPreFolded(token: token, in: field)
             else {
                 return
             }

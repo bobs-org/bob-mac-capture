@@ -121,6 +121,22 @@ final class CaptureAgendaStoreTests: XCTestCase {
         XCTAssertNotNil(cancellable)
     }
 
+    func testUnchangedRefreshDoesNotRepublishReadyStatus() async throws {
+        let store = try makeStore()
+        store.refresh(reason: .show)
+        await waitUntil { store.status == .ready }
+
+        var statuses: [CaptureAgendaStoreStatus] = []
+        let cancellable = store.$status.sink { statuses.append($0) }
+        XCTAssertEqual(statuses, [.ready])
+        let firstRefresh = store.lastRefreshedAt
+        store.refresh(reason: .show)
+        await waitUntil { store.lastRefreshedAt != firstRefresh }
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(statuses, [.ready])
+        XCTAssertNotNil(cancellable)
+    }
+
     func testConcurrentTriggersCoalesceToOneFollowUp() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

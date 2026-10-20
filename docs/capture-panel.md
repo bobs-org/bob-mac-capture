@@ -21,7 +21,10 @@ The panel owns presentation, process orchestration, and the hotkey. Capture gram
 - Production hotkey (the default): Control-Shift-Command-I.
 - Development/rollback hotkey: Control-Shift-Command-R, selectable in Settings.
 - The hotkey path uses a pre-warmed non-activating `NSPanel`; subprocess work is kept
-  off that path.
+  off that path. A show (hotkey or Ctrl+Tab) skips re-spawning `capture-targets` when
+  the last targets refresh started less than 5 s ago; vault watchers, Recheck Bob,
+  launch, and failure recovery always refresh. The idle agenda still revalidates on
+  every show.
 - A fresh popup is a compact bar — a one-line editor plus persistent footer actions.
   With an empty draft, the auxiliary region below the editor shows today's agenda
   (see [Idle agenda](idle-agenda.md)); with the agenda off or nothing to show, the popup is the

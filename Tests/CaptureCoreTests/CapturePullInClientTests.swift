@@ -169,6 +169,34 @@ final class CapturePullInClientTests: XCTestCase {
         XCTAssertEqual(try recordText(unrelatedRecord).components(separatedBy: "argv=capture").count - 1, 1)
     }
 
+    func testGuardFlagKnownUnsupportedSkipsIdentityLookupWhenEmpty() throws {
+        var lookups = 0
+        let client = try makeClient(record: temporaryRecordURL())
+        client.identityTokenProvider = {
+            lookups += 1
+            return "counted-identity"
+        }
+        XCTAssertFalse(client.pullInGuardKnownUnsupported)
+        XCTAssertFalse(client.refuseOverrideKnownUnsupported)
+        XCTAssertEqual(lookups, 0)
+    }
+
+    func testGuardFlagKnownUnsupportedLooksUpIdentityOnceFlagsAreCached() async throws {
+        var lookups = 0
+        let client = try makeClient(
+            record: temporaryRecordURL(),
+            extraEnvironment: ["FAKE_BOB_GUARD_FLAG_UNSUPPORTED": "1"]
+        )
+        client.identityTokenProvider = {
+            lookups += 1
+            return "stable-identity"
+        }
+        _ = try await client.capture("draft", requirePullInChoice: true)
+        lookups = 0
+        XCTAssertTrue(client.pullInGuardKnownUnsupported)
+        XCTAssertGreaterThan(lookups, 0)
+    }
+
     private func makeClient(
         record: URL,
         extraEnvironment: [String: String] = [:]

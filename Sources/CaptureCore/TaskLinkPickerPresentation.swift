@@ -568,7 +568,7 @@ private struct TaskLinkPickerIndexEntry: Sendable {
         var best: TaskLinkFieldMatch?
         func consider(weight: Int, field: FuzzyField?, target: TaskLinkMatchTarget) {
             guard let field,
-                  let match = FuzzyMatcher.match(token: token, in: field)
+                  let match = FuzzyMatcher.matchPreFolded(token: token, in: field)
             else {
                 return
             }
