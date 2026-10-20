@@ -5,6 +5,14 @@ orchestration, the global hotkey, settings, launch at login, and packaging. `bob
 remains the only implementation of capture grammar, preview, completion data, and vault
 mutation.
 
+## Docs →
+
+- [Get started](https://bobs-org.github.io/start/mac-capture/)
+- [Reference](https://bobs-org.github.io/reference/mac-capture/)
+- [Develop](https://bobs-org.github.io/develop/mac-capture/)
+
+The site is <https://bobs-org.github.io/>.
+
 ## Requirements
 
 - macOS 26 with Command Line Tools for Xcode 26+ or Xcode 26+.
