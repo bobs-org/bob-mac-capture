@@ -1,0 +1,20 @@
+- title: Capture panel
+  path: capture-panel.md
+- title: Pickers
+  path: pickers.md
+- title: Task pickers
+  path: task-pickers.md
+- title: Relationship pickers
+  path: relationship-pickers.md
+- title: Capture previews
+  path: capture-previews.md
+- title: Keyboard
+  path: keyboard.md
+- title: Saved templates
+  path: saved-templates.md
+- title: Wikilink completion
+  path: wikilink-completion.md
+- title: Idle agenda
+  path: idle-agenda.md
+- title: Protocol
+  path: protocol.md
