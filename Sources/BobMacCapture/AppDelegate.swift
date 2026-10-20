@@ -37,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var agendaCancellables: Set<AnyCancellable> = []
   private var vaultWatcher: VaultTargetWatcher?
   private let targetsCache = CaptureTargetsCache()
-  private var lastTargetsRefreshStartedAt: Date?
+  var targetsRefreshGate = CaptureTargetsRefreshGate()
   private var processClient: BobProcessClient?
   private var settingsSceneRepresentation: SettingsSceneRepresentation?
   private var settingsCancellables: Set<AnyCancellable> = []
@@ -439,19 +439,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
-  private func refreshTargetsWhenPossible(reason: CaptureTargetsRefreshReason) {
+  func refreshTargetsWhenPossible(reason: CaptureTargetsRefreshReason) {
     guard let processClient else {
       return
     }
-    if reason == .show,
-      CaptureShowRefreshWindow.shouldSkipShowTriggeredRefresh(
-        lastStartedAt: lastTargetsRefreshStartedAt,
-        now: Date()
-      )
-    {
+    guard targetsRefreshGate.shouldRefresh(reason: reason) else {
       return
     }
-    lastTargetsRefreshStartedAt = Date()
 
     Task {
       let snapshot = await CaptureSignpost.measure("targets") {

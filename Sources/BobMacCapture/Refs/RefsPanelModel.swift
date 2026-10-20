@@ -1096,11 +1096,11 @@ public final class RefsPanelModel: ObservableObject {
     library.refreshIfStale(maxAge: maxAge)
   }
 
-  /// Background refresh for every panel open: Today refreshes every
-  /// time while the snapshot keeps its 60 s staleness rule. Also starts
-  /// a throttled `refs-pull` fast-forward so references pushed from
-  /// athena or apollo show up without waiting for the 15 s LaunchAgent.
-  /// Never blocks presentation.
+  /// Background refresh for every panel open: Today uses the shared
+  /// five-second show window while the snapshot keeps its 60 s staleness
+  /// rule. Also starts a throttled `refs-pull` fast-forward so references
+  /// pushed from athena or apollo show up without waiting for the 15 s
+  /// LaunchAgent. Never blocks presentation.
   public func refreshForOpen(maxAge: TimeInterval = 60) {
     library.requestTodayForPanelOpen()
     library.requestPullForPanelOpen()

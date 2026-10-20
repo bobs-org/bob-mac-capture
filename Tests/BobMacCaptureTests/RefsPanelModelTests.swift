@@ -1880,9 +1880,11 @@ final class RefsPanelModelTests: XCTestCase {
   func testOpenRefreshesTodayWithoutRefreshingSnapshot() async throws {
     let recordURL = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
-    let harness = try makeHarness(environment: [
-      "FAKE_BOB_RECORD_PATH": recordURL.path
-    ])
+    var current = Date()
+    let harness = try makeHarness(
+      environment: ["FAKE_BOB_RECORD_PATH": recordURL.path],
+      now: { current }
+    )
     await harness.waitForSnapshot()
     await harness.waitForModel { _ in
       harness.library.signals.today.taskEntries.count == 4
@@ -1896,18 +1898,45 @@ final class RefsPanelModelTests: XCTestCase {
     }
     let listsBefore = argvCount(recordURL, prefix: "argv=ref list")
     let plansBefore = argvCount(recordURL, prefix: "argv=plan -f json")
+    let snapshotBefore = harness.library.snapshotRefreshGeneration
+    let todayBefore = harness.library.todayRefreshGeneration
 
+    // 1. A first open starts one Today refresh while a fresh snapshot is reused.
     harness.model.refreshForOpen()
     await harness.waitForModel { _ in
-      argvCount(recordURL, prefix: "argv=plan -f json") > plansBefore
+      harness.library.todayRefreshGeneration == todayBefore + 1
     }
-    try? await Task.sleep(nanoseconds: 1_000_000_000)
+    XCTAssertEqual(argvCount(recordURL, prefix: "argv=plan -f json"), plansBefore + 1)
+    XCTAssertEqual(argvCount(recordURL, prefix: "argv=ref list"), listsBefore)
+    XCTAssertEqual(harness.library.snapshotRefreshGeneration, snapshotBefore)
+
+    // 2. A second open inside five seconds adds no Today process or snapshot pass.
+    current = current.addingTimeInterval(2)
+    harness.model.refreshForOpen()
+    try? await Task.sleep(nanoseconds: 250_000_000)
+    XCTAssertEqual(argvCount(recordURL, prefix: "argv=plan -f json"), plansBefore + 1)
+    XCTAssertEqual(argvCount(recordURL, prefix: "argv=ref list"), listsBefore)
+    XCTAssertEqual(harness.library.todayRefreshGeneration, todayBefore + 1)
+    XCTAssertEqual(harness.library.snapshotRefreshGeneration, snapshotBefore)
+
+    // 3. Advancing the clock to the boundary permits another Today refresh,
+    // still reusing the fresh snapshot.
+    current = current.addingTimeInterval(RefsLibrary.pullThrottleInterval - 2)
     harness.model.refreshForOpen()
     await harness.waitForModel { _ in
-      argvCount(recordURL, prefix: "argv=plan -f json") > plansBefore + 1
+      harness.library.todayRefreshGeneration == todayBefore + 2
     }
+    XCTAssertEqual(argvCount(recordURL, prefix: "argv=plan -f json"), plansBefore + 2)
+    XCTAssertEqual(argvCount(recordURL, prefix: "argv=ref list"), listsBefore)
+    XCTAssertEqual(harness.library.snapshotRefreshGeneration, snapshotBefore)
 
-    // Two opens ran two Today refreshes and no new snapshot refresh.
+    // 4. An explicit non-show Today refresh inside the window still runs.
+    current = current.addingTimeInterval(1)
+    harness.library.refreshToday(reason: .manual)
+    await harness.waitForModel { _ in
+      harness.library.todayRefreshGeneration == todayBefore + 3
+    }
+    XCTAssertEqual(argvCount(recordURL, prefix: "argv=plan -f json"), plansBefore + 3)
     XCTAssertEqual(argvCount(recordURL, prefix: "argv=ref list"), listsBefore)
   }
 
@@ -4709,7 +4738,8 @@ final class RefsPanelModelTests: XCTestCase {
     missing: Set<String> = [],
     environment: [String: String] = [:],
     tabsReader: FakeTabsReader? = nil,
-    isAdHocSigned: Bool = false
+    isAdHocSigned: Bool = false,
+    now: @escaping () -> Date = { Date() }
   ) throws -> Harness {
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
@@ -4737,7 +4767,7 @@ final class RefsPanelModelTests: XCTestCase {
       vaultRoot: { vault },
       fileExists: { url in !missing.contains(where: { url.path.hasSuffix($0) }) },
       spotlight: FakeSpotlight(),
-      now: { Date() }
+      now: now
     )
     let opener = FakeOpener()
     let pasteboard = FakePasteboard()
@@ -4802,7 +4832,7 @@ final class RefsPanelModelTests: XCTestCase {
       vaultRoot: { vault },
       fileExists: { _ in true },
       spotlight: FakeSpotlight(),
-      now: { Date() }
+      now: now
     )
     let opener = FakeOpener()
     let pasteboard = FakePasteboard()
