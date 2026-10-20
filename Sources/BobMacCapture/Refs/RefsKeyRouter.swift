@@ -56,6 +56,7 @@ public enum RefsKeyRouter {
     static let s: UInt16 = 1
     static let d: UInt16 = 2
     static let x: UInt16 = 7
+    static let z: UInt16 = 6
     static let u: UInt16 = 32
     static let j: UInt16 = 38
     static let k: UInt16 = 40
@@ -76,8 +77,8 @@ public enum RefsKeyRouter {
   }
 
   /// Maps one key press to a panel command, or nil to pass it through.
-  /// Control-X closes a selected Tabs row; Control-D and Control-Shift-U
-  /// always scroll the inspector; Control-U resets the view.
+  /// Control-X closes a selected Tabs row; Control-D and Control-U
+  /// always scroll the inspector; Control-Z resets the view.
   /// Shift-Command-T reopens the newest closed tab. Option-N toggles
   /// NEW except while IME-composing.
   public static func command(
@@ -185,10 +186,12 @@ public enum RefsKeyRouter {
       return nil
     case KeyCode.u:
       if flags == .control {
-        return context.markedTextPresent ? nil : .resetView
-      }
-      if flags == [.control, .shift] {
         return context.markedTextPresent ? nil : .scrollInspector(.up)
+      }
+      return nil
+    case KeyCode.z:
+      if flags == .control {
+        return context.markedTextPresent ? nil : .resetView
       }
       return nil
     case KeyCode.one:

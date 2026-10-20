@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// Half-viewport inspector movement: Control-D is down, Control-Shift-U is up.
+/// Half-viewport inspector movement: Control-D is down, Control-U is up.
 public enum RefsInspectorScrollDirection: Equatable, Sendable {
     case up
     case down

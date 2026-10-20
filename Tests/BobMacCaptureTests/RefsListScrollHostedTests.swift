@@ -7,7 +7,7 @@ import XCTest
 
 /// Hosted reveal tests for the Refs list: the selected row stays fully
 /// visible below the pinned section header, shows keep the last selected
-/// row visible, and Ctrl-U resets the list to its top.
+/// row visible, and Ctrl-Z resets the list to its top.
 @MainActor
 final class RefsListScrollHostedTests: XCTestCase {
   func testHostedShowKeepsLastSelectionVisible() {

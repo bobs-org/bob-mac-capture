@@ -6,7 +6,7 @@ import XCTest
 @testable import BobMacCapture
 
 /// Planner math for half-viewport inspector scrolling, plus a hosted
-/// view test that drives the routed Control-D/Control-Shift-U path while search is
+/// view test that drives the routed Control-D/Control-U path while search is
 /// first responder.
 @MainActor
 final class RefsInspectorScrollTests: XCTestCase {
@@ -346,13 +346,16 @@ final class RefsInspectorScrollTests: XCTestCase {
 
     XCTAssertNil(
       harness.controller.processKeyEvent(
-        keyEvent(keyCode: Self.uKey, modifiers: [.control, .shift], characters: "u")
+        keyEvent(keyCode: Self.uKey, modifiers: .control, characters: "u")
       )
     )
     waitForInspectorOffset(in: harness.panel) { $0 < afterDown - 8 }
     XCTAssertLessThan(
       inspectorOffset(in: harness.panel), afterDown, inspectorDiagnostics(in: harness.panel))
+    XCTAssertEqual(listOffset(in: harness.panel), listOffsetBefore, accuracy: 1)
     XCTAssertEqual(harness.model.selectedID, selected)
+    XCTAssertEqual(harness.model.query, query)
+    XCTAssertEqual((field.currentEditor() as? NSTextView)?.selectedRange(), caret)
     XCTAssertTrue(field.holdsFirstResponder)
   }
 
@@ -393,7 +396,7 @@ final class RefsInspectorScrollTests: XCTestCase {
     waitForInspectorSettled(in: harness.panel, around: beforeCard, tolerance: 1)
   }
 
-  func testHostedControlUResetsPreviewAndQuery() {
+  func testHostedControlZResetsPreviewAndQuery() {
     let harness = makeHostedHarness()
     defer { harness.panel.orderOut(nil) }
     settle(harness.panel)
@@ -407,7 +410,7 @@ final class RefsInspectorScrollTests: XCTestCase {
 
     XCTAssertNil(
       harness.controller.processKeyEvent(
-        keyEvent(keyCode: Self.uKey, modifiers: .control, characters: "u")
+        keyEvent(keyCode: Self.zKey, modifiers: .control, characters: "z")
       )
     )
     waitForInspectorOffset(in: harness.panel) { $0 <= 0.5 }
@@ -1147,6 +1150,7 @@ final class RefsInspectorScrollTests: XCTestCase {
   )
   private static let dKey: UInt16 = 2
   private static let uKey: UInt16 = 32
+  private static let zKey: UInt16 = 6
 
   private static func eightNotes() -> [RefsShowAnnotation] {
     (1...8).map { index in

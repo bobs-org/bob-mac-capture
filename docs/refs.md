@@ -70,7 +70,7 @@ JSON report `bob` returns.
 Bob Refs remembers its query, kind scope, Newest and Tabs filters, selected
 reference, revealed highlight pages, and list and preview positions in memory
 for the app's lifetime. Every ordinary show restores that view using fresh
-library or Tabs data. Ctrl-U resets it to the fresh-launch defaults;
+library or Tabs data. Ctrl-Z resets it to the fresh-launch defaults;
 quitting or restarting starts fresh.
 
 `RefsLibrary` owns the refresh service: the snapshot, the `-g`
@@ -315,8 +315,8 @@ Diagnostic for hard failures.
 | Page Up/Page Down | Page the results list by one less than fits |
 | Ctrl-X | Close the selected tab in Highlights (Tabs only); elsewhere passes through to search |
 | Ctrl-D | Scroll the preview down by half its height; while the `+N more` row is on screen, Ctrl-D shows the next page of highlights at once; search keeps focus |
-| Ctrl-U | Reset query, scope, filters, selection, revealed pages, and list and preview positions to fresh-launch defaults |
-| Ctrl-Shift-U | Scroll the preview up by half its height; search keeps focus |
+| Ctrl-U | Scroll the preview up by half its height; search keeps focus |
+| Ctrl-Z | Reset query, scope, filters, selection, revealed pages, and list and preview positions to fresh-launch defaults |
 | Shift-Command-T | Reopen the most recently closed Highlights tab |
 | Command-Up/Command-Down, Home/End | First, last |
 | Option-Up/Option-Down | First row of the previous/next section (browse and Newest) |
@@ -334,9 +334,9 @@ Diagnostic for hard failures.
 | Shift-Tab | Consumed (no-op) |
 
 Return and Command-Y while IME-composing pass through to the text system. Ctrl-D,
-Ctrl-U, Ctrl-Shift-U, and Ctrl-X also pass through while IME-composing. Ctrl-U
+Ctrl-U, Ctrl-Z, and Ctrl-X also pass through while IME-composing. Ctrl-Z
 always resets the view (even when it already has defaults), and Ctrl-D and
-Ctrl-Shift-U consume the key even when the preview is hidden, short, empty, or
+Ctrl-U consume the key even when the preview is hidden, short, empty, or
 already at an edge. In Tabs, Ctrl-X closes the selected tab; Ctrl-D always
 scrolls. While the `+N more` row is fully visible in the viewport —
 or at the very bottom of the preview — Ctrl-D shows the next page of
@@ -434,7 +434,7 @@ progress finishes if the panel hides.
   revealed pages, and scroll positions. Shift-Command-O does the same when
   Tabs is already on; when Tabs is off, it enables Tabs while keeping the
   query and scope, turning Newest off, and selecting the current Highlights
-  tab when available. Ctrl-U resets the view to fresh-launch defaults.
+  tab when available. Ctrl-Z resets the view to fresh-launch defaults.
 - Clicking a scan notification opens the default view with Just scanned
   at the top and its first row selected.
 - The menu-bar item offers Bob Refs… directly below Capture, with the
