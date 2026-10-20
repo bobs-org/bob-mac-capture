@@ -208,4 +208,4 @@ preferences (bob path, vault path, hotkey choice, and canceled-draft stash capac
 `UserDefaults` under the bundle identifier `org.bobs.bob-mac-capture`. Canceled draft
 text is stored separately in that Application Support directory (see [Permissions](permissions.md)).
 
-Recovery steps for a missing menu-bar item, a failed restart, or notification delivery stay in the [Mac README troubleshooting](https://github.com/bobs-org/bob-mac-capture#troubleshooting) until the Fix problems guides land.
+Recovery steps for a missing menu-bar item or a failed restart are in [Recover a stuck Mac Capture panel](https://bobs-org.github.io/guides/recover-mac-capture/). Notification delivery is in [Restore Mac Capture permissions](https://bobs-org.github.io/guides/restore-mac-capture-permissions/).

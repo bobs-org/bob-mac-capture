@@ -3,7 +3,7 @@ title: "Bob Refs"
 description: "Bob Refs library panel: snapshot, Today, scan, sorting, NEW, ranking, cards, opening, and Tabs."
 ---
 
-Bob Refs is a thin client of `bob`: it filters, ranks, sections, and presents what `bob` returns, never parses frontmatter or note bodies, and never writes the vault itself. Keyboard rows also appear in [Keyboard](keyboard.md). The inspector column is in [Bob Refs inspector](refs-inspector.md). Ranking invocation is in [Diagnostics](diagnostics.md#refs-rank). Disk, memory, and Accessibility rules are in [Permissions](permissions.md). Scan, load, and tab-close recovery stay in the [Mac README](https://github.com/bobs-org/bob-mac-capture#troubleshooting) until the Fix problems guides land.
+Bob Refs is a thin client of `bob`: it filters, ranks, sections, and presents what `bob` returns, never parses frontmatter or note bodies, and never writes the vault itself. Keyboard rows also appear in [Keyboard](keyboard.md). The inspector column is in [Bob Refs inspector](refs-inspector.md). Ranking invocation is in [Diagnostics](diagnostics.md#refs-rank). Disk, memory, and Accessibility rules are in [Permissions](permissions.md). Scan, load, and tab-close recovery are in [Recover Bob Refs](https://bobs-org.github.io/guides/recover-bob-refs/).
 
 ## Bob Refs
 

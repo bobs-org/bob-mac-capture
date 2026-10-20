@@ -3,7 +3,7 @@ title: "Mac Capture keyboard"
 description: "Every Bob Mac Capture key binding: editor, completion, prompts, stash, shelf, and today's Pomodoro."
 ---
 
-Every capture action is reachable from the keyboard alone. Successor choice cards are described in [Capture previews](capture-previews.md); stash behavior in [Capture panel](capture-panel.md); template shelf behavior in [Saved templates](saved-templates.md).
+Every capture action is reachable from the keyboard alone. Successor choice cards are described in [Capture previews](capture-previews.md); stash behavior in [Capture panel](capture-panel.md); template shelf behavior in [Saved templates](saved-templates.md). Global chord conflicts are in [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/).
 
 ## Bob Refs shortcuts
 

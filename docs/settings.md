@@ -24,7 +24,7 @@ Candidate locations when the override is empty are in [Install](install.md#requi
 | Use production Control-Shift-Command-I | on | Off selects the development/rollback binding Control-Shift-Command-R. Turn it off only when restoring the retired Hammerspoon capture workflow. |
 | Active binding | Control-Shift-Command-I | Read-only display of the live capture chord. |
 
-One Carbon handler (`HotKeyRegistry`, signature `'BOBC'`) owns capture (id 1), Refs (id 2), and the Highlights-frontmost open key (id 3). Each registration is independent: a failed one leaves the others intact. A conflict reports `Hotkey conflict` (or `Refs hotkey conflict: …`) in Diagnostics and Recent Activity. Free the shortcut, then Recheck Bob, or switch the production toggle.
+One Carbon handler (`HotKeyRegistry`, signature `'BOBC'`) owns capture (id 1), Refs (id 2), and the Highlights-frontmost open key (id 3). Each registration is independent: a failed one leaves the others intact. A conflict reports `Hotkey conflict` (or `Refs hotkey conflict: …`) in Diagnostics and Recent Activity. Recovery is in [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/).
 
 ## References
 

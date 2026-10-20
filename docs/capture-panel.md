@@ -395,4 +395,4 @@ list's material and shadow so the footer never reflows; Reduce Motion crossfades
 without the 4 pt rise. VoiceOver reads the destinations from the chip; the capsule is
 hidden from accessibility. In a narrow panel the chip is the first footer control
 
-Related: [Protocol](protocol.md) (executable resolution, timeouts, guard flags) and [Architecture](https://bobs-org.github.io/develop/mac-capture/architecture/) (lanes, caches).
+Related: [Protocol](protocol.md) (executable resolution, timeouts, guard flags), [Architecture](https://bobs-org.github.io/develop/mac-capture/architecture/) (lanes, caches), [Fix Mac Capture when bob is not resolved](https://bobs-org.github.io/guides/fix-mac-capture-bob-resolution/), and [Recover a stuck Mac Capture panel](https://bobs-org.github.io/guides/recover-mac-capture/).

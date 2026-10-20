@@ -5,7 +5,7 @@ description: "Accessibility, notification authorization, launch at login, and wh
 
 macOS ties Accessibility, notification authorization, and launch-at-login trust to the installed code-signing identity, not only the bundle identifier. Keep one stable identity ("Bob Mac Capture Local") for the life of an install; see [Install](install.md#signing). Settings that request or display these grants are in [Settings](settings.md).
 
-Recovery steps for a stale Accessibility switch, denied notifications, or a lingering Login Items row stay in the [Mac README troubleshooting](https://github.com/bobs-org/bob-mac-capture#troubleshooting) until the Fix problems guides land.
+Recovery steps for a stale Accessibility switch, denied notifications, or a lingering Login Items row are in [Restore Mac Capture permissions](https://bobs-org.github.io/guides/restore-mac-capture-permissions/).
 
 ## Accessibility
 
