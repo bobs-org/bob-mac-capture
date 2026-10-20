@@ -91,6 +91,10 @@ enum CaptureEditorPalette {
             return .yellow
         case .blockedTaskSigil:
             return .teal
+        case .relationSigil:
+            return .mint
+        case .relationLabel:
+            return .secondary
         case .pomodoroStart:
             return .pink
         case .pomodoroCloseInProgress:

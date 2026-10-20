@@ -1,0 +1,23 @@
+{
+    "ok": true,
+    "schema_version": 1,
+    "cursor": 46,
+    "replacement": {
+        "start": 39,
+        "end": 46
+    },
+    "context": "relation_label",
+    "candidates": [
+        {
+            "label": "follow",
+            "replacement": "|follow",
+            "typed": true
+        },
+        {
+            "label": "follow-up of",
+            "count": 4,
+            "replacement": "|\"follow-up of\""
+        }
+    ],
+    "query": "follow"
+}

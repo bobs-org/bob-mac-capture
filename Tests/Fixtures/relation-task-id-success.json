@@ -1,0 +1,27 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "dry_run": true,
+  "relative_target": "tasks.md",
+  "note_path": "tasks.md",
+  "block_id": "idless-source",
+  "dependency_replacement": "&tasks:idless-source",
+  "blocked_task_replacement": "*tasks:idless-source",
+  "complete_replacement": "!tasks:idless-source",
+  "relation_to_replacement": "~tasks:idless-source",
+  "relation_from_replacement": "~~tasks:idless-source",
+  "line": 6,
+  "ref": "6:c7b82e88",
+  "task": {
+    "ref": "6:c7b82e88",
+    "line": 6,
+    "block_id": "idless-source",
+    "status_symbol": " ",
+    "status_name": "Todo",
+    "status_type": "TODO",
+    "text": "Idless source",
+    "section": null,
+    "depth": 0,
+    "child_count": 1
+  }
+}

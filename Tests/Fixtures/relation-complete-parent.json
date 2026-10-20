@@ -1,0 +1,75 @@
+{
+    "ok": true,
+    "schema_version": 1,
+    "cursor": 24,
+    "replacement": {
+        "start": 23,
+        "end": 24
+    },
+    "context": "task_parent",
+    "candidates": [
+        {
+            "replacement": "@mac_inbox+owner",
+            "ref": "1:fd612581",
+            "route": "mac_inbox",
+            "note_kind": "inbox",
+            "block_id": "owner",
+            "requires_block_id": false,
+            "block_id_suggestions": [],
+            "status_symbol": " ",
+            "status_name": "Todo",
+            "status_type": "TODO",
+            "text": "Owner",
+            "section": null,
+            "depth": 0,
+            "line": 1,
+            "group": "note",
+            "pomodoro": null
+        },
+        {
+            "replacement": "@mac_inbox+owner-neighbor",
+            "ref": "4:a480870b",
+            "route": "mac_inbox",
+            "note_kind": "inbox",
+            "block_id": "owner-neighbor",
+            "requires_block_id": false,
+            "block_id_suggestions": [],
+            "status_symbol": " ",
+            "status_name": "Todo",
+            "status_type": "TODO",
+            "text": "Owner neighbor",
+            "section": null,
+            "depth": 0,
+            "line": 4,
+            "group": "note",
+            "pomodoro": null
+        }
+    ],
+    "warnings": [
+        "Bob daily note does not exist: /tmp/bob-mac-relation-fixtures.0wcMBP/2026/20261020.md"
+    ],
+    "query": "",
+    "picker": {
+        "kind": "parent_task",
+        "scope": "vault",
+        "scope_token": "+",
+        "marker_range": {
+            "start": 23,
+            "end": 24
+        },
+        "trigger_removal_range": {
+            "start": 23,
+            "end": 24
+        },
+        "relationship": {
+            "dependencies": [],
+            "blocked_tasks": [],
+            "relations": [
+                {
+                    "direction": "to",
+                    "text": "Target"
+                }
+            ]
+        }
+    }
+}

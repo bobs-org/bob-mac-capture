@@ -390,6 +390,96 @@ final class DependencyPickerPresentationTests: XCTestCase {
         XCTAssertNil(DependencyPickerIndex.headerSubtitle(owner: owner, dependentText: "ignored"))
     }
 
+    func testRelationHeadersQuoteOwnerAndTeachFlip() {
+        let owner = DependencyOwner(kind: "new_task", text: "Owner")
+        XCTAssertEqual(
+            DependencyPickerIndex.headerTitle(owner: owner, direction: .linksTo),
+            "🪢 \u{201C}Owner\u{201D} links to\u{2026}"
+        )
+        XCTAssertEqual(
+            DependencyPickerIndex.headerTitle(owner: owner, direction: .linkedFrom),
+            "🪢 Choose a task that will link to \u{201C}Owner\u{201D}"
+        )
+        XCTAssertEqual(
+            DependencyPickerIndex.headerSubtitle(owner: owner, direction: .linksTo),
+            "any task · ~ flips direction"
+        )
+        XCTAssertEqual(
+            DependencyPickerIndex.headerTitle(owner: nil, direction: .linksTo),
+            "🪢 Choose a task to link to\u{2026}"
+        )
+    }
+
+    func testRelationRowsBadgeAlreadyLinkedAndArchived() throws {
+        let already = CaptureCompletionCandidate(
+            replacement: "~tasks:target",
+            taskRef: "1:aaaa1111",
+            blockID: "target",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            text: "Target",
+            group: "open",
+            notePath: "tasks.md",
+            locator: "tasks",
+            alreadyLinked: true,
+            existingLabel: "follow-up of",
+            alsoPrerequisite: true
+        )
+        let archived = CaptureCompletionCandidate(
+            replacement: "~~done/archive:archived-source",
+            taskRef: "2:bbbb2222",
+            blockID: "archived-source",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            text: "Archived source",
+            group: "open",
+            notePath: "done/archive.md",
+            locator: "done/archive"
+        )
+        let index = DependencyPickerIndex(
+            candidates: [already, archived],
+            direction: .linksTo
+        )
+        let presentation = index.presentation(filter: "")
+        let linked = try XCTUnwrap(presentation.rowsByID["tasks.md|1:aaaa1111"])
+        XCTAssertNil(linked.insertion)
+        XCTAssertEqual(linked.badgeText, "Already linked · follow-up of")
+        XCTAssertEqual(
+            index.actionLine(for: linked),
+            "Already linked · follow-up of"
+        )
+        let linkedChip = try XCTUnwrap(
+            index.presentation(filter: "target").rowsByID["tasks.md|1:aaaa1111"]
+        )
+        XCTAssertEqual(linkedChip.chipText, "Already linked · follow-up of")
+        let archivedRow = try XCTUnwrap(
+            index.presentation(filter: "archive").rowsByID["done/archive.md|2:bbbb2222"]
+        )
+        XCTAssertEqual(archivedRow.chipText, "Archived")
+        let identified = CaptureCompletionCandidate(
+            replacement: "~tasks:source",
+            taskRef: "3:cccc3333",
+            blockID: "source",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            text: "Source",
+            group: "open",
+            notePath: "tasks.md",
+            locator: "tasks"
+        )
+        let insertIndex = DependencyPickerIndex(candidates: [identified], direction: .linksTo)
+        let insertRow = try XCTUnwrap(
+            insertIndex.presentation(filter: "").rowsByID["tasks.md|3:cccc3333"]
+        )
+        XCTAssertEqual(
+            insertIndex.actionLine(for: insertRow),
+            "↩ link · ⇧↩ link with a relation · ~ flips direction"
+        )
+    }
+
     func testThisNoteGroupRendersFirst() throws {
         let thisNote = CaptureCompletionCandidate(
             replacement: "&body:hospital-swarm",

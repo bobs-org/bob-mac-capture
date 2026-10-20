@@ -1,11 +1,9 @@
 ---
 title: "Mac Capture relationship pickers"
-description: "Dependency, Blocks, and Complete pickers in Bob Mac Capture."
+description: "Dependency, Blocks, Complete, and Relation pickers in Bob Mac Capture."
 ---
 
 Relationship pickers consume `bob`'s additive contract and never parse quoted note components themselves: `bob` sends the decoded query, the owner, exact paths, groups, hidden and already-added flags, disabled reasons, and the backend-formatted replacement, which is empty for ID-less and guarded rows. The shared card lifecycle is in [Pickers](pickers.md); rendered rows are in [Capture previews](capture-previews.md).
-
-## Dependency Picker
 
 ## Dependency Picker
 
@@ -65,8 +63,6 @@ Control-Return Insert, Capture & Open when the dependent is complete.
 
 ## Blocks Picker
 
-## Blocks Picker
-
 Typing `*` in Bob's valid blocked-task position opens the shared dependency
 picker in the Blocks direction (`blocked_task` context): scope `*`, caption
 Blocks, and the header **🧱 Exercise blocks…** with the owner location line,
@@ -88,7 +84,47 @@ shows **This Bob is too old for blocked-task picks. Update Bob first.**
 Blocks Picker keys: Return/Tab Insert, Command-Return Insert & Capture,
 Control-Return Insert, Capture & Open when the owner is complete.
 
-## Complete Picker
+## Relation Picker
+
+Typing `~` in Bob's valid relation position opens the Links To picker
+(`relation_to` context): scope `~`, caption Links To, and the header
+**🪢 “Owner” links to…** (or **🪢 Choose a task to link to…** when there is
+no owner yet). The subtitle is **any task · ~ flips direction**. Typing a
+second `~` at the same replacement start live-flips to Linked From
+(`relation_from`): scope `~~`, caption Linked From, and the header
+**🪢 Choose a task that will link to “Owner”**. The filter stays; auto-open
+is never suppressed. Empty-filter `~` is operator continuation, like
+Complete's `!`. Backspace on an empty `~~` filter flips back by removing one
+`~`; Backspace on empty-filter `~` removes the token.
+
+Bob supplies `already_linked`, `existing_label`, `also_prerequisite`,
+disabled reasons, and backend-formatted `~note:id` / `~~note:id`
+replacements. Already-linked rows show **Already linked · follow-up of** when Bob sends
+an existing label. Prerequisite-too rows show **Prerequisite too**. Archived rows (locator
+`done/` or `/archive`) show **Archived**. Done history rows show **Done**.
+Disabled explanations appear verbatim from Bob (`its LINKS line is malformed`,
+`read-only note`, `archived tasks can't get an id`).
+
+The action line reads `↩ link · ⇧↩ link with a relation · ~ flips direction`.
+Shift-Return is consumed like `&` this phase; the relation card is a later
+phase. Command-Return inserts then captures when the owner is complete;
+Control-Return also opens the reported notes. The `~` / `~~` sigil uses a mint
+knot accent, distinct from the grey Pomodoro-drop `~`. Relation labels render
+muted italic; the `|` separator is muted.
+
+The partial `X ~` need shows **Pick a task to link — press Tab to browse**.
+A `|label` field shows **Type a relation label, or pick a suggestion**.
+Owner-mode `+` copy uses `picker.relationship.relations[]`
+(**🪢 Which task links to “Target”?**).
+
+ID-less rows use `capture-task-id --note-path` and splice
+`relation_to_replacement` / `relation_from_replacement`; older Bob shows
+**This Bob is too old for ~ links. Update Bob first.** The prompt buttons
+read Add ID & Use / Add ID & Capture.
+
+Relation Picker keys: Return/Tab Link, Shift-Return Link with a relation
+(consumed), tilde Flip direction, Command-Return Insert & Capture,
+Control-Return Insert, Capture & Open when the owner is complete.
 
 ## Complete Picker
 

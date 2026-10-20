@@ -1,0 +1,46 @@
+{
+    "ok": true,
+    "schema_version": 1,
+    "input": "New task ~~tasks:source",
+    "body": "New task",
+    "mode": "task",
+    "route": null,
+    "section": null,
+    "block_id": null,
+    "needs": [],
+    "relation_grammar": 1,
+    "spans": [
+        {
+            "start": 9,
+            "end": 11,
+            "kind": "relation_sigil"
+        },
+        {
+            "start": 11,
+            "end": 16,
+            "kind": "relation_note"
+        },
+        {
+            "start": 17,
+            "end": 23,
+            "kind": "relation_block_id"
+        }
+    ],
+    "diagnostics": [],
+    "relations": [
+        {
+            "raw": "~~tasks:source",
+            "direction": "from",
+            "note": "tasks",
+            "block_id": "source",
+            "quoted": false,
+            "range": {
+                "start": 9,
+                "end": 23
+            }
+        }
+    ],
+    "dependency_target": {
+        "kind": "new_task"
+    }
+}

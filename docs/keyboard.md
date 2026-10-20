@@ -52,6 +52,10 @@ These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspecto
 | Command-S | Save the current `@@template:` draft | Save the current `@@template:` draft | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-C | Stash a nonempty draft, then clear and close. A Go To (`/`) draft is discarded instead of stashed, and nothing is retained when stashing is off (capacity 0) | Same as in the editor | Same as in the editor | Same as in the editor |
 
+## Capture picker keys
+
+While a picker card is open, Return accepts the selected row, Escape cancels, and Backspace on an empty filter removes the trigger. Relation pickers (`~` / `~~`) treat empty-filter `~` as a live direction flip and Backspace on `~~` as a flip back. Shift-Return is consumed on relation pickers this phase. Source-specific hints live in [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).
+
 ## Successor choices
 
 When a preview reports successor offers, Return opens the grouped choice card before anything is written. Space marks the highlighted offer, Command-A marks all, Shift-Return skips with no offers, and Escape returns to the unchanged draft. Full card behavior is in [Capture previews](capture-previews.md).

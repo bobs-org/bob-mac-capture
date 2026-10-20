@@ -244,6 +244,8 @@ public struct CaptureParseResponse: Codable, Equatable {
   // omits them; missing decodes as empty / nil.
   public let dependencies: [CaptureParseRelationshipMarker]
   public let blockedTasks: [CaptureParseRelationshipMarker]
+  /// Additive `~` / `~~` relation markers. Older Bob omits the array.
+  public let relations: [CaptureParseRelationshipMarker]
   public let dependencyTarget: DependencyOwner?
   /// Additive template parse contract; absent in older Bob and for ordinary drafts.
   public let template: CaptureParseTemplate?
@@ -272,6 +274,7 @@ public struct CaptureParseResponse: Codable, Equatable {
     pomodoroClose: PomodoroCloseSpec? = nil,
     dependencies: [CaptureParseRelationshipMarker] = [],
     blockedTasks: [CaptureParseRelationshipMarker] = [],
+    relations: [CaptureParseRelationshipMarker] = [],
     dependencyTarget: DependencyOwner? = nil,
     template: CaptureParseTemplate? = nil
   ) {
@@ -301,6 +304,7 @@ public struct CaptureParseResponse: Codable, Equatable {
     self.pomodoroClose = pomodoroClose
     self.dependencies = dependencies
     self.blockedTasks = blockedTasks
+    self.relations = relations
     self.dependencyTarget = dependencyTarget
     self.template = template
   }
@@ -359,6 +363,11 @@ public struct CaptureParseResponse: Codable, Equatable {
         [CaptureParseRelationshipMarker].self,
         forKey: .blockedTasks
       ) ?? []
+    relations =
+      (try? container.decodeIfPresent(
+        [CaptureParseRelationshipMarker].self,
+        forKey: .relations
+      )) ?? []
     dependencyTarget = try container.decodeIfPresent(
       DependencyOwner.self,
       forKey: .dependencyTarget
@@ -406,6 +415,7 @@ public struct CaptureParseResponse: Codable, Equatable {
     case pomodoroClose = "pomodoro_close"
     case dependencies
     case blockedTasks = "blocked_tasks"
+    case relations
     case dependencyTarget = "dependency_target"
     case template
   }
@@ -466,6 +476,7 @@ public struct CaptureParseItem: Codable, Equatable {
   public let pomodoroClose: PomodoroCloseSpec?
   public let dependencies: [CaptureParseRelationshipMarker]
   public let blockedTasks: [CaptureParseRelationshipMarker]
+  public let relations: [CaptureParseRelationshipMarker]
   public let dependencyTarget: DependencyOwner?
   /// Additive row metadata for template parse items; omitted by older Bob.
   public let templateRow: CaptureTemplateRow?
@@ -491,6 +502,7 @@ public struct CaptureParseItem: Codable, Equatable {
     pomodoroClose: PomodoroCloseSpec? = nil,
     dependencies: [CaptureParseRelationshipMarker] = [],
     blockedTasks: [CaptureParseRelationshipMarker] = [],
+    relations: [CaptureParseRelationshipMarker] = [],
     dependencyTarget: DependencyOwner? = nil,
     templateRow: CaptureTemplateRow? = nil
   ) {
@@ -514,6 +526,7 @@ public struct CaptureParseItem: Codable, Equatable {
     self.pomodoroClose = pomodoroClose
     self.dependencies = dependencies
     self.blockedTasks = blockedTasks
+    self.relations = relations
     self.dependencyTarget = dependencyTarget
     self.templateRow = templateRow
   }
@@ -558,6 +571,11 @@ public struct CaptureParseItem: Codable, Equatable {
         [CaptureParseRelationshipMarker].self,
         forKey: .blockedTasks
       ) ?? []
+    relations =
+      (try? container.decodeIfPresent(
+        [CaptureParseRelationshipMarker].self,
+        forKey: .relations
+      )) ?? []
     dependencyTarget = try container.decodeIfPresent(
       DependencyOwner.self,
       forKey: .dependencyTarget
@@ -587,32 +605,44 @@ public struct CaptureParseItem: Codable, Equatable {
     case pomodoroClose = "pomodoro_close"
     case dependencies
     case blockedTasks = "blocked_tasks"
+    case relations
     case dependencyTarget = "dependency_target"
     case templateRow = "template_row"
   }
 }
 
-/// One typed `&` or `*` marker from `capture-parse`. Unresolvable entries
-/// keep `raw` / `note` / `block_id`. Older Bob omits the array.
+/// One typed `&`, `*`, `~`, or `~~` marker from `capture-parse`. Unresolvable
+/// entries keep `raw` / `note` / `block_id`. Older Bob omits the array.
+/// Relation markers add `direction` (`to`/`from`), `label`, and `label_range`.
 public struct CaptureParseRelationshipMarker: Codable, Equatable, Sendable {
   public let raw: String
   public let note: String?
   public let blockID: String?
   public let quoted: Bool
   public let range: CaptureRange?
+  /// `to` or `from` on a relation marker; nil for `&` / `*`.
+  public let direction: String?
+  public let label: String?
+  public let labelRange: CaptureRange?
 
   public init(
     raw: String,
     note: String? = nil,
     blockID: String? = nil,
     quoted: Bool = false,
-    range: CaptureRange? = nil
+    range: CaptureRange? = nil,
+    direction: String? = nil,
+    label: String? = nil,
+    labelRange: CaptureRange? = nil
   ) {
     self.raw = raw
     self.note = note
     self.blockID = blockID
     self.quoted = quoted
     self.range = range
+    self.direction = direction
+    self.label = label
+    self.labelRange = labelRange
   }
 
   public init(from decoder: Decoder) throws {
@@ -622,6 +652,9 @@ public struct CaptureParseRelationshipMarker: Codable, Equatable, Sendable {
     blockID = try container.decodeIfPresent(String.self, forKey: .blockID)
     quoted = try container.decodeIfPresent(Bool.self, forKey: .quoted) ?? false
     range = try container.decodeIfPresent(CaptureRange.self, forKey: .range)
+    direction = (try? container.decodeIfPresent(String.self, forKey: .direction)) ?? nil
+    label = (try? container.decodeIfPresent(String.self, forKey: .label)) ?? nil
+    labelRange = (try? container.decodeIfPresent(CaptureRange.self, forKey: .labelRange)) ?? nil
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -630,6 +663,9 @@ public struct CaptureParseRelationshipMarker: Codable, Equatable, Sendable {
     case blockID = "block_id"
     case quoted
     case range
+    case direction
+    case label
+    case labelRange = "label_range"
   }
 }
 
@@ -4744,6 +4780,12 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
   public let completeReplacement: String?
   /// Backend-formatted `*note:id` for a successful Blocks picker ID assignment.
   public let blockedTaskReplacement: String?
+  /// Backend-formatted `~note:id` for a successful links-to ID assignment.
+  /// Older Bob omits it; decode as nil.
+  public let relationToReplacement: String?
+  /// Backend-formatted `~~note:id` for a successful linked-from ID assignment.
+  /// Older Bob omits it; decode as nil.
+  public let relationFromReplacement: String?
 
   public init(
     ok: Bool,
@@ -4759,7 +4801,9 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
     dependencyReplacement: String? = nil,
     parentReplacement: String? = nil,
     completeReplacement: String? = nil,
-    blockedTaskReplacement: String? = nil
+    blockedTaskReplacement: String? = nil,
+    relationToReplacement: String? = nil,
+    relationFromReplacement: String? = nil
   ) {
     self.ok = ok
     self.schemaVersion = schemaVersion
@@ -4775,6 +4819,8 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
     self.parentReplacement = parentReplacement
     self.completeReplacement = completeReplacement
     self.blockedTaskReplacement = blockedTaskReplacement
+    self.relationToReplacement = relationToReplacement
+    self.relationFromReplacement = relationFromReplacement
   }
 
   public init(from decoder: Decoder) throws {
@@ -4797,6 +4843,10 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
     completeReplacement = try container.decodeIfPresent(String.self, forKey: .completeReplacement)
     blockedTaskReplacement =
       (try? container.decodeIfPresent(String.self, forKey: .blockedTaskReplacement)) ?? nil
+    relationToReplacement =
+      (try? container.decodeIfPresent(String.self, forKey: .relationToReplacement)) ?? nil
+    relationFromReplacement =
+      (try? container.decodeIfPresent(String.self, forKey: .relationFromReplacement)) ?? nil
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -4814,6 +4864,8 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
     case parentReplacement = "parent_replacement"
     case completeReplacement = "complete_replacement"
     case blockedTaskReplacement = "blocked_task_replacement"
+    case relationToReplacement = "relation_to_replacement"
+    case relationFromReplacement = "relation_from_replacement"
   }
 }
 
@@ -5461,13 +5513,18 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
 public struct CapturePickerRelationship: Codable, Equatable, Sendable {
   public let dependencies: [CapturePickerRelationshipEntry]
   public let blockedTasks: [CapturePickerRelationshipEntry]
+  /// Additive typed `~` / `~~` relations on the cursor's item. Older Bob
+  /// omits the array.
+  public let relations: [CapturePickerRelationEntry]
 
   public init(
     dependencies: [CapturePickerRelationshipEntry] = [],
-    blockedTasks: [CapturePickerRelationshipEntry] = []
+    blockedTasks: [CapturePickerRelationshipEntry] = [],
+    relations: [CapturePickerRelationEntry] = []
   ) {
     self.dependencies = dependencies
     self.blockedTasks = blockedTasks
+    self.relations = relations
   }
 
   public init(from decoder: Decoder) throws {
@@ -5482,15 +5539,45 @@ public struct CapturePickerRelationship: Codable, Equatable, Sendable {
         [CapturePickerRelationshipEntry].self,
         forKey: .blockedTasks
       ) ?? []
+    relations =
+      (try? container.decodeIfPresent(
+        [CapturePickerRelationEntry].self,
+        forKey: .relations
+      )) ?? []
   }
 
   public var isEmpty: Bool {
-    dependencies.isEmpty && blockedTasks.isEmpty
+    dependencies.isEmpty && blockedTasks.isEmpty && relations.isEmpty
   }
 
   private enum CodingKeys: String, CodingKey {
     case dependencies
     case blockedTasks = "blocked_tasks"
+    case relations
+  }
+}
+
+/// One typed relation on a parent-task `picker.relationship.relations[]`
+/// entry: `direction` is `to` or `from`, and `text` is the resolved
+/// target/source task name.
+public struct CapturePickerRelationEntry: Codable, Equatable, Sendable {
+  public let direction: String
+  public let text: String
+
+  public init(direction: String, text: String) {
+    self.direction = direction
+    self.text = text
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    direction = try container.decodeIfPresent(String.self, forKey: .direction) ?? ""
+    text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case direction
+    case text
   }
 }
 
@@ -5807,6 +5894,13 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
   /// Additive `blocked_task` state: the candidate is already on the
   /// owner's Depends-On line. Missing means false for older Bob.
   public let alreadyBlocked: Bool
+  /// Additive `relation_to` / `relation_from` state: the candidate is already
+  /// on the owner's LINKS line. Missing means false for older Bob.
+  public let alreadyLinked: Bool
+  /// Existing relation label when `already_linked` is true.
+  public let existingLabel: String?
+  /// True when the candidate is also a prerequisite of the owner.
+  public let alsoPrerequisite: Bool
   public let disabledReason: String?
   public let hidden: Bool
   // Additive `task_complete` fields from Bob's completable-task scanner:
@@ -5891,6 +5985,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     locator: String? = nil,
     alreadyDependency: Bool = false,
     alreadyBlocked: Bool = false,
+    alreadyLinked: Bool = false,
+    existingLabel: String? = nil,
+    alsoPrerequisite: Bool = false,
     disabledReason: String? = nil,
     hidden: Bool = false,
     recurring: Bool = false,
@@ -5944,6 +6041,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     self.locator = locator
     self.alreadyDependency = alreadyDependency
     self.alreadyBlocked = alreadyBlocked
+    self.alreadyLinked = alreadyLinked
+    self.existingLabel = existingLabel
+    self.alsoPrerequisite = alsoPrerequisite
     self.disabledReason = disabledReason
     self.hidden = hidden
     self.recurring = recurring
@@ -6002,6 +6102,10 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     alreadyDependency =
       try container.decodeIfPresent(Bool.self, forKey: .alreadyDependency) ?? false
     alreadyBlocked = (try? container.decodeIfPresent(Bool.self, forKey: .alreadyBlocked)) ?? false
+    alreadyLinked = (try? container.decodeIfPresent(Bool.self, forKey: .alreadyLinked)) ?? false
+    existingLabel = (try? container.decodeIfPresent(String.self, forKey: .existingLabel)) ?? nil
+    alsoPrerequisite =
+      (try? container.decodeIfPresent(Bool.self, forKey: .alsoPrerequisite)) ?? false
     disabledReason = try container.decodeIfPresent(String.self, forKey: .disabledReason)
     hidden = try container.decodeIfPresent(Bool.self, forKey: .hidden) ?? false
     recurring = try container.decodeIfPresent(Bool.self, forKey: .recurring) ?? false
@@ -6057,6 +6161,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     case locator
     case alreadyDependency = "already_dependency"
     case alreadyBlocked = "already_blocked"
+    case alreadyLinked = "already_linked"
+    case existingLabel = "existing_label"
+    case alsoPrerequisite = "also_prerequisite"
     case disabledReason = "disabled_reason"
     case hidden
     case recurring

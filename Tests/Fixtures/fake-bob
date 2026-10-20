@@ -1245,6 +1245,20 @@ JSON
       cat "${fixtures_dir}/blocked-task-parse-notes-kept.json"
     elif [[ "${draft}" == "Ship work *release:prj" ]]; then
       cat "${fixtures_dir}/blocked-task-parse-project.json"
+    elif [[ "${draft}" == "New task ~" ]]; then
+      cat "${fixtures_dir}/relation-parse-need.json"
+    elif [[ "${draft}" == "New task ~~" ]]; then
+      cat "${fixtures_dir}/relation-parse-from-need.json"
+    elif [[ "${draft}" == "New task ~tasks:target" ]]; then
+      cat "${fixtures_dir}/relation-parse-complete.json"
+    elif [[ "${draft}" == "New task ~~tasks:source" ]]; then
+      cat "${fixtures_dir}/relation-parse-from-complete.json"
+    elif [[ "${draft}" == "Use this @mac_inbox+owner ~" ]]; then
+      cat "${fixtures_dir}/relation-parse-owner.json"
+    elif [[ "${draft}" == "Use this @mac_inbox+owner ~tasks:target|follow" ]]; then
+      cat "${fixtures_dir}/relation-parse-label.json"
+    elif [[ "${draft}" == "~tasks:target New task +" ]]; then
+      cat "${fixtures_dir}/relation-parse-parent.json"
     elif [[ "${draft}" == "!" ]]; then
       # A bare `!` is a Complete picker query (real `bob capture-parse`
       # output): incomplete mode with a `task_complete` need.
@@ -2813,6 +2827,22 @@ JSON
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/blocked-task-complete-filtered.json"
     elif [[ "${draft}" == "Buy Groceries! &" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/task-dependency-complete-new-task.json"
+    elif [[ "${draft}" == "New task ~" ]]; then
+      cat "${fixtures_dir}/relation-complete-to.json"
+    elif [[ "${draft}" == "New task ~~" ]]; then
+      cat "${fixtures_dir}/relation-complete-from.json"
+    elif [[ "${draft}" == "New task ~tar" ]]; then
+      cat "${fixtures_dir}/relation-complete-to-filtered.json"
+    elif [[ "${draft}" == "New task ~~sou" ]]; then
+      cat "${fixtures_dir}/relation-complete-from-filtered.json"
+    elif [[ "${draft}" == "Use this @mac_inbox+owner ~" ]]; then
+      cat "${fixtures_dir}/relation-complete-owner-to.json"
+    elif [[ "${draft}" == "Use this @mac_inbox+owner ~~" ]]; then
+      cat "${fixtures_dir}/relation-complete-owner-from.json"
+    elif [[ "${draft}" == "Use this @mac_inbox+owner ~tasks:target|follow" ]]; then
+      cat "${fixtures_dir}/relation-complete-label.json"
+    elif [[ "${draft}" == "~tasks:target New task +" ]]; then
+      cat "${fixtures_dir}/relation-complete-parent.json"
     elif [[ "${draft}" == ":" ]]; then
       if [[ -n "${FAKE_BOB_TASK_LINK_ROWS:-}" ]]; then
         rows="${FAKE_BOB_TASK_LINK_ROWS}"
@@ -3475,6 +3505,12 @@ JSON
       # Worked-example `*` Add block ID success (real `bob capture-task-id
       # --note-path` output on the phase fixture vault).
       cat "${fixtures_dir}/blocked-task-task-id-success.json"
+      exit 0
+    fi
+    if [[ "${note_path}" == "tasks.md" && "${task_ref}" == "6:d9780564" && "${block_id}" == "idless-source" ]]; then
+      # Worked-example `~` Add block ID success (real `bob capture-task-id
+      # --note-path` output on the relation fixture vault).
+      cat "${fixtures_dir}/relation-task-id-success.json"
       exit 0
     fi
     if [[ "${route}" == "sase" && "${task_ref}" == "7:446bd057" && "${block_id}" == "fix-flaky-gkeep" ]]; then

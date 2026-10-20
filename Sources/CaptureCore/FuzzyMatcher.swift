@@ -2,17 +2,23 @@ import Foundation
 
 /// Splits raw picker filter text into folded match tokens. Whitespace separates
 /// tokens, empty tokens are dropped, and one leading sigil is stripped from the
-/// first token so a filter seeded from the draft (`^dee`, `:dee`) behaves like
-/// the bare text (`dee`). The stripped sigil is caller-chosen (`^` by default,
-/// `:` for the task-link picker). An empty token list means "no filter" (the
-/// grouped view).
+/// first token so a filter seeded from the draft (`^dee`, `:dee`, `~~wo`)
+/// behaves like the bare text (`dee`). The stripped sigil is caller-chosen
+/// (`^` by default, `:` for the task-link picker, `~~` for linked-from). An
+/// empty token list means "no filter" (the grouped view). Multi-byte sigils
+/// such as `~~` must be passed as the full string so `~` is not stripped
+/// from `~~foo` as a one-character prefix.
 public struct FuzzyQuery: Equatable, Sendable {
     public let tokens: [String]
 
     public init(_ raw: String, leadingSigil: Character = "^") {
+        self.init(raw, leadingSigil: String(leadingSigil))
+    }
+
+    public init(_ raw: String, leadingSigil: String) {
         var parts = raw.split(whereSeparator: { $0.isWhitespace }).map(String.init)
-        if var first = parts.first, first.first == leadingSigil {
-            first.removeFirst()
+        if !leadingSigil.isEmpty, var first = parts.first, first.hasPrefix(leadingSigil) {
+            first.removeFirst(leadingSigil.count)
             if first.isEmpty {
                 parts.removeFirst()
             } else {

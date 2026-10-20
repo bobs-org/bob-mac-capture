@@ -1110,12 +1110,46 @@ final class CompletionRowContentTests: XCTestCase {
         XCTAssertEqual(CaptureCompletionContext(rawContext: "task"), .task)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "task_section"), .taskSection)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "active_task"), .activeTask)
+        XCTAssertEqual(CaptureCompletionContext(rawContext: "relation_to"), .relationTo)
+        XCTAssertEqual(CaptureCompletionContext(rawContext: "relation_from"), .relationFrom)
+        XCTAssertEqual(CaptureCompletionContext(rawContext: "relation_label"), .relationLabel)
         XCTAssertNil(CaptureCompletionContext(rawContext: "now_tag"))
         XCTAssertEqual(CaptureCompletionContext(rawContext: "wikilink_note"), .wikilinkNote)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "wikilink_heading"), .wikilinkHeading)
         XCTAssertEqual(CaptureCompletionContext(rawContext: "wikilink_block"), .wikilinkBlock)
         XCTAssertNil(CaptureCompletionContext(rawContext: "future_context"))
         XCTAssertNil(CaptureCompletionContext(rawContext: nil))
+    }
+
+    func testRelationToRowShowsAlreadyLinkedAndPrerequisiteBadges() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "~tasks:target",
+            taskRef: "1:aaaa1111",
+            blockID: "target",
+            text: "Target",
+            notePath: "tasks.md",
+            locator: "tasks",
+            alreadyLinked: true,
+            existingLabel: "follow-up of",
+            alsoPrerequisite: true
+        )
+        let content = completionRowContent(for: candidate, context: "relation_to", query: "")
+        XCTAssertEqual(content.category, .relationSigil)
+        XCTAssertEqual(content.contextLabel, "Links to")
+        XCTAssertEqual(content.primaryText, "Target")
+        XCTAssertEqual(content.badges, ["Already linked · follow-up of"])
+    }
+
+    func testRelationLabelRowUsesMatchCount() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "|\"follow-up of\"",
+            label: "follow-up of",
+            matchCount: 4
+        )
+        let content = completionRowContent(for: candidate, context: "relation_label", query: "follow")
+        XCTAssertEqual(content.category, .relationLabel)
+        XCTAssertEqual(content.primaryText, "follow-up of")
+        XCTAssertEqual(content.secondaryText, "4")
     }
 
     func testRetiredNowTagContextFallsBackToNeutral() {

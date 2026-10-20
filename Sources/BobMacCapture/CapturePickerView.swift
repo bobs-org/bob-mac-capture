@@ -172,7 +172,7 @@ struct CapturePickerCard: View {
             CapturePickerFilterBar(model: model)
                 .frame(height: CapturePanelLayout.pickerFilterBarHeight)
 
-            if source == .dependency || source == .blockedTask {
+            if source.isRelationshipModifier {
                 dependencyHeader
             } else if case .parentTask(let context) = source, context.isOwnerMode,
                       let relationship = context.relationship
@@ -992,7 +992,7 @@ private struct CapturePickerDetailStrip: View {
             return nil
         case .taskGoto:
             return "Pick a task to open it in Obsidian — nothing is written"
-        case .dependency, .blockedTask:
+        case .dependency, .blockedTask, .linksTo, .linkedFrom:
             // The detail strip teaches the direction-specific insertion token.
             return nil
         case .taskComplete:
@@ -1032,7 +1032,7 @@ private struct CapturePickerDetailStrip: View {
         if source == .taskComplete {
             return Text(TaskCompletePickerIndex.actionLine(for: row)).foregroundColor(.secondary)
         }
-        if source == .dependency || source == .blockedTask,
+        if source.isRelationshipModifier,
            let actionLine = model.pickerActionLine(for: row)
         {
             return Text(actionLine).foregroundColor(.secondary)

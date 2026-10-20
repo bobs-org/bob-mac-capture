@@ -153,6 +153,13 @@ final class CaptureRelationshipCopyTests: XCTestCase {
             CaptureRelationshipCopy.parentPickerTitle(relationship: both),
             "Which task depends on \u{201C}Buy shoes\u{201D} and blocks \u{201C}Do cleanup tasks\u{201D}?"
         )
+        let relationOnly = CapturePickerRelationship(
+            relations: [CapturePickerRelationEntry(direction: "to", text: "Target")]
+        )
+        XCTAssertEqual(
+            CaptureRelationshipCopy.parentPickerTitle(relationship: relationOnly),
+            "🪢 Which task links to \u{201C}Target\u{201D}?"
+        )
         let several = CapturePickerRelationship(
             dependencies: [
                 CapturePickerRelationshipEntry(

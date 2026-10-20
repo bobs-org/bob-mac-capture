@@ -1,0 +1,96 @@
+{
+    "ok": true,
+    "schema_version": 1,
+    "cursor": 14,
+    "replacement": {
+        "start": 9,
+        "end": 14
+    },
+    "context": "relation_from",
+    "candidates": [
+        {
+            "replacement": "~~tasks:source",
+            "ref": "2:48035917",
+            "note_path": "tasks.md",
+            "locator": "tasks",
+            "group": "open",
+            "hidden": false,
+            "block_id": "source",
+            "requires_block_id": false,
+            "block_id_suggestions": [],
+            "status_symbol": " ",
+            "status_name": "Todo",
+            "status_type": "TODO",
+            "text": "Source",
+            "section": null,
+            "depth": 0,
+            "line": 2
+        },
+        {
+            "replacement": "",
+            "ref": "2:208b94dc",
+            "note_path": "done/archive.md",
+            "locator": "archive",
+            "group": "open",
+            "hidden": false,
+            "block_id": "archived-source",
+            "requires_block_id": false,
+            "block_id_suggestions": [],
+            "disabled_reason": "read-only note",
+            "status_symbol": " ",
+            "status_name": "Todo",
+            "status_type": "TODO",
+            "text": "Archived source",
+            "section": null,
+            "depth": 0,
+            "line": 2
+        },
+        {
+            "replacement": "",
+            "ref": "4:8690a2ff",
+            "note_path": "tasks.md",
+            "locator": "tasks",
+            "group": "open",
+            "hidden": false,
+            "block_id": "malformed",
+            "requires_block_id": false,
+            "block_id_suggestions": [],
+            "disabled_reason": "its LINKS line is malformed",
+            "status_symbol": " ",
+            "status_name": "Todo",
+            "status_type": "TODO",
+            "text": "Malformed source",
+            "section": null,
+            "depth": 0,
+            "line": 4
+        },
+        {
+            "replacement": "",
+            "ref": "6:d9780564",
+            "note_path": "tasks.md",
+            "locator": "tasks",
+            "group": "open",
+            "hidden": false,
+            "block_id": null,
+            "requires_block_id": true,
+            "block_id_suggestions": [
+                "idless-source"
+            ],
+            "status_symbol": " ",
+            "status_name": "Todo",
+            "status_type": "TODO",
+            "text": "Idless source",
+            "section": null,
+            "depth": 0,
+            "line": 6
+        }
+    ],
+    "warnings": [
+        "Bob daily note does not exist: /tmp/bob-mac-relation-fixtures.0wcMBP/2026/20261020.md"
+    ],
+    "query": "sou",
+    "owner": {
+        "kind": "new_task",
+        "text": "New task"
+    }
+}

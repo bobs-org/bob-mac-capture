@@ -351,6 +351,215 @@ final class CaptureDependencyPanelTests: XCTestCase {
         XCTAssertFalse(model.pickerVisible)
     }
 
+    private func relationCandidate() -> CaptureCompletionCandidate {
+        CaptureCompletionCandidate(
+            replacement: "~tasks:target",
+            taskRef: "1:aaaa1111",
+            blockID: "target",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            statusType: "TODO",
+            text: "Target",
+            group: "open",
+            notePath: "tasks.md",
+            locator: "tasks"
+        )
+    }
+
+    private func relationFromCandidate() -> CaptureCompletionCandidate {
+        CaptureCompletionCandidate(
+            replacement: "~~tasks:source",
+            taskRef: "2:bbbb2222",
+            blockID: "source",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            statusType: "TODO",
+            text: "Source",
+            group: "open",
+            notePath: "tasks.md",
+            locator: "tasks"
+        )
+    }
+
+    private func relationIDlessCandidate() -> CaptureCompletionCandidate {
+        CaptureCompletionCandidate(
+            replacement: "",
+            taskRef: "6:d9780564",
+            requiresBlockID: true,
+            statusSymbol: " ",
+            statusName: "Todo",
+            text: "Idless source",
+            blockIDSuggestions: ["idless-source"],
+            group: "open",
+            notePath: "tasks.md",
+            locator: "tasks"
+        )
+    }
+
+    private func installRelationToPicker() -> CapturePanelModel {
+        let model = CapturePanelModel()
+        model.installRelationPickerForPreviews(
+            candidates: [relationCandidate(), relationIDlessCandidate()],
+            filter: "",
+            draft: "New task ~",
+            replacement: CaptureRange(start: 9, end: 10),
+            owner: DependencyOwner(kind: "new_task", text: "New task"),
+            direction: .linksTo
+        )
+        return model
+    }
+
+    private func installRelationFromPicker() -> CapturePanelModel {
+        let model = CapturePanelModel()
+        model.installRelationPickerForPreviews(
+            candidates: [relationFromCandidate()],
+            filter: "",
+            draft: "New task ~~",
+            replacement: CaptureRange(start: 9, end: 11),
+            owner: DependencyOwner(kind: "new_task", text: "New task"),
+            direction: .linkedFrom
+        )
+        return model
+    }
+
+    func testRelationPickerInsertsTildeReplacement() {
+        let model = installRelationToPicker()
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertTrue(model.pickerSourceIsRelation)
+        XCTAssertEqual(model.pickerOperatorContinuationKeys, ["~"])
+        model.acceptPickerRow(id: "tasks.md|1:aaaa1111", submitAfterInsert: false)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target ")
+        XCTAssertFalse(model.pickerVisible)
+        XCTAssertEqual(model.statusText, "Inserted ~tasks:target ")
+    }
+
+    func testRelationFromPickerInsertsDoubleTildeReplacement() {
+        let model = installRelationFromPicker()
+        XCTAssertEqual(model.picker?.source, .linkedFrom)
+        model.acceptPickerRow(id: "tasks.md|2:bbbb2222", submitAfterInsert: false)
+        XCTAssertEqual(model.plainDraft, "New task ~~tasks:source ")
+        XCTAssertEqual(model.statusText, "Inserted ~~tasks:source ")
+    }
+
+    func testRelationLiveFlipKeepsPickerOpen() async throws {
+        let model = try liveModel()
+        model.installRelationPickerForPreviews(
+            candidates: [relationCandidate()],
+            filter: "",
+            draft: "New task ~",
+            replacement: CaptureRange(start: 9, end: 10),
+            owner: DependencyOwner(kind: "new_task", text: "New task"),
+            direction: .linksTo
+        )
+        XCTAssertEqual(model.picker?.source, .linksTo)
+        model.continuePickerOperator("~")
+        XCTAssertEqual(model.plainDraft, "New task ~~")
+        XCTAssertTrue(model.pickerVisible)
+        await waitUntil { model.picker?.source == .linkedFrom }
+        XCTAssertEqual(model.picker?.filterText, "")
+        XCTAssertTrue(model.pickerVisible)
+    }
+
+    func testRelationBackspaceOnLinkedFromFlipsBack() async throws {
+        let model = try liveModel()
+        model.installRelationPickerForPreviews(
+            candidates: [relationFromCandidate()],
+            filter: "",
+            draft: "New task ~~",
+            replacement: CaptureRange(start: 9, end: 11),
+            owner: DependencyOwner(kind: "new_task", text: "New task"),
+            direction: .linkedFrom
+        )
+        model.removePickerTrigger()
+        XCTAssertEqual(model.plainDraft, "New task ~")
+        XCTAssertTrue(model.pickerVisible)
+        await waitUntil { model.picker?.source == .linksTo }
+    }
+
+    func testRelationBackspaceOnLinksToRemovesToken() {
+        let model = installRelationToPicker()
+        model.removePickerTrigger()
+        XCTAssertEqual(model.plainDraft, "New task ")
+        XCTAssertFalse(model.pickerVisible)
+    }
+
+    func testRelationIdlessOpensPrompt() {
+        let model = installRelationToPicker()
+        model.acceptPickerRow(id: "tasks.md|6:d9780564", submitAfterInsert: false)
+        XCTAssertTrue(model.taskIDPromptVisible)
+        XCTAssertTrue(model.taskIDPromptIsDependency)
+        XCTAssertEqual(model.taskIDPrompt?.authoredID, "idless-source")
+        model.cancelTaskIDPrompt()
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertTrue(model.pickerSourceIsRelation)
+    }
+
+    func testRelationIDAssignmentSplicesBobReplacement() async throws {
+        let model = try liveModel()
+        model.installRelationPickerForPreviews(
+            candidates: [relationIDlessCandidate()],
+            filter: "",
+            draft: "New task ~",
+            replacement: CaptureRange(start: 9, end: 10),
+            owner: DependencyOwner(kind: "new_task", text: "New task"),
+            direction: .linksTo
+        )
+        model.acceptPickerRow(id: "tasks.md|6:d9780564", submitAfterInsert: false)
+        XCTAssertTrue(model.taskIDPromptVisible)
+        model.submitTaskIDPrompt()
+        await waitUntil { !model.taskIDPromptVisible }
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:idless-source")
+    }
+
+    func testOldBobRelationIDAssignmentShowsExactUpdateMessage() async throws {
+        let model = try liveModel()
+        model.installRelationPickerForPreviews(
+            candidates: [relationIDlessCandidate()],
+            filter: "",
+            draft: "New task ~",
+            replacement: CaptureRange(start: 9, end: 10),
+            owner: DependencyOwner(kind: "new_task", text: "New task"),
+            direction: .linksTo
+        )
+        model.acceptPickerRow(id: "tasks.md|6:d9780564", submitAfterInsert: false)
+        model.updateTaskIDPromptBlockID("idless-old")
+        model.submitTaskIDPrompt()
+        await waitUntil { model.taskIDPrompt?.errorMessage != nil }
+        XCTAssertEqual(
+            model.taskIDPrompt?.errorMessage,
+            "This Bob is too old for ~ links. Update Bob first."
+        )
+        XCTAssertEqual(model.plainDraft, "New task ~")
+    }
+
+    func testRelationMarkerHighlightCoversDoubleTilde() {
+        let range = CapturePanelModel.pickerMarkerHighlightRange(
+            source: .linkedFrom,
+            replacementRange: CaptureRange(start: 9, end: 11),
+            markerRange: nil
+        )
+        XCTAssertEqual(range, CaptureRange(start: 9, end: 11))
+    }
+
+    func testRouterTildeContinuesRelationPicker() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(
+            pickerVisible: true,
+            pickerFilterIsEmpty: true,
+            pickerOperatorContinuationKeys: ["~"]
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 50, modifiers: .shift, characters: "~"), context: context),
+            .continuePickerOperator("~")
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 36, modifiers: .shift), context: context),
+            .consumeKey
+        )
+    }
+
     private func keyEvent(
         keyCode: UInt16,
         modifiers: NSEvent.ModifierFlags = [],

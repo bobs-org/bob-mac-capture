@@ -1353,6 +1353,9 @@ private struct TaskIDPromptCard: View {
         if case .blockedTask = prompt.purpose {
             return true
         }
+        if case .relation = prompt.purpose {
+            return true
+        }
         return false
     }
 
@@ -1406,6 +1409,13 @@ private struct TaskIDPromptCard: View {
             return followUp == .submit || followUp == .submitAndOpen
                 ? "Add ID & Capture"
                 : "Add ID & Use"
+        case .relation(_, _, _, let followUp, _, _):
+            switch followUp {
+            case .submit, .submitAndOpen:
+                return "Add ID & Capture"
+            case .none, .start:
+                return "Add ID & Use"
+            }
         case .taskComplete(_, _, _, let followUp, _):
             switch followUp {
             case .submit, .submitAndOpen:
@@ -1435,6 +1445,8 @@ private struct TaskIDPromptCard: View {
             return "Inserts &\(notePath):\(typed)"
         case .blockedTask(let notePath, _, _, _, _):
             return "Inserts *\(notePath):\(typed)"
+        case .relation(let notePath, _, _, _, _, let direction):
+            return "Inserts \(direction.leadingSigil)\(notePath):\(typed)"
         case .taskComplete(let notePath, _, _, _, _):
             return "Inserts !\(taskCompleteLocator(for: prompt, fallback: notePath)):\(typed)"
         case .parentTask:
@@ -1464,6 +1476,8 @@ private struct TaskIDPromptCard: View {
             return Text("\(Text("Inserts &").foregroundStyle(.secondary))\(Text(notePath).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
         case .blockedTask(let notePath, _, _, _, _):
             return Text("\(Text("Inserts *").foregroundStyle(CaptureEditorPalette.color(for: .blockedTaskSigil)))\(Text(notePath).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
+        case .relation(let notePath, _, _, _, _, let direction):
+            return Text("\(Text("Inserts \(direction.leadingSigil)").foregroundStyle(CaptureEditorPalette.color(for: .relationSigil)))\(Text(notePath).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
         case .taskComplete(let notePath, _, _, _, _):
             return Text("\(Text("Inserts !").foregroundStyle(.secondary))\(Text(taskCompleteLocator(for: prompt, fallback: notePath)).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
         case .parentTask:

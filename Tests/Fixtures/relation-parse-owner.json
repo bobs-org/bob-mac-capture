@@ -1,0 +1,37 @@
+{
+    "ok": true,
+    "schema_version": 1,
+    "input": "Use this @mac_inbox+owner ~",
+    "body": "Use this",
+    "mode": "sub_bullet",
+    "route": "mac_inbox",
+    "section": null,
+    "block_id": "owner",
+    "needs": [
+        "relation_target"
+    ],
+    "relation_grammar": 1,
+    "spans": [
+        {
+            "start": 9,
+            "end": 19,
+            "kind": "sub_bullet_route"
+        },
+        {
+            "start": 20,
+            "end": 25,
+            "kind": "sub_bullet_block_id"
+        },
+        {
+            "start": 26,
+            "end": 27,
+            "kind": "interactive_placeholder"
+        }
+    ],
+    "diagnostics": [],
+    "dependency_target": {
+        "kind": "existing_task",
+        "route": "mac_inbox",
+        "block_id": "owner"
+    }
+}

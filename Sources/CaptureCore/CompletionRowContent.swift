@@ -18,6 +18,8 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case interactivePlaceholder
     case explicitToggle
     case blockedTaskSigil
+    case relationSigil
+    case relationLabel
     case pomodoroStart
     case pomodoroCloseInProgress
     case pomodoroClosePark
@@ -35,6 +37,11 @@ extension CaptureSemanticCategory {
     /// an underlined link, every other span kind renders without one.
     public var isUnderlined: Bool {
         self == .link
+    }
+
+    /// Relation labels render muted italic in the editor.
+    public var isItalic: Bool {
+        self == .relationLabel
     }
 }
 
@@ -63,6 +70,16 @@ public func captureSemanticCategory(forSpanKind kind: String) -> CaptureSemantic
         return .route
     case "blocked_task_block_id":
         return .blockID
+    case "relation_sigil":
+        return .relationSigil
+    case "relation_note":
+        return .route
+    case "relation_block_id":
+        return .blockID
+    case "relation_label_separator":
+        return .interactivePlaceholder
+    case "relation_label":
+        return .relationLabel
     case "task_complete_sigil":
         // The `!` sigil completes like `x!`: it shares the complete-green
         // with the close-list complete digits.
@@ -184,6 +201,9 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case taskParent
     case taskDependency
     case blockedTask
+    case relationTo
+    case relationFrom
+    case relationLabel
     case taskComplete
     case wikilinkNote
     case wikilinkHeading
@@ -206,6 +226,9 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "task_parent": self = .taskParent
         case "task_dependency": self = .taskDependency
         case "blocked_task": self = .blockedTask
+        case "relation_to": self = .relationTo
+        case "relation_from": self = .relationFrom
+        case "relation_label": self = .relationLabel
         case "task_complete": self = .taskComplete
         case "wikilink_note": self = .wikilinkNote
         case "wikilink_heading": self = .wikilinkHeading
@@ -593,6 +616,53 @@ public func completionRowContent(
             badges = ["Needs ID"]
         }
         accessibilityHint = "Blocks this task until the current task is done."
+
+    case .relationTo, .relationFrom:
+        category = .relationSigil
+        symbolName = "arrow.left.arrow.right"
+        contextLabel = context == .relationFrom ? "Linked from" : "Links to"
+        primaryText = candidate.text ?? candidate.replacement
+        let locator = candidate.locator ?? candidate.route
+        if let locator, let blockID = candidate.blockID ?? candidate.blockIDSuggestions.first {
+            var secondary = "\(locator):\(blockID)"
+            if let section = candidate.section, !section.isEmpty {
+                secondary += " · \(section)"
+            }
+            secondaryText = secondary
+        } else {
+            secondaryText = candidate.section
+        }
+        if candidate.alreadyLinked {
+            if let label = candidate.existingLabel, !label.isEmpty {
+                badges = ["Already linked · \(label)"]
+            } else {
+                badges = ["Already linked"]
+            }
+        } else if candidate.alsoPrerequisite {
+            badges = ["Prerequisite too"]
+        } else if let reason = candidate.disabledReason, !reason.isEmpty {
+            badges = [reason]
+        } else if candidate.requiresBlockID {
+            badges = ["Needs ID"]
+        }
+        accessibilityHint = context == .relationFrom
+            ? "Inserts a relation from this task to the owner."
+            : "Inserts a relation from the owner to this task."
+
+    case .relationLabel:
+        category = .relationLabel
+        symbolName = "textformat"
+        contextLabel = "Relation label"
+        primaryText = candidate.label ?? candidate.replacement
+        if let count = candidate.matchCount, count > 0 {
+            secondaryText = "\(count)"
+        } else {
+            secondaryText = nil
+        }
+        if let reason = candidate.disabledReason, !reason.isEmpty {
+            badges = [reason]
+        }
+        accessibilityHint = "Inserts this relation label."
 
     case .taskComplete:
         // The `!` picker owns the card; this is only the stray inline

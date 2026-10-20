@@ -376,6 +376,110 @@ final class DependencyDecodingTests: XCTestCase {
         )
     }
 
+    func testRelationNeedStatusAndSpans() {
+        XCTAssertEqual(
+            CapturePickerNeed.relationTarget.statusText,
+            "Pick a task to link — press Tab to browse"
+        )
+        XCTAssertEqual(
+            CapturePickerNeed.relationLabel.statusText,
+            "Type a relation label, or pick a suggestion"
+        )
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "relation_sigil"), .relationSigil)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "relation_note"), .route)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "relation_block_id"), .blockID)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "relation_label_separator"), .interactivePlaceholder)
+        XCTAssertEqual(captureSemanticCategory(forSpanKind: "relation_label"), .relationLabel)
+        XCTAssertTrue(CaptureSemanticCategory.relationLabel.isItalic)
+        XCTAssertEqual(CaptureCompletionContext(rawContext: "relation_to"), .relationTo)
+        XCTAssertEqual(CaptureCompletionContext(rawContext: "relation_from"), .relationFrom)
+        XCTAssertEqual(CaptureCompletionContext(rawContext: "relation_label"), .relationLabel)
+    }
+
+    func testRelationCandidateAndPickerSourceDecode() throws {
+        let candidate = try JSONDecoder().decode(
+            CaptureCompletionCandidate.self,
+            from: Data("""
+            {
+              "replacement": "~tasks:target", "ref": "1:aaaa1111",
+              "note_path": "tasks.md", "locator": "tasks", "group": "open",
+              "block_id": "target", "already_linked": true,
+              "existing_label": "follow-up of", "also_prerequisite": true,
+              "status_symbol": " ", "status_name": "Todo", "text": "Target"
+            }
+            """.utf8)
+        )
+        XCTAssertTrue(candidate.alreadyLinked)
+        XCTAssertEqual(candidate.existingLabel, "follow-up of")
+        XCTAssertTrue(candidate.alsoPrerequisite)
+
+        XCTAssertEqual(CapturePickerSource.linksTo.triggerByte, 126)
+        XCTAssertEqual(CapturePickerSource.linksTo.scopeSymbolText, "~")
+        XCTAssertEqual(CapturePickerSource.linkedFrom.scopeSymbolText, "~~")
+        XCTAssertEqual(CapturePickerSource.linksTo.scopeCaption, "Links To")
+        XCTAssertEqual(CapturePickerSource.linkedFrom.scopeCaption, "Linked From")
+        XCTAssertEqual(CapturePickerSource.linksTo.chipLabel, "Choose a task to link to")
+        XCTAssertTrue(CapturePickerSource.linksTo.isRelation)
+        XCTAssertTrue(CapturePickerSource.linkedFrom.isRelationshipModifier)
+        XCTAssertEqual(DependencyPickerDirection.linkedFrom.leadingSigil, "~~")
+        XCTAssertEqual(DependencyPickerDirection.linkedFrom.leadingSigil.utf8.count, 2)
+    }
+
+    func testRelationParseAndTaskIDFixturesDecode() throws {
+        let parse = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("relation-parse-complete.json").utf8)
+        )
+        XCTAssertEqual(parse.relations.first?.raw, "~tasks:target")
+        XCTAssertEqual(parse.relations.first?.direction, "to")
+        XCTAssertEqual(parse.relations.first?.note, "tasks")
+        XCTAssertEqual(parse.relations.first?.blockID, "target")
+
+        let fromParse = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("relation-parse-from-complete.json").utf8)
+        )
+        XCTAssertEqual(fromParse.relations.first?.direction, "from")
+
+        let labelParse = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("relation-parse-label.json").utf8)
+        )
+        XCTAssertEqual(labelParse.relations.first?.label, "follow")
+        XCTAssertEqual(labelParse.relations.first?.labelRange?.start, 40)
+
+        let response = try JSONDecoder().decode(
+            CaptureTaskIDResponse.self,
+            from: Data(fixtureText("relation-task-id-success.json").utf8)
+        )
+        guard case .success(let success) = response else {
+            return XCTFail("expected success")
+        }
+        XCTAssertEqual(success.relationToReplacement, "~tasks:idless-source")
+        XCTAssertEqual(success.relationFromReplacement, "~~tasks:idless-source")
+    }
+
+    func testRelationCompletionFixtureDecodesOwnerAndFlags() throws {
+        let decoded = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(fixtureText("relation-complete-owner-to.json").utf8)
+        )
+        XCTAssertEqual(decoded.context, "relation_to")
+        XCTAssertEqual(decoded.owner?.text, "Owner")
+        let target = try XCTUnwrap(decoded.candidates.first { $0.blockID == "target" })
+        XCTAssertTrue(target.alreadyLinked)
+        XCTAssertEqual(target.existingLabel, "follow-up of")
+        XCTAssertTrue(target.alsoPrerequisite)
+        XCTAssertEqual(target.replacement, "~tasks:target")
+
+        let parent = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(fixtureText("relation-complete-parent.json").utf8)
+        )
+        XCTAssertEqual(parent.picker?.relationship?.relations.first?.direction, "to")
+        XCTAssertEqual(parent.picker?.relationship?.relations.first?.text, "Target")
+    }
+
     func testParseTargetFixtureDecodesRelationshipMarkers() throws {
         let parse = try JSONDecoder().decode(
             CaptureParseResponse.self,

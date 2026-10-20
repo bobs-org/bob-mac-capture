@@ -1,0 +1,73 @@
+{
+    "ok": true,
+    "schema_version": 1,
+    "input": "Use this @mac_inbox+owner ~tasks:target|follow",
+    "body": "Use this",
+    "mode": "sub_bullet",
+    "route": "mac_inbox",
+    "section": null,
+    "block_id": "owner",
+    "needs": [],
+    "relation_grammar": 1,
+    "spans": [
+        {
+            "start": 9,
+            "end": 19,
+            "kind": "sub_bullet_route"
+        },
+        {
+            "start": 20,
+            "end": 25,
+            "kind": "sub_bullet_block_id"
+        },
+        {
+            "start": 26,
+            "end": 27,
+            "kind": "relation_sigil"
+        },
+        {
+            "start": 27,
+            "end": 32,
+            "kind": "relation_note"
+        },
+        {
+            "start": 33,
+            "end": 39,
+            "kind": "relation_block_id"
+        },
+        {
+            "start": 39,
+            "end": 40,
+            "kind": "relation_label_separator"
+        },
+        {
+            "start": 40,
+            "end": 46,
+            "kind": "relation_label"
+        }
+    ],
+    "diagnostics": [],
+    "relations": [
+        {
+            "raw": "~tasks:target|follow",
+            "direction": "to",
+            "note": "tasks",
+            "block_id": "target",
+            "quoted": false,
+            "label": "follow",
+            "label_range": {
+                "start": 40,
+                "end": 46
+            },
+            "range": {
+                "start": 26,
+                "end": 46
+            }
+        }
+    ],
+    "dependency_target": {
+        "kind": "existing_task",
+        "route": "mac_inbox",
+        "block_id": "owner"
+    }
+}

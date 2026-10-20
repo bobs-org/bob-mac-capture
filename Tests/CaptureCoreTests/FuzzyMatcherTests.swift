@@ -17,6 +17,13 @@ final class FuzzyMatcherTests: XCTestCase {
         XCTAssertTrue(FuzzyQuery("^").isEmpty)
     }
 
+    func testQueryStripsMultiByteRelationSigils() {
+        XCTAssertEqual(FuzzyQuery("~tar", leadingSigil: "~").tokens, ["tar"])
+        XCTAssertEqual(FuzzyQuery("~~sou", leadingSigil: "~~").tokens, ["sou"])
+        XCTAssertTrue(FuzzyQuery("~~", leadingSigil: "~~").isEmpty)
+        XCTAssertEqual(FuzzyQuery("~~sou", leadingSigil: "~").tokens, ["~sou"])
+    }
+
     func testCaseAndDiacriticInsensitivity() {
         XCTAssertNotNil(FuzzyMatcher.match(token: "cafe", in: FuzzyField("Café")))
         XCTAssertNotNil(FuzzyMatcher.match(token: "CAFÉ", in: FuzzyField("cafe")))

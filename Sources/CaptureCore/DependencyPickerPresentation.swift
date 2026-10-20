@@ -1,25 +1,62 @@
 import Foundation
 
-/// The shared dependency picker can add prerequisites (`&`) or make an
-/// existing task depend on the current item (`*`).
+/// The shared relationship picker can add prerequisites (`&`), make an
+/// existing task depend on the current item (`*`), or author a directed
+/// relation (`~` this→that, `~~` that→this).
 public enum DependencyPickerDirection: Equatable, Sendable {
     case prerequisite
     case blocks
+    case linksTo
+    case linkedFrom
 
-    public var leadingSigil: Character {
-        self == .blocks ? "*" : "&"
+    public var leadingSigil: String {
+        switch self {
+        case .prerequisite:
+            return "&"
+        case .blocks:
+            return "*"
+        case .linksTo:
+            return "~"
+        case .linkedFrom:
+            return "~~"
+        }
     }
 
     public var insertionPrefix: String {
-        String(leadingSigil)
+        leadingSigil
     }
 
     public var scopeCaption: String {
-        self == .blocks ? "Blocks" : "Depends On"
+        switch self {
+        case .prerequisite:
+            return "Depends On"
+        case .blocks:
+            return "Blocks"
+        case .linksTo:
+            return "Links To"
+        case .linkedFrom:
+            return "Linked From"
+        }
     }
 
     public var alreadyBadge: String {
-        self == .blocks ? "Already blocked" : "Already added"
+        switch self {
+        case .prerequisite:
+            return "Already added"
+        case .blocks:
+            return "Already blocked"
+        case .linksTo, .linkedFrom:
+            return "Already linked"
+        }
+    }
+
+    public var isRelation: Bool {
+        switch self {
+        case .linksTo, .linkedFrom:
+            return true
+        case .prerequisite, .blocks:
+            return false
+        }
     }
 }
 
@@ -284,8 +321,15 @@ public struct DependencyPickerIndex: Sendable {
         let pending: CapturePickerPendingBlockID?
         let insertion: String?
         let badge: String?
-        let alreadyPresent = direction == .blocks
-            ? candidate.alreadyBlocked : candidate.alreadyDependency
+        let alreadyPresent: Bool
+        switch direction {
+        case .blocks:
+            alreadyPresent = candidate.alreadyBlocked
+        case .prerequisite:
+            alreadyPresent = candidate.alreadyDependency
+        case .linksTo, .linkedFrom:
+            alreadyPresent = candidate.alreadyLinked
+        }
         if candidate.disabledReason != nil {
             // Guarded rows never supply an insertable replacement and never
             // open the Add block ID flow: accepting one changes nothing and
@@ -310,7 +354,7 @@ public struct DependencyPickerIndex: Sendable {
             // drop it here: a redundant accept must never splice a duplicate.
             insertion = candidate.replacement.isEmpty || alreadyPresent
                 ? nil : candidate.replacement
-            badge = alreadyPresent ? direction.alreadyBadge : nil
+            badge = alreadyPresent ? alreadyLinkedBadge(for: candidate) : nil
         }
         // Accepting an already-present or guarded row is a harmless no-op:
         // both carry a nil insertion above, so the accept keeps the draft
@@ -352,6 +396,9 @@ public struct DependencyPickerIndex: Sendable {
     /// for disabled rows.
     public func actionLine(for row: CapturePickerRow) -> String {
         if let insertion = row.insertion {
+            if direction.isRelation {
+                return "↩ link · ⇧↩ link with a relation · ~ flips direction"
+            }
             return "↩ inserts \(insertion) · space adds another \(direction.leadingSigil)"
         }
         if let pending = row.pendingBlockID {
@@ -374,8 +421,17 @@ public struct DependencyPickerIndex: Sendable {
         if direction == .prerequisite, entry.candidate.alreadyDependency {
             return "Already added"
         }
+        if direction.isRelation, entry.candidate.alreadyLinked {
+            return alreadyLinkedBadge(for: entry.candidate)
+        }
+        if direction.isRelation, entry.candidate.alsoPrerequisite {
+            return "Prerequisite too"
+        }
         if entry.candidate.hidden {
             return "Hidden"
+        }
+        if direction.isRelation, isArchivedLocator(entry) {
+            return "Archived"
         }
         switch entry.group {
         case .completed:
@@ -383,6 +439,18 @@ public struct DependencyPickerIndex: Sendable {
         default:
             return nil
         }
+    }
+
+    private func alreadyLinkedBadge(for candidate: CaptureCompletionCandidate) -> String {
+        if let label = candidate.existingLabel, !label.isEmpty {
+            return "Already linked · \(label)"
+        }
+        return direction.alreadyBadge
+    }
+
+    private func isArchivedLocator(_ entry: DependencyPickerIndexEntry) -> Bool {
+        let path = entry.candidate.notePath ?? entry.candidate.locator ?? ""
+        return path.hasPrefix("done/") || path.contains("/archive")
     }
 
     private func summary(for entry: DependencyPickerIndexEntry) -> String {
@@ -395,13 +463,28 @@ public struct DependencyPickerIndex: Sendable {
         if direction == .prerequisite, entry.candidate.alreadyDependency {
             return "Already a prerequisite — accepting changes nothing"
         }
+        if direction.isRelation, entry.candidate.alreadyLinked {
+            if let label = entry.candidate.existingLabel, !label.isEmpty {
+                return "Already linked · \(label) — accepting changes nothing"
+            }
+            return "Already linked — accepting changes nothing"
+        }
         switch entry.group {
         case .completed:
-            return "Completed history — selecting never blocks"
+            return direction.isRelation
+                ? "Completed history"
+                : "Completed history — selecting never blocks"
         case .thisNote, .inProgress, .next, .open:
-            return direction == .blocks
-                ? "Becomes Blocked until this is done"
-                : "Open · will block the dependent until finished"
+            switch direction {
+            case .blocks:
+                return "Becomes Blocked until this is done"
+            case .prerequisite:
+                return "Open · will block the dependent until finished"
+            case .linksTo:
+                return "Adds a LINKS line from the owner to this task"
+            case .linkedFrom:
+                return "Adds a LINKS line from this task to the owner"
+            }
         }
     }
 
