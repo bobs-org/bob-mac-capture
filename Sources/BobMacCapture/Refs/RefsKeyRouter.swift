@@ -37,7 +37,7 @@ public struct RefsKeyContext: Equatable, Sendable {
   }
 }
 
-/// The README keyboard table as a pure function over a key code and
+/// The docs/keyboard.md table as a pure function over a key code and
 /// modifiers, so the router tests never build an `NSEvent`. The panel
 /// controller adapts live events into this form and funnels the result
 /// through `RefsPanelModel.perform`. A nil result passes the key

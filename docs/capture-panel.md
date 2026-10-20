@@ -347,9 +347,11 @@ A successful aggregate capture hides the panel automatically only after Bob retu
   still opens the notes as tabs, but without landing.
   Reopening the panel after a success starts from a clean slate — the prior
   "Captured → …" summary and status text are cleared, while a retained draft (from Escape
-  or a failure) reopens exactly as it was left. Closing the panel never destroys a draft.
-  **Discard** permanently clears the draft, while Control-C stashes a semantically
-  nonempty draft before clearing and closing.
+  or a failure) reopens exactly as it was left. Escape retains a nonempty draft.
+  **Discard** permanently clears the draft without stashing, while Control-C always
+  clears it: it stashes a semantically nonempty draft first, except a Task Go-To (`/`)
+  draft is deliberately discarded and nothing is retained when stashing is off
+  (capacity 0).
 
 ## Canceled drafts
 
@@ -370,7 +372,8 @@ logging draft text. If the editor currently contains any characters, the picker 
 to open; capture, retain, cancel, or explicitly discard the live draft first so restore
 can never overwrite work. **Discard** is intentionally different from Control-C: it is a
 permanent discard and never adds an entry to the stash. Control-C on an empty or
-whitespace-only editor closes without adding an entry.
+whitespace-only editor, on a Task Go-To (`/`) draft, or when stashing is off
+(capacity 0) closes without adding an entry.
 
 While the stash picker is open, it is modal inside the panel's auxiliary region and
 uses the same compact material style as completion. Rows are newest first. Restoring a

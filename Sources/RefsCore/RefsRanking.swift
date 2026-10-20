@@ -2,8 +2,8 @@ import CaptureCore
 import Foundation
 
 /// Named tuning constants for browse sections (§3) and search ranking (§4).
-/// Golden tests pin behavior built on these values; see "Sorting" in the
-/// README's Bob Refs section before changing any of them.
+/// Golden tests pin behavior built on these values; see "Sorting" in
+/// docs/refs.md before changing any of them.
 public enum RefsRankingConstants {
   /// An unmarked ready/next unopened row counts as NEW within this
   /// many local days of its added date.
@@ -35,7 +35,7 @@ public enum RefsRankingConstants {
   /// title-prefix match (prefix bonus +0.15) outscore a Ready non-prefix
   /// word match, failing golden expectation 3 ("sinks the dropped
   /// row"); −0.20 sinks it while keeping every other expectation's
-  /// order. See "Sorting" in the README.
+  /// order. See "Sorting" in docs/refs.md.
   public static let droppedLanePrior = -0.20
   /// Weight of the normalized frecency term.
   public static let frecencyWeight = 0.25

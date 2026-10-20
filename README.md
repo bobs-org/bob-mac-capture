@@ -10,6 +10,20 @@ mutation.
 - [Get started](https://bobs-org.github.io/start/mac-capture/)
 - [Reference](https://bobs-org.github.io/reference/mac-capture/)
 - [Develop](https://bobs-org.github.io/develop/mac-capture/)
+- [Guides](https://bobs-org.github.io/guides/)
+
+Major topics:
+
+- [Install and signing](https://bobs-org.github.io/reference/mac-capture/install/)
+- [Keyboard](https://bobs-org.github.io/reference/mac-capture/keyboard/)
+- [Bob Refs](https://bobs-org.github.io/reference/mac-capture/refs/)
+- [Protocol](https://bobs-org.github.io/reference/mac-capture/protocol/)
+- [Build](https://bobs-org.github.io/develop/mac-capture/build/)
+- [Fix Mac Capture when bob is not resolved](https://bobs-org.github.io/guides/fix-mac-capture-bob-resolution/)
+- [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/)
+- [Restore Mac Capture permissions](https://bobs-org.github.io/guides/restore-mac-capture-permissions/)
+- [Recover Bob Refs](https://bobs-org.github.io/guides/recover-bob-refs/)
+- [Recover a stuck Mac Capture panel](https://bobs-org.github.io/guides/recover-mac-capture/)
 
 The site is <https://bobs-org.github.io/>.
 
@@ -43,28 +57,6 @@ Point Settings › Bob at the `bob` you installed and your vault, then confirm:
 which bob
 echo "$BOB_DIR"
 ```
-
-## Docs →
-
-- [Get started](https://bobs-org.github.io/start/mac-capture/)
-- [Mac Capture reference](https://bobs-org.github.io/reference/mac-capture/)
-- [Mac Capture development](https://bobs-org.github.io/develop/mac-capture/)
-- [Guides](https://bobs-org.github.io/guides/)
-
-Major topics:
-
-- [Install and signing](https://bobs-org.github.io/reference/mac-capture/install/)
-- [Keyboard](https://bobs-org.github.io/reference/mac-capture/keyboard/)
-- [Bob Refs](https://bobs-org.github.io/reference/mac-capture/refs/)
-- [Protocol](https://bobs-org.github.io/reference/mac-capture/protocol/)
-- [Build](https://bobs-org.github.io/develop/mac-capture/build/)
-- [Fix Mac Capture when bob is not resolved](https://bobs-org.github.io/guides/fix-mac-capture-bob-resolution/)
-- [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/)
-- [Restore Mac Capture permissions](https://bobs-org.github.io/guides/restore-mac-capture-permissions/)
-- [Recover Bob Refs](https://bobs-org.github.io/guides/recover-bob-refs/)
-- [Recover a stuck Mac Capture panel](https://bobs-org.github.io/guides/recover-mac-capture/)
-
-The site is <https://bobs-org.github.io/>.
 
 ## Signing
 
