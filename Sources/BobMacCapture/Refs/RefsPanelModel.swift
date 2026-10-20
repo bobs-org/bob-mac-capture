@@ -309,6 +309,9 @@ public final class RefsPanelModel: ObservableObject {
   }
   @Published public private(set) var selectedID: String? {
     didSet {
+      if panelIsVisible(), let selectedID {
+        arrivals.markSeen([selectedID])
+      }
       if oldValue != selectedID {
         revealedPageID = nil
         revealedPage = nil
@@ -527,6 +530,12 @@ public final class RefsPanelModel: ObservableObject {
   /// `libraryDidPublish` diffs the current ids against this set to find
   /// arrivals that landed while the panel was open.
   private var rankedItemIDs: Set<String> = []
+  /// First-seen library ids waiting to reset an ordinary show.
+  private var arrivals: RefsArrivalTracker
+  /// Deadline after which a visible arrival only joins. Armed by a
+  /// `.library` show; cleared by any command, query edit, or hide.
+  private var visibleArrivalDeadline: Date?
+  private let now: () -> Date
   /// Every item ever published, by id, so a freshly vanished row still
   /// draws its last known title. Current publications win on conflict;
   /// every fresh listing prunes rows the library no longer has.
@@ -564,12 +573,15 @@ public final class RefsPanelModel: ObservableObject {
     pasteboard: RefsPasteboardWriting = SystemRefsPasteboard(),
     tabs: HighlightsTabsSession? = nil,
     isAdHocSigned: @escaping () -> Bool = { false },
-    imageProvider: RefsAnnotationImageProviding? = nil
+    imageProvider: RefsAnnotationImageProviding? = nil,
+    now: @escaping () -> Date = { Date() }
   ) {
     self.library = library
     self.opener = opener
     self.highlights = highlights
     self.pasteboard = pasteboard
+    self.now = now
+    self.arrivals = RefsArrivalTracker(knownIDs: library.items.map(\.id))
     tabsSession =
       tabs
       ?? HighlightsTabsSession(
@@ -631,6 +643,7 @@ public final class RefsPanelModel: ObservableObject {
   /// Called by the controller from `hide()`, after `orderOut`.
   /// Clears the scan notice once it has been seen.
   public func panelDidHide() {
+    visibleArrivalDeadline = nil
     closeCopyCard()
     if !isLinkingToday {
       closeTodayLinkCard()
@@ -680,9 +693,11 @@ public final class RefsPanelModel: ObservableObject {
     return openTabsByID[selectedID]
   }
 
-  /// Restores the remembered view on ordinary shows. Scan-result shows
-  /// start from fresh-launch defaults. Per-show cards, banners, and
-  /// presentation animation are still handled here.
+  /// Restores the remembered view on ordinary shows, except when a newly
+  /// added reference is pending: then the show resets to fresh-launch
+  /// defaults and selects that reference. Scan-result shows start from
+  /// fresh-launch defaults. Per-show cards, banners, and presentation
+  /// animation are still handled here.
   public func prepareForPresentation(source: RefsPresentationSource = .library) {
     presentationCount += 1
     selectedRowRect = nil
@@ -693,7 +708,8 @@ public final class RefsPanelModel: ObservableObject {
     closeCopyCard()
     // A failed rename card is re-presented with its inline error and
     // draft instead of closed; refocus its field.
-    if renameCard?.isFailed == true {
+    let replayingFailedRename = renameCard?.isFailed == true
+    if replayingFailedRename {
       renameCardGeneration &+= 1
     } else {
       closeRenameCard()
@@ -706,7 +722,22 @@ public final class RefsPanelModel: ObservableObject {
 
     switch source {
     case .library:
-      restoreLastViewForPresentation()
+      if !replayingFailedRename,
+        arrivals.hasQualifying(
+          item: { library.item(id: $0) },
+          signals: library.signals
+        )
+      {
+        resetForArrival()
+      } else {
+        restoreLastViewForPresentation()
+        if !replayingFailedRename {
+          arrivals.clearPending()
+        }
+      }
+      visibleArrivalDeadline = now().addingTimeInterval(
+        RefsArrivalTracker.visibleGraceSeconds
+      )
     case .highlightsTabs:
       if tabsFilter {
         restoreTabsForPresentation()
@@ -716,6 +747,8 @@ public final class RefsPanelModel: ObservableObject {
       }
     case .scanResults:
       resetToDefaults(tabs: false)
+      arrivals.clearPending()
+      visibleArrivalDeadline = nil
     }
 
     if let pending = pendingScanBanner {
@@ -745,7 +778,10 @@ public final class RefsPanelModel: ObservableObject {
     beginTabsRefresh(preservingSelection: preservingSelection)
   }
 
-  private func resetToDefaults(tabs: Bool) {
+  private func resetToDefaults(
+    tabs: Bool,
+    announcement: String? = "Bob Refs reset"
+  ) {
     query = ""
     scope = .all
     listOrder = .ranked
@@ -770,12 +806,34 @@ public final class RefsPanelModel: ObservableObject {
     if tabs {
       beginTabsRefresh(preservingSelection: false)
     }
-    AccessibilityNotification.Announcement("Bob Refs reset").post()
+    if let announcement {
+      AccessibilityNotification.Announcement(announcement).post()
+    }
+  }
+
+  /// Resets to fresh-launch defaults and selects the qualifying arrival
+  /// from the latest pending batch. Keeps a banner that is already up.
+  private func resetForArrival() {
+    let keptBanner = banner
+    resetToDefaults(tabs: false, announcement: nil)
+    banner = keptBanner
+    if let target = arrivals.target(
+      orderedIDs: listing.orderedIDs,
+      item: { library.item(id: $0) },
+      signals: library.signals
+    ) {
+      selectedID = target
+    }
+    let title =
+      selectedID.flatMap { library.item(id: $0)?.title.text } ?? "reference"
+    AccessibilityNotification.Announcement("New reference: \(title)").post()
+    arrivals.clearPending()
   }
 
   /// Re-ranks on every query edit, selects the first row, and dismisses
   /// any banner.
   public func queryDidChange() {
+    visibleArrivalDeadline = nil
     heldTabsOpen = false
     banner = nil
     rerankSelectingFirst()
@@ -793,6 +851,7 @@ public final class RefsPanelModel: ObservableObject {
   /// commands always consume, including with no selected row.
   @discardableResult
   public func perform(_ command: RefsCommand) -> Bool {
+    visibleArrivalDeadline = nil
     switch command {
     case .open(let target):
       return openSelected(target)
@@ -1658,6 +1717,7 @@ public final class RefsPanelModel: ObservableObject {
     revealedPageID = nil
     revealedPage = nil
     self.selectedID = selectedID
+    arrivals = RefsArrivalTracker(knownIDs: items.map(\.id))
     if let inspector {
       inspectorLoader.installContentForPreviews(
         inspector,
@@ -1995,6 +2055,7 @@ public final class RefsPanelModel: ObservableObject {
       if selectedID == notePath {
         selectedID = destination
       }
+      arrivals.markSeen([destination])
       await inspectorLoader.discard(id: notePath)
       renameCard = nil
       renameTask = nil
@@ -2628,6 +2689,7 @@ public final class RefsPanelModel: ObservableObject {
     if isRenaming {
       return
     }
+    arrivals.observe(library.items.map(\.id))
     for item in library.items {
       knownItems[item.id] = item
     }
@@ -2654,26 +2716,52 @@ public final class RefsPanelModel: ObservableObject {
     // items and signals separately). Keep flags for every id that is
     // still missing from the library instead.
     unavailableIDs = unavailable.union(unavailableIDs.subtracting(available))
-    let arrivals = Set(library.items.map(\.id)).subtracting(rankedItemIDs)
+    let joinedIDs = Set(library.items.map(\.id)).subtracting(rankedItemIDs)
     let arrivalsCanJoin =
-      !arrivals.isEmpty && !tabsFilter && copyCard == nil && renameCard == nil
+      !joinedIDs.isEmpty && !tabsFilter && copyCard == nil && renameCard == nil
       && todayLinkCard == nil && !isRenaming && !isLinkingToday && pendingOpen == nil
       && (selectedID == nil || available.contains(selectedID!))
-    if pendingRefreshRerank, library.refreshState != .refreshing {
+    if shouldResetForVisibleArrival() {
+      resetForArrival()
+    } else if pendingRefreshRerank, library.refreshState != .refreshing {
       freshListingKeepingSelection()
       if arrivalsCanJoin {
         AccessibilityNotification.Announcement(
-          arrivals.count == 1 ? "1 new reference" : "\(arrivals.count) new references"
+          joinedIDs.count == 1
+            ? "1 new reference" : "\(joinedIDs.count) new references"
         ).post()
       }
     } else if arrivalsCanJoin {
       freshListingKeepingSelection()
       AccessibilityNotification.Announcement(
-        arrivals.count == 1 ? "1 new reference" : "\(arrivals.count) new references"
+        joinedIDs.count == 1
+          ? "1 new reference" : "\(joinedIDs.count) new references"
       ).post()
     } else if next.orderedIDs.isEmpty {
       selectedID = nil
     }
+  }
+
+  /// True when an untouched ordinary show is still inside its grace
+  /// window and a qualifying arrival can reset the open panel.
+  private func shouldResetForVisibleArrival() -> Bool {
+    guard panelIsVisible(),
+      let deadline = visibleArrivalDeadline,
+      now() <= deadline,
+      !tabsFilter,
+      copyCard == nil,
+      renameCard == nil,
+      todayLinkCard == nil,
+      !isRenaming,
+      !isLinkingToday,
+      pendingOpen == nil
+    else {
+      return false
+    }
+    return arrivals.hasQualifying(
+      item: { library.item(id: $0) },
+      signals: library.signals
+    )
   }
 
   /// A refresh that just started clears a stale rename status so it
@@ -2750,6 +2838,7 @@ public final class RefsPanelModel: ObservableObject {
 
   private func buildFreshListingForScan(_ outcome: RefsScanOutcome) {
     pendingRefreshRerank = false
+    arrivals.markSeen(outcome.created.map(\.path))
     if tabsFilter {
       freshListingKeepingSelection()
       return

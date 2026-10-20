@@ -2623,6 +2623,49 @@ final class RefsPanelModelTests: XCTestCase {
     )
   }
 
+  private static func arrivalRecord(
+    path: String,
+    stem: String,
+    added: String? = nil
+  ) -> RefRecord {
+    RefRecord(
+      path: path,
+      link: "[[\(path.replacingOccurrences(of: ".md", with: ""))]]",
+      title: "Arrival \(stem)",
+      refType: "chat",
+      status: "ready",
+      readingState: "queued",
+      added: added,
+      addedSource: added == nil ? nil : "created",
+      sourcePDF: "lib/chat/\(stem).pdf"
+    )
+  }
+
+  private func rememberNonDefaultView(_ model: RefsPanelModel, selected: String) {
+    model.setQuery("Arrival")
+    XCTAssertTrue(model.perform(.setScope(.chats)))
+    if model.listOrder != .newest {
+      XCTAssertTrue(model.perform(.toggleNewest))
+    }
+    XCTAssertTrue(model.perform(.select(id: selected)))
+  }
+
+  private func settleLibrary(_ harness: Harness, ids: Set<String>) async {
+    await harness.waitForSnapshot(ids: ids)
+    // `$items` fans out to `libraryDidPublish` on a follow-up Task.
+    try? await Task.sleep(nanoseconds: 250_000_000)
+  }
+
+  private func publishRecords(
+    _ records: [RefRecord],
+    fetcher: FakeRefsFetcher,
+    harness: Harness
+  ) async {
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: records)
+    harness.library.refresh(reason: .manual)
+    await settleLibrary(harness, ids: Set(records.map(\.path)))
+  }
+
   private static func eightNotes() -> [RefsShowAnnotation] {
     (1...8).map { index in
       RefsShowAnnotation(
@@ -4058,6 +4101,305 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertFalse(harness.model.listing.orderedIDs.contains("ref/chat/gamma.md"))
   }
 
+  func testHiddenArrivalResetsViewAndSelectsNewReference() async throws {
+    let fetcher = FakeRefsFetcher()
+    let first = Self.arrivalRecord(path: "ref/chat/alpha.md", stem: "alpha")
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [first])
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await settleLibrary(harness, ids: ["ref/chat/alpha.md"])
+    harness.model.prepareForPresentation()
+    harness.model.panelIsVisible = { false }
+    rememberNonDefaultView(harness.model, selected: "ref/chat/alpha.md")
+    let generation = harness.model.inspectorGeneration
+
+    let arrived = Self.arrivalRecord(
+      path: "ref/chat/beta.md",
+      stem: "beta",
+      added: todayDateString()
+    )
+    await publishRecords([first, arrived], fetcher: fetcher, harness: harness)
+
+    harness.model.prepareForPresentation(source: .library)
+    XCTAssertEqual(harness.model.query, "")
+    XCTAssertEqual(harness.model.scope, .all)
+    XCTAssertEqual(harness.model.listOrder, .ranked)
+    XCTAssertEqual(harness.model.selectedID, "ref/chat/beta.md")
+    XCTAssertEqual(harness.model.inspectorGeneration, generation + 1)
+
+    rememberNonDefaultView(harness.model, selected: "ref/chat/beta.md")
+    harness.model.prepareForPresentation(source: .library)
+    XCTAssertEqual(harness.model.query, "Arrival")
+    XCTAssertEqual(harness.model.scope, .chats)
+    XCTAssertEqual(harness.model.listOrder, .newest)
+  }
+
+  func testOldOrNilAddedArrivalRestoresRememberedView() async throws {
+    let fetcher = FakeRefsFetcher()
+    let first = Self.arrivalRecord(path: "ref/chat/alpha.md", stem: "alpha")
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [first])
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await settleLibrary(harness, ids: ["ref/chat/alpha.md"])
+    harness.model.prepareForPresentation()
+    harness.model.panelIsVisible = { false }
+    rememberNonDefaultView(harness.model, selected: "ref/chat/alpha.md")
+
+    let renamed = Self.arrivalRecord(
+      path: "ref/chat/moved.md",
+      stem: "moved",
+      added: daysAgoDateString(30)
+    )
+    await publishRecords([first, renamed], fetcher: fetcher, harness: harness)
+    harness.model.prepareForPresentation(source: .library)
+    XCTAssertEqual(harness.model.query, "Arrival")
+    XCTAssertEqual(harness.model.scope, .chats)
+    XCTAssertEqual(harness.model.selectedID, "ref/chat/alpha.md")
+
+    let undated = Self.arrivalRecord(path: "ref/chat/undated.md", stem: "undated")
+    await publishRecords([first, renamed, undated], fetcher: fetcher, harness: harness)
+    harness.model.prepareForPresentation(source: .library)
+    XCTAssertEqual(harness.model.query, "Arrival")
+    XCTAssertEqual(harness.model.scope, .chats)
+    XCTAssertEqual(harness.model.selectedID, "ref/chat/alpha.md")
+  }
+
+  func testHighlightsTabsShowDefersArrivalResetToNextLibraryShow() async throws {
+    let fetcher = FakeRefsFetcher()
+    let first = Self.arrivalRecord(path: "ref/chat/alpha.md", stem: "alpha")
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [first])
+    let reader = FakeTabsReader(isTrusted: false)
+    let harness = try makeRenameHarness(fetcher: fetcher, tabsReader: reader)
+    await settleLibrary(harness, ids: ["ref/chat/alpha.md"])
+    harness.model.prepareForPresentation()
+    harness.model.panelIsVisible = { false }
+    rememberNonDefaultView(harness.model, selected: "ref/chat/alpha.md")
+    let arrived = Self.arrivalRecord(
+      path: "ref/chat/beta.md",
+      stem: "beta",
+      added: todayDateString()
+    )
+    await publishRecords([first, arrived], fetcher: fetcher, harness: harness)
+
+    harness.model.prepareForPresentation(source: .highlightsTabs)
+    XCTAssertTrue(harness.model.tabsFilter)
+    XCTAssertEqual(harness.model.query, "Arrival")
+    XCTAssertEqual(harness.model.scope, .chats)
+
+    harness.model.prepareForPresentation(source: .library)
+    XCTAssertEqual(harness.model.query, "")
+    XCTAssertEqual(harness.model.scope, .all)
+    XCTAssertFalse(harness.model.tabsFilter)
+    XCTAssertEqual(harness.model.selectedID, "ref/chat/beta.md")
+  }
+
+  func testLaterHiddenBatchIsSelectedOnShow() async throws {
+    let fetcher = FakeRefsFetcher()
+    let first = Self.arrivalRecord(path: "ref/chat/alpha.md", stem: "alpha")
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [first])
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await settleLibrary(harness, ids: ["ref/chat/alpha.md"])
+    harness.model.prepareForPresentation()
+    harness.model.panelIsVisible = { false }
+    rememberNonDefaultView(harness.model, selected: "ref/chat/alpha.md")
+
+    let beta = Self.arrivalRecord(
+      path: "ref/chat/beta.md",
+      stem: "beta",
+      added: todayDateString()
+    )
+    await publishRecords([first, beta], fetcher: fetcher, harness: harness)
+    let gamma = Self.arrivalRecord(
+      path: "ref/chat/gamma.md",
+      stem: "gamma",
+      added: todayDateString()
+    )
+    await publishRecords([first, beta, gamma], fetcher: fetcher, harness: harness)
+
+    harness.model.prepareForPresentation(source: .library)
+    XCTAssertEqual(harness.model.selectedID, "ref/chat/gamma.md")
+  }
+
+  func testSuccessfulRenameDoesNotResetOnNextShow() async throws {
+    let oldPath = "ref/chat/old_stem.md"
+    let newPath = "ref/chat/new_stem.md"
+    let added = todayDateString()
+    let fetcher = FakeRefsFetcher()
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [Self.arrivalRecord(path: oldPath, stem: "old_stem", added: added)]
+    )
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await settleLibrary(harness, ids: [oldPath])
+    harness.model.prepareForPresentation()
+    harness.model.panelIsVisible = { true }
+    fetcher.renameResponse = RefsRenameResponse(
+      schemaVersion: 1,
+      ok: true,
+      from: RefsRenameLocation(path: oldPath, stem: "old_stem"),
+      to: RefsRenameLocation(path: newPath, stem: "new_stem"),
+      links: RefsRenameLinks(rewritten: 0, files: []),
+      outcome: "renamed",
+      changed: true
+    )
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [Self.arrivalRecord(path: newPath, stem: "new_stem", added: added)]
+    )
+    harness.model.openRenameCard()
+    harness.model.editRenameDraft("new_stem")
+    harness.model.handleRenameCardKey(.submit)
+    await harness.waitForModel { $0.renameCard == nil && $0.selectedID == newPath }
+
+    rememberNonDefaultView(harness.model, selected: newPath)
+    harness.model.panelDidHide()
+    harness.model.panelIsVisible = { false }
+    harness.model.prepareForPresentation(source: .library)
+    XCTAssertEqual(harness.model.query, "Arrival")
+    XCTAssertEqual(harness.model.scope, .chats)
+    XCTAssertEqual(harness.model.selectedID, newPath)
+  }
+
+  func testSelectingAVisibleArrivalCancelsTheNextShowReset() async throws {
+    let fetcher = FakeRefsFetcher()
+    let first = Self.arrivalRecord(path: "ref/chat/alpha.md", stem: "alpha")
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [first])
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await settleLibrary(harness, ids: ["ref/chat/alpha.md"])
+    harness.model.prepareForPresentation()
+    harness.model.panelIsVisible = { true }
+    XCTAssertTrue(harness.model.perform(.move(.first)))
+
+    let arrived = Self.arrivalRecord(
+      path: "ref/chat/beta.md",
+      stem: "beta",
+      added: todayDateString()
+    )
+    await publishRecords([first, arrived], fetcher: fetcher, harness: harness)
+    await harness.waitForModel { $0.listing.orderedIDs.contains("ref/chat/beta.md") }
+    XCTAssertEqual(harness.model.selectedID, "ref/chat/alpha.md")
+    XCTAssertEqual(harness.model.query, "")
+
+    XCTAssertTrue(harness.model.perform(.select(id: "ref/chat/beta.md")))
+    harness.model.panelDidHide()
+    harness.model.panelIsVisible = { false }
+    rememberNonDefaultView(harness.model, selected: "ref/chat/beta.md")
+    harness.model.prepareForPresentation(source: .library)
+    XCTAssertEqual(harness.model.query, "Arrival")
+    XCTAssertEqual(harness.model.scope, .chats)
+    XCTAssertEqual(harness.model.selectedID, "ref/chat/beta.md")
+  }
+
+  func testUntouchedVisibleArrivalInsideGraceResetsAndSelectsIt() async throws {
+    let fetcher = FakeRefsFetcher()
+    let first = Self.arrivalRecord(path: "ref/chat/alpha.md", stem: "alpha")
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [first])
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await settleLibrary(harness, ids: ["ref/chat/alpha.md"])
+    harness.model.prepareForPresentation(source: .library)
+    harness.model.panelIsVisible = { true }
+    let generation = harness.model.inspectorGeneration
+
+    let arrived = Self.arrivalRecord(
+      path: "ref/chat/beta.md",
+      stem: "beta",
+      added: todayDateString()
+    )
+    await publishRecords([first, arrived], fetcher: fetcher, harness: harness)
+    await harness.waitForModel { $0.selectedID == "ref/chat/beta.md" }
+    XCTAssertEqual(harness.model.query, "")
+    XCTAssertEqual(harness.model.scope, .all)
+    XCTAssertEqual(harness.model.inspectorGeneration, generation + 1)
+  }
+
+  func testTouchedOrExpiredGraceJoinsAndResetsOnTheNextShow() async throws {
+    let fetcher = FakeRefsFetcher()
+    let first = Self.arrivalRecord(path: "ref/chat/alpha.md", stem: "alpha")
+    let arrived = Self.arrivalRecord(
+      path: "ref/chat/beta.md",
+      stem: "beta",
+      added: todayDateString()
+    )
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [first])
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await settleLibrary(harness, ids: ["ref/chat/alpha.md"])
+    harness.model.prepareForPresentation(source: .library)
+    harness.model.panelIsVisible = { true }
+    harness.model.setQuery("Arrival")
+
+    await publishRecords([first, arrived], fetcher: fetcher, harness: harness)
+    await harness.waitForModel { $0.listing.orderedIDs.contains("ref/chat/beta.md") }
+    XCTAssertEqual(harness.model.selectedID, "ref/chat/alpha.md")
+    XCTAssertEqual(harness.model.query, "Arrival")
+
+    harness.model.panelDidHide()
+    harness.model.panelIsVisible = { false }
+    harness.model.prepareForPresentation(source: .library)
+    XCTAssertEqual(harness.model.query, "")
+    XCTAssertEqual(harness.model.selectedID, "ref/chat/beta.md")
+  }
+
+  func testExpiredGraceJoinsAndResetsOnTheNextShow() async throws {
+    let clock = TestClock()
+    let fetcher = FakeRefsFetcher()
+    let first = Self.arrivalRecord(path: "ref/chat/alpha.md", stem: "alpha")
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [first])
+    let harness = try makeRenameHarness(fetcher: fetcher, now: { clock.now })
+    await settleLibrary(harness, ids: ["ref/chat/alpha.md"])
+    harness.model.prepareForPresentation(source: .library)
+    harness.model.panelIsVisible = { true }
+    clock.now += RefsArrivalTracker.visibleGraceSeconds + 1
+
+    let arrived = Self.arrivalRecord(
+      path: "ref/chat/beta.md",
+      stem: "beta",
+      added: todayDateString()
+    )
+    await publishRecords([first, arrived], fetcher: fetcher, harness: harness)
+    await harness.waitForModel { $0.listing.orderedIDs.contains("ref/chat/beta.md") }
+    XCTAssertEqual(harness.model.selectedID, "ref/chat/alpha.md")
+    XCTAssertEqual(harness.model.query, "")
+
+    harness.model.panelDidHide()
+    harness.model.panelIsVisible = { false }
+    harness.model.prepareForPresentation(source: .library)
+    XCTAssertEqual(harness.model.selectedID, "ref/chat/beta.md")
+  }
+
+  func testScanResultsShowSelectsJustScannedAndClearsPending() async throws {
+    let fetcher = FakeRefsFetcher()
+    let first = Self.arrivalRecord(path: "ref/chat/alpha.md", stem: "alpha")
+    let created = Self.arrivalRecord(
+      path: "ref/chat/beta.md",
+      stem: "beta",
+      added: todayDateString()
+    )
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [first])
+    fetcher.scanResult = RefsScanResponse(
+      ok: true,
+      schemaVersion: 1,
+      summary: RefsScanSummary(created: 1),
+      notes: [RefsScanNote(action: "create", path: created.path, title: created.title)]
+    )
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await settleLibrary(harness, ids: ["ref/chat/alpha.md"])
+    harness.model.prepareForPresentation()
+    harness.model.panelIsVisible = { false }
+    rememberNonDefaultView(harness.model, selected: "ref/chat/alpha.md")
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [first, created])
+    XCTAssertTrue(harness.model.perform(.scan))
+    await harness.waitForScan()
+    await settleLibrary(harness, ids: ["ref/chat/alpha.md", "ref/chat/beta.md"])
+
+    harness.model.prepareForPresentation(source: .scanResults)
+    XCTAssertEqual(harness.model.query, "")
+    XCTAssertEqual(harness.model.listing.sections.first?.kind, .justScanned)
+    XCTAssertEqual(harness.model.selectedID, "ref/chat/beta.md")
+
+    rememberNonDefaultView(harness.model, selected: "ref/chat/beta.md")
+    harness.model.prepareForPresentation(source: .library)
+    XCTAssertEqual(harness.model.query, "Arrival")
+    XCTAssertEqual(harness.model.scope, .chats)
+  }
+
   private static func tabsSnapshot(
     _ items: [RefItem],
     vault: URL,
@@ -4305,7 +4647,8 @@ final class RefsPanelModelTests: XCTestCase {
 
   private func makeRenameHarness(
     fetcher: FakeRefsFetcher,
-    tabsReader: FakeTabsReader? = nil
+    tabsReader: FakeTabsReader? = nil,
+    now: @escaping () -> Date = { Date() }
   ) throws -> Harness {
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
@@ -4342,7 +4685,8 @@ final class RefsPanelModelTests: XCTestCase {
       opener: opener,
       highlights: FakeLocator(appURL: nil),
       pasteboard: pasteboard,
-      tabs: tabsReader.map { HighlightsTabsSession(reader: $0) }
+      tabs: tabsReader.map { HighlightsTabsSession(reader: $0) },
+      now: now
     )
     let harness = Harness(
       library: library,
@@ -4490,6 +4834,20 @@ private func todayDateString() -> String {
   formatter.calendar = Calendar(identifier: .gregorian)
   formatter.dateFormat = "yyyy-MM-dd"
   return formatter.string(from: Date())
+}
+
+/// A local `YYYY-MM-DD` that is `days` before today.
+private func daysAgoDateString(_ days: Int) -> String {
+  let formatter = DateFormatter()
+  formatter.calendar = Calendar(identifier: .gregorian)
+  formatter.dateFormat = "yyyy-MM-dd"
+  return formatter.string(
+    from: Date().addingTimeInterval(TimeInterval(-days * 86_400))
+  )
+}
+
+private final class TestClock: @unchecked Sendable {
+  var now = Date()
 }
 
 /// How many fake-bob invocations start with `prefix` in a record file.

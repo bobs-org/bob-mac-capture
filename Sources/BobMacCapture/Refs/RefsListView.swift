@@ -86,8 +86,9 @@ struct RefsSectionHeader: View {
 
 /// The list column: a scroll view of pinned sections whose selection
 /// stays fully visible below the pinned header without animation.
-/// A show keeps the selected row when it remains listed; a re-rank that
-/// selects the first row returns the list to its top. Moving up lands
+/// A show keeps the selected row when it remains listed, unless a newly
+/// added reference resets the view; a re-rank that selects the first row
+/// returns the list to its top. Moving up lands
 /// the selected row just under its section header. Reports its visible row budget to
 /// the model so paging moves by one less than fits. Tab-close
 /// removals fold out through a short transition; query re-ranks stay

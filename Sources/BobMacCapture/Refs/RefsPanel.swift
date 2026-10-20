@@ -99,7 +99,8 @@ public final class RefsPanelController: NSObject {
         _ = makePanelIfNeeded()
     }
 
-    /// Shows the panel: restores the model's remembered view, recomputes
+    /// Shows the panel: restores the model's remembered view, or resets
+    /// to and selects a newly added reference, recomputes
     /// the frame, fades in, and focuses the search field. Highlights stays frontmost:
     /// this never calls `NSApp.activate`.
     public func show(source: RefsPresentationSource = .library) {

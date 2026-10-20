@@ -70,8 +70,15 @@ JSON report `bob` returns.
 Bob Refs remembers its query, kind scope, Newest and Tabs filters, selected
 reference, revealed highlight pages, and list and preview positions in memory
 for the app's lifetime. Every ordinary show restores that view using fresh
-library or Tabs data. Ctrl-Z resets it to the fresh-launch defaults;
-quitting or restarting starts fresh.
+library or Tabs data, except when a reference was added since the panel was
+last shown and its `added` day is within the 3-day NEW window (renames and
+moves of older notes do not count): that show resets to the fresh-launch
+defaults and selects the new reference (the newest batch, then the first
+listed id in that batch). An arrival that lands in the first 10 seconds of
+an untouched ordinary show — typically the show's own pull — also resets
+and selects it. A Tabs show defers the reset to the next ordinary show.
+Selecting the reference first cancels the reset. Ctrl-Z resets it to the
+fresh-launch defaults; quitting or restarting starts fresh.
 
 `RefsLibrary` owns the refresh service: the snapshot, the `-g`
 backfill on its own lane, Today, a one-shot Spotlight sweep for
@@ -278,7 +285,8 @@ are 26 pt and pinned. Ranked headers read `NEW`, `NOW`, `READING`, …;
 Newest headers read `TODAY`, `YESTERDAY`, … . The selected row always
 stays fully visible
 below the pinned header; a show keeps the selected row when it remains
-listed, and a re-rank that selects the first row returns the list to its
+listed, unless a newly added reference resets the view, and a re-rank that
+selects the first row returns the list to its
 top. Moving up lands the selected row just under its section header. The NEW header leads with the same accent
 dot; while a NEW-section row is selected it trails "⌥N Mark Seen"
 or "⌥N Mark New". In Newest they are date groups (`TODAY`,
@@ -435,10 +443,13 @@ progress finishes if the panel hides.
   Off. It registers only for Highlights or the override app; the global
   Control-Shift-Command-O and Command-O library flows are unchanged.
 - Ordinary shows restore the remembered query, scope, filters, selection,
-  revealed pages, and scroll positions. Shift-Command-O does the same when
+  revealed pages, and scroll positions, except when a newly added reference
+  resets the view and selects it (including an arrival in the first 10
+  seconds of an untouched show). Shift-Command-O does the same when
   Tabs is already on; when Tabs is off, it enables Tabs while keeping the
   query and scope, turning Newest off, and selecting the current Highlights
-  tab when available. Ctrl-Z resets the view to fresh-launch defaults.
+  tab when available. A Tabs show defers a new-reference reset to the next
+  ordinary show. Ctrl-Z resets the view to fresh-launch defaults.
 - Clicking a scan notification opens the default view with Just scanned
   at the top and its first row selected.
 - The menu-bar item offers Bob Refs… directly below Capture, with the

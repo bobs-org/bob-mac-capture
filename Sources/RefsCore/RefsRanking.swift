@@ -690,10 +690,13 @@ public enum RefsRanker {
       && item.annotationCount == 0
   }
 
-  /// The unmarked arrival rule, ignoring ⌥N marks: Ready or Next,
-  /// unopened, and added within `newWindowDays` local days.
-  public static func arrivedNew(_ item: RefItem, signals: RefsSignals) -> Bool {
-    guard isUnopened(item, signals: signals), let added = item.added else {
+  /// True when the item has an `added` day within `newWindowDays`
+  /// local days of `signals.now`. Reading state, opens, and marks
+  /// are ignored.
+  public static func addedWithinNewWindow(
+    _ item: RefItem, signals: RefsSignals
+  ) -> Bool {
+    guard let added = item.added else {
       return false
     }
     let todayOrdinal = RefsDates.ordinal(
@@ -701,6 +704,15 @@ public enum RefsRanker {
     )
     return todayOrdinal - RefsDates.unixOrdinal(added)
       <= RefsRankingConstants.newWindowDays
+  }
+
+  /// The unmarked arrival rule, ignoring ⌥N marks: Ready or Next,
+  /// unopened, and added within `newWindowDays` local days.
+  public static func arrivedNew(_ item: RefItem, signals: RefsSignals) -> Bool {
+    guard isUnopened(item, signals: signals) else {
+      return false
+    }
+    return addedWithinNewWindow(item, signals: signals)
   }
 
   /// NEW when Ready or Next and either a `new` mark still holds or
