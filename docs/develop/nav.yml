@@ -4,3 +4,5 @@
   path: build.md
 - title: CI
   path: ci.md
+- title: Render fixtures
+  path: render-fixtures.md

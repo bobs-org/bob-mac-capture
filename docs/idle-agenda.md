@@ -5,6 +5,11 @@ description: "Today's Pomodoro agenda in an empty Bob Mac Capture draft: caching
 
 ## Idle agenda
 
+[![Idle agenda showing the running FIX Pomodoro, linked tasks, and upcoming sessions](images/capture-agenda.png#only-light)](images/capture-agenda.png)
+[![Idle agenda showing the running FIX Pomodoro, linked tasks, and upcoming sessions](images/capture-agenda-dark.png#only-dark)](images/capture-agenda-dark.png)
+
+Synthetic CI render. Open the image for full-size text.
+
 With an empty draft, the panel shows today's Pomodoro agenda below the editor, in
 the same thin-material pane as the live preview. It lists the running Pomodoro (Now)
 and every future one (Next, then Later), each with its linked tasks at the most

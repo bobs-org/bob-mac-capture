@@ -5,6 +5,11 @@ description: "Preview cards, Pomodoro blocks, session controls, dependencies, co
 
 Every card below renders what `bob capture --dry-run --no-clip --format json` returns for the current draft, in `bob`'s own order. The explicit Preview button and Capture resolve the clipboard and mirror the full block; continuous live preview passes `--no-clip`. Insertion behavior for the rows is in [Task pickers](task-pickers.md) and [Relationship pickers](relationship-pickers.md).
 
+[![Task completion card showing the completed task and its struck Task Link in the running Pomodoro](images/task-completion.png#only-light)](images/task-completion.png)
+[![Task completion card showing the completed task and its struck Task Link in the running Pomodoro](images/task-completion-dark.png#only-dark)](images/task-completion-dark.png)
+
+Synthetic CI render. Open the image for full-size text.
+
 ## Start overrides
 
 A `=` override restart or swap previews on the same start card with an orange

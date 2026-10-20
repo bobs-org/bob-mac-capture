@@ -1,5 +1,7 @@
 # AGENTS.md — bob-mac-capture
 
+The `docs/` tree is mounted into Bob's site; documentation changes require `just docs-check`.
+
 Never land Swift you have not compiled, and never write a plan that tells an agent
 to skip compiling.
 

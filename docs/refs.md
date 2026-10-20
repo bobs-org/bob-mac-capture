@@ -7,6 +7,11 @@ Bob Refs is a thin client of `bob`: it filters, ranks, sections, and presents wh
 
 ## Bob Refs
 
+[![Bob Refs browse panel with reading-state sections and the selected reference's inspector](images/refs-browse.png#only-light)](images/refs-browse.png)
+[![Bob Refs browse panel with reading-state sections and the selected reference's inspector](images/refs-browse-dark.png#only-dark)](images/refs-browse-dark.png)
+
+Synthetic CI render. Open the image for full-size text.
+
 Bob Refs is a quick-open panel for the reference library: one keystroke shows
 every PDF-backed reference note, with kind and reading state on every row.
 Return opens the original PDF in Highlights and changes nothing in the vault —

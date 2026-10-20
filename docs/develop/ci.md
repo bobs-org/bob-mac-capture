@@ -21,4 +21,4 @@ install-restart notification signpost.
 
 ## Render fixtures
 
-The Test step sets `BOB_MAC_CAPTURE_RENDER_DIR` and uploads that directory as the `render-fixtures` artifact (14-day retention) even when the job fails. Tests that opt in write PNGs there (menu-bar glyph, close/adjust/link-move/created-start cards, Pomodoro-block and task-block designs, Refs panel). Architecture names those families; [Build](build.md#menu-bar-glyph-fixtures) has the glyph filter. Selecting those PNGs into the mounted docs site is out of this page's scope.
+The Test step sets `BOB_MAC_CAPTURE_RENDER_DIR` and uploads that directory as the `render-fixtures` artifact (14-day retention) even when the job fails. Tests that opt in write PNGs there (menu-bar glyph, close/adjust/link-move/created-start cards, Pomodoro-block and task-block designs, Refs panel). Architecture names those families; [Build](build.md#menu-bar-glyph-fixtures) has the glyph filter. [Render fixtures](render-fixtures.md) explains the curated documentation images, provenance, refresh commands, and appearance checks.

@@ -53,3 +53,16 @@ signing-identity:
     ./Scripts/create-signing-identity.sh
 
 all: format-lint build test bundle
+
+# Import reviewed synthetic panel images from the latest successful master CI.
+docs-media:
+    ./Scripts/docs-media.sh
+
+# Preview this checkout's mounted pages through bob-cli's full documentation gate.
+docs-check:
+    ./Scripts/docs-check.sh
+
+# Offline importer and preview-wrapper behavior tests.
+docs-test:
+    bash -n Scripts/docs-media.sh Scripts/docs-check.sh
+    python3 -B Scripts/test_docs_scripts.py
