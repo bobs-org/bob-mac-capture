@@ -206,6 +206,108 @@ final class CaptureRelationshipPresentationTests: XCTestCase {
         XCTAssertEqual(notification.title, "Exercise · depends on 1 · blocks 1")
     }
 
+    func testRelationRowsForLXVectors() throws {
+        let lx1 = try captureFixture("relation-preview-lx1-archived.json")
+        XCTAssertEqual(
+            CaptureRelationshipPresentation(capture: lx1).rows.map(\.text),
+            [
+                "🪢 links to “Capture * blocks existing tasks” · follow-up of   done/bob_done.md ^capture-star · archived: LINKED FROM shows live only"
+            ]
+        )
+
+        let lx2 = try captureFixture("relation-preview-lx2-from.json")
+        XCTAssertEqual(
+            CaptureRelationshipPresentation(capture: lx2).rows.map(\.text),
+            ["🪢 “Design a retry policy” now links here · next step   sase.md ^retry-design"]
+        )
+
+        let lx3 = try captureFixture("relation-preview-lx3-relabeled.json")
+        XCTAssertEqual(
+            CaptureRelationshipPresentation(capture: lx3).rows.map(\.text),
+            ["🪢 relabeled “Retry design” · next   sase.md ^retry-design"]
+        )
+
+        let mixed = try captureFixture("relation-preview-mixed-dependency.json")
+        let mixedRows = CaptureRelationshipPresentation(capture: mixed).rows.map(\.text)
+        XCTAssertEqual(mixedRows.count, 2)
+        XCTAssertTrue(mixedRows[0].hasPrefix("⛓ depends on"))
+        XCTAssertTrue(mixedRows[1].hasPrefix("🪢 links to"))
+        XCTAssertTrue(mixedRows[1].contains("Design a retry policy"))
+
+        let batch = try captureFixture("relation-preview-lx10-same-batch.json")
+        XCTAssertEqual(batch.normalizedCaptures.count, 2)
+        let firstRows = CaptureRelationshipPresentation(
+            capture: batch.normalizedCaptures[0]
+        ).rows.map(\.text)
+        XCTAssertEqual(firstRows.count, 1)
+        XCTAssertTrue(firstRows[0].hasPrefix("🪢 links to"))
+    }
+
+    func testRelationRowsNeverRenderStatusArrows() throws {
+        for fixture in [
+            "relation-preview-lx1-archived.json",
+            "relation-preview-lx2-from.json",
+            "relation-preview-lx3-relabeled.json",
+            "relation-preview-mixed-dependency.json",
+        ] {
+            let capture = try captureFixture(fixture)
+            for row in CaptureRelationshipPresentation(capture: capture).rows
+                where row.text.hasPrefix("🪢")
+            {
+                XCTAssertFalse(
+                    row.text.contains("Ready →"),
+                    "\(fixture): \(row.text)"
+                )
+                XCTAssertFalse(
+                    row.text.contains("In Progress →"),
+                    "\(fixture): \(row.text)"
+                )
+            }
+        }
+    }
+
+    func testRelationNotificationsCountSeparately() throws {
+        let lx1 = try captureFixture("relation-preview-lx1-archived.json")
+        let lx1Notification = try XCTUnwrap(
+            CaptureRelationshipPresentation(capture: lx1).notification
+        )
+        XCTAssertEqual(
+            lx1Notification.title,
+            "🪢 Fix retries now links to “Capture * blocks existing tasks”"
+        )
+
+        let lx2 = try captureFixture("relation-preview-lx2-from.json")
+        let lx2Notification = try XCTUnwrap(
+            CaptureRelationshipPresentation(capture: lx2).notification
+        )
+        XCTAssertEqual(
+            lx2Notification.title,
+            "🪢 “Design a retry policy” now links here"
+        )
+
+        let mixed = try captureFixture("relation-preview-mixed-dependency.json")
+        let mixedNotification = try XCTUnwrap(
+            CaptureRelationshipPresentation(capture: mixed).notification
+        )
+        XCTAssertEqual(mixedNotification.title, "Buy milk · depends on 1 · links 1")
+    }
+
+    func testRelationManagedLinesAreSuppressed() throws {
+        let lx3 = try captureFixture("relation-preview-lx3-relabeled.json")
+        let suppressed = lx3.taskBlocks.map {
+            CaptureTaskBlockPresentation(
+                block: $0,
+                dryRun: true,
+                suppressRelationshipLines: true
+            )
+        }
+        XCTAssertTrue(suppressed.allSatisfy { card in
+            card.rows.allSatisfy {
+                !$0.content.contains("**LINKS:**") && !$0.content.contains("**LINKED FROM:**")
+            }
+        })
+    }
+
     private func captureFixture(_ name: String) throws -> CaptureCommandSuccess {
         try decodeSuccess(fixtureData(name))
     }

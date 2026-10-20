@@ -546,6 +546,7 @@ struct CapturePanelView: View {
             || model.previewState != .idle
             || model.agendaVisible
             || model.pullInCapabilityNote != nil
+            || model.relationCapabilityWarning != nil
             || model.pullInChoiceVisible
     }
 
@@ -686,6 +687,12 @@ struct CapturePanelView: View {
                     .padding(.leading, 14)
                     .layoutPriority(0)
                     .id(AuxiliarySection.taskIDPrompt)
+            } else if model.relationLabelPromptVisible {
+                RelationLabelPromptCard(model: model)
+                    .frame(width: 430)
+                    .padding(.leading, 14)
+                    .layoutPriority(0)
+                    .id(AuxiliarySection.relationLabelPrompt)
             } else if model.pomodoroNamePromptVisible {
                 PomodoroNamePromptCard(model: model)
                     .frame(width: 430)
@@ -759,6 +766,13 @@ struct CapturePanelView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityLabel(note)
+        }
+        if let warning = model.relationCapabilityWarning {
+            Label(warning, systemImage: "info.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel(warning)
         }
     }
 
@@ -903,6 +917,7 @@ struct CapturePanelView: View {
         case templateShelf
         case taskIDPrompt
         case pomodoroNamePrompt
+        case relationLabelPrompt
         case completion
         case pickerChip
         case destination
@@ -1625,6 +1640,111 @@ private struct PomodoroNamePromptCard: View {
                 .lineLimit(1)
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+@available(macOS 26.0, *)
+private struct RelationLabelPromptCard: View {
+    @ObservedObject var model: CapturePanelModel
+    @FocusState private var fieldFocused: Bool
+
+    private var prompt: CaptureRelationLabelPromptState? {
+        model.relationLabelPrompt
+    }
+
+    var body: some View {
+        if let prompt {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Label("🪢 Relation", systemImage: "arrow.left.arrow.right")
+                        .font(.headline)
+                    Spacer(minLength: 8)
+                    if prompt.isSaving {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+
+                Text(model.relationLabelSentence)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Relation sentence: \(model.relationLabelSentence)")
+
+                TextField(
+                    "follow-up of",
+                    text: Binding(
+                        get: { model.relationLabelPrompt?.authoredLabel ?? "" },
+                        set: { model.updateRelationLabelPromptLabel($0) }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .focused($fieldFocused)
+                .disabled(prompt.isSaving)
+                .onAppear { fieldFocused = true }
+                .accessibilityLabel("Relation label")
+
+                if !prompt.suggestions.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(Array(prompt.suggestions.enumerated()), id: \.offset) { index, candidate in
+                                let title: String = {
+                                    let label = candidate.label ?? candidate.replacement
+                                    if let count = candidate.count, count > 0 {
+                                        return "\(label) · \(count)"
+                                    }
+                                    return label
+                                }()
+                                Button(title) {
+                                    model.insertRelationLabelSuggestion(id: candidate.replacement)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .disabled(prompt.isSaving)
+                                .accessibilityLabel("Use relation label \(candidate.label ?? candidate.replacement)")
+                            }
+                        }
+                    }
+                    .accessibilityLabel("Relation suggestions")
+                }
+
+                if let inserts = model.relationLabelInsertsText {
+                    Text(inserts)
+                        .font(.caption)
+                        .foregroundStyle(CaptureEditorPalette.color(for: .relationSigil))
+                }
+
+                Text("Tab cycles suggestions · esc back to picker")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if let error = prompt.errorMessage {
+                    Text(error)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                        .accessibilityLabel("Relation label error: \(error)")
+                }
+
+                HStack {
+                    Spacer()
+                    Button("Cancel") {
+                        model.cancelRelationLabelPrompt()
+                    }
+                    .disabled(prompt.isSaving)
+                    Button("Insert") {
+                        model.submitRelationLabelPrompt()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!model.relationLabelPromptCanSubmit)
+                }
+            }
+            .padding(10)
+            .background(.regularMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .shadow(radius: 12, y: 6)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Relation label")
+        }
     }
 }
 
@@ -2383,7 +2503,7 @@ struct PreviewPane: View {
             blocks: success.taskBlocks
         )
         let suppressRelationshipLines = captures.contains {
-            !$0.dependencyUpdates.isEmpty
+            !$0.dependencyUpdates.isEmpty || !$0.relationUpdates.isEmpty
         }
         if captures.count > 1 || success.template != nil {
             HStack(spacing: 6) {
@@ -3849,6 +3969,18 @@ struct PreviewPane: View {
                 .font(.system(.caption, design: .monospaced))
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
+        }
+
+        if !success.mintedRelationBlockIDs.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(success.mintedRelationBlockIDs.enumerated()), id: \.offset) { _, minted in
+                    Text("🪢 New relation ID · \(minted.path) ^\(minted.blockID) (\(minted.role))")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
 
         if !success.consumedLinks.isEmpty {

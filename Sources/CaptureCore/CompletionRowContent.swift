@@ -654,12 +654,15 @@ public func completionRowContent(
         symbolName = "textformat"
         contextLabel = "Relation label"
         primaryText = candidate.label ?? candidate.replacement
-        if let count = candidate.matchCount, count > 0 {
-            secondaryText = "\(count)"
+        let labelCount = candidate.count ?? candidate.matchCount
+        if let labelCount, labelCount > 0 {
+            secondaryText = "\(labelCount)"
         } else {
             secondaryText = nil
         }
-        if let reason = candidate.disabledReason, !reason.isEmpty {
+        if candidate.typed {
+            badges = ["Typed"]
+        } else if let reason = candidate.disabledReason, !reason.isEmpty {
             badges = [reason]
         }
         accessibilityHint = "Inserts this relation label."

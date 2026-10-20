@@ -164,12 +164,42 @@ struct CapturePomodoroNamePromptState: Equatable {
     var errorMessage: String?
 }
 
+/// Relation-label card state for `~` / `~~` picks. The token (`~note:id`)
+/// already sits in `draftSnapshot` at `tokenRange`; the card authors only
+/// the `|label` suffix via Bob's `relation_label` probe.
+struct CaptureRelationLabelPromptState: Equatable {
+    /// Draft containing the accepted relation token.
+    let draftSnapshot: String
+    /// UTF-8 byte range of the `~note:id` token (excluding any `|label`).
+    let tokenRange: CaptureRange
+    /// Relation direction for the live sentence.
+    let direction: DependencyPickerDirection
+    /// Draft task text (source side for `~`, target side for `~~`).
+    let ownerText: String
+    /// Picked task text.
+    let targetText: String
+    /// Caret to restore on cancel.
+    let restoreCursor: Int
+    /// Picker snapshot to return to on Escape (nil for the `|` flow).
+    let returnPicker: CapturePickerState?
+    /// Current field text (without `|`, quotes, or escapes).
+    var authoredLabel: String
+    /// Latest `relation_label` probe candidates (typed row + suggestions).
+    var suggestions: [CaptureCompletionCandidate]
+    /// Selected chip index for Tab cycling.
+    var selectedSuggestionIndex: Int
+    var isSaving: Bool
+    var errorMessage: String?
+}
+
 enum CapturePanelFocusTarget: Hashable {
     case editor
     /// Model-level focus intent owned by `BlockIDField` / AppKit, not `@FocusState`.
     case taskIDPromptBlockID
     /// Model-level focus intent owned by `PomodoroNameField` / AppKit, not `@FocusState`.
     case pomodoroNamePromptName
+    /// Model-level focus intent owned by the relation-label field / AppKit.
+    case relationLabelPromptField
     /// Model-level focus intent owned by `CapturePickerFilterField` / AppKit,
     /// not `@FocusState`.
     case pickerFilter
@@ -245,6 +275,11 @@ final class CapturePanelModel: ObservableObject {
     /// code (`plan_theme_cap_exceeded`); nil for every other error and when
     /// there is no error. Cleared together with `errorMessage`.
     @Published var errorCode: String?
+    /// Calm capability warning when the draft contains `~` but the latest
+    /// parse for this draft lacks `relation_grammar` (an older Bob would
+    /// capture the sigil literally). Nil when the draft has no `~` or Bob
+    /// understands relations. Rendered as secondary text, never red.
+    @Published var relationCapabilityWarning: String?
     @Published var lastSuccess: CaptureCommandSuccess?
     @Published var previewResult: CaptureCommandSuccess?
     @Published var lastSuccessResults: [CaptureCommandSuccess] = []
@@ -278,6 +313,7 @@ final class CapturePanelModel: ObservableObject {
     @Published private(set) var isSavingTemplate = false
     @Published var taskIDPrompt: CaptureTaskIDPromptState?
     @Published var pomodoroNamePrompt: CapturePomodoroNamePromptState?
+    @Published var relationLabelPrompt: CaptureRelationLabelPromptState?
     @Published var pullInChoice: CapturePullInChoiceState?
     @Published var picker: CapturePickerState?
     /// Recomputed only when the picker snapshot or the filter text changes.
@@ -364,6 +400,12 @@ final class CapturePanelModel: ObservableObject {
     private var templateShelfCancellable: AnyCancellable?
     private var rememberedSelectedTemplateID: String?
     private var lastAppliedParseDraft: String?
+    /// Latest parse's `relation_grammar` for `lastAppliedParseDraft` (nil
+    /// when the Bob predates relations or no parse has landed yet).
+    private var lastRelationGrammar: Int?
+    /// Draft the capability warning was already shown for (first ⌘↩). A
+    /// second ⌘↩ on the same draft submits. Cleared when the draft changes.
+    private var relationCapabilityAcknowledgedDraft: String?
     private var analysisGeneration: UInt64 = 0
     private var rewriteGeneration: UInt64 = 0
     private var rewriteExpectedCursorUTF8: Int?
@@ -849,7 +891,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     var inlinePromptVisible: Bool {
-        taskIDPrompt != nil || pomodoroNamePrompt != nil || pullInChoice != nil
+        taskIDPrompt != nil || pomodoroNamePrompt != nil || relationLabelPrompt != nil || pullInChoice != nil
     }
 
     var pullInChoiceVisible: Bool {
@@ -1795,6 +1837,25 @@ final class CapturePanelModel: ObservableObject {
         }
 
         let draft = plainDraft
+        // Old-Bob relation gate: the first ⌘↩ on a `~` draft without
+        // `relation_grammar` only shows the calm warning; a second ⌘↩ on
+        // the same draft submits. New drafts re-arm the gate.
+        if draft.contains("~"),
+           lastAppliedParseDraft == draft,
+           lastRelationGrammar == nil
+        {
+            if relationCapabilityAcknowledgedDraft != draft {
+                relationCapabilityWarning =
+                    "This bob predates ~ links; ~ text would be captured literally · update bob"
+                relationCapabilityAcknowledgedDraft = draft
+                statusText = relationCapabilityWarning ?? statusText
+                return
+            }
+        } else if relationCapabilityAcknowledgedDraft != nil,
+                  !draft.contains("~") || lastRelationGrammar != nil
+        {
+            relationCapabilityAcknowledgedDraft = nil
+        }
         if let preview = currentPullInPreview(for: draft, processClient: processClient),
            preview.pullIn?.supported == true,
            preview.offers.contains(where: { $0.offer.map { !$0.key.isEmpty } == true })
@@ -3327,6 +3388,16 @@ final class CapturePanelModel: ObservableObject {
                 cursor: cursor,
                 generation: generation,
                 processClient: processClient,
+                trigger: trigger
+            )
+            return
+        }
+        if completion.context == "relation_label" {
+            await handleRelationLabelCompletion(
+                completion,
+                draft: draft,
+                cursor: cursor,
+                generation: generation,
                 trigger: trigger
             )
             return
@@ -6233,6 +6304,550 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
+    // MARK: - Relation label card (`~` / `~~` + `|`)
+
+    var relationLabelPromptVisible: Bool {
+        relationLabelPrompt != nil
+    }
+
+    /// Live sentence for the card: `source — label → target`, with the
+    /// label omitted while the field is empty.
+    var relationLabelSentence: String {
+        guard let prompt = relationLabelPrompt else {
+            return ""
+        }
+        let label = prompt.authoredLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let source: String
+        let target: String
+        if prompt.direction == .linkedFrom {
+            source = prompt.targetText.isEmpty ? "That task" : "“\(prompt.targetText)”"
+            target = prompt.ownerText.isEmpty ? "this task" : "“\(prompt.ownerText)”"
+        } else {
+            source = prompt.ownerText.isEmpty ? "This task" : "“\(prompt.ownerText)”"
+            target = prompt.targetText.isEmpty ? "that task" : "“\(prompt.targetText)”"
+        }
+        if label.isEmpty {
+            return "\(source) → \(target)"
+        }
+        return "\(source) — \(label) → \(target)"
+    }
+
+    /// `Inserts <replacement>` line for the card, from Bob's typed row.
+    var relationLabelInsertsText: String? {
+        guard let prompt = relationLabelPrompt else {
+            return nil
+        }
+        if let typed = prompt.suggestions.first(where: { $0.typed }) {
+            return "Inserts \(typed.replacement)"
+        }
+        if prompt.authoredLabel.isEmpty {
+            return nil
+        }
+        return nil
+    }
+
+    var relationLabelPromptCanSubmit: Bool {
+        guard let prompt = relationLabelPrompt, !prompt.isSaving else {
+            return false
+        }
+        if prompt.authoredLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        if let typed = prompt.suggestions.first(where: { $0.typed }),
+           let reason = typed.disabledReason, !reason.isEmpty
+        {
+            return false
+        }
+        return true
+    }
+
+    /// Shift-Return on a relation picker row: insert the token like Return,
+    /// then open the label card for the inserted token.
+    func openRelationLabelPromptFromPickerRow(id: String) {
+        guard let picker, let presentation = pickerPresentation,
+              plainDraft == picker.draftSnapshot,
+              picker.source.isRelation,
+              let row = presentation.row(id: id)
+        else {
+            return
+        }
+        let direction: DependencyPickerDirection =
+            picker.source == .linkedFrom ? .linkedFrom : .linksTo
+        if row.insertion == nil, let pending = row.pendingBlockID {
+            presentRelationIDPrompt(
+                pending: pending,
+                pickerSnapshot: picker,
+                followUp: .none
+            )
+            return
+        }
+        guard let insertion = row.insertion else {
+            return
+        }
+        guard let range = stringRange(in: plainDraft, byteRange: picker.replacementRange) else {
+            return
+        }
+        var text = plainDraft
+        let insertionText: String
+        if picker.replacementRange.end >= plainDraft.utf8.count {
+            insertionText = insertion.hasSuffix(" ") ? insertion : insertion + " "
+        } else {
+            insertionText = insertion
+        }
+        text.replaceSubrange(range, with: insertionText)
+        let tokenEnd = picker.replacementRange.start + insertionText.trimmingCharacters(in: .whitespaces).utf8.count
+        let caret = picker.replacementRange.start + insertionText.utf8.count
+        guard stringRange(in: text, start: caret, end: caret) != nil else {
+            return
+        }
+        let ownerText = picker.dependencyOwner?.text ?? ""
+        let targetText = row.displayText
+        let tokenRange = CaptureRange(start: picker.replacementRange.start, end: tokenEnd)
+        let returnPicker = picker
+        closePickerForAccept()
+        suppressedCompletionAcceptanceDraft = text
+        setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+        scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: false, trigger: .edit)
+        rememberRelationshipDisplayName(replacement: insertion, text: row.displayText)
+        openRelationLabelPrompt(
+            draftSnapshot: text,
+            tokenRange: tokenRange,
+            direction: direction,
+            ownerText: ownerText,
+            targetText: targetText,
+            restoreCursor: caret,
+            returnPicker: returnPicker
+        )
+    }
+
+    /// Open the card for a token already in the draft (the `|` flow).
+    func openRelationLabelPromptForToken(
+        tokenRange: CaptureRange,
+        direction: DependencyPickerDirection,
+        ownerText: String,
+        targetText: String
+    ) {
+        openRelationLabelPrompt(
+            draftSnapshot: plainDraft,
+            tokenRange: tokenRange,
+            direction: direction,
+            ownerText: ownerText,
+            targetText: targetText,
+            restoreCursor: collapsedSelectionUTF8Offset() ?? plainDraft.utf8.count,
+            returnPicker: nil
+        )
+    }
+
+    private func openRelationLabelPrompt(
+        draftSnapshot: String,
+        tokenRange: CaptureRange,
+        direction: DependencyPickerDirection,
+        ownerText: String,
+        targetText: String,
+        restoreCursor: Int,
+        returnPicker: CapturePickerState?
+    ) {
+        clearTaskIDPrompt()
+        clearPomodoroNamePrompt()
+        invalidateAnalysis()
+        relationLabelPrompt = CaptureRelationLabelPromptState(
+            draftSnapshot: draftSnapshot,
+            tokenRange: tokenRange,
+            direction: direction,
+            ownerText: ownerText,
+            targetText: targetText,
+            restoreCursor: restoreCursor,
+            returnPicker: returnPicker,
+            authoredLabel: "",
+            suggestions: [],
+            selectedSuggestionIndex: 0,
+            isSaving: false,
+            errorMessage: nil
+        )
+        statusText = "Link with a relation"
+        requestFocus(.relationLabelPromptField)
+        editorInputLocked = true
+        fetchRelationLabelSuggestions()
+    }
+
+    func updateRelationLabelPromptLabel(_ label: String) {
+        guard var prompt = relationLabelPrompt, !prompt.isSaving else {
+            return
+        }
+        prompt.authoredLabel = label
+        prompt.errorMessage = nil
+        relationLabelPrompt = prompt
+        fetchRelationLabelSuggestions()
+    }
+
+    func cycleRelationLabelSuggestionForward() {
+        cycleRelationLabelSuggestion(by: 1)
+    }
+
+    func cycleRelationLabelSuggestionBackward() {
+        cycleRelationLabelSuggestion(by: -1)
+    }
+
+    private func cycleRelationLabelSuggestion(by offset: Int) {
+        guard var prompt = relationLabelPrompt, !prompt.isSaving,
+              !prompt.suggestions.isEmpty
+        else {
+            return
+        }
+        let count = prompt.suggestions.count
+        let next = (prompt.selectedSuggestionIndex + offset + count) % count
+        prompt.selectedSuggestionIndex = next
+        if let label = prompt.suggestions[next].label, !label.isEmpty {
+            prompt.authoredLabel = label
+        }
+        prompt.errorMessage = nil
+        relationLabelPrompt = prompt
+        fetchRelationLabelSuggestions()
+    }
+
+    func insertRelationLabelSuggestion(id: String) {
+        guard var prompt = relationLabelPrompt, !prompt.isSaving else {
+            return
+        }
+        guard let candidate = prompt.suggestions.first(where: { $0.replacement == id || $0.label == id }) else {
+            return
+        }
+        if let reason = candidate.disabledReason, !reason.isEmpty {
+            prompt.errorMessage = reason
+            relationLabelPrompt = prompt
+            return
+        }
+        if let label = candidate.label {
+            prompt.authoredLabel = label
+            relationLabelPrompt = prompt
+        }
+        submitRelationLabelPrompt()
+    }
+
+    func cancelRelationLabelPrompt() {
+        guard let prompt = relationLabelPrompt else {
+            return
+        }
+        let returnPicker = prompt.returnPicker
+        let restoreCursor = prompt.restoreCursor
+        clearRelationLabelPrompt()
+        if let returnPicker {
+            picker = returnPicker
+            pickerPresentation = pickerIndex?.presentation(filter: returnPicker.filterText)
+            editorInputLocked = true
+            requestFocus(.pickerFilter)
+            statusText = "Pick a task to link"
+        } else {
+            if stringRange(in: plainDraft, start: restoreCursor, end: restoreCursor) != nil {
+                setPlainDraft(plainDraft, cursorUTF8Offset: restoreCursor, suppressSelectionCallbacks: true)
+            }
+            statusText = "Ready"
+            requestFocus(.editor)
+        }
+    }
+
+    func submitRelationLabelPrompt() {
+        guard var prompt = relationLabelPrompt, !prompt.isSaving else {
+            return
+        }
+        guard prompt.draftSnapshot == plainDraft else {
+            prompt.errorMessage = "Draft changed. Reopen the relation card and try again."
+            relationLabelPrompt = prompt
+            requestFocus(.relationLabelPromptField)
+            return
+        }
+        let trimmed = prompt.authoredLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            let returnPicker = prompt.returnPicker
+            clearRelationLabelPrompt()
+            if returnPicker != nil {
+                statusText = "Inserted relation without a label"
+            } else {
+                statusText = "Ready"
+            }
+            requestFocus(.editor)
+            return
+        }
+        if let typed = prompt.suggestions.first(where: { $0.typed }) {
+            if let reason = typed.disabledReason, !reason.isEmpty {
+                prompt.errorMessage = reason
+                relationLabelPrompt = prompt
+                requestFocus(.relationLabelPromptField)
+                return
+            }
+            insertRelationLabelReplacement(typed.replacement, prompt: &prompt)
+            return
+        }
+        if let match = prompt.suggestions.first(where: { $0.label == trimmed }) {
+            if let reason = match.disabledReason, !reason.isEmpty {
+                prompt.errorMessage = reason
+                relationLabelPrompt = prompt
+                requestFocus(.relationLabelPromptField)
+                return
+            }
+            insertRelationLabelReplacement(match.replacement, prompt: &prompt)
+            return
+        }
+        prompt.errorMessage = "Still loading suggestions — try again in a moment"
+        relationLabelPrompt = prompt
+        requestFocus(.relationLabelPromptField)
+        fetchRelationLabelSuggestions()
+    }
+
+    private func insertRelationLabelReplacement(
+        _ replacement: String,
+        prompt: inout CaptureRelationLabelPromptState
+    ) {
+        let suffixEnd = prompt.draftSnapshot.utf8.count
+        guard let suffixRange = stringRange(in: prompt.draftSnapshot, start: prompt.tokenRange.end, end: suffixEnd) else {
+            prompt.errorMessage = "Completion range is stale. Reopen the relation card and try again."
+            relationLabelPrompt = prompt
+            return
+        }
+        var text = prompt.draftSnapshot
+        text.replaceSubrange(suffixRange, with: replacement)
+        let caret = prompt.tokenRange.end + replacement.utf8.count
+        guard stringRange(in: text, start: caret, end: caret) != nil else {
+            prompt.errorMessage = "Completion cursor is stale. Reopen the relation card and try again."
+            relationLabelPrompt = prompt
+            return
+        }
+        let returnPicker = prompt.returnPicker
+        clearRelationLabelPrompt()
+        suppressedCompletionAcceptanceDraft = text
+        setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+        scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: false, trigger: .edit)
+        if returnPicker != nil {
+            statusText = "Inserted \(replacement)"
+        } else {
+            statusText = "Inserted \(replacement)"
+        }
+        requestFocus(.editor)
+    }
+
+    private func clearRelationLabelPrompt() {
+        relationLabelPrompt = nil
+        clearEditorInputLockIfFree()
+    }
+
+    /// Probe Bob for `relation_label` suggestions by splicing `|"<typed>`
+    /// after the token. Older Bob returns no `relation_label` context; the
+    /// card then keeps its empty state with a calm hint.
+    private func fetchRelationLabelSuggestions() {
+        guard let prompt = relationLabelPrompt,
+              let processClient
+        else {
+            return
+        }
+        guard prompt.draftSnapshot == plainDraft else {
+            return
+        }
+        let typed = prompt.authoredLabel
+        guard let tokenEndIndex = stringRange(in: plainDraft, start: prompt.tokenRange.end, end: prompt.tokenRange.end)?.lowerBound else {
+            return
+        }
+        let head = String(plainDraft[..<tokenEndIndex])
+        let tail = String(plainDraft[tokenEndIndex...])
+        let probe: String
+        let cursor: Int
+        if typed.isEmpty {
+            probe = head + "|\"" + tail
+            cursor = prompt.tokenRange.end + 2
+        } else {
+            let escaped = typed.replacingOccurrences(of: "\"", with: "")
+            probe = head + "|\"\(escaped)" + tail
+            cursor = prompt.tokenRange.end + 2 + escaped.utf8.count
+        }
+        guard stringRange(in: probe, start: cursor, end: cursor) != nil else {
+            return
+        }
+        let draftSnapshot = prompt.draftSnapshot
+        Task { [weak self, processClient] in
+            do {
+                let response = try await processClient.captureComplete(probe, cursor: cursor)
+                await MainActor.run {
+                    guard let self,
+                          var current = self.relationLabelPrompt,
+                          current.draftSnapshot == draftSnapshot,
+                          current.draftSnapshot == self.plainDraft
+                    else {
+                        return
+                    }
+                    guard response.context == "relation_label" else {
+                        return
+                    }
+                    current.suggestions = response.candidates
+                    if current.selectedSuggestionIndex >= current.suggestions.count {
+                        current.selectedSuggestionIndex = 0
+                    }
+                    if let typed = current.suggestions.first(where: { $0.typed }),
+                       let reason = typed.disabledReason, !reason.isEmpty
+                    {
+                        current.errorMessage = reason
+                    } else {
+                        current.errorMessage = nil
+                    }
+                    self.relationLabelPrompt = current
+                }
+            } catch {
+                await MainActor.run {
+                    guard let self, var current = self.relationLabelPrompt,
+                          current.draftSnapshot == draftSnapshot
+                    else {
+                        return
+                    }
+                    current.errorMessage = nil
+                    self.relationLabelPrompt = current
+                }
+            }
+        }
+    }
+
+    /// `|` flow: a `relation_label` completion means Bob found a relation
+    /// token ending where the label suffix starts. Open the card for that
+    /// token with Bob's candidates, instead of showing an inline list.
+    private func handleRelationLabelCompletion(
+        _ completion: CaptureCompletionResponse,
+        draft: String,
+        cursor: Int,
+        generation: UInt64,
+        trigger: CompletionTrigger
+    ) async {
+        guard isCurrentAnalysis(generation), plainDraft == draft else {
+            return
+        }
+        guard trigger == .edit else {
+            dismissCompletion()
+            return
+        }
+        let tokenEnd = completion.replacement.start
+        guard tokenEnd <= draft.utf8.count,
+              tokenEnd > 0,
+              let tokenEndIndex = stringRange(in: draft, start: tokenEnd, end: tokenEnd)?.lowerBound
+        else {
+            dismissCompletion()
+            return
+        }
+        // Byte-scan backwards for the opening `~` (relation tokens contain
+        // no spaces; Bob already validated the token via the context).
+        let bytes = Array(draft.utf8)
+        var tokenStart = tokenEnd - 1
+        while tokenStart > 0,
+              bytes[tokenStart] != 0x7E, // `~`
+              bytes[tokenStart] != 0x20, // space
+              bytes[tokenStart] != 0x0A // newline
+        {
+            tokenStart -= 1
+        }
+        guard tokenStart < tokenEnd,
+              bytes[tokenStart] == 0x7E,
+              let tokenStartIndex = stringRange(in: draft, start: tokenStart, end: tokenStart)?.lowerBound
+        else {
+            dismissCompletion()
+            return
+        }
+        let token = String(draft[tokenStartIndex..<tokenEndIndex])
+        guard token.hasPrefix("~"), !token.contains(" "), !token.contains("\n") else {
+            dismissCompletion()
+            return
+        }
+        let direction: DependencyPickerDirection =
+            token.hasPrefix("~~") ? .linkedFrom : .linksTo
+        let tokenRange = CaptureRange(start: tokenStart, end: tokenEnd)
+        if var existing = relationLabelPrompt,
+           existing.draftSnapshot == draft,
+           existing.tokenRange == tokenRange
+        {
+            existing.suggestions = completion.candidates
+            if existing.selectedSuggestionIndex >= completion.candidates.count {
+                existing.selectedSuggestionIndex = 0
+            }
+            if let typed = completion.candidates.first(where: { $0.typed }),
+               let reason = typed.disabledReason, !reason.isEmpty
+            {
+                existing.errorMessage = reason
+            } else {
+                existing.errorMessage = nil
+            }
+            relationLabelPrompt = existing
+            dismissCompletion()
+            return
+        }
+        dismissCompletion()
+        let ownerPrefix = String(draft[..<tokenStartIndex]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let ownerText = completion.owner?.text ?? ownerPrefix
+        let targetText = relationshipDisplayNames[token]
+            ?? relationshipDisplayNames[token.trimmingCharacters(in: .whitespaces)]
+            ?? ""
+        openRelationLabelPrompt(
+            draftSnapshot: draft,
+            tokenRange: tokenRange,
+            direction: direction,
+            ownerText: ownerText,
+            targetText: targetText,
+            restoreCursor: cursor,
+            returnPicker: nil
+        )
+        if var opened = relationLabelPrompt {
+            opened.suggestions = completion.candidates
+            opened.authoredLabel = completion.query ?? ""
+            opened.selectedSuggestionIndex = 0
+            if let typed = completion.candidates.first(where: { $0.typed }),
+               let reason = typed.disabledReason, !reason.isEmpty
+            {
+                opened.errorMessage = reason
+            }
+            relationLabelPrompt = opened
+        }
+    }
+
+    /// Preview hook: mount the relation-label card production presents for a
+    /// Shift-Return relation pick, so design tests render the card production
+    /// mounts.
+    func installRelationLabelPromptForPreviews(
+        draft: String = "New task ~tasks:target",
+        tokenRange: CaptureRange = CaptureRange(start: 9, end: 22),
+        direction: DependencyPickerDirection = .linksTo,
+        ownerText: String = "New task",
+        targetText: String = "Target",
+        authoredLabel: String = "",
+        suggestions: [CaptureCompletionCandidate] = [],
+        returnPicker: CapturePickerState? = nil
+    ) {
+        plainDraft = draft
+        relationLabelPrompt = CaptureRelationLabelPromptState(
+            draftSnapshot: draft,
+            tokenRange: tokenRange,
+            direction: direction,
+            ownerText: ownerText,
+            targetText: targetText,
+            restoreCursor: draft.utf8.count,
+            returnPicker: returnPicker,
+            authoredLabel: authoredLabel,
+            suggestions: suggestions,
+            selectedSuggestionIndex: 0,
+            isSaving: false,
+            errorMessage: nil
+        )
+        editorInputLocked = true
+    }
+
+    /// Preview hook: stage the old-Bob capability gate for a `~` draft whose
+    /// latest parse lacks `relation_grammar`, so design tests render the calm
+    /// warning production shows.
+    func installRelationCapabilityForPreviews(draft: String, hasGrammar: Bool) {
+        plainDraft = draft
+        lastAppliedParseDraft = draft
+        lastRelationGrammar = hasGrammar ? 1 : nil
+        if draft.contains("~") && !hasGrammar {
+            relationCapabilityWarning =
+                "This bob predates ~ links; ~ text would be captured literally · update bob"
+        } else {
+            relationCapabilityWarning = nil
+        }
+        relationCapabilityAcknowledgedDraft = nil
+    }
+
     func submitTaskIDPrompt() {
         guard var prompt = taskIDPrompt, !prompt.isSaving else {
             return
@@ -8174,6 +8789,20 @@ final class CapturePanelModel: ObservableObject {
         parseDiagnostics = parse.diagnostics
         parsedTemplate = parse.template
         lastAppliedParseDraft = draft
+        lastRelationGrammar = parse.relationGrammar
+        if draft.contains("~") && parse.relationGrammar == nil {
+            relationCapabilityWarning =
+                "This bob predates ~ links; ~ text would be captured literally · update bob"
+            if relationCapabilityAcknowledgedDraft != draft {
+                // A new draft needing acknowledgement stays unacknowledged.
+            }
+        } else {
+            relationCapabilityWarning = nil
+            if lastAppliedParseDraft != relationCapabilityAcknowledgedDraft {
+                // Keep the acknowledgement only for its own draft; a draft
+                // without the warning never needs one.
+            }
+        }
         if plainDraft == draft {
             closeListParseSnapshot = CaptureParseSnapshot(
                 draft: draft,

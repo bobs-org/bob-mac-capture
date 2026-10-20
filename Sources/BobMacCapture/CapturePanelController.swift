@@ -1708,6 +1708,23 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .cancelPomodoroNamePrompt:
             model.cancelPomodoroNamePrompt()
             return true
+        case .openRelationLabelPrompt:
+            if let id = model.picker?.selectedRowID {
+                model.openRelationLabelPromptFromPickerRow(id: id)
+            }
+            return true
+        case .submitRelationLabelPrompt:
+            model.submitRelationLabelPrompt()
+            return true
+        case .cancelRelationLabelPrompt:
+            model.cancelRelationLabelPrompt()
+            return true
+        case .cycleRelationLabelSuggestionForward:
+            model.cycleRelationLabelSuggestionForward()
+            return true
+        case .cycleRelationLabelSuggestionBackward:
+            model.cycleRelationLabelSuggestionBackward()
+            return true
         case .confirmPullInChoice:
             model.confirmPullInChoice()
             return true
@@ -1783,6 +1800,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     taskIDPromptIsDependency: self.model.taskIDPromptIsDependency,
                     taskIDPromptIsTaskComplete: self.model.taskIDPromptIsTaskComplete,
                     pomodoroNamePromptVisible: self.model.pomodoroNamePromptVisible,
+                    relationLabelPromptVisible: self.model.relationLabelPromptVisible,
+                    pickerSourceIsRelation: self.model.pickerSourceIsRelation,
                     pullInChoiceVisible: self.model.pullInChoiceVisible,
                     pullInFilterFocused: self.model.pullInChoiceVisible
                         && (Self.findPickerFilterField(

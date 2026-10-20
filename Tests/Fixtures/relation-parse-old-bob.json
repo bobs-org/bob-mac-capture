@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "Fix it ~sase:retry",
+  "body": "Fix it",
+  "mode": "task",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": [],
+  "spans": [
+    {
+      "start": 7,
+      "end": 8,
+      "kind": "relation_sigil"
+    },
+    {
+      "start": 8,
+      "end": 12,
+      "kind": "relation_note"
+    },
+    {
+      "start": 13,
+      "end": 18,
+      "kind": "relation_block_id"
+    }
+  ],
+  "diagnostics": [],
+  "relations": [
+    {
+      "raw": "~sase:retry",
+      "direction": "to",
+      "note": "sase",
+      "block_id": "retry",
+      "quoted": false,
+      "range": {
+        "start": 7,
+        "end": 18
+      }
+    }
+  ],
+  "dependency_target": {
+    "kind": "new_task"
+  }
+}

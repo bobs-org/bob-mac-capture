@@ -218,6 +218,10 @@ public struct CaptureParseResponse: Codable, Equatable {
   public let refParent: CaptureParseRefParent?
   /// Additive schema-version-1 listen intent; older Bob payloads default false.
   public let refListen: Bool
+  /// Additive top-level `relation_grammar: 1` whenever the draft contains a `~`
+  /// byte. Older Bob omits the key; missing decodes as nil so the capability
+  /// warning can distinguish a predating Bob from a draft without relations.
+  public let relationGrammar: Int?
   public let spans: [CaptureSpan]
   public let diagnostics: [CaptureDiagnostic]
   public let globalDestination: CaptureGlobalDestination?
@@ -262,6 +266,7 @@ public struct CaptureParseResponse: Codable, Equatable {
     needs: [String] = [],
     refParent: CaptureParseRefParent? = nil,
     refListen: Bool = false,
+    relationGrammar: Int? = nil,
     spans: [CaptureSpan] = [],
     diagnostics: [CaptureDiagnostic] = [],
     globalDestination: CaptureGlobalDestination? = nil,
@@ -289,6 +294,7 @@ public struct CaptureParseResponse: Codable, Equatable {
     self.needs = needs
     self.refParent = refParent
     self.refListen = refListen
+    self.relationGrammar = relationGrammar
     self.spans = spans
     self.diagnostics = diagnostics
     self.globalDestination = globalDestination
@@ -323,6 +329,7 @@ public struct CaptureParseResponse: Codable, Equatable {
     refParent =
       (try? container.decodeIfPresent(CaptureParseRefParent.self, forKey: .refParent)) ?? nil
     refListen = (try? container.decodeIfPresent(Bool.self, forKey: .refListen)) ?? false
+    relationGrammar = (try? container.decodeIfPresent(Int.self, forKey: .relationGrammar)) ?? nil
     spans = try container.decodeIfPresent([CaptureSpan].self, forKey: .spans) ?? []
     diagnostics =
       try container.decodeIfPresent([CaptureDiagnostic].self, forKey: .diagnostics) ?? []
@@ -403,6 +410,7 @@ public struct CaptureParseResponse: Codable, Equatable {
     case needs
     case refParent = "ref_parent"
     case refListen = "ref_listen"
+    case relationGrammar = "relation_grammar"
     case spans
     case diagnostics
     case globalDestination = "global_destination"
@@ -3020,6 +3028,12 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
   public let consumedLinks: [CaptureConsumedLink]
   /// Newly minted identity for a task that blocks another task (`*`).
   public let mintedBlockerBlockID: CaptureMintedBlockID?
+  /// Additive per-item `~` / `~~` writes (Rule 12). Older Bob omits each key;
+  /// missing decodes as empty so the rest of capture still shows.
+  public let relationUpdates: [CaptureRelationUpdate]
+  public let linkedFromLineUpdates: [CaptureBlocksLineUpdate]
+  public let mintedRelationBlockIDs: [CaptureMintedRelationBlockID]
+  public let mirrorSkipped: [CaptureMirrorSkipped]
   // Additive `task_complete` object on a whole-item `!note:block-id`
   // completion. Older Bob binaries omit it entirely; decode as nil, and a
   // malformed value decodes as nil so it can never fail the capture decode.
@@ -3120,6 +3134,10 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     dependencyUpdates: [DependencyUpdateSummary]? = nil,
     consumedLinks: [CaptureConsumedLink] = [],
     mintedBlockerBlockID: CaptureMintedBlockID? = nil,
+    relationUpdates: [CaptureRelationUpdate] = [],
+    linkedFromLineUpdates: [CaptureBlocksLineUpdate] = [],
+    mintedRelationBlockIDs: [CaptureMintedRelationBlockID] = [],
+    mirrorSkipped: [CaptureMirrorSkipped] = [],
     taskComplete: CaptureTaskComplete? = nil,
     projectNote: CaptureProjectNoteSummary? = nil,
     ref: CaptureRef? = nil,
@@ -3189,6 +3207,10 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     self.dependencyUpdates = dependencyUpdates ?? dependencyUpdate.map { [$0] } ?? []
     self.consumedLinks = consumedLinks
     self.mintedBlockerBlockID = mintedBlockerBlockID
+    self.relationUpdates = relationUpdates
+    self.linkedFromLineUpdates = linkedFromLineUpdates
+    self.mintedRelationBlockIDs = mintedRelationBlockIDs
+    self.mirrorSkipped = mirrorSkipped
     self.taskComplete = taskComplete
     self.projectNote = projectNote
     self.ref = ref
@@ -3303,6 +3325,26 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         CaptureMintedBlockID.self,
         forKey: .mintedBlockerBlockID
       )) ?? nil
+    relationUpdates =
+      (try? container.decodeIfPresent(
+        [CaptureRelationUpdate].self,
+        forKey: .relationUpdates
+      )) ?? []
+    linkedFromLineUpdates =
+      (try? container.decodeIfPresent(
+        [CaptureBlocksLineUpdate].self,
+        forKey: .linkedFromLineUpdates
+      )) ?? []
+    mintedRelationBlockIDs =
+      (try? container.decodeIfPresent(
+        [CaptureMintedRelationBlockID].self,
+        forKey: .mintedRelationBlockIDs
+      )) ?? []
+    mirrorSkipped =
+      (try? container.decodeIfPresent(
+        [CaptureMirrorSkipped].self,
+        forKey: .mirrorSkipped
+      )) ?? []
     taskComplete =
       (try? container.decodeIfPresent(
         CaptureTaskComplete.self,
@@ -3420,6 +3462,10 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     case dependencyUpdates = "dependency_updates"
     case consumedLinks = "consumed_links"
     case mintedBlockerBlockID = "minted_blocker_block_id"
+    case relationUpdates = "relation_updates"
+    case linkedFromLineUpdates = "linked_from_line_updates"
+    case mintedRelationBlockIDs = "minted_relation_block_ids"
+    case mirrorSkipped = "mirror_skipped"
     case taskComplete = "task_complete"
     case projectNote = "project_note"
     case ref
@@ -3853,6 +3899,204 @@ public struct CaptureMintedBlockID: Codable, Equatable, Sendable {
     case path
     case line
     case blockID = "block_id"
+  }
+}
+
+/// One endpoint of a `~` / `~~` relation edge. Every field decodes tolerantly
+/// so a partial object still yields a row instead of failing the capture.
+public struct CaptureRelationEndpoint: Codable, Equatable, Sendable {
+  public let path: String
+  public let line: Int
+  public let blockID: String
+  public let text: String
+  public let archived: Bool?
+
+  public init(
+    path: String = "",
+    line: Int = 0,
+    blockID: String = "",
+    text: String = "",
+    archived: Bool? = nil
+  ) {
+    self.path = path
+    self.line = line
+    self.blockID = blockID
+    self.text = text
+    self.archived = archived
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    path = (try? container.decodeIfPresent(String.self, forKey: .path)) ?? ""
+    line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+    blockID = (try? container.decodeIfPresent(String.self, forKey: .blockID)) ?? ""
+    text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? ""
+    archived = (try? container.decodeIfPresent(Bool.self, forKey: .archived)) ?? nil
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case path
+    case line
+    case blockID = "block_id"
+    case text
+    case archived
+  }
+}
+
+/// One `~` / `~~` edge this item wrote or confirmed. `direction` is `to` or
+/// `from`, `action` is `added`, `relabeled`, or `unchanged`. Older Bob omits
+/// the array entirely; missing decodes as empty.
+public struct CaptureRelationUpdate: Codable, Equatable, Sendable {
+  public let direction: String
+  public let source: CaptureRelationEndpoint
+  public let target: CaptureRelationEndpoint
+  public let label: String?
+  public let previousLabel: String?
+  public let action: String
+
+  public init(
+    direction: String = "to",
+    source: CaptureRelationEndpoint = CaptureRelationEndpoint(),
+    target: CaptureRelationEndpoint = CaptureRelationEndpoint(),
+    label: String? = nil,
+    previousLabel: String? = nil,
+    action: String = "added"
+  ) {
+    self.direction = direction
+    self.source = source
+    self.target = target
+    self.label = label
+    self.previousLabel = previousLabel
+    self.action = action
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    direction = (try? container.decodeIfPresent(String.self, forKey: .direction)) ?? "to"
+    source =
+      (try? container.decodeIfPresent(CaptureRelationEndpoint.self, forKey: .source))
+      ?? CaptureRelationEndpoint()
+    target =
+      (try? container.decodeIfPresent(CaptureRelationEndpoint.self, forKey: .target))
+      ?? CaptureRelationEndpoint()
+    label = (try? container.decodeIfPresent(String.self, forKey: .label)) ?? nil
+    previousLabel = (try? container.decodeIfPresent(String.self, forKey: .previousLabel)) ?? nil
+    action = (try? container.decodeIfPresent(String.self, forKey: .action)) ?? "added"
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case direction
+    case source
+    case target
+    case label
+    case previousLabel = "previous_label"
+    case action
+  }
+}
+
+/// One courtesy LINKED FROM mirror write staged by a relation capture. Same
+/// shape as Bob's `blocks_line_updates`; decoded tolerantly so a partial
+/// object never fails the capture decode.
+public struct CaptureBlocksLineUpdate: Codable, Equatable, Sendable {
+  public let path: String
+  public let line: Int
+  public let task: String
+  public let kind: String
+  public let added: [String]
+  public let removed: [String]
+
+  public init(
+    path: String = "",
+    line: Int = 0,
+    task: String = "",
+    kind: String = "",
+    added: [String] = [],
+    removed: [String] = []
+  ) {
+    self.path = path
+    self.line = line
+    self.task = task
+    self.kind = kind
+    self.added = added
+    self.removed = removed
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    path = (try? container.decodeIfPresent(String.self, forKey: .path)) ?? ""
+    line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+    task = (try? container.decodeIfPresent(String.self, forKey: .task)) ?? ""
+    kind = (try? container.decodeIfPresent(String.self, forKey: .kind)) ?? ""
+    added = (try? container.decodeIfPresent([String].self, forKey: .added)) ?? []
+    removed = (try? container.decodeIfPresent([String].self, forKey: .removed)) ?? []
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case path
+    case line
+    case task
+    case kind
+    case added
+    case removed
+  }
+}
+
+/// One block id Bob minted so a relation edge can name the source or the
+/// `~~` target. `role` is `source` or `target`.
+public struct CaptureMintedRelationBlockID: Codable, Equatable, Sendable {
+  public let path: String
+  public let line: Int
+  public let blockID: String
+  public let role: String
+
+  public init(path: String = "", line: Int = 0, blockID: String = "", role: String = "source") {
+    self.path = path
+    self.line = line
+    self.blockID = blockID
+    self.role = role
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    path = (try? container.decodeIfPresent(String.self, forKey: .path)) ?? ""
+    line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+    blockID = (try? container.decodeIfPresent(String.self, forKey: .blockID)) ?? ""
+    role = (try? container.decodeIfPresent(String.self, forKey: .role)) ?? "source"
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case path
+    case line
+    case blockID = "block_id"
+    case role
+  }
+}
+
+/// One LINKED FROM courtesy write a relation capture skipped. `reason` is
+/// `archived_target`, `previous_daily_target`, `malformed_line`, or
+/// `disabled`.
+public struct CaptureMirrorSkipped: Codable, Equatable, Sendable {
+  public let path: String
+  public let blockID: String
+  public let reason: String
+
+  public init(path: String = "", blockID: String = "", reason: String = "") {
+    self.path = path
+    self.blockID = blockID
+    self.reason = reason
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    path = (try? container.decodeIfPresent(String.self, forKey: .path)) ?? ""
+    blockID = (try? container.decodeIfPresent(String.self, forKey: .blockID)) ?? ""
+    reason = (try? container.decodeIfPresent(String.self, forKey: .reason)) ?? ""
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case path
+    case blockID = "block_id"
+    case reason
   }
 }
 
@@ -5915,6 +6159,12 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
   // candidates whose line is a `#task #ref` reading task. Omitted
   // otherwise, so older Bob decodes as nil and rows render as before.
   public let taskKind: String?
+  /// Additive `relation_label` suggestion count: how many LINKS lines use
+  /// this label. Bob sends `count`; older payloads omit it.
+  public let count: Int?
+  /// Additive `relation_label` typed row: true on Bob's canonical spelling
+  /// of the typed label. Missing means false for older Bob.
+  public let typed: Bool
 
   public var id: String {
     [
@@ -5993,7 +6243,9 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     recurring: Bool = false,
     alreadySelected: Bool = false,
     today: TaskCompleteToday? = nil,
-    taskKind: String? = nil
+    taskKind: String? = nil,
+    count: Int? = nil,
+    typed: Bool = false
   ) {
     self.replacement = replacement
     self.route = route
@@ -6050,6 +6302,8 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     self.alreadySelected = alreadySelected
     self.today = today
     self.taskKind = taskKind
+    self.count = count
+    self.typed = typed
   }
 
   public init(from decoder: Decoder) throws {
@@ -6112,6 +6366,8 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     alreadySelected = try container.decodeIfPresent(Bool.self, forKey: .alreadySelected) ?? false
     today = try container.decodeIfPresent(TaskCompleteToday.self, forKey: .today)
     taskKind = try container.decodeIfPresent(String.self, forKey: .taskKind)
+    count = (try? container.decodeIfPresent(Int.self, forKey: .count)) ?? nil
+    typed = (try? container.decodeIfPresent(Bool.self, forKey: .typed)) ?? false
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -6170,6 +6426,8 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     case alreadySelected = "already_selected"
     case today
     case taskKind = "task_kind"
+    case count
+    case typed
   }
 }
 

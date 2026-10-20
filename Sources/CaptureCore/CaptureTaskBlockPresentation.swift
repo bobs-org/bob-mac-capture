@@ -135,6 +135,8 @@ public struct CaptureTaskBlockPresentation: Equatable, Sendable {
 
     private static func isManagedRelationshipLine(_ line: String) -> Bool {
         line.contains("**DEPENDS ON:**") || line.contains("**BLOCKS:**")
+            || line.contains("**LINKS:**") || line.contains("**LINKS TO:**")
+            || line.contains("**LINKED FROM:**") || line.contains("**BACKLINKS:**")
     }
 
     /// Rows and folds to render: the task line, every non-`unchanged`

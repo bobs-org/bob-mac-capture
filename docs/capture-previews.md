@@ -390,3 +390,24 @@ A dependency-only action is never labeled "Create task". The `&` and `*` editor
 spans are supplied by Bob; Swift never scans either sigil to parse capture
 grammar. Older Bob payloads without resolved relationship details keep their
 legacy preview and notification copy.
+
+## Relation rows (`~` / `~~`)
+
+Preview shows one `🪢 links to "Design a retry policy" · see   sase.md ^retry-design`
+or `🪢 "Ship the sase blog" now links here · next step   sase_blog.md ^prj` row per
+edge, in Bob's `relation_updates[]` order. Relabeled rows say
+`🪢 relabeled "Retry design" · next`; already-linked rows say
+`🪢 already linked "Retry design"`. An archived target appends the muted
+`· archived: LINKED FROM shows live only` suffix because the courtesy mirror is
+skipped. Managed `**LINKS:**` / `**LINKED FROM:**` Markdown is omitted from task
+cards while relation rows are present. Relation rows never render red,
+consumption, or status arrows. Success notifications count relations separately:
+a single `~` reads `🪢 owner now links to "target"`, a single `~~` reads
+`🪢 "source" now links here`, and larger or mixed batches read
+`owner · depends on D · links R`. New relation IDs render as
+`🪢 New relation ID · path ^id (source|target)` captions. The `~` editor spans
+are supplied by Bob; Swift never scans the sigil to parse capture grammar.
+When the draft contains `~` but the parse response lacks `relation_grammar`,
+the panel shows the calm `This bob predates ~ links; ~ text would be captured
+literally · update bob` warning: the first ⌘↩ only shows the warning, the
+second ⌘↩ submits.

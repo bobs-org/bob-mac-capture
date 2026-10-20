@@ -43,6 +43,11 @@ enum CaptureKeyCommand: Equatable {
     case cancelTaskIDPrompt
     case submitPomodoroNamePrompt
     case cancelPomodoroNamePrompt
+    case openRelationLabelPrompt
+    case submitRelationLabelPrompt
+    case cancelRelationLabelPrompt
+    case cycleRelationLabelSuggestionForward
+    case cycleRelationLabelSuggestionBackward
     case confirmPullInChoice
     case confirmPullInChoiceAndOpen
     case chooseNoPullInOffers
@@ -83,6 +88,8 @@ struct CaptureKeyRoutingContext: Equatable {
     var taskIDPromptIsDependency = false
     var taskIDPromptIsTaskComplete = false
     var pomodoroNamePromptVisible = false
+    var relationLabelPromptVisible = false
+    var pickerSourceIsRelation = false
     var pullInChoiceVisible = false
     var pullInFilterFocused = false
     var pullInFilterIsEmpty = true
@@ -160,6 +167,10 @@ struct CaptureKeyCommandRouter {
 
         if context.pomodoroNamePromptVisible {
             return pomodoroNamePromptCommand(for: event, modifiers: modifiers)
+        }
+
+        if context.relationLabelPromptVisible {
+            return relationLabelPromptCommand(for: event, modifiers: modifiers)
         }
 
         if context.pullInChoiceVisible {
@@ -381,6 +392,26 @@ struct CaptureKeyCommandRouter {
         )
     }
 
+    private func relationLabelPromptCommand(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags
+    ) -> CaptureKeyCommand? {
+        if event.keyCode == KeyCode.tab {
+            if modifiers.isEmpty {
+                return .cycleRelationLabelSuggestionForward
+            }
+            if modifiers == .shift {
+                return .cycleRelationLabelSuggestionBackward
+            }
+        }
+        return isolatedPromptCommand(
+            for: event,
+            modifiers: modifiers,
+            submit: .submitRelationLabelPrompt,
+            cancel: .cancelRelationLabelPrompt
+        )
+    }
+
     /// Keyboard while the capture picker is open. Every key the picker
     /// table leaves to native field editing (printables, Cmd-A/C/V/X/Z,
     /// Ctrl-A/E, Left/Right) returns nil here — notably Ctrl-A/E, which must
@@ -408,6 +439,9 @@ struct CaptureKeyCommandRouter {
                 }
                 if context.pickerSourceIsTaskComplete {
                     return .acceptPickerRowAndContinue
+                }
+                if context.pickerSourceIsRelation {
+                    return .openRelationLabelPrompt
                 }
                 return .consumeKey
             }

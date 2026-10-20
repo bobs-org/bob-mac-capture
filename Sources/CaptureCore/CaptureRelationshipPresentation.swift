@@ -48,14 +48,24 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
     }
 
     public init(capture: CaptureCommandSuccess) {
-        rows = capture.dependencyUpdates.flatMap { Self.rows(for: $0) }
+        let dependencyRows = capture.dependencyUpdates.flatMap { Self.rows(for: $0) }
+        let relationRows = capture.relationUpdates.map { Self.row(for: $0, capture: capture) }
+        rows = dependencyRows + relationRows
         if Self.isTaskDependency(capture) {
             ownerHeader = Self.ownerHeader(for: capture)
             notification = Self.notification(for: capture)
+        } else if !capture.relationUpdates.isEmpty {
+            ownerHeader = nil
+            notification = Self.relationOnlyNotification(for: capture)
         } else {
             ownerHeader = nil
             notification = nil
         }
+    }
+
+    /// True when this capture carries any relation writes.
+    public static func hasRelations(_ capture: CaptureCommandSuccess) -> Bool {
+        !capture.relationUpdates.isEmpty
     }
 
     public static func isTaskDependency(_ capture: CaptureCommandSuccess) -> Bool {
@@ -133,6 +143,51 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
         }
     }
 
+    /// One 🪢 preview row for a relation edge. Relations never render red,
+    /// consumption, or status arrows: only the quoted text, the label, the
+    /// locator, and the archived live-only suffix.
+    private static func row(
+        for update: CaptureRelationUpdate,
+        capture: CaptureCommandSuccess
+    ) -> CaptureRelationshipRow {
+        let isFrom = update.direction == "from"
+        let endpoint = isFrom ? update.source : update.target
+        let quoted = "“\(endpoint.text)”"
+        let label = (update.label ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let labelSuffix = label.isEmpty ? "" : " · \(label)"
+        let locator = locationText(note: endpoint.path, blockID: endpoint.blockID.isEmpty ? nil : endpoint.blockID)
+        let locatorSuffix = locator.isEmpty ? "" : "   \(locator)"
+        let archived = isArchived(update: update, capture: capture)
+        let archivedSuffix = archived ? " · archived: LINKED FROM shows live only" : ""
+        let text: String
+        switch update.action {
+        case "relabeled":
+            text = "🪢 relabeled \(quoted)\(labelSuffix)\(locatorSuffix)\(archivedSuffix)"
+        case "unchanged":
+            text = "🪢 already linked \(quoted)\(labelSuffix)\(locatorSuffix)\(archivedSuffix)"
+        default:
+            if isFrom {
+                text = "🪢 \(quoted) now links here\(labelSuffix)\(locatorSuffix)\(archivedSuffix)"
+            } else {
+                text = "🪢 links to \(quoted)\(labelSuffix)\(locatorSuffix)\(archivedSuffix)"
+            }
+        }
+        return CaptureRelationshipRow(text: text)
+    }
+
+    private static func isArchived(
+        update: CaptureRelationUpdate,
+        capture: CaptureCommandSuccess
+    ) -> Bool {
+        if update.target.archived == true || update.source.archived == true {
+            return true
+        }
+        let ids = [update.target.blockID, update.source.blockID].filter { !$0.isEmpty }
+        return capture.mirrorSkipped.contains { skipped in
+            skipped.reason == "archived_target" && ids.contains(skipped.blockID)
+        }
+    }
+
     private static func ownerHeader(
         for capture: CaptureCommandSuccess
     ) -> CaptureTaskDependencyOwnerHeader {
@@ -159,7 +214,8 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
         let blockedUpdates = capture.dependencyUpdates.filter { $0.role == "blocked_task" }
         let dependencyCount = dependentUpdates.reduce(0) { $0 + $1.prerequisites.count }
         let blockedCount = blockedUpdates.count
-        guard dependencyCount + blockedCount > 0 else {
+        let relationCount = capture.relationUpdates.count
+        guard dependencyCount + blockedCount + relationCount > 0 else {
             return nil
         }
 
@@ -169,24 +225,38 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
             }).flatMap { nonempty($0.text) }
             ?? "Task"
         let title: String
-        if dependencyCount > 0 && blockedCount > 0 {
-            title = "\(owner) · depends on \(dependencyCount) · blocks \(blockedCount)"
-        } else if dependencyCount > 0 {
-            if dependencyCount == 1,
-                let target = dependentUpdates.flatMap(\.prerequisites).first?.text,
+        if dependencyCount == 0 && blockedCount == 0 {
+            title = relationTitle(owner: owner, capture: capture)
+        } else if relationCount == 0 {
+            if dependencyCount > 0 && blockedCount > 0 {
+                title = "\(owner) · depends on \(dependencyCount) · blocks \(blockedCount)"
+            } else if dependencyCount > 0 {
+                if dependencyCount == 1,
+                    let target = dependentUpdates.flatMap(\.prerequisites).first?.text,
+                    !target.isEmpty
+                {
+                    title = "⛓ \(owner) now depends on \(target)"
+                } else {
+                    title = "\(owner) now depends on \(dependencyCount) tasks"
+                }
+            } else if blockedCount == 1,
+                let target = blockedUpdates.first?.dependentText,
                 !target.isEmpty
             {
-                title = "⛓ \(owner) now depends on \(target)"
+                title = "🧱 \(owner) now blocks \(target)"
             } else {
-                title = "\(owner) now depends on \(dependencyCount) tasks"
+                title = "\(owner) now blocks \(blockedCount) tasks"
             }
-        } else if blockedCount == 1,
-            let target = blockedUpdates.first?.dependentText,
-            !target.isEmpty
-        {
-            title = "🧱 \(owner) now blocks \(target)"
         } else {
-            title = "\(owner) now blocks \(blockedCount) tasks"
+            var parts: [String] = []
+            if dependencyCount > 0 {
+                parts.append("depends on \(dependencyCount)")
+            }
+            if blockedCount > 0 {
+                parts.append("blocks \(blockedCount)")
+            }
+            parts.append("links \(relationCount)")
+            title = "\(owner) · \(parts.joined(separator: " · "))"
         }
 
         let body = capture.consumedLinks
@@ -198,6 +268,45 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
             subtitle: capture.routeLabel.isEmpty ? capture.relativeTarget : capture.routeLabel,
             body: body
         )
+    }
+
+    /// Notification for a new-task relation capture (`kind == "task"` with
+    /// `relation_updates[]` and no `task_dependency` owner). Relations count
+    /// separately from dependencies and blocks; a mixed `&` + `~` new task
+    /// names both counts.
+    private static func relationOnlyNotification(for capture: CaptureCommandSuccess) -> Notification? {
+        guard !capture.relationUpdates.isEmpty else {
+            return nil
+        }
+        let owner = nonempty(capture.text) ?? "Task"
+        let dependencyCount = capture.dependencyUpdates.reduce(0) { $0 + $1.prerequisites.count }
+        let title: String
+        if dependencyCount > 0 {
+            title = "\(owner) · depends on \(dependencyCount) · links \(capture.relationUpdates.count)"
+        } else {
+            title = relationTitle(owner: owner, capture: capture)
+        }
+        return Notification(
+            title: title,
+            subtitle: capture.routeLabel.isEmpty ? capture.relativeTarget : capture.routeLabel,
+            body: ""
+        )
+    }
+
+    private static func relationTitle(owner: String, capture: CaptureCommandSuccess) -> String {
+        let updates = capture.relationUpdates
+        if updates.count == 1, let update = updates.first {
+            let isFrom = update.direction == "from"
+            let other = isFrom ? update.source.text : update.target.text
+            if other.isEmpty {
+                return "🪢 \(owner) · links 1"
+            }
+            if isFrom {
+                return "🪢 “\(other)” now links here"
+            }
+            return "🪢 \(owner) now links to “\(other)”"
+        }
+        return "🪢 \(owner) · links \(updates.count)"
     }
 
     private static func statusName(_ symbol: String?, name: String?) -> String {

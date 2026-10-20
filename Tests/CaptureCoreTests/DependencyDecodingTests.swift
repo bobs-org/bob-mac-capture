@@ -507,4 +507,82 @@ final class DependencyDecodingTests: XCTestCase {
         XCTAssertEqual(presentation.sections.first?.kind, .thisNote)
         XCTAssertEqual(presentation.sections.first?.title, "This note")
     }
+
+    func testRelationGrammarDecodesTolerantly() throws {
+        let withGrammar = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(fixtureText("relation-parse-need.json").utf8)
+        )
+        XCTAssertEqual(withGrammar.relationGrammar, 1)
+
+        let withoutGrammar = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data("""
+            {
+              "ok": true, "schema_version": 1, "input": "Fix it",
+              "body": "Fix it", "mode": "task", "needs": [],
+              "spans": [], "diagnostics": []
+            }
+            """.utf8)
+        )
+        XCTAssertNil(withoutGrammar.relationGrammar)
+    }
+
+    func testRelationUpdatesDecodeTolerantly() throws {
+        let lx1 = try JSONDecoder().decode(
+            CaptureCommandResponse.self,
+            from: Data(fixtureText("relation-preview-lx1-archived.json").utf8)
+        )
+        guard case .success(let success) = lx1 else {
+            return XCTFail("expected success")
+        }
+        XCTAssertEqual(success.relationUpdates.count, 1)
+        XCTAssertEqual(success.relationUpdates[0].direction, "to")
+        XCTAssertEqual(success.relationUpdates[0].action, "added")
+        XCTAssertEqual(success.relationUpdates[0].label, "follow-up of")
+        XCTAssertEqual(success.relationUpdates[0].target.archived, true)
+        XCTAssertEqual(success.mirrorSkipped.count, 1)
+        XCTAssertEqual(success.mirrorSkipped[0].reason, "archived_target")
+
+        let legacy = try JSONDecoder().decode(
+            CaptureCommandResponse.self,
+            from: Data(fixtureText("task-dependency-preview-new-task.json").utf8)
+        )
+        guard case .success(let legacySuccess) = legacy else {
+            return XCTFail("expected success")
+        }
+        XCTAssertTrue(legacySuccess.relationUpdates.isEmpty)
+        XCTAssertTrue(legacySuccess.linkedFromLineUpdates.isEmpty)
+        XCTAssertTrue(legacySuccess.mintedRelationBlockIDs.isEmpty)
+        XCTAssertTrue(legacySuccess.mirrorSkipped.isEmpty)
+    }
+
+    func testRelationLabelCandidateCountAndTypedDecode() throws {
+        let label = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(fixtureText("relation-complete-label.json").utf8)
+        )
+        XCTAssertEqual(label.context, "relation_label")
+        let typed = try XCTUnwrap(label.candidates.first(where: { $0.typed }))
+        XCTAssertEqual(typed.label, "follow")
+        XCTAssertEqual(typed.replacement, "|follow")
+        let suggestion = try XCTUnwrap(label.candidates.first(where: { !$0.typed }))
+        XCTAssertEqual(suggestion.count, 4)
+
+        let content = completionRowContent(
+            for: suggestion,
+            context: "relation_label",
+            query: "follow"
+        )
+        XCTAssertEqual(content.primaryText, "follow-up of")
+        XCTAssertEqual(content.secondaryText, "4")
+
+        let typedContent = completionRowContent(
+            for: typed,
+            context: "relation_label",
+            query: "follow"
+        )
+        XCTAssertEqual(typedContent.primaryText, "follow")
+        XCTAssertTrue(typedContent.badges.contains("Typed"))
+    }
 }
