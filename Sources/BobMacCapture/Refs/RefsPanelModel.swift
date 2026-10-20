@@ -368,7 +368,7 @@ public final class RefsPanelModel: ObservableObject {
   /// The selected row's frame in the panel root's SwiftUI coordinate
   /// space, kept live by the list. The ⌘K menu pops below it, or at
   /// the list's center when it is unknown.
-  @Published public var selectedRowRect: CGRect? = nil
+  public var selectedRowRect: CGRect? = nil
   /// The visible row count from the list geometry; pages move by one less.
   @Published public var visibleRowBudget: Int = 10
   /// The active fixed-letter copy card, if one is open.
@@ -520,6 +520,8 @@ public final class RefsPanelModel: ObservableObject {
     RefsInspectorNotesReveal, Never
   >()
   private var subscriptions = Set<AnyCancellable>()
+  private var libraryPublishPending = false
+  private var libraryPublishTask: Task<Void, Never>?
   private struct PendingOpen {
     let id: String
     let target: RefsOpenTarget
@@ -611,15 +613,15 @@ public final class RefsPanelModel: ObservableObject {
       self?.objectWillChange.send()
     }.store(in: &subscriptions)
     let itemsSubscription = library.$items.sink { [weak self] _ in
-      Task { await self?.libraryDidPublish() }
+      self?.scheduleLibraryDidPublish()
     }
     let signalsSubscription = library.$signals.sink { [weak self] _ in
-      Task { await self?.libraryDidPublish() }
+      self?.scheduleLibraryDidPublish()
     }
     itemsSubscription.store(in: &subscriptions)
     signalsSubscription.store(in: &subscriptions)
     library.$todayRefreshGeneration.sink { [weak self] _ in
-      Task { await self?.libraryDidPublish() }
+      self?.scheduleLibraryDidPublish()
     }.store(in: &subscriptions)
     library.$scanState.sink { [weak self] _ in
       Task { await self?.scanStateDidChange() }
@@ -1100,9 +1102,9 @@ public final class RefsPanelModel: ObservableObject {
   /// athena or apollo show up without waiting for the 15 s LaunchAgent.
   /// Never blocks presentation.
   public func refreshForOpen(maxAge: TimeInterval = 60) {
-    library.refreshToday(reason: .panelOpen)
+    library.requestTodayForPanelOpen()
     library.requestPullForPanelOpen()
-    refreshIfStale(maxAge: maxAge)
+    library.refreshIfStale(maxAge: maxAge, includeToday: false)
   }
 
   private func setTabsFilter(_ enabled: Bool) {
@@ -2691,6 +2693,8 @@ public final class RefsPanelModel: ObservableObject {
   }
 
   private func libraryDidPublish() {
+    let token = CaptureSignpost.begin("refs-library-publish")
+    defer { CaptureSignpost.end(token) }
     if todayLinkOverlay.values.contains(where: {
       !$0.refreshPending && $0.refreshGeneration < library.todayRefreshGeneration
     }) {
@@ -2755,6 +2759,21 @@ public final class RefsPanelModel: ObservableObject {
       ).post()
     } else if next.orderedIDs.isEmpty {
       selectedID = nil
+    }
+  }
+
+  /// Merges the library's related publisher events into one pass. The
+  /// pass reads current library state, so one main-actor turn covers a
+  /// burst of item, signal, and Today-generation publications.
+  private func scheduleLibraryDidPublish() {
+    guard !libraryPublishPending else { return }
+    libraryPublishPending = true
+    libraryPublishTask = Task { @MainActor [weak self] in
+      await Task.yield()
+      guard let self else { return }
+      self.libraryPublishPending = false
+      self.libraryPublishTask = nil
+      self.libraryDidPublish()
     }
   }
 

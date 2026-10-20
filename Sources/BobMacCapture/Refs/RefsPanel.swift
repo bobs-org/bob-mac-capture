@@ -38,6 +38,7 @@ final class RefsPanel: NSPanel {
 public final class RefsPanelController: NSObject {
     private let model: RefsPanelModel
     private var panel: RefsPanel?
+    private weak var cachedFilterField: CapturePickerFilterNSTextField?
     private var localMonitor: Any?
     private let glassToast = RefsGlassToastController()
     private var inspectorScrollCancellable: AnyCancellable?
@@ -501,7 +502,7 @@ public final class RefsPanelController: NSObject {
     }
 
     private func markedTextInFilterField() -> Bool {
-        guard let field = Self.findFilterField(in: panel?.contentView),
+        guard let field = filterField(),
               let editor = field.currentEditor() as? NSTextView
         else {
             return false
@@ -531,7 +532,7 @@ public final class RefsPanelController: NSObject {
     /// focused controls such as banner buttons alone.
     private func repairFilterFocusIfNeeded() {
         guard let panel,
-              let field = Self.findFilterField(in: panel.contentView)
+              let field = filterField()
         else {
             return
         }
@@ -547,7 +548,7 @@ public final class RefsPanelController: NSObject {
     }
 
     private func focusFilterField() {
-        if let field = Self.findFilterField(in: panel?.contentView) {
+        if let field = filterField() {
             requestFilterFocus(field)
         }
         // Retry once the runloop turns over: the field editor may not
@@ -557,13 +558,33 @@ public final class RefsPanelController: NSObject {
             guard let self,
                   let panel = self.panel,
                   panel.isKeyWindow,
-                  let field = Self.findFilterField(in: panel.contentView),
+                  let field = self.filterField(),
                   !field.holdsFirstResponder
             else {
                 return
             }
             requestFilterFocus(field)
         }
+    }
+
+    /// Reuses the attached Refs search field across keystrokes and
+    /// panel shows, walking the view tree only after the cached view has
+    /// left this panel or no longer has the expected identifier.
+    private func filterField() -> CapturePickerFilterNSTextField? {
+        guard let panel else {
+            cachedFilterField = nil
+            return nil
+        }
+        if let cachedFilterField,
+           cachedFilterField.window === panel,
+           cachedFilterField.accessibilityIdentifier()
+             == refsFilterFieldAccessibilityIdentifier
+        {
+            return cachedFilterField
+        }
+        let found = Self.findFilterField(in: panel.contentView)
+        cachedFilterField = found
+        return found
     }
 
     private func requestFilterFocus(_ field: CapturePickerFilterNSTextField) {

@@ -42,7 +42,8 @@ requests (`install-restart-notification-requested`), the idle agenda
 (intervals `agenda-refresh`, `agenda-measure`, `agenda-plan`; events
 `agenda-unchanged`, `agenda-published`, `agenda-hold-released`), Bob Refs
 (intervals `refs-pull`, `refs-refresh`, `refs-scan`, `refs-panel-show`,
-`refs-panel-prepare`, `refs-panel-order`), and the Ctrl+Tab panel switch
+`refs-panel-prepare`, `refs-panel-order`, `refs-library-publish`; event
+`refs-today-skipped`), and the Ctrl+Tab panel switch
 (interval `panel-switch`; event `panel-switch-key`), visible in
 Instruments' Points of Interest / os_signpost templates. These, and the bounded
 Recent Activity list in Settings, are metadata-only by construction — see

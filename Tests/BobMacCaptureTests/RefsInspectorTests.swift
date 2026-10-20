@@ -86,6 +86,44 @@ final class RefsInspectorLoaderTests: XCTestCase {
     )
   }
 
+  func testIdenticalHydrationSkipsContentSignalsAndThumbnailDecode() async throws {
+    let fixtures = makeFixtures()
+    fixtures.intrinsics.result = RefsPDFIntrinsics(
+      pageCount: 22,
+      outlineHeadings: ["Method", "Results"],
+      leadText: "Abstract\nWe study harness reuse.",
+      wordEstimate: 22 * 230,
+      thumbnailPNG: Data([0x89, 0x50, 0x4E, 0x47])
+    )
+    let loader = RefsInspectorLoader(
+      library: fixtures.library,
+      intrinsics: fixtures.intrinsics
+    )
+    var contentPublishes = 0
+    var signalPublishes = 0
+    let contentCancellable = loader.$content.dropFirst().sink { _ in
+      contentPublishes += 1
+    }
+    let signalsCancellable = fixtures.library.$signals.dropFirst().sink { _ in
+      signalPublishes += 1
+    }
+
+    loader.request(fixtures.paper)
+    await waitForContent(loader, id: fixtures.paper.id)
+    XCTAssertEqual(contentPublishes, 1)
+    XCTAssertEqual(signalPublishes, 1)
+    XCTAssertEqual(loader.thumbnailDecodeCount, 1)
+
+    loader.request(fixtures.paper)
+    await waitForCalls(fixtures.intrinsics, count: 2)
+    try await Task.sleep(nanoseconds: 300_000_000)
+
+    XCTAssertEqual(contentPublishes, 1)
+    XCTAssertEqual(signalPublishes, 1)
+    XCTAssertEqual(loader.thumbnailDecodeCount, 1)
+    withExtendedLifetime((contentCancellable, signalsCancellable)) {}
+  }
+
   func testSummaryExcerptIsKindGated() async throws {
     let fixtures = makeFixtures()
     fixtures.intrinsics.result = RefsPDFIntrinsics(

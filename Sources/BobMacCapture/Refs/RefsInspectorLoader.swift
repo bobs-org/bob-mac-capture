@@ -521,6 +521,10 @@ public final class RefsInspectorLoader: ObservableObject {
     private let intrinsics: RefsPDFIntrinsicsProviding
     private let imageProvider: RefsAnnotationImageProviding
     private var current: Task<Void, Never>?
+    private(set) var thumbnailDecodeCount = 0
+    /// PNG identity for each retained thumbnail, so an identical cached
+    /// PDF result does not decode the same bitmap on every selection.
+    private var thumbnailDigests: [String: Data] = [:]
     /// Preview-installed ids stay pinned until reset or another install.
     private var previewContentIDs: Set<String> = []
     private var showCache: [(key: String, row: RefsShowRow)] = []
@@ -590,6 +594,8 @@ public final class RefsInspectorLoader: ObservableObject {
         cancel()
         content = [:]
         thumbnails = [:]
+        thumbnailDigests = [:]
+        thumbnailDecodeCount = 0
         previewContentIDs = []
         showCache = []
         inFlightShows.values.forEach { $0.cancel() }
@@ -608,6 +614,7 @@ public final class RefsInspectorLoader: ObservableObject {
             content.removeValue(forKey: id)
         }
         thumbnails.removeValue(forKey: id)
+        thumbnailDigests.removeValue(forKey: id)
         previewContentIDs.remove(id)
         contentOrder.removeAll { $0 == id }
         let prefix = "\(id)|"
@@ -690,10 +697,15 @@ public final class RefsInspectorLoader: ObservableObject {
                     fromLeadText: intrinsicsValue.leadText
                 )
             }
-            if let png = intrinsicsValue.thumbnailPNG,
-               let image = NSImage(data: png)
-            {
-                thumbnails[item.id] = image
+            if let png = intrinsicsValue.thumbnailPNG {
+                let digest = Data(SHA256.hash(data: png))
+                if thumbnailDigests[item.id] != digest {
+                    thumbnailDigests[item.id] = digest
+                    thumbnailDecodeCount += 1
+                    if let image = NSImage(data: png) {
+                        thumbnails[item.id] = image
+                    }
+                }
             }
         }
         if let row = showRow {
@@ -707,17 +719,18 @@ public final class RefsInspectorLoader: ObservableObject {
         guard !Task.isCancelled else {
             return
         }
-        rememberContent(id: item.id, value: built)
-        var pageCounts: [String: Int] = [:]
-        if let pages = built.pageCount {
-            pageCounts[item.id] = pages
-        }
-        let headings = built.outline.isEmpty ? [:] : [item.id: built.outline]
-        if !pageCounts.isEmpty || !headings.isEmpty {
-            library.applyInspectorSignals(
-                pageCounts: pageCounts,
-                outlineHeadings: headings
-            )
+        if rememberContent(id: item.id, value: built) {
+            var pageCounts: [String: Int] = [:]
+            if let pages = built.pageCount {
+                pageCounts[item.id] = pages
+            }
+            let headings = built.outline.isEmpty ? [:] : [item.id: built.outline]
+            if !pageCounts.isEmpty || !headings.isEmpty {
+                library.applyInspectorSignals(
+                    pageCounts: pageCounts,
+                    outlineHeadings: headings
+                )
+            }
         }
     }
 
@@ -783,15 +796,21 @@ public final class RefsInspectorLoader: ObservableObject {
     /// Stores one row's hydrated content, evicting the oldest rows
     /// past the show-cache capacity from both the content and the
     /// thumbnail dictionaries.
-    private func rememberContent(id: String, value: RefsInspectorContent) {
-        content[id] = value
+    @discardableResult
+    private func rememberContent(id: String, value: RefsInspectorContent) -> Bool {
+        let changed = content[id] != value
+        if changed {
+            content[id] = value
+        }
         contentOrder.removeAll { $0 == id }
         contentOrder.append(id)
         while contentOrder.count > Self.showCacheCapacity {
             let evicted = contentOrder.removeFirst()
             content.removeValue(forKey: evicted)
             thumbnails.removeValue(forKey: evicted)
+            thumbnailDigests.removeValue(forKey: evicted)
         }
+        return changed
     }
 
     /// Cached `ref show` row for an item, or nil when the cache missed

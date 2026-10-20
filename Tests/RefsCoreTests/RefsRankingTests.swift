@@ -1072,6 +1072,41 @@ final class RefsRankingTests: XCTestCase {
     RefsPreparedCache.resetForTests()
   }
 
+  func testPreparedCacheUsesCurrentStateAndAddedDate() throws {
+    RefsPreparedCache.resetForTests()
+    let signals = makeSignals()
+    let before = makeItem(
+      id: "ref/chat/cache_identity.md",
+      title: "Harness Cache Identity",
+      state: .ready,
+      added: "2026-10-07"
+    )
+    let after = makeItem(
+      id: before.id,
+      title: before.rawTitle,
+      state: .dropped,
+      added: "2026-08-01"
+    )
+
+    _ = RefsRanker.listing(
+      [before], query: "harness", scope: .all, signals: signals
+    )
+    let updated = RefsRanker.listing(
+      [after], query: "harness", scope: .all, signals: signals
+    )
+
+    let match = try XCTUnwrap(updated.matches[after.id])
+    XCTAssertEqual(match.breakdown.l, RefsRankingConstants.droppedLanePrior)
+    XCTAssertEqual(
+      match.breakdown.r,
+      RefsRankingConstants.recencyWeight
+        * pow(0.5, Double(68) / RefsRankingConstants.recencyHalfLifeDays),
+      accuracy: 1e-9
+    )
+    XCTAssertEqual(RefsPreparedCache.buildCount, 2)
+    RefsPreparedCache.resetForTests()
+  }
+
   func testSelectionPolicy() throws {
     let listing = RefsRanker.listing(
       try goldenItems(), query: "", scope: .all,

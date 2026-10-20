@@ -89,8 +89,9 @@ the cache at launch, watches the vault root (root `*.md` notes) plus
 (0.5 s debounce). Dot-path-only batches (`.git/`, `.obsidian/`, and `.trash/`) no
 longer trigger a Refs refresh; any visible path, including a PDF in `lib/`, still
 does. The library refreshes Today every 10 minutes, after sleep, after
-every capture, and in the background on every panel open, and re-reads
-a stale snapshot on every panel open. The `-g` lane runs only while
+every capture, and in the background on panel open unless a panel-open
+Today refresh started in the previous five seconds; it re-reads a stale
+snapshot on every panel open. The `-g` lane runs only while
 some row still lacks an `added` date (or a git-dated row still lacks its
 instant) and only after the snapshot
 publishes, so the first paint never waits for it; merging is

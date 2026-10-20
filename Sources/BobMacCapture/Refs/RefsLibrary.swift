@@ -174,6 +174,7 @@ public final class RefsLibrary: ObservableObject {
   private var snapshotFollowUp = false
   private var todayTask: Task<Bool, Never>?
   private var todayFollowUp = false
+  private var lastPanelOpenTodayStartedAt: Date?
   private var gitTask: Task<Void, Never>?
   private var gitFollowUp = false
   private var scanTask: Task<Void, Never>?
@@ -287,11 +288,21 @@ public final class RefsLibrary: ObservableObject {
 
   /// Refreshes when the snapshot is older than `maxAge`, or when no
   /// refresh has ever succeeded. The panel calls this on every open.
-  public func refreshIfStale(maxAge: TimeInterval = 60) {
+  public func refreshIfStale(
+    maxAge: TimeInterval = 60,
+    includeToday: Bool = true
+  ) {
+    guard snapshotTask == nil else {
+      return
+    }
     if let last = lastSuccessAt, now().timeIntervalSince(last) < maxAge {
       return
     }
-    refresh(reason: .panelOpen)
+    if includeToday {
+      refresh(reason: .panelOpen)
+    } else {
+      refreshSnapshot(reason: .panelOpen)
+    }
   }
 
   /// Refreshes the ledger's Today value in the background: every panel
@@ -306,6 +317,20 @@ public final class RefsLibrary: ObservableObject {
       guard let self else { return false }
       return await self.runTodayPass(reason: reason)
     }
+  }
+
+  /// Requests the panel-open Today refresh within the shared five-second
+  /// show window. Other Today triggers remain unthrottled.
+  public func requestTodayForPanelOpen() {
+    let current = now()
+    if let lastPanelOpenTodayStartedAt,
+      current.timeIntervalSince(lastPanelOpenTodayStartedAt) < Self.pullThrottleInterval
+    {
+      CaptureSignpost.event("refs-today-skipped")
+      return
+    }
+    lastPanelOpenTodayStartedAt = current
+    refreshToday(reason: .panelOpen)
   }
 
   /// Refreshes Today and waits through a queued follow-up if another
@@ -592,13 +617,15 @@ public final class RefsLibrary: ObservableObject {
     pageCounts: [String: Int],
     outlineHeadings: [String: [String]]
   ) {
+    var next = signals
     for (id, pages) in pageCounts {
-      signals.pageCounts[id] = pages
+      next.pageCounts[id] = pages
     }
     for (id, headings) in outlineHeadings {
-      signals.outlineHeadings[id] = headings
+      next.outlineHeadings[id] = headings
     }
-    signals.now = now()
+    next.now = now()
+    signals = next
   }
 
   /// Installs canned state for design tests and previews, skipping
@@ -771,12 +798,16 @@ public final class RefsLibrary: ObservableObject {
     }
     do {
       let plan = try await fetcher.plan()
-      today = RefsToday(plan: plan)
-      todayRefreshGeneration &+= 1
-      signals.today = today
-      if let snapshot {
-        snapshotStore.save(snapshot: snapshot, today: today)
+      let refreshedToday = RefsToday(plan: plan)
+      let todayChanged = today != refreshedToday
+      if todayChanged {
+        today = refreshedToday
+        signals.today = refreshedToday
+        if let snapshot {
+          snapshotStore.save(snapshot: snapshot, today: refreshedToday)
+        }
       }
+      todayRefreshGeneration &+= 1
       return true
     } catch {
       // A failed Today refresh — including a schema mismatch — keeps

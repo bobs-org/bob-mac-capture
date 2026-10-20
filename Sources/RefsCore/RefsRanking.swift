@@ -719,6 +719,17 @@ public enum RefsRanker {
   /// the arrival rule holds with no mark. A `seen` mark, an open after
   /// a `new` mark, or a non-Ready/Next state clears it.
   public static func newness(_ item: RefItem, signals: RefsSignals) -> RefsNewness? {
+    let todayOrdinal = RefsDates.ordinal(
+      signals.now, calendar: signals.calendar
+    )
+    return newness(item, signals: signals, todayOrdinal: todayOrdinal)
+  }
+
+  static func newness(
+    _ item: RefItem,
+    signals: RefsSignals,
+    todayOrdinal: Int
+  ) -> RefsNewness? {
     guard item.state == .ready || item.state == .next else {
       return nil
     }
@@ -733,7 +744,11 @@ public enum RefsRanker {
         return .marked(mark.at)
       }
     }
-    guard arrivedNew(item, signals: signals) else {
+    guard isUnopened(item, signals: signals),
+      let added = item.added,
+      todayOrdinal - RefsDates.unixOrdinal(added)
+        <= RefsRankingConstants.newWindowDays
+    else {
       return nil
     }
     return .arrived
@@ -839,37 +854,38 @@ public enum RefsRanker {
     let newCandidates =
       scoped
       .filter { !placed.contains($0.id) }
-      .compactMap { item -> (RefItem, RefsNewness)? in
-        guard let newness = newness(item, signals: signals) else {
+      .compactMap { item -> (item: RefItem, since: Date)? in
+        guard let newness = newness(
+          item, signals: signals, todayOrdinal: todayOrdinal
+        ) else {
           return nil
         }
-        return (item, newness)
+        return (item, newSince(item, newness, signals: signals))
       }
       .sorted {
-        let a = newSince($0.0, $0.1, signals: signals)
-        let b = newSince($1.0, $1.1, signals: signals)
-        if a != b {
-          return a > b
+        if $0.since != $1.since {
+          return $0.since > $1.since
         }
-        return $0.0.id < $1.0.id
+        return $0.item.id < $1.item.id
       }
-    take(.new, ids: newCandidates.map(\.0.id))
+    take(.new, ids: newCandidates.map(\.item.id))
 
     // Today, in ledger order. Already-placed Just scanned and NEW
     // rows stay only in those sections: every item appears once.
     let todayIDs =
       scoped
       .filter { !placed.contains($0.id) }
-      .filter { signals.today.entry(for: $0) != nil }
-      .sorted {
-        let a = signals.today.entry(for: $0)?.order ?? Int.max
-        let b = signals.today.entry(for: $1)?.order ?? Int.max
-        if a != b {
-          return a < b
-        }
-        return $0.id < $1.id
+      .compactMap { item -> (item: RefItem, order: Int)? in
+        guard let entry = signals.today.entry(for: item) else { return nil }
+        return (item, entry.order)
       }
-      .map(\.id)
+      .sorted {
+        if $0.order != $1.order {
+          return $0.order < $1.order
+        }
+        return $0.item.id < $1.item.id
+      }
+      .map(\.item.id)
     take(.today, ids: todayIDs)
 
     // Reading.
@@ -903,30 +919,43 @@ public enum RefsRanker {
     let recentCandidates =
       scoped
       .filter { !placed.contains($0.id) }
-      .filter {
-        ($0.state == .read || $0.state == .dropped || $0.state == .unknown)
-          && lastOpened($0, signals: signals).map {
-            todayOrdinal
-              - RefsDates.ordinal(
-                $0, calendar: signals.calendar
-              )
-              <= RefsRankingConstants.recentlyOpenedWindowDays
-          } ?? false
+      .compactMap { item -> (item: RefItem, opened: Date)? in
+        guard item.state == .read || item.state == .dropped || item.state == .unknown,
+          let opened = lastOpened(item, signals: signals),
+          todayOrdinal - RefsDates.ordinal(opened, calendar: signals.calendar)
+            <= RefsRankingConstants.recentlyOpenedWindowDays
+        else {
+          return nil
+        }
+        return (item, opened)
       }
       .sorted {
-        compareOpenedDesc($0, $1, signals: signals) ?? ($0.id < $1.id)
+        if $0.opened != $1.opened {
+          return $0.opened > $1.opened
+        }
+        return $0.item.id < $1.item.id
       }
-    let recentIDs = recentCandidates.prefix(RefsRankingConstants.recentlyOpenedCap).map(\.id)
+    let recentIDs = recentCandidates.prefix(RefsRankingConstants.recentlyOpenedCap)
+      .map(\.item.id)
     take(.recentlyOpened, ids: recentIDs)
 
     // Library: everything else, by last activity.
     let libraryIDs =
       scoped
       .filter { !placed.contains($0.id) }
+      .map { (item: $0, activity: activityOrdinal($0, signals: signals)) }
       .sorted {
-        compareActivityDesc($0, $1, signals: signals) ?? ($0.id < $1.id)
+        if $0.activity != $1.activity {
+          switch ($0.activity, $1.activity) {
+          case let (a?, b?): return a > b
+          case (.some, nil): return true
+          case (nil, .some): return false
+          case (nil, nil): break
+          }
+        }
+        return $0.item.id < $1.item.id
       }
-      .map(\.id)
+      .map(\.item.id)
     take(.library, ids: libraryIDs)
 
     return sections
@@ -945,15 +974,30 @@ public enum RefsRanker {
   ) -> [RefItem] {
     scoped
       .filter { !placed.contains($0.id) && states.contains($0.state) }
+      .map { (item: $0, opened: lastOpened($0, signals: signals), added: $0.added) }
       .sorted {
-        if blockedLast, $0.isBlocked != $1.isBlocked {
-          return !$0.isBlocked
+        if blockedLast, $0.item.isBlocked != $1.item.isBlocked {
+          return !$0.item.isBlocked
         }
-        if let compared = compareOpenedDesc($0, $1, signals: signals) {
-          return compared
+        if $0.opened != $1.opened {
+          switch ($0.opened, $1.opened) {
+          case let (a?, b?): return a > b
+          case (.some, nil): return true
+          case (nil, .some): return false
+          case (nil, nil): break
+          }
         }
-        return compareAddedDesc($0, $1) ?? ($0.id < $1.id)
+        if $0.added != $1.added {
+          switch ($0.added, $1.added) {
+          case let (a?, b?): return a > b
+          case (.some, nil): return true
+          case (nil, .some): return false
+          case (nil, nil): break
+          }
+        }
+        return $0.item.id < $1.item.id
       }
+      .map(\.item)
   }
 
   /// The Ready lane (§3): added desc, blocked rows last, id tie-break.
@@ -965,12 +1009,22 @@ public enum RefsRanker {
   ) -> [RefItem] {
     scoped
       .filter { !placed.contains($0.id) && states.contains($0.state) }
+      .map { (item: $0, added: $0.added) }
       .sorted {
-        if $0.isBlocked != $1.isBlocked {
-          return !$0.isBlocked
+        if $0.item.isBlocked != $1.item.isBlocked {
+          return !$0.item.isBlocked
         }
-        return compareAddedDesc($0, $1) ?? ($0.id < $1.id)
+        if $0.added != $1.added {
+          switch ($0.added, $1.added) {
+          case let (a?, b?): return a > b
+          case (.some, nil): return true
+          case (nil, .some): return false
+          case (nil, nil): break
+          }
+        }
+        return $0.item.id < $1.item.id
       }
+      .map(\.item)
   }
 
   /// Newer last-opened first, nil last. Nil when equal.
@@ -1569,15 +1623,18 @@ enum RefsFuzzyScore {
   }
 }
 
-/// Small single-entry cache for prepared items, keyed by snapshot
-/// identity plus the inputs that change the prepared fields. The
-/// prepared text depends on each item's id, title, and stem; the key
-/// also folds in the inspector's outline headings, which change what
-/// secondary matches a listing can produce. Rebuilds only when the
-/// snapshot or those inputs change.
+/// Small single-entry cache for prepared items, keyed by the complete
+/// current items and the outline headings that change secondary
+/// matches. Direct equality keeps non-text changes such as state and
+/// added date from returning stale `RefItem` values.
 enum RefsPreparedCache {
+  private struct Key: Equatable {
+    var items: [RefItem]
+    var outlineHeadings: [String: [String]]
+  }
+
   private static let lock = NSLock()
-  private static var lastKey: String?
+  private static var lastKey: Key?
   private static var lastPrepared: [RefsPreparedItem] = []
   /// Test hook: how many times the cache rebuilt. Tests reset it.
   static var buildCount = 0
@@ -1610,24 +1667,10 @@ enum RefsPreparedCache {
     lock.unlock()
   }
 
-  static func cacheKey(
+  private static func cacheKey(
     items: [RefItem], signals: RefsSignals
-  ) -> String {
-    var parts: [String] = []
-    parts.reserveCapacity(items.count * 3 + signals.outlineHeadings.count)
-    for item in items {
-      parts.append(item.id)
-      parts.append(item.rawTitle)
-      parts.append(item.stem)
-    }
-    for id in signals.outlineHeadings.keys.sorted() {
-      parts.append(id)
-      parts.append(
-        (signals.outlineHeadings[id] ?? []).joined(
-          separator: "\n"
-        ))
-    }
-    return parts.joined(separator: "\u{1F}")
+  ) -> Key {
+    Key(items: items, outlineHeadings: signals.outlineHeadings)
   }
 }
 

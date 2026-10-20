@@ -268,6 +268,22 @@ final class RefsLibraryTests: XCTestCase {
     XCTAssertEqual(record.components(separatedBy: "argv=plan -f json").count, 3)
   }
 
+  func testRefreshIfStaleDoesNotQueueDuringSnapshotPass() async throws {
+    let recordURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    let context = try makeContext(environment: [
+      "FAKE_BOB_DELAY_SECONDS": "1",
+      "FAKE_BOB_RECORD_PATH": recordURL.path,
+    ])
+
+    context.library.refresh(reason: .manual)
+    context.library.refreshIfStale()
+    try? await Task.sleep(nanoseconds: 3_000_000_000)
+
+    let record = try String(contentsOf: recordURL)
+    XCTAssertEqual(record.components(separatedBy: "argv=ref list").count - 1, 2)
+  }
+
   func testSnapshotPassKeepsGitDatesMergedDuringItsSweep() async throws {
     let sweepGate = RefsCallGate(holding: 2)
     let gitGate = RefsCallGate(holding: 1)
@@ -474,6 +490,38 @@ final class RefsLibraryTests: XCTestCase {
       let record = (try? String(contentsOf: recordURL)) ?? ""
       return record.components(separatedBy: "argv=").count > count
     }
+  }
+
+  func testPanelOpenTodayRefreshUsesFiveSecondWindow() async throws {
+    let recordURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    var current = instant("2026-10-20T12:00:00Z")
+    let context = try makeContext(
+      environment: ["FAKE_BOB_RECORD_PATH": recordURL.path],
+      now: { current }
+    )
+    var signalPublishes = 0
+    let signalsCancellable = context.library.$signals.dropFirst().sink { _ in
+      signalPublishes += 1
+    }
+
+    context.library.requestTodayForPanelOpen()
+    await waitUntil { context.library.todayRefreshGeneration == 1 }
+    let firstSignalPublishCount = signalPublishes
+    context.library.requestTodayForPanelOpen()
+    try? await Task.sleep(nanoseconds: 250_000_000)
+    XCTAssertEqual(try planCallCount(recordURL), 1)
+
+    context.library.refreshToday(reason: .manual)
+    await waitUntil { context.library.todayRefreshGeneration == 2 }
+    XCTAssertEqual(try planCallCount(recordURL), 2)
+    XCTAssertEqual(signalPublishes, firstSignalPublishCount)
+
+    current.addTimeInterval(RefsLibrary.pullThrottleInterval + 1)
+    context.library.requestTodayForPanelOpen()
+    await waitUntil { context.library.todayRefreshGeneration == 3 }
+    XCTAssertEqual(try planCallCount(recordURL), 3)
+    withExtendedLifetime(signalsCancellable) {}
   }
 
   func testScanRunsOneScanArgv() async throws {
@@ -1013,6 +1061,7 @@ final class RefsLibraryTests: XCTestCase {
     environment: [String: String] = [:],
     fileExists: @escaping (URL) -> Bool = { _ in true },
     spotlight: RefsSpotlightProviding = FakeSpotlight(),
+    now: @escaping () -> Date = { Date() },
     wakeCenter: NotificationCenter? = nil
   ) throws -> Context {
     let root = FileManager.default.temporaryDirectory
@@ -1038,7 +1087,7 @@ final class RefsLibraryTests: XCTestCase {
       vaultRoot: { vault },
       fileExists: fileExists,
       spotlight: spotlight,
-      now: { Date() },
+      now: now,
       wakeCenter: wakeCenter ?? NSWorkspace.shared.notificationCenter
     )
     return Context(
@@ -1131,6 +1180,11 @@ final class RefsLibraryTests: XCTestCase {
       }
       try? await Task.sleep(nanoseconds: 20_000_000)
     }
+  }
+
+  private func planCallCount(_ recordURL: URL) throws -> Int {
+    try String(contentsOf: recordURL)
+      .components(separatedBy: "argv=plan -f json").count - 1
   }
 
   private func fakeBobPath() throws -> String {
