@@ -409,4 +409,30 @@ final class RefsKeyRouterTests: XCTestCase {
     XCTAssertNil(route(KeyCode.o, .command))
     XCTAssertNil(route(KeyCode.r, .option))
   }
+
+  func testPanelSwitchMatchesCtrlTabVariants() {
+    XCTAssertTrue(RefsKeyRouter.isPanelSwitch(keyCode: KeyCode.tab, modifiers: .control))
+    XCTAssertTrue(RefsKeyRouter.isPanelSwitch(keyCode: KeyCode.tab, modifiers: [.control, .shift]))
+    XCTAssertTrue(RefsKeyRouter.isPanelSwitch(keyCode: KeyCode.tab, modifiers: [.control, .capsLock]))
+    XCTAssertTrue(
+      RefsKeyRouter.isPanelSwitch(
+        keyCode: KeyCode.tab,
+        modifiers: [.control, .shift, .capsLock]
+      )
+    )
+  }
+
+  func testPanelSwitchRejectsOtherModifiers() {
+    XCTAssertFalse(RefsKeyRouter.isPanelSwitch(keyCode: KeyCode.tab, modifiers: []))
+    XCTAssertFalse(RefsKeyRouter.isPanelSwitch(keyCode: KeyCode.tab, modifiers: .shift))
+    XCTAssertFalse(RefsKeyRouter.isPanelSwitch(keyCode: KeyCode.tab, modifiers: .command))
+    XCTAssertFalse(RefsKeyRouter.isPanelSwitch(keyCode: KeyCode.tab, modifiers: .option))
+    XCTAssertFalse(
+      RefsKeyRouter.isPanelSwitch(keyCode: KeyCode.tab, modifiers: [.control, .command])
+    )
+    XCTAssertFalse(
+      RefsKeyRouter.isPanelSwitch(keyCode: KeyCode.tab, modifiers: [.control, .option])
+    )
+    XCTAssertFalse(RefsKeyRouter.isPanelSwitch(keyCode: KeyCode.return, modifiers: .control))
+  }
 }

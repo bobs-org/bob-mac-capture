@@ -53,6 +53,10 @@ public final class RefsPanelController: NSObject {
     /// Refs hides through the coordinator after a successful copy, which
     /// may restore the retained Capture draft.
     var copyDismisser: () -> Void = {}
+    /// Deferred Ctrl+Tab hop, wired by the app delegate to the panel
+    /// coordinator. Fired on the next main-queue turn so Capture's local
+    /// monitor never sees the same key event.
+    var panelSwitcher: () -> Void = {}
     var onVisibilityChange: () -> Void = {}
 
     public init(model: RefsPanelModel) {
@@ -395,6 +399,23 @@ public final class RefsPanelController: NSObject {
                 model.updateCopyModifiers(Self.copyModifiers(event.modifierFlags))
             }
             return event
+        }
+        // Ctrl+Tab switches panels. Matched before any card routing so
+        // the gesture always works; open surfaces close through the
+        // existing hide paths. While IME-composing in a field, the key
+        // belongs to the text system. A repeat is consumed without
+        // switching so a held key never ping-pongs.
+        if RefsKeyRouter.isPanelSwitch(keyCode: event.keyCode, modifiers: event.modifierFlags) {
+            if markedTextInFilterField() || markedTextInRenameField() || markedTextInTodayLinkField() {
+                return event
+            }
+            if !event.isARepeat {
+                let switcher = panelSwitcher
+                DispatchQueue.main.async {
+                    switcher()
+                }
+            }
+            return nil
         }
         if model.todayLinkCard != nil {
             guard let command = model.todayLinkCardKeyCommand(

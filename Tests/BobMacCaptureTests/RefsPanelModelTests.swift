@@ -4147,6 +4147,118 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(harness.model.listOrder, .newest)
   }
 
+  func testPanelSwitchRestoresRememberedView() async throws {
+    let harness = try makeHarness()
+    await harness.waitForSnapshot()
+    let kept = "ref/chat/small_reading.md"
+    harness.model.setQuery("small")
+    XCTAssertTrue(harness.model.perform(.setScope(.chats)))
+    XCTAssertTrue(harness.model.perform(.toggleNewest))
+    XCTAssertTrue(harness.model.perform(.select(id: kept)))
+    let generation = harness.model.inspectorGeneration
+    harness.model.noteInspectorOffset(id: kept, generation: generation, offset: 90)
+    harness.model.panelDidHide()
+
+    harness.model.prepareForPresentation(source: .panelSwitch)
+
+    XCTAssertEqual(harness.model.query, "small")
+    XCTAssertEqual(harness.model.scope, .chats)
+    XCTAssertEqual(harness.model.listOrder, .newest)
+    XCTAssertEqual(harness.model.selectedID, kept)
+    XCTAssertEqual(harness.model.inspectorRestoreOffset(for: kept), 90)
+  }
+
+  func testPanelSwitchNeverResetsForQualifyingArrival() async throws {
+    let fetcher = FakeRefsFetcher()
+    let first = Self.arrivalRecord(path: "ref/chat/alpha.md", stem: "alpha")
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [first])
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await settleLibrary(harness, ids: ["ref/chat/alpha.md"])
+    harness.model.prepareForPresentation()
+    harness.model.panelIsVisible = { false }
+    rememberNonDefaultView(harness.model, selected: "ref/chat/alpha.md")
+    harness.model.panelDidHide()
+
+    let arrived = Self.arrivalRecord(
+      path: "ref/chat/beta.md",
+      stem: "beta",
+      added: todayDateString()
+    )
+    await publishRecords([first, arrived], fetcher: fetcher, harness: harness)
+
+    harness.model.prepareForPresentation(source: .panelSwitch)
+    XCTAssertEqual(harness.model.query, "Arrival")
+    XCTAssertEqual(harness.model.scope, .chats)
+    XCTAssertEqual(harness.model.listOrder, .newest)
+    XCTAssertEqual(harness.model.selectedID, "ref/chat/alpha.md")
+    XCTAssertTrue(harness.model.listing.contains(id: "ref/chat/beta.md"))
+
+    // Pending was cleared, so a later ordinary show still restores.
+    harness.model.prepareForPresentation(source: .library)
+    XCTAssertEqual(harness.model.query, "Arrival")
+    XCTAssertEqual(harness.model.scope, .chats)
+    XCTAssertEqual(harness.model.selectedID, "ref/chat/alpha.md")
+  }
+
+  func testPanelSwitchKeyFiresSwitcherAfterMainQueueDrains() async throws {
+    let harness = try makeHarness()
+    await harness.waitForSnapshot()
+    harness.model.prepareForPresentation()
+    let controller = RefsPanelController(model: harness.model)
+    var fires = 0
+    controller.panelSwitcher = { fires += 1 }
+    let event = try XCTUnwrap(
+      NSEvent.keyEvent(
+        with: .keyDown,
+        location: .zero,
+        modifierFlags: .control,
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        characters: "\t",
+        charactersIgnoringModifiers: "\t",
+        isARepeat: false,
+        keyCode: 48
+      )
+    )
+
+    XCTAssertNil(controller.processKeyEvent(event))
+    XCTAssertEqual(fires, 0)
+
+    let deadline = Date().addingTimeInterval(2)
+    while fires == 0, Date() < deadline {
+      try? await Task.sleep(nanoseconds: 20_000_000)
+    }
+    XCTAssertEqual(fires, 1)
+  }
+
+  func testPanelSwitchRepeatNeverFiresSwitcher() async throws {
+    let harness = try makeHarness()
+    await harness.waitForSnapshot()
+    harness.model.prepareForPresentation()
+    let controller = RefsPanelController(model: harness.model)
+    var fires = 0
+    controller.panelSwitcher = { fires += 1 }
+    let event = try XCTUnwrap(
+      NSEvent.keyEvent(
+        with: .keyDown,
+        location: .zero,
+        modifierFlags: .control,
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        characters: "\t",
+        charactersIgnoringModifiers: "\t",
+        isARepeat: true,
+        keyCode: 48
+      )
+    )
+
+    XCTAssertNil(controller.processKeyEvent(event))
+    try? await Task.sleep(nanoseconds: 100_000_000)
+    XCTAssertEqual(fires, 0)
+  }
+
   func testOldOrNilAddedArrivalRestoresRememberedView() async throws {
     let fetcher = FakeRefsFetcher()
     let first = Self.arrivalRecord(path: "ref/chat/alpha.md", stem: "alpha")

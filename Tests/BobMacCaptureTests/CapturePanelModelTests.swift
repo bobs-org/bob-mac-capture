@@ -4747,6 +4747,30 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(model.statusText, "")
     }
 
+    func testCloseRetainingDraftThenPrepareKeepsDraftCaretTemplateAndError() throws {
+        let model = CapturePanelModel()
+        model.plainDraft = "Call bank @Cash and @Home"
+        let insertion = try XCTUnwrap(
+            attributedStringIndex(in: model.attributedDraft, utf8Offset: 10)
+        )
+        let selection = AttributedTextSelection(insertionPoint: insertion)
+        model.editorSelection = selection
+        model.templateOrigin = "weekly-review"
+        model.errorMessage = "Capture failed"
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+
+        model.closeRetainingDraft()
+        XCTAssertEqual(dismissCount, 1)
+
+        model.prepareForPresentation()
+
+        XCTAssertEqual(model.plainDraft, "Call bank @Cash and @Home")
+        XCTAssertEqual(model.editorSelection, selection)
+        XCTAssertEqual(model.templateOrigin, "weekly-review")
+        XCTAssertEqual(model.errorMessage, "Capture failed")
+    }
+
     func testDoubleSubmitIsSuppressedWhileOneMutationIsInFlight() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel()

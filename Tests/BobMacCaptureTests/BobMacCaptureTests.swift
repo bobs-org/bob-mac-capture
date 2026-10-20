@@ -1342,14 +1342,128 @@ final class BobMacCaptureTests: XCTestCase {
         )
         XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: .command)))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: .option)))
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: .control)))
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48, modifiers: .control)), .switchPanel)
         XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: [.command, .shift])))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: [.option, .shift])))
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: [.control, .shift])))
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 48, modifiers: [.control, .shift])),
+            .switchPanel
+        )
         XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: [.command, .option])))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: .command), completionVisible: true))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: .option), completionVisible: true))
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 48, modifiers: .control), completionVisible: true))
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 48, modifiers: .control), completionVisible: true),
+            .switchPanel
+        )
+    }
+
+    func testKeyRouterSwitchesPanelsFromEditorAndModalSurfaces() {
+        let router = CaptureKeyCommandRouter()
+
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 48, modifiers: .control)),
+            .switchPanel
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 48, modifiers: [.control, .shift])),
+            .switchPanel
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 48, modifiers: [.control, .capsLock])
+            ),
+            .switchPanel
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 48, modifiers: .control),
+                context: CaptureKeyRoutingContext(completionVisible: true)
+            ),
+            .switchPanel
+        )
+        for context in [
+            CaptureKeyRoutingContext(templateShelfVisible: true),
+            CaptureKeyRoutingContext(stashPickerVisible: true),
+            CaptureKeyRoutingContext(taskIDPromptVisible: true),
+            CaptureKeyRoutingContext(pomodoroNamePromptVisible: true),
+            CaptureKeyRoutingContext(relationLabelPromptVisible: true),
+            CaptureKeyRoutingContext(pullInChoiceVisible: true),
+            CaptureKeyRoutingContext(pickerVisible: true),
+        ] as [CaptureKeyRoutingContext] {
+            XCTAssertEqual(
+                router.command(
+                    for: keyEvent(keyCode: 48, modifiers: .control),
+                    context: context
+                ),
+                .switchPanel,
+                "modal surface keeps Ctrl+Tab as a switch"
+            )
+        }
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 48, modifiers: [.control, .command])
+            )
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 48, modifiers: [.control, .option])
+            )
+        )
+    }
+
+    @MainActor
+    func testPerformSwitchPanelDefersSwitcherToNextMainQueueTurn() async {
+        let model = CapturePanelModel()
+        let controller = CapturePanelController(model: model)
+        var fires = 0
+        controller.panelSwitcher = { fires += 1 }
+
+        XCTAssertTrue(controller.perform(.switchPanel))
+        XCTAssertEqual(fires, 0)
+
+        let deadline = Date().addingTimeInterval(2)
+        while fires == 0, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(fires, 1)
+    }
+
+    func testKeyRouterPanelSwitchConsumesRepeatAndDispatchWithoutSwitching() {
+        let router = CaptureKeyCommandRouter()
+
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 48, modifiers: .control),
+                context: CaptureKeyRoutingContext(keyIsRepeat: true)
+            ),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 48, modifiers: .control),
+                context: CaptureKeyRoutingContext(pickerDispatchInFlight: true)
+            ),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 48, modifiers: .control),
+                context: CaptureKeyRoutingContext(pickerVisible: true, pickerDispatchInFlight: true)
+            ),
+            .consumeKey
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 48, modifiers: .control),
+                context: CaptureKeyRoutingContext(editorHasMarkedText: true)
+            )
+        )
+        XCTAssertEqual(router.command(for: keyEvent(keyCode: 48)), .tabEditorAssist)
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 48, modifiers: .shift)),
+            .decreaseBulletIndentation
+        )
     }
 
     func testKeyRouterMatchesControlUAsLinePrefixDeletionOnlyWithControlModifier() {

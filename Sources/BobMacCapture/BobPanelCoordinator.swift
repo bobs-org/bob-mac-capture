@@ -3,6 +3,15 @@
 /// capture draft, so reopening Capture restores it. Showing Capture while
 /// Refs is visible hides Refs. Refs work runs on its own `refs-*` lanes,
 /// so it can never cancel a capture submit.
+///
+/// Ctrl+Tab (and Ctrl+Shift+Tab) switches between the two panels through
+/// `switchPanels(from:)`, preserving each panel's state exactly as the
+/// hotkeys do.
+enum BobPanel {
+    case capture
+    case refs
+}
+
 @MainActor
 final class BobPanelCoordinator {
     private let isCaptureVisible: () -> Bool
@@ -58,6 +67,26 @@ final class BobPanelCoordinator {
             closeCaptureRetainingDraft()
         }
         presentRefsWithSource(source)
+    }
+
+    /// Switches to the other panel, preserving state exactly as the
+    /// hotkeys do: from Capture retains the draft and shows Refs with
+    /// `.panelSwitch` (so a later copy still restores Capture); from Refs
+    /// hides Refs and shows Capture. A stale origin whose panel is no
+    /// longer visible is a no-op returning nil, so a deferred hop never
+    /// bounces back.
+    @discardableResult
+    func switchPanels(from origin: BobPanel) -> BobPanel? {
+        switch origin {
+        case .capture:
+            guard isCaptureVisible() else { return nil }
+            showRefs(source: .panelSwitch)
+            return .refs
+        case .refs:
+            guard isRefsVisible() else { return nil }
+            showCapture()
+            return .capture
+        }
     }
 
     /// Hides Refs after a copy and restores Capture only when Refs was

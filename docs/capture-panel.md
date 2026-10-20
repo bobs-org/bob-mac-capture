@@ -352,6 +352,7 @@ A successful aggregate capture hides the panel automatically only after Bob retu
   Reopening the panel after a success starts from a clean slate — the prior
   "Captured → …" summary and status text are cleared, while a retained draft (from Escape
   or a failure) reopens exactly as it was left. Escape retains a nonempty draft.
+  A Ctrl+Tab switch retains the draft and caret exactly like Escape.
   **Discard** permanently clears the draft without stashing, while Control-C always
   clears it: it stashes a semantically nonempty draft first, except a Task Go-To (`/`)
   draft is deliberately discarded and nothing is retained when stashing is off

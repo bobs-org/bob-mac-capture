@@ -5,6 +5,10 @@ description: "Every Bob Mac Capture key binding: editor, completion, prompts, st
 
 Every capture action is reachable from the keyboard alone. Successor choice cards are described in [Capture previews](capture-previews.md); stash behavior in [Capture panel](capture-panel.md); template shelf behavior in [Saved templates](saved-templates.md). Global chord conflicts are in [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/).
 
+## Switching panels
+
+In either panel, Ctrl-Tab and Ctrl-Shift-Tab switch to the other panel. From Capture the draft and caret are retained; from Bob Refs the remembered query, scope, filters, selection, and inspector place are restored. The switch works even while a picker, prompt, stash, shelf, or Refs card is open: that surface closes exactly as on a hotkey switch, with the draft and view kept. While IME-composing, the key belongs to the text system; a held key repeats without ping-ponging.
+
 ## Bob Refs shortcuts
 
 These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspector](refs-inspector.md) expand them.
@@ -20,6 +24,7 @@ These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspecto
 | Ctrl-Z | Reset the query, filters, selection, revealed pages, and scroll positions |
 | Escape / Ctrl-[ | Close cards and banners, then the panel while keeping its view |
 | Shift-Command-T | Reopen the most recently closed Highlights tab |
+| Ctrl-Tab / Ctrl-Shift-Tab | Switch to Capture, keeping the remembered view |
 
 ## Editor and completion keys
 
@@ -46,6 +51,7 @@ These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspecto
 | Down / Ctrl-N | (normal focus traversal) | Select the next completion | Consume the key; do not move completion selection | Consume the key; do not move completion selection |
 | Up / Ctrl-P | (normal focus traversal) | Select the previous completion | Consume the key; do not move completion selection | Consume the key; do not move completion selection |
 | Escape / Ctrl-[ | Close the panel, retaining a nonempty draft without confirmation | Close completion | Cancel back to the task list | Cancel back to the Pomodoro list |
+| Ctrl-Tab / Ctrl-Shift-Tab | Switch to Bob Refs, retaining the draft and caret | Same switch, closing completion | Same switch; the prompt closes and the draft is retained | Same switch; the prompt closes and the draft is retained |
 | Control-S | Open the canceled-draft stash picker | Open the canceled-draft stash picker | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-T | Open the saved-template shelf | Open the shelf and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-\ | Open today's daily note in Obsidian with the caret on the running Pomodoro (when none is running: the first open entry, else the last completed, else the note's first line), hide the panel, and retain a nonempty draft | Same, and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |

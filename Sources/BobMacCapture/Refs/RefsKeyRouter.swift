@@ -251,4 +251,18 @@ public enum RefsKeyRouter {
       return nil
     }
   }
+
+  /// Whether the key event is a Ctrl+Tab panel switch: Tab with exactly
+  /// Control, or Control+Shift, ignoring Caps Lock. Any other added
+  /// modifier (Command, Option) leaves the key to AppKit.
+  public static func isPanelSwitch(
+    keyCode: UInt16,
+    modifiers: NSEvent.ModifierFlags
+  ) -> Bool {
+    guard keyCode == KeyCode.tab else {
+      return false
+    }
+    let flags = modifiers.intersection(.deviceIndependentFlagsMask).subtracting(.capsLock)
+    return flags == .control || flags == [.control, .shift]
+  }
 }

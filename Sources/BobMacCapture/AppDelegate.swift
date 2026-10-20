@@ -606,6 +606,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     controller.copyDismisser = { [weak self] in
       self?.panelCoordinator?.dismissRefsAfterCopy()
     }
+    panelController?.panelSwitcher = { [weak self] in
+      self?.switchPanels(from: .capture)
+    }
+    controller.panelSwitcher = { [weak self] in
+      self?.switchPanels(from: .refs)
+    }
     // Open-error re-shows keep the panel state and go through the
     // coordinator, so a visible Capture draft is retained.
     model.panelRepresenter = { [weak self] in self?.panelCoordinator?.representRefs() }
@@ -720,6 +726,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // the model refresh as well would launch two `capture-targets` processes in
     // the same cancellation lane every time the panel opens.
     refreshTargetsWhenPossible()
+  }
+
+  /// Ctrl+Tab hop from either panel, deferred to the next main-queue
+  /// turn by the controllers so the other panel's local monitor never
+  /// sees the same key event. From Capture retains the draft and shows
+  /// Refs with `.panelSwitch` (a copy still restores Capture); from
+  /// Refs hides Refs and shows Capture through the hotkey path,
+  /// including its targets refresh.
+  private func switchPanels(from origin: BobPanel) {
+    let token = CaptureSignpost.begin("panel-switch")
+    defer { CaptureSignpost.end(token) }
+    CaptureSignpost.event("panel-switch-key")
+    guard let result = panelCoordinator?.switchPanels(from: origin) else {
+      return
+    }
+    if result == .capture {
+      refreshTargetsWhenPossible()
+    }
   }
 
   @objc func pastePlainText(_ sender: Any?) {

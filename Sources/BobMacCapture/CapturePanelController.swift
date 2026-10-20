@@ -268,6 +268,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
     private let keyRouter = CaptureKeyCommandRouter()
     private var panel: NSPanel?
     private var localMonitor: Any?
+    /// Deferred Ctrl+Tab hop, wired by the app delegate to the panel
+    /// coordinator. Fired on the next main-queue turn so the other
+    /// panel's local monitor never sees the same key event.
+    var panelSwitcher: () -> Void = {}
     /// Goal column for consecutive Ctrl-Shift-J/Ctrl-Shift-K moves, paired with the exact collapsed
     /// caret this controller last left behind. Any other edit, click, or caret move
     /// changes the text view's selection away from `caret`, so the pairing invalidates
@@ -1684,6 +1688,12 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             model.dismissCompletion()
             model.openTodayPomodoroInObsidian()
             return true
+        case .switchPanel:
+            let switcher = panelSwitcher
+            DispatchQueue.main.async {
+                switcher()
+            }
+            return true
         case .consumeKey:
             model.disarmTemplateDeleteIfNeeded()
             return true
@@ -1819,7 +1829,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     pickerChipVisible: self.model.pickerChipVisible,
                     pickerOperatorContinuationKeys: self.model.pickerOperatorContinuationKeys,
                     taskIDPromptCyclesSuggestions: self.model.taskIDPromptCyclesSuggestions,
-                    closeTaskCommaArmed: self.model.closeTaskCommaArmed
+                    closeTaskCommaArmed: self.model.closeTaskCommaArmed,
+                    editorHasMarkedText: (self.panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false
                 )
             ) else {
                 self.noteSeparatorToggleIntentFromEvent(event)

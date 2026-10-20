@@ -23,6 +23,11 @@ public enum RefsPresentationSource: Equatable, Sendable {
   case highlightsTabs
   /// Show the default view after the user opens a scan notification.
   case scanResults
+  /// Show the library via a Ctrl+Tab panel switch. Restores the
+  /// remembered view like `.library` but never resets for a pending
+  /// arrival: the fresh listing already contains the new reference at
+  /// its ranked place.
+  case panelSwitch
 }
 
 /// The state of the Highlights Tabs filter.
@@ -696,8 +701,9 @@ public final class RefsPanelModel: ObservableObject {
   /// Restores the remembered view on ordinary shows, except when a newly
   /// added reference is pending: then the show resets to fresh-launch
   /// defaults and selects that reference. Scan-result shows start from
-  /// fresh-launch defaults. Per-show cards, banners, and presentation
-  /// animation are still handled here.
+  /// fresh-launch defaults. A `.panelSwitch` show always restores the
+  /// remembered view and never resets for a pending arrival. Per-show
+  /// cards, banners, and presentation animation are still handled here.
   public func prepareForPresentation(source: RefsPresentationSource = .library) {
     presentationCount += 1
     selectedRowRect = nil
@@ -747,6 +753,16 @@ public final class RefsPanelModel: ObservableObject {
       }
     case .scanResults:
       resetToDefaults(tabs: false)
+      arrivals.clearPending()
+      visibleArrivalDeadline = nil
+    case .panelSwitch:
+      // A switch keeps the remembered view even when a qualifying
+      // arrival is pending: the fresh listing already contains the new
+      // reference at its ranked place, so it joins without moving the
+      // selection. Clearing pending keeps a later `.library` show from
+      // resetting, and a nil deadline keeps an arrival that lands while
+      // the switched-to panel is open on the join path.
+      restoreLastViewForPresentation()
       arrivals.clearPending()
       visibleArrivalDeadline = nil
     }

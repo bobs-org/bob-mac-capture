@@ -76,7 +76,8 @@ moves of older notes do not count): that show resets to the fresh-launch
 defaults and selects the new reference (the newest batch, then the first
 listed id in that batch). An arrival that lands in the first 10 seconds of
 an untouched ordinary show — typically the show's own pull — also resets
-and selects it. A Tabs show defers the reset to the next ordinary show.
+and selects it. A Ctrl+Tab switch never resets for an arrival: the new
+reference joins the listing without moving the selection. A Tabs show defers the reset to the next ordinary show.
 Selecting the reference first cancels the reset. Ctrl-Z resets it to the
 fresh-launch defaults; quitting or restarting starts fresh.
 
@@ -448,7 +449,8 @@ progress finishes if the panel hides.
 - Ordinary shows restore the remembered query, scope, filters, selection,
   revealed pages, and scroll positions, except when a newly added reference
   resets the view and selects it (including an arrival in the first 10
-  seconds of an untouched show). The configured Tabs key does the same when
+  seconds of an untouched show). A Ctrl+Tab switch always restores the
+  remembered view and never resets for an arrival. The configured Tabs key does the same when
   Tabs is already on; when Tabs is off, it enables Tabs while keeping the
   query and scope, turning Newest off, and selecting the current Highlights
   tab when available. A Tabs show defers a new-reference reset to the next
@@ -459,7 +461,8 @@ progress finishes if the panel hides.
   same shortcut shown for display.
 - Only one Bob panel is ever visible: opening Refs while Capture is
   open retains the capture draft first (`BobPanelCoordinator`), and
-  opening Capture hides Refs.
+  opening Capture hides Refs. Ctrl+Tab switches between the panels
+  through the same coordinator.
 - Every successful capture refreshes Today and marks the snapshot
   stale, so the next open re-reads it. Recheck Bob re-points the Refs
   fetcher, restarts its watcher, and refreshes the snapshot alongside

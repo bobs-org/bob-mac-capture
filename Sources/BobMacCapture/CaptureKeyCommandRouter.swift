@@ -75,6 +75,7 @@ enum CaptureKeyCommand: Equatable {
     case continuePickerOperator(String)
     case insertCloseTaskNumber(String)
     case openTodayPomodoro
+    case switchPanel
 }
 
 struct CaptureKeyRoutingContext: Equatable {
@@ -104,6 +105,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var pickerOperatorContinuationKeys: [String] = []
     var taskIDPromptCyclesSuggestions = false
     var closeTaskCommaArmed = false
+    var editorHasMarkedText = false
 }
 
 struct CaptureKeyCommandRouter {
@@ -152,6 +154,23 @@ struct CaptureKeyCommandRouter {
         context: CaptureKeyRoutingContext = CaptureKeyRoutingContext()
     ) -> CaptureKeyCommand? {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+
+        // Ctrl+Tab / Ctrl+Shift+Tab switches panels. Matched before any
+        // modal branch so the gesture always works while open surfaces
+        // close through the existing hide paths. Caps Lock is ignored;
+        // any other added modifier stays AppKit's.
+        if event.keyCode == KeyCode.tab {
+            let switchModifiers = modifiers.subtracting(.capsLock)
+            if switchModifiers == .control || switchModifiers == [.control, .shift] {
+                if context.editorHasMarkedText {
+                    return nil
+                }
+                if context.keyIsRepeat || event.isARepeat || context.pickerDispatchInFlight {
+                    return .consumeKey
+                }
+                return .switchPanel
+            }
+        }
 
         if context.templateShelfVisible {
             return templateShelfCommand(for: event, modifiers: modifiers, context: context)

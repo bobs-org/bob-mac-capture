@@ -40,9 +40,10 @@ completion, preview, submit, block-ID focus claims, plain-text paste
 (`paste-plain-text`), notification scheduling, install-restart notification
 requests (`install-restart-notification-requested`), the idle agenda
 (intervals `agenda-refresh`, `agenda-measure`, `agenda-plan`; events
-`agenda-unchanged`, `agenda-published`, `agenda-hold-released`), and Bob Refs
+`agenda-unchanged`, `agenda-published`, `agenda-hold-released`), Bob Refs
 (intervals `refs-pull`, `refs-refresh`, `refs-scan`, `refs-panel-show`,
-`refs-panel-prepare`, `refs-panel-order`), visible in
+`refs-panel-prepare`, `refs-panel-order`), and the Ctrl+Tab panel switch
+(interval `panel-switch`; event `panel-switch-key`), visible in
 Instruments' Points of Interest / os_signpost templates. These, and the bounded
 Recent Activity list in Settings, are metadata-only by construction — see
 [Permissions](permissions.md#privacy).

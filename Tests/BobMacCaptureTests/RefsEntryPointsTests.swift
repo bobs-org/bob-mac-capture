@@ -130,6 +130,91 @@ final class RefsEntryPointsTests: XCTestCase {
     XCTAssertEqual(capture.plainDraft, "keep me")
   }
 
+  func testSwitchPanelsFromCaptureRetainsDraftAndShowsRefsWithPanelSwitch() {
+    let capture = CapturePanelModel()
+    capture.plainDraft = "keep me"
+    let log = EventLog()
+    var sources: [RefsPresentationSource] = []
+    let coordinator = makeCoordinator(
+      capture: capture,
+      captureVisible: true,
+      refsVisible: false,
+      log: log,
+      presentRefsWithSource: { source in
+        sources.append(source)
+        log.events.append("show-refs")
+      }
+    )
+
+    let result = coordinator.switchPanels(from: .capture)
+
+    XCTAssertEqual(result, .refs)
+    XCTAssertEqual(log.events, ["close-retain", "show-refs"])
+    XCTAssertEqual(sources, [.panelSwitch])
+    XCTAssertEqual(capture.plainDraft, "keep me")
+  }
+
+  func testSwitchPanelsFromRefsHidesRefsThenShowsCapture() {
+    let capture = CapturePanelModel()
+    let log = EventLog()
+    let coordinator = makeCoordinator(
+      capture: capture,
+      captureVisible: false,
+      refsVisible: true,
+      log: log
+    )
+
+    let result = coordinator.switchPanels(from: .refs)
+
+    XCTAssertEqual(result, .capture)
+    XCTAssertEqual(log.events, ["hide-refs", "show-capture"])
+  }
+
+  func testSwitchPanelsStaleOriginIsNoop() {
+    let capture = CapturePanelModel()
+    let log = EventLog()
+    let hiddenCapture = makeCoordinator(
+      capture: capture,
+      captureVisible: false,
+      refsVisible: false,
+      log: log
+    )
+
+    XCTAssertNil(hiddenCapture.switchPanels(from: .capture))
+    XCTAssertNil(hiddenCapture.switchPanels(from: .refs))
+    XCTAssertEqual(log.events, [])
+
+    log.events.removeAll()
+    // From .refs while Refs is hidden is a no-op even when Capture shows.
+    let refsHidden = makeCoordinator(
+      capture: capture,
+      captureVisible: true,
+      refsVisible: false,
+      log: log
+    )
+    log.events.removeAll()
+    XCTAssertNil(refsHidden.switchPanels(from: .refs))
+    XCTAssertEqual(log.events, [])
+  }
+
+  func testSwitchFromCaptureThenDismissRefsAfterCopyRestoresCapture() {
+    let capture = CapturePanelModel()
+    capture.plainDraft = "keep me"
+    let log = EventLog()
+    let coordinator = makeCoordinator(
+      capture: capture,
+      captureVisible: true,
+      refsVisible: false,
+      log: log
+    )
+
+    XCTAssertEqual(coordinator.switchPanels(from: .capture), .refs)
+    coordinator.dismissRefsAfterCopy()
+
+    XCTAssertEqual(log.events, ["close-retain", "show-refs", "hide-refs", "show-capture"])
+    XCTAssertEqual(capture.plainDraft, "keep me")
+  }
+
   func testToggleRefsTabsEnablesTabsOnVisibleLibrary() {
     let capture = CapturePanelModel()
     let log = EventLog()
