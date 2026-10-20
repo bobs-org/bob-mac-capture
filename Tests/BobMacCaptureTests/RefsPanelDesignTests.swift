@@ -876,6 +876,91 @@ final class RefsPanelDesignTests: XCTestCase {
     try renderInspectorHighlightsNoted(model: model, now: now)
   }
 
+  /// Gold underline ink: the screenshot's Page 2/4/5 quotes, a
+  /// whole-quote standalone underline, and a descender-heavy run,
+  /// at compact 880 and wide 1344, light and dark.
+  func testRefsInspectorUnderlinesToPNG() throws {
+    let now = fixedNow()
+    let library = makeLibrary(now: now)
+    let model = RefsPanelModel(
+      library: library,
+      opener: StubOpener(),
+      highlights: StubLocator()
+    )
+    try renderInspectorUnderlines(model: model, now: now, width: 880)
+    try renderInspectorUnderlines(model: model, now: now, width: 1344)
+  }
+
+  private func renderInspectorUnderlines(
+    model: RefsPanelModel,
+    now: Date,
+    width: CGFloat
+  ) throws {
+    let fixture = makeFixture(now: now)
+    let id = "ref/blogs/harness_engineering_article.md"
+    let highlights = [
+      RefsShowAnnotation(
+        pageLabel: "Page 2",
+        kind: "highlight",
+        quote:
+          "In order to support this growth, we built Scion, an in-house "
+          + "version control system, and fully migrated our monorepo from "
+          + "git in five months."
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 4",
+        kind: "highlight",
+        quote:
+          "Taking a step back, we noticed that, like most companies, we "
+          + "were using git as a centralized system with one authoritative "
+          + "copy, but nearly **all of our clients were agents and jobs "
+          + "that are online by definition.** The properties that make git "
+          + "excellent for distributed, offline work were actively "
+          + "undermining our ability to scale as the repo grew. So we "
+          + "asked ourselves: if we designed source control with the fact "
+          + "that agents are **always online** in mind from the start, "
+          + "what would it look like?"
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 5",
+        kind: "highlight",
+        quote:
+          "Source control for huge monorepos has **prior art, notably "
+          + "Google’s Piper and Meta’s Sapling,2** so we were able to "
+          + "build Scion with their hard-won lessons in mind."
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 6",
+        kind: "highlight",
+        quote: "**The entire passage is the underline.**"
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 7",
+        kind: "highlight",
+        quote: "The **typography, quickly** of this line."
+      ),
+    ]
+    model.installForPreviews(
+      items: fixture.items,
+      signals: fixture.signals,
+      query: "",
+      scope: .all,
+      selectedID: id,
+      banner: nil,
+      refreshState: .idle,
+      inspector: [id: RefsInspectorContent(highlights: highlights)]
+    )
+    XCTAssertEqual(
+      model.inspectorContent(for: id)?.feed.total,
+      5
+    )
+    try write(
+      model: model,
+      name: "refs-inspector-underlines-\(Int(width))",
+      width: width
+    )
+  }
+
   /// Seven highlights in page order: a bold run, a one-line note
   /// card, a four-line truncation, a same-page run, and the first
   /// page's disclosure.

@@ -1081,7 +1081,7 @@ struct RefsInspectorView: View {
   }
 
   private func quoteView(_ quote: String) -> some View {
-    Text(RefsQuoteText.attributed(RefsQuoteExcerpt.preview(quote)))
+    RefsQuoteText.text(RefsQuoteExcerpt.preview(quote))
       .font(bodyFont)
       .foregroundStyle(.primary)
       .lineSpacing(
@@ -1093,6 +1093,7 @@ struct RefsInspectorView: View {
           : RefsVisualTokens.inspectorHighlightLineLimit
       )
       .truncationMode(.tail)
+      .refsUnderlineInk()
       .padding(.leading, RefsVisualTokens.inspectorQuoteInset)
       .overlay(alignment: .leading) {
         Rectangle()

@@ -469,6 +469,7 @@ public struct RefsInspectorFeed: Equatable, Sendable {
                         ?? "Highlight with note"
                     if !quote.isEmpty {
                         label = "\(prefix): \(quote)"
+                        label += Self.underlineSuffix(for: annotation.quote)
                     } else {
                         label = prefix
                     }
@@ -477,8 +478,10 @@ public struct RefsInspectorFeed: Equatable, Sendable {
                     }
                 } else if let page {
                     label = "Highlight, \(page): \(quote)"
+                    label += Self.underlineSuffix(for: annotation.quote)
                 } else {
                     label = "Highlight: \(quote)"
+                    label += Self.underlineSuffix(for: annotation.quote)
                 }
             case .image:
                 label = page.map { "Image highlight, \($0)" } ?? "Image highlight"
@@ -540,6 +543,23 @@ public struct RefsInspectorFeed: Equatable, Sendable {
         ) -> String {
             let noun = count == 1 ? "image" : "images"
             return "\(count) \(prefix)\(noun)\(suffix)"
+        }
+
+        /// VoiceOver suffix for underlined words, placed after the
+        /// quote and before `Your note`. A wholly underlined quote
+        /// becomes `, underlined`; otherwise `. Underlined: …`.
+        private static func underlineSuffix(for rawQuote: String?) -> String {
+            guard let rawQuote else {
+                return ""
+            }
+            if RefsQuoteUnderline.isWhollyUnderlined(rawQuote) {
+                return ", underlined"
+            }
+            let phrases = RefsQuoteUnderline.phrases(rawQuote)
+            guard !phrases.isEmpty else {
+                return ""
+            }
+            return ". Underlined: " + phrases.joined(separator: "; ")
         }
 
         private var displayedQuote: String {
@@ -787,7 +807,7 @@ public enum RefsQuoteEmphasis {
 
     /// The lower bound of the first opening `**` delimiter, or nil
     /// when no strong run starts. Uses the same pairing rule as
-    /// `runs`, so the excerpt and the attributed builder agree on
+    /// `runs`, so the excerpt and the quote text builder agree on
     /// where the first run begins.
     static func firstStrongOpening(in text: String) -> String.Index? {
         var index = text.startIndex
@@ -804,7 +824,7 @@ public enum RefsQuoteEmphasis {
 /// A clip-friendly excerpt of a quote for the 4-line inspector
 /// preview: when the first strong run starts late, the preview
 /// opens with a short `…` lead-in so the emphasis stays visible.
-/// Spacing and every delimiter are kept, so the attributed builder
+/// Spacing and every delimiter are kept, so the quote text builder
 /// still sees the runs.
 public enum RefsQuoteExcerpt {
     /// A run starting within this many plain characters needs no

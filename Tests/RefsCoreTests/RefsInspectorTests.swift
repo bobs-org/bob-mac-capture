@@ -614,7 +614,23 @@ final class RefsInspectorTests: XCTestCase {
         )
         XCTAssertEqual(
             entry(page: "1", quote: "Say **this** now").accessibilityLabel,
-            "Highlight, Page 1: Say this now"
+            "Highlight, Page 1: Say this now. Underlined: this"
+        )
+        XCTAssertEqual(
+            entry(page: "1", quote: "**whole quote**").accessibilityLabel,
+            "Highlight, Page 1: whole quote, underlined"
+        )
+        XCTAssertEqual(
+            entry(page: "1", quote: "**one** and **two**").accessibilityLabel,
+            "Highlight, Page 1: one and two. Underlined: one; two"
+        )
+        XCTAssertEqual(
+            entry(page: "3", quote: "Say **this** now", comment: "Keep.").accessibilityLabel,
+            "Highlight with note, Page 3: Say this now. Underlined: this. Your note: Keep."
+        )
+        XCTAssertEqual(
+            entry(page: "3", quote: "**whole quote**", comment: "Keep.").accessibilityLabel,
+            "Highlight with note, Page 3: whole quote, underlined. Your note: Keep."
         )
         XCTAssertEqual(
             entry(page: "2", quote: "The quote", comment: "  Keep this.  ").accessibilityLabel,
@@ -737,7 +753,7 @@ final class RefsInspectorTests: XCTestCase {
         XCTAssertEqual(RefsQuoteEmphasis.plainText(""), "")
         XCTAssertEqual(
             entry(page: "1", quote: "Say **this** now").accessibilityLabel,
-            "Highlight, Page 1: Say this now"
+            "Highlight, Page 1: Say this now. Underlined: this"
         )
     }
 

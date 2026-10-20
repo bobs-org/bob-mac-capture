@@ -8,8 +8,8 @@ import SwiftUI
 /// the pure panel-geometry math the controller and the geometry tests
 /// share. Colors are adaptive system colors only, so dark mode and
 /// increased contrast carry through without bespoke handling; yellow
-/// (rule, card, and chip) and orange (note glyph) mean your highlights
-/// and notes in the inspector.
+/// (rule, card, and chip), gold (underline ink), and orange (note glyph)
+/// mean your highlights and notes in the inspector.
 enum RefsVisualTokens {
   // MARK: - Window
 
@@ -63,6 +63,10 @@ enum RefsVisualTokens {
   static let inspectorRevealContext: CGFloat = 24
   static let inspectorQuoteRuleWidth: CGFloat = 2
   static let inspectorQuoteInset: CGFloat = 10
+  /// Gold underline ink: the deeper sibling of the yellow quote
+  /// rule. Underlined highlight runs sit on this stroke.
+  static let inspectorUnderlineInk: Color = Color.yellow.mix(
+    with: .orange, by: 0.35)
   static let inspectorHighlightLineLimit = 4
   static let inspectorPageRunGap: CGFloat = 4
   /// Vertical spacing between HIGHLIGHTS entries.

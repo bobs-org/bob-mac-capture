@@ -143,20 +143,22 @@ struct RefsCopyCardView: View {
                             .font(.callout)
                             .lineLimit(1)
                     }
-                    Text(RefsQuoteText.attributed(quoteLines?.first ?? entry.line1))
+                    RefsQuoteText.text(quoteLines?.first ?? entry.line1)
                         .font(.callout.italic())
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
+                        .refsUnderlineInk()
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 let line2 = quoteLines.map { $0.dropFirst().joined(separator: "\n") } ?? entry.line2
                 if !line2.isEmpty {
-                    Text(RefsQuoteText.attributed(line2))
+                    RefsQuoteText.text(line2)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
+                        .refsUnderlineInk()
                 }
             }
         }

@@ -18,6 +18,7 @@ final class RefsCopyCardDesignTests: XCTestCase {
         try write(card: loadingQueuedCard(), name: "refs-copy-card-notes-loading")
         try write(card: errorCard(), name: "refs-copy-card-error")
         try write(card: highlightPickerCard(), name: "refs-copy-highlight-picker")
+        try write(card: underlinedPickerCard(), name: "refs-copy-highlight-picker-underline")
         try write(card: alternatesCard(), name: "refs-copy-card-alternates", alternates: true)
         try write(card: alternatesCard(), name: "refs-copy-card-home-paths")
         try write(
@@ -230,6 +231,57 @@ final class RefsCopyCardDesignTests: XCTestCase {
         for _ in 0..<14 {
             _ = card.handle(.move(1))
         }
+        return card
+    }
+
+    private func underlinedPickerCard() -> RefsCopyCard {
+        let item = makeItem(
+            id: "ref/blogs/redesigning_source_control.md",
+            link: "[[ref/blogs/redesigning_source_control]]",
+            markerID: .present("blog-id"),
+            title: "Redesigning source control",
+            kind: .article,
+            commentCount: 2
+        )
+        let annotations = [
+            RefsShowAnnotation(
+                pageLabel: "Page 4",
+                kind: "highlight",
+                quote:
+                    "**all of our clients were agents and jobs that are "
+                    + "online by definition.** They are **always online**.",
+                link: "[[ref/blogs/redesigning_source_control#^h-1]]"
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 5",
+                kind: "highlight",
+                quote:
+                    "Source control for huge monorepos has **prior art, "
+                    + "notably Google’s Piper and Meta’s Sapling,2** so we "
+                    + "were able to build Scion with their hard-won lessons "
+                    + "in mind.",
+                comment: "Cite the prior art.",
+                link: "[[ref/blogs/redesigning_source_control#^h-2]]"
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 2",
+                kind: "highlight",
+                quote:
+                    "In order to support this growth, we built Scion, an "
+                    + "in-house version control system.",
+                link: "[[ref/blogs/redesigning_source_control#^h-3]]"
+            ),
+        ]
+        var card = RefsCopyCard(
+            token: 8,
+            item: item,
+            absolutePDFPath: "/vault/lib/blogs/redesigning_source_control.pdf",
+            pdfExists: true,
+            notes: .loaded(RefsShowRow(path: item.id, annotations: annotations)),
+            noteCapacity: 4,
+            pickerWindowSize: 9
+        )
+        _ = card.handle(.key(.highlightPicker))
         return card
     }
 

@@ -50,8 +50,14 @@ one thumbnail PNG each). What each kind shows:
   frame stays and the unavailable caption sits inside it. Standalone
   notes join the feed as note cards with no quote.
   Same-page entries share one page label. Quotes render balanced
-  `**bold**` runs as strong emphasis, and a hover tooltip on a
-  highlight shows its full text. The preview shows the first page (5
+  `**` runs as semibold full-ink words over a thick, rounded gold
+  underline — one bar per laid-out line, never under the spaces at
+  either end of a phrase. The Copy card highlight picker uses the
+  same look, with underlined words lifting to primary ink on the
+  italic secondary rows. VoiceOver announces the underlined phrases
+  after the quote. The clipboard and every Copy payload keep the
+  raw `**` Markdown. A hover tooltip on a highlight shows its full
+  text. The preview shows the first page (5
   by default, Settings › References › Preview highlights per page);
   the disclosure row (`+N more · ⌃D shows …`) or Ctrl-D while that
   row is visible reveals the next page of highlights until all show.
