@@ -49,7 +49,7 @@ struct CaptureLineAboveEdit: Equatable {
     let resultingSelection: NSRange
 }
 
-/// One native `NSTextView` replacement for Bob's `switch_block_id_separator`
+/// One native `NSTextView` replacement for Bob's single-edit rewrite rules
 /// rewrite. Ranges are UTF-16; `expectedDraft` is the post-key buffer Bob
 /// rewrote, and `resultingDraft` is the corrected text.
 struct CaptureNativeRewriteEdit: Equatable {
@@ -927,9 +927,10 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         return true
     }
 
-    /// Records a one-shot `:`/`^` typing intent when the focused main draft
-    /// editor can insert that character natively. The key event still reaches
-    /// AppKit; the model consumes the intent from the resulting text change.
+    /// Records a one-shot `:`/`^` separator-toggle or template-start `@`
+    /// intent when the focused main draft editor can insert that character
+    /// natively. The key event still reaches AppKit; the model consumes the
+    /// intent from the resulting text change.
     /// Modal fields, shortcuts, IME, and non-collapsed selections leave the
     /// event alone.
     static func noteSeparatorToggleIntentIfEligible(
@@ -939,13 +940,22 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         modalFieldActive: Bool
     ) {
         guard !modalFieldActive,
-              event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
               let characters = event.characters,
-              characters == ":" || characters == "^",
               let textView = editableTextView(firstResponder),
               !textView.hasMarkedText()
         else {
             return
+        }
+        if characters == "@" {
+            guard event.modifierFlags.intersection([.command, .control]).isEmpty else {
+                return
+            }
+        } else {
+            guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+                  characters == ":" || characters == "^"
+            else {
+                return
+            }
         }
         let selection = textView.selectedRange()
         guard selection.length == 0 else {
@@ -958,7 +968,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         )
     }
 
-    /// Applies Bob's separator-toggle replacement through `NSTextView` so
+    /// Applies Bob's single-edit rewrite through `NSTextView` so
     /// undo, IME, and accessibility stay AppKit-owned. Returns false without
     /// changing state when the focused editor is missing, composing, or no
     /// longer showing the draft Bob rewrote.

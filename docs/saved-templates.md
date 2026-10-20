@@ -14,6 +14,7 @@ Templates count and shelf omit it. Escape, hiding the panel, and a failed captur
 the checkout. A successful capture moves the used block to the top; if you edited it,
 the new block replaces the checked-out one. Command-S saves the current template block
 without clearing the draft, and the next successful capture settles that checkout.
+To start one, type `@@@` at the very start of a draft.
 
 Discard releases the checkout and returns the original to the shelf. Removing the
 template header and receiving a fresh parse without a template, emptying the editor, or

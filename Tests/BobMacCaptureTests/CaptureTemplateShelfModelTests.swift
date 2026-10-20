@@ -39,7 +39,7 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
         XCTAssertFalse(model.isTemplateShelfPresented)
         XCTAssertEqual(
             model.statusText,
-            "No saved templates yet — capture an @@template: draft and it lands here"
+            "No saved templates yet — type @@@ to start one; capturing it saves it here"
         )
 
         let loading = SavedTemplateShelf()

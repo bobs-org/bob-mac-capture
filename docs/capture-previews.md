@@ -32,6 +32,8 @@ A `=` override restart or swap previews on the same start card with an orange
   A Bob `template` candidate for `@@te` or `@@` is shown as the `@@template:` directive
   with Bob's label beneath it; accepting inserts Bob's replacement verbatim. The `+`
   shortcut does not accept this header candidate.
+  When the route list includes a template candidate at bare `@@`, its header shows
+  that typing `@` again starts a template.
 
   Template fields decode tolerantly: an older Bob omits them and keeps ordinary drafts
   working. A new Bob with an older app exposes unknown template span kinds as neutral

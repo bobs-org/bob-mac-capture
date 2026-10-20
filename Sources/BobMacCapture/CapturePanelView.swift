@@ -948,7 +948,7 @@ private struct CapturePanelFooter: View {
                 }
                 .help(
                     model.templateOrigin == nil
-                        ? "Reuse a saved @@template: draft (Control-T)"
+                        ? "Reuse a saved @@template: draft (Control-T). Type @@@ to start a new one."
                         : "1 template is in this draft; it returns when you capture or discard"
                 )
                 .disabled(model.isSubmitting || model.inlinePromptVisible || model.pickerVisible)
@@ -1882,23 +1882,7 @@ struct SavedTemplateShelfPicker: View {
     }
 
     private func hintKeycap(_ keys: String, action: String) -> some View {
-        HStack(spacing: 4) {
-            Text(keys)
-                .font(.system(.caption, design: .monospaced).weight(.semibold))
-                .foregroundStyle(.primary)
-                .frame(height: CapturePanelLayout.templateShelfHintKeyHeight)
-                .padding(.horizontal, 6)
-                .background(.secondary.opacity(0.14), in: RoundedRectangle(cornerRadius: 5))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 5)
-                        .strokeBorder(.secondary.opacity(0.28), lineWidth: 0.5)
-                )
-            Text(action)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(keys) \(action)")
+        TemplateShelfHintKeycap(keys: keys, action: action)
     }
 
     private var capacityCaption: String {
@@ -2054,6 +2038,32 @@ struct SavedTemplateShelfRow: View {
     }
 }
 
+private struct TemplateShelfHintKeycap: View {
+    let keys: String
+    let action: String
+    var accessibilityLabel: String? = nil
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(keys)
+                .font(.system(.caption, design: .monospaced).weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(height: CapturePanelLayout.templateShelfHintKeyHeight)
+                .padding(.horizontal, 6)
+                .background(.secondary.opacity(0.14), in: RoundedRectangle(cornerRadius: 5))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .strokeBorder(.secondary.opacity(0.28), lineWidth: 0.5)
+                )
+            Text(action)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel ?? "\(keys) \(action)")
+    }
+}
+
 @available(macOS 26.0, *)
 private struct CompletionList: View {
     @ObservedObject var model: CapturePanelModel
@@ -2073,6 +2083,15 @@ private struct CompletionList: View {
                             .padding(.horizontal, 8)
                             .padding(.top, 4)
                             .accessibilityAddTraits(.isHeader)
+                    } else if model.templateStartHintVisible {
+                        TemplateShelfHintKeycap(
+                            keys: "@",
+                            action: "again to start a template",
+                            accessibilityLabel: "Type @ again to start a template"
+                        )
+                        .padding(.horizontal, 8)
+                        .padding(.top, 4)
+                        .accessibilityAddTraits(.isHeader)
                     }
                     // Ready-to-use / Needs-block-ID grouping is specific to the `task`
                     // context. Task-section rows stay a plain ungrouped list.

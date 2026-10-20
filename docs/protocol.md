@@ -13,7 +13,7 @@ Capabilities are detected per response, never pinned to release numbers: unknown
 
 - A `bob` build that supports `@@route` / `@@route+block-id` global destination
   declarations anywhere in the draft, `capture-rewrite` (including
-  `switch_block_id_separator`), `capture-complete --all-tasks`,
+  `switch_block_id_separator` and `start_template`), `capture-complete --all-tasks`,
   `capture-task-id`, `capture-pomodoro-name`, the `task_link` completion context for
   `:` picker queries (with `note_kind`, `block_id_suggestions`, `group`, `scheduled`,
   and `pulls_forward` candidate fields), the `task_goto` completion context for a
@@ -254,7 +254,7 @@ These must exist; without them the feature they serve stays hidden or refuses wi
 
 - `capture-parse --format json` (spans, needs, replacements, ranges, `cursor_after`)
 - `capture-complete --all-tasks --cursor BYTE --format json` (candidates, replacements)
-- `capture-rewrite --cursor BYTE --format json` (marker absorption, separator toggles)
+- `capture-rewrite --cursor BYTE --format json` (marker absorption, separator toggles, template start)
 - `capture --dry-run --no-clip --format json` (live preview) and `capture --format json` (submit)
 - `capture-pomodoros --format json --tasks` (agenda, counts, landing); plain `capture-pomodoros` only feeds the close-comma count on older builds
 - `capture-task-id` / `capture-pomodoro-name` (Add block ID / Name Pomodoro prompts)
@@ -284,7 +284,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | Feature or field | Expectation | When absent | Reader action |
 | --- | --- | --- | --- |
 | `@@route` / `@@route+block-id` declarations | Unmarked items route to the declaration | Ordinary draft capture; bare markers report the local `bob` error or an empty list | Upgrade `bob` for declarations |
-| `capture-rewrite`, `switch_block_id_separator` | `@@` absorbs markers; `^` / `:` toggle the separator | Keystroke behaves as ordinary typing; notice explains | Upgrade `bob` for rewrite |
+| `capture-rewrite`, `switch_block_id_separator`, `start_template` | `@@` absorbs markers; `^` / `:` toggle the separator; `@@@` starts a template | With an older bob, the third `@` types literally; other rewrites follow that bob's behavior | Upgrade `bob` for template start |
 | `capture-complete --all-tasks` | Full candidate lists | Empty list or local `bob` error | Upgrade `bob` |
 | `task_link` / `task_goto` / `task_parent` / `task_block_id` contexts | Picker rows with replacements and intents | No rows; calm browse hint instead of a dry-run error | Upgrade `bob` |
 | `picker` descriptor, `parent_replacement` | Vault-wide `+` picks, ID-less splice | Inline list only; prompt asks to update `bob` | Upgrade `bob` |

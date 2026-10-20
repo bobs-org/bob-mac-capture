@@ -11,7 +11,7 @@ enum CapturePreviewState: Equatable {
     case failed(String)
 }
 
-/// One-shot expected buffer after a native `:`/`^` insertion. Cleared on
+/// One-shot expected buffer after a native `:`/`^` or template-start `@` insertion. Cleared on
 /// consume, mismatch, or lifecycle invalidation; never used to parse grammar.
 /// The keystroke's completion waits on the eager rewrite (the completion gate):
 /// an accepted toggle supersedes that analysis, while any other outcome completes
@@ -817,6 +817,21 @@ final class CapturePanelModel: ObservableObject {
             && completionResponse?.candidates.isEmpty == false
     }
 
+    var templateStartHintVisible: Bool {
+        guard completionVisible,
+              !fileUnderActive,
+              let completionResponse,
+              completionResponse.context == "route",
+              completionResponse.candidates.contains(where: { $0.kind == "template" })
+        else {
+            return false
+        }
+        return CaptureTemplateStart.hintApplies(
+            draft: plainDraft,
+            cursorUTF8Offset: collapsedSelectionUTF8Offset()
+        )
+    }
+
     var inlinePromptVisible: Bool {
         taskIDPrompt != nil || pomodoroNamePrompt != nil || pullInChoice != nil
     }
@@ -1449,15 +1464,27 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// Records the expected post-key draft and caret for a single typed
-    /// `:` or `^`. The character still inserts natively; `editorTextDidChange`
-    /// consumes this only when the resulting buffer matches.
+    /// `:`/`^` separator toggle or the template-start `@`. The character still
+    /// inserts natively; `editorTextDidChange` consumes this only when the
+    /// resulting buffer matches.
     func noteSeparatorToggleIntent(typed: String, text: String, selectedRange: NSRange) {
-        guard typed == ":" || typed == "^",
-              selectedRange.length == 0,
-              selectedRange.location >= 0
-        else {
-            pendingSeparatorToggleIntent = nil
-            return
+        if typed == "@" {
+            guard CaptureTemplateStart.isRewriteKeystroke(
+                typed: typed,
+                text: text,
+                selectedRange: selectedRange
+            ) else {
+                pendingSeparatorToggleIntent = nil
+                return
+            }
+        } else {
+            guard typed == ":" || typed == "^",
+                  selectedRange.length == 0,
+                  selectedRange.location >= 0
+            else {
+                pendingSeparatorToggleIntent = nil
+                return
+            }
         }
         let nsText = text as NSString
         guard selectedRange.location <= nsText.length else {
@@ -1541,6 +1568,10 @@ final class CapturePanelModel: ObservableObject {
             completionGate = startCaptureRewrite(draft: draft, cursorUTF8Offset: toggleCursor)
             analysisCursor = toggleCursor
         } else if let insertionOffset,
+                  // A lone declaration has nothing to absorb. This also keeps
+                  // the second Undo of a template-start gesture from issuing a
+                  // no-op rewrite request when it restores the original `@@`.
+                  draft != "@@",
                   Self.isBareAtAtTrigger(in: draft, cursorUTF8Offset: insertionOffset)
         {
             startCaptureRewrite(draft: draft, cursorUTF8Offset: insertionOffset)
@@ -2343,7 +2374,7 @@ final class CapturePanelModel: ObservableObject {
         let entries = templateEntries
         guard !entries.isEmpty else {
             announceStatus(
-                "No saved templates yet — capture an @@template: draft and it lands here"
+                "No saved templates yet — type @@@ to start one; capturing it saves it here"
             )
             return
         }
@@ -2397,7 +2428,7 @@ final class CapturePanelModel: ObservableObject {
 
     func useSelectedTemplate() {
         guard let entry = selectedTemplateEntry else {
-            announceStatus("No saved templates yet — capture an @@template: draft and it lands here")
+            announceStatus("No saved templates yet — type @@@ to start one; capturing it saves it here")
             dismissTemplateShelf()
             return
         }
@@ -7476,8 +7507,10 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
 
-            if response.rule == "switch_block_id_separator" {
-                applySeparatorToggleRewrite(response, draft: draft)
+            if response.rule == "switch_block_id_separator"
+                || response.rule == CaptureTemplateStart.rewriteRule
+            {
+                applyNativeSingleEditRewrite(response, draft: draft)
                 return
             }
 
@@ -7497,7 +7530,7 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
-    private func applySeparatorToggleRewrite(
+    private func applyNativeSingleEditRewrite(
         _ response: CaptureRewriteResponse,
         draft: String
     ) {
@@ -7540,6 +7573,12 @@ final class CapturePanelModel: ObservableObject {
             isApplyingProgrammaticDraft = false
         }
         restoreSelection(cursorUTF8Offset: cursor, suppressEditorCallbacks: true)
+        if response.rule == CaptureTemplateStart.rewriteRule,
+           completionVisible,
+           completionResponse?.context == "route"
+        {
+            dismissCompletion()
+        }
         if let summary = response.summary, !summary.isEmpty {
             announceStatus(summary)
         }

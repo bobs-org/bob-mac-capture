@@ -1667,7 +1667,29 @@ JSON
 JSON
       exit 0
     fi
-    if [[ "${draft}" == "Do work @file:id^" ]]; then
+    if [[ "${FAKE_BOB_REWRITE_NO_CHANGE:-}" == "1" && "${draft}" == "@@@" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      printf ',"text":'
+      json_string "${draft}"
+      printf ',"changed":false,"cursor":%s,"edits":[]}\n' "${cursor}"
+    elif [[ "${draft}" == "@@@" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"@@template:\n","changed":true,"cursor":12,"rule":"start_template",
+"edits":[{"range":{"start":0,"end":3},"replacement":"@@template:\n"}],
+"summary":"Started a @@template: draft"}
+JSON
+    elif [[ "${draft}" == $'@@@\nApply {0}' ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"@@template:\n\nApply {0}","changed":true,"cursor":12,"rule":"start_template",
+"edits":[{"range":{"start":0,"end":3},"replacement":"@@template:\n"}],
+"summary":"Started a @@template: draft"}
+JSON
+    elif [[ "${draft}" == "Do work @file:id^" ]]; then
       printf '{"ok":true,"schema_version":1,"input":'
       json_string "${draft}"
       cat <<'JSON'
@@ -1806,7 +1828,9 @@ JSON
         all_tasks="true"
       fi
     done
-    if [[ "${draft}" == "@@te" ]]; then
+    if [[ "${draft}" == "@@" ]]; then
+      cat "${fixtures_dir}/capture-complete-template-bare.json"
+    elif [[ "${draft}" == "@@te" ]]; then
       cat "${fixtures_dir}/capture-complete-template-header.json"
     elif [[ "${draft}" == "@@ma" || "${draft}" == $'@@ma\nFirst task' ]]; then
       cat <<JSON
