@@ -1,0 +1,480 @@
+---
+title: "Bob Refs"
+description: "Bob Refs library panel: snapshot, Today, scan, sorting, NEW, ranking, cards, opening, and Tabs."
+---
+
+Bob Refs is a thin client of `bob`: it filters, ranks, sections, and presents what `bob` returns, never parses frontmatter or note bodies, and never writes the vault itself. Keyboard rows also appear in [Keyboard](keyboard.md). The inspector column is in [Bob Refs inspector](refs-inspector.md). Ranking invocation is in [Diagnostics](diagnostics.md#refs-rank). Disk, memory, and Accessibility rules are in [Permissions](permissions.md). Scan, load, and tab-close recovery stay in the [Mac README](https://github.com/bobs-org/bob-mac-capture#troubleshooting) until the Fix problems guides land.
+
+## Bob Refs
+
+Bob Refs is a quick-open panel for the reference library: one keystroke shows
+every PDF-backed reference note, with kind and reading state on every row.
+Return opens the original PDF in Highlights and changes nothing in the vault —
+opening never mutates reading state, task lanes, or review state. The panel is
+a thin client of `bob`: it filters, ranks, sections, and presents what `bob`
+returns, never parses frontmatter or note bodies, and never writes the vault
+itself. Pressing ⌘S asks `bob` to run its own writer — the same
+`bob ref scan -w` the 15-minute cron runs — and then presents the versioned
+JSON report `bob` returns.
+
+### Data
+
+- Snapshot: `bob ref list -R all -A -f json` (schema version 1), plus `-g`
+  when some row still lacks an `added` date, or has a git date but no git
+  instant yet. Every optional field decodes
+  with `decodeIfPresent`, so an older `bob` still works — a `bob` without
+  `blocked` decodes every row as not blocked, and a row without `task`
+  joins Today on the note path — and unknown fields are ignored. Any
+  other schema version is rejected like any other refresh failure.
+  `added_at` is the most precise instant `bob` knows on the row's `added`
+  day (RFC 3339, for example `2026-10-17T09:12:44-04:00`) and is `null`
+  when `bob` knows only the day. It parses once into `RefItem.addedAt`
+  when the catalog is built; an older `bob` decodes it as nil, and a
+  malformed value becomes nil without failing the row.
+  Each row's `task` object (`path`, `block_id`, `link`, `mark`,
+  `archived`; `block_id` `ref` on frozen v1 trackers) names the
+  reference's single ordinary reading task: where it lives is the
+  reference's parent, and a `done/` path reads as archived.
+- Today: `bob plan -f json` (schema version 2). Today entries join on
+  `(task.path, task.block_id)`, so two references whose tasks share one
+  parent note no longer both light up when only one is linked; rows
+  without a task fall back to the note-path join.
+- Scan: `bob ref scan -w -f json` (schema version 1) names every created and
+  updated note, the intake moves, and per-PDF failures or a coded hard
+  failure. The app decodes every field except `schema_version` loosely,
+  ignores unknown fields, and rejects any other schema version like any
+  other scan failure.
+- The snapshot (including the git-added dates and their instants) and the
+  last Today value persist
+  in `refs-snapshot.json` under `~/Library/Application Support/`
+  `org.bobs.bob-mac-capture/`, so a cold launch paints immediately. The
+  `git_added_at` key maps each git-dated note path to its birth commit's
+  RFC 3339 instant; a cache written before the key existed decodes it as
+  empty, and the `-g` pass refills it once. The
+  open history (note paths and timestamps only) lives in `refs-open-log.json`
+  next to it. NEW marks (`new` or `seen`, plus the instant) live in
+  `refs-new-marks.json` beside the open log. All three files are mode 0600
+  in a 0700 directory.
+- `RefsCore` (the `Sources/RefsCore` target, Foundation plus CaptureCore
+  only) owns the decoding, the `RefItem`/`RefKind`/`RefState`/`RefScope`
+  model, the ranking, captions, and inspector extraction, the
+  `BobRefsFetcher` over `BobProcessClient`, and the stores.
+
+### Updates
+
+`RefsLibrary` owns the refresh service: the snapshot, the `-g`
+backfill on its own lane, Today, a one-shot Spotlight sweep for
+last-used dates and page counts, and missing-PDF checks. It paints from
+the cache at launch, watches the vault root (root `*.md` notes) plus
+`<vault>/ref`, `<vault>/lib`, and `<vault>/done`
+(0.5 s debounce). Dot-path-only batches (`.git/`, `.obsidian/`, and `.trash/`) no
+longer trigger a Refs refresh; any visible path, including a PDF in `lib/`, still
+does. The library refreshes Today every 10 minutes, after sleep, after
+every capture, and in the background on every panel open, and re-reads
+a stale snapshot on every panel open. The `-g` lane runs only while
+some row still lacks an `added` date (or a git-dated row still lacks its
+instant) and only after the snapshot
+publishes, so the first paint never waits for it; merging is
+git-sourced dates into dateless rows, and a `-g` failure keeps the
+published list and is only logged. One refresh per lane runs at a time;
+a trigger during a refresh schedules exactly one follow-up. A failed
+refresh keeps the last good list and records `.failed`, which the
+footer reads as "Update failed · ⌘R to retry". Only Highlights and
+default-app opens append to the open log. `RefsPanelModel` holds the
+query, scope, frozen listing, and id-based selection: typed text reaches
+the model on every keystroke, late library data refreshes row content
+in place; arrivals that land while the panel is open join the visible
+list on their own when the Tabs filter is off, no rename, Today-link,
+or copy card is open or in flight, there is no pending open, and the
+selected id is nil or still available (otherwise they join at the next
+re-rank, with a "1 new reference" / "N new references" VoiceOver
+announcement when they join; ⌘R re-ranks from the new data once the
+refresh completes, keeping the selection when it still exists), an
+open error re-shows the panel with the query, selection,
+and pending open intact, and Return on a vanished row shows "No longer
+in your library" instead of opening whatever slid into its index. A `refs-pull`
+lane runs `bob vault-sync -q` on every Refs panel show (throttled to one
+pull per 5 s) and before every ⌘R refresh (single-flight, unthrottled);
+a trigger that arrives while a pull is running joins that pull, no pull
+runs during a scan or rename, and a pull failure is only logged — it never
+touches `refreshState`, banners, or the footer. The pull itself never
+refreshes; the existing vault watcher sees the fast-forward and runs the
+normal snapshot refresh. A ⌘S scan
+runs on its own `refs-scan` lane with a 300 s timeout and never cancels
+another lane's work, and no other lane cancels it. Watcher changes are
+deferred while a scan runs — they record that one happened and refresh
+once, after the scan. Every completion runs a post-scan refresh that
+starts after `bob` exited (a snapshot pass plus Today), even after a
+failure, because intake may have moved files; the scan notice publishes
+only after that pass, so new rows are already listed when the panel
+re-ranks.
+
+### Sorting
+
+An empty query shows browse sections in order — Just scanned (this scan's
+created references, in `bob`'s order, uncapped, while the scan mark is at
+most 15 minutes old), NEW (Ready/Next rows that are marked new, or unmarked
+unopened arrivals within 3 local days, newest first by new-since,
+uncapped), Today
+(ledger order),
+Reading, Next (blocked rows last), Ready by added desc (blocked rows
+last), Recently opened (read/dropped/unknown opened within 14 days,
+capped at 5), then the Library by last activity. NEW is Mac-local
+presentation state: it never runs `bob`, never writes the vault, and is
+not the review walk's NEW freshness tier. A marked row's new-since is
+the mark instant; an arrived row uses `addedAt` when known, else the
+start of its `added` day. Day counts use the
+panel calendar, so NEW, Recently opened, recency, and Library
+activity never shift by a day in US evenings. Each item appears in the
+first section that admits it; over-cap rows fall through; empty sections
+are omitted; the final tie-break everywhere is the note path. Tabs mode
+orders the current tab first, then recent tabs, with tab-bar order as the
+tie-break and unmatched tabs last. A typed
+query collapses the sections into one ranked list with tiers that never
+cross: T0 exact (title/stem equality or a pasted arXiv id, DOI, or URL),
+T1 title/stem word prefix (any length; a 2-character prefix counts),
+T2 fuzzy (`q >= 0.55`; two characters need a contiguous non-word
+substring, one character needs a word prefix), T3 author/area/kind/outline
+heading. Within a tier, `score = m + P + W + L + F + R`: mean token
+quality, prefix bonus 0.15, whole-word bonus 0.10, lane prior (Today
+0.20, reading 0.15, next 0.12, ready 0.08, blocked −0.02, dropped −0.20,
+read/unknown 0), frecency weight 0.25 (half-life
+`frecencyHalfLifeDays`), and added-date recency weight 0.10; ties break
+on shorter title, newer added, then path. One tuning note: the plan
+specified the dropped prior as −0.10, but at −0.10 a dropped
+title-prefix match (prefix bonus +0.15) outscored a Ready non-prefix
+word match, failing the "sinks the dropped row" golden expectation, so
+the constant is −0.20.
+
+**Newest** (`RefsListOrder.newest`) lists every reference of the scope in
+a date-grouped timeline instead of the sections above, with the same
+tiered search when a query is typed. ⌘0 changes order, never membership:
+the rows are exactly the ones the scope (and, with a query, the T0–T3
+search) shows in the ranked order. Rows sort by `added` day, newest first;
+then by `added_at` instant, newest first, with timed rows ahead of
+untimed rows on the same day; then by note path. Rows without an `added`
+date come last, in path order. Consecutive rows form date groups in the
+panel calendar (`signals.now`, `signals.calendar`), so groups never shift
+a day in US evenings:
+
+| Group               | Rule                                  | Header          | Trailing detail |
+| ------------------- | ------------------------------------- | --------------- | --------------- |
+| Today               | day ≥ today (future dates clamp here) | `TODAY`         | `Oct 18`        |
+| Yesterday           | 1 day ago                             | `YESTERDAY`     | `Oct 17`        |
+| Weekday             | 2–6 days ago                          | `THURSDAY`      | `Oct 16`        |
+| Month               | older, same year as today             | `OCTOBER`       | —               |
+| Month, earlier year | older, earlier year                   | `DECEMBER 2025` | —               |
+| Undated             | no `added`                            | `UNDATED`       | —               |
+
+The weekday window matches the caption rule for 2–6 days ago, so a
+weekday group and the month group can share a month. Each group is a
+`RefsSectionKind.added(RefsAddedGroup)` with a stable id (`day-2026-10-16`,
+`month-2026-09`, `undated`), its title and trailing detail, and an
+accessibility label ("Added today, October 18", "Added in December 2025").
+Row captions keep their shape; only the date phrase changes: `added 9:41 AM`
+inside a day group (nothing for an untimed row, because the header names
+the day), `added Oct 7` inside a month group, nothing when undated, and
+the `≈` mark stays on git-sourced dates (`added ≈ 3:12 PM`). Times use
+the panel calendar's time zone and locale. The why-here line is the exact
+capture date (`Added Oct 16 at 9:41 AM`, `Added ≈ Sep 27 at 3:12 PM · from
+vault history`, or `Undated · bob has no added date for this note`);
+Newest search keeps the match reason. Section jumps move between date
+groups in Newest, searched or not.
+
+### NEW
+
+A row is NEW when it is Ready or Next (blocked included) and either a
+⌥N `new` mark still holds — no open-log event or Spotlight last-used
+date after the mark — or it has no mark, its `added` day is within 3
+local days, and it has never been opened or annotated. A `seen` mark
+hides NEW. Ways out: open the PDF, ⌥N, the reading task leaving
+Ready/Next, aging past the window (unmarked rows only), or a successful
+Link to Today from Bob Refs. Links made in Obsidian or Capture leave
+the row NEW. NEW never runs `bob`, never writes the vault, and never
+changes reading state, task lanes, Today, or review freshness; it is
+not the review walk's NEW freshness tier. ⌥N stores the smallest mark
+that produces the flipped state, so a second press restores the start
+and an arrived row still ages out on schedule.
+
+### Tuning
+
+`swift run refs-rank [--plan plan.json] [--opens open-log.json]
+[--new-marks refs-new-marks.json] [--scope chats]
+[--now 2026-10-08T09:00:00] [--tz America/New_York]
+[--newest] [query...] < ref-list.json` ranks a `bob ref list` snapshot with the
+same ranker the panel uses, for tuning against live output on this Mac
+or athena. `--now` accepts a full ISO 8601 time with an offset or a
+local date-time without one, interpreted in `--tz` (default: the current
+time zone); that calendar ranks the snapshot. Browse mode prints the
+sections; search mode prints
+`rank  tier  score (m P W L F R)  state  kind  title` with padded columns
+(rank 4, tier 9, state 8, kind 7), each followed by its why-here line.
+`--newest` prints the Newest timeline instead, in browse or search: one
+`## TITLE (count)  detail` line per date group, then one row per line as
+`added_at  state  kind  title`, where `added_at` is the instant in `--tz`
+(the bare day when only the day is known, `undated` when neither), so
+`bob ref list -R all -A -f json -g | swift run refs-rank --newest`
+shows the timeline against live output.
+`--new-marks refs-new-marks.json` loads Mac-local NEW marks into the
+same ranker.
+The target is never bundled: `Scripts/bundle.sh` copies only the
+`BobMacCapture` product.
+
+### The panel
+
+`RefsPanelController` owns a borderless non-activating glass panel
+(`RefsPanel`, a near-full-screen reading room: `min(1440, visible
+width − 96)` by `min(1000, visible height − 72)`, centered on both
+axes — 1344 × 798 pt on a 1440 × 870 pt MacBook; the Copy card covers
+the list below 760 pt wide). The SwiftUI content sits in an
+`NSGlassEffectView` (corner radius 20); the SwiftUI root itself
+carries no glass modifier so the `ImageRenderer` design fixtures
+stay reviewable. Under Reduce Transparency an opaque window
+background paints beneath the content. It prewarms at launch
+(already at the show size), recomputes its frame on every show,
+fades in over 0.12 s while the
+content scales from 0.98 to 1.0 on every show (fade only under
+Reduce Motion), hides at once with no fade-out, and hides when it
+resigns key, like Spotlight. Highlights stays frontmost throughout:
+the panel never calls `NSApp.activate`. The height is fixed while
+the panel is visible; filtering never resizes it.
+
+Layout, top to bottom: the 52 pt search bar (magnifier, 20 pt field,
+Newest or Tabs token, scope token, "`N open · M`" or "`k of M`" count, refresh spinner),
+the banner when one is up, the content well (list beside the
+inspector on `.regularMaterial` at radius 12 with a hairline
+stroke), and the 30 pt footer (key hints including "⌘S Scan", plus the library
+status: "Scanning library…" with a spinner while a scan runs, "Update
+failed · ⌘R to retry" when a refresh failed, the scan outcome — "Added
+N references", "No new references", or "Scan failed · ⌘S to retry" —
+"Updating…", or "Updated …"). The list column takes
+`min(round(width × 0.52), 560)` of the panel width (560 pt at
+reading-room widths, 458 pt at the compact 880 pt reference) and the
+inspector shows at
+760 pt and above. The inspector picks one of two layouts from the
+panel width: wide when its column reaches 568 pt (24 pt padding, a
+readable column of at most 720 pt centered in the inspector), compact
+otherwise (today's 18 pt padding). Rows are 44 pt and two lines: the New dot (accent, only while the
+row is NEW),
+the kind tile, the rich title (semibold while NEW; code spans styled, matches in the
+accent color) with its caption (a stem-only or secondary match
+renders its part in the accent color, and a matched author the
+caption already shows is not repeated), and the Today pill,
+annotation and narration marks, and the state glyph. Section headers
+are 26 pt and pinned. The selected row always stays fully visible
+below the pinned header; every show, and every re-rank that selects
+the first row, returns the list to its top; moving up lands the
+selected row just under its section header. The NEW header leads with the same accent
+dot; while a NEW-section row is selected it trails "⌥N Mark Seen"
+or "⌥N Mark New". In Newest they are date groups (`TODAY`,
+`YESTERDAY`, a weekday, a month, `UNDATED`) with the count after the
+title and a trailing day on day groups (`Oct 18`). The Newest token is
+an accent capsule (`calendar.day.timeline.left`, falling back to
+`calendar`) with the text "Newest" and an `xmark`; activating it
+returns to library sections. VoiceOver reads each row as one element —
+"Title, Paper, Ready, added today, 22 pages, Today in BLOG
+Pomodoro, new" — with the kind said once and the selected
+row carrying `.isSelected`. The inspector fills instantly from the
+list item (hero, kind/state/New/Today chips, title, byline, an
+Added/Finished/Pages/Opened/Notes/Reading task/Narration facts grid
+with absent rows omitted, the why-here line, and the vault PDF path;
+see [Bob Refs inspector](refs-inspector.md) for the hydrated column); a missing PDF shows an
+orange callout reading "↵ opens the note instead". States: 8
+skeleton rows on first launch, a centered callout card with Retry
+(⌘R) and Copy Diagnostic when no cache exists and the refresh
+failed, a centered "No references match" empty state with a quiet second line
+("Not in your library yet? ⌘S scans for new references", or "Scanning
+for new references…" while a scan runs), and dimmed
+unavailable rows that never open whatever slid into their index. A scan
+that finishes while the panel is visible re-ranks once like ⌘R, puts
+the Just scanned section first with its first row selected, and
+announces the outcome to VoiceOver; a scan that finishes while the
+panel is hidden posts a macOS notification instead ("Added N
+references", or the failure), and clicking it shows Bob Refs with the
+section on top. Problem scans raise a banner: a warning with Copy
+Diagnostic for per-PDF failures, an error with Scan Again and Copy
+Diagnostic for hard failures.
+
+| Key | Bob Refs panel |
+| --- | -------------- |
+| Return, Tab, double-click | Open in Highlights (the note when the PDF is missing) |
+| Command-Return | Open the note in Obsidian |
+| Option-Return | Reveal the PDF in Finder |
+| Up/Down, Ctrl-P/Ctrl-N, Ctrl-K/Ctrl-J | Move (wraps) |
+| Page Up/Page Down | Page the results list by one less than fits |
+| Ctrl-X | Close the selected tab in Highlights (Tabs only); elsewhere passes through to search |
+| Ctrl-D | Scroll the preview down by half its height; while the `+N more` row is on screen, Ctrl-D shows the next page of highlights at once; search keeps focus |
+| Ctrl-U | Scroll the preview up by half its height; search keeps focus |
+| Shift-Command-T | Reopen the most recently closed Highlights tab |
+| Command-Up/Command-Down, Home/End | First, last |
+| Option-Up/Option-Down | First row of the previous/next section (browse and Newest) |
+| Command-0 | Toggle Newest: every reference by date added, newest first, grouped by day then month; typing still filters |
+| Command-1 … Command-5 | Scope All, Chats, Papers, Articles, Docs |
+| Command-R | Refresh library, Today, and git dates now; re-rank |
+| Command-S | Scan for new references now (`bob ref scan -w` in the background); a second ⌘S while one runs does nothing |
+| Command-K | Actions menu for the selected row |
+| Command-Y | Open the Copy card for the selected row |
+| Command-N | Open the Link to Today card for the selected reference |
+| Option-N | Mark the selected Ready or Next reference Seen, or New again; the row stays put until the next re-rank; other rows beep |
+| Command-Shift-R | Open the Rename card for the selected row |
+| Backspace on an empty query | Remove the Tabs or Newest token first, then the scope token |
+| Esc, Ctrl-[ | Link to Today, Rename, or Copy card, then banner, query, Tabs or Newest, scope, close |
+| Shift-Tab | Consumed (no-op) |
+
+Return and Command-Y while IME-composing pass through to the text system. Ctrl-D,
+Ctrl-U, and Ctrl-X also pass through while IME-composing; once recognized Ctrl-D
+and Ctrl-U consume the key even when the preview is hidden, short, empty, or
+already at an edge. In Tabs, Ctrl-X closes the selected tab; Ctrl-D always
+scrolls. While the `+N more` row is fully visible in the viewport —
+or at the very bottom of the preview — Ctrl-D shows the next page of
+highlights at once (clicking the disclosure row does the same);
+elsewhere it scrolls half a viewport, and
+when nothing is hidden it is still consumed and does nothing.
+Shift-Command-T reopens the most recently closed tab, or does nothing
+when none remain; it also passes through while IME-composing.
+Printable keys fall through to the search field. Result counts are
+announced 600 ms after typing stops, never on every keystroke.
+
+### Copy card
+
+Command-Y opens an in-panel card for the selected reference. The fixed keys
+copy `I` marker ID, `T` title, `W` wiki link, `U` source URL, `L` Markdown
+link, `X` arXiv ID, `D` DOI, `N` note path, `O` Obsidian link, `P` PDF path,
+`F` the PDF file,
+`R` reading-task link, and `S` research reference. `1`–`9` copy the visible
+commented highlights, including their page and block-link provenance; `A`
+copies all commented highlights and standalone notes plus Bob's own notes; `H`
+opens a highlight picker for every highlight and standalone note (digits copy
+the visible window, arrows scroll the rest, `A` copies all highlights). Rows
+that do not apply are hidden without moving the other keys. Return or Command-Y
+copies the selected row (marker ID when available, otherwise wiki link); Up/Down
+and Ctrl-P/N/J/K move the
+selection, and Escape returns to the inspector. From the picker, Escape
+returns to the card.
+
+Paths under your home folder copy with `~` in place of it (for example,
+`~/bob/lib/…`). Only the Obsidian link and the PDF and narration file copies
+stay absolute, because they need a real path.
+
+Hold Option (⌥) to swap previews in place. Option-W copies a titled wiki link,
+Option-P the absolute PDF path, Option-N the note's full `~` path, and
+Option-F the narration file when it exists. Option-1–9 copies the highlight's
+quote verbatim, without comment or provenance, on either the card or picker.
+Rows without an alternate keep their normal payload, including standalone notes.
+Option-click and Option-Return copy the displayed alternate too. A queued note
+copy remembers whether Option was held; Return retries the same payload after a
+failed write, even if Option has since been released.
+
+Each row previews the exact value it copies. A shared marker ID shows its
+`shared ×N` count; press `N` to copy this note's path. If the installed Bob
+does not report `marker_id`, `I` explains that a newer Bob is needed and the
+other rows still work. A successful copy checks the pasteboard write, hides
+Refs, and shows a glass HUD. When Refs was opened over a Capture draft,
+Capture returns with that draft ready for ⌘V. A failed write leaves the card
+open so Return can retry.
+
+### Rename card
+
+Command-Shift-R or Rename… in the ⌘K menu opens a card for the selected
+reference. Edit the filename stem; the `.pdf` suffix stays fixed. Return
+runs `bob ref rename` for the selected note, and Escape closes the card.
+Ordinary typing and editing shortcuts stay in the filename field. Bob's
+refusal message and hint appear inline, and the draft stays editable for
+another attempt. The card explains that the note and inbound links move
+with the PDF while the reading task keeps its identity. Close the PDF in
+Highlights first. Hiding the panel does not cancel a rename already in
+progress; completion while hidden posts a notification.
+
+### Link to Today card
+
+Command-N or Link to Today… in the ⌘K menu opens the selected reference's
+Pomodoro picker. Bob supplies the open Pomodoros, the current or next
+default, and each preview; Return links to the default, while typing
+filters rows and offers a new Pomodoro name. Arrow keys move through
+matches, Shift-Return creates or reuses the exact typed name, and clicking
+a row links it. The card stays open while choosing another reference.
+The selected row gains its Today pill immediately, then the library refresh
+replaces that optimistic pill. A successful (non-guarded) link from Bob Refs
+marks that row seen, so it leaves NEW on the next unfrozen ranking. A glass
+toast confirms the lane and ledger change; if the panel was hidden when Bob
+returned, Bob Refs posts the same outcome as a system notification. VoiceOver
+announces visible successes. Escape closes the card, and a link already in
+progress finishes if the panel hides.
+
+### Opening Bob Refs
+
+- From anywhere on the Mac, Control-Shift-Command-O toggles the panel.
+  Settings › References can turn this binding off.
+- While Highlights is frontmost, Command-O opens Bob Refs instead of
+  Highlights' Open… dialog. Settings can switch the takeover to
+  Control-O or turn it Off. The takeover registers only while
+  Highlights — or the override app picked in Settings — is frontmost,
+  so Command-O and Control-O keep working everywhere else, and
+  Highlights' File › Open… still opens its own dialog. The panel never
+  activates, so Highlights stays frontmost and the same key closes the
+  panel again.
+- While Highlights is frontmost, Shift-Command-O opens Bob Refs in Tabs
+  (default). Settings › References can change this key to Command-E or
+  Off. It registers only for Highlights or the override app; the global
+  Control-Shift-Command-O and Command-O library flows are unchanged.
+- The menu-bar item offers Bob Refs… directly below Capture, with the
+  same shortcut shown for display.
+- Only one Bob panel is ever visible: opening Refs while Capture is
+  open retains the capture draft first (`BobPanelCoordinator`), and
+  opening Capture hides Refs.
+- Every successful capture refreshes Today and marks the snapshot
+  stale, so the next open re-reads it. Recheck Bob re-points the Refs
+  fetcher, restarts its watcher, and refreshes the snapshot alongside
+  the capture ones.
+- Settings › References also shows the resolved Highlights app (name,
+  version, and path, or "Not found"), with Choose… (limited to `.app`)
+  and Use Default, plus Reset Open History… behind a confirmation
+  dialog. It also sets Preview highlights per page (1–20, default 5) for
+  the inspector, or
+  `defaults write org.bobs.bob-mac-capture refsInspectorNotesPageSize -int 5`.
+- Diagnostics: a failed global or takeover registration reports
+  "Refs hotkey conflict: …"; free the shortcut and use Recheck Bob.
+  Toggling the References settings re-registers immediately.
+
+### Tabs
+
+Tabs lists every document open in Highlights. A matched tab uses its
+reference note row. A collision or a file outside the library stays in
+the list as a dim row with its filename and a clear match status.
+
+Press Shift-Command-O while Highlights is frontmost to open Tabs, or
+Command-T in Bob Refs to toggle the filter. The filter combines with the
+kind scopes and keeps the current query. The current tab comes first;
+the rest follow most-recently-active order, with tab-bar order as the
+tie-break and unmatched tabs last. When Highlights is frontmost, the
+previous tab is preselected.
+
+Return, Tab, or double-click switches to the existing tab. Switching
+keeps its page, does not change reading state, and does not add an entry
+to the open log. Control-X closes the selected tab, including collision
+and unmatched rows: the row folds out, the next row is selected, and the
+panel stays up so Control-X Control-X Control-X clears several tabs.
+Hovered and selected Tabs rows also show a Close Tab button (⌃X).
+A background tab closes by briefly switching Highlights to it, closing it
+with the window's close button, and switching back.
+Closing the last open document also quits Highlights, and the panel
+hides. Shift-Command-T reopens the most recently closed tab (up to 20,
+kept in memory for the app's lifetime). A matched row reopens its library
+PDF; a collision or unmatched row reopens only when its full path was
+known.
+
+If Highlights already closed the tab, the row stays gone with no error.
+If Highlights shows a save sheet instead of closing, Bob Refs hides so
+the sheet is in front. Any other failure puts the row back, selected,
+with "Couldn't close “title” in Highlights."
+
+Tabs refreshes on panel show, Command-T, or Command-R;
+it does not poll in the background. The panel explains when Accessibility
+permission is needed, Highlights is not running, no documents are open,
+or a read fails.
+
+Accessibility reads Highlights' window and tab attributes, selects a
+tab through its button, and presses a window's close button.
+Names stay in memory. Highlights exposes the
+visible tab's full path; background tabs match by filename only. Tabs in
+other Spaces and full-screen windows are untested.

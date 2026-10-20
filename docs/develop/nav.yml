@@ -1,2 +1,6 @@
 - title: Architecture
   path: architecture.md
+- title: Build
+  path: build.md
+- title: CI
+  path: ci.md

@@ -1,3 +1,9 @@
+- title: Install
+  path: install.md
+- title: Settings
+  path: settings.md
+- title: Permissions
+  path: permissions.md
 - title: Capture panel
   path: capture-panel.md
 - title: Pickers
@@ -16,5 +22,11 @@
   path: wikilink-completion.md
 - title: Idle agenda
   path: idle-agenda.md
+- title: Bob Refs
+  path: refs.md
+- title: Bob Refs inspector
+  path: refs-inspector.md
+- title: Diagnostics
+  path: diagnostics.md
 - title: Protocol
   path: protocol.md

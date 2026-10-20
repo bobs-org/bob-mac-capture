@@ -7,7 +7,7 @@ Every capture action is reachable from the keyboard alone. Successor choice card
 
 ## Bob Refs shortcuts
 
-These rows act in the Bob Refs panel; the Bob Refs reference (application-reference phase) expands them.
+These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspector](refs-inspector.md) expand them.
 
 | Key | Action |
 | --- | --- |

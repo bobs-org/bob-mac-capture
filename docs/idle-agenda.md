@@ -65,6 +65,6 @@ including the next panel show.
   `refs-panel-show`, `refs-panel-prepare`, `refs-panel-order`, `refs-pull`,
   `refs-refresh`, and `refs-scan`, plus events
   `agenda-unchanged`, `agenda-published`, and `agenda-hold-released` — metadata only
-  ([Diagnostics and Signposts](https://github.com/bobs-org/bob-mac-capture#diagnostics-and-signposts)).
+  ([Diagnostics](diagnostics.md#signposts)).
 
-The store behind the agenda runs on the shared Pomodoros lane; see [Architecture](https://bobs-org.github.io/develop/mac-capture/architecture/). Diagnostics and Signposts details land with the diagnostics reference (application-reference phase).
+The store behind the agenda runs on the shared Pomodoros lane; see [Architecture](https://bobs-org.github.io/develop/mac-capture/architecture/). Signposts and Recent Activity are in [Diagnostics](diagnostics.md).

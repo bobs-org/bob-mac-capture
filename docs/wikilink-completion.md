@@ -46,6 +46,6 @@ context/name/path/badge description before "double-tap to insert."
 Note metadata — paths, stems, frontmatter aliases, heading text, and block-id previews
 — is read directly by `bob` from the local vault to build these candidates. The app
 never logs it, writes it to `UserDefaults`, or includes it in a notification, signpost,
-or Diagnostics entry; see [Privacy](https://github.com/bobs-org/bob-mac-capture#privacy).
+or Diagnostics entry; see [Permissions](permissions.md#privacy).
 
-Note metadata stays local: paths, stems, aliases, headings, and block previews are read by `bob` from the vault and are never logged, persisted, or included in notifications or diagnostics. Long-term storage rules land with the permissions reference (application-reference phase); until then see [Privacy](https://github.com/bobs-org/bob-mac-capture#privacy).
+Note metadata stays local: paths, stems, aliases, headings, and block previews are read by `bob` from the vault and are never logged, persisted, or included in notifications or diagnostics. Disk and memory rules are in [Permissions](permissions.md).

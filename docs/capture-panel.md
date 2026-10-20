@@ -16,7 +16,7 @@ The panel owns presentation, process orchestration, and the hotkey. Capture gram
   retained canceled drafts survive Restart and Quit. There is no confirmation dialog.
   Restart refuses to quit (reporting a failure instead) when the running process is not
   launched from an installed `.app` bundle or that bundle no longer exists on disk. See
-  "Updating, Reinstalling, and Rollback" in the [Mac README](https://github.com/bobs-org/bob-mac-capture#updating-reinstalling-and-rollback) for automatic install restart and the
+  [Install](install.md#updating-reinstalling-and-rollback) for automatic install restart and the
   manual Restart item.
 - Production hotkey (the default): Control-Shift-Command-I.
 - Development/rollback hotkey: Control-Shift-Command-R, selectable in Settings.

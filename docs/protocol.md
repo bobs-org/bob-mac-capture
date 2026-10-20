@@ -229,7 +229,7 @@ Capabilities are detected per response, never pinned to release numbers: unknown
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.
 
-The executable search paths and the Settings override live under Requirements in the [Mac README](https://github.com/bobs-org/bob-mac-capture#requirements); the install reference owns them next.
+The executable search paths and the Settings override live in [Install](install.md#requirements).
 
 ## Timeouts and guards
 
@@ -259,6 +259,12 @@ These must exist; without them the feature they serve stays hidden or refuses wi
 - `capture-pomodoros --format json --tasks` (agenda, counts, landing); plain `capture-pomodoros` only feeds the close-comma count on older builds
 - `capture-task-id` / `capture-pomodoro-name` (Add block ID / Name Pomodoro prompts)
 - `capture-targets` (route list), `capture-templates list` / `save` (template shelf)
+- `ref list -R all -A -f json` (Refs snapshot, schema 1; add `-g` while any row still lacks an `added` date or git instant)
+- `plan -f json` (Refs Today join, schema 2)
+- `ref scan -w -f json` (Refs scan report, schema 1)
+- `ref show <note-path> -f json` (inspector hydration)
+- `ref rename` (Rename card)
+- `vault-sync -q` (Refs pull on panel show and before ⌘R)
 
 ## Optional fields
 
@@ -268,6 +274,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `pomodoro_start.override`, `toggle_behavior`, `toggle_direction` with `status_changed`
 - `plan_budget`, destination `role`, `plan_themes_after`, `plan_themes_cap`, `code`
 - `ref` with `ref.parent`, `ref_parent`, `project_name_aliases`
+- Refs list fields `blocked`, `task`, `added_at`; snapshot cache key `git_added_at`; copy-card `marker_id`
 - `block_id` object, `picker` descriptor, `parent_replacement`, `pomodoro_start_name` context
 - `open_notes`, `homes`, `task_links`, successor-offer payloads
 - Retired inputs (`now` flag, `now_tag` span, `now` picker group) decode as neutral: unknown spans as neutral text, unknown contexts as generic rows, unknown groups as `note`
@@ -289,6 +296,16 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `plan_budget`, `role`, theme caps | Meter capsules, badges, strict hint | Destination row only (`-> NAME`) | Upgrade `bob` for meters |
 | `ref` object | Queue preview card, footer action | Ordinary inbox task | Upgrade `bob`; `-R` disables queueing |
 | `ref.parent`, aliases | File-under prompt, alias-ranked routes | No auto-open; prefix matching only | Upgrade `bob` for filing |
+| `ref list` schema 1, optional `-g` | Refs snapshot with git instants | Refresh fails on any other schema; `-g` omitted until a row still lacks `added`/`added_at` | Upgrade `bob` for Refs |
+| `blocked` on a Refs row | Blocked rows sort last in Next/Ready | Decoded as not blocked | Upgrade `bob` for blocked ranking |
+| `task` on a Refs row | Today joins on `(path, block_id)` | Note-path join; two tasks on one parent can both light up | Upgrade `bob` for task join |
+| `added_at` | Timed Newest groups and captions | Nil; day-only or undated ranking | Upgrade `bob` for instants |
+| `plan -f json` schema 2 | Today pills from the ledger | Last good Today; footer can say Update failed | Upgrade `bob` for Today |
+| `ref scan -w -f json` schema 1 | Scan report, Just scanned, notifications | Banner or "This bob can't report scans yet" | Upgrade `bob`; retry ⌘S |
+| `ref show` | Hydrated inspector notes, tasks, outline | Basic inspector plus dim "Notes unavailable" | Upgrade `bob` for notes |
+| `ref rename` | Rename card writes through `bob` | Card stays open with `bob`'s refusal | Upgrade `bob` for rename |
+| `vault-sync -q` | Background Refs pull | Pull failure is logged only; list stays | Upgrade `bob` for pull |
+| `marker_id` | Copy-card `I` row | `I` asks for a newer `bob`; other copy rows still work | Upgrade `bob` for marker IDs |
 | `open_notes` | Control-Return lands on captured lines | Tabs open without landing | Upgrade `bob`; needs plugin 2.44.1+ |
 | `--tasks` on `capture-pomodoros` | Agenda, counts, `=#name` names | Agenda hidden; counts from plain output | Upgrade `bob`, then Recheck |
 | `pomodoro_start_name` | Start list for `=#name` | No rows | Upgrade `bob` |
