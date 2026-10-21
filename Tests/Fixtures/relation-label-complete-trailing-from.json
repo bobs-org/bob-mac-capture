@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"cursor":19,"replacement":{"start":18,"end":19},"context":"relation_label","candidates":[{"label":"follow-up of","count":4,"replacement":"|\"follow-up of\""}],"query":"","owner":{"kind":"new_task","text":"Fix"},"relation":{"direction":"from","range":{"start":4,"end":18}}}

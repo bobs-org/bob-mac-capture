@@ -1271,6 +1271,18 @@ JSON
       cat "${fixtures_dir}/relation-label-parse-from.json"
     elif [[ "${draft}" == "New task ~tasks:target| @work" ]]; then
       cat "${fixtures_dir}/relation-label-parse-work.json"
+    elif [[ "${draft}" == "~tasks:target| Fix it" ]]; then
+      cat "${fixtures_dir}/relation-label-parse-leading.json"
+    elif [[ "${draft}" == "Fix it ~tasks:target| &tasks:source" ]]; then
+      cat "${fixtures_dir}/relation-label-parse-dep.json"
+    elif [[ "${draft}" == 'Fix ~"My Note":target|' ]]; then
+      cat "${fixtures_dir}/relation-label-parse-quoted.json"
+    elif [[ "${draft}" == "Hi 🧪 ~tasks:target|" ]]; then
+      cat "${fixtures_dir}/relation-label-parse-nonascii.json"
+    elif [[ "${draft}" == "Fix ~~tasks:source|" ]]; then
+      cat "${fixtures_dir}/relation-label-parse-trailing-from.json"
+    elif [[ "${draft}" == "~~tasks:source| Fix it" ]]; then
+      cat "${fixtures_dir}/relation-label-parse-leading-from.json"
     elif [[ "${draft}" == "Use this @mac_inbox+owner ~" ]]; then
       cat "${fixtures_dir}/relation-parse-owner.json"
     elif [[ "${draft}" == "Use this @mac_inbox+owner ~tasks:target|follow" ]]; then
@@ -2861,16 +2873,54 @@ JSON
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/blocked-task-complete-filtered.json"
     elif [[ "${draft}" == "Buy Groceries! &" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/task-dependency-complete-new-task.json"
-    elif [[ "${draft}" == "New task ~~tasks:source|" ]]; then
-      cat "${fixtures_dir}/relation-label-complete-from.json"
-    elif [[ "${draft}" == "New task ~tasks:target|"* ]]; then
+    elif [[ "${draft}" == "New task ~tasks:target|" && "${cursor}" == "23" ]]; then
       if [[ "${FAKE_BOB_RELATION_OLD:-}" == "1" ]]; then
         cat "${fixtures_dir}/relation-label-complete-old.json"
-      elif [[ "${draft}" == *" @work"* ]]; then
-        cat "${fixtures_dir}/relation-label-complete-work.json"
       else
         cat "${fixtures_dir}/relation-label-complete-to.json"
       fi
+    elif [[ "${draft}" == "New task ~~tasks:source|" && "${cursor}" == "24" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-from.json"
+    elif [[ "${draft}" == "New task ~tasks:target| @work" && "${cursor}" == "23" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-work.json"
+    elif [[ "${draft}" == "~tasks:target| Fix it" && "${cursor}" == "14" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-leading.json"
+    elif [[ "${draft}" == "Fix it ~tasks:target| &tasks:source" && "${cursor}" == "21" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-dep.json"
+    elif [[ "${draft}" == 'Fix ~"My Note":target|' && "${cursor}" == "22" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-quoted.json"
+    elif [[ "${draft}" == "Hi 🧪 ~tasks:target|" && "${cursor}" == "22" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-nonascii.json"
+    elif [[ "${draft}" == "Fix ~~tasks:source|" && "${cursor}" == "19" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-trailing-from.json"
+    elif [[ "${draft}" == "~~tasks:source| Fix it" && "${cursor}" == "15" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-leading-from.json"
+    elif [[ "${draft}" == 'New task ~tasks:target|" @work' && "${cursor}" == "24" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-work-blank.json"
+    elif [[ "${draft}" == 'Fix it ~tasks:target|" &tasks:source' && "${cursor}" == "22" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-dep-blank.json"
+    elif [[ "${draft}" == '~tasks:target|" Fix it' && "${cursor}" == "15" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-leading-blank.json"
+    elif [[ "${draft}" == 'Fix ~"My Note":target|"' && "${cursor}" == "23" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-quoted-blank.json"
+    elif [[ "${draft}" == 'Hi 🧪 ~tasks:target|"' && "${cursor}" == "23" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-nonascii-blank.json"
+    elif [[ "${draft}" == 'New task ~tasks:target|"follow @work' && "${cursor}" == "30" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-work-follow.json"
+    elif [[ "${draft}" == 'New task ~tasks:target|"see @work' && "${cursor}" == "27" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-work-see.json"
+    elif [[ "${draft}" == 'Fix it ~tasks:target|"see &tasks:source' && "${cursor}" == "25" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-dep-see.json"
+    elif [[ "${draft}" == '~tasks:target|"see Fix it' && "${cursor}" == "18" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-leading-see.json"
+    elif [[ "${draft}" == '~tasks:target|"follow Fix it' && "${cursor}" == "21" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-leading-follow.json"
+    elif [[ "${draft}" == 'Fix ~"My Note":target|"see' && "${cursor}" == "26" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-quoted-see.json"
+    elif [[ "${draft}" == 'Hi 🧪 ~tasks:target|"see' && "${cursor}" == "26" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-nonascii-see.json"
+    elif [[ "${draft}" == 'New task ~~tasks:source|"follow @work' && "${cursor}" == "31" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-from-follow.json"
     elif [[ "${draft}" == "New task ~" ]]; then
       cat "${fixtures_dir}/relation-complete-to.json"
     elif [[ "${draft}" == "New task ~~" ]]; then

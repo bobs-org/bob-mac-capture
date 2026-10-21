@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"cursor":15,"replacement":{"start":13,"end":22},"context":"relation_label","candidates":[{"label":"follow-up of","count":4,"replacement":"|\"follow-up of\""}],"query":"","relation":{"direction":"to","range":{"start":0,"end":13}}}

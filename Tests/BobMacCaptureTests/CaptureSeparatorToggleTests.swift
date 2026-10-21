@@ -57,7 +57,10 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         let selection = textView.selectedRange()
         textView.insertText(typed, replacementRange: selection)
         model.plainDraft = textView.string
-        model.editorTextDidChange(cursorUTF8Offset: textView.string.utf8.count)
+        let caretUTF16 = textView.selectedRange().location
+        let caretUTF8 = utf8Offset(in: textView.string, utf16Offset: caretUTF16)
+            ?? textView.string.utf8.count
+        model.editorTextDidChange(cursorUTF8Offset: caretUTF8)
     }
 
     private func relationCandidate(from: Bool = false) -> CaptureCompletionCandidate {
@@ -642,8 +645,9 @@ final class CaptureSeparatorToggleTests: XCTestCase {
     }
 
     func testRelationLabelCommitPreservesFollowingRouteText() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)
-        model.processClient = try processClient()
+        model.processClient = try processClient(recordURL: recordURL)
         let textView = makeTextView("New task ~tasks:target @work")
         textView.setSelectedRange(NSRange(location: 22, length: 0))
         wireNativeApply(model, textView: textView)
@@ -651,7 +655,19 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         typeSeparator("|", into: textView, model: model)
         await waitUntil { model.relationLabelPromptVisible }
         XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 22, end: 23))
+        XCTAssertEqual(model.relationLabelPrompt?.tokenRange, CaptureRange(start: 9, end: 22))
+        // Mid-draft caret must request completion at the pipe (23), not end of draft (29).
+        await waitUntil {
+            (try? String(contentsOf: recordURL))?.contains(
+                "argv=capture-complete --all-tasks --cursor 23 --format json -- New task ~tasks:target| @work"
+            ) == true
+        }
+        let record = try String(contentsOf: recordURL)
+        XCTAssertFalse(record.contains("capture-complete --all-tasks --cursor 29"))
         model.updateRelationLabelPromptLabel("follow")
+        await waitUntil {
+            model.relationLabelPrompt?.suggestions.contains(where: { $0.typed && $0.label == "follow" }) == true
+        }
         model.submitRelationLabelPrompt()
 
         XCTAssertEqual(model.plainDraft, "New task ~tasks:target|follow @work")
@@ -667,9 +683,156 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 22, end: 22))
         await waitUntil { model.relationLabelPrompt?.suggestions.isEmpty == false }
         model.updateRelationLabelPromptLabel("follow")
+        await waitUntil {
+            model.relationLabelPrompt?.suggestions.contains(where: { $0.typed && $0.label == "follow" }) == true
+        }
         model.submitRelationLabelPrompt()
 
         XCTAssertEqual(model.plainDraft, "New task ~tasks:target|follow @work")
+    }
+
+    func testLeadingRelationPipeOpensWithNarrowRangeAndCommitsSee() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        let textView = makeTextView("~tasks:target Fix it")
+        textView.setSelectedRange(NSRange(location: 13, length: 0))
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("|", into: textView, model: model)
+        await waitUntil { model.relationLabelPromptVisible }
+        XCTAssertEqual(model.relationLabelPrompt?.tokenRange, CaptureRange(start: 0, end: 13))
+        XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 13, end: 14))
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linksTo)
+        XCTAssertEqual(model.relationLabelPrompt?.ownerText, "Fix it")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 14 --format json -- ~tasks:target| Fix it"))
+        model.updateRelationLabelPromptLabel("see")
+        await waitUntil {
+            model.relationLabelPrompt?.suggestions.contains(where: { $0.typed && $0.label == "see" }) == true
+        }
+        // The synthetic probe uses a larger replacement (13..25); the card must keep the narrow original.
+        XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 13, end: 14))
+        model.submitRelationLabelPrompt()
+
+        XCTAssertEqual(model.plainDraft, "~tasks:target|see Fix it")
+    }
+
+    func testDependencyTailCommitPreservesSuffixByteForByte() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        let textView = makeTextView("Fix it ~tasks:target &tasks:source")
+        textView.setSelectedRange(NSRange(location: 20, length: 0))
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("|", into: textView, model: model)
+        await waitUntil { model.relationLabelPromptVisible }
+        XCTAssertEqual(model.relationLabelPrompt?.tokenRange, CaptureRange(start: 7, end: 20))
+        XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 20, end: 21))
+        XCTAssertEqual(model.relationLabelPrompt?.ownerText, "Fix it")
+        await waitUntil {
+            (try? String(contentsOf: recordURL))?.contains(
+                "argv=capture-complete --all-tasks --cursor 21 --format json -- Fix it ~tasks:target| &tasks:source"
+            ) == true
+        }
+        model.updateRelationLabelPromptLabel("see")
+        await waitUntil {
+            model.relationLabelPrompt?.suggestions.contains(where: { $0.typed && $0.label == "see" }) == true
+        }
+        XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 20, end: 21))
+        model.submitRelationLabelPrompt()
+
+        XCTAssertEqual(model.plainDraft, "Fix it ~tasks:target|see &tasks:source")
+    }
+
+    func testShiftReturnDependencyTailMidDraftPreservesSuffix() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient()
+        model.installRelationPickerForPreviews(
+            candidates: [relationCandidate()],
+            draft: "Fix it ~ &tasks:source",
+            replacement: CaptureRange(start: 7, end: 8),
+            owner: DependencyOwner(kind: "new_task", text: "Fix it"),
+            direction: .linksTo
+        )
+        model.openRelationLabelPromptFromPickerRow(id: "tasks.md|1:aaaa1111")
+
+        XCTAssertTrue(model.relationLabelPromptVisible)
+        XCTAssertEqual(model.relationLabelPrompt?.tokenRange, CaptureRange(start: 7, end: 20))
+        XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 20, end: 20))
+        await waitUntil { model.relationLabelPrompt?.suggestions.isEmpty == false }
+        model.updateRelationLabelPromptLabel("see")
+        await waitUntil {
+            model.relationLabelPrompt?.suggestions.contains(where: { $0.typed && $0.label == "see" }) == true
+        }
+        model.submitRelationLabelPrompt()
+
+        XCTAssertEqual(model.plainDraft, "Fix it ~tasks:target|see &tasks:source")
+    }
+
+    func testQuotedNotePipeOpensWithEntireTokenRange() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient()
+        let textView = makeTextView("Fix ~\"My Note\":target")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("|", into: textView, model: model)
+        await waitUntil { model.relationLabelPromptVisible }
+        XCTAssertEqual(model.relationLabelPrompt?.tokenRange, CaptureRange(start: 4, end: 21))
+        XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 21, end: 22))
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linksTo)
+        XCTAssertEqual(model.relationLabelPrompt?.ownerText, "Fix")
+    }
+
+    func testNonAsciiDraftPipeOpensAndConvertsCaret() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        let textView = makeTextView("Hi 🧪 ~tasks:target")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("|", into: textView, model: model)
+        await waitUntil { model.relationLabelPromptVisible }
+        XCTAssertEqual(model.relationLabelPrompt?.tokenRange, CaptureRange(start: 8, end: 21))
+        XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 21, end: 22))
+        XCTAssertEqual(model.relationLabelPrompt?.ownerText, "Hi 🧪")
+        await waitUntil {
+            (try? String(contentsOf: recordURL))?.contains(
+                "argv=capture-complete --all-tasks --cursor 22 --format json -- Hi 🧪 ~tasks:target|"
+            ) == true
+        }
+    }
+
+    func testIncomingFromPipeOpensWithCorrectDirection() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient()
+        let textView = makeTextView("Fix ~~tasks:source")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("|", into: textView, model: model)
+        await waitUntil { model.relationLabelPromptVisible }
+        XCTAssertEqual(model.relationLabelPrompt?.tokenRange, CaptureRange(start: 4, end: 18))
+        XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 18, end: 19))
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linkedFrom)
+        XCTAssertEqual(model.relationLabelPrompt?.ownerText, "Fix")
+    }
+
+    func testEmptyLabelReturnWithFollowingTailDropsOnlyPipeSuffix() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient()
+        let textView = makeTextView("New task ~tasks:target @work")
+        textView.setSelectedRange(NSRange(location: 22, length: 0))
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("|", into: textView, model: model)
+        await waitUntil { model.relationLabelPromptVisible }
+        XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 22, end: 23))
+        model.submitRelationLabelPrompt()
+
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target @work")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 22)
+        XCTAssertEqual(model.statusText, "Inserted relation without a label")
     }
 
     func testEmptyLabelReturnDropsPipeAndLeavesBareRelation() async throws {
