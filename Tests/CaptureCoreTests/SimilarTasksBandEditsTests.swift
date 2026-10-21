@@ -108,6 +108,32 @@ final class SimilarTasksBandEditsTests: XCTestCase {
     )
   }
 
+  func testExplicitReplacementSplicesIDLessRow() {
+    let draft = "Install new UPS battery @dev"
+    let anchored = item(markerAt: draft.utf8.count)
+    let edited = SimilarTasksBandEdits.editedDraftWithReplacement(
+      draft,
+      item: anchored,
+      replacement: "~dev:ups-backup",
+      action: .relate
+    )
+    XCTAssertEqual(edited?.text, draft + " ~dev:ups-backup")
+    XCTAssertEqual(edited?.cursorUTF8, (draft + " ~dev:ups-backup").utf8.count)
+  }
+
+  func testExplicitNoteReplacementReplacesRouteRange() {
+    let draft = "Install new UPS battery @dev"
+    let route = CaptureRange(start: 24, end: 28)
+    let anchored = item(markerAt: 28, routeRange: route)
+    let edited = SimilarTasksBandEdits.editedDraftWithReplacement(
+      draft,
+      item: anchored,
+      replacement: "@dev+ups-backup",
+      action: .note
+    )
+    XCTAssertEqual(edited?.text, "Install new UPS battery @dev+ups-backup")
+  }
+
   func testMissingReplacementReturnsNil() {
     let draft = "Install new UPS battery @dev"
     let idless = CaptureRelatedMatch(

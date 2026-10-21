@@ -22,13 +22,17 @@ final class SimilarTasksBandDesignTests: XCTestCase {
             ("folded", twoRowsPlus, true),
             ("linked", linkedRow, false),
             ("focused", focusedRow, false),
+            ("revealed", revealedRow, false),
+            ("idless-focused", idlessFocusedRow, false),
         ]
         for entry in cases {
             let view = card(
                 item: entry.item,
                 folded: entry.folded,
-                focusedRowID: entry.name == "focused" ? entry.item?.rows.first?.id : nil,
-                chosenAction: entry.name == "focused" ? .note : nil
+                focusedRowID: (entry.name == "focused" || entry.name == "idless-focused")
+                    ? entry.item?.rows.first?.id : nil,
+                chosenAction: entry.name == "focused" ? .note
+                    : entry.name == "idless-focused" ? .relate : nil
             )
             for width in [760, 620] as [CGFloat] {
                 try RenderFixtureWriter.write(
@@ -219,6 +223,79 @@ final class SimilarTasksBandDesignTests: XCTestCase {
                         statusName: "Blocked"
                     ),
                     linkedBy: .relation
+                ),
+            ],
+            showsHeader: true
+        )
+    }
+
+    private var revealedRow: SimilarTasksBandItem {
+        // ↓ on the last capped row revealed the third match; one +N remains.
+        SimilarTasksBandItem(
+            index: 0,
+            mode: "task",
+            rows: [
+                row(
+                    number: 1,
+                    title: "Install new UPS battery",
+                    band: .possibleDuplicate,
+                    ranges: [CaptureRange(start: 12, end: 23)],
+                    statusSymbol: "?",
+                    statusName: "Blocked"
+                ),
+                row(
+                    number: 2,
+                    title: "Order a replacement UPS battery for athena",
+                    band: .similar,
+                    ranges: [CaptureRange(start: 22, end: 33)],
+                    statusSymbol: " ",
+                    statusName: "Ready",
+                    key: "dev.md#order-ups"
+                ),
+                row(
+                    number: 3,
+                    title: "Shelve the spare UPS battery for athena",
+                    band: .similar,
+                    ranges: [CaptureRange(start: 22, end: 33)],
+                    statusSymbol: "*",
+                    statusName: "Next",
+                    key: "dev.md#shelve-ups"
+                ),
+            ],
+            overflowCount: 1,
+            showsHeader: true
+        )
+    }
+
+    private var idlessFocusedRow: SimilarTasksBandItem {
+        SimilarTasksBandItem(
+            index: 0,
+            mode: "task",
+            rows: [
+                SimilarTasksBandRow(
+                    itemIndex: 0,
+                    rowNumber: 1,
+                    match: CaptureRelatedMatch(
+                        key: "dev.md#backup-digest",
+                        band: .possibleDuplicate,
+                        title: "Replace the UPS battery backup",
+                        matchedRanges: [CaptureRange(start: 0, end: 7)],
+                        kind: "task",
+                        statusSymbol: " ",
+                        statusName: "Todo",
+                        route: "dev",
+                        locator: "dev",
+                        notePath: "dev.md",
+                        target: "/Users/test/bob/dev.md",
+                        line: 9,
+                        taskRef: "9:deadbeef",
+                        blockID: nil,
+                        requiresBlockID: true,
+                        blockIDSuggestions: ["ups-backup", "ups-spare"],
+                        replacements: nil,
+                        actions: [.relate, .note, .needs, .blocks, .open, .discard],
+                        defaultAction: .note
+                    )
                 ),
             ],
             showsHeader: true

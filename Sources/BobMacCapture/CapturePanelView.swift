@@ -1473,10 +1473,21 @@ private struct TaskIDPromptCard: View {
         return false
     }
 
-    /// Either link-mode prompt (task-link, dependency, Complete, or
-    /// parent-task card): all show suggestion chips and the inserts line.
+    /// Either link-mode prompt (task-link, dependency, Complete,
+    /// parent-task card, or similar-tasks band): all show suggestion chips
+    /// and the inserts line.
     private var isIDLinkMode: Bool {
-        isTaskLink || isDependencyPrompt || isTaskCompletePrompt || isParentTaskPickerPrompt
+        isTaskLink || isDependencyPrompt || isTaskCompletePrompt || isParentTaskPickerPrompt || isSimilarTaskPrompt
+    }
+
+    private var isSimilarTaskPrompt: Bool {
+        guard let prompt else {
+            return false
+        }
+        if case .similarTask = prompt.purpose {
+            return true
+        }
+        return false
     }
 
     private func linkSubmitTitle(for prompt: CaptureTaskIDPromptState) -> String {
@@ -1526,6 +1537,8 @@ private struct TaskIDPromptCard: View {
             case .none, .start:
                 return "Add ID & Select"
             }
+        case .similarTask:
+            return "Add ID & Use"
         }
     }
 
@@ -1547,6 +1560,19 @@ private struct TaskIDPromptCard: View {
             return ""
         case .parentTaskPicker(let route, _, _, _, _, _):
             return "Inserts @\(route)+\(typed)"
+        case .similarTask(let route, _, _, let action, _):
+            switch action {
+            case .note:
+                return "Inserts @\(route)+\(typed) · the ID is written now, before Return"
+            case .needs:
+                return "Inserts &\(route):\(typed) · the ID is written now, before Return"
+            case .blocks:
+                return "Inserts *\(route):\(typed) · the ID is written now, before Return"
+            case .relate:
+                return "Inserts ~\(route):\(typed) · the ID is written now, before Return"
+            case .open, .discard, .unknown:
+                return ""
+            }
         }
     }
 
@@ -1578,6 +1604,24 @@ private struct TaskIDPromptCard: View {
             return Text("")
         case .parentTaskPicker(let route, _, _, _, _, _):
             return Text("\(Text("Inserts @").foregroundStyle(.secondary))\(Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text("+").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
+        case .similarTask(let route, _, _, let action, _):
+            return similarTaskInsertsText(route: route, typed: typed, action: action)
+        }
+    }
+
+    private func similarTaskInsertsText(route: String, typed: String, action: CaptureRelatedAction) -> Text {
+        let suffix = Text(" · the ID is written now, before Return").foregroundStyle(.secondary)
+        switch action {
+        case .note:
+            return Text("\(Text("Inserts @").foregroundStyle(.secondary))\(Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text("+").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))\(suffix)")
+        case .needs:
+            return Text("\(Text("Inserts &").foregroundStyle(.secondary))\(Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))\(suffix)")
+        case .blocks:
+            return Text("\(Text("Inserts *").foregroundStyle(CaptureEditorPalette.color(for: .blockedTaskSigil)))\(Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))\(suffix)")
+        case .relate:
+            return Text("\(Text("Inserts ~").foregroundStyle(CaptureEditorPalette.color(for: .relationSigil)))\(Text(route).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))\(suffix)")
+        case .open, .discard, .unknown:
+            return Text("")
         }
     }
 

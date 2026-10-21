@@ -77,7 +77,7 @@ The footer names the default so the meaning of Return stays visible.
 | --- | --- |
 | `⌘1`…`⌘5` | Focus that row; the same key again unfocuses it |
 | Left / Right | Choose the previous or next action in the strip |
-| Up / Down | Move between rows |
+| Up / Down | Move between rows (`↓` on the last visible row reveals the next hidden match) |
 | Return | Apply the chosen action |
 | `~` `+` `&` `*` `/` | Apply that action directly |
 | `⌫` | Discard mine, when Bob offers it |

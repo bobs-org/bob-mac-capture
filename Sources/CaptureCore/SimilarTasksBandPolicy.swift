@@ -75,6 +75,9 @@ public struct SimilarTasksBandState: Equatable, Sendable {
   /// Parse item count captured with this snapshot. A later parse whose
   /// count differs clears every held band until the next settle.
   public let parseItemCount: Int?
+  /// Extra hidden rows revealed per item index via ↓ on the last visible
+  /// row. Unfocusing the band collapses them back to zero.
+  public let revealed: [Int: Int]
 
   public static let empty = SimilarTasksBandState()
 
@@ -83,13 +86,15 @@ public struct SimilarTasksBandState: Equatable, Sendable {
     items: [SimilarTasksBandItem] = [],
     pending: Bool = false,
     focusedRowID: String? = nil,
-    parseItemCount: Int? = nil
+    parseItemCount: Int? = nil,
+    revealed: [Int: Int] = [:]
   ) {
     self.draft = draft
     self.items = items
     self.pending = pending
     self.focusedRowID = focusedRowID
     self.parseItemCount = parseItemCount
+    self.revealed = revealed
   }
 
   public var rows: [SimilarTasksBandRow] {
@@ -117,7 +122,8 @@ public enum SimilarTasksBandPolicy {
       items: state.items,
       pending: true,
       focusedRowID: state.focusedRowID,
-      parseItemCount: state.parseItemCount
+      parseItemCount: state.parseItemCount,
+      revealed: state.revealed
     )
   }
 
@@ -135,6 +141,9 @@ public enum SimilarTasksBandPolicy {
     var remainingDraftRows = draftRowLimit
     var nextRowNumber = 1
     var resultItems: [SimilarTasksBandItem] = []
+    // Hidden matches still available per item, so reveal counts that no
+    // longer show extra rows collapse instead of going stale.
+    var hiddenRemaining: [Int: Int] = [:]
 
     for item in sourceItems {
       guard taskCreatingModes.contains(item.mode) else { continue }
@@ -177,7 +186,11 @@ public enum SimilarTasksBandPolicy {
       }
 
       let perItemLimit = isBulk ? bulkItemRowLimit : singleItemRowLimit
-      let count = min(candidates.count, min(perItemLimit, remainingDraftRows))
+      // Revealed extras survive settles, clamped to the hidden matches still
+      // available; unfocusing resets them to zero in the model.
+      let hiddenCount = max(0, candidates.count - perItemLimit)
+      let revealedExtra = min(previous.revealed[item.index] ?? 0, hiddenCount)
+      let count = min(candidates.count, min(perItemLimit + revealedExtra, remainingDraftRows))
       guard count > 0 else { continue }
 
       let visibleRows = candidates.prefix(count).map { candidate in
@@ -191,6 +204,7 @@ public enum SimilarTasksBandPolicy {
         )
       }
       remainingDraftRows -= count
+      hiddenRemaining[item.index] = candidates.count - count
       resultItems.append(
         SimilarTasksBandItem(
           index: item.index,
@@ -204,12 +218,23 @@ public enum SimilarTasksBandPolicy {
 
     let rowIDs = Set(resultItems.flatMap(\.rows).map(\.id))
     let focusedRowID = previous.focusedRowID.flatMap { rowIDs.contains($0) ? $0 : nil }
+    // Keep only the reveal counts that still hide matches; settled swaps
+    // that drop hidden matches collapse their reveal instead of going stale.
+    var revealed: [Int: Int] = [:]
+    for (index, extra) in previous.revealed {
+      guard extra > 0,
+            resultItems.contains(where: { $0.index == index }),
+            (hiddenRemaining[index] ?? 0) > 0
+      else { continue }
+      revealed[index] = extra
+    }
     return SimilarTasksBandState(
       draft: draft,
       items: resultItems,
       pending: false,
       focusedRowID: focusedRowID,
-      parseItemCount: draftItemCount
+      parseItemCount: draftItemCount,
+      revealed: revealed
     )
   }
 

@@ -99,6 +99,76 @@ final class SimilarTasksActionsTests: XCTestCase {
     XCTAssertTrue(model.isSimilarRowFocused)
   }
 
+  private func settledIDLessModel() async throws -> CapturePanelModel {
+    let model = CapturePanelModel(
+      processClient: try client(environment: [
+        "FAKE_BOB_RELATED_FIXTURE": "capture-related/idless.json",
+      ]),
+      debounceNanoseconds: 0,
+      similarTasksSettleNanoseconds: 20_000_000
+    )
+    model.plainDraft = "Install new UPS battery @dev"
+    model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
+    await waitUntil { !model.similarTasks.pending && model.similarTasks.rows.count == 2 }
+    return model
+  }
+
+  func testIDLessRowPresentsBlockIDPrompt() async throws {
+    let model = try await settledIDLessModel()
+    XCTAssertEqual(model.similarTasks.items.first?.overflowCount, 2)
+    // Row 2 is the ID-less row: its link actions need a block ID first.
+    model.focusSimilarRow(number: 2)
+    XCTAssertTrue(model.isSimilarRowFocused)
+    model.similarApply(.relate)
+    XCTAssertTrue(model.taskIDPromptVisible)
+    XCTAssertTrue(model.taskIDPromptIsSimilarTask)
+    XCTAssertTrue(model.taskIDPromptCyclesSuggestions)
+    XCTAssertEqual(model.taskIDPrompt?.authoredID, "ups-backup")
+    XCTAssertEqual(model.taskIDPrompt?.linkSuggestions, ["ups-backup", "ups-spare"])
+    XCTAssertEqual(model.statusText, "Add block ID and use task")
+    // Tab cycles the suggestions; Escape keeps the band focus with no write.
+    model.cycleTaskLinkSuggestion(forward: true)
+    XCTAssertEqual(model.taskIDPrompt?.authoredID, "ups-spare")
+    model.cancelTaskIDPrompt()
+    XCTAssertFalse(model.taskIDPromptVisible)
+    XCTAssertTrue(model.isSimilarRowFocused)
+    XCTAssertEqual(model.similarTasks.rows.count, 2)
+    XCTAssertEqual(model.plainDraft, "Install new UPS battery @dev")
+  }
+
+  func testIDLessSubmitSplicesAssignedReplacement() async throws {
+    let model = try await settledIDLessModel()
+    model.focusSimilarRow(number: 2)
+    model.similarApply(.relate)
+    XCTAssertTrue(model.taskIDPromptVisible)
+    model.submitTaskIDPrompt()
+    await waitUntil {
+      !model.taskIDPromptVisible && model.plainDraft.contains("~dev:ups-backup")
+    }
+    XCTAssertEqual(model.plainDraft, "Install new UPS battery @dev ~dev:ups-backup")
+    XCTAssertEqual(model.statusText, "Related to Replace the UPS battery backup")
+    XCTAssertFalse(model.isSimilarRowFocused)
+  }
+
+  func testRevealNextRowAndCollapseOnUnfocus() async throws {
+    let model = try await settledIDLessModel()
+    XCTAssertEqual(model.similarTasks.rows.map(\.rowNumber), [1, 2])
+    model.focusSimilarRow(number: 2)
+    // ↓ on the last visible row reveals the next hidden match.
+    model.similarSelectNextRow()
+    XCTAssertEqual(model.similarTasks.rows.map(\.rowNumber), [1, 2, 3])
+    XCTAssertEqual(model.focusedSimilarRow()?.rowNumber, 2)
+    // ↓ moves onto the revealed row, then reveals the last hidden one.
+    model.similarSelectNextRow()
+    XCTAssertEqual(model.focusedSimilarRow()?.rowNumber, 3)
+    model.similarSelectNextRow()
+    XCTAssertEqual(model.similarTasks.rows.map(\.rowNumber), [1, 2, 3, 4])
+    // Unfocusing collapses the reveal back to the capped band.
+    model.unfocusSimilarRow()
+    XCTAssertEqual(model.similarTasks.rows.map(\.rowNumber), [1, 2])
+    XCTAssertFalse(model.isSimilarRowFocused)
+  }
+
   func testReturnDoesNothingWithoutFocus() {
     let model = CapturePanelModel()
     model.plainDraft = "Install new UPS battery @dev"

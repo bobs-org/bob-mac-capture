@@ -95,6 +95,18 @@ enum CaptureTaskIDPromptPurpose: Equatable {
         returnPicker: CapturePickerState,
         direction: DependencyPickerDirection
     )
+    /// Similar-tasks band mode for an ID-less row: name the task with
+    /// `capture-task-id --route`, then splice the matching replacement
+    /// (`~`/`@+`/`&`/`*`) into the draft at Bob's anchors. The ID is
+    /// written now, before Return, as the pickers already do. Escape
+    /// cancels with no write and keeps the similar-tasks focus.
+    case similarTask(
+        route: String,
+        taskRef: String,
+        suggestions: [String],
+        action: CaptureRelatedAction,
+        itemIndex: Int
+    )
 }
 
 struct CaptureTaskIDPromptState: Equatable {
@@ -125,6 +137,9 @@ struct CaptureTaskIDPromptState: Equatable {
             return suggestions
         }
         if case .relation(_, _, let suggestions, _, _, _) = purpose {
+            return suggestions
+        }
+        if case .similarTask(_, _, let suggestions, _, _) = purpose {
             return suggestions
         }
         return []
@@ -1011,10 +1026,21 @@ final class CapturePanelModel: ObservableObject {
     }
 
     /// True when Tab / Shift-Tab cycle ID suggestions (link, dependency,
-    /// Complete, and parent-task card). The old inline `.parentTask` path
-    /// keeps Tab consumed.
+    /// Complete, parent-task card, and similar-tasks band). The old inline
+    /// `.parentTask` path keeps Tab consumed.
     var taskIDPromptCyclesSuggestions: Bool {
-        taskIDPromptIsTaskLink || taskIDPromptIsDependency || taskIDPromptIsTaskComplete || taskIDPromptIsParentTaskPicker
+        taskIDPromptIsTaskLink || taskIDPromptIsDependency || taskIDPromptIsTaskComplete || taskIDPromptIsParentTaskPicker || taskIDPromptIsSimilarTask
+    }
+
+    /// True when the Add block ID prompt is open for a similar-tasks row.
+    var taskIDPromptIsSimilarTask: Bool {
+        guard let prompt = taskIDPrompt else {
+            return false
+        }
+        if case .similarTask = prompt.purpose {
+            return true
+        }
+        return false
     }
 
     /// True when the Add block ID prompt is open for a parent-task card row.
@@ -6190,6 +6216,9 @@ final class CapturePanelModel: ObservableObject {
             returnPicker = pickerSnapshot
         case .parentTaskPicker(_, _, _, _, let pickerSnapshot, _):
             returnPicker = pickerSnapshot
+        case .similarTask:
+            // No picker to restore: Escape returns to the focused band row.
+            returnPicker = nil
         case .parentTask:
             returnPicker = nil
         }
@@ -6976,6 +7005,12 @@ final class CapturePanelModel: ObservableObject {
             taskRef = completeRef
             dependencyNotePath = notePath
             dependencyAllowClosed = false
+        } else if case .similarTask(let similarRoute, let similarRef, _, _, _) = prompt.purpose {
+            // Similar-tasks rows assign by route so Bob returns every
+            // replacement string, including `parent_replacement`.
+            route = similarRoute
+            taskRef = similarRef
+            dependencyNotePath = nil
         } else if let candidateRoute = prompt.candidate.route,
                   let candidateRef = prompt.candidate.taskRef
         {
@@ -7375,6 +7410,55 @@ final class CapturePanelModel: ObservableObject {
         editorInputLocked = true
     }
 
+    /// Similar-tasks Add block ID prompt for an ID-less row: prefill with
+    /// the first block-ID suggestion, keep the band focus for Escape, and
+    /// remember which strip action to splice after naming. The ID is
+    /// written now, before Return, as the pickers already do.
+    private func presentSimilarTaskIDPrompt(
+        row: SimilarTasksBandRow,
+        item: CaptureRelatedItem,
+        action: CaptureRelatedAction
+    ) {
+        clearPomodoroNamePrompt()
+        invalidateAnalysis()
+        activeTaskIDRequestID = nil
+        let candidate = CaptureCompletionCandidate(
+            replacement: "",
+            route: row.match.route,
+            taskRef: row.match.taskRef,
+            requiresBlockID: true,
+            statusSymbol: row.match.statusSymbol,
+            statusName: row.match.statusName,
+            text: row.match.title,
+            section: row.match.locator,
+            blockIDSuggestions: row.match.blockIDSuggestions,
+            notePath: row.match.notePath
+        )
+        // The prompt splices at the item's marker; a zero-length range there
+        // keeps the draft-snapshot stale check meaningful while typing is
+        // locked by the prompt.
+        let at = item.markerAt ?? plainDraft.utf8.count
+        taskIDPrompt = CaptureTaskIDPromptState(
+            candidate: candidate,
+            draftSnapshot: plainDraft,
+            replacementRange: CaptureRange(start: at, end: at),
+            selectedCompletionIndex: selectedCompletionIndex,
+            authoredID: row.match.blockIDSuggestions.first ?? "",
+            isSaving: false,
+            errorMessage: nil,
+            purpose: .similarTask(
+                route: row.match.route,
+                taskRef: row.match.taskRef,
+                suggestions: row.match.blockIDSuggestions,
+                action: action,
+                itemIndex: row.itemIndex
+            )
+        )
+        statusText = "Add block ID and use task"
+        requestFocus(.taskIDPromptBlockID)
+        editorInputLocked = true
+    }
+
     /// Cycle the link-mode suggestion chips with Tab / Shift-Tab. Both link
     /// purposes use this; the parent-task flow keeps Tab consumed.
     func cycleTaskLinkSuggestion(forward: Bool) {
@@ -7397,6 +7481,8 @@ final class CapturePanelModel: ObservableObject {
             suggestions = completeSuggestions
         case .parentTaskPicker(_, _, let parentSuggestions, _, _, _):
             suggestions = parentSuggestions
+        case .similarTask(_, _, let similarSuggestions, _, _):
+            suggestions = similarSuggestions
         case .parentTask:
             return
         }
@@ -7519,6 +7605,15 @@ final class CapturePanelModel: ObservableObject {
 
         switch response {
         case .success(let success):
+            if case .similarTask(_, _, _, let action, let itemIndex) = prompt.purpose {
+                completeSimilarTaskIDAssignment(
+                    prompt: &prompt,
+                    success: success,
+                    action: action,
+                    itemIndex: itemIndex
+                )
+                return
+            }
             if case .parentTaskPicker(_, _, _, let followUp, _, let scope) = prompt.purpose {
                 completeParentTaskIDAssignment(
                     prompt: &prompt,
@@ -7717,6 +7812,82 @@ final class CapturePanelModel: ObservableObject {
             statusText = "Add block ID failed"
             requestFocus(.taskIDPromptBlockID)
         }
+    }
+
+    /// Splices a successful similar-tasks ID assignment. `capture-task-id
+    /// --route` returns the same replacements Bob's `capture-related`
+    /// contract carries, so this splices through the shared strip helper and
+    /// then runs the live preview again, exactly like a direct strip action.
+    private func completeSimilarTaskIDAssignment(
+        prompt: inout CaptureTaskIDPromptState,
+        success: CaptureTaskIDSuccess,
+        action: CaptureRelatedAction,
+        itemIndex: Int
+    ) {
+        let replacement: String?
+        switch action {
+        case .relate:
+            replacement = success.relationToReplacement
+        case .note:
+            replacement = success.parentReplacement
+        case .needs:
+            replacement = success.dependencyReplacement
+        case .blocks:
+            replacement = success.blockedTaskReplacement
+        case .open, .discard, .unknown:
+            replacement = nil
+        }
+        guard let replacement, !replacement.isEmpty else {
+            prompt.isSaving = false
+            prompt.errorMessage = "This Bob is too old for similar-tasks links. Update Bob first."
+            taskIDPrompt = prompt
+            statusText = "Add block ID failed"
+            requestFocus(.taskIDPromptBlockID)
+            return
+        }
+        guard prompt.draftSnapshot == plainDraft,
+              let item = similarItemAnchors[itemIndex],
+              similarAnchorsDraft == plainDraft,
+              let focused = focusedSimilarRow(),
+              focused.itemIndex == itemIndex,
+              let edited = SimilarTasksBandEdits.editedDraftWithReplacement(
+                  plainDraft,
+                  item: item,
+                  replacement: replacement,
+                  action: action
+              )
+        else {
+            prompt.isSaving = false
+            prompt.errorMessage = "Similar tasks changed. Return to the band and choose again."
+            taskIDPrompt = prompt
+            statusText = "Add block ID failed"
+            requestFocus(.taskIDPromptBlockID)
+            return
+        }
+        // The shared helper already rejected stale anchors; only the cursor
+        // offset still needs a validity check before it becomes selection.
+        let text = edited.text
+        let cursor = edited.cursorUTF8
+        guard stringRange(in: text, start: cursor, end: cursor) != nil else {
+            prompt.isSaving = false
+            prompt.errorMessage = "Similar tasks changed. Return to the band and choose again."
+            taskIDPrompt = prompt
+            statusText = "Add block ID failed"
+            requestFocus(.taskIDPromptBlockID)
+            return
+        }
+        let announcement = SimilarTasksBandEdits.announcement(for: action, title: focused.match.title)
+        clearTaskIDPrompt()
+        dismissCompletion()
+        suppressedCompletionAcceptanceDraft = text
+        setPlainDraft(text, cursorUTF8Offset: cursor, suppressSelectionCallbacks: true)
+        // The ID assignment already wrote the vault; unfocus collapses any
+        // revealed rows back to the capped band.
+        unfocusSimilarRow(applyPending: false)
+        scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false, trigger: .edit)
+        statusText = "Added ^\(success.blockID) to \(success.relativeTarget)"
+        announceStatus(announcement)
+        requestFocus(.editor)
     }
 
     private func completeBlockedTaskIDAssignment(
@@ -8972,6 +9143,18 @@ final class CapturePanelModel: ObservableObject {
                     }
                 }
                 similarTasksTask = nil
+                // A pending link action on an ID-less row names the task
+                // first instead of splicing stale (empty) replacements.
+                if let row = focusedSimilarRow(),
+                   row.match.requiresBlockID, pending != .open, pending != .discard,
+                   SimilarTasksBandEdits.orderedAvailableActions(for: row.match).contains(pending),
+                   let item = similarItemAnchors[row.itemIndex],
+                   !row.match.route.isEmpty,
+                   !row.match.taskRef.isEmpty
+                {
+                    presentSimilarTaskIDPrompt(row: row, item: item, action: pending)
+                    return
+                }
                 applySimilarActionFresh(pending, draft: draft)
                 return
             }
@@ -9067,7 +9250,8 @@ final class CapturePanelModel: ObservableObject {
             items: similarTasks.items,
             pending: similarTasks.pending,
             focusedRowID: row.id,
-            parseItemCount: similarTasks.parseItemCount
+            parseItemCount: similarTasks.parseItemCount,
+            revealed: similarTasks.revealed
         )
         let available = SimilarTasksBandEdits.orderedAvailableActions(for: row.match)
         if let def = row.match.defaultAction, available.contains(def) {
@@ -9113,23 +9297,104 @@ final class CapturePanelModel: ObservableObject {
             )
             similarAnchorsDraft = pending.draft
         } else {
-            similarTasks = SimilarTasksBandState(
+            // Unfocusing collapses the +N reveal back to the capped rows.
+            similarTasks = collapsedSimilarTasks()
+        }
+    }
+
+    /// Rebuilds the band from the settled anchors with zero revealed rows.
+    /// Unfocusing collapses the +N reveal; the next settle re-applies only
+    /// the capped rows.
+    private func collapsedSimilarTasks() -> SimilarTasksBandState {
+        guard !similarItemAnchors.isEmpty else {
+            return SimilarTasksBandState(
                 draft: similarTasks.draft,
                 items: similarTasks.items,
                 pending: false,
                 focusedRowID: nil,
-                parseItemCount: similarTasks.parseItemCount
+                parseItemCount: similarTasks.parseItemCount,
+                revealed: [:]
             )
         }
+        let response = CaptureRelatedResponse(
+            ok: true,
+            schemaVersion: 1,
+            items: similarItemAnchors.values.sorted { $0.index < $1.index }
+        )
+        let base = SimilarTasksBandState(
+            draft: similarTasks.draft,
+            items: similarTasks.items,
+            pending: false,
+            focusedRowID: nil,
+            parseItemCount: similarTasks.parseItemCount,
+            revealed: [:]
+        )
+        return SimilarTasksBandPolicy.reduce(
+            response,
+            previous: base,
+            draft: similarTasks.draft ?? plainDraft,
+            draftItemCount: similarTasks.parseItemCount
+        )
     }
 
     func similarSelectNextRow() {
         let rows = similarVisibleRows()
         guard let id = similarTasks.focusedRowID,
-              let current = rows.firstIndex(where: { $0.id == id }),
-              current + 1 < rows.count
+              let current = rows.firstIndex(where: { $0.id == id })
         else { return }
+        // ↓ on the last visible row of an item reveals that item's next
+        // hidden match, up to Bob's limit. The focus stays put; a further ↓
+        // moves onto the revealed row.
+        let focusedItem = rows[current].itemIndex
+        if rows[current].id == rows.last(where: { $0.itemIndex == focusedItem })?.id,
+           revealNextHiddenSimilarRow(forItem: focusedItem)
+        {
+            return
+        }
+        guard current + 1 < rows.count else { return }
         focusSimilarRow(number: rows[current + 1].rowNumber)
+    }
+
+    /// Reveals one more hidden match for one band item. Returns true when
+    /// another row painted.
+    @discardableResult
+    func revealNextHiddenSimilarRow(forItem itemIndex: Int) -> Bool {
+        guard !similarItemAnchors.isEmpty else { return false }
+        var revealed = similarTasks.revealed
+        revealed[itemIndex, default: 0] += 1
+        let response = CaptureRelatedResponse(
+            ok: true,
+            schemaVersion: 1,
+            items: similarItemAnchors.values.sorted { $0.index < $1.index }
+        )
+        let before = similarTasks.items.first(where: { $0.index == itemIndex })?.rows.count ?? 0
+        let base = SimilarTasksBandState(
+            draft: similarTasks.draft,
+            items: similarTasks.items,
+            pending: similarTasks.pending,
+            focusedRowID: similarTasks.focusedRowID,
+            parseItemCount: similarTasks.parseItemCount,
+            revealed: revealed
+        )
+        let next = SimilarTasksBandPolicy.reduce(
+            response,
+            previous: base,
+            draft: similarTasks.draft ?? plainDraft,
+            draftItemCount: similarTasks.parseItemCount
+        )
+        let after = next.items.first(where: { $0.index == itemIndex })?.rows.count ?? 0
+        guard after > before else { return false }
+        // Re-reducing clears the in-flight flag; the lane is still running,
+        // so keep painting it until its response settles.
+        similarTasks = SimilarTasksBandState(
+            draft: next.draft,
+            items: next.items,
+            pending: similarTasks.pending,
+            focusedRowID: next.focusedRowID,
+            parseItemCount: next.parseItemCount,
+            revealed: next.revealed
+        )
+        return true
     }
 
     func similarSelectPreviousRow() {
@@ -9182,14 +9447,23 @@ final class CapturePanelModel: ObservableObject {
             }
             return
         }
-        if row.match.requiresBlockID, action != .open, action != .discard {
-            announceStatus("This task needs a block ID first")
-            return
-        }
         // Stale anchors: focus now, apply against the fresh response.
         if similarAnchorsDraft != plainDraft || similarTasks.draft != plainDraft {
             similarPendingAction = action
             requestSimilarTasksNow()
+            return
+        }
+        // ID-less rows name the task first: the Add block ID prompt writes
+        // the ID now (before Return) and splices the matching replacement.
+        if row.match.requiresBlockID, action != .open, action != .discard {
+            guard let item = similarItemAnchors[row.itemIndex],
+                  !row.match.route.isEmpty,
+                  !row.match.taskRef.isEmpty
+            else {
+                announceStatus("Similar tasks changed")
+                return
+            }
+            presentSimilarTaskIDPrompt(row: row, item: item, action: action)
             return
         }
         applySimilarActionFresh(action, draft: plainDraft)

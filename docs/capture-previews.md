@@ -478,3 +478,13 @@ is never intercepted: with no row focused it captures as today.
 Each focused row exposes one VoiceOver custom action per offered strip
 action; the strip itself is labelled with the row, the default, and the
 available actions.
+
+Rows for tasks that still need a block ID offer the same strip, but choosing
+a link action opens the Add block ID prompt prefilled with Bob's first
+suggestion (Tab cycles them). Submitting writes the ID now, before Return,
+and splices the matching `~` / `@+` / `&` / `*` replacement; Escape cancels
+with no write and keeps the band focus. Open and Discard mine need no ID.
+
+`↓` on the last visible row of an item reveals that item's next hidden
+match, up to Bob's limit. Unfocusing the band collapses the reveal back to
+the capped rows.

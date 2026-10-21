@@ -192,6 +192,55 @@ final class SimilarTasksBandPolicyTests: XCTestCase {
     )
   }
 
+  func testRevealShowsNextHiddenMatchesUpToTheDraftCap() {
+    let five = (0..<5).map { match("m\($0)") }
+    let response = CaptureRelatedResponse(items: [item(0, matches: five)])
+    let base = SimilarTasksBandPolicy.reduce(response, draft: "one")
+    XCTAssertEqual(base.rows.map(\.rowNumber), [1, 2])
+    XCTAssertEqual(base.items[0].overflowCount, 3)
+
+    let revealed = SimilarTasksBandState(
+      draft: base.draft,
+      items: base.items,
+      focusedRowID: base.rows[1].id,
+      parseItemCount: base.parseItemCount,
+      revealed: [0: 2]
+    )
+    let grown = SimilarTasksBandPolicy.reduce(response, previous: revealed, draft: "one")
+    XCTAssertEqual(grown.rows.map(\.rowNumber), [1, 2, 3, 4])
+    XCTAssertEqual(grown.items[0].overflowCount, 1)
+    XCTAssertEqual(grown.revealed, [0: 2])
+    XCTAssertEqual(grown.focusedRowID, revealed.focusedRowID)
+  }
+
+  func testRevealClampedToBobLimitAndDroppedWhenExhausted() {
+    let five = (0..<5).map { match("m\($0)") }
+    let response = CaptureRelatedResponse(items: [item(0, matches: five)])
+    let previous = SimilarTasksBandState(revealed: [0: 9])
+    let grown = SimilarTasksBandPolicy.reduce(response, previous: previous, draft: "one")
+    XCTAssertEqual(grown.rows.count, 5)
+    XCTAssertEqual(grown.items[0].overflowCount, 0)
+    // The last hidden match just painted, so the count collapses.
+    XCTAssertEqual(grown.revealed, [:])
+  }
+
+  func testRevealDropsWhenHiddenMatchesVanish() {
+    let two = [match("a"), match("b")]
+    let previous = SimilarTasksBandState(revealed: [0: 2])
+    let settled = SimilarTasksBandPolicy.reduce(
+      CaptureRelatedResponse(items: [item(0, matches: two)]),
+      previous: previous,
+      draft: "edited"
+    )
+    XCTAssertEqual(settled.rows.map(\.match.key), ["a", "b"])
+    XCTAssertEqual(settled.revealed, [:])
+  }
+
+  func testPendingPreservesReveal() {
+    let state = SimilarTasksBandState(revealed: [0: 1])
+    XCTAssertEqual(SimilarTasksBandPolicy.markPending(state).revealed, [0: 1])
+  }
+
   func testRenderGateKeepsHeldRowsWhenParseIsEmpty() {
     let state = SimilarTasksBandPolicy.reduce(
       CaptureRelatedResponse(items: [item(0, matches: [match("a")])]),

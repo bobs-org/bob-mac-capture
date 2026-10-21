@@ -50,32 +50,56 @@ public enum SimilarTasksBandEdits {
     match: CaptureRelatedMatch,
     action: CaptureRelatedAction
   ) -> (text: String, cursorUTF8: Int)? {
+    // Discard splices the item range and never needs a replacement string.
+    if action == .discard {
+      guard let range = item.discardRange else { return nil }
+      return deleted(draft, range: range)
+    }
+    guard let replacement = replacementString(match: match, action: action) else { return nil }
+    return editedDraftWithReplacement(draft, item: item, replacement: replacement, action: action)
+  }
+
+  /// Bob's splice string for one strip action, or nil when the match carries
+  /// none (`open` and unknown actions never splice).
+  public static func replacementString(
+    match: CaptureRelatedMatch,
+    action: CaptureRelatedAction
+  ) -> String? {
     switch action {
     case .relate:
-      guard let replacement = itemReplacement(match, keyPath: \.relationTo),
-            let at = item.markerAt
-      else { return nil }
-      return inserted(draft, text: " " + replacement, at: at)
+      return itemReplacement(match, keyPath: \.relationTo)
     case .needs:
-      guard let replacement = itemReplacement(match, keyPath: \.dependency),
-            let at = item.markerAt
-      else { return nil }
-      return inserted(draft, text: " " + replacement, at: at)
+      return itemReplacement(match, keyPath: \.dependency)
     case .blocks:
-      guard let replacement = itemReplacement(match, keyPath: \.blockedTask),
-            let at = item.markerAt
-      else { return nil }
-      return inserted(draft, text: " " + replacement, at: at)
+      return itemReplacement(match, keyPath: \.blockedTask)
     case .note:
-      guard let replacement = itemReplacement(match, keyPath: \.parent) else { return nil }
-      if let range = item.routeRange {
+      return itemReplacement(match, keyPath: \.parent)
+    case .discard, .open, .unknown:
+      return nil
+    }
+  }
+
+  /// Applies one strip action with an explicit splice string. Used after the
+  /// Add block ID prompt assigns an ID-less row: `capture-task-id` returns
+  /// the same replacement strings Bob's contract carries, so the splice is
+  /// identical to the direct path.
+  public static func editedDraftWithReplacement(
+    _ draft: String,
+    item: CaptureRelatedItem,
+    replacement: String,
+    action: CaptureRelatedAction
+  ) -> (text: String, cursorUTF8: Int)? {
+    switch action {
+    case .discard:
+      guard let range = item.discardRange else { return nil }
+      return deleted(draft, range: range)
+    case .relate, .needs, .blocks, .note:
+      guard !replacement.isEmpty else { return nil }
+      if action == .note, let range = item.routeRange {
         return replaced(draft, range: range, with: replacement)
       }
       guard let at = item.markerAt else { return nil }
       return inserted(draft, text: " " + replacement, at: at)
-    case .discard:
-      guard let range = item.discardRange else { return nil }
-      return deleted(draft, range: range)
     case .open, .unknown:
       return nil
     }

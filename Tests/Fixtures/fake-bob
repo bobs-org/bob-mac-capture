@@ -3531,6 +3531,12 @@ JSON
       cat "${fixtures_dir}/task-link-task-id-success.json"
       exit 0
     fi
+    if [[ "${route}" == "dev" && "${task_ref}" == "9:deadbeef" ]]; then
+      # Worked-example similar-tasks ID assignment: route mode returns
+      # every replacement, as real `bob capture-task-id --route` does.
+      cat "${fixtures_dir}/similar-task-id-success.json"
+      exit 0
+    fi
     if [[ "${route}" == "mac_inbox" && "${task_ref}" == "4:bf5e981c" && "${block_id}" == "call-bank" ]]; then
       cat "${fixtures_dir}/parent-task-task-id-success.json"
       exit 0

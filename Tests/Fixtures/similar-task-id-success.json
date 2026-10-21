@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "dry_run": false,
+  "route": "dev",
+  "relative_target": "dev.md",
+  "block_id": "ups-backup",
+  "line": 9,
+  "ref": "9:updated01",
+  "dependency_replacement": "&dev:ups-backup",
+  "blocked_task_replacement": "*dev:ups-backup",
+  "complete_replacement": "!dev:ups-backup",
+  "relation_to_replacement": "~dev:ups-backup",
+  "relation_from_replacement": "~~dev:ups-backup",
+  "parent_replacement": "@dev+ups-backup",
+  "task": {
+    "ref": "9:updated01",
+    "line": 9,
+    "block_id": "ups-backup",
+    "status_symbol": " ",
+    "status_name": "Todo",
+    "status_type": "TODO",
+    "text": "Replace the UPS battery backup",
+    "section": "Tasks",
+    "depth": 0,
+    "child_count": 0
+  }
+}
