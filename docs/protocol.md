@@ -254,7 +254,7 @@ These must exist; without them the feature they serve stays hidden or refuses wi
 
 - `capture-parse --format json` (spans, needs, replacements, ranges, `cursor_after`)
 - `capture-complete --all-tasks --cursor BYTE --format json` (candidates, replacements)
-- `capture-rewrite --cursor BYTE --format json` (marker absorption, separator toggles, template start)
+- `capture-rewrite --cursor BYTE --format json` (marker absorption, separator toggles, relation-label attachment, template start)
 - `capture --dry-run --no-clip --format json` (live preview) and `capture --format json` (submit)
 - `capture-pomodoros --format json --tasks` (agenda, counts, landing); plain `capture-pomodoros` only feeds the close-comma count on older builds
 - `capture-task-id` / `capture-pomodoro-name` (Add block ID / Name Pomodoro prompts)
@@ -283,7 +283,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - Refs list fields `blocked`, `task`, `added_at`; snapshot cache key `git_added_at`; copy-card `marker_id`
 - `block_id` object, `picker` descriptor, `parent_replacement`, `pomodoro_start_name` context
 - `open_notes`, `homes`, `task_links`, successor-offer payloads
-- `relation_grammar`, `relation_updates`, `linked_from_line_updates`, `minted_relation_block_ids`, `mirror_skipped`, relation-label `count` / `typed`
+- `relation_grammar`, relation-label `relation` token metadata and `owner`, `relation_updates`, `linked_from_line_updates`, `minted_relation_block_ids`, `mirror_skipped`, relation-label `count` / `typed`
 - Retired inputs (`now` flag, `now_tag` span, `now` picker group) decode as neutral: unknown spans as neutral text, unknown contexts as generic rows, unknown groups as `note`
 
 ## Compatibility
@@ -291,7 +291,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | Feature or field | Expectation | When absent | Reader action |
 | --- | --- | --- | --- |
 | `@@route` / `@@route+block-id` declarations | Unmarked items route to the declaration | Ordinary draft capture; bare markers report the local `bob` error or an empty list | Upgrade `bob` for declarations |
-| `capture-rewrite`, `switch_block_id_separator`, `start_template` | `@@` absorbs markers; `^` / `:` toggle the separator; `@@@` starts a template | With an older bob, the third `@` types literally; other rewrites follow that bob's behavior | Upgrade `bob` for template start |
+| `capture-rewrite`, `switch_block_id_separator`, `attach_relation_label`, `start_template` | `@@` absorbs markers; `^` / `:` toggle the separator; `|` attaches to an eligible relation token; `@@@` starts a template | With an older bob, the third `@` types literally; a space before `|` stays literal and only `~note:id|` opens the relation card; other rewrites follow that bob's behavior | Upgrade `bob` for relation-label attachment and template start |
 | `capture-complete --all-tasks` | Full candidate lists | Empty list or local `bob` error | Upgrade `bob` |
 | `task_link` / `task_goto` / `task_parent` / `task_block_id` contexts | Picker rows with replacements and intents | No rows; calm browse hint instead of a dry-run error | Upgrade `bob` |
 | `picker` descriptor, `parent_replacement` | Vault-wide `+` picks, ID-less splice | Inline list only; prompt asks to update `bob` | Upgrade `bob` |
@@ -324,7 +324,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `homes` | Derived names and home chips | Previous naming | Upgrade `bob` for names |
 | Close-comma assist field | Auto-inserted `,` | Assist off; digits type normally | Upgrade `bob` for assists |
 | `relation_to` / `relation_from` completion | `~` / `~~` picker rows with replacements and intents | No rows; calm browse hint instead of a dry-run error | Upgrade `bob` for relations |
-| `relation_label` completion | Relation card suggestions with counts and typed row | No card; `|` types literally | Upgrade `bob` for relation labels |
+| `relation_label` completion and `relation` metadata | Relation card suggestions with counts, typed row, token range, direction, and owner | Without the metadata, the app uses its legacy token scan; without the completion context, no card opens | Upgrade `bob` for relation labels and exact token ranges |
 | `relation_grammar` | `~` parses with relation spans; capability warning stays hidden | Calm `predates ~ links` warning; first ⌘↩ only shows it | Upgrade `bob` for `~` |
 | `relation_updates[]`, `linked_from_line_updates[]`, `minted_relation_block_ids[]`, `mirror_skipped[]` | 🪢 preview rows, managed-line suppression, separate notification counts | Legacy preview without relation rows; notifications omit relations | Upgrade `bob` for relation previews |
 | `capture-related` | A settled Similar tasks band beneath matching task cards | Band stays hidden; ordinary preview and capture continue | Upgrade `bob` to show similar tasks |

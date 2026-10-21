@@ -19,5 +19,18 @@
             "replacement": "|\"follow-up of\""
         }
     ],
-    "query": "follow"
+    "query": "follow",
+    "owner": {
+        "kind": "existing_task",
+        "route": "mac_inbox",
+        "block_id": "owner",
+        "text": "Owner"
+    },
+    "relation": {
+        "direction": "to",
+        "range": {
+            "start": 26,
+            "end": 39
+        }
+    }
 }

@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "New task ~~tasks:source|",
+  "body": "New task",
+  "mode": "task",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": ["relation_label"],
+  "relation_grammar": 1,
+  "spans": [{"start": 9, "end": 24, "kind": "interactive_placeholder"}],
+  "diagnostics": [],
+  "dependency_target": {"kind": "new_task"}
+}

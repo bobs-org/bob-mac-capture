@@ -49,7 +49,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         model: CapturePanelModel
     ) {
         CapturePanelController.noteSeparatorToggleIntentIfEligible(
-            event: keyEvent(characters: typed),
+            event: keyEvent(characters: typed, modifiers: typed == "|" ? .shift : []),
             firstResponder: textView,
             model: model,
             modalFieldActive: false
@@ -58,6 +58,37 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         textView.insertText(typed, replacementRange: selection)
         model.plainDraft = textView.string
         model.editorTextDidChange(cursorUTF8Offset: textView.string.utf8.count)
+    }
+
+    private func relationCandidate(from: Bool = false) -> CaptureCompletionCandidate {
+        CaptureCompletionCandidate(
+            replacement: from ? "~~tasks:source" : "~tasks:target",
+            taskRef: from ? "2:bbbb2222" : "1:aaaa1111",
+            blockID: from ? "source" : "target",
+            requiresBlockID: false,
+            statusSymbol: " ",
+            statusName: "Todo",
+            statusType: "TODO",
+            text: from ? "Source" : "Target",
+            group: "open",
+            notePath: "tasks.md",
+            locator: "tasks"
+        )
+    }
+
+    private func installRelationPicker(
+        on model: CapturePanelModel,
+        from: Bool = false,
+        draft: String? = nil
+    ) {
+        let direction: DependencyPickerDirection = from ? .linkedFrom : .linksTo
+        model.installRelationPickerForPreviews(
+            candidates: [relationCandidate(from: from)],
+            draft: draft ?? (from ? "New task ~~" : "New task ~"),
+            replacement: CaptureRange(start: 9, end: from ? 11 : 10),
+            owner: DependencyOwner(kind: "new_task", text: "New task"),
+            direction: direction
+        )
     }
 
     private func processClient(
@@ -520,5 +551,153 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         model.editorTextDidChange(cursorUTF8Offset: 17)
         try await Task.sleep(nanoseconds: 150_000_000)
         XCTAssertEqual(model.plainDraft, "Do work @file:id^")
+    }
+
+    func testAcceptedRelationAndTypedPipeGluesAndOpensLabelCard() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        installRelationPicker(on: model)
+        model.acceptPickerRow(id: "tasks.md|1:aaaa1111", submitAfterInsert: false)
+
+        let textView = makeTextView(model.plainDraft)
+        wireNativeApply(model, textView: textView)
+        typeSeparator("|", into: textView, model: model)
+
+        await waitUntil {
+            model.relationLabelPromptVisible
+                && model.plainDraft == "New task ~tasks:target|"
+        }
+        XCTAssertEqual(textView.string, "New task ~tasks:target|")
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linksTo)
+        XCTAssertEqual(model.relationLabelPrompt?.targetText, "Target")
+        XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 22, end: 23))
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 24 --format json -- New task ~tasks:target |"))
+        XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 23 --format json -- New task ~tasks:target|"))
+    }
+
+    func testAcceptedLinkedFromAndTypedPipeOpensCardWithCorrectDirection() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient()
+        installRelationPicker(on: model, from: true)
+        model.acceptPickerRow(id: "tasks.md|2:bbbb2222", submitAfterInsert: false)
+
+        let textView = makeTextView(model.plainDraft)
+        wireNativeApply(model, textView: textView)
+        typeSeparator("|", into: textView, model: model)
+
+        await waitUntil { model.relationLabelPromptVisible }
+        XCTAssertEqual(model.plainDraft, "New task ~~tasks:source|")
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linkedFrom)
+        XCTAssertEqual(model.relationLabelSentence, "“Source” → “New task”")
+    }
+
+    func testPipeWithoutSpaceStillOpensCardAndRequestsCompletion() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(recordURL: recordURL)
+        let textView = makeTextView("New task ~tasks:target")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("|", into: textView, model: model)
+        await waitUntil { model.relationLabelPromptVisible }
+
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target|")
+        XCTAssertEqual(textView.string, "New task ~tasks:target|")
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-rewrite --cursor 23 --format json -- New task ~tasks:target|"))
+        XCTAssertTrue(record.contains("capture-complete --all-tasks --cursor 23"))
+    }
+
+    func testNativeUndoRestoresTheLiteralSpaceBeforePipe() async throws {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 80),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient()
+        installRelationPicker(on: model)
+        model.acceptPickerRow(id: "tasks.md|1:aaaa1111", submitAfterInsert: false)
+        let textView = makeTextView(model.plainDraft)
+        window.contentView?.addSubview(textView)
+        window.makeFirstResponder(textView)
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("|", into: textView, model: model)
+        await waitUntil { textView.string == "New task ~tasks:target|" }
+        XCTAssertTrue(textView.undoManager?.canUndo ?? false)
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, "New task ~tasks:target |")
+
+        model.plainDraft = textView.string
+        model.editorTextDidChange(cursorUTF8Offset: textView.string.utf8.count)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(textView.string, "New task ~tasks:target |")
+    }
+
+    func testRelationLabelCommitPreservesFollowingRouteText() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient()
+        let textView = makeTextView("New task ~tasks:target @work")
+        textView.setSelectedRange(NSRange(location: 22, length: 0))
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("|", into: textView, model: model)
+        await waitUntil { model.relationLabelPromptVisible }
+        XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 22, end: 23))
+        model.updateRelationLabelPromptLabel("follow")
+        model.submitRelationLabelPrompt()
+
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target|follow @work")
+    }
+
+    func testShiftReturnLabelCommitPreservesFollowingTextMidDraft() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient()
+        installRelationPicker(on: model, draft: "New task ~ @work")
+        model.openRelationLabelPromptFromPickerRow(id: "tasks.md|1:aaaa1111")
+
+        XCTAssertTrue(model.relationLabelPromptVisible)
+        XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 22, end: 22))
+        await waitUntil { model.relationLabelPrompt?.suggestions.isEmpty == false }
+        model.updateRelationLabelPromptLabel("follow")
+        model.submitRelationLabelPrompt()
+
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target|follow @work")
+    }
+
+    func testEmptyLabelReturnDropsPipeAndLeavesBareRelation() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient()
+        let textView = makeTextView("New task ~tasks:target")
+        wireNativeApply(model, textView: textView)
+
+        typeSeparator("|", into: textView, model: model)
+        await waitUntil { model.relationLabelPromptVisible }
+        model.submitRelationLabelPrompt()
+
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 22)
+        XCTAssertEqual(model.statusText, "Inserted relation without a label")
+    }
+
+    func testOlderBobRelationLabelResponseUsesLegacyFallback() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = try processClient(extra: ["FAKE_BOB_RELATION_OLD": "1"])
+        let textView = makeTextView("New task ~tasks:target|")
+        wireNativeApply(model, textView: textView)
+
+        model.plainDraft = textView.string
+        model.editorTextDidChange(cursorUTF8Offset: textView.string.utf8.count)
+        await waitUntil { model.relationLabelPromptVisible }
+
+        XCTAssertEqual(model.relationLabelPrompt?.direction, .linksTo)
+        XCTAssertNil(model.completionResponse)
     }
 }

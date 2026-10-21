@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": 24,
+  "replacement": {"start": 23, "end": 24},
+  "context": "relation_label",
+  "candidates": [
+    {"label": "follow", "replacement": "|follow", "typed": true},
+    {"label": "follow-up of", "count": 4, "replacement": "|\"follow-up of\""}
+  ],
+  "query": "",
+  "owner": {"kind": "new_task", "text": "New task"},
+  "relation": {"direction": "from", "range": {"start": 9, "end": 23}}
+}

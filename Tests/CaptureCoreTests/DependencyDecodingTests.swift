@@ -466,6 +466,7 @@ final class DependencyDecodingTests: XCTestCase {
         )
         XCTAssertEqual(decoded.context, "relation_to")
         XCTAssertEqual(decoded.owner?.text, "Owner")
+        XCTAssertNil(decoded.relation)
         let target = try XCTUnwrap(decoded.candidates.first { $0.blockID == "target" })
         XCTAssertTrue(target.alreadyLinked)
         XCTAssertEqual(target.existingLabel, "follow-up of")
@@ -478,6 +479,12 @@ final class DependencyDecodingTests: XCTestCase {
         )
         XCTAssertEqual(parent.picker?.relationship?.relations.first?.direction, "to")
         XCTAssertEqual(parent.picker?.relationship?.relations.first?.text, "Target")
+
+        let linkedFrom = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(fixtureText("relation-complete-owner-from.json").utf8)
+        )
+        XCTAssertNil(linkedFrom.relation)
     }
 
     func testParseTargetFixtureDecodesRelationshipMarkers() throws {
@@ -563,6 +570,10 @@ final class DependencyDecodingTests: XCTestCase {
             from: Data(fixtureText("relation-complete-label.json").utf8)
         )
         XCTAssertEqual(label.context, "relation_label")
+        XCTAssertEqual(label.owner?.text, "Owner")
+        XCTAssertEqual(label.relation?.direction, "to")
+        XCTAssertEqual(label.relation?.range, CaptureRange(start: 26, end: 39))
+        XCTAssertEqual(label.relation?.range.end, label.replacement.start)
         let typed = try XCTUnwrap(label.candidates.first(where: { $0.typed }))
         XCTAssertEqual(typed.label, "follow")
         XCTAssertEqual(typed.replacement, "|follow")
@@ -584,5 +595,11 @@ final class DependencyDecodingTests: XCTestCase {
         )
         XCTAssertEqual(typedContent.primaryText, "follow")
         XCTAssertTrue(typedContent.badges.contains("Typed"))
+
+        let oldBob = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(fixtureText("relation-label-complete-old.json").utf8)
+        )
+        XCTAssertNil(oldBob.relation)
     }
 }

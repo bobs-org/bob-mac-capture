@@ -187,6 +187,8 @@ struct CaptureRelationLabelPromptState: Equatable {
     let draftSnapshot: String
     /// UTF-8 byte range of the `~note:id` token (excluding any `|label`).
     let tokenRange: CaptureRange
+    /// UTF-8 byte range replaced when committing the `|label` suffix.
+    let labelRange: CaptureRange
     /// Relation direction for the live sentence.
     let direction: DependencyPickerDirection
     /// Draft task text (source side for `~`, target side for `~~`).
@@ -1606,8 +1608,8 @@ final class CapturePanelModel: ObservableObject {
         lastProvenanceDraft = newText
     }
 
-    /// Records the expected post-key draft and caret for a single typed
-    /// `:`/`^` separator toggle or the template-start `@`. The character still
+    /// Records the expected post-key draft and caret for a rewrite-lane
+    /// separator gesture (`:`, `^`, or `|`) or the template-start `@`. The character still
     /// inserts natively; `editorTextDidChange` consumes this only when the
     /// resulting buffer matches.
     func noteSeparatorToggleIntent(typed: String, text: String, selectedRange: NSRange) {
@@ -1621,7 +1623,7 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
         } else {
-            guard typed == ":" || typed == "^",
+            guard typed == ":" || typed == "^" || typed == "|",
                   selectedRange.length == 0,
                   selectedRange.location >= 0
             else {
@@ -6497,6 +6499,7 @@ final class CapturePanelModel: ObservableObject {
         let ownerText = picker.dependencyOwner?.text ?? ""
         let targetText = row.displayText
         let tokenRange = CaptureRange(start: picker.replacementRange.start, end: tokenEnd)
+        let labelRange = CaptureRange(start: tokenEnd, end: caret)
         let returnPicker = picker
         closePickerForAccept()
         suppressedCompletionAcceptanceDraft = text
@@ -6506,6 +6509,7 @@ final class CapturePanelModel: ObservableObject {
         openRelationLabelPrompt(
             draftSnapshot: text,
             tokenRange: tokenRange,
+            labelRange: labelRange,
             direction: direction,
             ownerText: ownerText,
             targetText: targetText,
@@ -6514,27 +6518,10 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
-    /// Open the card for a token already in the draft (the `|` flow).
-    func openRelationLabelPromptForToken(
-        tokenRange: CaptureRange,
-        direction: DependencyPickerDirection,
-        ownerText: String,
-        targetText: String
-    ) {
-        openRelationLabelPrompt(
-            draftSnapshot: plainDraft,
-            tokenRange: tokenRange,
-            direction: direction,
-            ownerText: ownerText,
-            targetText: targetText,
-            restoreCursor: collapsedSelectionUTF8Offset() ?? plainDraft.utf8.count,
-            returnPicker: nil
-        )
-    }
-
     private func openRelationLabelPrompt(
         draftSnapshot: String,
         tokenRange: CaptureRange,
+        labelRange: CaptureRange,
         direction: DependencyPickerDirection,
         ownerText: String,
         targetText: String,
@@ -6547,6 +6534,7 @@ final class CapturePanelModel: ObservableObject {
         relationLabelPrompt = CaptureRelationLabelPromptState(
             draftSnapshot: draftSnapshot,
             tokenRange: tokenRange,
+            labelRange: labelRange,
             direction: direction,
             ownerText: ownerText,
             targetText: targetText,
@@ -6653,12 +6641,33 @@ final class CapturePanelModel: ObservableObject {
         let trimmed = prompt.authoredLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             let returnPicker = prompt.returnPicker
-            clearRelationLabelPrompt()
-            if returnPicker != nil {
+            if returnPicker == nil {
+                guard let replacementRange = stringRange(
+                    in: prompt.draftSnapshot,
+                    byteRange: prompt.labelRange
+                ) else {
+                    prompt.errorMessage = "Completion range is stale. Reopen the relation card and try again."
+                    relationLabelPrompt = prompt
+                    return
+                }
+                var text = prompt.draftSnapshot
+                text.replaceSubrange(replacementRange, with: "")
+                let caret = prompt.labelRange.start
+                guard stringRange(in: text, start: caret, end: caret) != nil else {
+                    prompt.errorMessage = "Completion cursor is stale. Reopen the relation card and try again."
+                    relationLabelPrompt = prompt
+                    return
+                }
+                clearRelationLabelPrompt()
+                suppressedCompletionAcceptanceDraft = text
+                setPlainDraft(text, cursorUTF8Offset: caret, suppressSelectionCallbacks: true)
+                scheduleAnalysis(cursorUTF8Offset: caret, requestCompletion: false, trigger: .edit)
                 statusText = "Inserted relation without a label"
-            } else {
-                statusText = "Ready"
+                requestFocus(.editor)
+                return
             }
+            clearRelationLabelPrompt()
+            statusText = "Inserted relation without a label"
             requestFocus(.editor)
             return
         }
@@ -6692,15 +6701,14 @@ final class CapturePanelModel: ObservableObject {
         _ replacement: String,
         prompt: inout CaptureRelationLabelPromptState
     ) {
-        let suffixEnd = prompt.draftSnapshot.utf8.count
-        guard let suffixRange = stringRange(in: prompt.draftSnapshot, start: prompt.tokenRange.end, end: suffixEnd) else {
+        guard let suffixRange = stringRange(in: prompt.draftSnapshot, byteRange: prompt.labelRange) else {
             prompt.errorMessage = "Completion range is stale. Reopen the relation card and try again."
             relationLabelPrompt = prompt
             return
         }
         var text = prompt.draftSnapshot
         text.replaceSubrange(suffixRange, with: replacement)
-        let caret = prompt.tokenRange.end + replacement.utf8.count
+        let caret = prompt.labelRange.start + replacement.utf8.count
         guard stringRange(in: text, start: caret, end: caret) != nil else {
             prompt.errorMessage = "Completion cursor is stale. Reopen the relation card and try again."
             relationLabelPrompt = prompt
@@ -6737,20 +6745,26 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         let typed = prompt.authoredLabel
-        guard let tokenEndIndex = stringRange(in: plainDraft, start: prompt.tokenRange.end, end: prompt.tokenRange.end)?.lowerBound else {
+        guard let labelRange = stringRange(in: plainDraft, byteRange: prompt.labelRange),
+              let labelStartIndex = stringRange(
+                in: plainDraft,
+                start: prompt.labelRange.start,
+                end: prompt.labelRange.start
+              )?.lowerBound
+        else {
             return
         }
-        let head = String(plainDraft[..<tokenEndIndex])
-        let tail = String(plainDraft[tokenEndIndex...])
+        let head = String(plainDraft[..<labelStartIndex])
+        let tail = String(plainDraft[labelRange.upperBound...])
         let probe: String
         let cursor: Int
         if typed.isEmpty {
             probe = head + "|\"" + tail
-            cursor = prompt.tokenRange.end + 2
+            cursor = prompt.labelRange.start + 2
         } else {
             let escaped = typed.replacingOccurrences(of: "\"", with: "")
             probe = head + "|\"\(escaped)" + tail
-            cursor = prompt.tokenRange.end + 2 + escaped.utf8.count
+            cursor = prompt.labelRange.start + 2 + escaped.utf8.count
         }
         guard stringRange(in: probe, start: cursor, end: cursor) != nil else {
             return
@@ -6814,43 +6828,76 @@ final class CapturePanelModel: ObservableObject {
             dismissCompletion()
             return
         }
-        let tokenEnd = completion.replacement.start
-        guard tokenEnd <= draft.utf8.count,
-              tokenEnd > 0,
-              let tokenEndIndex = stringRange(in: draft, start: tokenEnd, end: tokenEnd)?.lowerBound
+        let tokenRange: CaptureRange
+        let direction: DependencyPickerDirection
+        if let relation = completion.relation {
+            guard relation.range.start < relation.range.end,
+                  relation.range.end == completion.replacement.start,
+                  stringRange(in: draft, byteRange: relation.range) != nil
+            else {
+                dismissCompletion()
+                return
+            }
+            switch relation.direction {
+            case "to": direction = .linksTo
+            case "from": direction = .linkedFrom
+            default:
+                dismissCompletion()
+                return
+            }
+            tokenRange = relation.range
+        } else {
+            // Older-bob path: retain the legacy byte scan until `relation`
+            // has shipped to every supported installation.
+            let tokenEnd = completion.replacement.start
+            guard tokenEnd <= draft.utf8.count,
+                  tokenEnd > 0,
+                  let tokenEndIndex = stringRange(in: draft, start: tokenEnd, end: tokenEnd)?.lowerBound
+            else {
+                dismissCompletion()
+                return
+            }
+            let bytes = Array(draft.utf8)
+            var tokenStart = tokenEnd - 1
+            while tokenStart > 0,
+                  bytes[tokenStart] != 0x7E,
+                  bytes[tokenStart] != 0x20,
+                  bytes[tokenStart] != 0x0A
+            {
+                tokenStart -= 1
+            }
+            guard tokenStart < tokenEnd,
+                  bytes[tokenStart] == 0x7E,
+                  let tokenStartIndex = stringRange(in: draft, start: tokenStart, end: tokenStart)?.lowerBound
+            else {
+                dismissCompletion()
+                return
+            }
+            let token = String(draft[tokenStartIndex..<tokenEndIndex])
+            guard token.hasPrefix("~"), !token.contains(" "), !token.contains("\n") else {
+                dismissCompletion()
+                return
+            }
+            direction = token.hasPrefix("~~") ? .linkedFrom : .linksTo
+            tokenRange = CaptureRange(start: tokenStart, end: tokenEnd)
+        }
+        guard let tokenStartIndex = stringRange(
+            in: draft,
+            start: tokenRange.start,
+            end: tokenRange.start
+        )?.lowerBound,
+              let tokenStringRange = stringRange(in: draft, byteRange: tokenRange),
+              stringRange(in: draft, byteRange: completion.replacement) != nil
         else {
             dismissCompletion()
             return
         }
-        // Byte-scan backwards for the opening `~` (relation tokens contain
-        // no spaces; Bob already validated the token via the context).
-        let bytes = Array(draft.utf8)
-        var tokenStart = tokenEnd - 1
-        while tokenStart > 0,
-              bytes[tokenStart] != 0x7E, // `~`
-              bytes[tokenStart] != 0x20, // space
-              bytes[tokenStart] != 0x0A // newline
-        {
-            tokenStart -= 1
-        }
-        guard tokenStart < tokenEnd,
-              bytes[tokenStart] == 0x7E,
-              let tokenStartIndex = stringRange(in: draft, start: tokenStart, end: tokenStart)?.lowerBound
-        else {
-            dismissCompletion()
-            return
-        }
-        let token = String(draft[tokenStartIndex..<tokenEndIndex])
-        guard token.hasPrefix("~"), !token.contains(" "), !token.contains("\n") else {
-            dismissCompletion()
-            return
-        }
-        let direction: DependencyPickerDirection =
-            token.hasPrefix("~~") ? .linkedFrom : .linksTo
-        let tokenRange = CaptureRange(start: tokenStart, end: tokenEnd)
+        let token = String(draft[tokenStringRange])
+        let labelRange = completion.replacement
         if var existing = relationLabelPrompt,
            existing.draftSnapshot == draft,
-           existing.tokenRange == tokenRange
+           existing.tokenRange == tokenRange,
+           existing.labelRange == labelRange
         {
             existing.suggestions = completion.candidates
             if existing.selectedSuggestionIndex >= completion.candidates.count {
@@ -6876,6 +6923,7 @@ final class CapturePanelModel: ObservableObject {
         openRelationLabelPrompt(
             draftSnapshot: draft,
             tokenRange: tokenRange,
+            labelRange: labelRange,
             direction: direction,
             ownerText: ownerText,
             targetText: targetText,
@@ -6901,6 +6949,7 @@ final class CapturePanelModel: ObservableObject {
     func installRelationLabelPromptForPreviews(
         draft: String = "New task ~tasks:target",
         tokenRange: CaptureRange = CaptureRange(start: 9, end: 22),
+        labelRange: CaptureRange? = nil,
         direction: DependencyPickerDirection = .linksTo,
         ownerText: String = "New task",
         targetText: String = "Target",
@@ -6912,6 +6961,7 @@ final class CapturePanelModel: ObservableObject {
         relationLabelPrompt = CaptureRelationLabelPromptState(
             draftSnapshot: draft,
             tokenRange: tokenRange,
+            labelRange: labelRange ?? CaptureRange(start: tokenRange.end, end: tokenRange.end),
             direction: direction,
             ownerText: ownerText,
             targetText: targetText,
@@ -8764,6 +8814,7 @@ final class CapturePanelModel: ObservableObject {
             }
 
             if response.rule == "switch_block_id_separator"
+                || response.rule == "attach_relation_label"
                 || response.rule == CaptureTemplateStart.rewriteRule
             {
                 applyNativeSingleEditRewrite(response, draft: draft)
@@ -8838,7 +8889,11 @@ final class CapturePanelModel: ObservableObject {
         if let summary = response.summary, !summary.isEmpty {
             announceStatus(summary)
         }
-        scheduleAnalysis(cursorUTF8Offset: cursor, requestCompletion: false, trigger: .edit)
+        scheduleAnalysis(
+            cursorUTF8Offset: cursor,
+            requestCompletion: response.rule == "attach_relation_label",
+            trigger: .edit
+        )
         rewriteExpectedCursorUTF8 = nil
         rewriteSawMatchingSelection = false
     }

@@ -5562,6 +5562,18 @@ public struct CaptureCompleteOverride: Codable, Equatable, Sendable {
   }
 }
 
+/// Additive relation token metadata on Bob's `relation_label` completion.
+/// Ranges are UTF-8 byte offsets into the original draft.
+public struct CaptureCompletionRelation: Codable, Equatable {
+  public let direction: String
+  public let range: CaptureRange
+
+  public init(direction: String, range: CaptureRange) {
+    self.direction = direction
+    self.range = range
+  }
+}
+
 public struct CaptureCompletionResponse: Codable, Equatable {
   public let ok: Bool
   public let schemaVersion: Int
@@ -5585,8 +5597,11 @@ public struct CaptureCompletionResponse: Codable, Equatable {
   public let query: String?
   /// Lexical owner of the `task_dependency` or `blocked_task` modifier
   /// under the cursor (the capture-parse `dependency_target` for the
-  /// cursor's item), so the app never derives the dependent itself.
+  /// cursor's item), or the owner of a `relation_label` field.
   public let owner: DependencyOwner?
+  /// Additive `relation_label` token metadata. Older Bob omits it; clients
+  /// can then use their legacy relation-token fallback.
+  public let relation: CaptureCompletionRelation?
   /// Additive parent-task picker descriptor on `task` and `task_parent`
   /// responses. Older Bob omits it; scoped `task` without one keeps the
   /// inline parent-task list.
@@ -5603,6 +5618,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     blockID: CaptureBlockIDField? = nil,
     query: String? = nil,
     owner: DependencyOwner? = nil,
+    relation: CaptureCompletionRelation? = nil,
     picker: CapturePickerDescriptor? = nil,
     overrideInfo: CaptureCompleteOverride? = nil
   ) {
@@ -5616,6 +5632,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     self.blockID = blockID
     self.query = query
     self.owner = owner
+    self.relation = relation
     self.picker = picker
     self.overrideInfo = overrideInfo
   }
@@ -5633,6 +5650,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     blockID = try container.decodeIfPresent(CaptureBlockIDField.self, forKey: .blockID)
     query = try container.decodeIfPresent(String.self, forKey: .query)
     owner = try container.decodeIfPresent(DependencyOwner.self, forKey: .owner)
+    relation = try container.decodeIfPresent(CaptureCompletionRelation.self, forKey: .relation)
     picker = try container.decodeIfPresent(CapturePickerDescriptor.self, forKey: .picker)
     overrideInfo = try container.decodeIfPresent(
       CaptureCompleteOverride.self, forKey: .overrideInfo)
@@ -5649,6 +5667,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     case blockID = "block_id"
     case query
     case owner
+    case relation
     case picker
     case overrideInfo = "override"
   }

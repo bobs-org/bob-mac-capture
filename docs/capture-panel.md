@@ -155,6 +155,11 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   alone (for example `@route:` or `@route^` with no ID yet, or a whole-item `^`), the
   keystroke behaves like ordinary typing, and its picker or completion opens as before.
   This gesture needs a bob build that implements `switch_block_id_separator`.
+  Typing `|` after a `~note:id` or `~~note:id` uses that rewrite lane too.
+  Bob glues the pipe to the token when spaces or tabs separate them, then the
+  completion response opens the relation card. Undo restores the literal
+  post-key draft. This gesture needs a bob build that implements
+  `attach_relation_label`; with an older bob, the space before `|` remains.
 
 ## Drafts
 

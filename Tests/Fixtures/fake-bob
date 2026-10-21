@@ -1263,8 +1263,14 @@ JSON
       cat "${fixtures_dir}/relation-parse-from-need.json"
     elif [[ "${draft}" == "New task ~tasks:target" ]]; then
       cat "${fixtures_dir}/relation-parse-complete.json"
+    elif [[ "${draft}" == "New task ~tasks:target|" ]]; then
+      cat "${fixtures_dir}/relation-label-parse-to.json"
     elif [[ "${draft}" == "New task ~~tasks:source" ]]; then
       cat "${fixtures_dir}/relation-parse-from-complete.json"
+    elif [[ "${draft}" == "New task ~~tasks:source|" ]]; then
+      cat "${fixtures_dir}/relation-label-parse-from.json"
+    elif [[ "${draft}" == "New task ~tasks:target| @work" ]]; then
+      cat "${fixtures_dir}/relation-label-parse-work.json"
     elif [[ "${draft}" == "Use this @mac_inbox+owner ~" ]]; then
       cat "${fixtures_dir}/relation-parse-owner.json"
     elif [[ "${draft}" == "Use this @mac_inbox+owner ~tasks:target|follow" ]]; then
@@ -1714,6 +1720,22 @@ JSON
 ,"text":"@@template:\n\nApply {0}","changed":true,"cursor":12,"rule":"start_template",
 "edits":[{"range":{"start":0,"end":3},"replacement":"@@template:\n"}],
 "summary":"Started a @@template: draft"}
+JSON
+    elif [[ "${draft}" == "New task ~tasks:target |" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"New task ~tasks:target|","changed":true,"cursor":23,"rule":"attach_relation_label",
+"edits":[{"range":{"start":22,"end":23},"replacement":""}],
+"summary":"Attached | to ~tasks:target"}
+JSON
+    elif [[ "${draft}" == "New task ~~tasks:source |" ]]; then
+      printf '{"ok":true,"schema_version":1,"input":'
+      json_string "${draft}"
+      cat <<'JSON'
+,"text":"New task ~~tasks:source|","changed":true,"cursor":24,"rule":"attach_relation_label",
+"edits":[{"range":{"start":23,"end":24},"replacement":""}],
+"summary":"Attached | to ~~tasks:source"}
 JSON
     elif [[ "${draft}" == "Do work @file:id^" ]]; then
       printf '{"ok":true,"schema_version":1,"input":'
@@ -2839,6 +2861,16 @@ JSON
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/blocked-task-complete-filtered.json"
     elif [[ "${draft}" == "Buy Groceries! &" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/task-dependency-complete-new-task.json"
+    elif [[ "${draft}" == "New task ~~tasks:source|" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-from.json"
+    elif [[ "${draft}" == "New task ~tasks:target|"* ]]; then
+      if [[ "${FAKE_BOB_RELATION_OLD:-}" == "1" ]]; then
+        cat "${fixtures_dir}/relation-label-complete-old.json"
+      elif [[ "${draft}" == *" @work"* ]]; then
+        cat "${fixtures_dir}/relation-label-complete-work.json"
+      else
+        cat "${fixtures_dir}/relation-label-complete-to.json"
+      fi
     elif [[ "${draft}" == "New task ~" ]]; then
       cat "${fixtures_dir}/relation-complete-to.json"
     elif [[ "${draft}" == "New task ~~" ]]; then

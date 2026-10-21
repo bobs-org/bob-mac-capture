@@ -106,8 +106,12 @@ Disabled explanations appear verbatim from Bob (`its LINKS line is malformed`,
 `read-only note`, `archived tasks can't get an id`).
 
 The action line reads `↩ link · ⇧↩ link with a relation · ~ flips direction`.
-Shift-Return is consumed like `&` this phase; the relation card is a later
-phase. Command-Return inserts then captures when the owner is complete;
+Shift-Return inserts the token and opens the relation card. Typing `|` after a
+relation token also opens the card; Bob removes any spaces or tabs before the
+pipe through the rewrite lane, and Undo restores the typed ` |`. Return with a
+label inserts `|label`; Return with an empty label drops the pipe and leaves the
+bare relation token. Escape returns to the unchanged draft. Command-Return
+inserts then captures when the owner is complete;
 Control-Return also opens the reported notes. The `~` / `~~` sigil uses a mint
 knot accent, distinct from the grey Pomodoro-drop `~`. Relation labels render
 muted italic; the `|` separator is muted.
@@ -123,7 +127,7 @@ ID-less rows use `capture-task-id --note-path` and splice
 read Add ID & Use / Add ID & Capture.
 
 Relation Picker keys: Return/Tab Link, Shift-Return Link with a relation
-(consumed), tilde Flip direction, Command-Return Insert & Capture,
+(opens the relation card), tilde Flip direction, Command-Return Insert & Capture,
 Control-Return Insert, Capture & Open when the owner is complete.
 
 ## Complete Picker
