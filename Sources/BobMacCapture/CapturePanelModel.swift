@@ -286,6 +286,9 @@ final class CapturePanelModel: ObservableObject {
     @Published var previewResults: [CaptureCommandSuccess] = []
     @Published var lastSuccessGlobalDestination: CaptureGlobalDestination?
     @Published var previewGlobalDestination: CaptureGlobalDestination?
+    /// The latest settled related-task response, shaped for the band renderer.
+    /// Pending edits retain these rows until Bob returns for the new draft.
+    @Published var similarTasks = SimilarTasksBandState.empty
     /// Latest live-preview open plan, built from bob's `open_notes` or the
     /// legacy fallback. Nil means this draft has no preview yet.
     @Published var previewOpenPlan: CaptureOpenPlan?
@@ -338,6 +341,7 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
             invalidateAnalysis()
+            cancelSimilarTasks(clear: true)
             previewPullInSnapshot = nil
             clearPreviewOutputs()
             previewState = .idle
@@ -394,12 +398,15 @@ final class CapturePanelModel: ObservableObject {
     let savedTemplateShelf: SavedTemplateShelf
 
     private let debounceNanoseconds: UInt64
+    private let similarTasksSettleNanoseconds: UInt64
     private var analysisTask: Task<Void, Never>?
+    private var similarTasksTask: Task<Void, Never>?
     private var rewriteTask: Task<Void, Never>?
     private var stashCancellable: AnyCancellable?
     private var templateShelfCancellable: AnyCancellable?
     private var rememberedSelectedTemplateID: String?
     private var lastAppliedParseDraft: String?
+    private var lastAppliedParseItemCount: Int?
     /// Latest parse's `relation_grammar` for `lastAppliedParseDraft` (nil
     /// when the Bob predates relations or no parse has landed yet).
     private var lastRelationGrammar: Int?
@@ -407,6 +414,7 @@ final class CapturePanelModel: ObservableObject {
     /// second ⌘↩ on the same draft submits. Cleared when the draft changes.
     private var relationCapabilityAcknowledgedDraft: String?
     private var analysisGeneration: UInt64 = 0
+    private var similarTasksGeneration: UInt64 = 0
     private var rewriteGeneration: UInt64 = 0
     private var rewriteExpectedCursorUTF8: Int?
     private var rewriteSawMatchingSelection = false
@@ -499,6 +507,19 @@ final class CapturePanelModel: ObservableObject {
                 return
             }
             refreshAgendaPlan()
+        }
+    }
+
+    /// Live Settings control for the related-task lane. Turning it off
+    /// cancels outstanding work and removes the band state immediately.
+    @Published var similarTasksEnabled = true {
+        didSet {
+            guard similarTasksEnabled != oldValue else { return }
+            if similarTasksEnabled {
+                scheduleSimilarTasks(draft: plainDraft)
+            } else {
+                cancelSimilarTasks(clear: true)
+            }
         }
     }
 
@@ -830,11 +851,13 @@ final class CapturePanelModel: ObservableObject {
     init(
         processClient: BobProcessClient? = nil,
         debounceNanoseconds: UInt64 = 50_000_000,
+        similarTasksSettleNanoseconds: UInt64 = 350_000_000,
         canceledDraftStash: CanceledDraftStash? = nil,
         savedTemplateShelf: SavedTemplateShelf? = nil
     ) {
         self.processClient = processClient
         self.debounceNanoseconds = debounceNanoseconds
+        self.similarTasksSettleNanoseconds = similarTasksSettleNanoseconds
         let canceledDraftStash = canceledDraftStash ?? CanceledDraftStash()
         self.canceledDraftStash = canceledDraftStash
         let savedTemplateShelf = savedTemplateShelf ?? SavedTemplateShelf(processClient: processClient)
@@ -857,6 +880,7 @@ final class CapturePanelModel: ObservableObject {
 
     deinit {
         analysisTask?.cancel()
+        similarTasksTask?.cancel()
         rewriteTask?.cancel()
         todayPomodoroGotoTask?.cancel()
     }
@@ -1898,6 +1922,7 @@ final class CapturePanelModel: ObservableObject {
         capabilityAdvertised: Bool,
         seed: String
     ) {
+        cancelSimilarTasks(clear: true)
         guard let processClient else {
             errorMessage = "Bob is not resolved. Check Settings and Recheck Bob."
             errorCode = nil
@@ -2248,6 +2273,7 @@ final class CapturePanelModel: ObservableObject {
     /// permanent discarding is an explicit action from the Discard button.
     func prepareForRetainedClose() {
         panelVisible = false
+        cancelSimilarTasks(clear: false)
         previewPullInSnapshot = nil
         dismissStashPicker()
         dismissTemplateShelf()
@@ -2857,6 +2883,7 @@ final class CapturePanelModel: ObservableObject {
 
     func prepareForDismissal() {
         panelVisible = false
+        cancelSimilarTasks(clear: false)
         clearOpenHintReveal()
         previewPullInSnapshot = nil
         dismissStashPicker()
@@ -2875,12 +2902,14 @@ final class CapturePanelModel: ObservableObject {
 
     private func resetAnalysisState() {
         invalidateAnalysis()
+        cancelSimilarTasks(clear: true)
         editAnalysisBaseline = plainDraft
         invalidateRewrite()
         cancelInFlightExplicitPreview()
         parseDiagnostics = []
         parsedTemplate = nil
         lastAppliedParseDraft = nil
+        lastAppliedParseItemCount = nil
         completionResponse = nil
         completionDraftSnapshot = nil
         fileUnderActive = false
@@ -8323,6 +8352,8 @@ final class CapturePanelModel: ObservableObject {
             }
         }
 
+        scheduleSimilarTasks(draft: draft)
+
         analysisGeneration &+= 1
         let generation = analysisGeneration
         let debounceNanoseconds = self.debounceNanoseconds
@@ -8740,10 +8771,130 @@ final class CapturePanelModel: ObservableObject {
         generation == analysisGeneration
     }
 
+    private func scheduleSimilarTasks(draft: String) {
+        similarTasksGeneration &+= 1
+        let generation = similarTasksGeneration
+        similarTasksTask?.cancel()
+        similarTasksTask = nil
+
+        guard similarTasksEnabled,
+              !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let processClient,
+              !processClient.captureRelatedKnownUnsupported
+        else {
+            similarTasks = .empty
+            return
+        }
+
+        let processClientIdentity = processClient.identityToken
+        let settleNanoseconds = similarTasksSettleNanoseconds
+        similarTasks = SimilarTasksBandPolicy.markPending(similarTasks)
+        similarTasksTask = Task { [weak self, processClient] in
+            do {
+                try await Task.sleep(nanoseconds: settleNanoseconds)
+                try Task.checkCancellation()
+                guard let self,
+                      self.isCurrentSimilarTasksRequest(
+                        generation: generation,
+                        draft: draft,
+                        processClient: processClient,
+                        identity: processClientIdentity
+                      )
+                else {
+                    return
+                }
+
+                let response = try await CaptureSignpost.measure(CaptureSignpost.related) {
+                    try await processClient.captureRelated(draft)
+                }
+                try Task.checkCancellation()
+                guard self.isCurrentSimilarTasksRequest(
+                  generation: generation,
+                  draft: draft,
+                  processClient: processClient,
+                  identity: processClientIdentity
+                ) else {
+                    return
+                }
+
+                guard response.ok else {
+                    self.similarTasks = .empty
+                    return
+                }
+                let itemCount = self.lastAppliedParseDraft == draft
+                  ? self.lastAppliedParseItemCount
+                  : nil
+                self.similarTasks = SimilarTasksBandPolicy.reduce(
+                  response,
+                  previous: self.similarTasks,
+                  draft: draft,
+                  draftItemCount: itemCount
+                )
+                self.similarTasksTask = nil
+            } catch is CancellationError {
+            } catch let error as BobClientError {
+                guard let self,
+                      self.isCurrentSimilarTasksRequest(
+                        generation: generation,
+                        draft: draft,
+                        processClient: processClient,
+                        identity: processClientIdentity
+                      )
+                else {
+                    return
+                }
+                if case .unsupportedCommand("capture-related") = error {
+                    CaptureSignpost.event(CaptureSignpost.relatedUnsupported)
+                }
+                self.similarTasks = .empty
+                self.similarTasksTask = nil
+            } catch {
+                guard let self,
+                      self.isCurrentSimilarTasksRequest(
+                        generation: generation,
+                        draft: draft,
+                        processClient: processClient,
+                        identity: processClientIdentity
+                      )
+                else {
+                    return
+                }
+                CaptureSignpost.event(CaptureSignpost.relatedFailed)
+                self.similarTasks = .empty
+                self.similarTasksTask = nil
+            }
+        }
+    }
+
+    private func isCurrentSimilarTasksRequest(
+        generation: UInt64,
+        draft: String,
+        processClient: BobProcessClient,
+        identity: String
+    ) -> Bool {
+        similarTasksGeneration == generation
+          && similarTasksEnabled
+          && plainDraft == draft
+          && self.processClient === processClient
+          && processClient.identityToken == identity
+    }
+
+    private func cancelSimilarTasks(clear: Bool) {
+        similarTasksGeneration &+= 1
+        similarTasksTask?.cancel()
+        similarTasksTask = nil
+        if clear {
+            similarTasks = .empty
+        } else {
+            similarTasks = SimilarTasksBandPolicy.markPending(similarTasks)
+        }
+    }
+
     private func invalidateAnalysis() {
         analysisGeneration &+= 1
         analysisTask?.cancel()
         analysisTask = nil
+        cancelSimilarTasks(clear: false)
     }
 
     private func invalidateRewrite() {
@@ -8797,6 +8948,9 @@ final class CapturePanelModel: ObservableObject {
         parseDiagnostics = parse.diagnostics
         parsedTemplate = parse.template
         lastAppliedParseDraft = draft
+        lastAppliedParseItemCount = parse.items.isEmpty
+          ? (draft.isEmpty ? 0 : 1)
+          : parse.items.count
         lastRelationGrammar = parse.relationGrammar
         if draft.contains("~") && parse.relationGrammar == nil {
             relationCapabilityWarning =

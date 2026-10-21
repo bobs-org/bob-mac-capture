@@ -38,6 +38,97 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertTrue(record.contains("PATH=/usr/bin:/bin"))
     }
 
+    func testCaptureRelatedUsesItsOwnJSONCommandAndDraftArgument() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_RELATED_FIXTURE": "capture-related/recapture.json",
+            ]
+        )
+
+        let draft = "Install new UPS battery"
+        let response = try await client.captureRelated(draft)
+
+        XCTAssertEqual(response.schemaVersion, 1)
+        XCTAssertEqual(response.items.first?.matches.first?.band, .sameTitle)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=capture-related --format json -- \(draft)"))
+    }
+
+    func testCaptureRelatedUnsupportedCommandIsRememberedForThisBobIdentity() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_RELATED_UNSUPPORTED": "1",
+            ]
+        )
+
+        for _ in 0..<2 {
+            do {
+                _ = try await client.captureRelated("some task")
+                XCTFail("Expected unsupported command")
+            } catch BobClientError.unsupportedCommand(let command) {
+                XCTAssertEqual(command, "capture-related")
+            }
+        }
+
+        XCTAssertTrue(client.captureRelatedKnownUnsupported)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-related").count - 1, 1)
+    }
+
+    func testNewCaptureRelatedCallCancelsThePreviousRelatedLaneProcess() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let termURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_TERM_PATH": termURL.path,
+                "FAKE_BOB_RELATED_DELAY_SECONDS": "0.4",
+            ]
+        )
+
+        let first = Task { try await client.captureRelated("first draft") }
+        let firstDeadline = Date().addingTimeInterval(2)
+        while Date() < firstDeadline {
+            if let record = try? String(contentsOf: recordURL),
+               record.contains("argv=capture-related --format json -- first draft")
+            {
+                break
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        let second = Task { try await client.captureRelated("second draft") }
+
+        do {
+            _ = try await first.value
+            XCTFail("The first related request should have been replaced")
+        } catch BobClientError.processFailed(_, let status, _) {
+            XCTAssertNotEqual(status, 0)
+        }
+        let response = try await second.value
+
+        XCTAssertTrue(response.ok)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: termURL.path))
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=capture-related").count - 1, 2)
+    }
+
     func testCaptureParseDecodesPlusSubBulletAndCaretIdOnlyMarkers() async throws {
         let client = BobProcessClient(
             executablePath: try fakeBobPath(),

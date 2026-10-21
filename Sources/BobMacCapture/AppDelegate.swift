@@ -111,6 +111,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model?.agendaEnabled = enabled
       }
       .store(in: &agendaCancellables)
+    model.similarTasksEnabled = settings.similarTasksEnabled
+    settings.$similarTasksEnabled
+      .dropFirst()
+      .removeDuplicates()
+      .sink { [weak model] enabled in
+        model?.similarTasksEnabled = enabled
+      }
+      .store(in: &agendaCancellables)
     // The Agenda diagnostic follows the store live, so Settings
     // shows the last refresh time, the refresh failure, or the
     // old-bob upgrade hint without polling. The pure function

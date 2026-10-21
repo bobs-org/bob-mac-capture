@@ -36,7 +36,7 @@ In Bob Refs, Copy Diagnostic on the load-failed card copies the refresh failure'
 
 The app emits `os_signpost` intervals/events (subsystem `org.bobs.bob-mac-capture`,
 category `capture`) around hotkey receipt, panel ordering, editor focus, parse,
-completion, preview, submit, block-ID focus claims, plain-text paste
+completion, preview, submit, the settled `capture-related` lane, block-ID focus claims, plain-text paste
 (`paste-plain-text`), notification scheduling, install-restart notification
 requests (`install-restart-notification-requested`), the idle agenda
 (intervals `agenda-refresh`, `agenda-measure`, `agenda-plan`; events
@@ -47,7 +47,9 @@ requests (`install-restart-notification-requested`), the idle agenda
 (interval `panel-switch`; event `panel-switch-key`), visible in
 Instruments' Points of Interest / os_signpost templates. Capture show and hide add
 intervals `capture-prepare` and `capture-dismiss`; the template shelf refresh
-adds interval `templates-refresh`. These, and the bounded
+adds interval `templates-refresh`; the related lane adds interval
+`capture-related` and metadata-only events `capture-related-unsupported` and
+`capture-related-failed`. These, and the bounded
 Recent Activity list in Settings, are metadata-only by construction — see
 [Permissions](permissions.md#privacy).
 

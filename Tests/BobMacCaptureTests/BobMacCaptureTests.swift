@@ -4184,6 +4184,25 @@ final class BobMacCaptureTests: XCTestCase {
     }
 
     @MainActor
+    func testSimilarTasksSettingDefaultsOnAndPersistsChanges() {
+        let suiteName = "org.bobs.bob-mac-capture.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertTrue(settings.similarTasksEnabled)
+
+        settings.similarTasksEnabled = false
+        XCTAssertFalse(defaults.bool(forKey: "similarTasksEnabled"))
+        XCTAssertFalse(AppSettings(defaults: defaults).similarTasksEnabled)
+
+        settings.similarTasksEnabled = true
+        XCTAssertTrue(defaults.bool(forKey: "similarTasksEnabled"))
+        XCTAssertTrue(AppSettings(defaults: defaults).similarTasksEnabled)
+    }
+
+    @MainActor
     func testStashCapacityPropagationTrimsImmediatelyAndPayloadsStayOutOfDefaultsAndDiagnostics() {
         let suiteName = "org.bobs.bob-mac-capture.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

@@ -125,6 +125,18 @@ template_no_rows_draft=$'@@template:\nRecord {0} @work:{1}\n\n'
 template_arity_draft=$'@@template:\nRecord {0} @work:{1}\n\nAcme abc extra'
 
 case "${command}" in
+  capture-related)
+    if [[ "${FAKE_BOB_RELATED_UNSUPPORTED:-}" == "1" ]]; then
+      printf "error: unrecognized subcommand 'capture-related'\n\nUsage: bob [COMMAND]\n" >&2
+      exit 2
+    fi
+    if [[ -n "${FAKE_BOB_RELATED_DELAY_SECONDS:-}" ]]; then
+      sleep "${FAKE_BOB_RELATED_DELAY_SECONDS}" &
+      wait $!
+    fi
+    related_fixture="${FAKE_BOB_RELATED_FIXTURE:-capture-related-empty.json}"
+    cat "${fixtures_dir}/${related_fixture}"
+    ;;
   capture-templates)
     if [[ "${FAKE_BOB_TEMPLATES_UNSUPPORTED:-}" == "1" ]]; then
       printf "error: unrecognized subcommand 'capture-templates'\n\nUsage: bob [COMMAND]\n" >&2

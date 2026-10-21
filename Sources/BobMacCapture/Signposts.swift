@@ -45,4 +45,7 @@ enum CaptureSignpost {
     static let capturePrepare: StaticString = "capture-prepare"
     static let captureDismiss: StaticString = "capture-dismiss"
     static let templatesRefresh: StaticString = "templates-refresh"
+    static let related: StaticString = "capture-related"
+    static let relatedUnsupported: StaticString = "capture-related-unsupported"
+    static let relatedFailed: StaticString = "capture-related-failed"
 }

@@ -121,6 +121,13 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Similar Tasks") {
+                Toggle(
+                    "Show similar tasks while capturing",
+                    isOn: $settings.similarTasksEnabled
+                )
+            }
+
             Section("Canceled Draft Stash") {
                 Stepper(
                     value: Binding(

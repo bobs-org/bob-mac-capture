@@ -11,11 +11,11 @@ How the panel is built. Externally observable behavior stays in the [reference](
 
 ## Lanes
 
-Subprocess work stays off the hotkey path, which uses a pre-warmed non-activating `NSPanel`. One shared lane serves the agenda (`capture-pomodoros --tasks`); typing `@@` after an absorbable marker and typing `^` / `:` after a complete ID reuse the rewrite lane. One refresh flies at a time with at most one follow-up; a rewrite applies only when the visible draft still matches the submitted draft, and every show, submit, wake, unlock, day change, and clock change revalidates.
+Subprocess work stays off the hotkey path, which uses a pre-warmed non-activating `NSPanel`. One shared lane serves the agenda (`capture-pomodoros --tasks`); typing `@@` after an absorbable marker and typing `^` / `:` after a complete ID reuse the rewrite lane. Similar-task lookup has its own cancellable lane: it calls `capture-related --format json -- DRAFT` once after 350 ms without edits. The band state keeps existing rows while a new response is pending. One refresh flies at a time with at most one follow-up; a rewrite applies only when the visible draft still matches the submitted draft, and every show, submit, wake, unlock, day change, and clock change revalidates.
 
 ## Caches
 
-The agenda snapshot publishes nothing when byte-identical and is never shown when its date is not today. Route completion strips the `@@` sigil like the server; the link picker filters `bob`'s snapshot locally. Capture targets cache at launch and on panel open and invalidate on filtered vault events (never `.git/`, attachments, or dot-path-only batches). Templates check out in app memory; the last-used filing parent persists after a successful submit.
+The agenda snapshot publishes nothing when byte-identical and is never shown when its date is not today. A related-command rejection is cached per Bob executable identity, so an older Bob hides the band without retrying on later drafts. Route completion strips the `@@` sigil like the server; the link picker filters `bob`'s snapshot locally. Capture targets cache at launch and on panel open and invalidate on filtered vault events (never `.git/`, attachments, or dot-path-only batches). Templates check out in app memory; the last-used filing parent persists after a successful submit.
 
 ## Failure boundaries
 

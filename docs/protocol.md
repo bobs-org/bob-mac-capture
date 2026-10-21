@@ -266,6 +266,12 @@ These must exist; without them the feature they serve stays hidden or refuses wi
 - `ref rename` (Rename card)
 - `vault-sync -q` (Refs pull on panel show and before ⌘R)
 
+## Optional commands
+
+These features stay hidden when the installed `bob` does not provide the command:
+
+- `capture-related --format json -- DRAFT` (settled similar-task matches and draft anchors, schema 1)
+
 ## Optional fields
 
 Absent fields decode tolerantly and only hide their own row, badge, or offer:
@@ -321,3 +327,9 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `relation_label` completion | Relation card suggestions with counts and typed row | No card; `|` types literally | Upgrade `bob` for relation labels |
 | `relation_grammar` | `~` parses with relation spans; capability warning stays hidden | Calm `predates ~ links` warning; first ⌘↩ only shows it | Upgrade `bob` for `~` |
 | `relation_updates[]`, `linked_from_line_updates[]`, `minted_relation_block_ids[]`, `mirror_skipped[]` | 🪢 preview rows, managed-line suppression, separate notification counts | Legacy preview without relation rows; notifications omit relations | Upgrade `bob` for relation previews |
+| `capture-related` | A settled Similar tasks band beneath matching task cards | Band stays hidden; ordinary preview and capture continue | Upgrade `bob` to show similar tasks |
+
+The app waits 350 ms after an edit before requesting `capture-related`. An older `bob`
+that rejects the command is remembered for that executable identity, so the app keeps
+the band hidden without retrying on later drafts. Changing the executable identity
+rechecks support.

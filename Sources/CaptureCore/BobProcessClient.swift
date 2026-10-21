@@ -36,6 +36,7 @@ public final class BobProcessClient: @unchecked Sendable {
   private var activeGeneration: UInt64 = 0
   private var unsupportedGuardIdentity: String?
   private var unsupportedGuardFlags: Set<String> = []
+  private var unsupportedRelatedIdentity: String?
   private var savedTemplatesIdentity: String?
 
   public init(
@@ -82,6 +83,21 @@ public final class BobProcessClient: @unchecked Sendable {
     guardFlagKnownUnsupported("--refuse-override")
   }
 
+  /// Whether this executable has already rejected `capture-related`. The
+  /// answer is scoped to the current Bob file identity, so replacing Bob
+  /// retries the capability once.
+  public var captureRelatedKnownUnsupported: Bool {
+    stateQueue.sync {
+      guard let unsupportedRelatedIdentity else { return false }
+      let identity = identityToken
+      if unsupportedRelatedIdentity != identity {
+        self.unsupportedRelatedIdentity = nil
+        return false
+      }
+      return true
+    }
+  }
+
   public func captureParse(
     _ draft: String,
     lane: String = "parse"
@@ -92,6 +108,83 @@ public final class BobProcessClient: @unchecked Sendable {
       lane: lane
     )
     return response
+  }
+
+  /// Reads the draft-mode similar-task contract. It uses an independent
+  /// process lane so edits cancel a stale related scan without delaying the
+  /// parser or live preview.
+  public func captureRelated(_ draft: String) async throws -> CaptureRelatedResponse {
+    if captureRelatedKnownUnsupported {
+      throw BobClientError.unsupportedCommand("capture-related")
+    }
+
+    let arguments = ["capture-related", "--format", "json", "--", draft]
+    let result = try await run(arguments: arguments, lane: "related")
+    let stderr = boundedProcessText(result.stderr)
+    if Self.isUnsupportedCaptureRelatedFailure(exitStatus: result.exitStatus, stderr: stderr) {
+      stateQueue.sync {
+        unsupportedRelatedIdentity = identityToken
+      }
+      throw BobClientError.unsupportedCommand("capture-related")
+    }
+
+    let trimmedStdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedStdout.isEmpty else {
+      if result.exitStatus != 0 {
+        throw BobClientError.processFailed(
+          command: result.command,
+          exitStatus: result.exitStatus,
+          stderr: stderr
+        )
+      }
+      throw BobClientError.emptyStdout(
+        command: result.command,
+        exitStatus: result.exitStatus,
+        stderr: stderr
+      )
+    }
+
+    do {
+      let response = try decoder.decode(CaptureRelatedResponse.self, from: Data(trimmedStdout.utf8))
+      guard response.schemaVersion == 1 else {
+        throw BobClientError.schemaMismatch(
+          command: result.command,
+          expected: 1,
+          actual: response.schemaVersion
+        )
+      }
+      guard result.exitStatus == 0 else {
+        throw BobClientError.processFailed(
+          command: result.command,
+          exitStatus: result.exitStatus,
+          stderr: stderr
+        )
+      }
+      return response
+    } catch let error as BobClientError {
+      throw error
+    } catch {
+      if result.exitStatus != 0 {
+        throw BobClientError.processFailed(
+          command: result.command,
+          exitStatus: result.exitStatus,
+          stderr: stderr
+        )
+      }
+      throw BobClientError.malformedJSON(
+        command: result.command,
+        exitStatus: result.exitStatus,
+        stderr: stderr,
+        reason: error.localizedDescription
+      )
+    }
+  }
+
+  static func isUnsupportedCaptureRelatedFailure(exitStatus: Int32, stderr: String) -> Bool {
+    guard exitStatus == 2 else { return false }
+    let normalized = stderr.lowercased()
+    return normalized.contains("unrecognized subcommand 'capture-related'")
+      || normalized.contains("unrecognized subcommand \"capture-related\"")
   }
 
   public func capturePomodoros(includeCompleted: Bool = false) async throws

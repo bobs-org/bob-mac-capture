@@ -40,6 +40,10 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(agendaEnabled, forKey: Keys.agendaEnabled) }
     }
 
+    @Published var similarTasksEnabled: Bool {
+        didSet { defaults.set(similarTasksEnabled, forKey: Keys.similarTasksEnabled) }
+    }
+
     /// Live agenda diagnostic from the store ("Last refreshed 14:32",
     /// "Couldn't refresh: …", or the old-bob hint). Transient: never
     /// persisted. AppDelegate keeps it in sync with the store.
@@ -126,6 +130,9 @@ final class AppSettings: ObservableObject {
         agendaEnabled = defaults.object(forKey: Keys.agendaEnabled) == nil
             ? true
             : defaults.bool(forKey: Keys.agendaEnabled)
+        similarTasksEnabled = defaults.object(forKey: Keys.similarTasksEnabled) == nil
+            ? true
+            : defaults.bool(forKey: Keys.similarTasksEnabled)
         canceledDraftStashCapacity = Self.loadCanceledDraftStashCapacity(from: defaults)
         refsInspectorNotesPageSize = Self.loadRefsInspectorNotesPageSize(from: defaults)
     }
@@ -190,4 +197,5 @@ private enum Keys {
     static let canceledDraftStashCapacity = "canceledDraftStashCapacity"
     static let refsInspectorNotesPageSize = "refsInspectorNotesPageSize"
     static let agendaEnabled = "agendaEnabled"
+    static let similarTasksEnabled = "similarTasksEnabled"
 }
