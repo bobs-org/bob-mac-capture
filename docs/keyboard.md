@@ -17,7 +17,7 @@ These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspecto
 | --- | --- |
 | Option-N | Mark the selected Ready or Next reference Seen, or New again; the row stays put until the next re-rank; other rows beep |
 | Command-T | Toggle the Tabs filter; the query and kind scope stay in place |
-| Command-T (in Highlights) | While Highlights is frontmost and Bob Refs is hidden, open Bob Refs in Tabs; configurable to Shift-Command-O, Command-E, or Off |
+| Command-T (in Highlights) | While Highlights is frontmost and Bob Refs is hidden, open Bob Refs in Tabs from fresh defaults (as after Ctrl-Z); configurable to Shift-Command-O, Command-E, or Off |
 | Ctrl-X | Close the selected tab in Highlights (Tabs only) |
 | Ctrl-D | Scroll the preview down by half its height |
 | Ctrl-U | Scroll the preview up by half its height |

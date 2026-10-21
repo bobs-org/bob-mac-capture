@@ -116,6 +116,9 @@ public final class RefsPanelController: NSObject {
         do {
             let prepareToken = CaptureSignpost.begin("refs-panel-prepare")
             defer { CaptureSignpost.end(prepareToken) }
+            if source == .highlightsTabs {
+                cancelPendingViewRestores()
+            }
             model.prepareForPresentation(source: source)
             model.refreshForOpen()
         }
@@ -453,8 +456,7 @@ public final class RefsPanelController: NSObject {
             return event
         }
         if command == .resetView {
-            cancelRevealFollow()
-            Self.findInspectorScrollAnchor(in: panel?.contentView)?.cancelPendingRestore()
+            cancelPendingViewRestores()
         }
         return model.perform(command) ? nil : event
     }
@@ -757,6 +759,13 @@ public final class RefsPanelController: NSObject {
         )
         clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
         scrollView.reflectScrolledClipView(clip)
+    }
+
+    /// Cancels in-flight reveal follow and a pending inspector scroll
+    /// restore so a reset or Highlights Tabs open starts from the top.
+    private func cancelPendingViewRestores() {
+        cancelRevealFollow()
+        Self.findInspectorScrollAnchor(in: panel?.contentView)?.cancelPendingRestore()
     }
 
     private func cancelRevealFollow() {

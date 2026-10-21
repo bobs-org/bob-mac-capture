@@ -77,7 +77,10 @@ defaults and selects the new reference (the newest batch, then the first
 listed id in that batch). An arrival that lands in the first 10 seconds of
 an untouched ordinary show — typically the show's own pull — also resets
 and selects it. A Ctrl+Tab switch never resets for an arrival: the new
-reference joins the listing without moving the selection. A Tabs show defers the reset to the next ordinary show.
+reference joins the listing without moving the selection. The Highlights Tabs
+key (Command-T) always opens from fresh-launch defaults, as Ctrl-Z resets,
+with Tabs on, and still defers a new-reference reset to the next ordinary
+show.
 Selecting the reference first cancels the reset. Ctrl-Z resets it to the
 fresh-launch defaults; quitting or restarting starts fresh.
 
@@ -441,21 +444,21 @@ progress finishes if the panel hides.
   activates, so Highlights stays frontmost and the same key closes the
   panel again.
 - While Highlights is frontmost and Bob Refs is hidden, Command-T opens
-  Bob Refs in Tabs (default). Settings › References can change this key to
-  Shift-Command-O, Command-E, or Off. It registers only for Highlights or
-  the override app; the global Control-Shift-Command-O and Command-O
-  library flows are unchanged. While Bob Refs is showing, Command-T
-  switches between Tabs and the library instead of closing the panel;
-  Escape closes it.
+  Bob Refs in Tabs (default) from fresh-launch defaults, as after Ctrl-Z.
+  Settings › References can change this key to Shift-Command-O, Command-E,
+  or Off. It registers only for Highlights or the override app; the global
+  Control-Shift-Command-O and Command-O library flows are unchanged. While
+  Bob Refs is showing, Command-T switches between Tabs and the library
+  instead of closing the panel; Escape closes it.
 - Ordinary shows restore the remembered query, scope, filters, selection,
   revealed pages, and scroll positions, except when a newly added reference
   resets the view and selects it (including an arrival in the first 10
   seconds of an untouched show). A Ctrl+Tab switch always restores the
-  remembered view and never resets for an arrival. The configured Tabs key does the same when
-  Tabs is already on; when Tabs is off, it enables Tabs while keeping the
-  query and scope, turning Newest off, and selecting the current Highlights
-  tab when available. A Tabs show defers a new-reference reset to the next
-  ordinary show. Ctrl-Z resets the view to fresh-launch defaults.
+  remembered view and never resets for an arrival. The Highlights Tabs key
+  resets query, scope, Newest, selection, revealed pages, and list and
+  preview positions, then turns Tabs on and selects the Tabs preselection.
+  A Tabs show defers a new-reference reset to the next ordinary show.
+  Ctrl-Z resets the view to fresh-launch defaults.
 - Clicking a scan notification opens the default view with Just scanned
   at the top and its first row selected.
 - The menu-bar item offers Bob Refs… directly below Capture, with the
@@ -493,9 +496,11 @@ the rest follow most-recently-active order, with tab-bar order as the
 tie-break and unmatched tabs last. When Highlights is frontmost, the
 previous tab is preselected.
 
-When Tabs remains on across a show, the selected row is kept while that
-tab is still open. After Bob Refs switches to a tab, the next Tabs show
-uses the current Highlights tab as its preselection once.
+When Tabs remains on across an ordinary or Ctrl+Tab show, the selected
+row is kept while that tab is still open. After Bob Refs switches to a
+tab, the next ordinary or Ctrl+Tab Tabs show uses the current Highlights
+tab as its preselection once. Command-T from Highlights always starts
+fresh.
 
 Return, Tab, or double-click switches to the existing tab. Switching
 keeps its page, does not change reading state, and does not add an entry

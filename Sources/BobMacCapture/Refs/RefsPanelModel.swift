@@ -19,7 +19,8 @@ public enum RefsOpenTarget: Equatable, Sendable {
 public enum RefsPresentationSource: Equatable, Sendable {
   /// Show the ordinary reference library.
   case library
-  /// Show the current Highlights tabs.
+  /// Show the current Highlights tabs from fresh-launch defaults, as
+  /// after Ctrl-Z.
   case highlightsTabs
   /// Show the default view after the user opens a scan notification.
   case scanResults
@@ -703,7 +704,8 @@ public final class RefsPanelModel: ObservableObject {
   /// Restores the remembered view on ordinary shows, except when a newly
   /// added reference is pending: then the show resets to fresh-launch
   /// defaults and selects that reference. Scan-result shows start from
-  /// fresh-launch defaults. A `.panelSwitch` show always restores the
+  /// fresh-launch defaults. A `.highlightsTabs` show resets to those
+  /// defaults with Tabs on. A `.panelSwitch` show always restores the
   /// remembered view and never resets for a pending arrival. Per-show
   /// cards, banners, and presentation animation are still handled here.
   public func prepareForPresentation(source: RefsPresentationSource = .library) {
@@ -747,12 +749,10 @@ public final class RefsPanelModel: ObservableObject {
         RefsArrivalTracker.visibleGraceSeconds
       )
     case .highlightsTabs:
-      if tabsFilter {
-        restoreTabsForPresentation()
-      } else {
-        tabsSelectionConsumed = false
-        enterTabsFilter(preservingSelection: false)
-      }
+      // The Highlights Tabs key always starts fresh, as after Ctrl-Z,
+      // with Tabs on. Pending arrivals stay deferred to the next
+      // ordinary show.
+      resetToDefaults(tabs: true, announcement: nil)
     case .scanResults:
       resetToDefaults(tabs: false)
       arrivals.clearPending()
