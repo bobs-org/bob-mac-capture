@@ -411,3 +411,43 @@ When the draft contains `~` but the parse response lacks `relation_grammar`,
 the panel shows the calm `This bob predates ~ links; ~ text would be captured
 literally · update bob` warning: the first ⌘↩ only shows the warning, the
 second ⌘↩ submits.
+
+## Similar tasks
+
+When a capture draft will create a new task, the preview card may grow a
+**Similar tasks** band at its foot — after the destination line, relationship
+rows, blocks, and every other capture consequence, never displacing them. The
+rows come from `bob capture-related` after typing settles; the app only
+schedules the call and paints what Bob returned. A project-note title uses the
+same band on its card.
+
+The band takes zero pixels unless a match clears Bob's bar: no header, no
+placeholder, and never a "No duplicates" line. Percentages, scores, spinners,
+and empty states are never shown. Held rows stay put while you type and swap
+only when the settled result changed, with a 120 ms cross-fade (instant with
+Reduce Motion) and no height animation.
+
+A single-item card shows a hairline, a `SIMILAR TASKS` header with an optional
+`+N` capsule and a trailing `⌘1–2` hint, then at most two rows. Each row is one
+line: a `⌘N` keycap, the status glyph, the title with matched words semibold
+and tail-truncated, an optional project `folder` or reading `book` glyph, at
+most one capsule, then `route · Status`. The locator truncates first, then the
+title; capsules never wrap or shrink. Capsules are **Same title** and
+**Possible duplicate** (warning tint), **Done 8d ago** / **Canceled 8d ago**
+(secondary on quaternary), or **Related** / **Prerequisite** / **Blocked by
+this** after you act. Closed titles are secondary and never struck through.
+
+A bulk draft puts at most one row on each task-creating card, with a leading
+`⧉` mark and no header; numbering continues down the stack. If the band would
+make the auxiliary region scroll, every band folds to one line before anything
+else moves, for example `⧉ 2 similar tasks · Possible duplicate: Install new UPS battery   ⌘1`.
+
+Each row is one VoiceOver element, labelled
+`<title>, <capsule>, <route>, <status or closed text>`. One announcement fires
+per settled non-empty change that differs from the last; typing never
+announces, and focus never moves to the band. Hover shows the full title and
+note path without changing layout. Setting **Show similar tasks while
+capturing** (on by default) hides the band and stops the related lane.
+
+Row focus, the action strip, and the draft-edit keys are documented with the
+band keys once they land; Return is never intercepted.

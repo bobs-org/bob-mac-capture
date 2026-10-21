@@ -431,6 +431,12 @@ struct CapturePanelView: View {
             .onChange(of: model.agendaPlan) { _, _ in
                 reportContentMetrics()
             }
+            .onChange(of: model.similarTasks) { _, _ in
+                reportContentMetrics()
+            }
+            .onChange(of: model.similarTasksParseItems) { _, _ in
+                reportContentMetrics()
+            }
     }
 
     private var editorHeightPolicy: CaptureEditorHeightPolicy {
@@ -827,7 +833,48 @@ struct CapturePanelView: View {
         guard metrics.isValid else {
             return
         }
+        updateSimilarTasksFolded()
         onContentMetricsChange(metrics)
+    }
+
+    /// Fold every similar-tasks band before the auxiliary region would
+    /// scroll. Heights come from fixed row metrics, so the comparison
+    /// against the screen budget cannot oscillate.
+    private func updateSimilarTasksFolded() {
+        let items = SimilarTasksBandPolicy.visibleItems(
+            in: model.similarTasks,
+            parseItems: model.similarTasksParseItems
+        )
+        guard !items.isEmpty else {
+            if model.similarTasksFolded {
+                model.similarTasksFolded = false
+            }
+            return
+        }
+        let contentPolicy = CapturePanelContentHeightPolicy(
+            safeAreaTopInset: model.titlebarSafeAreaInset,
+            displayScale: displayScale
+        )
+        let persistent = contentPolicy.nonEditorChromeHeight(
+            footerHeight: measuredFooterHeight,
+            hasAuxiliary: true
+        ) + measuredEditorHeight
+        let screenLimit: CGFloat
+        if let available = model.availableScreenHeight {
+            screenLimit = max(1, available - 2 * CapturePanelLayout.panelScreenMargin)
+        } else {
+            screenLimit = CapturePanelLayout.panelMaximumContentHeight
+        }
+        let availableAuxiliary = max(0, screenLimit - persistent)
+        let folded = SimilarTasksBandMetrics.shouldFold(
+            items: items,
+            currentlyFolded: model.similarTasksFolded,
+            measuredAuxiliaryHeight: Double(measuredAuxiliaryContentHeight),
+            availableAuxiliaryHeight: Double(availableAuxiliary)
+        )
+        if model.similarTasksFolded != folded {
+            model.similarTasksFolded = folded
+        }
     }
 
     private func applyFocusRequest(_ request: CapturePanelFocusRequest) {
@@ -2443,6 +2490,7 @@ private struct CompletionRow: View {
 struct PreviewPane: View {
     @ObservedObject var model: CapturePanelModel
     @State private var settledPaneHeight: CGFloat?
+    @State private var lastAnnouncedSimilarKeys: [String] = []
 
     private var paneMinimumHeight: CGFloat {
         CapturePreviewPaneHeightPolicy.minimumHeight(
@@ -2493,6 +2541,41 @@ struct PreviewPane: View {
         .background(.thinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .layoutPriority(1)
+        .onAppear {
+            announceSimilarTasksIfNeeded()
+        }
+        .onChange(of: similarTasksAnnouncementSignature) { _, _ in
+            announceSimilarTasksIfNeeded()
+        }
+    }
+
+    private var similarTasksAnnouncementSignature: String {
+        if model.similarTasks.pending {
+            return "pending"
+        }
+        return SimilarTasksBandPolicy.visibleItems(
+            in: model.similarTasks,
+            parseItems: model.similarTasksParseItems
+        ).flatMap(\.rows).map(\.match.key).joined(separator: "\u{1e}")
+    }
+
+    private func announceSimilarTasksIfNeeded() {
+        guard !model.similarTasks.pending else { return }
+        let items = SimilarTasksBandPolicy.visibleItems(
+            in: model.similarTasks,
+            parseItems: model.similarTasksParseItems
+        )
+        let keys = SimilarTasksBandPresentation.identityKeys(items: items)
+        if keys.isEmpty {
+            lastAnnouncedSimilarKeys = []
+            return
+        }
+        guard keys != lastAnnouncedSimilarKeys else { return }
+        lastAnnouncedSimilarKeys = keys
+        guard let text = SimilarTasksBandPresentation.settledAnnouncement(items: items) else {
+            return
+        }
+        AccessibilityNotification.Announcement(text).post()
     }
 
     @ViewBuilder
@@ -4028,6 +4111,23 @@ struct PreviewPane: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .textSelection(.enabled)
+        }
+
+        similarTasksBand(forCaptureIndex: index)
+    }
+
+    @ViewBuilder
+    private func similarTasksBand(forCaptureIndex index: Int) -> some View {
+        if let item = SimilarTasksBandPolicy.visibleItem(
+            in: model.similarTasks,
+            captureIndex: index,
+            parseItems: model.similarTasksParseItems
+        ) {
+            SimilarTasksBandView(
+                item: item,
+                folded: model.similarTasksFolded,
+                focusedRowID: model.similarTasks.focusedRowID
+            )
         }
     }
 

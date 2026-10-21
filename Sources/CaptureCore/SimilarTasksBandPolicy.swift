@@ -53,6 +53,18 @@ public struct SimilarTasksBandItem: Equatable, Sendable, Identifiable {
   }
 }
 
+/// One parse item's index and mode, used by the render gate so a band
+/// never paints on a card whose latest parse no longer matches.
+public struct SimilarTasksParseItem: Equatable, Sendable {
+  public let index: Int
+  public let mode: String
+
+  public init(index: Int, mode: String) {
+    self.index = index
+    self.mode = mode
+  }
+}
+
 /// The app-owned presentation snapshot. `pending` keeps the currently painted
 /// rows stable while text changes and the next settled Bob result is in flight.
 public struct SimilarTasksBandState: Equatable, Sendable {
@@ -60,6 +72,9 @@ public struct SimilarTasksBandState: Equatable, Sendable {
   public let items: [SimilarTasksBandItem]
   public let pending: Bool
   public let focusedRowID: String?
+  /// Parse item count captured with this snapshot. A later parse whose
+  /// count differs clears every held band until the next settle.
+  public let parseItemCount: Int?
 
   public static let empty = SimilarTasksBandState()
 
@@ -67,12 +82,14 @@ public struct SimilarTasksBandState: Equatable, Sendable {
     draft: String? = nil,
     items: [SimilarTasksBandItem] = [],
     pending: Bool = false,
-    focusedRowID: String? = nil
+    focusedRowID: String? = nil,
+    parseItemCount: Int? = nil
   ) {
     self.draft = draft
     self.items = items
     self.pending = pending
     self.focusedRowID = focusedRowID
+    self.parseItemCount = parseItemCount
   }
 
   public var rows: [SimilarTasksBandRow] {
@@ -99,7 +116,8 @@ public enum SimilarTasksBandPolicy {
       draft: state.draft,
       items: state.items,
       pending: true,
-      focusedRowID: state.focusedRowID
+      focusedRowID: state.focusedRowID,
+      parseItemCount: state.parseItemCount
     )
   }
 
@@ -190,8 +208,56 @@ public enum SimilarTasksBandPolicy {
       draft: draft,
       items: resultItems,
       pending: false,
-      focusedRowID: focusedRowID
+      focusedRowID: focusedRowID,
+      parseItemCount: draftItemCount
     )
+  }
+
+  /// A band paints on capture index `i` only while the latest parse still
+  /// reports item `i` with the same mode Bob matched, and only while the
+  /// parse's item count is unchanged. An empty parse snapshot leaves the
+  /// settled rows visible (preview can land before parse in tests).
+  public static func visibleItem(
+    in state: SimilarTasksBandState,
+    captureIndex: Int,
+    parseItems: [SimilarTasksParseItem]
+  ) -> SimilarTasksBandItem? {
+    guard let item = state.items.first(where: { $0.index == captureIndex }),
+          item.isVisible
+    else {
+      return nil
+    }
+    guard passesRenderGate(state, parseItems: parseItems) else {
+      return nil
+    }
+    guard parseItems.isEmpty || parseItems.contains(where: {
+      $0.index == item.index && $0.mode == item.mode
+    }) else {
+      return nil
+    }
+    return item
+  }
+
+  public static func visibleItems(
+    in state: SimilarTasksBandState,
+    parseItems: [SimilarTasksParseItem]
+  ) -> [SimilarTasksBandItem] {
+    guard passesRenderGate(state, parseItems: parseItems) else {
+      return []
+    }
+    return state.items.compactMap { item in
+      visibleItem(in: state, captureIndex: item.index, parseItems: parseItems)
+    }
+  }
+
+  private static func passesRenderGate(
+    _ state: SimilarTasksBandState,
+    parseItems: [SimilarTasksParseItem]
+  ) -> Bool {
+    guard !parseItems.isEmpty, let expected = state.parseItemCount else {
+      return true
+    }
+    return expected == parseItems.count
   }
 
   private static func isDisplayBand(_ band: CaptureRelatedBand) -> Bool {

@@ -24,8 +24,10 @@ panel width; Refs uses 880 points. The renderers produce PNGs at scale 2.
 | `task-complete-task-complete-strike-760` | `TaskCompleteDesignTests`, `Tests/Fixtures/task-complete-strike.json` | `task-completion` |
 | `refs-browse-880` | `RefsPanelDesignTests.makeFixture(now:)`, `renderBrowse` | `refs-browse` |
 
+`SimilarTasksBandDesignTests` also writes `similar-tasks-{none,one,two-plus,same-title,closed,project,reading,bulk,folded,linked}-{760,620}` light/dark PNGs through `RenderFixtureWriter`. Those review fixtures are not yet in the curated documentation import.
+
 The light image uses the documentation stem directly; the dark image adds `-dark`.
-`RenderFixtureWriter` serves the agenda and Refs tests; the completion test uses
+`RenderFixtureWriter` serves the agenda, Refs, and similar-tasks tests; the completion test uses
 `ImageRenderer` directly. The Refs fixture fixes its clock and constructs its library
 in a temporary directory with stub openers. Agenda and completion data come from
 committed JSON fixtures.

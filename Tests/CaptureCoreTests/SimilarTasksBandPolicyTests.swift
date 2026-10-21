@@ -142,4 +142,69 @@ final class SimilarTasksBandPolicyTests: XCTestCase {
     XCTAssertTrue(state.items.isEmpty)
     XCTAssertTrue(state.rows.isEmpty)
   }
+
+  func testReduceStoresTheParseItemCount() {
+    let state = SimilarTasksBandPolicy.reduce(
+      CaptureRelatedResponse(items: [item(0, matches: [match("a")])]),
+      draftItemCount: 3
+    )
+
+    XCTAssertEqual(state.parseItemCount, 3)
+  }
+
+  func testRenderGateDropsTheBandWhenParseItemCountChanges() {
+    let state = SimilarTasksBandPolicy.reduce(
+      CaptureRelatedResponse(items: [item(0, matches: [match("a")])]),
+      draft: "one",
+      draftItemCount: 1
+    )
+
+    XCTAssertNotNil(
+      SimilarTasksBandPolicy.visibleItem(
+        in: state,
+        captureIndex: 0,
+        parseItems: [SimilarTasksParseItem(index: 0, mode: "task")]
+      )
+    )
+    XCTAssertTrue(
+      SimilarTasksBandPolicy.visibleItems(
+        in: state,
+        parseItems: [
+          SimilarTasksParseItem(index: 0, mode: "task"),
+          SimilarTasksParseItem(index: 1, mode: "task"),
+        ]
+      ).isEmpty
+    )
+  }
+
+  func testRenderGateDropsTheBandWhenParseModeChanges() {
+    let state = SimilarTasksBandPolicy.reduce(
+      CaptureRelatedResponse(items: [item(0, matches: [match("a")])]),
+      draftItemCount: 1
+    )
+
+    XCTAssertNil(
+      SimilarTasksBandPolicy.visibleItem(
+        in: state,
+        captureIndex: 0,
+        parseItems: [SimilarTasksParseItem(index: 0, mode: "sub_bullet")]
+      )
+    )
+  }
+
+  func testRenderGateKeepsHeldRowsWhenParseIsEmpty() {
+    let state = SimilarTasksBandPolicy.reduce(
+      CaptureRelatedResponse(items: [item(0, matches: [match("a")])]),
+      draftItemCount: 1
+    )
+
+    XCTAssertEqual(
+      SimilarTasksBandPolicy.visibleItem(
+        in: state,
+        captureIndex: 0,
+        parseItems: []
+      )?.rows.map(\.match.key),
+      ["a"]
+    )
+  }
 }

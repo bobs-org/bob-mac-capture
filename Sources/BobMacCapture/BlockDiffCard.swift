@@ -78,12 +78,18 @@ struct BlockDiffCard: View {
         return base.opacity(contrast == .increased ? 0.22 : Self.tintOpacity(for: change))
     }
 
-    private var hairline: Color {
+    /// Separator hairline shared with the similar-tasks band: full strength
+    /// under Increase Contrast, otherwise 0.5 opacity.
+    static func hairlineColor(contrast: ColorSchemeContrast) -> Color {
         // `Color.separator` is a shape style, not a color, so the hairline
         // reads the AppKit separator directly; it stays adaptive in light,
         // dark, and increased-contrast appearances.
         let base = Color(nsColor: .separatorColor)
         return contrast == .increased ? base : base.opacity(0.5)
+    }
+
+    private var hairline: Color {
+        Self.hairlineColor(contrast: contrast)
     }
 
     var body: some View {

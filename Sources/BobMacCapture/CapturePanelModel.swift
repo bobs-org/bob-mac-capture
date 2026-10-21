@@ -289,6 +289,11 @@ final class CapturePanelModel: ObservableObject {
     /// The latest settled related-task response, shaped for the band renderer.
     /// Pending edits retain these rows until Bob returns for the new draft.
     @Published var similarTasks = SimilarTasksBandState.empty
+    /// Latest parse index/mode pairs, used by the band render gate.
+    @Published var similarTasksParseItems: [SimilarTasksParseItem] = []
+    /// True when every band folds to one line so the auxiliary region
+    /// does not scroll. Published from the panel view's metrics pass.
+    @Published var similarTasksFolded = false
     /// Latest live-preview open plan, built from bob's `open_notes` or the
     /// legacy fallback. Nil means this draft has no preview yet.
     @Published var previewOpenPlan: CaptureOpenPlan?
@@ -2910,6 +2915,8 @@ final class CapturePanelModel: ObservableObject {
         parsedTemplate = nil
         lastAppliedParseDraft = nil
         lastAppliedParseItemCount = nil
+        similarTasksParseItems = []
+        similarTasksFolded = false
         completionResponse = nil
         completionDraftSnapshot = nil
         fileUnderActive = false
@@ -7908,6 +7915,8 @@ final class CapturePanelModel: ObservableObject {
             parseDiagnostics = []
             parsedTemplate = nil
             lastAppliedParseDraft = nil
+            similarTasksParseItems = []
+            similarTasksFolded = false
             completionResponse = nil
             completionDraftSnapshot = nil
             fileUnderActive = false
@@ -8885,6 +8894,7 @@ final class CapturePanelModel: ObservableObject {
         similarTasksTask = nil
         if clear {
             similarTasks = .empty
+            similarTasksFolded = false
         } else {
             similarTasks = SimilarTasksBandPolicy.markPending(similarTasks)
         }
@@ -8951,6 +8961,15 @@ final class CapturePanelModel: ObservableObject {
         lastAppliedParseItemCount = parse.items.isEmpty
           ? (draft.isEmpty ? 0 : 1)
           : parse.items.count
+        if parse.items.isEmpty {
+            similarTasksParseItems = draft.isEmpty
+                ? []
+                : [SimilarTasksParseItem(index: 0, mode: parse.mode)]
+        } else {
+            similarTasksParseItems = parse.items.map {
+                SimilarTasksParseItem(index: $0.index, mode: $0.mode)
+            }
+        }
         lastRelationGrammar = parse.relationGrammar
         if draft.contains("~") && parse.relationGrammar == nil {
             relationCapabilityWarning =
