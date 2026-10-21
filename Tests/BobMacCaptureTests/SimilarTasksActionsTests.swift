@@ -87,6 +87,7 @@ final class SimilarTasksActionsTests: XCTestCase {
       debounceNanoseconds: 0,
       similarTasksSettleNanoseconds: 20_000_000
     )
+    model.prepareForPresentation()
     model.plainDraft = "Install new UPS battery"
     model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
     await waitUntil { !model.similarTasks.pending && !model.similarTasks.rows.isEmpty }
@@ -107,6 +108,7 @@ final class SimilarTasksActionsTests: XCTestCase {
       debounceNanoseconds: 0,
       similarTasksSettleNanoseconds: 20_000_000
     )
+    model.prepareForPresentation()
     model.plainDraft = "Install new UPS battery @dev"
     model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
     await waitUntil { !model.similarTasks.pending && model.similarTasks.rows.count == 2 }
@@ -185,6 +187,7 @@ final class SimilarTasksActionsTests: XCTestCase {
       debounceNanoseconds: 0,
       similarTasksSettleNanoseconds: 20_000_000
     )
+    model.prepareForPresentation()
     model.plainDraft = "Install new UPS battery"
     model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
     await waitUntil { !model.similarTasks.pending && !model.similarTasks.rows.isEmpty }
@@ -205,6 +208,7 @@ final class SimilarTasksActionsTests: XCTestCase {
       debounceNanoseconds: 0,
       similarTasksSettleNanoseconds: 20_000_000
     )
+    model.prepareForPresentation()
     var opened: URL?
     var dismissed = false
     model.taskGotoOpener = { url, completion in
@@ -234,6 +238,7 @@ final class SimilarTasksActionsTests: XCTestCase {
       debounceNanoseconds: 0,
       similarTasksSettleNanoseconds: 80_000_000
     )
+    model.prepareForPresentation()
     model.plainDraft = "Install new UPS battery"
     model.editorTextDidChange(cursorUTF8Offset: model.plainDraft.utf8.count)
     await waitUntil { !model.similarTasks.pending && !model.similarTasks.rows.isEmpty }

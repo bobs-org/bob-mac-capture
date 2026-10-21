@@ -48,8 +48,10 @@ requests (`install-restart-notification-requested`), the idle agenda
 Instruments' Points of Interest / os_signpost templates. Capture show and hide add
 intervals `capture-prepare` and `capture-dismiss`; the template shelf refresh
 adds interval `templates-refresh`; the related lane adds interval
-`capture-related` and metadata-only events `capture-related-unsupported` and
-`capture-related-failed`. These, and the bounded
+`capture-related` and metadata-only events `capture-related-unsupported`,
+`capture-related-failed`, `capture-related-publish` (settled response changed
+the visible rows), and `capture-related-empty` (settled response had no
+matches). These, and the bounded
 Recent Activity list in Settings, are metadata-only by construction — see
 [Permissions](permissions.md#privacy).
 

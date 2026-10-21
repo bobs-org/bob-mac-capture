@@ -563,6 +563,29 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
+    /// Fire-time gate for the settled related lane. True only while the
+    /// panel is visible, the setting is on, and no picker, prompt, choice,
+    /// stash picker, or template shelf owns the panel.
+    var similarTasksMayRequest: Bool {
+        panelVisible && similarTasksEnabled && !pickerVisible && !taskIDPromptVisible
+            && !pomodoroNamePromptVisible && !relationLabelPromptVisible && !pullInChoiceVisible
+            && !isStashPickerPresented && !isTemplateShelfPresented
+    }
+
+    /// Clears only the pending mark while keeping the held rows, for a
+    /// fire-time gate refusal. The next draft edit re-arms the settle.
+    private func clearSimilarTasksPendingKeepingRows() {
+        similarTasks = SimilarTasksBandState(
+            draft: similarTasks.draft,
+            items: similarTasks.items,
+            pending: false,
+            focusedRowID: similarTasks.focusedRowID,
+            parseItemCount: similarTasks.parseItemCount,
+            revealed: similarTasks.revealed
+        )
+        similarTasksTask = nil
+    }
+
     /// The latest planned agenda, or nil when there is no snapshot or
     /// state line to show.
     @Published var agendaPresentation: CaptureAgendaPresentation?
@@ -2923,6 +2946,7 @@ final class CapturePanelModel: ObservableObject {
         dismissTemplateShelf()
         guard !hasDraft else {
             editorTextDidChange()
+            requestSimilarTasksNow()
             return
         }
         resetAnalysisState()
@@ -9064,6 +9088,18 @@ final class CapturePanelModel: ObservableObject {
                 else {
                     return
                 }
+                let mayRequest: Bool
+                if immediate {
+                    mayRequest = self.panelVisible && self.similarTasksEnabled
+                } else {
+                    mayRequest = self.similarTasksMayRequest
+                }
+                if !mayRequest {
+                    await MainActor.run {
+                        self.clearSimilarTasksPendingKeepingRows()
+                    }
+                    return
+                }
 
                 let response = try await CaptureSignpost.measure(CaptureSignpost.related) {
                     try await processClient.captureRelated(draft)
@@ -9136,6 +9172,21 @@ final class CapturePanelModel: ObservableObject {
         scheduleSimilarTasks(draft: plainDraft, immediate: true)
     }
 
+    private func emitSimilarTasksSettledSignposts(
+        previous: SimilarTasksBandState,
+        next: SimilarTasksBandState,
+        response: CaptureRelatedResponse
+    ) {
+        let hasMatches = response.items.contains { !$0.matches.isEmpty }
+        if !hasMatches {
+            CaptureSignpost.event(CaptureSignpost.relatedEmpty)
+            return
+        }
+        if previous.rows != next.rows {
+            CaptureSignpost.event(CaptureSignpost.relatedPublish)
+        }
+    }
+
     private func handleSettledSimilarResponse(
         _ response: CaptureRelatedResponse,
         draft: String,
@@ -9174,6 +9225,7 @@ final class CapturePanelModel: ObservableObject {
             )
             // Re-key the focus by key. A missing row means the task is gone.
             if fresh.focusedRowID == nil {
+                let previous = similarTasks
                 similarItemAnchors = anchors
                 similarAnchorsDraft = draft
                 similarTasks = fresh
@@ -9181,6 +9233,7 @@ final class CapturePanelModel: ObservableObject {
                 similarPendingAction = nil
                 similarPendingResponse = nil
                 similarTasksTask = nil
+                emitSimilarTasksSettledSignposts(previous: previous, next: fresh, response: response)
                 announceStatus("Similar tasks changed")
                 return
             }
@@ -9189,6 +9242,7 @@ final class CapturePanelModel: ObservableObject {
                 similarItemAnchors = anchors
                 similarAnchorsDraft = draft
                 similarTasks = fresh
+                emitSimilarTasksSettledSignposts(previous: frozenPrevious, next: fresh, response: response)
                 if let row = focusedSimilarRow() {
                     let defaultAction = row.match.defaultAction
                     if let def = defaultAction,
@@ -9220,15 +9274,18 @@ final class CapturePanelModel: ObservableObject {
             similarTasksTask = nil
             return
         }
+        let previous = similarTasks
         similarItemAnchors = anchors
         similarAnchorsDraft = draft
         similarPendingResponse = nil
-        similarTasks = SimilarTasksBandPolicy.reduce(
+        let next = SimilarTasksBandPolicy.reduce(
             response,
-            previous: similarTasks,
+            previous: previous,
             draft: draft,
             draftItemCount: itemCount
         )
+        similarTasks = next
+        emitSimilarTasksSettledSignposts(previous: previous, next: next, response: response)
         similarTasksTask = nil
     }
 

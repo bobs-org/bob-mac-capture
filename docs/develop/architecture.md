@@ -11,7 +11,7 @@ How the panel is built. Externally observable behavior stays in the [reference](
 
 ## Lanes
 
-Subprocess work stays off the hotkey path, which uses a pre-warmed non-activating `NSPanel`. One shared lane serves the agenda (`capture-pomodoros --tasks`); typing `@@` after an absorbable marker and typing `^` / `:` after a complete ID reuse the rewrite lane. Similar-task lookup has its own cancellable lane: it calls `capture-related --format json -- DRAFT` once after 350 ms without edits. The band state keeps existing rows while a new response is pending. One refresh flies at a time with at most one follow-up; a rewrite applies only when the visible draft still matches the submitted draft, and every show, submit, wake, unlock, day change, and clock change revalidates.
+Subprocess work stays off the hotkey path, which uses a pre-warmed non-activating `NSPanel`. One shared lane serves the agenda (`capture-pomodoros --tasks`); typing `@@` after an absorbable marker and typing `^` / `:` after a complete ID reuse the rewrite lane. Similar-task lookup has its own cancellable lane: it calls `capture-related --format json -- DRAFT` once after 350 ms without edits. The fire-time gate requires a visible panel with no modal owner (no picker, ID prompt, Pomodoro-name prompt, relation-label prompt, pull-in choice, stash picker, or template shelf); a retained-draft show fires the lane immediately instead of waiting the settle. The band state keeps existing rows while a new response is pending. One refresh flies at a time with at most one follow-up; a rewrite applies only when the visible draft still matches the submitted draft, and every show, submit, wake, unlock, day change, and clock change revalidates.
 
 ## Caches
 

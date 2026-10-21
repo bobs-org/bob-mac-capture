@@ -48,4 +48,6 @@ enum CaptureSignpost {
     static let related: StaticString = "capture-related"
     static let relatedUnsupported: StaticString = "capture-related-unsupported"
     static let relatedFailed: StaticString = "capture-related-failed"
+    static let relatedPublish: StaticString = "capture-related-publish"
+    static let relatedEmpty: StaticString = "capture-related-empty"
 }
