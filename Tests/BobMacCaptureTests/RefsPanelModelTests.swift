@@ -4465,6 +4465,54 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(harness.model.inspectorGeneration, generation + 1)
   }
 
+  func testVisibleArrivalBatchSelectsItsFirstListedReference() async throws {
+    let clock = TestClock()
+    let fetcher = FakeRefsFetcher()
+    let first = Self.arrivalRecord(path: "ref/chat/alpha.md", stem: "alpha")
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [first])
+    let harness = try makeRenameHarness(fetcher: fetcher, now: { clock.now })
+    await settleLibrary(harness, ids: [first.path])
+    harness.model.prepareForPresentation(source: .library)
+    harness.model.panelIsVisible = { true }
+    let generation = harness.model.inspectorGeneration
+
+    let added = todayDateString()
+    let beta = Self.arrivalRecord(path: "ref/chat/beta.md", stem: "beta", added: added)
+    let gamma = Self.arrivalRecord(path: "ref/chat/gamma.md", stem: "gamma", added: added)
+    await publishRecords([first, beta, gamma], fetcher: fetcher, harness: harness)
+
+    XCTAssertEqual(harness.model.inspectorGeneration, generation + 1)
+    XCTAssertEqual(harness.model.listing.orderedIDs.first, beta.path)
+    XCTAssertEqual(harness.model.selectedID, beta.path)
+  }
+
+  func testVisibleShowKeepsLatestArrivalBatchWhenResetSelectsItsFirstRow() async throws {
+    let fetcher = FakeRefsFetcher()
+    let first = Self.arrivalRecord(path: "ref/chat/zeta.md", stem: "zeta")
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: [first])
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await settleLibrary(harness, ids: [first.path])
+    harness.model.panelIsVisible = { false }
+    rememberNonDefaultView(harness.model, selected: first.path)
+
+    let added = todayDateString()
+    let earlier = Self.arrivalRecord(path: "ref/chat/beta.md", stem: "beta", added: added)
+    let latest = Self.arrivalRecord(path: "ref/chat/alpha.md", stem: "alpha", added: added)
+    await publishRecords([first, earlier], fetcher: fetcher, harness: harness)
+    await publishRecords([first, earlier, latest], fetcher: fetcher, harness: harness)
+    let generation = harness.model.inspectorGeneration
+
+    harness.model.panelIsVisible = { true }
+    harness.model.prepareForPresentation(source: .library)
+
+    XCTAssertEqual(harness.model.query, "")
+    XCTAssertEqual(harness.model.scope, .all)
+    XCTAssertEqual(harness.model.listOrder, .ranked)
+    XCTAssertEqual(harness.model.inspectorGeneration, generation + 1)
+    XCTAssertEqual(harness.model.listing.orderedIDs.first, latest.path)
+    XCTAssertEqual(harness.model.selectedID, latest.path)
+  }
+
   func testTouchedOrExpiredGraceJoinsAndResetsOnTheNextShow() async throws {
     let fetcher = FakeRefsFetcher()
     let first = Self.arrivalRecord(path: "ref/chat/alpha.md", stem: "alpha")

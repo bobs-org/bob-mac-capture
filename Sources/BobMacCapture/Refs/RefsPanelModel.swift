@@ -832,10 +832,14 @@ public final class RefsPanelModel: ObservableObject {
   /// Resets to fresh-launch defaults and selects the qualifying arrival
   /// from the latest pending batch. Keeps a banner that is already up.
   private func resetForArrival() {
+    // Resetting selects the first row, which marks it seen while the
+    // panel is visible. Choose from the original pending batches so
+    // that intermediate selection cannot change the arrival target.
+    let pendingArrivals = arrivals
     let keptBanner = banner
     resetToDefaults(tabs: false, announcement: nil)
     banner = keptBanner
-    if let target = arrivals.target(
+    if let target = pendingArrivals.target(
       orderedIDs: listing.orderedIDs,
       item: { library.item(id: $0) },
       signals: library.signals
