@@ -294,6 +294,24 @@ final class CapturePanelModel: ObservableObject {
     /// True when every band folds to one line so the auxiliary region
     /// does not scroll. Published from the panel view's metrics pass.
     @Published var similarTasksFolded = false
+    /// Strip selection for the focused similar-task row. The default is
+    /// preselected on focus; Left/Right moves within bob's offered actions.
+    @Published var similarChosenAction: CaptureRelatedAction?
+    /// Action chosen while the lane refreshes stale anchors. It waits for the
+    /// fresh response, then applies against the fresh anchors.
+    private var similarPendingAction: CaptureRelatedAction?
+    /// Settled response that arrived while a row was focused. The band stays
+    /// frozen, so this waits for unfocus before it paints.
+    private var similarPendingResponse: (response: CaptureRelatedResponse, draft: String, itemCount: Int?)?
+    /// Item anchors for the latest settled response, keyed by item index.
+    /// Rows carry only the match; splices need the item's byte ranges.
+    private var similarItemAnchors: [Int: CaptureRelatedItem] = [:]
+    /// Draft the anchors above were computed for. Splices re-check this.
+    private var similarAnchorsDraft: String?
+#if DEBUG
+    var similarPendingActionForTesting: CaptureRelatedAction? { similarPendingAction }
+    var hasSimilarPendingResponseForTesting: Bool { similarPendingResponse != nil }
+#endif
     /// Latest live-preview open plan, built from bob's `open_notes` or the
     /// legacy fallback. Nil means this draft has no preview yet.
     @Published var previewOpenPlan: CaptureOpenPlan?
@@ -2888,6 +2906,9 @@ final class CapturePanelModel: ObservableObject {
 
     func prepareForDismissal() {
         panelVisible = false
+        if similarTasks.focusedRowID != nil {
+            unfocusSimilarRow(applyPending: false)
+        }
         cancelSimilarTasks(clear: false)
         clearOpenHintReveal()
         previewPullInSnapshot = nil
@@ -8780,7 +8801,7 @@ final class CapturePanelModel: ObservableObject {
         generation == analysisGeneration
     }
 
-    private func scheduleSimilarTasks(draft: String) {
+    private func scheduleSimilarTasks(draft: String, immediate: Bool = false) {
         similarTasksGeneration &+= 1
         let generation = similarTasksGeneration
         similarTasksTask?.cancel()
@@ -8792,6 +8813,9 @@ final class CapturePanelModel: ObservableObject {
               !processClient.captureRelatedKnownUnsupported
         else {
             similarTasks = .empty
+            similarChosenAction = nil
+            similarPendingAction = nil
+            similarPendingResponse = nil
             return
         }
 
@@ -8800,8 +8824,10 @@ final class CapturePanelModel: ObservableObject {
         similarTasks = SimilarTasksBandPolicy.markPending(similarTasks)
         similarTasksTask = Task { [weak self, processClient] in
             do {
-                try await Task.sleep(nanoseconds: settleNanoseconds)
-                try Task.checkCancellation()
+                if !immediate {
+                    try await Task.sleep(nanoseconds: settleNanoseconds)
+                    try Task.checkCancellation()
+                }
                 guard let self,
                       self.isCurrentSimilarTasksRequest(
                         generation: generation,
@@ -8826,20 +8852,15 @@ final class CapturePanelModel: ObservableObject {
                     return
                 }
 
-                guard response.ok else {
-                    self.similarTasks = .empty
-                    return
+                await MainActor.run {
+                    self.handleSettledSimilarResponse(
+                      response,
+                      draft: draft,
+                      generation: generation,
+                      processClient: processClient,
+                      identity: processClientIdentity
+                    )
                 }
-                let itemCount = self.lastAppliedParseDraft == draft
-                  ? self.lastAppliedParseItemCount
-                  : nil
-                self.similarTasks = SimilarTasksBandPolicy.reduce(
-                  response,
-                  previous: self.similarTasks,
-                  draft: draft,
-                  draftItemCount: itemCount
-                )
-                self.similarTasksTask = nil
             } catch is CancellationError {
             } catch let error as BobClientError {
                 guard let self,
@@ -8855,8 +8876,13 @@ final class CapturePanelModel: ObservableObject {
                 if case .unsupportedCommand("capture-related") = error {
                     CaptureSignpost.event(CaptureSignpost.relatedUnsupported)
                 }
-                self.similarTasks = .empty
-                self.similarTasksTask = nil
+                await MainActor.run {
+                    self.similarTasks = .empty
+                    self.similarChosenAction = nil
+                    self.similarPendingAction = nil
+                    self.similarPendingResponse = nil
+                    self.similarTasksTask = nil
+                }
             } catch {
                 guard let self,
                       self.isCurrentSimilarTasksRequest(
@@ -8869,10 +8895,103 @@ final class CapturePanelModel: ObservableObject {
                     return
                 }
                 CaptureSignpost.event(CaptureSignpost.relatedFailed)
-                self.similarTasks = .empty
-                self.similarTasksTask = nil
+                await MainActor.run {
+                    self.similarTasks = .empty
+                    self.similarChosenAction = nil
+                    self.similarPendingAction = nil
+                    self.similarPendingResponse = nil
+                    self.similarTasksTask = nil
+                }
             }
         }
+    }
+
+    private func requestSimilarTasksNow() {
+        scheduleSimilarTasks(draft: plainDraft, immediate: true)
+    }
+
+    private func handleSettledSimilarResponse(
+        _ response: CaptureRelatedResponse,
+        draft: String,
+        generation: UInt64,
+        processClient: BobProcessClient,
+        identity: String
+    ) {
+        guard isCurrentSimilarTasksRequest(
+            generation: generation,
+            draft: draft,
+            processClient: processClient,
+            identity: identity
+        ) else { return }
+        guard response.ok else {
+            if similarTasks.focusedRowID != nil {
+                unfocusSimilarRow(applyPending: false)
+                announceStatus("Similar tasks changed")
+            } else {
+                similarTasks = .empty
+            }
+            similarChosenAction = nil
+            similarPendingAction = nil
+            similarPendingResponse = nil
+            similarTasksTask = nil
+            return
+        }
+        let itemCount = lastAppliedParseDraft == draft ? lastAppliedParseItemCount : nil
+        let anchors = Dictionary(uniqueKeysWithValues: response.items.map { ($0.index, $0) })
+        if similarTasks.focusedRowID != nil {
+            let frozenPrevious = similarTasks
+            let fresh = SimilarTasksBandPolicy.reduce(
+                response,
+                previous: frozenPrevious,
+                draft: draft,
+                draftItemCount: itemCount
+            )
+            // Re-key the focus by key. A missing row means the task is gone.
+            if fresh.focusedRowID == nil {
+                similarItemAnchors = anchors
+                similarAnchorsDraft = draft
+                similarTasks = fresh
+                similarChosenAction = nil
+                similarPendingAction = nil
+                similarPendingResponse = nil
+                similarTasksTask = nil
+                announceStatus("Similar tasks changed")
+                return
+            }
+            if let pending = similarPendingAction {
+                similarPendingAction = nil
+                similarItemAnchors = anchors
+                similarAnchorsDraft = draft
+                similarTasks = fresh
+                if let row = focusedSimilarRow() {
+                    let defaultAction = row.match.defaultAction
+                    if let def = defaultAction,
+                       SimilarTasksBandEdits.orderedAvailableActions(for: row.match).contains(def)
+                    {
+                        similarChosenAction = def
+                    }
+                }
+                similarTasksTask = nil
+                applySimilarActionFresh(pending, draft: draft)
+                return
+            }
+            // Frozen: keep painting the held rows, remember the fresh result.
+            similarItemAnchors = anchors
+            similarAnchorsDraft = draft
+            similarPendingResponse = (response, draft, itemCount)
+            similarTasksTask = nil
+            return
+        }
+        similarItemAnchors = anchors
+        similarAnchorsDraft = draft
+        similarPendingResponse = nil
+        similarTasks = SimilarTasksBandPolicy.reduce(
+            response,
+            previous: similarTasks,
+            draft: draft,
+            draftItemCount: itemCount
+        )
+        similarTasksTask = nil
     }
 
     private func isCurrentSimilarTasksRequest(
@@ -8895,8 +9014,352 @@ final class CapturePanelModel: ObservableObject {
         if clear {
             similarTasks = .empty
             similarTasksFolded = false
+            similarChosenAction = nil
+            similarPendingAction = nil
+            similarPendingResponse = nil
         } else {
             similarTasks = SimilarTasksBandPolicy.markPending(similarTasks)
+        }
+    }
+
+    // MARK: - Similar-tasks focus and strip actions
+
+    /// Visible rows in ⌘-number order for key routing and the strip.
+    func similarVisibleRows() -> [SimilarTasksBandRow] {
+        SimilarTasksBandPolicy.visibleItems(
+            in: similarTasks,
+            parseItems: similarTasksParseItems
+        ).flatMap(\.rows).sorted { $0.rowNumber < $1.rowNumber }
+    }
+
+    var similarRowsVisibleForKeys: Bool { !similarVisibleRows().isEmpty }
+
+    var isSimilarRowFocused: Bool { similarTasks.focusedRowID != nil }
+
+    func focusedSimilarRow() -> SimilarTasksBandRow? {
+        guard let id = similarTasks.focusedRowID else { return nil }
+        return similarVisibleRows().first { $0.id == id }
+            ?? similarTasks.rows.first { $0.id == id }
+    }
+
+    func focusedSimilarDefaultAction() -> CaptureRelatedAction? {
+        guard let row = focusedSimilarRow() else { return nil }
+        if let chosen = similarChosenAction,
+           SimilarTasksBandEdits.orderedAvailableActions(for: row.match).contains(chosen)
+        {
+            return chosen
+        }
+        return row.match.defaultAction
+    }
+
+    /// Focus ⌘N, or unfocus when it is already focused. A stale focus fires
+    /// the related lane at once, skipping the settle; the row stays focused
+    /// while the fresh anchors load.
+    func focusSimilarRow(number: Int) {
+        let rows = similarVisibleRows()
+        guard let row = rows.first(where: { $0.rowNumber == number }) else { return }
+        if similarTasks.focusedRowID == row.id {
+            unfocusSimilarRow()
+            return
+        }
+        similarTasks = SimilarTasksBandState(
+            draft: similarTasks.draft,
+            items: similarTasks.items,
+            pending: similarTasks.pending,
+            focusedRowID: row.id,
+            parseItemCount: similarTasks.parseItemCount
+        )
+        let available = SimilarTasksBandEdits.orderedAvailableActions(for: row.match)
+        if let def = row.match.defaultAction, available.contains(def) {
+            similarChosenAction = def
+        } else {
+            similarChosenAction = available.first
+        }
+        similarPendingAction = nil
+        if similarTasks.draft != plainDraft {
+            requestSimilarTasksNow()
+        }
+    }
+
+    func focusSimilarRow(id: String) {
+        let rows = similarVisibleRows()
+        guard let row = rows.first(where: { $0.id == id }) else { return }
+        focusSimilarRow(number: row.rowNumber)
+    }
+
+    /// Esc or a toggle: clear the focus and paint any frozen result.
+    func unfocusSimilarRow(applyPending: Bool = true) {
+        guard similarTasks.focusedRowID != nil else { return }
+        let pending = applyPending ? similarPendingResponse : nil
+        similarPendingResponse = nil
+        similarPendingAction = nil
+        similarChosenAction = nil
+        if let pending {
+            let base = SimilarTasksBandState(
+                draft: similarTasks.draft,
+                items: similarTasks.items,
+                pending: false,
+                focusedRowID: nil,
+                parseItemCount: similarTasks.parseItemCount
+            )
+            similarTasks = SimilarTasksBandPolicy.reduce(
+                pending.response,
+                previous: base,
+                draft: pending.draft,
+                draftItemCount: pending.itemCount
+            )
+            similarItemAnchors = Dictionary(
+                uniqueKeysWithValues: pending.response.items.map { ($0.index, $0) }
+            )
+            similarAnchorsDraft = pending.draft
+        } else {
+            similarTasks = SimilarTasksBandState(
+                draft: similarTasks.draft,
+                items: similarTasks.items,
+                pending: false,
+                focusedRowID: nil,
+                parseItemCount: similarTasks.parseItemCount
+            )
+        }
+    }
+
+    func similarSelectNextRow() {
+        let rows = similarVisibleRows()
+        guard let id = similarTasks.focusedRowID,
+              let current = rows.firstIndex(where: { $0.id == id }),
+              current + 1 < rows.count
+        else { return }
+        focusSimilarRow(number: rows[current + 1].rowNumber)
+    }
+
+    func similarSelectPreviousRow() {
+        let rows = similarVisibleRows()
+        guard let id = similarTasks.focusedRowID,
+              let current = rows.firstIndex(where: { $0.id == id }),
+              current > 0
+        else { return }
+        focusSimilarRow(number: rows[current - 1].rowNumber)
+    }
+
+    func similarSelectNextAction() {
+        guard let row = focusedSimilarRow() else { return }
+        let available = SimilarTasksBandEdits.orderedAvailableActions(for: row.match)
+        guard !available.isEmpty else { return }
+        let current = similarChosenAction.flatMap { available.firstIndex(of: $0) } ?? 0
+        similarChosenAction = available[(current + 1) % available.count]
+    }
+
+    func similarSelectPreviousAction() {
+        guard let row = focusedSimilarRow() else { return }
+        let available = SimilarTasksBandEdits.orderedAvailableActions(for: row.match)
+        guard !available.isEmpty else { return }
+        let current = similarChosenAction.flatMap { available.firstIndex(of: $0) } ?? 0
+        similarChosenAction = available[(current - 1 + available.count) % available.count]
+    }
+
+    func similarApplyDefault() {
+        guard let row = focusedSimilarRow() else { return }
+        let action: CaptureRelatedAction
+        if let chosen = similarChosenAction,
+           SimilarTasksBandEdits.orderedAvailableActions(for: row.match).contains(chosen)
+        {
+            action = chosen
+        } else if let def = row.match.defaultAction {
+            action = def
+        } else {
+            return
+        }
+        similarApply(action)
+    }
+
+    /// Apply one strip action. A stale focus waits for fresh anchors first.
+    func similarApply(_ action: CaptureRelatedAction) {
+        guard let row = focusedSimilarRow() else { return }
+        let available = SimilarTasksBandEdits.orderedAvailableActions(for: row.match)
+        guard available.contains(action) else {
+            if action == .discard {
+                announceStatus("Discard is not available for this task")
+            }
+            return
+        }
+        if row.match.requiresBlockID, action != .open, action != .discard {
+            announceStatus("This task needs a block ID first")
+            return
+        }
+        // Stale anchors: focus now, apply against the fresh response.
+        if similarAnchorsDraft != plainDraft || similarTasks.draft != plainDraft {
+            similarPendingAction = action
+            requestSimilarTasksNow()
+            return
+        }
+        applySimilarActionFresh(action, draft: plainDraft)
+    }
+
+    private func applySimilarActionFresh(_ action: CaptureRelatedAction, draft: String) {
+        guard let row = focusedSimilarRow() else {
+            similarPendingAction = nil
+            return
+        }
+        if action == .open {
+            openFocusedSimilarRow(row)
+            return
+        }
+        guard plainDraft == draft,
+              draft == similarAnchorsDraft,
+              let item = similarItemAnchors[row.itemIndex]
+        else {
+            similarPendingAction = nil
+            unfocusSimilarRow(applyPending: false)
+            announceStatus("Similar tasks changed")
+            return
+        }
+        guard let edited = SimilarTasksBandEdits.editedDraft(
+            plainDraft,
+            item: item,
+            match: row.match,
+            action: action
+        ) else {
+            unfocusSimilarRow(applyPending: false)
+            announceStatus("Similar tasks changed")
+            return
+        }
+        guard let replacementRange = utf16Range(
+            in: plainDraft,
+            start: editReplacementStart(item: item, match: row.match, action: action, draft: plainDraft),
+            end: editReplacementEnd(item: item, match: row.match, action: action, draft: plainDraft)
+        ),
+            let cursorSelection = utf16Range(
+                in: edited.text,
+                start: edited.cursorUTF8,
+                end: edited.cursorUTF8
+            )
+        else {
+            unfocusSimilarRow(applyPending: false)
+            announceStatus("Similar tasks changed")
+            return
+        }
+        // The native bridge receives exactly the inserted or replaced slice.
+        let nativeReplacement = nativeReplacementText(
+            old: plainDraft,
+            new: edited.text,
+            item: item,
+            action: action
+        )
+        let nativeEdit = CaptureNativeRewriteEdit(
+            replacementRange: replacementRange,
+            replacementText: nativeReplacement,
+            resultingSelection: NSRange(location: cursorSelection.location, length: 0),
+            expectedDraft: plainDraft,
+            resultingDraft: edited.text
+        )
+        let announcement = SimilarTasksBandEdits.announcement(for: action, title: row.match.title)
+        if applyNativeRewriteEdit?(nativeEdit) == true {
+            if plainDraft != edited.text {
+                isApplyingProgrammaticDraft = true
+                attributedDraft = AttributedString(edited.text)
+                isApplyingProgrammaticDraft = false
+            }
+            restoreSelection(cursorUTF8Offset: edited.cursorUTF8, suppressEditorCallbacks: true)
+        } else {
+            setPlainDraft(edited.text, cursorUTF8Offset: edited.cursorUTF8, suppressSelectionCallbacks: true)
+        }
+        unfocusSimilarRow(applyPending: false)
+        announceStatus(announcement)
+        scheduleAnalysis(
+            cursorUTF8Offset: edited.cursorUTF8,
+            requestCompletion: false,
+            trigger: .edit
+        )
+    }
+
+    private func editReplacementStart(
+        item: CaptureRelatedItem,
+        match: CaptureRelatedMatch,
+        action: CaptureRelatedAction,
+        draft: String
+    ) -> Int {
+        switch action {
+        case .note where item.routeRange != nil:
+            return item.routeRange?.start ?? 0
+        case .discard:
+            return item.discardRange?.start ?? 0
+        default:
+            return item.markerAt ?? draft.utf8.count
+        }
+    }
+
+    private func editReplacementEnd(
+        item: CaptureRelatedItem,
+        match: CaptureRelatedMatch,
+        action: CaptureRelatedAction,
+        draft: String
+    ) -> Int {
+        switch action {
+        case .note where item.routeRange != nil:
+            return item.routeRange?.end ?? 0
+        case .discard:
+            return item.discardRange?.end ?? 0
+        default:
+            return item.markerAt ?? draft.utf8.count
+        }
+    }
+
+    private func nativeReplacementText(
+        old: String,
+        new: String,
+        item: CaptureRelatedItem,
+        action: CaptureRelatedAction
+    ) -> String {
+        switch action {
+        case .discard:
+            return ""
+        case .note where item.routeRange != nil:
+            guard let range = item.routeRange,
+                  stringRange(in: old, byteRange: range) != nil
+            else { return "" }
+            let prefix = Array(old.utf8.prefix(range.start))
+            let suffixDrop = old.utf8.count - range.end
+            let newBytes = Array(new.utf8)
+            guard newBytes.count >= prefix.count + suffixDrop else { return "" }
+            let slice = newBytes[prefix.count..<(newBytes.count - suffixDrop)]
+            return String(decoding: slice, as: UTF8.self)
+        default:
+            guard let at = item.markerAt else { return "" }
+            let insertedCount = new.utf8.count - old.utf8.count
+            guard insertedCount > 0 else { return "" }
+            let newBytes = Array(new.utf8)
+            guard at + insertedCount <= newBytes.count else { return "" }
+            return String(decoding: newBytes[at..<(at + insertedCount)], as: UTF8.self)
+        }
+    }
+
+    private func openFocusedSimilarRow(_ row: SimilarTasksBandRow) {
+        if taskGotoDispatchInFlight { return }
+        guard let url = ObsidianOpenURL.taskGotoURL(
+            path: row.match.target,
+            line: row.match.line,
+            ref: row.match.taskRef.isEmpty ? nil : row.match.taskRef,
+            blockID: row.match.blockID
+        ) else {
+            announceStatus("bob sent no location for this task — update bob")
+            return
+        }
+        taskGotoDispatchInFlight = true
+        announceStatus("Opening in Obsidian…")
+        taskGotoOpener(url) { [weak self] success in
+            guard let self else { return }
+            self.taskGotoDispatchInFlight = false
+            if success {
+                let announcement = SimilarTasksBandEdits.announcement(
+                    for: .open,
+                    title: row.match.title
+                )
+                self.unfocusSimilarRow(applyPending: false)
+                self.announceStatus(announcement)
+                self.panelDismisser()
+            } else {
+                self.announceStatus("Couldn't open Obsidian")
+            }
         }
     }
 

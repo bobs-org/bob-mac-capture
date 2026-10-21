@@ -449,5 +449,32 @@ announces, and focus never moves to the band. Hover shows the full title and
 note path without changing layout. Setting **Show similar tasks while
 capturing** (on by default) hides the band and stops the related lane.
 
-Row focus, the action strip, and the draft-edit keys are documented with the
-band keys once they land; Return is never intercepted.
+Pressing `⌘1`–`⌘5` focuses that row and opens its action strip on a second
+line; pressing the same key again unfocuses it. In a folded band, `⌘1` shows
+that row and its strip until unfocused. The strip lists only the actions Bob
+offered, always in the order `~ + & * / ⌫`, with the default preselected. The
+footer swaps to key hints while a row is focused, naming the default so the
+meaning of Return stays visible.
+
+| Action | Keys | Draft edit |
+| --- | --- | --- |
+| Relate | `~` | Appends Bob's `relation_to` at the item anchor |
+| Add as note | `+` | Replaces the item's route with Bob's `parent`, or appends it when there is no route |
+| Needs it | `&` | Appends Bob's `dependency` at the item anchor |
+| Blocks it | `*` | Appends Bob's `blocked_task` at the item anchor |
+| Open | `/` | Opens the task in Obsidian, keeping the draft |
+| Discard mine | `⌫` | Deletes the item's range |
+
+Defaults come from Bob: `similar` rows default to Relate, closed rows default
+to Open, `possible_duplicate` rows default to Add as note, and `same_title`
+rows default to Discard mine (or Add as note when the item has authored
+children). Every splice is undoable through the native text view, then runs
+the live preview again; `⌘Z` restores a discarded item. Focusing a held row
+after more typing fires the related lane at once and applies the chosen action
+against the fresh anchors. When the task is gone, the band announces "Similar
+tasks changed" and unfocuses. Open keeps the draft and hides the panel. Return
+is never intercepted: with no row focused it captures as today.
+
+Each focused row exposes one VoiceOver custom action per offered strip
+action; the strip itself is labelled with the row, the default, and the
+available actions.

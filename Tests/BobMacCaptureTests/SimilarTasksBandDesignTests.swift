@@ -21,9 +21,15 @@ final class SimilarTasksBandDesignTests: XCTestCase {
             ("bulk", bulkRow, false),
             ("folded", twoRowsPlus, true),
             ("linked", linkedRow, false),
+            ("focused", focusedRow, false),
         ]
         for entry in cases {
-            let view = card(item: entry.item, folded: entry.folded)
+            let view = card(
+                item: entry.item,
+                folded: entry.folded,
+                focusedRowID: entry.name == "focused" ? entry.item?.rows.first?.id : nil,
+                chosenAction: entry.name == "focused" ? .note : nil
+            )
             for width in [760, 620] as [CGFloat] {
                 try RenderFixtureWriter.write(
                     view,
@@ -219,7 +225,44 @@ final class SimilarTasksBandDesignTests: XCTestCase {
         )
     }
 
-    private func card(item: SimilarTasksBandItem?, folded: Bool) -> some View {
+    private var focusedRow: SimilarTasksBandItem {
+        SimilarTasksBandItem(
+            index: 0,
+            mode: "task",
+            rows: [
+                SimilarTasksBandRow(
+                    itemIndex: 0,
+                    rowNumber: 1,
+                    match: CaptureRelatedMatch(
+                        key: "dev.md#ups",
+                        band: .possibleDuplicate,
+                        title: "Install new UPS battery",
+                        matchedRanges: [CaptureRange(start: 12, end: 23)],
+                        kind: "task",
+                        statusSymbol: "?",
+                        statusName: "Blocked",
+                        route: "dev",
+                        locator: "dev",
+                        notePath: "dev.md",
+                        target: "/Users/test/bob/dev.md",
+                        line: 42,
+                        taskRef: "42:ab12cd34",
+                        blockID: "ups",
+                        actions: [.relate, .note, .needs, .blocks, .open, .discard],
+                        defaultAction: .note
+                    )
+                ),
+            ],
+            showsHeader: true
+        )
+    }
+
+    private func card(
+        item: SimilarTasksBandItem?,
+        folded: Bool,
+        focusedRowID: String? = nil,
+        chosenAction: CaptureRelatedAction? = nil
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("+ dev · end of Tasks · task")
                 .foregroundStyle(.secondary)
@@ -227,7 +270,12 @@ final class SimilarTasksBandDesignTests: XCTestCase {
             Text("dev.md")
                 .foregroundStyle(.secondary)
             if let item {
-                SimilarTasksBandView(item: item, folded: folded)
+                SimilarTasksBandView(
+                    item: item,
+                    folded: folded,
+                    focusedRowID: focusedRowID,
+                    chosenAction: chosenAction
+                )
             }
         }
         .font(.callout)

@@ -1585,13 +1585,39 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 model: model
             )
         case .escape:
-            if model.completionVisible {
+            if model.isSimilarRowFocused {
+                model.unfocusSimilarRow()
+            } else if model.completionVisible {
                 model.dismissCompletion()
             } else if model.pickerChipVisible {
                 model.dismissPickerChip()
             } else {
                 model.closeRetainingDraft()
             }
+            return true
+        case .focusSimilarRow(let number):
+            model.focusSimilarRow(number: number)
+            return true
+        case .similarNextRow:
+            model.similarSelectNextRow()
+            return true
+        case .similarPreviousRow:
+            model.similarSelectPreviousRow()
+            return true
+        case .similarNextAction:
+            model.similarSelectNextAction()
+            return true
+        case .similarPreviousAction:
+            model.similarSelectPreviousAction()
+            return true
+        case .similarApplyDefault:
+            model.similarApplyDefault()
+            return true
+        case .similarApply(let action):
+            model.similarApply(action)
+            return true
+        case .similarUnfocus:
+            model.unfocusSimilarRow()
             return true
         case .acceptPickerRow:
             model.acceptSelectedPickerRow(submitAfterInsert: false)
@@ -1813,6 +1839,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
             guard let command = self.keyRouter.command(
                 for: event,
                 context: CaptureKeyRoutingContext(
+                    similarRowsVisible: self.model.similarRowsVisibleForKeys,
+                    similarRowFocused: self.model.isSimilarRowFocused,
                     completionVisible: self.model.completionVisible,
                     stashPickerVisible: self.model.isStashPickerPresented,
                     stashEntryCount: self.model.stashCount,
@@ -1847,6 +1875,12 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     editorHasMarkedText: (self.panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false
                 )
             ) else {
+                // A focused similar-task row owns its strip keys. Any other
+                // key unfocuses and passes through unchanged (⌘Z and ⌘↩
+                // included) so typing stays native.
+                if self.model.isSimilarRowFocused {
+                    self.model.unfocusSimilarRow()
+                }
                 self.noteSeparatorToggleIntentFromEvent(event)
                 return event
             }

@@ -57,6 +57,7 @@ These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspecto
 | Control-\ | Open today's daily note in Obsidian with the caret on the running Pomodoro (when none is running: the first open entry, else the last completed, else the note's first line), hide the panel, and retain a nonempty draft | Same, and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Command-S | Save the current `@@template:` draft | Save the current `@@template:` draft | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-C | Stash a nonempty draft, then clear and close. A Go To (`/`) draft is discarded instead of stashed, and nothing is retained when stashing is off (capacity 0) | Same as in the editor | Same as in the editor | Same as in the editor |
+| Command-1…5 | Focus that similar-tasks row and open its strip; pressing the same key again unfocuses it | Close completion, then focus that row | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 
 ## Capture picker keys
 
@@ -65,6 +66,22 @@ While a picker card is open, Return accepts the selected row, Escape cancels, an
 ## Successor choices
 
 When a preview reports successor offers, Return opens the grouped choice card before anything is written. Space marks the highlighted offer, Command-A marks all, Shift-Return skips with no offers, and Escape returns to the unchanged draft. Full card behavior is in [Capture previews](capture-previews.md).
+
+## Similar tasks keys
+
+While a similar-tasks row is focused, the strip owns its keys and any other
+key unfocuses first, then passes through unchanged (including `⌘Z` and `⌘↩`).
+The footer names the default so the meaning of Return stays visible.
+
+| Key while a row is focused | Action |
+| --- | --- |
+| `⌘1`…`⌘5` | Focus that row; the same key again unfocuses it |
+| Left / Right | Choose the previous or next action in the strip |
+| Up / Down | Move between rows |
+| Return | Apply the chosen action |
+| `~` `+` `&` `*` `/` | Apply that action directly |
+| `⌫` | Discard mine, when Bob offers it |
+| Escape / Ctrl-[ | Unfocus and return to typing |
 
 ## Focus
 

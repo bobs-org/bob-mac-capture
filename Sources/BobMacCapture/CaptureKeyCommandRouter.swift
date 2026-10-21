@@ -14,6 +14,14 @@ enum CaptureKeyCommand: Equatable {
     case moveToPreviousLineKeepingColumn
     case deleteBackward
     case escape
+    case focusSimilarRow(Int)
+    case similarNextRow
+    case similarPreviousRow
+    case similarNextAction
+    case similarPreviousAction
+    case similarApplyDefault
+    case similarApply(CaptureRelatedAction)
+    case similarUnfocus
     case discardAndClose
     case stashDraftAndClose
     case toggleStashPicker
@@ -79,6 +87,8 @@ enum CaptureKeyCommand: Equatable {
 }
 
 struct CaptureKeyRoutingContext: Equatable {
+    var similarRowsVisible = false
+    var similarRowFocused = false
     var completionVisible = false
     var stashPickerVisible = false
     var stashEntryCount = 0
@@ -125,6 +135,11 @@ struct CaptureKeyCommandRouter {
         static let escape: UInt16 = 53
         static let tab: UInt16 = 48
         static let delete: UInt16 = 51
+        static let digit1: UInt16 = 18
+        static let digit2: UInt16 = 19
+        static let digit3: UInt16 = 20
+        static let digit4: UInt16 = 21
+        static let digit5: UInt16 = 23
         static let arrowDown: UInt16 = 125
         static let arrowUp: UInt16 = 126
         static let arrowLeft: UInt16 = 123
@@ -207,6 +222,26 @@ struct CaptureKeyCommandRouter {
                 return .consumeKey
             }
             return pickerCommand(for: event, modifiers: modifiers, context: context)
+        }
+
+        // Similar-tasks focus owns its keys in the main editor. Modal branches
+        // above keep precedence, so a picker or prompt naturally shadows these.
+        if context.similarRowFocused {
+            if let number = Self.similarDigitNumber(for: event, modifiers: modifiers) {
+                return .focusSimilarRow(number)
+            }
+            if let focused = similarFocusedCommand(for: event, modifiers: modifiers) {
+                return focused
+            }
+            // Any other key unfocuses and passes through. The controller
+            // unfocuses on the nil return, then returns the event to AppKit.
+            return nil
+        }
+
+        if context.similarRowsVisible {
+            if let number = Self.similarDigitNumber(for: event, modifiers: modifiers) {
+                return .focusSimilarRow(number)
+            }
         }
 
         if event.keyCode == KeyCode.s, modifiers == .control {
@@ -369,6 +404,76 @@ struct CaptureKeyCommandRouter {
 
     func command(for event: NSEvent, completionVisible: Bool) -> CaptureKeyCommand? {
         command(for: event, context: CaptureKeyRoutingContext(completionVisible: completionVisible))
+    }
+
+    /// ⌘1–⌘5 by key code or by `charactersIgnoringModifiers`, in the
+    /// main-editor branch next to ⌘S. The app menu uses no ⌘-digit.
+    private static func similarDigitNumber(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags
+    ) -> Int? {
+        guard modifiers == .command else { return nil }
+        switch event.keyCode {
+        case KeyCode.digit1: return 1
+        case KeyCode.digit2: return 2
+        case KeyCode.digit3: return 3
+        case KeyCode.digit4: return 4
+        case KeyCode.digit5: return 5
+        default: break
+        }
+        guard let chars = event.charactersIgnoringModifiers,
+              chars.count == 1,
+              let digit = Int(chars),
+              (1...5).contains(digit)
+        else { return nil }
+        return digit
+    }
+
+    private func similarFocusedCommand(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags
+    ) -> CaptureKeyCommand? {
+        switch event.keyCode {
+        case KeyCode.return, KeyCode.keypadEnter:
+            // Plain Return applies the chosen action. Any modified Return
+            // unfocuses and passes through (⌘↩ included).
+            return Self.strippedReturnModifiers(modifiers).isEmpty ? .similarApplyDefault : nil
+        case KeyCode.escape:
+            return modifiers.isEmpty ? .similarUnfocus : nil
+        case KeyCode.leftBracket:
+            return modifiers == .control ? .similarUnfocus : nil
+        case KeyCode.arrowLeft:
+            return modifiers.isEmpty ? .similarPreviousAction : nil
+        case KeyCode.arrowRight:
+            return modifiers.isEmpty ? .similarNextAction : nil
+        case KeyCode.arrowUp:
+            return modifiers.isEmpty ? .similarPreviousRow : nil
+        case KeyCode.arrowDown:
+            return modifiers.isEmpty ? .similarNextRow : nil
+        case KeyCode.delete:
+            guard modifiers.intersection([.command, .option, .control, .shift]).isEmpty else {
+                return nil
+            }
+            return .similarApply(.discard)
+        default:
+            break
+        }
+        // Sigil direct-apply: the strip keys are the grammar itself. Shift is
+        // allowed (`~` and `+` need it); Command/Control/Option veto.
+        if modifiers.intersection([.command, .control, .option]).isEmpty,
+           let characters = event.characters,
+           characters.count == 1
+        {
+            switch characters {
+            case "~": return .similarApply(.relate)
+            case "+": return .similarApply(.note)
+            case "&": return .similarApply(.needs)
+            case "*": return .similarApply(.blocks)
+            case "/": return .similarApply(.open)
+            default: break
+            }
+        }
+        return nil
     }
 
     private func taskIDPromptCommand(

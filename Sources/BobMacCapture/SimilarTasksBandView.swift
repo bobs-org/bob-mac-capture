@@ -3,19 +3,26 @@ import CaptureCore
 import SwiftUI
 
 /// Similar-tasks band at the foot of a task-creating preview card.
-/// Actions, focus, and the strip land in a later phase; this view only
-/// paints Bob's settled rows.
+/// Rows come from Bob; the strip focuses a row and applies draft edits.
 @available(macOS 26.0, *)
 struct SimilarTasksBandView: View {
     let item: SimilarTasksBandItem
     var folded: Bool = false
     var focusedRowID: String? = nil
+    var chosenAction: CaptureRelatedAction? = nil
+    var onFocusRow: ((SimilarTasksBandRow) -> Void)? = nil
+    var onApplyAction: ((SimilarTasksBandRow, CaptureRelatedAction) -> Void)? = nil
 
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var identity: String {
         item.rows.map(\.match.key).joined(separator: "\u{1e}")
+    }
+
+    private var focusedRowInItem: SimilarTasksBandRow? {
+        guard let focusedRowID else { return nil }
+        return item.rows.first { $0.id == focusedRowID }
     }
 
     var body: some View {
@@ -45,23 +52,32 @@ struct SimilarTasksBandView: View {
                 .fill(BlockDiffCard.hairlineColor(contrast: contrast))
                 .frame(height: CGFloat(SimilarTasksBandMetrics.hairlineHeight))
                 .accessibilityHidden(true)
-            if folded {
+            if folded, focusedRowInItem == nil {
                 foldedLine
+            } else if folded, let focused = focusedRowInItem {
+                focusedBlock(row: focused)
             } else {
                 if item.showsHeader {
                     header
                 }
                 ForEach(item.rows) { row in
-                    SimilarTasksBandRowView(
-                        row: row,
-                        bulkLeadIn: !item.showsHeader,
-                        contrast: contrast
-                    )
+                    if row.id == focusedRowID {
+                        focusedBlock(row: row)
+                    } else {
+                        SimilarTasksBandRowView(
+                            row: row,
+                            bulkLeadIn: !item.showsHeader,
+                            contrast: contrast,
+                            isFocused: false,
+                            onFocus: onFocusRow,
+                            onApply: onApplyAction
+                        )
+                    }
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        if folded {
+        if folded, focusedRowInItem == nil {
             content
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(
@@ -71,6 +87,24 @@ struct SimilarTasksBandView: View {
             content
                 .accessibilityElement(children: .contain)
         }
+    }
+
+    @ViewBuilder
+    private func focusedBlock(row: SimilarTasksBandRow) -> some View {
+        SimilarTasksBandRowView(
+            row: row,
+            bulkLeadIn: !item.showsHeader,
+            contrast: contrast,
+            isFocused: true,
+            onFocus: onFocusRow,
+            onApply: onApplyAction
+        )
+        SimilarTasksActionStrip(
+            row: row,
+            chosenAction: chosenAction ?? row.match.defaultAction,
+            contrast: contrast,
+            onApply: { action in onApplyAction?(row, action) }
+        )
     }
 
     private var header: some View {
@@ -115,10 +149,81 @@ struct SimilarTasksBandView: View {
 }
 
 @available(macOS 26.0, *)
+struct SimilarTasksActionStrip: View {
+    let row: SimilarTasksBandRow
+    var chosenAction: CaptureRelatedAction? = nil
+    let contrast: ColorSchemeContrast
+    var onApply: ((CaptureRelatedAction) -> Void)? = nil
+
+    private var actions: [CaptureRelatedAction] {
+        SimilarTasksBandEdits.orderedAvailableActions(for: row.match)
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            // Align the strip with the title's leading edge: keycap plus
+            // status glyph widths, matching the row's leading spacing.
+            Color.clear
+                .frame(width: 44, height: 1)
+                .accessibilityHidden(true)
+            ForEach(actions, id: \.wireValue) { action in
+                stripChip(for: action)
+            }
+        }
+        .font(.callout)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: 20)
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(
+            SimilarTasksBandPresentation.stripAccessibilityLabel(
+                row: row,
+                defaultAction: chosenAction
+            )
+        )
+    }
+
+    private func stripChip(for action: CaptureRelatedAction) -> some View {
+        let chosen = action == chosenAction
+        return Button {
+            onApply?(action)
+        } label: {
+            HStack(spacing: 4) {
+                Text(SimilarTasksBandEdits.sigil(for: action))
+                    .font(.caption.monospaced())
+                Text(SimilarTasksBandEdits.label(for: action))
+                    .font(.caption)
+            }
+            .foregroundStyle(chosen ? Color.white : Color.primary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(
+                chosen ? Color.accentColor : Color.clear,
+                in: RoundedRectangle(cornerRadius: 4)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(
+                        chosen ? Color.accentColor : Color.primary.opacity(0.18),
+                        lineWidth: 0.5
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            "\(SimilarTasksBandEdits.label(for: action)) \(SimilarTasksBandEdits.sigil(for: action))"
+        )
+    }
+}
+
+@available(macOS 26.0, *)
 private struct SimilarTasksBandRowView: View {
     let row: SimilarTasksBandRow
     let bulkLeadIn: Bool
     let contrast: ColorSchemeContrast
+    var isFocused: Bool = false
+    var onFocus: ((SimilarTasksBandRow) -> Void)? = nil
+    var onApply: ((SimilarTasksBandRow, CaptureRelatedAction) -> Void)? = nil
 
     @State private var hovering = false
 
@@ -135,6 +240,10 @@ private struct SimilarTasksBandRowView: View {
 
     private var statusStyle: (symbol: String, color: Color) {
         CaptureEditorPalette.taskStatus(status)
+    }
+
+    private var availableActions: [CaptureRelatedAction] {
+        SimilarTasksBandEdits.orderedAvailableActions(for: row.match)
     }
 
     var body: some View {
@@ -184,7 +293,10 @@ private struct SimilarTasksBandRowView: View {
         .frame(height: CGFloat(SimilarTasksBandMetrics.rowHeight))
         .padding(.horizontal, 4)
         .background {
-            if hovering {
+            if isFocused {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.accentColor.opacity(contrast == .increased ? 0.30 : 0.16))
+            } else if hovering {
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(.quaternary)
             }
@@ -193,6 +305,16 @@ private struct SimilarTasksBandRowView: View {
         .help(SimilarTasksBandPresentation.rowHelp(row))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(SimilarTasksBandPresentation.rowAccessibilityLabel(row))
+        .onTapGesture {
+            onFocus?(row)
+        }
+        .accessibilityActions {
+            ForEach(availableActions, id: \.wireValue) { action in
+                Button(SimilarTasksBandEdits.label(for: action)) {
+                    onApply?(row, action)
+                }
+            }
+        }
     }
 
     private var titleText: Text {
@@ -257,7 +379,7 @@ private struct SimilarTasksKeycap: View {
 }
 
 @available(macOS 26.0, *)
-private struct SimilarTasksCapsule: View {
+struct SimilarTasksCapsule: View {
     enum Style {
         case warning
         case closed

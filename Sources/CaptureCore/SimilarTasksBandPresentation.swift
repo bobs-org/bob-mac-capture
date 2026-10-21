@@ -215,6 +215,32 @@ public enum SimilarTasksBandPresentation {
     return "\(rows.count) similar tasks"
   }
 
+  /// Footer hint while a row is focused. Names the default action so the
+  /// meaning of Return is always visible.
+  public static func focusedFooterHint(defaultAction: CaptureRelatedAction?) -> String {
+    let confirm: String
+    if let action = defaultAction {
+      confirm = "↩ \(SimilarTasksBandEdits.label(for: action))"
+    } else {
+      confirm = "↩ Apply"
+    }
+    return "\(confirm)   ← → choose   ↑ ↓ rows   esc back"
+  }
+
+  /// Accessibility label for the focused strip.
+  public static func stripAccessibilityLabel(
+    row: SimilarTasksBandRow,
+    defaultAction: CaptureRelatedAction?
+  ) -> String {
+    let actions = SimilarTasksBandEdits.orderedAvailableActions(for: row.match)
+    let names = actions.map { SimilarTasksBandEdits.label(for: $0) }.joined(separator: ", ")
+    let base = rowAccessibilityLabel(row)
+    if let action = defaultAction {
+      return "\(base). Default: \(SimilarTasksBandEdits.label(for: action)). Actions: \(names)"
+    }
+    return "\(base). Actions: \(names)"
+  }
+
   /// Splits `title` into contiguous emphasized / plain runs from Bob's
   /// UTF-8 `matched_ranges`. Invalid ranges are skipped.
   public static func titleRuns(

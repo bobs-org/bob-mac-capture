@@ -511,6 +511,15 @@ struct CapturePanelView: View {
                     } action: { height in
                         updateMeasuredFooterHeight(height)
                     }
+            } else if model.isSimilarRowFocused {
+                SimilarTasksFooterHints(model: model)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(2)
+                    .onGeometryChange(for: CGFloat.self) { geometry in
+                        geometry.size.height
+                    } action: { height in
+                        updateMeasuredFooterHeight(height)
+                    }
             } else {
                 CapturePanelFooter(model: model)
                     .fixedSize(horizontal: false, vertical: true)
@@ -974,6 +983,29 @@ struct CapturePanelView: View {
 }
 
 @available(macOS 26.0, *)
+private struct SimilarTasksFooterHints: View {
+    @ObservedObject var model: CapturePanelModel
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(
+                SimilarTasksBandPresentation.focusedFooterHint(
+                    defaultAction: model.focusedSimilarDefaultAction()
+                )
+            )
+            .font(.caption.monospaced())
+            .foregroundStyle(.primary)
+            Spacer(minLength: 12)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            SimilarTasksBandPresentation.focusedFooterHint(
+                defaultAction: model.focusedSimilarDefaultAction()
+            )
+        )
+    }
+}
+
 private struct CapturePanelFooter: View {
     @ObservedObject var model: CapturePanelModel
     @AccessibilityFocusState private var statusIsFocused: Bool
@@ -4126,7 +4158,17 @@ struct PreviewPane: View {
             SimilarTasksBandView(
                 item: item,
                 folded: model.similarTasksFolded,
-                focusedRowID: model.similarTasks.focusedRowID
+                focusedRowID: model.similarTasks.focusedRowID,
+                chosenAction: model.similarChosenAction,
+                onFocusRow: { row in
+                    model.focusSimilarRow(id: row.id)
+                },
+                onApplyAction: { row, action in
+                    if model.similarTasks.focusedRowID != row.id {
+                        model.focusSimilarRow(id: row.id)
+                    }
+                    model.similarApply(action)
+                }
             )
         }
     }
