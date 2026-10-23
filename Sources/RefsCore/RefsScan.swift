@@ -11,45 +11,53 @@ import Foundation
 public struct RefsScanResponse: Decodable, Equatable, Sendable, SchemaVersioned {
     public var ok: Bool
     public var schemaVersion: Int
+    public var generatedAt: String?
     public var mode: String?
     public var writePDFs: Bool
     public var intake: [RefsScanIntakeMove]
     public var summary: RefsScanSummary
     public var notes: [RefsScanNote]
     public var failures: [RefsScanFailure]
+    public var held: [RefsScanHold]
     public var error: RefsScanProblem?
 
     public init(
         ok: Bool = false,
         schemaVersion: Int = 1,
+        generatedAt: String? = nil,
         mode: String? = nil,
         writePDFs: Bool = false,
         intake: [RefsScanIntakeMove] = [],
         summary: RefsScanSummary = RefsScanSummary(),
         notes: [RefsScanNote] = [],
         failures: [RefsScanFailure] = [],
+        held: [RefsScanHold] = [],
         error: RefsScanProblem? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
+        self.generatedAt = generatedAt
         self.mode = mode
         self.writePDFs = writePDFs
         self.intake = intake
         self.summary = summary
         self.notes = notes
         self.failures = failures
+        self.held = held
         self.error = error
     }
 
     private enum CodingKeys: String, CodingKey {
         case ok
         case schemaVersion = "schema_version"
+        case generatedAt = "generated_at"
         case mode
         case writePDFs = "write_pdfs"
         case intake
         case summary
         case notes
         case failures
+        case held
         case error
     }
 
@@ -57,6 +65,7 @@ public struct RefsScanResponse: Decodable, Equatable, Sendable, SchemaVersioned 
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
         ok = try container.decodeIfPresent(Bool.self, forKey: .ok) ?? false
+        generatedAt = try container.decodeIfPresent(String.self, forKey: .generatedAt)
         mode = try container.decodeIfPresent(String.self, forKey: .mode)
         writePDFs = try container.decodeIfPresent(Bool.self, forKey: .writePDFs) ?? false
         intake = try container.decodeIfPresent([RefsScanIntakeMove].self, forKey: .intake) ?? []
@@ -67,6 +76,8 @@ public struct RefsScanResponse: Decodable, Equatable, Sendable, SchemaVersioned 
         let failureRows = try container.decodeIfPresent([LossyScanFailure].self, forKey: .failures)
             ?? []
         failures = failureRows.compactMap(\.failure)
+        let holdRows = try container.decodeIfPresent([LossyScanHold].self, forKey: .held) ?? []
+        held = holdRows.compactMap(\.hold)
         error = try container.decodeIfPresent(RefsScanProblem.self, forKey: .error)
     }
 }
@@ -86,6 +97,15 @@ private struct LossyScanFailure: Decodable {
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         failure = try? container.decode(RefsScanFailure.self)
+    }
+}
+
+private struct LossyScanHold: Decodable {
+    let hold: RefsScanHold?
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        hold = try? container.decode(RefsScanHold.self)
     }
 }
 
@@ -109,6 +129,7 @@ public struct RefsScanSummary: Codable, Equatable, Sendable {
     public var markers: Int
     public var tasks: Int
     public var failures: Int
+    public var held: Int
 
     public init(
         pdfs: Int = 0,
@@ -117,7 +138,8 @@ public struct RefsScanSummary: Codable, Equatable, Sendable {
         unchanged: Int = 0,
         markers: Int = 0,
         tasks: Int = 0,
-        failures: Int = 0
+        failures: Int = 0,
+        held: Int = 0
     ) {
         self.pdfs = pdfs
         self.created = created
@@ -126,6 +148,7 @@ public struct RefsScanSummary: Codable, Equatable, Sendable {
         self.markers = markers
         self.tasks = tasks
         self.failures = failures
+        self.held = held
     }
 
     public init(from decoder: Decoder) throws {
@@ -137,6 +160,7 @@ public struct RefsScanSummary: Codable, Equatable, Sendable {
         markers = try container.decodeIfPresent(Int.self, forKey: .markers) ?? 0
         tasks = try container.decodeIfPresent(Int.self, forKey: .tasks) ?? 0
         failures = try container.decodeIfPresent(Int.self, forKey: .failures) ?? 0
+        held = try container.decodeIfPresent(Int.self, forKey: .held) ?? 0
     }
 }
 
@@ -149,6 +173,7 @@ public struct RefsScanNote: Codable, Equatable, Sendable {
     public var refType: String?
     public var sourcePDF: String?
     public var marker: Bool
+    public var markerWrite: RefsScanMarkerWrite?
 
     public init(
         action: String,
@@ -156,7 +181,8 @@ public struct RefsScanNote: Codable, Equatable, Sendable {
         title: String? = nil,
         refType: String? = nil,
         sourcePDF: String? = nil,
-        marker: Bool = false
+        marker: Bool = false,
+        markerWrite: RefsScanMarkerWrite? = nil
     ) {
         self.action = action
         self.path = path
@@ -164,6 +190,7 @@ public struct RefsScanNote: Codable, Equatable, Sendable {
         self.refType = refType
         self.sourcePDF = sourcePDF
         self.marker = marker
+        self.markerWrite = markerWrite
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -173,6 +200,7 @@ public struct RefsScanNote: Codable, Equatable, Sendable {
         case refType = "ref_type"
         case sourcePDF = "source_pdf"
         case marker
+        case markerWrite = "marker_write"
     }
 
     public init(from decoder: Decoder) throws {
@@ -194,6 +222,7 @@ public struct RefsScanNote: Codable, Equatable, Sendable {
         refType = try container.decodeIfPresent(String.self, forKey: .refType)
         sourcePDF = try container.decodeIfPresent(String.self, forKey: .sourcePDF)
         marker = try container.decodeIfPresent(Bool.self, forKey: .marker) ?? false
+        markerWrite = try container.decodeIfPresent(RefsScanMarkerWrite.self, forKey: .markerWrite)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -204,6 +233,117 @@ public struct RefsScanNote: Codable, Equatable, Sendable {
         try container.encodeIfPresent(refType, forKey: .refType)
         try container.encodeIfPresent(sourcePDF, forKey: .sourcePDF)
         try container.encode(marker, forKey: .marker)
+        try container.encodeIfPresent(markerWrite, forKey: .markerWrite)
+    }
+}
+
+/// Machine-readable facts about one marker write. Unknown modes remain
+/// available to callers, while missing additive fields default safely.
+public struct RefsScanMarkerWrite: Codable, Equatable, Sendable {
+    public var mode: String?
+    public var editorSavedFirst: Bool
+    public var status: RefsScanStatusChange?
+
+    public init(
+        mode: String? = nil,
+        editorSavedFirst: Bool = false,
+        status: RefsScanStatusChange? = nil
+    ) {
+        self.mode = mode
+        self.editorSavedFirst = editorSavedFirst
+        self.status = status
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case mode
+        case editorSavedFirst = "editor_saved_first"
+        case status
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        mode = try container.decodeIfPresent(String.self, forKey: .mode)
+        editorSavedFirst = try container.decodeIfPresent(Bool.self, forKey: .editorSavedFirst) ?? false
+        status = try container.decodeIfPresent(RefsScanStatusChange.self, forKey: .status)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(mode, forKey: .mode)
+        try container.encode(editorSavedFirst, forKey: .editorSavedFirst)
+        try container.encodeIfPresent(status, forKey: .status)
+    }
+}
+
+/// The raw marker status transition; presentation maps these values
+/// through `RefState` so labels match the Refs library.
+public struct RefsScanStatusChange: Codable, Equatable, Sendable {
+    public var from: String?
+    public var to: String?
+
+    public init(from: String? = nil, to: String? = nil) {
+        self.from = from
+        self.to = to
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case from
+        case to
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        from = try container.decodeIfPresent(String.self, forKey: .from)
+        to = try container.decodeIfPresent(String.self, forKey: .to)
+    }
+}
+
+/// One held PDF. The report guarantees all five fields; the response
+/// decoder skips malformed rows so one future row cannot hide other holds.
+public struct RefsScanHold: Codable, Equatable, Sendable {
+    public var pdf: String
+    public var note: String
+    public var title: String
+    public var reason: String
+    public var message: String
+
+    public init(pdf: String, note: String, title: String, reason: String, message: String) {
+        self.pdf = pdf
+        self.note = note
+        self.title = title
+        self.reason = reason
+        self.message = message
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pdf
+        case note
+        case title
+        case reason
+        case message
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        guard let pdf = try container.decodeIfPresent(String.self, forKey: .pdf),
+            let note = try container.decodeIfPresent(String.self, forKey: .note),
+            let title = try container.decodeIfPresent(String.self, forKey: .title),
+            let reason = try container.decodeIfPresent(String.self, forKey: .reason),
+            let message = try container.decodeIfPresent(String.self, forKey: .message)
+        else {
+            throw DecodingError.valueNotFound(
+                String.self,
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription: "RefsScanHold requires pdf, note, title, reason, and message"
+                )
+            )
+        }
+        self.pdf = pdf
+        self.note = note
+        self.title = title
+        self.reason = reason
+        self.message = message
     }
 }
 
