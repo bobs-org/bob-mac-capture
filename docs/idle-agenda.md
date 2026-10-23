@@ -43,7 +43,8 @@ including the next panel show.
   count until Recheck Bob or an executable change.
 - Folding. Detail fades with distance: the farthest Pomodoros lose their logs first,
   then collapse to one line per task, one row per Pomodoro, and finally into a Later
-  name strip. Every fold leaves a chip (`⚒ 3`, `+5 lines`, `4 tasks`) that expands
+  name strip. Every fold leaves a chip (`⚒ 3`, `🗓 2`, `🥀 1`, `+5 lines`, `4 tasks`)
+  that expands
   that unit in place; expansions reset on hide and on snapshot change, and pinned
   units may overflow with a scroll and an `N more` cue.
 - Transitions. No animation on show — cached content is in the first frame. The first

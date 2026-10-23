@@ -957,6 +957,14 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                     lineLimit: 1,
                     accessibilityLabel: "Schedule log"
                 )
+            case (.logMarker, .rotten):
+                return CaptureAgendaRow(
+                    kind: .logHeader,
+                    text: "🥀 Rotten log",
+                    depth: line.depth,
+                    lineLimit: 1,
+                    accessibilityLabel: "Rotten log"
+                )
             case (.logMarker, _):
                 return CaptureAgendaRow(
                     kind: .logHeader,
@@ -965,7 +973,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                     lineLimit: 1,
                     accessibilityLabel: spokenKeepText(line.text)
                 )
-            case (_, .work), (_, .schedule):
+            case (_, .work), (_, .schedule), (_, .rotten):
                 return CaptureAgendaRow(
                     kind: .logEntry,
                     text: line.text,
@@ -987,11 +995,12 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         }
     }
 
-    /// Per-kind direct-entry counts (`"⚒ 3"`, `"🗓 2"`): lines tagged
-    /// with a log whose depth is exactly one past their marker's.
+    /// Per-kind direct-entry counts (`"⚒ 3"`, `"🗓 2"`, `"🥀 1"`): lines
+    /// tagged with a log whose depth is exactly one past their marker's.
     static func logChips(lines: [CaptureAgendaLine]) -> [String] {
         var work = 0
         var schedule = 0
+        var rotten = 0
         var markerDepth: Int? = nil
         var markerLog: CaptureAgendaLog? = nil
         for line in lines {
@@ -1011,6 +1020,8 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
                 work += 1
             case .schedule:
                 schedule += 1
+            case .rotten:
+                rotten += 1
             case .other:
                 break
             }
@@ -1022,6 +1033,9 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         if schedule > 0 {
             chips.append("🗓 \(schedule)")
         }
+        if rotten > 0 {
+            chips.append("🥀 \(rotten)")
+        }
         return chips
     }
 
@@ -1031,6 +1045,9 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         }
         if chip.hasPrefix("🗓") {
             return "Show schedule log, \(chip.dropFirst(2)) entries"
+        }
+        if chip.hasPrefix("🥀") {
+            return "Show rotten log, \(chip.dropFirst(2)) entries"
         }
         return chip
     }

@@ -381,11 +381,12 @@ public enum CaptureAgendaLineKind: Equatable, Sendable, Decodable {
     }
 }
 
-/// `work` or `schedule` log tag on a display line. Unknown strings decode
-/// to `.other`.
+/// `work`, `schedule`, or `rotten` log tag on a display line. Unknown
+/// strings decode to `.other`.
 public enum CaptureAgendaLog: Equatable, Sendable, Decodable {
     case work
     case schedule
+    case rotten
     case other(String)
 
     public init(from decoder: Decoder) throws {
@@ -395,6 +396,8 @@ public enum CaptureAgendaLog: Equatable, Sendable, Decodable {
             self = .work
         case "schedule":
             self = .schedule
+        case "rotten":
+            self = .rotten
         default:
             self = .other(raw)
         }

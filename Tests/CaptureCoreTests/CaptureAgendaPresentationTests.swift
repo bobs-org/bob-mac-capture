@@ -493,6 +493,69 @@ final class CaptureAgendaPresentationTests: XCTestCase {
         )
     }
 
+    func testRottenLogRendersHeaderEntriesAndChip() {
+        let lines = [
+            makeLine("🥀 Rotten log", kind: .logMarker, log: .rotten),
+            makeLine("Oct 16 — no reason given · kept 2×", depth: 2, log: .rotten),
+            makeLine("plain child"),
+        ]
+        let presentation = present(makeSnapshot(entries: [
+            makeEntry(line: 3, items: [makeItem(ledgerLine: 4, lines: lines)]),
+        ]))
+        let task = presentation.groups[0].tasks[0]
+        XCTAssertEqual(
+            task.fullRows.map(\.kind),
+            [.taskHeadline, .logHeader, .logEntry, .childLine]
+        )
+        XCTAssertEqual(task.fullRows[1].text, "🥀 Rotten log")
+        XCTAssertEqual(task.fullRows[1].accessibilityLabel, "Rotten log")
+        XCTAssertEqual(task.noLogsRows.map(\.kind), [.taskHeadline, .childLine])
+        XCTAssertEqual(task.noLogsRows[0].accessoryText, "🥀 1")
+        XCTAssertEqual(
+            task.noLogsRows[0].accessoryAccessibilityLabel,
+            "Show rotten log, 1 entries"
+        )
+    }
+
+    func testLogChipsOrderWorkScheduleThenRotten() {
+        let lines = [
+            makeLine("🛠️ Work log", kind: .logMarker, log: .work),
+            makeLine("Aug 27 — research", depth: 2, log: .work),
+            makeLine("🗓 Schedule log", kind: .logMarker, log: .schedule),
+            makeLine("Aug 28 — deferred", depth: 2, log: .schedule),
+            makeLine("🥀 Rotten log", kind: .logMarker, log: .rotten),
+            makeLine("Oct 16 — kept", depth: 2, log: .rotten),
+            makeLine(
+                "Oct 09 — kept",
+                depth: 2,
+                log: .rotten
+            ),
+        ]
+        XCTAssertEqual(
+            CaptureAgendaPresentation.logChips(lines: lines),
+            ["⚒ 1", "🗓 1", "🥀 2"]
+        )
+        XCTAssertEqual(
+            CaptureAgendaPresentation.accessibilityChip("🥀 2"),
+            "Show rotten log, 2 entries"
+        )
+    }
+
+    func testUnknownLogKindFoldsToGenericHeaderWithoutChip() {
+        let lines = [
+            makeLine("Mystery log", kind: .logMarker, log: .other("nap")),
+            makeLine("a nested line", depth: 2, log: .other("nap")),
+        ]
+        let presentation = present(makeSnapshot(entries: [
+            makeEntry(line: 3, items: [makeItem(ledgerLine: 4, lines: lines)]),
+        ]))
+        let task = presentation.groups[0].tasks[0]
+        XCTAssertEqual(task.fullRows[1].kind, .logHeader)
+        XCTAssertEqual(task.fullRows[1].text, "Mystery log")
+        XCTAssertEqual(task.fullRows[2].kind, .childLine)
+        XCTAssertNil(task.noLogsRows[0].accessoryText)
+    }
+
     func testDoneTasksRenderOneStruckLine() {
         for status in ["DONE", "CANCELLED"] {
             let presentation = present(makeSnapshot(entries: [

@@ -206,6 +206,29 @@ final class CaptureAgendaModelsTests: XCTestCase {
         XCTAssertEqual(item.lines[0].log, .other("nap"))
     }
 
+    func testRottenLogDecodesAndUnknownStaysOther() throws {
+        let rotten = try JSONDecoder().decode(
+            CaptureAgendaLog.self,
+            from: Data(#""rotten""#.utf8)
+        )
+        XCTAssertEqual(rotten, .rotten)
+        let unknown = try JSONDecoder().decode(
+            CaptureAgendaLog.self,
+            from: Data(#""nap""#.utf8)
+        )
+        XCTAssertEqual(unknown, .other("nap"))
+        let json = """
+        {
+          "text": "Oct 16 — kept",
+          "depth": 2,
+          "kind": "bullet",
+          "log": "rotten"
+        }
+        """.data(using: .utf8) ?? Data()
+        let line = try JSONDecoder().decode(CaptureAgendaLine.self, from: json)
+        XCTAssertEqual(line.log, .rotten)
+    }
+
     func testMissingFieldsDecodeToDefaults() throws {
         let json = """
         {"ok": true, "pomodoros": [{"line": 3, "items": [{}], "notes": [{}]}]}
