@@ -43,6 +43,8 @@ final class CapturePullInChoiceModelTests: XCTestCase {
     XCTAssertEqual(model.pullInChoice?.markedKeys, ["opaque:two#^suffix"])
     let controller = CapturePanelController(model: model)
     var opened: [URL] = []
+    var successNotifications = 0
+    model.captureSuccessNotifier = { _, _, _ in successNotifications += 1 }
     var dismissed = 0
     model.noteOpener = { url, completion in
       opened.append(url)
@@ -55,6 +57,7 @@ final class CapturePullInChoiceModelTests: XCTestCase {
     XCTAssertNil(model.pullInChoice)
     XCTAssertEqual(model.plainDraft, "")
     XCTAssertEqual(opened.count, 1)
+    XCTAssertEqual(successNotifications, 1)
     XCTAssertEqual(opened[0].host, "bob-open-notes")
     XCTAssertEqual(
       URLComponents(url: opened[0], resolvingAgainstBaseURL: false)?.queryItems?

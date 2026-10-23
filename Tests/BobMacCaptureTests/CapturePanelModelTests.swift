@@ -213,21 +213,36 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(openCalls, 1)
     }
 
-    func testSuccessfulOpenSuppressesTheCaptureSuccessNotification() async throws {
+    func testSuccessfulOpenStillPostsTheCaptureSuccessNotification() async throws {
         let model = CapturePanelModel()
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
             environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         )
         model.plainDraft = "Call bank @Cash"
-        var successNotifications = 0
-        model.captureSuccessNotifier = { _, _, _ in successNotifications += 1 }
-        model.noteOpener = { _, completion in completion(nil) }
+        var successPlans: [CaptureOpenPlan] = []
+        var openCalls = 0
+        var openFailures = 0
+        var events: [String] = []
+        model.captureSuccessNotifier = { _, _, plan in
+            successPlans.append(plan)
+            events.append("notify")
+        }
+        model.captureOpenFailureNotifier = { _ in openFailures += 1 }
+        model.noteOpener = { _, completion in
+            openCalls += 1
+            events.append("open")
+            completion(nil)
+        }
 
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
 
-        XCTAssertEqual(successNotifications, 0)
+        XCTAssertEqual(successPlans.count, 1)
+        XCTAssertFalse(try XCTUnwrap(successPlans.first).isEmpty)
+        XCTAssertEqual(openCalls, 1)
+        XCTAssertEqual(openFailures, 0)
+        XCTAssertEqual(events, ["notify", "open"])
     }
 
     func testEmptyBobOpenPlanDoesNotOpenObsidianAndKeepsSuccessNotification() async throws {
@@ -261,7 +276,7 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(successPlans[0].isEmpty)
     }
 
-    func testFailedOpenPostsCaptureOpenFailureInsteadOfSuccess() async throws {
+    func testFailedOpenPostsCaptureSuccessAndOpenFailure() async throws {
         let model = CapturePanelModel()
         model.processClient = BobProcessClient(
             executablePath: try fakeBobPath(),
@@ -277,7 +292,7 @@ final class CapturePanelModelTests: XCTestCase {
         model.submit(openAfterCapture: true)
         await waitUntil { !model.isSubmitting }
 
-        XCTAssertEqual(successNotifications, 0)
+        XCTAssertEqual(successNotifications, 1)
         XCTAssertEqual(openFailure, "sandbox denied")
     }
 

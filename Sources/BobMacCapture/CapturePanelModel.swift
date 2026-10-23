@@ -8213,6 +8213,11 @@ final class CapturePanelModel: ObservableObject {
             templateOrigin = nil
             successAnnouncementTick += 1
             savedTemplateShelf.refresh(reason: .submit)
+            postCaptureSuccess(
+                captures: captures,
+                globalDestination: success.globalDestination,
+                openPlan: openPlan
+            )
             if openAfterCapture,
                let url = ObsidianOpenURL.openNotesURL(for: openPlan)
             {
@@ -8220,12 +8225,6 @@ final class CapturePanelModel: ObservableObject {
                     guard let self, let error else { return }
                     self.postCaptureOpenFailure(message: error.localizedDescription)
                 }
-            } else {
-                postCaptureSuccess(
-                    captures: captures,
-                    globalDestination: success.globalDestination,
-                    openPlan: openPlan
-                )
             }
             panelDismisser()
         case .failure(let failure):
