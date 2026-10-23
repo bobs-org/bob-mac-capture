@@ -66,7 +66,7 @@ final class CapturePanelSwitchHostedTests: XCTestCase {
         }
 
         XCTAssertEqual(model.plainDraft, "Call bank @Cash and @Home")
-        XCTAssertEqual(model.editorSelection, selection)
+        XCTAssertEqual(model.collapsedSelectionUTF8Offset(), 10)
         XCTAssertEqual(model.templateOrigin, "weekly-review")
         XCTAssertEqual(model.errorMessage, "Capture failed")
         XCTAssertEqual(editorAfter.selectedRange(), expectedRange)

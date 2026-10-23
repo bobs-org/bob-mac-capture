@@ -2884,7 +2884,8 @@ final class RefsPanelModelTests: XCTestCase {
     let harness = try makeHarness()
     await harness.waitForSnapshot()
     let kept = "ref/chat/small_reading.md"
-    harness.model.perform(.select(id: kept))
+    await harness.waitForModel { $0.listing.contains(id: kept) }
+    XCTAssertTrue(harness.model.perform(.select(id: kept)))
     let generation = harness.model.inspectorGeneration
     harness.model.noteInspectorOffset(id: kept, generation: generation, offset: 80)
     harness.model.noteInspectorOffset(id: "other", generation: generation, offset: 120)
@@ -3161,7 +3162,10 @@ final class RefsPanelModelTests: XCTestCase {
     let switched = try XCTUnwrap(items.last?.id)
     XCTAssertTrue(harness.model.perform(.select(id: switched)))
     XCTAssertTrue(harness.model.perform(.open(.highlights)))
-    await harness.waitForModel { _ in reader.selectedTargets.count == 1 }
+    let fileName = URL(fileURLWithPath: items[1].pdfPath).lastPathComponent
+    await harness.waitForModel { $0.tabsSession.recency.lastActive(fileName) != nil }
+    XCTAssertEqual(harness.opener.highlightsOpens.count, 1)
+    XCTAssertTrue(reader.selectedTargets.isEmpty)
 
     let nextSnapshot = Self.tabsSnapshot(
       [items[1], items[0]],

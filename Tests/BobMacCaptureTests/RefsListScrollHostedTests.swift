@@ -162,12 +162,12 @@ final class RefsListScrollHostedTests: XCTestCase {
     return HostedHarness(model: model, controller: controller, panel: panel)
   }
 
-  /// Reinstalls the same items with a fresh Just scanned mark over the
-  /// first three rows, so the next re-rank grows a section above the
+  /// Reinstalls the same items with a fresh Just scanned mark over three
+  /// rows below the top, so the next re-rank grows a section above the
   /// old top.
   private func installScannedFixture(_ harness: HostedHarness) {
     let items = makeItems()
-    let scanned = Array(harness.model.listing.orderedIDs.prefix(3))
+    let scanned = Array(harness.model.listing.orderedIDs.suffix(3))
     XCTAssertEqual(scanned.count, 3)
     var signals = RefsSignals()
     signals.scan = RefsScanMark(ids: scanned, at: Date())

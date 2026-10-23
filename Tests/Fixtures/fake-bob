@@ -2,31 +2,45 @@
 set -euo pipefail
 fixtures_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-if [[ -n "${FAKE_BOB_TERM_PATH:-}" ]]; then
-  trap 'printf "terminated\n" >"${FAKE_BOB_TERM_PATH}"; exit 143' TERM INT
-fi
+release_record_lock() {
+  if [[ -n "${FAKE_BOB_RECORD_PATH:-}" ]]; then
+    local record_lock_path="${FAKE_BOB_RECORD_PATH}.lock"
+    if [[ "$(readlink "${record_lock_path}" 2>/dev/null || true)" == "$$" ]]; then
+      rm -f "${record_lock_path}"
+    fi
+  fi
+}
+
+handle_record_signal() {
+  release_record_lock
+  if [[ -n "${FAKE_BOB_TERM_PATH:-}" ]]; then
+    printf "terminated\n" >"${FAKE_BOB_TERM_PATH}"
+  fi
+  exit 143
+}
+
+trap handle_record_signal TERM INT
 
 if [[ -n "${FAKE_BOB_RECORD_PATH:-}" ]]; then
-  record_lock_dir="${FAKE_BOB_RECORD_PATH}.lock"
+  record_lock_path="${FAKE_BOB_RECORD_PATH}.lock"
   # Live preview and completion overlap, so concurrent appends can splice one
   # block inside another's multiline argv and break substring assertions.
-  # mkdir is atomic: it serializes the append. The trap keeps lane
-  # cancellation (SIGTERM) from leaking the lock and wedging later appends,
-  # while preserving the FAKE_BOB_TERM_PATH behavior when both are set.
-  while ! mkdir "${record_lock_dir}" 2>/dev/null; do
+  # ln creates an atomic, owner-identifiable lock. Install the trap before
+  # acquisition so cancellation cannot leak a lock or wedge later appends.
+  while ! ln -s "$$" "${record_lock_path}" 2>/dev/null; do
     sleep 0.01
   done
-  trap 'rmdir "${record_lock_dir}" 2>/dev/null || true; if [[ -n "${FAKE_BOB_TERM_PATH:-}" ]]; then printf "terminated\n" >"${FAKE_BOB_TERM_PATH}"; fi; exit 143' TERM INT
   printf 'argv=%s\nHOME=%s\nPATH=%s\nBOB_DIR=%s\nBOB_PRIORITY_ROLL_SEED=%s\n' \
     "$*" \
     "${HOME:-}" \
     "${PATH:-}" \
     "${BOB_DIR:-}" \
     "${BOB_PRIORITY_ROLL_SEED:-}" >>"${FAKE_BOB_RECORD_PATH}"
-  rmdir "${record_lock_dir}" 2>/dev/null || true
-  trap - TERM INT
+  release_record_lock
   if [[ -n "${FAKE_BOB_TERM_PATH:-}" ]]; then
     trap 'printf "terminated\n" >"${FAKE_BOB_TERM_PATH}"; exit 143' TERM INT
+  else
+    trap - TERM INT
   fi
 fi
 
@@ -179,6 +193,9 @@ case "${command}" in
     if [[ -n "${FAKE_BOB_PARSE_FIXTURE:-}" ]]; then
       cat "${fixtures_dir}/${FAKE_BOB_PARSE_FIXTURE}"
       exit 0
+    # This is real bob capture-parse output for a bare @@ draft.
+    elif [[ "${draft}" == "@@" ]]; then
+      cat "${fixtures_dir}/capture-parse-template-bare.json"
     elif [[ "${draft}" == "@@te" ]]; then
       cat "${fixtures_dir}/capture-parse-template-prefix.json"
     elif [[ "${draft}" == "${template_one_row_draft}" ]]; then
