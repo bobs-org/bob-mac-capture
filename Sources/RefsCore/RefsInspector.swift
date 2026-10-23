@@ -887,21 +887,38 @@ public struct RefsInspectorFeed: Equatable, Sendable {
         return "Showing \(clamped) of \(total) highlights"
     }
 
-    /// VoiceOver label for the HIGHLIGHTS header.
+    /// VoiceOver label for the HIGHLIGHTS header. The visual chip
+    /// counts note cards (one per commented tucked piece), while the
+    /// disclosure row counts hidden entries with notes. VoiceOver
+    /// follows the chip when every noted entry holds exactly one
+    /// card; when a group holds several cards in one entry it names
+    /// the cards so one entry never reads as several noted entries.
     public var headerAccessibilityLabel: String {
         if notedCount == 0 {
             return "Highlights, \(total)"
         }
-        return "Highlights, \(total), \(Self.notedPhrase(notedCount))"
+        if notedEntryCount == notedCount {
+            return "Highlights, \(total), \(Self.notedPhrase(notedCount))"
+        }
+        return "Highlights, \(total), \(Self.noteCardPhrase(notedCount))"
+    }
+
+    /// How many entries carry at least one note card. Groups count
+    /// once here even when several pieces each show a card.
+    private var notedEntryCount: Int {
+        entries(visible: total).filter(\.hasNoteCard).count
     }
 
     private func hiddenCount(visible: Int) -> Int {
         max(total - min(max(visible, 0), total), 0)
     }
 
+    /// How many hidden entries carry a note card. Groups count once
+    /// here even when several pieces each show a card; use
+    /// `notedCount` for the card total.
     private func hiddenNotedCount(visible: Int) -> Int {
         let clamped = min(max(visible, 0), total)
-        return entries(visible: total).dropFirst(clamped).reduce(into: 0) { $0 += $1.noteCardCount }
+        return entries(visible: total).dropFirst(clamped).filter(\.hasNoteCard).count
     }
 
     /// Number of available primary image highlights and attached image
@@ -930,6 +947,10 @@ public struct RefsInspectorFeed: Equatable, Sendable {
 
     private static func notedPhrase(_ count: Int) -> String {
         count == 1 ? "1 with a note" : "\(count) with notes"
+    }
+
+    private static func noteCardPhrase(_ count: Int) -> String {
+        count == 1 ? "1 note card" : "\(count) note cards"
     }
 
     private static func imagePhrase(_ count: Int) -> String {

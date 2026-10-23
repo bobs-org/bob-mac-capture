@@ -1234,4 +1234,81 @@ final class RefsInspectorTests: XCTestCase {
             "Highlight with note, continued on Page 12: Tail words on twelve. Your note: Follower note"
         )
     }
+
+    func testGroupWithTwoNoteCardsCountsOneHiddenEntry() throws {
+        let single = highlight(page: "1", quote: "Single")
+        let group = RefsShowAnnotation(
+            pageLabel: "Pages 11–12",
+            kind: "highlight",
+            quote: "Head words\n\nTail words",
+            comment: "Head note\n\nTail note",
+            pieces: [
+                RefsShowPiece(
+                    pageLabel: "Page 11",
+                    quote: "Head words",
+                    comment: "Head note"
+                ),
+                RefsShowPiece(
+                    pageLabel: "Page 12",
+                    quote: "Tail words",
+                    comment: "Tail note"
+                ),
+            ]
+        )
+        let feed = RefsInspectorFeed(highlights: [single, group])
+        XCTAssertEqual(feed.total, 2)
+        XCTAssertEqual(feed.notedCount, 2)
+        XCTAssertEqual(feed.entries(visible: 2).count, 2)
+        XCTAssertEqual(feed.entries(visible: -1), [])
+        XCTAssertEqual(feed.entries(visible: 99).count, 2)
+
+        XCTAssertEqual(
+            feed.moreText(visible: 1, nextBatch: 5),
+            "+1 more · 1 with a note · ⌃D shows it"
+        )
+        XCTAssertEqual(
+            feed.hiddenAccessibilityLabel(visible: 1),
+            "1 more highlight, 1 with a note"
+        )
+        XCTAssertEqual(
+            feed.headerAccessibilityLabel,
+            "Highlights, 2, 2 note cards"
+        )
+        XCTAssertEqual(feed.revealAnnouncement(visible: 1), "Showing 1 of 2 highlights")
+
+        XCTAssertEqual(
+            feed.moreText(visible: 0, nextBatch: 5),
+            "+2 more · 1 with a note · ⌃D shows the rest"
+        )
+        XCTAssertEqual(
+            feed.hiddenAccessibilityLabel(visible: 0),
+            "2 more highlights, 1 with a note"
+        )
+        XCTAssertNil(feed.moreText(visible: 2, nextBatch: 5))
+        XCTAssertNil(feed.hiddenAccessibilityLabel(visible: 2))
+        XCTAssertEqual(
+            feed.moreText(visible: -1, nextBatch: 5),
+            feed.moreText(visible: 0, nextBatch: 5)
+        )
+        XCTAssertEqual(
+            feed.hiddenAccessibilityLabel(visible: -1),
+            feed.hiddenAccessibilityLabel(visible: 0)
+        )
+
+        let solo = RefsInspectorFeed(highlights: [group])
+        XCTAssertEqual(solo.total, 1)
+        XCTAssertEqual(solo.notedCount, 2)
+        XCTAssertEqual(
+            solo.moreText(visible: 0, nextBatch: 5),
+            "+1 more · 1 with a note · ⌃D shows it"
+        )
+        XCTAssertEqual(
+            solo.hiddenAccessibilityLabel(visible: 0),
+            "1 more highlight, 1 with a note"
+        )
+        XCTAssertEqual(
+            solo.headerAccessibilityLabel,
+            "Highlights, 1, 2 note cards"
+        )
+    }
 }
