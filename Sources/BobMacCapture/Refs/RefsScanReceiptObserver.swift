@@ -3,6 +3,7 @@ import Dispatch
 import Foundation
 import notify
 import RefsCore
+import notify
 
 /// Observes bob's Darwin `scan-finished` ping, reads the receipt off the
 /// main thread, and presents open-PDF updates. Launch never reads a
