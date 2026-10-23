@@ -51,6 +51,7 @@ public final class RefsPanelController: NSObject {
     /// While true, a resign-key does not hide the panel. The ⌘K
     /// actions menu sets this while it tracks.
     var suspendHideOnResign = false
+    private var isHiding = false
     /// Refs hides through the coordinator after a successful copy, which
     /// may restore the retained Capture draft.
     var copyDismisser: () -> Void = {}
@@ -164,6 +165,11 @@ public final class RefsPanelController: NSObject {
     /// frontmost app on its own. The model clears a seen scan notice
     /// here, so a finished scan's footer text does not linger.
     public func hide() {
+        guard !isHiding else {
+            return
+        }
+        isHiding = true
+        defer { isHiding = false }
         glassToast.dismiss()
         panel?.orderOut(nil)
         model.panelDidHide()

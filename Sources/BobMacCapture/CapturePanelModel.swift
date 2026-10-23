@@ -455,6 +455,7 @@ final class CapturePanelModel: ObservableObject {
     private var relationCapabilityAcknowledgedDraft: String?
     private var analysisGeneration: UInt64 = 0
     private var similarTasksGeneration: UInt64 = 0
+    private var relationLabelSuggestionGeneration: UInt64 = 0
     private var rewriteGeneration: UInt64 = 0
     private var rewriteExpectedCursorUTF8: Int?
     private var rewriteSawMatchingSelection = false
@@ -6760,6 +6761,8 @@ final class CapturePanelModel: ObservableObject {
     /// after the token. Older Bob returns no `relation_label` context; the
     /// card then keeps its empty state with a calm hint.
     private func fetchRelationLabelSuggestions() {
+        relationLabelSuggestionGeneration &+= 1
+        let generation = relationLabelSuggestionGeneration
         guard let prompt = relationLabelPrompt,
               let processClient
         else {
@@ -6799,6 +6802,7 @@ final class CapturePanelModel: ObservableObject {
                 let response = try await processClient.captureComplete(probe, cursor: cursor)
                 await MainActor.run {
                     guard let self,
+                          self.relationLabelSuggestionGeneration == generation,
                           var current = self.relationLabelPrompt,
                           current.draftSnapshot == draftSnapshot,
                           current.draftSnapshot == self.plainDraft
@@ -6823,7 +6827,9 @@ final class CapturePanelModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    guard let self, var current = self.relationLabelPrompt,
+                    guard let self,
+                          self.relationLabelSuggestionGeneration == generation,
+                          var current = self.relationLabelPrompt,
                           current.draftSnapshot == draftSnapshot
                     else {
                         return

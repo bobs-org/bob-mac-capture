@@ -3178,6 +3178,7 @@ public final class RefsPanelModel: ObservableObject {
         library.recordOpen(id: itemID)
       } else if let switchedFileName {
         tabsSession.recordSwitch(fileName: switchedFileName)
+        tabsSelectionConsumed = true
       }
     }
   }

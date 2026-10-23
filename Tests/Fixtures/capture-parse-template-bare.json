@@ -1,0 +1,28 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "input": "@@",
+  "body": "",
+  "mode": "incomplete",
+  "route": null,
+  "section": null,
+  "block_id": null,
+  "needs": ["route"],
+  "spans": [{ "start": 0, "end": 2, "kind": "interactive_placeholder" }],
+  "diagnostics": [
+    {
+      "severity": "error",
+      "code": "missing_capture_item",
+      "message": "global destination declaration has no capture item; add a capture item to this draft",
+      "range": [0, 2]
+    }
+  ],
+  "global_destination": {
+    "range": { "start": 0, "end": 2 },
+    "line": 1,
+    "mode": "incomplete",
+    "route": null,
+    "block_id": null,
+    "needs": ["route"]
+  }
+}

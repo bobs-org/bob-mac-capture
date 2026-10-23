@@ -705,6 +705,11 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 13, end: 14))
         XCTAssertEqual(model.relationLabelPrompt?.direction, .linksTo)
         XCTAssertEqual(model.relationLabelPrompt?.ownerText, "Fix it")
+        await waitUntil {
+            (try? String(contentsOf: recordURL))?.contains(
+                "argv=capture-complete --all-tasks --cursor 14 --format json -- ~tasks:target| Fix it"
+            ) == true
+        }
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture-complete --all-tasks --cursor 14 --format json -- ~tasks:target| Fix it"))
         model.updateRelationLabelPromptLabel("see")
