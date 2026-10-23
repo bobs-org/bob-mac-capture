@@ -267,6 +267,23 @@ struct RefsInspectorDisclosureAnchor: NSViewRepresentable {
 /// animated, so the follow-scroll measures the final height at once.
 /// First-page notes, Reduce Motion, and design-fixture previews render
 /// fully visible at once.
+/// Dashed hairline for tucked `<` group seams: a 1 pt horizontal
+/// rule drawn with a dash, so follower pieces open at a stitched
+/// seam mirroring Obsidian.
+private struct GroupSeamLine: View {
+  var body: some View {
+    GeometryReader { geometry in
+      Path { path in
+        path.move(to: CGPoint(x: 0, y: 0.5))
+        path.addLine(to: CGPoint(x: geometry.size.width, y: 0.5))
+      }
+      .stroke(style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+      .foregroundStyle(.tertiary)
+    }
+    .frame(height: 1)
+  }
+}
+
 private struct RefsInspectorNoteFade: ViewModifier {
   let isRevealed: Bool
   let delay: Double
@@ -996,34 +1013,105 @@ struct RefsInspectorView: View {
   }
 
   private func highlightEntryView(_ entry: RefsInspectorFeed.Entry) -> some View {
+    if entry.isGroup {
+      return AnyView(groupHighlightEntryView(entry))
+    }
     let annotation = entry.annotation
     let quote = visibleQuote(annotation)
+    return AnyView(
+      VStack(alignment: .leading, spacing: 4) {
+        if entry.showsPageLabel, let pageLabel = annotation.displayPageLabel {
+          Text(pageLabel)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        switch entry.kind {
+        case .highlight:
+          if let quote {
+            quoteView(quote)
+          }
+        case .image:
+          imageHighlightBody(entry)
+        case .note:
+          EmptyView()
+        }
+        if entry.hasNoteCard {
+          noteCard(entry)
+            .padding(
+              .top,
+              needsNoteGap(entry) ? RefsVisualTokens.inspectorNoteGap - 4 : 0
+            )
+        }
+      }
+      .accessibilityElement(children: .combine)
+      .accessibilityLabel(entry.accessibilityLabel)
+    )
+  }
+
+  /// One tucked `<` group as one HIGHLIGHTS entry: the group's page-range
+  /// label once, then each piece like an ordinary highlight — its quote
+  /// with the 2 pt yellow rule and its own note card — with followers
+  /// starting at a dashed seam captioned with the follower's page.
+  /// VoiceOver exposes one element per piece.
+  private func groupHighlightEntryView(_ entry: RefsInspectorFeed.Entry) -> some View {
+    let annotation = entry.annotation
+    let labels = entry.pieceAccessibilityLabels
     return VStack(alignment: .leading, spacing: 4) {
       if entry.showsPageLabel, let pageLabel = annotation.displayPageLabel {
         Text(pageLabel)
           .font(.caption)
           .foregroundStyle(.secondary)
       }
-      switch entry.kind {
-      case .highlight:
-        if let quote {
-          quoteView(quote)
-        }
-      case .image:
-        imageHighlightBody(entry)
-      case .note:
-        EmptyView()
+      ForEach(Array(annotation.pieces.enumerated()), id: \.offset) { offset, piece in
+        groupPieceView(
+          piece: piece,
+          offset: offset,
+          accessibilityLabel: offset < labels.count ? labels[offset] : nil
+        )
       }
-      if entry.hasNoteCard {
-        noteCard(entry)
-          .padding(
-            .top,
-            needsNoteGap(entry) ? RefsVisualTokens.inspectorNoteGap - 4 : 0
-          )
+    }
+  }
+
+  private func groupPieceView(
+    piece: RefsShowPiece,
+    offset: Int,
+    accessibilityLabel: String?
+  ) -> some View {
+    let quote = piece.quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      ? nil : piece.quote
+    let comment = piece.trimmedComment ?? ""
+    let hasCard = piece.hasNoteCard
+    return VStack(alignment: .leading, spacing: 4) {
+      if offset > 0 {
+        groupSeam(pageLabel: piece.displayPageLabel)
+          .padding(.top, 4)
+      }
+      if let quote {
+        quoteView(quote)
+      }
+      if hasCard {
+        pieceNoteCard(comment: comment, images: piece.images, unresolvedImages: piece.unresolvedImages)
+          .padding(.top, quote == nil ? 0 : RefsVisualTokens.inspectorNoteGap - 4)
       }
     }
     .accessibilityElement(children: .combine)
-    .accessibilityLabel(entry.accessibilityLabel)
+    .accessibilityLabel(accessibilityLabel ?? "Highlight, continued")
+  }
+
+  /// Dashed hairline seam opening each follower piece, captioned at the
+  /// trailing end with the follower's page, mirroring Obsidian.
+  private func groupSeam(pageLabel: String?) -> some View {
+    HStack(spacing: 8) {
+      GroupSeamLine()
+        .frame(height: 1)
+      if let pageLabel, !pageLabel.isEmpty {
+        Text(pageLabel)
+          .font(.caption2)
+          .foregroundStyle(.tertiary)
+          .lineLimit(1)
+      }
+    }
+    .accessibilityHidden(true)
   }
 
   private func needsNoteGap(_ entry: RefsInspectorFeed.Entry) -> Bool {
@@ -1104,6 +1192,22 @@ struct RefsInspectorView: View {
   }
 
   private func noteCard(_ entry: RefsInspectorFeed.Entry) -> some View {
+    let comment =
+      entry.annotation.comment?.trimmingCharacters(
+        in: .whitespacesAndNewlines
+      ) ?? ""
+    return pieceNoteCard(
+      comment: comment,
+      images: entry.attachedImages,
+      unresolvedImages: entry.unresolvedImages
+    )
+  }
+
+  private func pieceNoteCard(
+    comment: String,
+    images: [String],
+    unresolvedImages: [String]
+  ) -> some View {
     let stroke =
       colorSchemeContrast == .increased
       ? RefsVisualTokens.inspectorNoteStrokeOpacityIncreased
@@ -1112,10 +1216,6 @@ struct RefsInspectorView: View {
       cornerRadius: RefsVisualTokens.inspectorNoteRadius,
       style: .continuous
     )
-    let comment =
-      entry.annotation.comment?.trimmingCharacters(
-        in: .whitespacesAndNewlines
-      ) ?? ""
     return VStack(alignment: .leading, spacing: RefsVisualTokens.inspectorImageStackSpacing) {
       HStack(alignment: .firstTextBaseline, spacing: 6) {
         Image(systemName: RefsVisualTokens.inspectorNoteSymbol)
@@ -1129,14 +1229,14 @@ struct RefsInspectorView: View {
             .fixedSize(horizontal: false, vertical: true)
         }
       }
-      ForEach(entry.attachedImages, id: \.self) { path in
+      ForEach(images, id: \.self) { path in
         if let metrics = imageMetrics(for: path) {
           fittedImage(path: path, metrics: metrics, maxWidth: noteCardInnerWidth)
         } else {
           RefsInspectorImageUnavailableRow(fileName: imageFileName(path))
         }
       }
-      ForEach(entry.unresolvedImages, id: \.self) { path in
+      ForEach(unresolvedImages, id: \.self) { path in
         RefsInspectorImageUnavailableRow(fileName: imageFileName(path))
       }
     }

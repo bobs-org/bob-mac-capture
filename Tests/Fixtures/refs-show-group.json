@@ -1,0 +1,83 @@
+{
+    "ok": true,
+    "schema_version": 1,
+    "command": "ref show",
+    "generated_at": "2026-10-23T00:00:00",
+    "library": {
+        "notes": 1
+    },
+    "refs": [
+        {
+            "path": "ref/blogs/group_case.md",
+            "link": "[[ref/blogs/group_case]]",
+            "title": "Tucked Group Case",
+            "origin": "web",
+            "ref_type": "article",
+            "era": "modern",
+            "status": "wip",
+            "status_sync": "ok",
+            "legacy_status": null,
+            "reading_state": "started",
+            "reading_state_source": "ref_task:[/]",
+            "blocked": false,
+            "parent": "obsidian_ref",
+            "urls": [],
+            "identity": {
+                "keys": [],
+                "arxiv": null,
+                "doi": null
+            },
+            "author": null,
+            "published": null,
+            "captured": null,
+            "added": "2026-10-20",
+            "added_source": "created",
+            "finished": null,
+            "finished_source": null,
+            "source_pdf": "lib/blogs/group_case.pdf",
+            "audio": null,
+            "annotation_count": 1,
+            "comment_count": 1,
+            "snapshot": null,
+            "research_ref": null,
+            "superseded_by": null,
+            "diagnostics": [],
+            "annotations_status": "parsed",
+            "annotations": [
+                {
+                    "page_label": "Pages 11–12",
+                    "kind": "highlight",
+                    "quote": "Head words on eleven\n\nTail words on twelve",
+                    "comment": "Follower note",
+                    "block_id": "^h-06d27eae3c84",
+                    "link": "[[ref/blogs/group_case#^h-06d27eae3c84]]",
+                    "images": [],
+                    "unresolved_images": [],
+                    "pieces": [
+                        {
+                            "page_label": "Page 11",
+                            "quote": "Head words on eleven",
+                            "images": [],
+                            "unresolved_images": []
+                        },
+                        {
+                            "page_label": "Page 12",
+                            "quote": "Tail words on twelve",
+                            "comment": "Follower note",
+                            "images": [],
+                            "unresolved_images": []
+                        }
+                    ]
+                }
+            ],
+            "excluded": {
+                "marker_mirrors": 0,
+                "preamble": 0,
+                "removed": 0
+            },
+            "own_notes": "",
+            "tasks": [],
+            "also": []
+        }
+    ]
+}

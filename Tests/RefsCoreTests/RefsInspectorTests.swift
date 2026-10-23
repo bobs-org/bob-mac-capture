@@ -1145,4 +1145,93 @@ final class RefsInspectorTests: XCTestCase {
             comment: comment
         )
     }
+
+    // MARK: - Tucked group pieces
+
+    private func groupAnnotation() -> RefsShowAnnotation {
+        RefsShowAnnotation(
+            pageLabel: "Pages 11–12",
+            kind: "highlight",
+            quote: "Head words on eleven\n\nTail words on twelve",
+            comment: "Follower note",
+            blockID: "^h-06d27eae3c84",
+            link: "[[ref/blogs/group_case#^h-06d27eae3c84]]",
+            pieces: [
+                RefsShowPiece(pageLabel: "Page 11", quote: "Head words on eleven"),
+                RefsShowPiece(
+                    pageLabel: "Page 12",
+                    quote: "Tail words on twelve",
+                    comment: "Follower note"
+                ),
+            ]
+        )
+    }
+
+    func testGroupFixtureDecodesPiecesHeadFirst() throws {
+        let response = try JSONDecoder().decode(
+            RefsShowResponse.self,
+            from: fixtureData("refs-show-group.json")
+        )
+        let row = try XCTUnwrap(response.refs.first)
+        let group = try XCTUnwrap(row.annotations.first)
+        XCTAssertTrue(group.isGroup)
+        XCTAssertEqual(group.pieces.count, 2)
+        XCTAssertEqual(group.pieces[0].pageLabel, "Page 11")
+        XCTAssertEqual(group.pieces[0].quote, "Head words on eleven")
+        XCTAssertNil(group.pieces[0].trimmedComment)
+        XCTAssertEqual(group.pieces[1].pageLabel, "Page 12")
+        XCTAssertEqual(group.pieces[1].quote, "Tail words on twelve")
+        XCTAssertEqual(group.pieces[1].trimmedComment, "Follower note")
+    }
+
+    func testGroupWithoutPiecesDecodesAsSingle() throws {
+        let response = try JSONDecoder().decode(
+            RefsShowResponse.self,
+            from: fixtureData("refs-show.json")
+        )
+        let row = try XCTUnwrap(response.refs.first)
+        let annotation = try XCTUnwrap(row.annotations.first)
+        XCTAssertFalse(annotation.isGroup)
+        XCTAssertEqual(annotation.pieces, [])
+    }
+
+    func testGroupStaysOneEntryWhileNoteChipCountsCommentedPieces() throws {
+        let group = groupAnnotation()
+        let row = RefsShowRow(path: "ref/blogs/group_case.md", annotations: [group])
+        XCTAssertEqual(row.inspectorHighlights.count, 1)
+        XCTAssertEqual(row.commentedHighlights.count, 1)
+
+        let feed = RefsInspectorFeed(highlights: [group])
+        XCTAssertEqual(feed.total, 1)
+        XCTAssertEqual(feed.notedCount, 1)
+
+        let twoNoted = RefsShowAnnotation(
+            pageLabel: "Pages 6–8",
+            kind: "highlight",
+            quote: "Head\n\nMiddle\n\nTail",
+            comment: "Head note\n\nTail note",
+            pieces: [
+                RefsShowPiece(pageLabel: "Page 6", quote: "Head", comment: "Head note"),
+                RefsShowPiece(pageLabel: "Page 7", quote: "Middle"),
+                RefsShowPiece(pageLabel: "Page 8", quote: "Tail", comment: "Tail note"),
+            ]
+        )
+        XCTAssertEqual(RefsInspectorFeed(highlights: [twoNoted]).notedCount, 2)
+    }
+
+    func testGroupVoiceOverHasOneElementPerPiece() throws {
+        let feed = RefsInspectorFeed(highlights: [groupAnnotation()])
+        let entry = try XCTUnwrap(feed.entries(visible: 1).first)
+        XCTAssertTrue(entry.isGroup)
+        let labels = entry.pieceAccessibilityLabels
+        XCTAssertEqual(labels.count, 2)
+        XCTAssertEqual(
+            labels[0],
+            "Highlight, Page 11: Head words on eleven"
+        )
+        XCTAssertEqual(
+            labels[1],
+            "Highlight with note, continued on Page 12: Tail words on twelve. Your note: Follower note"
+        )
+    }
 }

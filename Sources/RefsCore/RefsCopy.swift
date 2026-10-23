@@ -613,8 +613,19 @@ public enum RefsCopyFormat {
     }
 
     public static func quoteAlternate(_ annotation: RefsShowAnnotation) -> RefsCopyAlternate? {
-        guard !annotation.isStandaloneNote,
-            let quote = annotation.quote,
+        guard !annotation.isStandaloneNote else { return nil }
+        if annotation.isGroup {
+            let quotes = annotation.pieces.map(\.quote).filter {
+                !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+            guard !quotes.isEmpty else { return nil }
+            let joined = quotes.joined(separator: "\n\n")
+            return RefsCopyAlternate(
+                label: "Quote only", payload: .text(joined), preview: joined,
+                confirmationTitle: "Copied Quote"
+            )
+        }
+        guard let quote = annotation.quote,
             !quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return nil }
         return RefsCopyAlternate(
@@ -624,6 +635,9 @@ public enum RefsCopyFormat {
     }
 
     public static func noteBlock(_ annotation: RefsShowAnnotation) -> String {
+        if annotation.isGroup {
+            return groupNoteBlock(annotation)
+        }
         var lines: [String] = []
         if let quote = annotation.quote,
             !quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -643,6 +657,31 @@ public enum RefsCopyFormat {
             lines.append(provenance)
         }
         return lines.joined(separator: "\n\n")
+    }
+
+    /// A tucked `<` group as Copy text: each piece's quote followed by
+    /// its own `Comment:` lines, in order, with a blank line between
+    /// pieces, then the group's provenance line.
+    private static func groupNoteBlock(_ annotation: RefsShowAnnotation) -> String {
+        var blocks: [String] = []
+        for piece in annotation.pieces {
+            if !piece.quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                blocks.append(piece.quote.components(separatedBy: "\n").map {
+                    $0.isEmpty ? ">" : "> \($0)"
+                }.joined(separator: "\n"))
+            }
+            if let comment = piece.trimmedComment, !comment.isEmpty {
+                var commentLines = piece.comment?.components(separatedBy: "\n") ?? []
+                if !commentLines.isEmpty {
+                    commentLines[0] = "Comment: \(commentLines[0])"
+                    blocks.append(commentLines.joined(separator: "\n"))
+                }
+            }
+        }
+        if let provenance = provenanceLine(for: annotation) {
+            blocks.append(provenance)
+        }
+        return blocks.joined(separator: "\n\n")
     }
 
     public static func standaloneNote(_ annotation: RefsShowAnnotation) -> String {

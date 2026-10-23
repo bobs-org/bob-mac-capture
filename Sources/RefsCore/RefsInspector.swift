@@ -130,6 +130,82 @@ public struct RefsShowRow: Decodable, Equatable, Sendable {
     }
 }
 
+/// One tucked `<` group piece from `bob ref show`: the highlight's
+/// own words, page, comment, and image notes, in sidecar order. The
+/// top-level annotation fields keep the flattened group view so
+/// current consumers still see every word. Decodes lossily: a missing
+/// array (an older `bob`) reads as no pieces.
+public struct RefsShowPiece: Decodable, Equatable, Sendable {
+    public let pageLabel: String?
+    public let quote: String
+    public let comment: String?
+    public let images: [String]
+    public let unresolvedImages: [String]
+
+    public init(
+        pageLabel: String? = nil,
+        quote: String = "",
+        comment: String? = nil,
+        images: [String] = [],
+        unresolvedImages: [String] = []
+    ) {
+        self.pageLabel = pageLabel
+        self.quote = quote
+        self.comment = comment
+        self.images = RefsShowAnnotation.cleaned(images)
+        self.unresolvedImages = RefsShowAnnotation.cleaned(unresolvedImages)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case pageLabel = "page_label"
+        case quote
+        case comment
+        case images
+        case unresolvedImages = "unresolved_images"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        pageLabel = try container.decodeIfPresent(String.self, forKey: .pageLabel)
+        quote = (try container.decodeIfPresent(String.self, forKey: .quote)) ?? ""
+        comment = try container.decodeIfPresent(String.self, forKey: .comment)
+        let decodedImages = (try? container.decodeIfPresent([String].self, forKey: .images)) ?? nil
+        images = RefsShowAnnotation.cleaned(decodedImages ?? [])
+        let decodedUnresolved = (try? container.decodeIfPresent(
+            [String].self,
+            forKey: .unresolvedImages
+        )) ?? nil
+        unresolvedImages = RefsShowAnnotation.cleaned(decodedUnresolved ?? [])
+    }
+
+    /// Non-blank trimmed comment, if any.
+    public var trimmedComment: String? {
+        guard let comment,
+            !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return nil
+        }
+        return comment.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    public var hasComment: Bool { trimmedComment != nil }
+
+    public var hasNonEmptyQuote: Bool {
+        !quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Whether this piece shows its own pale-yellow note card.
+    public var hasNoteCard: Bool {
+        hasComment || !images.isEmpty || !unresolvedImages.isEmpty
+    }
+
+    /// The page label as the inspector shows it, same rule as the
+    /// annotation's `displayPageLabel`.
+    public var displayPageLabel: String? {
+        RefsShowAnnotation.displayPageLabel(for: pageLabel)
+    }
+}
+
 /// One parsed annotation: the author's words (`quote`) and the user's
 /// words (`comment`) travel in separate fields, exactly as `bob ref
 /// show` keeps them.
@@ -143,6 +219,9 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
     public let asset: String?
     public let images: [String]
     public let unresolvedImages: [String]
+    /// Tucked `<` group pieces, head first. Empty for every single
+    /// highlight, note, and image, and for older `bob` output.
+    public let pieces: [RefsShowPiece]
 
     public init(
         pageLabel: String? = nil,
@@ -153,7 +232,8 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
         link: String? = nil,
         asset: String? = nil,
         images: [String] = [],
-        unresolvedImages: [String] = []
+        unresolvedImages: [String] = [],
+        pieces: [RefsShowPiece] = []
     ) {
         self.pageLabel = pageLabel
         self.kind = kind
@@ -164,6 +244,7 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
         self.asset = Self.trimmedNonEmpty(asset)
         self.images = Self.cleaned(images)
         self.unresolvedImages = Self.cleaned(unresolvedImages)
+        self.pieces = pieces
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -176,6 +257,7 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
         case asset
         case images
         case unresolvedImages = "unresolved_images"
+        case pieces
     }
 
     public init(from decoder: Decoder) throws {
@@ -195,12 +277,48 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
             forKey: .unresolvedImages
         )) ?? nil
         unresolvedImages = Self.cleaned(decodedUnresolved ?? [])
+        let decodedPieces = (try? container.decodeIfPresent(
+            [RefsShowPiece].self,
+            forKey: .pieces
+        )) ?? nil
+        pieces = decodedPieces ?? []
+    }
+
+    /// Whether this annotation is a tucked `<` group: one HIGHLIGHTS
+    /// entry whose pieces render separately. Groups stay one entry
+    /// for paging and disclosure counts; the header note chip counts
+    /// one note card per piece with a card.
+    public var isGroup: Bool { kind == "highlight" && !pieces.isEmpty }
+
+    /// How many note cards this annotation contributes to the header
+    /// chip: one per piece with a card for groups, otherwise one when
+    /// the annotation itself has a card. Image and standalone-note
+    /// entries keep their existing card rule.
+    public var noteCardCount: Int {
+        switch kind {
+        case "highlight":
+            if isGroup {
+                return pieces.filter(\.hasNoteCard).count
+            }
+            let hasCard = hasComment || !images.isEmpty || !unresolvedImages.isEmpty
+            return hasCard ? 1 : 0
+        case "image":
+            let hasText = !(comment?.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).isEmpty ?? true)
+            return (hasText || !images.isEmpty || !unresolvedImages.isEmpty) ? 1 : 0
+        case "note":
+            return 1
+        default:
+            return 0
+        }
     }
 
     /// Membership in the inspector's one HIGHLIGHTS section: a
     /// highlight with a non-empty trimmed quote or a comment. A
     /// whitespace-only comment counts as no comment, so the entry
-    /// shows as a plain highlight.
+    /// shows as a plain highlight. Groups use their pieces when the
+    /// flattened fields are empty.
     public var isInspectorHighlight: Bool {
         guard kind == "highlight" else {
             return false
@@ -216,6 +334,8 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
         switch kind {
         case "highlight":
             return hasNonEmptyQuote || hasComment || !images.isEmpty || !unresolvedImages.isEmpty
+                || pieces.contains(where: \.hasNonEmptyQuote)
+                || pieces.contains(where: \.hasNoteCard)
         case "image":
             return Self.trimmedNonEmpty(asset) != nil
         case "note":
@@ -226,17 +346,19 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
     }
 
     /// A highlight carrying a user comment: the inspector shows a note
-    /// card under that highlight's quote.
+    /// card under that highlight's quote. A group counts when any
+    /// piece is commented, so `commentedHighlights` keeps a group
+    /// commented only on a follower.
     public var hasComment: Bool {
         guard kind == "highlight" else {
             return false
         }
-        guard let comment, !comment.trimmingCharacters(
+        if let comment, !comment.trimmingCharacters(
             in: .whitespacesAndNewlines
-        ).isEmpty else {
-            return false
+        ).isEmpty {
+            return true
         }
-        return true
+        return pieces.contains(where: \.hasComment)
     }
 
     public var isStandaloneNote: Bool {
@@ -264,13 +386,13 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
     }
 
     private var hasNonEmptyQuote: Bool {
-        guard let quote else {
-            return false
+        if let quote, !quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
         }
-        return !quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return pieces.contains(where: \.hasNonEmptyQuote)
     }
 
-    private static func trimmedNonEmpty(_ value: String?) -> String? {
+    static func trimmedNonEmpty(_ value: String?) -> String? {
         guard let value else {
             return nil
         }
@@ -278,7 +400,7 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private static func cleaned(_ values: [String]) -> [String] {
+    static func cleaned(_ values: [String]) -> [String] {
         values.compactMap(trimmedNonEmpty)
     }
 
@@ -288,7 +410,11 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
     /// same prefixes as bob's `is_sidecar_page_label` plus the
     /// renderer-emitted `pp.` range); otherwise `Page <label>`.
     public var displayPageLabel: String? {
-        guard let raw = pageLabel?.trimmingCharacters(
+        Self.displayPageLabel(for: pageLabel)
+    }
+
+    static func displayPageLabel(for rawValue: String?) -> String? {
+        guard let raw = rawValue?.trimmingCharacters(
             in: .whitespacesAndNewlines
         ), !raw.isEmpty else {
             return nil
@@ -399,8 +525,11 @@ public struct RefsInspectorFeed: Equatable, Sendable {
 
     public var total: Int { highlights.count }
 
-    /// How many entries in the feed carry a note card.
-    public var notedCount: Int { entries(visible: total).filter(\.hasNoteCard).count }
+    /// How many note cards the feed shows: one per piece with a card
+    /// for tucked `<` groups, otherwise one per entry with a card.
+    public var notedCount: Int {
+        entries(visible: total).reduce(into: 0) { $0 += $1.noteCardCount }
+    }
 
     public init(
         highlights: [RefsShowAnnotation],
@@ -443,6 +572,9 @@ public struct RefsInspectorFeed: Equatable, Sendable {
             if kind == .note {
                 return true
             }
+            if isGroup {
+                return annotation.pieces.contains(where: \.hasNoteCard)
+            }
             return hasCommentText || !attachedImages.isEmpty || !unresolvedImages.isEmpty
         }
 
@@ -450,6 +582,29 @@ public struct RefsInspectorFeed: Equatable, Sendable {
         /// comments, attached images, unresolved images, and standalone
         /// note entries.
         public var hasNote: Bool { hasNoteCard }
+
+        /// Whether this entry is a tucked `<` group.
+        public var isGroup: Bool { annotation.isGroup }
+
+        /// How many note cards this entry contributes to the header
+        /// chip: one per piece with a card for groups.
+        public var noteCardCount: Int { annotation.noteCardCount }
+
+        /// One VoiceOver element per piece for groups (head first),
+        /// otherwise the single entry label. Followers read as
+        /// "Highlight, continued on <Page>: …".
+        public var pieceAccessibilityLabels: [String] {
+            guard isGroup else {
+                return [accessibilityLabel]
+            }
+            return annotation.pieces.enumerated().map { offset, piece in
+                Self.groupPieceLabel(
+                    piece: piece,
+                    offset: offset,
+                    availableImages: availableImages
+                )
+            }
+        }
 
         /// VoiceOver label for this entry. The page is always included
         /// when `displayPageLabel` is non-nil, even when the visual
@@ -543,6 +698,79 @@ public struct RefsInspectorFeed: Equatable, Sendable {
         ) -> String {
             let noun = count == 1 ? "image" : "images"
             return "\(count) \(prefix)\(noun)\(suffix)"
+        }
+
+        /// VoiceOver label for one tucked group piece. The head reads
+        /// like an ordinary highlight; each follower reads as
+        /// continued, e.g. "Highlight, continued on Page 12: ….
+        /// Your note: …".
+        private static func groupPieceLabel(
+            piece: RefsShowPiece,
+            offset: Int,
+            availableImages: Set<String>
+        ) -> String {
+            let quote = RefsQuoteEmphasis.plainText(piece.quote)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let comment = piece.trimmedComment ?? ""
+            let page = piece.displayPageLabel
+            let hasCard = piece.hasNoteCard
+            var label: String
+            if offset == 0 {
+                if hasCard {
+                    let prefix = page.map { "Highlight with note, \($0)" }
+                        ?? "Highlight with note"
+                    if !quote.isEmpty {
+                        label = "\(prefix): \(quote)"
+                        label += Self.underlineSuffix(for: piece.quote)
+                    } else {
+                        label = prefix
+                    }
+                } else if let page {
+                    label = "Highlight, \(page): \(quote)"
+                    label += Self.underlineSuffix(for: piece.quote)
+                } else {
+                    label = "Highlight: \(quote)"
+                    label += Self.underlineSuffix(for: piece.quote)
+                }
+            } else {
+                if hasCard {
+                    let prefix = page.map { "Highlight with note, continued on \($0)" }
+                        ?? "Highlight with note, continued"
+                    if !quote.isEmpty {
+                        label = "\(prefix): \(quote)"
+                        label += Self.underlineSuffix(for: piece.quote)
+                    } else {
+                        label = prefix
+                    }
+                } else if let page {
+                    label = "Highlight, continued on \(page): \(quote)"
+                    label += Self.underlineSuffix(for: piece.quote)
+                } else {
+                    label = "Highlight, continued: \(quote)"
+                    label += Self.underlineSuffix(for: piece.quote)
+                }
+            }
+            if !comment.isEmpty {
+                label += ". Your note: \(comment)"
+            }
+            let availableAttached = piece.images.filter { availableImages.contains($0) }
+            let failedAttached = piece.images.filter { !availableImages.contains($0) }
+            if !availableAttached.isEmpty {
+                label += ", \(Self.imageCountPhrase(availableAttached.count, prefix: "attached "))"
+            }
+            if !failedAttached.isEmpty {
+                let failedPhrase = Self.imageCountPhrase(
+                    failedAttached.count,
+                    prefix: "attached ",
+                    suffix: " unavailable"
+                )
+                label += ", \(failedPhrase)"
+            }
+            let unavailable = piece.unresolvedImages.filter { !failedAttached.contains($0) }
+            if !unavailable.isEmpty {
+                label += ", \(Self.imageCountPhrase(unavailable.count, suffix: " unavailable"))"
+            }
+            return label
         }
 
         /// VoiceOver suffix for underlined words, placed after the
@@ -673,7 +901,7 @@ public struct RefsInspectorFeed: Equatable, Sendable {
 
     private func hiddenNotedCount(visible: Int) -> Int {
         let clamped = min(max(visible, 0), total)
-        return entries(visible: total).dropFirst(clamped).filter(\.hasNoteCard).count
+        return entries(visible: total).dropFirst(clamped).reduce(into: 0) { $0 += $1.noteCardCount }
     }
 
     /// Number of available primary image highlights and attached image

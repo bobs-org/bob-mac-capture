@@ -48,7 +48,15 @@ one thumbnail PNG each). What each kind shows:
   one-line "Image unavailable" row with the file's base name, never a
   box. If a header succeeds and the bitmap later fails, the reserved
   frame stays and the unavailable caption sits inside it. Standalone
-  notes join the feed as note cards with no quote.
+  notes join the feed as note cards with no quote. A tucked `<`
+  group stays one HIGHLIGHTS entry under its page-range label: each
+  piece renders like an ordinary highlight — its quote with the 2 pt
+  yellow rule and its own note card — with each follower opening at a
+  dashed seam captioned with its page. The header's note chip counts
+  one card per commented piece, and VoiceOver exposes one element per
+  piece ("Highlight, continued on Page 12: …"). The Copy card keeps
+  the group together: each piece's quote followed by its own
+  `Comment:` lines, with a blank line between pieces.
   Same-page entries share one page label. Quotes render balanced
   `**` runs as semibold full-ink words over a thick, rounded gold
   underline — one bar per laid-out line, never under the spaces at

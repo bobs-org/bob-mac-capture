@@ -608,6 +608,38 @@ final class RefsCopyTests: XCTestCase {
         XCTAssertEqual(card.highlightPicker?.entries.count, 1)
     }
 
+    func testGroupCopyKeepsPiecesInOrderWithBlankLineBetween() throws {
+        let group = RefsShowAnnotation(
+            pageLabel: "Pages 11–12",
+            kind: "highlight",
+            quote: "Head words on eleven\n\nTail words on twelve",
+            comment: "Follower note",
+            blockID: "^h-06d27eae3c84",
+            link: "[[ref/blogs/group_case#^h-06d27eae3c84]]",
+            pieces: [
+                RefsShowPiece(pageLabel: "Page 11", quote: "Head words on eleven"),
+                RefsShowPiece(
+                    pageLabel: "Page 12",
+                    quote: "Tail words on twelve",
+                    comment: "Follower note"
+                ),
+            ]
+        )
+        XCTAssertTrue(group.isGroup)
+        XCTAssertEqual(
+            RefsShowRow(path: "ref/blogs/group_case.md", annotations: [group]).commentedHighlights,
+            [group]
+        )
+        let block = RefsCopyFormat.noteBlock(group)
+        XCTAssertTrue(block.contains("> Head words on eleven"), block)
+        XCTAssertTrue(block.contains("> Tail words on twelve"), block)
+        XCTAssertTrue(block.contains("Comment: Follower note"), block)
+        XCTAssertEqual(RefsCopyFormat.highlightBlock(group), block)
+        let quoteOnly = try XCTUnwrap(RefsCopyFormat.quoteAlternate(group))
+        XCTAssertEqual(quoteOnly.payload, .text("Head words on eleven\n\nTail words on twelve"))
+        XCTAssertEqual(quoteOnly.label, "Quote only")
+    }
+
     private func makeItem(
         markerID: RefMarkerID = .unsupported,
         markerIDShareCount: Int = 1,
