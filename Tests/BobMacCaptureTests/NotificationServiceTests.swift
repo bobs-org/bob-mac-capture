@@ -1359,6 +1359,53 @@ final class NotificationServiceTests: XCTestCase {
         )
     }
 
+    func testRefsPDFUpdateContentIsPassiveSilentThreadedAndSelectsTheNote() {
+        let notice = RefsPDFUpdateNotification(
+            title: "Updated in Highlights",
+            subtitle: "Attention Is All You Need",
+            body: "Ready → Next · your unsaved highlights were saved first",
+            notePath: "ref/papers/attention_is_all_you_need.md"
+        )
+        let content = NotificationService.refsPDFUpdateContent(notice)
+
+        XCTAssertEqual(content.title, notice.title)
+        XCTAssertEqual(content.subtitle, notice.subtitle)
+        XCTAssertEqual(content.body, notice.body)
+        XCTAssertNil(content.sound)
+        XCTAssertEqual(content.interruptionLevel, .passive)
+        XCTAssertEqual(
+            content.threadIdentifier,
+            NotificationService.refsPDFUpdatesThreadIdentifier
+        )
+        XCTAssertEqual(
+            content.categoryIdentifier,
+            NotificationService.refsScanCategoryIdentifier
+        )
+        XCTAssertEqual(
+            content.userInfo[NotificationService.notePathKey] as? String,
+            notice.notePath
+        )
+        XCTAssertEqual(
+            NotificationService.route(
+                forActionIdentifier: UNNotificationDefaultActionIdentifier,
+                categoryIdentifier: NotificationService.refsScanCategoryIdentifier,
+                userInfo: [NotificationService.notePathKey: notice.notePath]
+            ),
+            .showRefsSelecting(notePath: notice.notePath)
+        )
+    }
+
+    func testExecuteShowRefsSelectingPassesTheNotePath() {
+        var selected: String?
+        NotificationService.execute(
+            .showRefsSelecting(notePath: "ref/papers/paper.md"),
+            opener: { _ in },
+            showCapture: {},
+            showRefs: { selected = $0 }
+        )
+        XCTAssertEqual(selected, "ref/papers/paper.md")
+    }
+
     func testExecuteShowRefsInvokesRefsCallbackOnly() {
         var opened: [URL] = []
         var showCaptureCount = 0
@@ -1368,7 +1415,7 @@ final class NotificationServiceTests: XCTestCase {
             .showRefs,
             opener: { opened.append($0) },
             showCapture: { showCaptureCount += 1 },
-            showRefs: { showRefsCount += 1 }
+            showRefs: { _ in showRefsCount += 1 }
         )
 
         XCTAssertEqual(showRefsCount, 1)
@@ -1398,7 +1445,7 @@ final class NotificationServiceTests: XCTestCase {
             route,
             opener: { _ in },
             showCapture: {},
-            showRefs: { coordinator.showRefs(source: .scanResults) }
+            showRefs: { _ in coordinator.showRefs(source: .scanResults) }
         )
 
         XCTAssertEqual(receivedSource, .scanResults)

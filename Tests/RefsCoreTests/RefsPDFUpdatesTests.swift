@@ -180,6 +180,101 @@ final class RefsPDFUpdatesTests: XCTestCase {
     )
   }
 
+  func testNeedsOpenTabCheckOnlyForCoordinatedWritesWithoutSavedFirst() {
+    XCTAssertFalse(RefsPDFUpdates.needsOpenTabCheck(RefsScanResponse()))
+    let savedFirst = RefsScanNote(
+      action: "update",
+      path: "ref/a.md",
+      sourcePDF: "lib/a.pdf",
+      markerWrite: RefsScanMarkerWrite(mode: "coordinated", editorSavedFirst: true)
+    )
+    XCTAssertFalse(
+      RefsPDFUpdates.needsOpenTabCheck(RefsScanResponse(notes: [savedFirst]))
+    )
+    let coordinated = RefsScanNote(
+      action: "update",
+      path: "ref/b.md",
+      sourcePDF: "lib/b.pdf",
+      markerWrite: RefsScanMarkerWrite(mode: "coordinated")
+    )
+    XCTAssertTrue(
+      RefsPDFUpdates.needsOpenTabCheck(RefsScanResponse(notes: [coordinated]))
+    )
+  }
+
+  func testTabFileNamesIncludeBasenames() {
+    let snapshot = HighlightsTabsSnapshot(
+      windows: [
+        .init(
+          isMain: true,
+          tabs: [
+            .init(fileName: "paper.pdf", isSelected: true),
+            .init(fileName: "/tmp/lib/other.pdf", isSelected: false),
+          ]
+        )
+      ],
+      highlightsIsFrontmost: true
+    )
+    XCTAssertEqual(
+      RefsPDFUpdates.tabFileNames(from: snapshot),
+      ["paper.pdf", "/tmp/lib/other.pdf", "other.pdf"]
+    )
+  }
+
+  func testSurfaceHidesNotificationsWhenVisibleOrDisabledAndDedupesBusyHolds() {
+    let busy = hold("lib/busy.pdf", reason: "coordination_timeout", title: "Deep Work")
+    let saved = RefsScanNote(
+      action: "update",
+      path: "ref/papers/saved_first.md",
+      title: "Saved First",
+      sourcePDF: "lib/saved_first.pdf",
+      markerWrite: RefsScanMarkerWrite(mode: "coordinated", editorSavedFirst: true)
+    )
+    let updates = RefsPDFUpdates(
+      response: RefsScanResponse(notes: [saved], held: [busy])
+    )
+
+    let visible = RefsPDFUpdatePresentation.surface(
+      for: updates,
+      panelVisible: true,
+      notificationsEnabled: true,
+      previouslyNotifiedBusyKeys: []
+    )
+    XCTAssertTrue(visible.notifications.isEmpty)
+    XCTAssertEqual(visible.footerClauses, ["1 PDF refreshed in Highlights"])
+    XCTAssertNotNil(visible.banner)
+    XCTAssertEqual(visible.nextNotifiedBusyKeys, ["busy:lib/busy.pdf"])
+
+    let disabled = RefsPDFUpdatePresentation.surface(
+      for: updates,
+      panelVisible: false,
+      notificationsEnabled: false,
+      previouslyNotifiedBusyKeys: []
+    )
+    XCTAssertTrue(disabled.notifications.isEmpty)
+    XCTAssertEqual(disabled.footerClauses, ["1 PDF refreshed in Highlights"])
+
+    let firstHidden = RefsPDFUpdatePresentation.surface(
+      for: updates,
+      panelVisible: false,
+      notificationsEnabled: true,
+      previouslyNotifiedBusyKeys: []
+    )
+    XCTAssertEqual(firstHidden.notifications.count, 2)
+    XCTAssertEqual(
+      firstHidden.notifications.map(\.title),
+      ["Updated in Highlights", "Highlights needs you"]
+    )
+
+    let secondHidden = RefsPDFUpdatePresentation.surface(
+      for: updates,
+      panelVisible: false,
+      notificationsEnabled: true,
+      previouslyNotifiedBusyKeys: firstHidden.nextNotifiedBusyKeys
+    )
+    XCTAssertEqual(secondHidden.notifications.map(\.title), ["Updated in Highlights"])
+  }
+
   func testQuietRefreshAndNonBusyHoldsDoNotNotify() {
     let quiet = RefsScanNote(
       action: "update",

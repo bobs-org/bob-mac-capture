@@ -142,7 +142,30 @@ final class RefsFetchingTests: XCTestCase {
     XCTAssertEqual(response.notes.filter { $0.action == "create" }.count, 2)
     XCTAssertEqual(BobRefsFetcher.scanTimeout, 300)
     let record = try String(contentsOf: recordURL)
-    XCTAssertTrue(record.contains("argv=ref scan -w -f json"))
+    XCTAssertTrue(record.contains("argv=ref scan -a -w -f json"))
+  }
+
+  func testScanRetriesWithoutAttendedFlagAndRemembers() async throws {
+    let recordURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    let client = try client(environment: [
+      "FAKE_BOB_RECORD_PATH": recordURL.path,
+      "FAKE_BOB_ATTENDED_FLAG_UNSUPPORTED": "1",
+    ])
+    let fetcher = BobRefsFetcher(client: client)
+
+    let response = try await fetcher.scan()
+    XCTAssertEqual(response.notes.count, 3)
+    XCTAssertTrue(client.attendedFlagKnownUnsupported)
+
+    _ = try await fetcher.scan()
+
+    let record = try String(contentsOf: recordURL)
+    let invocations = Array(record.components(separatedBy: "argv=ref scan").dropFirst())
+    XCTAssertEqual(invocations.count, 3)
+    XCTAssertTrue(invocations[0].contains(" -a "))
+    XCTAssertFalse(invocations[1].contains(" -a "))
+    XCTAssertFalse(invocations[2].contains(" -a "))
   }
 
   func testScanLaneDoesNotCancelItself() async throws {

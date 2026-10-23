@@ -246,6 +246,10 @@ retried. The app only sends explicit offer keys from a matching preview or write
 refusal back to `bob capture`. An older bob never overrides on `=`, so retrying without
 `--refuse-override` is safe.
 
+If Bob rejects `-a` / `--attended` on `ref scan` as an unexpected argument (exit 2),
+the app retries without that flag and remembers the answer for that executable, the
+same way it remembers the capture guard flags.
+
 Template saves send `--template-origin` only after a successful template-list request from that same executable; see [Saved templates](saved-templates.md).
 
 ## Required commands
@@ -261,10 +265,17 @@ These must exist; without them the feature they serve stays hidden or refuses wi
 - `capture-targets` (route list), `capture-templates list` / `save` (template shelf)
 - `ref list -R all -A -f json` (Refs snapshot, schema 1; add `-g` while any row still lacks an `added` date or git instant)
 - `plan -f json` (Refs Today join, schema 2)
-- `ref scan -w -f json` (Refs scan report, schema 1)
+- `ref scan -a -w -f json` (Refs scan report, schema 1; `-a` is omitted after an older bob rejects it)
 - `ref show <note-path> -f json` (inspector hydration)
 - `ref rename` (Rename card)
 - `vault-sync -q` (Refs pull on panel show and before ⌘R)
+
+Every writing `bob ref scan` that acquired the scan writer lock writes that JSON
+envelope to `<state>/bob-cli/ref/last-scan.json` (`XDG_STATE_HOME`, else
+`~/.local/state`) and, on macOS, posts the Darwin notification
+`org.bobs.bob.ref.scan-finished`. Bob Refs observes that name with
+`notify_register_dispatch`, reads the receipt off the main thread (bounded at 4 MB),
+and ignores a duplicate content hash. Launch never reads a receipt.
 
 ## Optional commands
 
@@ -281,6 +292,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `plan_budget`, destination `role`, `plan_themes_after`, `plan_themes_cap`, `code`
 - `ref` with `ref.parent`, `ref_parent`, `project_name_aliases`
 - Refs list fields `blocked`, `task`, `added_at`; snapshot cache key `git_added_at`; copy-card `marker_id`
+- Scan report fields `generated_at`, `summary.held`, `held[]`, `notes[].marker_write` (`mode`, `editor_saved_first`, `status.from`/`to`)
 - `block_id` object, `picker` descriptor, `parent_replacement`, `pomodoro_start_name` context
 - `open_notes`, `homes`, `task_links`, successor-offer payloads
 - `relation_grammar`, relation-label `relation` token metadata and `owner`, `relation_updates`, `linked_from_line_updates`, `minted_relation_block_ids`, `mirror_skipped`, relation-label `count` / `typed`
@@ -309,6 +321,8 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `added_at` | Timed Newest groups and captions | Nil; day-only or undated ranking | Upgrade `bob` for instants |
 | `plan -f json` schema 2 | Today pills from the ledger | Last good Today; footer can say Update failed | Upgrade `bob` for Today |
 | `ref scan -w -f json` schema 1 | Scan report, Just scanned, notifications | Banner or "This bob can't report scans yet" | Upgrade `bob`; retry ⌘S |
+| `ref scan -a` / `--attended` | Attended scan: never hold marker writes because Highlights is in use | Retry without `-a` and remember for that executable | Upgrade `bob` for attended scans |
+| Scan `generated_at`, `summary.held`, `held[]`, `notes[].marker_write` | Open-PDF footer clauses, busy banner, grouped notifications | Decoded empty; scan still lists created notes | Upgrade `bob` for coordinated PDF writes |
 | `ref show` | Hydrated inspector notes, tasks, outline | Basic inspector plus dim "Notes unavailable" | Upgrade `bob` for notes |
 | `ref rename` | Rename card writes through `bob` | Card stays open with `bob`'s refusal | Upgrade `bob` for rename |
 | `vault-sync -q` | Background Refs pull | Pull failure is logged only; list stays | Upgrade `bob` for pull |

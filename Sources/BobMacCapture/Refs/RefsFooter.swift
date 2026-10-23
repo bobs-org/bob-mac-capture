@@ -178,7 +178,7 @@ struct RefsFooter: View {
                 renameStatus: model.renameStatus,
                 isScanning: model.isScanning,
                 refreshFailed: isRefreshFailed,
-                hasScanNotice: model.scanNotice != nil
+                hasScanNotice: hasScanFooter
             ), let renameStatus = model.renameStatus {
                 Text(renameStatus)
                     .foregroundStyle(.secondary)
@@ -186,7 +186,7 @@ struct RefsFooter: View {
                 switch Self.statusPriority(
                     isScanning: model.isScanning,
                     refreshFailed: isRefreshFailed,
-                    hasScanNotice: model.scanNotice != nil,
+                    hasScanNotice: hasScanFooter,
                     refreshing: isRefreshing
                 ) {
                 case .scanning:
@@ -197,6 +197,9 @@ struct RefsFooter: View {
                 case .scan:
                     if let notice = model.scanNotice {
                         scanStatus(notice)
+                    } else if !model.pdfUpdateFooterClauses.isEmpty {
+                        Text(model.pdfUpdateFooterClauses.joined(separator: " · "))
+                            .foregroundStyle(.secondary)
                     }
                 case .updating, .updated:
                     refreshStatus
@@ -210,6 +213,10 @@ struct RefsFooter: View {
             reduceMotion ? nil : .easeInOut(duration: 0.15),
             value: statusKey
         )
+    }
+
+    private var hasScanFooter: Bool {
+        model.scanNotice != nil || !model.pdfUpdateFooterClauses.isEmpty
     }
 
     private var isRefreshFailed: Bool {
@@ -233,15 +240,12 @@ struct RefsFooter: View {
         if case .failed = model.refreshState {
             return "refresh-failed"
         }
-        if model.scanNotice != nil {
+        if hasScanFooter {
             if let notice = model.scanNotice {
-                let text = RefsScanPresentation.footerText(
-                    notice,
-                    searchMode: searchMode
-                )
+                let text = footerScanText(notice)
                 return "scan-\(notice.kind)-\(text)"
             }
-            return "scan"
+            return "scan-\(model.pdfUpdateFooterClauses.joined(separator: "-"))"
         }
         if let renameStatus = model.renameStatus {
             return "rename-\(renameStatus)"
@@ -265,8 +269,16 @@ struct RefsFooter: View {
         return RefsScanPresentation.scanningText(elapsed: date.timeIntervalSince(started))
     }
 
+    private func footerScanText(_ outcome: RefsScanOutcome) -> String {
+        let base = RefsScanPresentation.footerText(outcome, searchMode: searchMode)
+        guard !model.pdfUpdateFooterClauses.isEmpty else {
+            return base
+        }
+        return ([base] + model.pdfUpdateFooterClauses).joined(separator: " · ")
+    }
+
     private func scanStatus(_ outcome: RefsScanOutcome) -> some View {
-        let text = RefsScanPresentation.footerText(outcome, searchMode: searchMode)
+        let text = footerScanText(outcome)
         switch outcome.kind {
         case .succeeded:
             return AnyView(

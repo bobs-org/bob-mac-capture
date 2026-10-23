@@ -72,6 +72,11 @@ if [[ "${FAKE_BOB_REFUSE_OVERRIDE_FLAG_UNSUPPORTED:-}" == "1" && " $* " == *" --
   exit 2
 fi
 
+if [[ "${FAKE_BOB_ATTENDED_FLAG_UNSUPPORTED:-}" == "1" && " $* " == *" -a "* ]]; then
+  printf "error: unexpected argument '-a' found\n\nUsage: bob ref scan [OPTIONS]\n" >&2
+  exit 2
+fi
+
 if [[ "${FAKE_BOB_STALE_PULL_IN:-}" == "1" ]]; then
   printf '%s\n' '{"ok":false,"error":"Successor offer is stale","code":"pull_in_stale"}'
   exit 1

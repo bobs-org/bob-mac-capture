@@ -90,6 +90,15 @@ struct SettingsView: View {
                         settings.refsHighlightsAppPath = ""
                     }
                 }
+                Toggle(
+                    "Tell me when Bob updates an open PDF",
+                    isOn: $settings.refsNotifyOpenPDFUpdates
+                )
+                Text(
+                    "Bob asks Highlights to save your unsaved highlights first; Highlights then reloads the PDF in place."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 LabeledContent(
                     "Highlights tabs",
                     value: AccessibilityTrust.statusText(isTrusted: highlightsTabsAllowed)

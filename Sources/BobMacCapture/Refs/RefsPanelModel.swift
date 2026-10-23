@@ -430,6 +430,10 @@ public final class RefsPanelModel: ObservableObject {
   /// The last scan outcome the footer reads, or nil when no scan has
   /// finished since the last explicit clear or hide-after-seen.
   @Published public private(set) var scanNotice: RefsScanOutcome?
+  /// Footer clauses from the latest scan receipt (open-PDF refreshes
+  /// and reading holds). Independent of `scanNotice` so a cron scan
+  /// can annotate a visible panel that did not run ⌘S.
+  @Published public private(set) var pdfUpdateFooterClauses: [String] = []
   /// The inspector's hydrated content, published per selected id.
   public let inspectorLoader: RefsInspectorLoader
   /// Owns tab snapshots, reader generations, and in-memory recency.
@@ -1061,6 +1065,7 @@ public final class RefsPanelModel: ObservableObject {
       }
       scanNotice = nil
       scanNoticeSeen = false
+      pdfUpdateFooterClauses = []
       selectionAtScanStart = selectedID
       _ = library.scan()
       return true
@@ -1688,6 +1693,49 @@ public final class RefsPanelModel: ObservableObject {
     case .scanAgain:
       _ = perform(.scan)
     }
+  }
+
+  /// Selects `path` when that reference is in the current listing.
+  /// Used by open-PDF update notifications. A missing catalog row is a
+  /// no-op.
+  public func selectCatalogNoteIfPresent(_ path: String) {
+    _ = perform(.select(id: path))
+  }
+
+  /// Installs footer clauses and the Highlights-needs-you banner from a
+  /// scan receipt. Off-setting notifications never reach here; the
+  /// banner and clauses stay.
+  public func applyPDFUpdateSurface(_ surface: RefsPDFUpdateSurface) {
+    pdfUpdateFooterClauses = surface.footerClauses
+    if let info = surface.banner {
+      let next = Self.pdfBusyBanner(from: info)
+      if panelIsVisible() {
+        banner = next
+      } else {
+        pendingScanBanner = next
+      }
+    } else {
+      if let current = banner, Self.isPDFBusyBanner(current) {
+        banner = nil
+      }
+      if let pending = pendingScanBanner, Self.isPDFBusyBanner(pending) {
+        pendingScanBanner = nil
+      }
+    }
+  }
+
+  static func pdfBusyBanner(from info: RefsPDFUpdateBanner) -> RefsBanner {
+    RefsBanner(
+      kind: .warning,
+      message: "\(info.title)\n\(info.message)",
+      actions: [.scanAgain]
+    )
+  }
+
+  static func isPDFBusyBanner(_ banner: RefsBanner) -> Bool {
+    banner.kind == .warning
+      && banner.actions == [.scanAgain]
+      && banner.message.hasPrefix("Highlights needs you")
   }
 
   /// Installs canned state for design tests and previews, skipping
@@ -2831,18 +2879,22 @@ public final class RefsPanelModel: ObservableObject {
       case .succeeded:
         break
       case .partial:
-        banner = RefsBanner(
-          kind: .warning,
-          message: RefsScanPresentation.bannerMessage(outcome) ?? "",
-          actions: [.copyDiagnostic]
-        )
+        if banner.map(Self.isPDFBusyBanner) != true {
+          banner = RefsBanner(
+            kind: .warning,
+            message: RefsScanPresentation.bannerMessage(outcome) ?? "",
+            actions: [.copyDiagnostic]
+          )
+        }
         lastDiagnostic = outcome.diagnostic
       case .failed:
-        banner = RefsBanner(
-          kind: .error,
-          message: RefsScanPresentation.bannerMessage(outcome) ?? "",
-          actions: [.scanAgain, .copyDiagnostic]
-        )
+        if banner.map(Self.isPDFBusyBanner) != true {
+          banner = RefsBanner(
+            kind: .error,
+            message: RefsScanPresentation.bannerMessage(outcome) ?? "",
+            actions: [.scanAgain, .copyDiagnostic]
+          )
+        }
         lastDiagnostic = outcome.diagnostic
       }
       AccessibilityNotification.Announcement(
@@ -2852,20 +2904,26 @@ public final class RefsPanelModel: ObservableObject {
     } else {
       switch outcome.kind {
       case .succeeded:
-        pendingScanBanner = nil
+        if pendingScanBanner.map(Self.isPDFBusyBanner) != true {
+          pendingScanBanner = nil
+        }
       case .partial:
-        pendingScanBanner = RefsBanner(
-          kind: .warning,
-          message: RefsScanPresentation.bannerMessage(outcome) ?? "",
-          actions: [.copyDiagnostic]
-        )
+        if pendingScanBanner.map(Self.isPDFBusyBanner) != true {
+          pendingScanBanner = RefsBanner(
+            kind: .warning,
+            message: RefsScanPresentation.bannerMessage(outcome) ?? "",
+            actions: [.copyDiagnostic]
+          )
+        }
         lastDiagnostic = outcome.diagnostic
       case .failed:
-        pendingScanBanner = RefsBanner(
-          kind: .error,
-          message: RefsScanPresentation.bannerMessage(outcome) ?? "",
-          actions: [.scanAgain, .copyDiagnostic]
-        )
+        if pendingScanBanner.map(Self.isPDFBusyBanner) != true {
+          pendingScanBanner = RefsBanner(
+            kind: .error,
+            message: RefsScanPresentation.bannerMessage(outcome) ?? "",
+            actions: [.scanAgain, .copyDiagnostic]
+          )
+        }
         lastDiagnostic = outcome.diagnostic
       }
       if outcome.kind != .succeeded || !outcome.created.isEmpty {

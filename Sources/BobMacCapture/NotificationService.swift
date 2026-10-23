@@ -43,7 +43,9 @@ final class NotificationService: NSObject, ObservableObject {
     nonisolated static let installRestartCategoryIdentifier = "org.bobs.bob-mac-capture.install-restart"
     nonisolated static let refsScanCategoryIdentifier = "org.bobs.bob-mac-capture.refs-scan"
     nonisolated static let refsScanShowActionIdentifier = "org.bobs.bob-mac-capture.refs-scan.show"
+    nonisolated static let refsPDFUpdatesThreadIdentifier = "org.bobs.bob-mac-capture.refs-pdf-updates"
     nonisolated static let targetPathKey = "targetPath"
+    nonisolated static let notePathKey = "notePath"
     nonisolated static let targetPathsKey = "targetPaths"
     nonisolated static let openPlanKey = "openPlan"
     nonisolated static let openErrorKey = "openError"
@@ -56,13 +58,13 @@ final class NotificationService: NSObject, ObservableObject {
     private let center: UNUserNotificationCenter
     private let opener: (URL) -> Void
     private let showCapture: () -> Void
-    private let showRefs: () -> Void
+    private let showRefs: (String?) -> Void
 
     init(
         center: UNUserNotificationCenter = .current(),
         opener: @escaping (URL) -> Void = { NSWorkspace.shared.open($0) },
         showCapture: @escaping () -> Void = {},
-        showRefs: @escaping () -> Void = {}
+        showRefs: @escaping (String?) -> Void = { _ in }
     ) {
         self.center = center
         self.opener = opener
@@ -142,6 +144,16 @@ final class NotificationService: NSObject, ObservableObject {
         }
         Task {
             try? await add(content)
+        }
+    }
+
+    /// Posts grouped, passive open-PDF update notices. Permission denial
+    /// stays silent like every other notify path.
+    func notifyRefsPDFUpdates(_ notices: [RefsPDFUpdateNotification]) {
+        for notice in notices {
+            Task {
+                try? await add(Self.refsPDFUpdateContent(notice))
+            }
         }
     }
 
@@ -385,6 +397,25 @@ final class NotificationService: NSObject, ObservableObject {
         return content
     }
 
+    nonisolated static func refsPDFUpdateContent(
+        _ notice: RefsPDFUpdateNotification
+    ) -> UNMutableNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.title = notice.title
+        if let subtitle = notice.subtitle {
+            content.subtitle = subtitle
+        }
+        content.body = notice.body
+        content.sound = nil
+        content.interruptionLevel = .passive
+        content.threadIdentifier = refsPDFUpdatesThreadIdentifier
+        content.categoryIdentifier = refsScanCategoryIdentifier
+        if !notice.notePath.isEmpty {
+            content.userInfo = [notePathKey: notice.notePath]
+        }
+        return content
+    }
+
     nonisolated static func refsRenameContent(stem: String) -> UNMutableNotificationContent {
         let text = RefsRenamePresentation.notification(stem: stem)
         let content = UNMutableNotificationContent()
@@ -466,6 +497,9 @@ final class NotificationService: NSObject, ObservableObject {
             else {
                 return .none
             }
+            if let notePath = userInfo[notePathKey] as? String, !notePath.isEmpty {
+                return .showRefsSelecting(notePath: notePath)
+            }
             return .showRefs
         }
         if categoryIdentifier == installRestartCategoryIdentifier {
@@ -488,7 +522,7 @@ final class NotificationService: NSObject, ObservableObject {
         _ route: NotificationRoute,
         opener: (URL) -> Void,
         showCapture: () -> Void,
-        showRefs: () -> Void = {}
+        showRefs: (String?) -> Void = { _ in }
     ) {
         switch route {
         case .none:
@@ -496,7 +530,9 @@ final class NotificationService: NSObject, ObservableObject {
         case .showCapture:
             showCapture()
         case .showRefs:
-            showRefs()
+            showRefs(nil)
+        case .showRefsSelecting(let notePath):
+            showRefs(notePath)
         case .openURLs(let urls):
             for url in urls {
                 opener(url)
@@ -904,6 +940,7 @@ enum NotificationRoute: Equatable {
     case none
     case showCapture
     case showRefs
+    case showRefsSelecting(notePath: String)
     case openURLs([URL])
 }
 

@@ -2505,6 +2505,66 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertNil(harness.model.scanNotice)
   }
 
+  func testPDFUpdateSurfaceSetsFooterClausesAndBusyBanner() async throws {
+    let harness = try makeHarness()
+    await harness.waitForSnapshot()
+    harness.model.prepareForPresentation()
+    harness.model.panelIsVisible = { true }
+
+    let busy = RefsScanHold(
+      pdf: "lib/busy.pdf",
+      note: "ref/papers/busy.md",
+      title: "Deep Work",
+      reason: "coordination_timeout",
+      message: "busy"
+    )
+    let saved = RefsScanNote(
+      action: "update",
+      path: "ref/papers/a.md",
+      title: "A",
+      sourcePDF: "lib/a.pdf",
+      markerWrite: RefsScanMarkerWrite(mode: "coordinated", editorSavedFirst: true)
+    )
+    let updates = RefsPDFUpdates(
+      response: RefsScanResponse(notes: [saved], held: [busy])
+    )
+    let surface = RefsPDFUpdatePresentation.surface(
+      for: updates,
+      panelVisible: true,
+      notificationsEnabled: true,
+      previouslyNotifiedBusyKeys: []
+    )
+    harness.model.applyPDFUpdateSurface(surface)
+
+    XCTAssertEqual(
+      harness.model.pdfUpdateFooterClauses,
+      ["1 PDF refreshed in Highlights"]
+    )
+    XCTAssertEqual(harness.model.banner?.kind, .warning)
+    XCTAssertEqual(harness.model.banner?.actions, [.scanAgain])
+    XCTAssertTrue(
+      harness.model.banner?.message.hasPrefix("Highlights needs you") == true
+    )
+
+    XCTAssertTrue(harness.model.performBannerAction(.scanAgain))
+    XCTAssertTrue(harness.model.isScanning)
+    XCTAssertTrue(harness.model.pdfUpdateFooterClauses.isEmpty)
+    await harness.waitForScan()
+  }
+
+  func testSelectCatalogNoteIfPresentSelectsAListedRow() async throws {
+    let harness = try makeHarness()
+    await harness.waitForSnapshot()
+    harness.model.prepareForPresentation()
+    let path = try XCTUnwrap(harness.model.listing.orderedIDs.dropFirst().first)
+
+    harness.model.selectCatalogNoteIfPresent(path)
+    XCTAssertEqual(harness.model.selectedID, path)
+
+    harness.model.selectCatalogNoteIfPresent("ref/missing.md")
+    XCTAssertEqual(harness.model.selectedID, path)
+  }
+
   func testPartialAndFailedBanners() async throws {
     let partialURL = try harnessFixtureURL("refs-scan-partial.json").path
     let partial = try makeHarness(environment: [

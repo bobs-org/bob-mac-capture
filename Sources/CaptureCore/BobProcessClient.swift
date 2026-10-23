@@ -83,6 +83,13 @@ public final class BobProcessClient: @unchecked Sendable {
     guardFlagKnownUnsupported("--refuse-override")
   }
 
+  /// Whether this executable has already rejected `ref scan -a`. The
+  /// answer is scoped to the current Bob file identity, so replacing Bob
+  /// retries the flag once.
+  public var attendedFlagKnownUnsupported: Bool {
+    guardFlagKnownUnsupported("-a")
+  }
+
   /// Whether this executable has already rejected `capture-related`. The
   /// answer is scoped to the current Bob file identity, so replacing Bob
   /// retries the capability once.
@@ -557,14 +564,31 @@ public final class BobProcessClient: @unchecked Sendable {
     }
   }
 
-  private static func unsupportedGuardFlag(exitStatus: Int32, stderr: String) -> String? {
+  private static func unsupportedGuardFlag(
+    exitStatus: Int32,
+    stderr: String,
+    arguments: [String] = []
+  ) -> String? {
     guard exitStatus == 2 else { return nil }
     let normalized = stderr.lowercased()
-    for flag in ["--require-pull-in-choice", "--refuse-override"] {
-      if normalized.contains("unexpected argument '\(flag)'")
+    for flag in ["--require-pull-in-choice", "--refuse-override", "-a", "--attended"] {
+      let mentioned =
+        normalized.contains("unexpected argument '\(flag)'")
         || normalized.contains("unexpected argument \"\(flag)\"")
-      {
+      guard mentioned else {
+        continue
+      }
+      if arguments.isEmpty {
         return flag
+      }
+      if arguments.contains(flag) {
+        return flag
+      }
+      if flag == "--attended", arguments.contains("-a") {
+        return "-a"
+      }
+      if flag == "-a", arguments.contains("--attended") {
+        return "--attended"
       }
     }
     return nil
@@ -867,7 +891,8 @@ public final class BobProcessClient: @unchecked Sendable {
     environmentOverrides: [String: String] = [:],
     lane: String = "default",
     cancelsPreviousInLane: Bool = true,
-    timeout: TimeInterval = BobProcessClient.defaultTimeout
+    timeout: TimeInterval = BobProcessClient.defaultTimeout,
+    allowsGuardFallback: Bool = false
   ) async throws -> T {
     let result = try await run(
       arguments: arguments,
@@ -878,6 +903,26 @@ public final class BobProcessClient: @unchecked Sendable {
     )
     let stderr = boundedProcessText(result.stderr)
     let trimmedStdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    if allowsGuardFallback,
+      trimmedStdout.isEmpty,
+      let unsupportedFlag = Self.unsupportedGuardFlag(
+        exitStatus: result.exitStatus, stderr: stderr, arguments: arguments),
+      let flagIndex = arguments.firstIndex(of: unsupportedFlag)
+    {
+      rememberGuardFlagUnsupported(unsupportedFlag)
+      var retryArguments = arguments
+      retryArguments.remove(at: flagIndex)
+      return try await decodeReport(
+        arguments: retryArguments,
+        expectedSchema: expectedSchema,
+        environmentOverrides: environmentOverrides,
+        lane: lane,
+        cancelsPreviousInLane: cancelsPreviousInLane,
+        timeout: timeout,
+        allowsGuardFallback: true
+      )
+    }
 
     do {
       let value = try decoder.decode(T.self, from: Data(trimmedStdout.utf8))
@@ -940,7 +985,7 @@ public final class BobProcessClient: @unchecked Sendable {
     if allowsGuardFallback,
       trimmedStdout.isEmpty,
       let unsupportedFlag = Self.unsupportedGuardFlag(
-        exitStatus: result.exitStatus, stderr: stderr),
+        exitStatus: result.exitStatus, stderr: stderr, arguments: arguments),
       let flagIndex = arguments.firstIndex(of: unsupportedFlag)
     {
       rememberGuardFlagUnsupported(unsupportedFlag)

@@ -20,8 +20,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     showCapture: { [weak self] in
       self?.showCapturePanel()
     },
-    showRefs: { [weak self] in
+    showRefs: { [weak self] notePath in
       self?.panelCoordinator?.showRefs(source: .scanResults)
+      if let notePath {
+        self?.refsPanelModel?.selectCatalogNoteIfPresent(notePath)
+      }
     }
   )
 
@@ -49,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var panelCoordinator: BobPanelCoordinator?
   var highlightsTakeover: HighlightsTakeover?
   private var refsCancellables: Set<AnyCancellable> = []
+  private var scanReceiptObserver: RefsScanReceiptObserver?
 
   func applicationWillFinishLaunching(_ notification: Notification) {
     // No nib supplies a main menu under the explicit `BobMacCaptureMain` entry point,
@@ -193,6 +197,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // quit, crash, logout SIGKILL, or a just install that replaces the bundle.
     hotKeyRegistry?.invalidate()
     highlightsTakeover?.stop()
+    scanReceiptObserver?.stop()
     refsLibrary?.stop()
     vaultWatcher?.invalidate()
     processClient?.cancelActiveProcess()
@@ -648,6 +653,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     observeRefsSettings()
     registerRefsHotKey()
+    startScanReceiptObserver(tabsSession: tabsSession)
+  }
+
+  /// Observes bob's Darwin scan-finished ping. Receipt reads stay off
+  /// the main thread; the observer never prompts for Accessibility.
+  private func startScanReceiptObserver(tabsSession: HighlightsTabsSession) {
+    let observer = RefsScanReceiptObserver()
+    observer.isPanelVisible = { [weak self] in
+      self?.refsPanelController?.isVisible == true
+    }
+    observer.notificationsEnabled = { [weak self] in
+      self?.settings.refsNotifyOpenPDFUpdates == true
+    }
+    observer.isAccessibilityTrusted = {
+      tabsSession.reader.isTrusted()
+    }
+    observer.openTabFileNames = {
+      guard let result = await tabsSession.refresh() else {
+        return nil
+      }
+      guard case .snapshot(let snapshot) = result else {
+        return nil
+      }
+      return RefsPDFUpdates.tabFileNames(from: snapshot)
+    }
+    observer.onSurface = { [weak self] _, surface in
+      self?.refsPanelModel?.applyPDFUpdateSurface(surface)
+      if !surface.notifications.isEmpty {
+        self?.notificationService.notifyRefsPDFUpdates(surface.notifications)
+      }
+    }
+    scanReceiptObserver = observer
+    observer.start()
   }
 
   /// Re-registers the Refs hotkeys live when the References settings

@@ -178,6 +178,7 @@ final class CapturePullInClientTests: XCTestCase {
         }
         XCTAssertFalse(client.pullInGuardKnownUnsupported)
         XCTAssertFalse(client.refuseOverrideKnownUnsupported)
+        XCTAssertFalse(client.attendedFlagKnownUnsupported)
         XCTAssertEqual(lookups, 0)
     }
 

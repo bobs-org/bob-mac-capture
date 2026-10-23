@@ -4203,6 +4203,25 @@ final class BobMacCaptureTests: XCTestCase {
     }
 
     @MainActor
+    func testOpenPDFUpdateNotificationsDefaultOnAndPersist() {
+        let suiteName = "org.bobs.bob-mac-capture.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertTrue(settings.refsNotifyOpenPDFUpdates)
+
+        settings.refsNotifyOpenPDFUpdates = false
+        XCTAssertFalse(defaults.bool(forKey: "refsNotifyOpenPDFUpdates"))
+        XCTAssertFalse(AppSettings(defaults: defaults).refsNotifyOpenPDFUpdates)
+
+        settings.refsNotifyOpenPDFUpdates = true
+        XCTAssertTrue(defaults.bool(forKey: "refsNotifyOpenPDFUpdates"))
+        XCTAssertTrue(AppSettings(defaults: defaults).refsNotifyOpenPDFUpdates)
+    }
+
+    @MainActor
     func testStashCapacityPropagationTrimsImmediatelyAndPayloadsStayOutOfDefaultsAndDiagnostics() {
         let suiteName = "org.bobs.bob-mac-capture.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

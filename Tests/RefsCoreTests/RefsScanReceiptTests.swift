@@ -4,6 +4,13 @@ import XCTest
 @testable import RefsCore
 
 final class RefsScanReceiptTests: XCTestCase {
+  func testDarwinNotificationNameMatchesBob() {
+    XCTAssertEqual(
+      RefsScanReceiptReader.darwinNotificationName,
+      "org.bobs.bob.ref.scan-finished"
+    )
+  }
+
   func testReceiptPathUsesXDGStateHomeOrHomeFallback() {
     XCTAssertEqual(
       RefsScanReceiptReader.receiptURL(

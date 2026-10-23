@@ -14,6 +14,34 @@ public struct RefsPDFUpdates: Equatable, Sendable {
     Set(busyHolds.map(RefsPDFUpdatePresentation.busyHoldDedupeKey(for:)))
   }
 
+  /// True when a coordinated write did not already prove the PDF was
+  /// open (`editor_saved_first`). The app then consults Highlights tabs,
+  /// and only if Accessibility is already trusted.
+  public static func needsOpenTabCheck(_ response: RefsScanResponse) -> Bool {
+    response.notes.contains { note in
+      guard let write = note.markerWrite else {
+        return false
+      }
+      return write.mode == "coordinated" && !write.editorSavedFirst
+    }
+  }
+
+  /// Tab titles as Highlights exposes them, plus each title's last path
+  /// component so a basename still matches `source_pdf`.
+  public static func tabFileNames(from snapshot: HighlightsTabsSnapshot) -> Set<String> {
+    var names = Set<String>()
+    for window in snapshot.windows {
+      for tab in window.tabs {
+        names.insert(tab.fileName)
+        let base = URL(fileURLWithPath: tab.fileName).lastPathComponent
+        if !base.isEmpty {
+          names.insert(base)
+        }
+      }
+    }
+    return names
+  }
+
   public init(response: RefsScanResponse, openTabFileNames: Set<String>? = nil) {
     var open: [RefsScanNote] = []
     var quiet: [RefsScanNote] = []
@@ -95,6 +123,28 @@ public struct RefsPDFUpdateBanner: Equatable, Sendable {
   }
 }
 
+/// What the app should show for one classified scan: footer clauses
+/// always, a busy banner when Highlights did not answer, and hidden-panel
+/// notifications only when they are enabled.
+public struct RefsPDFUpdateSurface: Equatable, Sendable {
+  public let footerClauses: [String]
+  public let banner: RefsPDFUpdateBanner?
+  public let notifications: [RefsPDFUpdateNotification]
+  public let nextNotifiedBusyKeys: Set<String>
+
+  public init(
+    footerClauses: [String],
+    banner: RefsPDFUpdateBanner?,
+    notifications: [RefsPDFUpdateNotification],
+    nextNotifiedBusyKeys: Set<String>
+  ) {
+    self.footerClauses = footerClauses
+    self.banner = banner
+    self.notifications = notifications
+    self.nextNotifiedBusyKeys = nextNotifiedBusyKeys
+  }
+}
+
 /// Exact copy for grouped open-PDF notifications, footer clauses, and the
 /// coordination-timeout banner. State labels come from the Refs vocabulary.
 public enum RefsPDFUpdatePresentation {
@@ -162,6 +212,34 @@ public enum RefsPDFUpdatePresentation {
 
   public static func busyHoldDedupeKey(for hold: RefsScanHold) -> String {
     "busy:\(hold.pdf)"
+  }
+
+  /// Hidden-panel notifications are suppressed when the panel is visible
+  /// or the setting is off; footer clauses and the busy banner stay.
+  /// Busy-hold notifications fire once per PDF until that PDF leaves
+  /// `coordination_timeout`.
+  public static func surface(
+    for updates: RefsPDFUpdates,
+    panelVisible: Bool,
+    notificationsEnabled: Bool,
+    previouslyNotifiedBusyKeys: Set<String>
+  ) -> RefsPDFUpdateSurface {
+    let currentBusy = updates.busyHoldDedupeKeys
+    var notices: [RefsPDFUpdateNotification] = []
+    if !panelVisible, notificationsEnabled {
+      notices = notifications(for: updates).filter { notice in
+        guard let key = notice.dedupeKey else {
+          return true
+        }
+        return !previouslyNotifiedBusyKeys.contains(key)
+      }
+    }
+    return RefsPDFUpdateSurface(
+      footerClauses: footerClauses(for: updates),
+      banner: busyBanner(for: updates),
+      notifications: notices,
+      nextNotifiedBusyKeys: currentBusy
+    )
   }
 
   private static func refreshNotification(for note: RefsScanNote) -> RefsPDFUpdateNotification {

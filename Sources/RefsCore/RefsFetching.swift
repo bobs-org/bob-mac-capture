@@ -86,12 +86,18 @@ public final class BobRefsFetcher: RefsFetching, @unchecked Sendable {
   }
 
   public func scan() async throws -> RefsScanResponse {
-    try await client.decodeReport(
-      arguments: ["ref", "scan", "-w", "-f", "json"],
+    var arguments = ["ref", "scan", "-w", "-f", "json"]
+    let sendAttended = !client.attendedFlagKnownUnsupported
+    if sendAttended {
+      arguments = ["ref", "scan", "-a", "-w", "-f", "json"]
+    }
+    return try await client.decodeReport(
+      arguments: arguments,
       expectedSchema: 1,
       lane: "refs-scan",
       cancelsPreviousInLane: false,
-      timeout: Self.scanTimeout
+      timeout: Self.scanTimeout,
+      allowsGuardFallback: sendAttended
     )
   }
 

@@ -20,6 +20,10 @@ public enum RefsScanReceiptError: Error, Equatable, Sendable {
 public struct RefsScanReceiptReader: Sendable {
   public static let maximumBytes = 4 * 1024 * 1024
 
+  /// Darwin notification posted after a writing `bob ref scan` rewrites
+  /// the receipt. The Mac app observes this name and never polls.
+  public static let darwinNotificationName = "org.bobs.bob.ref.scan-finished"
+
   public init() {}
 
   /// Resolves the same state root as bob: `XDG_STATE_HOME`, otherwise

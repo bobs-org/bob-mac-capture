@@ -35,10 +35,11 @@ One Carbon handler (`HotKeyRegistry`, signature `'BOBC'`) owns capture (id 1), R
 | In Highlights, open Bob Refs with | Command-O | `Off`, `Command-O`, or `Control-O`. Registers only while Highlights or the override app is frontmost. Highlights' File › Open… keeps its own dialog. |
 | In Highlights, show open tabs with | Command-T | `Command-T`, `Shift-Command-O`, `Command-E`, or `Off`. Registers only for Highlights or the override app. Command-T steps aside while Bob Refs is visible so its in-panel Tabs toggle works. |
 | Highlights app | resolved name, version, and path, or `Not found` | Choose… is limited to `.app`. Use Default clears the override path. |
+| Tell me when Bob updates an open PDF | on | Off suppresses notifications only; footer clauses stay. Caption: "Bob asks Highlights to save your unsaved highlights first; Highlights then reloads the PDF in place." |
 | Highlights tabs | `Allowed` / `Not allowed` | Live Accessibility grant for reading Highlights tabs. Never prompts from Settings. Ad-hoc builds caption: "Grants reset when an ad-hoc build is reinstalled." |
 | Reset Open History… | — | Confirmed. Clears recently-opened rows and frecency. Disabled when no reset handler is installed. |
 
-Toggling these controls re-registers the Refs bindings immediately. Opening, Tabs, and inspector paging are in [Bob Refs](refs.md) and [Bob Refs inspector](refs-inspector.md).
+Toggling these controls re-registers the Refs bindings immediately. Opening, Tabs, inspector paging, and open-PDF update notices are in [Bob Refs](refs.md) and [Bob Refs inspector](refs-inspector.md).
 
 ## Agenda
 
@@ -91,7 +92,7 @@ The app cannot grant Login Items approval for itself. Recovery is in [Permission
 | Open System Notification Settings | Opens the system notifications pane. |
 | Send Test Notification | Writes `Test notification sent` or `Test notification failed: …`. |
 
-Capture correctness never depends on notifications. Delivery and authorization persistence require the installed signed bundle; Settings › Diagnostics shows the signing state. Notification copy, the install-complete banner, and the open action are in [Notifications](#notification-copy). Authorization storage is in [Permissions](permissions.md#notifications).
+Capture correctness never depends on notifications. Delivery and authorization persistence require the installed signed bundle; Settings › Diagnostics shows the signing state. Notification copy, the install-complete banner, and the open action are in [Notifications](#notification-copy). Open-PDF update notices are in [Bob Refs](refs.md#open-pdfs-in-highlights). Authorization storage is in [Permissions](permissions.md#notifications).
 
 ### Notification copy
 

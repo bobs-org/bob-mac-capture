@@ -18,9 +18,11 @@ Return opens the original PDF in Highlights and changes nothing in the vault —
 opening never mutates reading state, task lanes, or review state. The panel is
 a thin client of `bob`: it filters, ranks, sections, and presents what `bob`
 returns, never parses frontmatter or note bodies, and never writes the vault
-itself. Pressing ⌘S asks `bob` to run its own writer — the same
-`bob ref scan -w` the 15-minute cron runs — and then presents the versioned
-JSON report `bob` returns.
+itself. Pressing ⌘S asks `bob` to run its own writer —
+`bob ref scan -a -w` — and then presents the versioned JSON report
+`bob` returns. The 15-minute cron runs the same writer without `-a`.
+An older `bob` that rejects `-a` is retried without it and remembered
+for that executable.
 
 ### Data
 
@@ -44,11 +46,18 @@ JSON report `bob` returns.
   `(task.path, task.block_id)`, so two references whose tasks share one
   parent note no longer both light up when only one is linked; rows
   without a task fall back to the note-path join.
-- Scan: `bob ref scan -w -f json` (schema version 1) names every created and
-  updated note, the intake moves, and per-PDF failures or a coded hard
-  failure. The app decodes every field except `schema_version` loosely,
-  ignores unknown fields, and rejects any other schema version like any
-  other scan failure.
+- Scan: `bob ref scan -a -w -f json` (schema version 1) names every created
+  and updated note, the intake moves, held PDFs, and per-PDF failures or a
+  coded hard failure. Additive fields (`generated_at`, `summary.held`,
+  `held[]`, `notes[].marker_write`) decode as empty on an older `bob`. The
+  app decodes every field except `schema_version` loosely, ignores unknown
+  fields, and rejects any other schema version like any other scan
+  failure. After a writing scan, `bob` rewrites
+  `<state>/bob-cli/ref/last-scan.json` (`XDG_STATE_HOME`, else
+  `~/.local/state`) and, on macOS, posts the Darwin notification
+  `org.bobs.bob.ref.scan-finished`. Bob Refs observes that ping, reads the
+  receipt off the main thread (bounded at 4 MB), and ignores a duplicate
+  content hash. Launch never reads a receipt.
 - The snapshot (including the git-added dates and their instants) and the
   last Today value persist
   in `refs-snapshot.json` under `~/Library/Application Support/`
@@ -271,7 +280,9 @@ stroke), and the 30 pt footer (key hints including "⌘S Scan", plus the library
 status: "Scanning library…" with a spinner while a scan runs, "Update
 failed · ⌘R to retry" when a refresh failed, the scan outcome — "Added
 N references", "No new references", or "Scan failed · ⌘S to retry" —
-"Updating…", or "Updated …"). The list column takes
+optionally followed by open-PDF clauses such as "1 PDF refreshed in
+Highlights" or "1 PDF waiting while you read", "Updating…", or
+"Updated …"). The list column takes
 `min(round(width × 0.52), 560)` of the panel width (560 pt at
 reading-room widths, 458 pt at the compact 880 pt reference) and the
 inspector shows at
@@ -319,9 +330,13 @@ the Just scanned section first with its first row selected, and
 announces the outcome to VoiceOver; a scan that finishes while the
 panel is hidden posts a macOS notification instead ("Added N
 references", or the failure), and clicking it shows Bob Refs with the
-section on top. Problem scans raise a banner: a warning with Copy
-Diagnostic for per-PDF failures, an error with Scan Again and Copy
-Diagnostic for hard failures.
+section on top. A writing scan that refreshed an open PDF, or that
+could not because Highlights did not answer, also notifies or updates
+the footer as in [Open PDFs in Highlights](#open-pdfs-in-highlights).
+Problem scans raise a banner: a warning with Copy Diagnostic for
+per-PDF failures, an error with Scan Again and Copy Diagnostic for
+hard failures, and a warning with Scan Again when Highlights needs
+you.
 
 | Key | Bob Refs panel |
 | --- | -------------- |
@@ -340,7 +355,7 @@ Diagnostic for hard failures.
 | Command-0 | Toggle Newest: every reference by date added, newest first, grouped by day then month; typing still filters |
 | Command-1 … Command-5 | Scope All, Chats, Papers, Articles, Docs |
 | Command-R | Refresh library, Today, and git dates now; re-rank |
-| Command-S | Scan for new references now (`bob ref scan -w` in the background); a second ⌘S while one runs does nothing |
+| Command-S | Scan for new references now (`bob ref scan -a -w` in the background; an older `bob` is retried without `-a`); a second ⌘S while one runs does nothing |
 | Command-K | Actions menu for the selected row |
 | Command-Y | Open the Copy card for the selected row |
 | Command-N | Open the Link to Today card for the selected reference |
@@ -364,6 +379,34 @@ Shift-Command-T reopens the most recently closed tab, or does nothing
 when none remain; it also passes through while IME-composing.
 Printable keys fall through to the search field. Result counts are
 announced 600 ms after typing stops, never on every keystroke.
+
+### Open PDFs in Highlights
+
+A writing scan that updates a PDF open in Highlights — `editor_saved_first`
+is true, or the PDF's file name equals an open Highlights tab's
+`fileName` — tells Bob Refs. The tab check uses the existing read-only
+Highlights tab reader, only when a coordinated write did not already
+save-first and Accessibility is already trusted. It never prompts.
+
+| Event | Bob Refs visible | Bob Refs hidden |
+| --- | --- | --- |
+| Open PDF refreshed | Footer clause `1 PDF refreshed in Highlights` | Notification "Updated in Highlights" |
+| `coordination_timeout` hold | Warning banner "Highlights needs you" with **Scan Again** | Notification "Highlights needs you", at most once per PDF until it stops being held |
+| `editor_active` / `marker_changed` hold, or a refresh of a PDF that is not open | Footer clause `1 PDF waiting while you read` (holds only) | Nothing |
+
+Open-PDF notifications are passive, silent, and grouped
+(`threadIdentifier` `org.bobs.bob-mac-capture.refs-pdf-updates`) on the
+existing `refs-scan` category ("Show in Bob Refs"). One refresh is titled
+`Updated in Highlights`, with the display title as subtitle and a body
+such as `Ready → Next · your unsaved highlights were saved first` (the
+saved-first clause drops when Highlights did not save first; with no
+status change the body is `Page-1 note updated`). Several refreshes are
+titled `Updated 2 PDFs in Highlights` with the titles joined by ` · `.
+A busy hold is titled `Highlights needs you`, with the display title as
+subtitle and body `Highlights didn't answer — a dialog may be open. Bob will update this PDF once it's free.`
+Clicking one opens Bob Refs and selects that reference when it is in
+the catalog. Settings › References "Tell me when Bob updates an open
+PDF" (on by default) suppresses notifications only; footer clauses stay.
 
 ### Copy card
 
@@ -460,7 +503,9 @@ progress finishes if the panel hides.
   A Tabs show defers a new-reference reset to the next ordinary show.
   Ctrl-C resets the view to fresh-launch defaults.
 - Clicking a scan notification opens the default view with Just scanned
-  at the top and its first row selected.
+  at the top and its first row selected. Clicking an open-PDF update
+  notification opens Bob Refs and selects that reference when it is in
+  the catalog.
 - The menu-bar item offers Bob Refs… directly below Capture, with the
   same shortcut shown for display.
 - Only one Bob panel is ever visible: opening Refs while Capture is
@@ -476,7 +521,9 @@ progress finishes if the panel hides.
   and Use Default, plus Reset Open History… behind a confirmation
   dialog. It also sets Preview highlights per page (1–20, default 5) for
   the inspector, or
-  `defaults write org.bobs.bob-mac-capture refsInspectorNotesPageSize -int 5`.
+  `defaults write org.bobs.bob-mac-capture refsInspectorNotesPageSize -int 5`,
+  and the "Tell me when Bob updates an open PDF" toggle (on by default;
+  off suppresses notifications only).
 - Diagnostics: a failed global or takeover registration reports
   "Refs hotkey conflict: …"; free the shortcut and use Recheck Bob.
   Toggling the References settings re-registers immediately.
