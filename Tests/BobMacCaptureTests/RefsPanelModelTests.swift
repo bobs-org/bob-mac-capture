@@ -2546,7 +2546,7 @@ final class RefsPanelModelTests: XCTestCase {
       harness.model.banner?.message.hasPrefix("Highlights needs you") == true
     )
 
-    XCTAssertTrue(harness.model.performBannerAction(.scanAgain))
+    harness.model.performBannerAction(.scanAgain)
     XCTAssertTrue(harness.model.isScanning)
     XCTAssertTrue(harness.model.pdfUpdateFooterClauses.isEmpty)
     await harness.waitForScan()

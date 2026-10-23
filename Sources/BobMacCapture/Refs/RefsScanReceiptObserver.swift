@@ -1,6 +1,7 @@
 import Darwin
 import Dispatch
 import Foundation
+import notify
 import RefsCore
 
 /// Observes bob's Darwin `scan-finished` ping, reads the receipt off the
@@ -26,7 +27,8 @@ final class RefsScanReceiptObserver {
 
     init(
         reader: RefsScanReceiptReader = RefsScanReceiptReader(),
-        register: @escaping (@escaping @Sendable () -> Void) -> Int32? = Self.registerLive,
+        register: @escaping (@escaping @Sendable () -> Void) -> Int32? =
+            RefsScanReceiptObserver.registerLive,
         cancel: @escaping (Int32) -> Void = { token in _ = notify_cancel(token) }
     ) {
         self.reader = reader
@@ -96,7 +98,9 @@ final class RefsScanReceiptObserver {
         onSurface(updates, surface)
     }
 
-    private static func registerLive(_ handler: @escaping @Sendable () -> Void) -> Int32? {
+    nonisolated private static func registerLive(
+        _ handler: @escaping @Sendable () -> Void
+    ) -> Int32? {
         var token: Int32 = 0
         let status = notify_register_dispatch(
             RefsScanReceiptReader.darwinNotificationName,
