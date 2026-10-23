@@ -20,7 +20,7 @@ public enum RefsPresentationSource: Equatable, Sendable {
   /// Show the ordinary reference library.
   case library
   /// Show the current Highlights tabs from fresh-launch defaults, as
-  /// after Ctrl-Z.
+  /// after Ctrl-C.
   case highlightsTabs
   /// Show the default view after the user opens a scan notification.
   case scanResults
@@ -749,7 +749,7 @@ public final class RefsPanelModel: ObservableObject {
         RefsArrivalTracker.visibleGraceSeconds
       )
     case .highlightsTabs:
-      // The Highlights Tabs key always starts fresh, as after Ctrl-Z,
+      // The Highlights Tabs key always starts fresh, as after Ctrl-C,
       // with Tabs on. Pending arrivals stay deferred to the next
       // ordinary show.
       resetToDefaults(tabs: true, announcement: nil)

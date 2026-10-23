@@ -21,6 +21,7 @@ final class RefsKeyRouterTests: XCTestCase {
     static let s: UInt16 = 1
     static let d: UInt16 = 2
     static let x: UInt16 = 7
+    static let c: UInt16 = 8
     static let z: UInt16 = 6
     static let u: UInt16 = 32
     static let j: UInt16 = 38
@@ -148,7 +149,7 @@ final class RefsKeyRouterTests: XCTestCase {
     XCTAssertNil(route(KeyCode.home, .command))
   }
 
-  func testControlDAndUScrollAndControlZResets() {
+  func testControlDAndUScrollAndControlCResets() {
     let browse = RefsKeyContext(sectionJumps: true)
     let search = RefsKeyContext(sectionJumps: false)
     XCTAssertEqual(
@@ -160,9 +161,10 @@ final class RefsKeyRouterTests: XCTestCase {
       .scrollInspector(.up)
     )
     XCTAssertEqual(
-      route(KeyCode.z, .control, context: browse),
+      route(KeyCode.c, .control, context: browse),
       .resetView
     )
+    XCTAssertNil(route(KeyCode.z, .control, context: browse))
     XCTAssertNil(route(KeyCode.u, [.control, .shift], context: browse))
     XCTAssertEqual(
       route(KeyCode.d, .control, context: search),
@@ -173,9 +175,10 @@ final class RefsKeyRouterTests: XCTestCase {
       .scrollInspector(.up)
     )
     XCTAssertEqual(
-      route(KeyCode.z, .control, context: search),
+      route(KeyCode.c, .control, context: search),
       .resetView
     )
+    XCTAssertNil(route(KeyCode.z, .control, context: search))
     XCTAssertNil(route(KeyCode.u, [.control, .shift], context: search))
     // Ctrl-D scrolls even with a closable Tabs row selected.
     let tabsRow = RefsKeyContext(selectionIsOpenTab: true)
@@ -184,9 +187,10 @@ final class RefsKeyRouterTests: XCTestCase {
       .scrollInspector(.down)
     )
     XCTAssertEqual(
-      route(KeyCode.z, .control, context: tabsRow),
+      route(KeyCode.c, .control, context: tabsRow),
       .resetView
     )
+    XCTAssertNil(route(KeyCode.z, .control, context: tabsRow))
   }
 
   func testControlScrollAndResetRequireExactModifiers() {
@@ -201,14 +205,17 @@ final class RefsKeyRouterTests: XCTestCase {
     XCTAssertEqual(route(KeyCode.u, .control), .scrollInspector(.up))
     XCTAssertNil(route(KeyCode.u, [.control, .shift]))
     XCTAssertNil(route(KeyCode.u, [.control, .shift, .command]))
+    XCTAssertNil(route(KeyCode.c))
+    XCTAssertNil(route(KeyCode.c, .command))
+    XCTAssertNil(route(KeyCode.c, [.command, .shift]))
+    XCTAssertNil(route(KeyCode.c, [.control, .shift]))
+    XCTAssertNil(route(KeyCode.c, [.control, .option]))
+    XCTAssertNil(route(KeyCode.c, [.control, .command]))
+    XCTAssertNil(route(KeyCode.c, [.control, .capsLock]))
+    XCTAssertEqual(route(KeyCode.c, .control), .resetView)
     XCTAssertNil(route(KeyCode.z))
     XCTAssertNil(route(KeyCode.z, .command))
-    XCTAssertNil(route(KeyCode.z, [.command, .shift]))
-    XCTAssertNil(route(KeyCode.z, [.control, .shift]))
-    XCTAssertNil(route(KeyCode.z, [.control, .option]))
-    XCTAssertNil(route(KeyCode.z, [.control, .command]))
-    XCTAssertNil(route(KeyCode.z, [.control, .capsLock]))
-    XCTAssertEqual(route(KeyCode.z, .control), .resetView)
+    XCTAssertNil(route(KeyCode.z, .control))
     XCTAssertNil(route(KeyCode.b, .control))
     XCTAssertNil(route(KeyCode.d, [.control, .option]))
     XCTAssertNil(route(KeyCode.x, [.control, .shift]))
@@ -219,11 +226,11 @@ final class RefsKeyRouterTests: XCTestCase {
     XCTAssertNil(route(KeyCode.x, .command))
   }
 
-  func testControlDUZPassThroughWhileComposing() {
+  func testControlDUCPassThroughWhileComposing() {
     let composing = RefsKeyContext(markedTextPresent: true)
     XCTAssertNil(route(KeyCode.d, .control, context: composing))
     XCTAssertNil(route(KeyCode.u, .control, context: composing))
-    XCTAssertNil(route(KeyCode.z, .control, context: composing))
+    XCTAssertNil(route(KeyCode.c, .control, context: composing))
     XCTAssertNil(route(KeyCode.u, [.control, .shift], context: composing))
     XCTAssertNil(route(KeyCode.x, .control, context: composing))
   }

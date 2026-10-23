@@ -396,7 +396,7 @@ final class RefsInspectorScrollTests: XCTestCase {
     waitForInspectorSettled(in: harness.panel, around: beforeCard, tolerance: 1)
   }
 
-  func testHostedControlZResetsPreviewAndQuery() {
+  func testHostedControlCResetsPreviewAndQuery() {
     let harness = makeHostedHarness()
     defer { harness.panel.orderOut(nil) }
     settle(harness.panel)
@@ -408,9 +408,20 @@ final class RefsInspectorScrollTests: XCTestCase {
     }
     waitForInspectorOffset(in: harness.panel) { $0 > 100 }
 
+    let queryBeforeUnboundKey = harness.model.query
+    let offsetBeforeUnboundKey = inspectorOffset(in: harness.panel)
+    XCTAssertNotNil(
+      harness.controller.processKeyEvent(
+        keyEvent(keyCode: 6, modifiers: .control, characters: "z")
+      )
+    )
+    XCTAssertEqual(harness.model.query, queryBeforeUnboundKey)
+    XCTAssertGreaterThan(offsetBeforeUnboundKey, 100)
+    XCTAssertGreaterThan(inspectorOffset(in: harness.panel), 100)
+
     XCTAssertNil(
       harness.controller.processKeyEvent(
-        keyEvent(keyCode: Self.zKey, modifiers: .control, characters: "z")
+        keyEvent(keyCode: Self.cKey, modifiers: .control, characters: "c")
       )
     )
     waitForInspectorOffset(in: harness.panel) { $0 <= 0.5 }
@@ -1150,7 +1161,7 @@ final class RefsInspectorScrollTests: XCTestCase {
   )
   private static let dKey: UInt16 = 2
   private static let uKey: UInt16 = 32
-  private static let zKey: UInt16 = 6
+  private static let cKey: UInt16 = 8
 
   private static func eightNotes() -> [RefsShowAnnotation] {
     (1...8).map { index in

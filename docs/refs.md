@@ -78,10 +78,10 @@ listed id in that batch). An arrival that lands in the first 10 seconds of
 an untouched ordinary show — typically the show's own pull — also resets
 and selects it. A Ctrl+Tab switch never resets for an arrival: the new
 reference joins the listing without moving the selection. The Highlights Tabs
-key (Command-T) always opens from fresh-launch defaults, as Ctrl-Z resets,
+key (Command-T) always opens from fresh-launch defaults, as Ctrl-C resets,
 with Tabs on, and still defers a new-reference reset to the next ordinary
 show.
-Selecting the reference first cancels the reset. Ctrl-Z resets it to the
+Selecting the reference first cancels the reset. Ctrl-C resets it to the
 fresh-launch defaults; quitting or restarting starts fresh.
 
 `RefsLibrary` owns the refresh service: the snapshot, the `-g`
@@ -333,7 +333,7 @@ Diagnostic for hard failures.
 | Ctrl-X | Close the selected tab in Highlights (Tabs only); elsewhere passes through to search |
 | Ctrl-D | Scroll the preview down by half its height; while the `+N more` row is on screen, Ctrl-D shows the next page of highlights at once; search keeps focus |
 | Ctrl-U | Scroll the preview up by half its height; search keeps focus |
-| Ctrl-Z | Reset query, scope, filters, selection, revealed pages, and list and preview positions to fresh-launch defaults |
+| Ctrl-C | Reset query, scope, filters, selection, revealed pages, and list and preview positions to fresh-launch defaults |
 | Shift-Command-T | Reopen the most recently closed Highlights tab |
 | Command-Up/Command-Down, Home/End | First, last |
 | Option-Up/Option-Down | First row of the previous/next section (browse and Newest) |
@@ -351,7 +351,7 @@ Diagnostic for hard failures.
 | Shift-Tab | Consumed (no-op) |
 
 Return and Command-Y while IME-composing pass through to the text system. Ctrl-D,
-Ctrl-U, Ctrl-Z, and Ctrl-X also pass through while IME-composing. Ctrl-Z
+Ctrl-U, Ctrl-C, and Ctrl-X also pass through while IME-composing. Ctrl-C
 always resets the view (even when it already has defaults), and Ctrl-D and
 Ctrl-U consume the key even when the preview is hidden, short, empty, or
 already at an edge. In Tabs, Ctrl-X closes the selected tab; Ctrl-D always
@@ -444,7 +444,7 @@ progress finishes if the panel hides.
   activates, so Highlights stays frontmost and the same key closes the
   panel again.
 - While Highlights is frontmost and Bob Refs is hidden, Command-T opens
-  Bob Refs in Tabs (default) from fresh-launch defaults, as after Ctrl-Z.
+  Bob Refs in Tabs (default) from fresh-launch defaults, as after Ctrl-C.
   Settings › References can change this key to Shift-Command-O, Command-E,
   or Off. It registers only for Highlights or the override app; the global
   Control-Shift-Command-O and Command-O library flows are unchanged. While
@@ -458,7 +458,7 @@ progress finishes if the panel hides.
   resets query, scope, Newest, selection, revealed pages, and list and
   preview positions, then turns Tabs on and selects the Tabs preselection.
   A Tabs show defers a new-reference reset to the next ordinary show.
-  Ctrl-Z resets the view to fresh-launch defaults.
+  Ctrl-C resets the view to fresh-launch defaults.
 - Clicking a scan notification opens the default view with Just scanned
   at the top and its first row selected.
 - The menu-bar item offers Bob Refs… directly below Capture, with the
