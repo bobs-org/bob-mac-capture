@@ -197,6 +197,8 @@ Capabilities are detected per response, never pinned to release numbers: unknown
   color; unknown and exempt names stay neutral. Agenda entries carry `themes`
   refs, so group headers wear pills and the one-row fold wears swatches; home
   dots are untouched. Refs Today rows carry `themes` refs for the same pills.
+  The shared catalog, hue, and menu rules are defined in the [Pomodoro themes
+  contract](https://bobs-org.github.io/pomodoro-themes/).
   An older Bob that omits `plan_budget`, `role`,
   `plan_themes_after`/`plan_themes_cap`, `added_theme_refs`, span or entry
   `themes`, or `code` still previews and captures;
