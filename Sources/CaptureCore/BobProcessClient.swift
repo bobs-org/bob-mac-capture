@@ -75,10 +75,6 @@ public final class BobProcessClient: @unchecked Sendable {
     return "\(executablePath)|\(device)|\(inode)|\(size)|\(modified)"
   }
 
-  public var pullInGuardKnownUnsupported: Bool {
-    guardFlagKnownUnsupported("--require-pull-in-choice")
-  }
-
   public var refuseOverrideKnownUnsupported: Bool {
     guardFlagKnownUnsupported("--refuse-override")
   }
@@ -511,7 +507,12 @@ public final class BobProcessClient: @unchecked Sendable {
         arguments += ["--pull-in", "none"]
       }
     }
-    let requireGuard = requirePullInChoice && !pullInGuardKnownUnsupported
+    // Positive capability gate (bob-cli-8a): `--require-pull-in-choice`
+    // goes out only after this executable proved support through a preview
+    // whose `pull_in.supported` was true (`pullInCapabilityAdvertised`).
+    // Older bobs file unknown flags as task text instead of rejecting them,
+    // so an ungated flag would file the flag plus the draft as a junk task.
+    let requireGuard = requirePullInChoice && pullInCapabilityAdvertised
     if requireGuard {
       arguments.append("--require-pull-in-choice")
     }
@@ -534,7 +535,7 @@ public final class BobProcessClient: @unchecked Sendable {
       arguments: arguments,
       environmentOverrides: environmentOverrides,
       lane: lane,
-      allowsGuardFallback: requireGuard || sendRefuseOverride
+      allowsGuardFallback: sendRefuseOverride
     )
   }
 
@@ -571,7 +572,7 @@ public final class BobProcessClient: @unchecked Sendable {
   ) -> String? {
     guard exitStatus == 2 else { return nil }
     let normalized = stderr.lowercased()
-    for flag in ["--require-pull-in-choice", "--refuse-override", "-a", "--attended"] {
+    for flag in ["--refuse-override", "-a", "--attended"] {
       let mentioned =
         normalized.contains("unexpected argument '\(flag)'")
         || normalized.contains("unexpected argument \"\(flag)\"")

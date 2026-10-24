@@ -993,13 +993,6 @@ final class CapturePanelModel: ObservableObject {
         pullInChoice != nil
     }
 
-    var pullInCapabilityNote: String? {
-        guard processClient?.pullInGuardKnownUnsupported == true else {
-            return nil
-        }
-        return "This Bob does not support successor-choice checks."
-    }
-
     var pickerVisible: Bool {
         picker != nil
     }
@@ -1986,11 +1979,18 @@ final class CapturePanelModel: ObservableObject {
             )
             return
         }
+        // Positive capability gate (bob-cli-8a): `--require-pull-in-choice`
+        // goes out only after a preview from this same executable advertised
+        // `pull_in.supported`. Without that proof no flag is sent, so an
+        // older bob files the clean draft instead of a junk flag task.
+        let capabilityAdvertised =
+            currentPullInPreview(for: draft, processClient: processClient)?
+                .pullIn?.supported == true
         dispatchCapture(
             draft: draft,
             openAfterCapture: openAfterCapture,
             selection: nil,
-            capabilityAdvertised: false,
+            capabilityAdvertised: capabilityAdvertised,
             seed: activePriorityRollSeed()
         )
     }

@@ -73,24 +73,40 @@ final class CapturePullInClientTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: record.path))
     }
 
-    func testExactOldGuardRejectionRetriesOnceAndCachesByExecutableIdentity() async throws {
+    func testRequirePullInChoiceWithoutCapabilitySendsNoGuardFlag() async throws {
+        // An older bob without a `pull_in.supported` preview gets no guard
+        // flag, so it files the clean draft instead of a junk flag task.
         let record = temporaryRecordURL()
-        let client = try makeClient(
-            record: record,
-            extraEnvironment: ["FAKE_BOB_GUARD_FLAG_UNSUPPORTED": "1"]
-        )
+        let client = try makeClient(record: record)
 
-        _ = try await client.capture("draft", priorityRollSeed: "same-seed", requirePullInChoice: true)
-        XCTAssertTrue(client.pullInGuardKnownUnsupported)
         _ = try await client.capture("draft", priorityRollSeed: "same-seed", requirePullInChoice: true)
 
         let calls = try recordText(record)
         let invocations = Array(calls.components(separatedBy: "argv=capture").dropFirst())
-        XCTAssertEqual(invocations.count, 3)
-        XCTAssertTrue(invocations[0].contains("--require-pull-in-choice"))
-        XCTAssertFalse(invocations[1].contains("--require-pull-in-choice"))
-        XCTAssertFalse(invocations[2].contains("--require-pull-in-choice"))
-        XCTAssertEqual(calls.components(separatedBy: "BOB_PRIORITY_ROLL_SEED=same-seed").count - 1, 3)
+        XCTAssertEqual(invocations.count, 1)
+        XCTAssertFalse(invocations[0].contains("--require-pull-in-choice"))
+        XCTAssertTrue(invocations[0].contains("-- draft"))
+        XCTAssertEqual(calls.components(separatedBy: "BOB_PRIORITY_ROLL_SEED=same-seed").count - 1, 1)
+    }
+
+    func testRequirePullInChoiceWithCapabilitySendsGuardFlag() async throws {
+        // A current bob proved support through a preview, so the guard flag
+        // goes out ahead of the `--` delimiter with the draft intact.
+        let record = temporaryRecordURL()
+        let client = try makeClient(record: record)
+
+        _ = try await client.capture(
+            "draft",
+            priorityRollSeed: "same-seed",
+            requirePullInChoice: true,
+            pullInCapabilityAdvertised: true
+        )
+
+        let calls = try recordText(record)
+        let invocations = Array(calls.components(separatedBy: "argv=capture").dropFirst())
+        XCTAssertEqual(invocations.count, 1)
+        XCTAssertTrue(invocations[0].contains("--require-pull-in-choice -- draft"))
+        XCTAssertEqual(calls.components(separatedBy: "BOB_PRIORITY_ROLL_SEED=same-seed").count - 1, 1)
     }
 
     func testExecutableReplacementInvalidatesCachedGuardRejection() async throws {
@@ -105,18 +121,18 @@ final class CapturePullInClientTests: XCTestCase {
                 "HOME": "/tmp",
                 "PATH": "/usr/bin:/bin",
                 "FAKE_BOB_RECORD_PATH": record.path,
-                "FAKE_BOB_GUARD_FLAG_UNSUPPORTED": "1",
+                "FAKE_BOB_REFUSE_OVERRIDE_FLAG_UNSUPPORTED": "1",
             ]
         )
-        _ = try await client.capture("draft", requirePullInChoice: true)
-        XCTAssertTrue(client.pullInGuardKnownUnsupported)
+        _ = try await client.capture("draft", readClipboard: false, refuseOverride: true)
+        XCTAssertTrue(client.refuseOverrideKnownUnsupported)
 
         var contents = try Data(contentsOf: executable)
         contents.append(Data("\n# executable replaced\n".utf8))
         try contents.write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
-        XCTAssertFalse(client.pullInGuardKnownUnsupported)
-        _ = try await client.capture("draft", requirePullInChoice: true)
+        XCTAssertFalse(client.refuseOverrideKnownUnsupported)
+        _ = try await client.capture("draft", readClipboard: false, refuseOverride: true)
 
         XCTAssertEqual(try recordText(record).components(separatedBy: "argv=capture").count - 1, 4)
     }
@@ -161,7 +177,11 @@ final class CapturePullInClientTests: XCTestCase {
             ]
         )
         do {
-            _ = try await unrelatedClient.capture("draft", requirePullInChoice: true)
+            _ = try await unrelatedClient.capture(
+                "draft",
+                requirePullInChoice: true,
+                pullInCapabilityAdvertised: true
+            )
             XCTFail("Expected unrelated argument failure")
         } catch BobClientError.processFailed(_, let exitStatus, _) {
             XCTAssertEqual(exitStatus, 2)
@@ -176,7 +196,6 @@ final class CapturePullInClientTests: XCTestCase {
             lookups += 1
             return "counted-identity"
         }
-        XCTAssertFalse(client.pullInGuardKnownUnsupported)
         XCTAssertFalse(client.refuseOverrideKnownUnsupported)
         XCTAssertFalse(client.attendedFlagKnownUnsupported)
         XCTAssertEqual(lookups, 0)
@@ -186,15 +205,15 @@ final class CapturePullInClientTests: XCTestCase {
         var lookups = 0
         let client = try makeClient(
             record: temporaryRecordURL(),
-            extraEnvironment: ["FAKE_BOB_GUARD_FLAG_UNSUPPORTED": "1"]
+            extraEnvironment: ["FAKE_BOB_REFUSE_OVERRIDE_FLAG_UNSUPPORTED": "1"]
         )
         client.identityTokenProvider = {
             lookups += 1
             return "stable-identity"
         }
-        _ = try await client.capture("draft", requirePullInChoice: true)
+        _ = try await client.capture("draft", readClipboard: false, refuseOverride: true)
         lookups = 0
-        XCTAssertTrue(client.pullInGuardKnownUnsupported)
+        XCTAssertTrue(client.refuseOverrideKnownUnsupported)
         XCTAssertGreaterThan(lookups, 0)
     }
 

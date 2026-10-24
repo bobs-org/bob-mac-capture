@@ -62,11 +62,6 @@ if [[ -n "${FAKE_BOB_STDERR:-}" ]]; then
   printf '%s\n' "${FAKE_BOB_STDERR}" >&2
 fi
 
-if [[ "${FAKE_BOB_GUARD_FLAG_UNSUPPORTED:-}" == "1" && " $* " == *" --require-pull-in-choice "* ]]; then
-  printf "error: unexpected argument '--require-pull-in-choice' found\n\nUsage: bob capture [OPTIONS] -- <TEXT>\n" >&2
-  exit 2
-fi
-
 if [[ "${FAKE_BOB_REFUSE_OVERRIDE_FLAG_UNSUPPORTED:-}" == "1" && " $* " == *" --refuse-override "* ]]; then
   printf "error: unexpected argument '--refuse-override' found\n\nUsage: bob capture [OPTIONS] -- <TEXT>\n" >&2
   exit 2

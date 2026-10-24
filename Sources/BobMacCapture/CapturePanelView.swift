@@ -560,7 +560,6 @@ struct CapturePanelView: View {
             || model.errorMessage != nil
             || model.previewState != .idle
             || model.agendaVisible
-            || model.pullInCapabilityNote != nil
             || model.relationCapabilityWarning != nil
             || model.pullInChoiceVisible
     }
@@ -636,7 +635,7 @@ struct CapturePanelView: View {
         presentation: CaptureAgendaPresentation
     ) -> some View {
         VStack(alignment: .leading, spacing: CapturePanelLayout.sectionSpacing) {
-            pullInCapabilityNotice
+            relationCapabilityNotice
             CaptureAgendaPaneView(
                 plan: plan,
                 presentation: presentation,
@@ -769,19 +768,12 @@ struct CapturePanelView: View {
                 PreviewPane(model: model)
                     .id(AuxiliarySection.preview)
             }
-            pullInCapabilityNotice
+            relationCapabilityNotice
         }
     }
 
     @ViewBuilder
-    private var pullInCapabilityNotice: some View {
-        if let note = model.pullInCapabilityNote {
-            Label(note, systemImage: "info.circle")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityLabel(note)
-        }
+    private var relationCapabilityNotice: some View {
         if let warning = model.relationCapabilityWarning {
             Label(warning, systemImage: "info.circle")
                 .font(.caption)
