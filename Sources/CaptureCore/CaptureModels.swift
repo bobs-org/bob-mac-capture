@@ -779,12 +779,24 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
   public let kind: String
   /// Slot index on additive `template_placeholder` and `template_field` spans.
   public let field: Int?
+  /// Theme refs for `pomodoro_name` and `task_toggle_pomodoro_name`
+  /// spans. Bob omits the array for every other span kind and older
+  /// Bob omits it entirely; both decode as empty.
 
-  public init(start: Int, end: Int, kind: String, field: Int? = nil) {
+  public let themes: [CapturePomodoroThemeRef]
+
+  public init(
+    start: Int,
+    end: Int,
+    kind: String,
+    field: Int? = nil,
+    themes: [CapturePomodoroThemeRef] = []
+  ) {
     self.start = start
     self.end = end
     self.kind = kind
     self.field = field
+    self.themes = themes
   }
 
   public init(from decoder: Decoder) throws {
@@ -793,6 +805,11 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
     end = try container.decode(Int.self, forKey: .end)
     kind = try container.decode(String.self, forKey: .kind)
     field = (try? container.decodeIfPresent(Int.self, forKey: .field)) ?? nil
+    themes =
+      (try? container.decodeIfPresent(
+        [CapturePomodoroThemeRef].self,
+        forKey: .themes
+      )) ?? []
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -800,6 +817,7 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
     case end
     case kind
     case field
+    case themes
   }
 }
 
@@ -2493,6 +2511,10 @@ public struct CapturePlanBudget: Codable, Equatable, Sendable {
   public let themes: CapturePlanBudgetMeter
   public let links: CapturePlanBudgetMeter
   public let addedThemes: [String]
+  /// Hue refs for the added theme names, so preview pills and the delta
+  /// chip wear Bob's hues without a second spawn. Older Bob omits the
+  /// array and it decodes as empty.
+  public let addedThemeRefs: [CapturePomodoroThemeRef]
   public let warnings: [CapturePlanBudgetWarning]
 
   public init(
@@ -2500,12 +2522,14 @@ public struct CapturePlanBudget: Codable, Equatable, Sendable {
     themes: CapturePlanBudgetMeter,
     links: CapturePlanBudgetMeter,
     addedThemes: [String] = [],
+    addedThemeRefs: [CapturePomodoroThemeRef] = [],
     warnings: [CapturePlanBudgetWarning] = []
   ) {
     self.status = status
     self.themes = themes
     self.links = links
     self.addedThemes = addedThemes
+    self.addedThemeRefs = addedThemeRefs
     self.warnings = warnings
   }
 
@@ -2523,6 +2547,11 @@ public struct CapturePlanBudget: Codable, Equatable, Sendable {
         forKey: .links
       ) ?? CapturePlanBudgetMeter(count: 0, cap: 0, over: false)
     addedThemes = try container.decodeIfPresent([String].self, forKey: .addedThemes) ?? []
+    addedThemeRefs =
+      (try? container.decodeIfPresent(
+        [CapturePomodoroThemeRef].self,
+        forKey: .addedThemeRefs
+      )) ?? []
     warnings =
       try container.decodeIfPresent(
         [CapturePlanBudgetWarning].self,
@@ -2535,6 +2564,7 @@ public struct CapturePlanBudget: Codable, Equatable, Sendable {
     case themes
     case links
     case addedThemes = "added_themes"
+    case addedThemeRefs = "added_theme_refs"
     case warnings
   }
 }

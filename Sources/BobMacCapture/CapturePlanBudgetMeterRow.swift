@@ -1,3 +1,4 @@
+import AppKit
 import CaptureCore
 import SwiftUI
 
@@ -6,6 +7,24 @@ import SwiftUI
 @available(macOS 26.0, *)
 struct CapturePlanBudgetMeterRow: View {
     let budget: CapturePlanBudgetPresentation
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// Tint for the `+1 BOB` delta chip: the first added theme's hue
+    /// washed to the PT6 pill strength, or neutral on an older Bob.
+    private var deltaTint: Color {
+        guard let hue = budget.deltaThemeSwatches.first(where: { $0.known })?.hue else {
+            return Color(nsColor: .quaternaryLabelColor)
+        }
+        let base = PomodoroHomeColor.color(for: hue, scheme: colorScheme)
+        return base.opacity(colorScheme == .dark ? 0.24 : 0.16)
+    }
+
+    private var deltaSpokenHue: String {
+        guard let first = budget.deltaThemeSwatches.first(where: { $0.known }) else {
+            return "no color"
+        }
+        return first.hue?.slotName ?? "muted"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -24,8 +43,10 @@ struct CapturePlanBudgetMeterRow: View {
                         .fontWeight(.semibold)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 3)
-                        .background(.quaternary, in: Capsule())
+                        .background(deltaTint, in: Capsule())
                         .foregroundStyle(.secondary)
+                        .help("\(delta) · \(deltaSpokenHue)")
+                        .accessibilityLabel("\(delta), \(deltaSpokenHue) theme")
                 }
             }
             ForEach(Array(budget.warningTexts.enumerated()), id: \.offset) { _, warning in

@@ -15,6 +15,9 @@ public enum CaptureAgendaRefreshReason: String, Equatable, Sendable {
     case clockChanged
     case recheck
     case followUp
+    /// The app's own theme hide/unhide write landed; the journal
+    /// watcher covers other hosts, this covers the local write now.
+    case themes
 }
 
 /// Health of the published agenda snapshot.

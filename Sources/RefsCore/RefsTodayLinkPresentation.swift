@@ -56,6 +56,25 @@ public enum RefsTodayLinkPresentation {
     namedHomeChip(row) == nil ? nil : row.homes?.hue
   }
 
+  /// Per-component swatches for the row's Pomodoro name, from Bob's
+  /// `themes` refs. Empty when the row is unnamed or an older Bob
+  /// omits the array; unknown components render neutral.
+  public static func themeSwatches(_ row: RefsTodayLinkPomodoro) -> [CaptureThemeSwatch] {
+    guard let name = row.name, !name.isEmpty, !row.themes.isEmpty else {
+      return []
+    }
+    return row.themes.map { CaptureThemeSwatch(hue: $0.hue, known: $0.known) }
+  }
+
+  /// Spoken theme colors for the row's accessibility label.
+  /// Empty when the row carries no theme refs.
+  public static func spokenThemeColors(_ row: RefsTodayLinkPomodoro) -> [String] {
+    guard let name = row.name, !name.isEmpty, !row.themes.isEmpty else {
+      return []
+    }
+    return PomodoroThemeSwatches.spokenThemeColors(forName: name, refs: row.themes)
+  }
+
   public static func createTitle(query: String) -> String {
     "New Pomodoro \(RefsTodayLinkCard.canonicalName(query))"
   }
@@ -97,6 +116,7 @@ public enum RefsTodayLinkPresentation {
     var parts =
       [PomodoroHomesPresentation.accessibilityName(authored: row.name, homes: row.homes)]
       + pills(row).map { $0.lowercased() }
+    parts.append(contentsOf: spokenThemeColors(row))
     parts.append(rowMeta(row, now: now, timeZone: timeZone))
     if selected { parts.append("selected") }
     return parts.joined(separator: ", ")

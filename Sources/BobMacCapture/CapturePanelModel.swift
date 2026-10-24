@@ -7723,6 +7723,9 @@ final class CapturePanelModel: ObservableObject {
                     self.statusText = hidden
                         ? "\(name) hidden from Recent suggestions"
                         : "\(name) restored to Recent suggestions"
+                    // The journal write recolors agenda rows; refresh now
+                    // instead of waiting for the vault watcher echo.
+                    self.agendaStore?.refresh(reason: .themes)
                 }
             } catch {
                 await MainActor.run {
@@ -10487,6 +10490,33 @@ final class CapturePanelModel: ObservableObject {
                 }
                 if category.isItalic {
                     text[lower..<upper].inlinePresentationIntent = .emphasized
+                }
+                // Theme tints (PT6): wash Bob's hue behind each known
+                // component of a Pomodoro name. The syntax color above is
+                // untouched; unknown and exempt themes stay neutral so a
+                // typed name never flickers through hues.
+                if item.span.kind == "pomodoro_name"
+                    || item.span.kind == "task_toggle_pomodoro_name"
+                {
+                    for theme in item.span.themes where theme.known {
+                        guard let start = theme.start,
+                              let end = theme.end,
+                              start < end,
+                              let themeRange = stringRange(in: draft, start: start, end: end),
+                              let themeLower = AttributedString.Index(
+                                  themeRange.lowerBound,
+                                  within: text
+                              ),
+                              let themeUpper = AttributedString.Index(
+                                  themeRange.upperBound,
+                                  within: text
+                              ),
+                              let tint = PomodoroThemeTint.background(for: theme.hue)
+                        else {
+                            continue
+                        }
+                        text[themeLower..<themeUpper].backgroundColor = tint
+                    }
                 }
             }
             if parse.template != nil {

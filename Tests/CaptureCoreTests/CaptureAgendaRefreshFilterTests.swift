@@ -44,6 +44,24 @@ final class CaptureAgendaRefreshFilterTests: XCTestCase {
                 expected: true
             ),
             Case(
+                name: "theme journal write refreshes",
+                paths: ["/vault/.bob/themes/apollo.jsonl"],
+                flags: [],
+                expected: true
+            ),
+            Case(
+                name: "theme journal wins in a mixed batch",
+                paths: ["/vault/.git/index", "/vault/.bob/themes/mac.jsonl"],
+                flags: [],
+                expected: true
+            ),
+            Case(
+                name: "other bob dotfiles stay ignored",
+                paths: ["/vault/.bob/stats/review/apollo.jsonl"],
+                flags: [],
+                expected: false
+            ),
+            Case(
                 name: "must rescan with no paths",
                 paths: [],
                 flags: [.mustScanSubDirs],

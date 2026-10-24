@@ -111,6 +111,10 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
     public let slug: String?
     public let selectable: Bool
     public let homes: CaptureAgendaHomes?
+    /// Bob-owned theme refs for the entry name (`capture-pomodoros
+    /// --tasks` `themes`). Older Bob omits the array; it decodes as
+    /// empty and the agenda renders the plain name.
+    public let themes: [CapturePomodoroThemeRef]
 
     public init(
         line: Int = 0,
@@ -125,7 +129,8 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         items: [CaptureAgendaItem] = [],
         slug: String? = nil,
         selectable: Bool = false,
-        homes: CaptureAgendaHomes? = nil
+        homes: CaptureAgendaHomes? = nil,
+        themes: [CapturePomodoroThemeRef] = []
     ) {
         self.line = line
         self.name = name
@@ -140,6 +145,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         self.slug = slug
         self.selectable = selectable
         self.homes = homes
+        self.themes = themes
     }
 
     public init(from decoder: Decoder) throws {
@@ -159,6 +165,11 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         slug = try container.decodeIfPresent(String.self, forKey: .slug)
         selectable = try container.decodeIfPresent(Bool.self, forKey: .selectable) ?? false
         homes = try container.decodeIfPresent(CaptureAgendaHomes.self, forKey: .homes)
+        themes =
+            (try? container.decodeIfPresent(
+                [CapturePomodoroThemeRef].self,
+                forKey: .themes
+            )) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -175,6 +186,7 @@ public struct CaptureAgendaPomodoro: Decodable, Equatable, Sendable {
         case slug
         case selectable
         case homes
+        case themes
     }
 }
 

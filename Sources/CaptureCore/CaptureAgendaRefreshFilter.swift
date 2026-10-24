@@ -52,6 +52,11 @@ public enum CaptureAgendaRefreshFilter {
     public static let tasksFilterRelativePath =
         ".obsidian/plugins/obsidian-tasks-plugin/data.json"
 
+    /// Vault-relative directory holding the per-host theme journals
+    /// (`.bob/themes/<host>.jsonl`). A hide, pin, or rename from any
+    /// host recolors the agenda, so journal writes refresh like notes.
+    public static let themesJournalDirectory = ".bob/themes"
+
     /// True when the batch can change what the agenda shows:
     /// - the stream says rescan, root-changed, or dropped events;
     /// - a directory was renamed or removed alongside a visible vault
@@ -60,7 +65,9 @@ public enum CaptureAgendaRefreshFilter {
     /// - a visible `.md` note changed (no path component starts with
     ///   `.`, so `.git/`, `.trash/`, and `.obsidian/workspace*.json`
     ///   stay ignored);
-    /// - the Tasks plugin global filter changed.
+    /// - the Tasks plugin global filter changed;
+    /// - a theme journal file under `.bob/themes/` changed (the narrow
+    ///   exception to the dotfile rule: hides and pins recolor rows).
     public static func isRelevant(
         _ batch: VaultChangeBatch,
         vaultRoot: String
@@ -82,6 +89,11 @@ public enum CaptureAgendaRefreshFilter {
             }
             let relative = String(path.dropFirst(prefix.count))
             if relative == tasksFilterRelativePath {
+                return true
+            }
+            if relative == themesJournalDirectory
+                || relative.hasPrefix(themesJournalDirectory + "/")
+            {
                 return true
             }
             let hidden = relative.split(separator: "/").contains {

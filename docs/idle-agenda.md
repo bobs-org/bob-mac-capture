@@ -31,11 +31,16 @@ including the next panel show.
 - Freshness and caching. `bob` owns every fact via
   `bob capture-pomodoros --format json --tasks`; the app caches the last good
   snapshot in memory and revalidates it on launch (prefetch after prewarm), on
-  filtered vault events (visible `.md` notes and the Tasks-plugin filter — never
-  `.git/`, attachments, or settings churn), on every panel show
+  filtered vault events (visible `.md` notes, the Tasks-plugin filter, and the
+  `.bob/themes/` journal — never `.git/`, attachments, or other settings churn),
+  on every panel show
   (stale-while-revalidate, replacing the old per-show spawn), after each successful
-  submit, on wake, unlock, day change, and clock change, and fresh after Recheck Bob
-  or a `bob` executable or directory change. One refresh flies at a time with at most
+  submit, after the app's own theme hide/unhide write, on wake, unlock, day change,
+  and clock change, and fresh after Recheck Bob
+  or a `bob` executable or directory change. Named entries wear one theme pill per
+  component from bob's entry `themes` refs (the one-row fold wears swatches);
+  home dots are unchanged, and an older bob without entry `themes` renders the
+  plain name. One refresh flies at a time with at most
   one follow-up; byte-identical output publishes nothing. A snapshot whose date is
   not today is never shown ("Loading today…" until the refresh lands); a failed
   refresh keeps the last good agenda and marks the title row "Couldn't refresh". An

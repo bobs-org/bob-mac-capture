@@ -299,6 +299,72 @@ public struct CaptureThemeSwatch: Equatable, Sendable {
     }
 }
 
+/// Resolves per-component swatches for a Pomodoro name from Bob-owned
+/// theme refs, so agenda headers, preview rows, and the Refs Today pill
+/// draw the same colors as the completion rows without re-implementing
+/// the hue rule. Components without a matching ref resolve to an
+/// unknown swatch and render neutral, never a guessed hue.
+public enum PomodoroThemeSwatches {
+    /// Swatches for each `+`-separated component of `name`, in order.
+    /// Empty when the name is nil or blank.
+    public static func swatches(
+        forName name: String?,
+        refs: [CapturePomodoroThemeRef]
+    ) -> [CaptureThemeSwatch] {
+        guard let name, !name.trimmingCharacters(in: .whitespaces).isEmpty else {
+            return []
+        }
+        let byKey = Dictionary(uniqueKeysWithValues: refs.map { ($0.key, $0) })
+        return name.split(separator: "+").map { part in
+            let key = normalizeThemeKey(String(part))
+            if let ref = byKey[key] {
+                return CaptureThemeSwatch(hue: ref.hue, known: ref.known)
+            }
+            return CaptureThemeSwatch(hue: nil, known: false)
+        }
+    }
+
+    /// Spoken theme colors for an accessibility label (`BOB, magenta`).
+    /// Unknown components read as unknown; exempt themes read as muted.
+    public static func spokenThemeColors(
+        forName name: String?,
+        refs: [CapturePomodoroThemeRef]
+    ) -> [String] {
+        guard let name, !name.trimmingCharacters(in: .whitespaces).isEmpty else {
+            return []
+        }
+        let byKey = Dictionary(uniqueKeysWithValues: refs.map { ($0.key, $0) })
+        return name.split(separator: "+").compactMap { part -> String? in
+            let display = String(part).trimmingCharacters(in: .whitespaces)
+            guard !display.isEmpty else {
+                return nil
+            }
+            guard let ref = byKey[normalizeThemeKey(String(part))] else {
+                return "\(display), unknown theme"
+            }
+            guard ref.known else {
+                return "\(display), unknown theme"
+            }
+            if let hueName = ref.hue?.slotName {
+                return "\(display), \(hueName)"
+            }
+            return ref.hueSource == "exempt"
+                ? "\(display), muted"
+                : "\(display), no color"
+        }
+    }
+
+    /// Matches Bob's `normalize_component`: whitespace collapsed,
+    /// lowercased.
+    static func normalizeThemeKey(_ raw: String) -> String {
+        raw.lowercased()
+            .split(separator: " ", omittingEmptySubsequences: true)
+            .joined(separator: " ")
+            .split(separator: "\t", omittingEmptySubsequences: true)
+            .joined(separator: " ")
+    }
+}
+
 /// Builds the presentation content for one completion candidate. `query` is the in-progress
 /// text between the completion replacement's start and the cursor; pass an empty string when
 /// there is none (an empty-query result list still renders, just without match emphasis).

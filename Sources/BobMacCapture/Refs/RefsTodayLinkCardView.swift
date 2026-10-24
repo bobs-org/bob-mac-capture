@@ -204,6 +204,16 @@ struct RefsTodayLinkCardView: View {
                             hollow: row.homes?.state == .forecast
                         )
                     }
+                    // The row name wears its theme pills (PT6) when Bob
+                    // reports `themes` refs; older Bob renders the plain
+                    // name exactly as before.
+                    let themeSwatches = RefsTodayLinkPresentation.themeSwatches(row)
+                    if !themeSwatches.isEmpty, let name = row.name {
+                        PomodoroThemeNamePillsView(
+                            names: PomodoroThemePillNames.components(of: name),
+                            swatches: themeSwatches
+                        )
+                    }
                     pillLabels(row)
                     Spacer(minLength: 0)
                     if selected { RefsReturnKeycap() }

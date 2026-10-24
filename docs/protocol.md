@@ -189,11 +189,21 @@ Capabilities are detected per response, never pinned to release numbers: unknown
   that creates a new named Pomodoro past the theme cap is refused atomically
   (exit 1, JSON `code: plan_theme_cap_exceeded`), and `pomodoro_name` create
   rows preview the resulting theme count with `plan_themes_after` and
-  `plan_themes_cap`. An older Bob that omits `plan_budget`, `role`,
-  `plan_themes_after`/`plan_themes_cap`, or `code` still previews and captures;
+  `plan_themes_cap`. `plan_budget` also carries `added_theme_refs`, the hue refs
+  for the added names: the `+1 BOB` delta chip wears the first added hue and
+  created destination, start, toggle, and project-note rows wear theme pills.
+  `pomodoro_name` and `task_toggle_pomodoro_name` spans carry per-component
+  `themes` refs, so the editor tints known names behind the unchanged syntax
+  color; unknown and exempt names stay neutral. Agenda entries carry `themes`
+  refs, so group headers wear pills and the one-row fold wears swatches; home
+  dots are untouched. Refs Today rows carry `themes` refs for the same pills.
+  An older Bob that omits `plan_budget`, `role`,
+  `plan_themes_after`/`plan_themes_cap`, `added_theme_refs`, span or entry
+  `themes`, or `code` still previews and captures;
   the Mac app decodes each as absent and renders the destination row as
-  `→ NAME`, omitting only the meter capsules, the cap badge, and the strict
-  hint. A trailing `#now` tag is the ordinary trailing-tag error like any
+  `→ NAME`, omitting only the meter capsules, the cap badge, the strict
+  hint, and the theme tints. Agenda and Refs rows from an older Bob render
+  the plain name with no pills. A trailing `#now` tag is the ordinary trailing-tag error like any
   other `#tag`, and `#now` typed before the route is plain body text. The `^`
   active-task picker lists In Progress and Next tasks only. An older Bob that
   still sends the `now` flag, the `now_tag` span or completion context, or
@@ -291,7 +301,8 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 
 - `creates_pomodoro`, `pomodoro_start`, `pomodoro_adjust`, `pomodoro_shift`, `pomodoro_close` (plus `log`, `details`, `typed_work_log`, `typed_work_log_details`)
 - `pomodoro_start.override`, `toggle_behavior`, `toggle_direction` with `status_changed`
-- `plan_budget`, destination `role`, `plan_themes_after`, `plan_themes_cap`, `code`
+- `plan_budget`, destination `role`, `plan_themes_after`, `plan_themes_cap`, `code`, `added_theme_refs`
+- span `themes` (`pomodoro_name`, `task_toggle_pomodoro_name`), agenda entry `themes`, Refs Today row `themes`
 - `ref` with `ref.parent`, `ref_parent`, `project_name_aliases`
 - Refs list fields `blocked`, `task`, `added_at`; snapshot cache key `git_added_at`; copy-card `marker_id`
 - Scan report fields `generated_at`, `summary.held`, `held[]`, `notes[].marker_write` (`mode`, `editor_saved_first`, `status.from`/`to`)
@@ -315,6 +326,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `pomodoro_close` with `log` entries | Close card with typed Work Log | Standard card; no close preview | Upgrade `bob` before `x` |
 | `toggle_behavior` | Ensure Next vs Set Next / Open labels | Two-way labels; status and relocation still exact | Upgrade `bob` for exact labels |
 | `plan_budget`, `role`, theme caps | Meter capsules, badges, strict hint | Destination row only (`-> NAME`) | Upgrade `bob` for meters |
+| `added_theme_refs`, span/entry/row `themes` | Pill and swatch tints in the editor, agenda, previews, and Refs Today | Plain names; neutral pills only where a budget exists | Upgrade `bob` for theme tints |
 | `ref` object | Queue preview card, footer action | Ordinary inbox task | Upgrade `bob`; `-R` disables queueing |
 | `ref.parent`, aliases | File-under prompt, alias-ranked routes | No auto-open; prefix matching only | Upgrade `bob` for filing |
 | `ref list` schema 1, optional `-g` | Refs snapshot with git instants | Refresh fails on any other schema; `-g` omitted until a row still lacks `added`/`added_at` | Upgrade `bob` for Refs |

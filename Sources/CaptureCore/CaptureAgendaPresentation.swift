@@ -46,6 +46,9 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
     public let homeChip: String?
     public let homeHue: PomodoroHomeHue?
     public let homeIsForecast: Bool
+    /// Theme hues for a group header or one-row name, in component
+    /// order. Part of the measure key so a hue change re-measures.
+    public let themeHues: [PomodoroHomeHue?]
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -57,7 +60,8 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         nameIsDerived: Bool = false,
         homeChip: String? = nil,
         homeHue: PomodoroHomeHue? = nil,
-        homeIsForecast: Bool = false
+        homeIsForecast: Bool = false,
+        themeHues: [PomodoroHomeHue?] = []
     ) {
         self.kind = kind
         self.text = text
@@ -69,6 +73,7 @@ public struct CaptureAgendaRowKey: Hashable, Equatable, Sendable {
         self.homeChip = homeChip
         self.homeHue = homeHue
         self.homeIsForecast = homeIsForecast
+        self.themeHues = themeHues
     }
 }
 
@@ -102,6 +107,9 @@ public struct CaptureAgendaRow: Equatable, Sendable {
     /// True when the chip's homes state is forecast: the view draws a
     /// hollow ring (R7) instead of a filled dot.
     public let homeIsForecast: Bool
+    /// Bob-owned theme refs for a group header or one-row name, in
+    /// component order. Empty for every other row and on an older Bob.
+    public let themeRefs: [CapturePomodoroThemeRef]
 
     public init(
         kind: CaptureAgendaRowKind,
@@ -118,7 +126,8 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         nameIsDerived: Bool = false,
         homeChip: String? = nil,
         homeHue: PomodoroHomeHue? = nil,
-        homeIsForecast: Bool = false
+        homeIsForecast: Bool = false,
+        themeRefs: [CapturePomodoroThemeRef] = []
     ) {
         self.kind = kind
         self.text = text
@@ -135,6 +144,7 @@ public struct CaptureAgendaRow: Equatable, Sendable {
         self.homeChip = homeChip
         self.homeHue = homeHue
         self.homeIsForecast = homeIsForecast
+        self.themeRefs = themeRefs
         key = CaptureAgendaRowKey(
             kind: kind,
             text: text,
@@ -145,8 +155,14 @@ public struct CaptureAgendaRow: Equatable, Sendable {
             nameIsDerived: nameIsDerived,
             homeChip: homeChip,
             homeHue: homeHue,
-            homeIsForecast: homeIsForecast
+            homeIsForecast: homeIsForecast,
+            themeHues: themeRefs.map(\.hue)
         )
+    }
+
+    /// Per-component swatches for the row's theme refs, in order.
+    public var themeSwatches: [CaptureThemeSwatch] {
+        themeRefs.map { CaptureThemeSwatch(hue: $0.hue, known: $0.known) }
     }
 }
 
@@ -561,6 +577,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             homeChip: homeChip,
             homeHue: homeHue,
             homeIsForecast: homeIsForecast,
+            themeRefs: entry.themes,
             now: now
         )
         let sessionNotes = entry.notes.map { note in
@@ -606,6 +623,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             homeChip: homeChip,
             homeHue: homeHue,
             homeIsForecast: homeIsForecast,
+            themeRefs: entry.themes,
             spoken: spokenName(entry)
         )
         return CaptureAgendaGroup(
@@ -637,6 +655,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         homeChip: String?,
         homeHue: PomodoroHomeHue?,
         homeIsForecast: Bool = false,
+        themeRefs: [CapturePomodoroThemeRef] = [],
         now: Date?
     ) -> CaptureAgendaRow {
         let accessory: String?
@@ -678,17 +697,25 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             label = "Header, \(spoken)"
         }
         let trimmed = accessory.flatMap { $0.isEmpty ? nil : $0 }
+        let themeWords = themeRefs.isEmpty ? [] : PomodoroThemeSwatches.spokenThemeColors(
+            forName: name,
+            refs: themeRefs
+        )
+        let spokenLabel = themeWords.isEmpty
+            ? label
+            : "\(label), themes \(themeWords.joined(separator: "; "))"
         return CaptureAgendaRow(
             kind: .groupHeader,
             text: name,
             depth: 0,
             lineLimit: 2,
             accessoryText: trimmed,
-            accessibilityLabel: label,
+            accessibilityLabel: spokenLabel,
             nameIsDerived: derived,
             homeChip: homeChip,
             homeHue: homeHue,
-            homeIsForecast: homeIsForecast
+            homeIsForecast: homeIsForecast,
+            themeRefs: themeRefs
         )
     }
 
@@ -743,6 +770,7 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
         homeChip: String?,
         homeHue: PomodoroHomeHue?,
         homeIsForecast: Bool = false,
+        themeRefs: [CapturePomodoroThemeRef] = [],
         spoken: String
     ) -> CaptureAgendaRow {
         let titles = tasks.map { spokenKeepText($0.title) }.joined(separator: " · ")
@@ -759,7 +787,8 @@ public struct CaptureAgendaPresentation: Equatable, Sendable {
             nameIsDerived: derived,
             homeChip: homeChip,
             homeHue: homeHue,
-            homeIsForecast: homeIsForecast
+            homeIsForecast: homeIsForecast,
+            themeRefs: themeRefs
         )
     }
 

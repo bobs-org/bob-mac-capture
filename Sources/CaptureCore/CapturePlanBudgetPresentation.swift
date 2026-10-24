@@ -31,6 +31,10 @@ public struct CapturePlanBudgetPresentation: Equatable, Sendable {
     /// `"+1 BOB"` when the themes meter grew past its previous count,
     /// else nil. Names the first added theme when Bob reported one.
     public let deltaChipText: String?
+    /// Per-component swatches for the added theme names, from Bob's
+    /// `added_theme_refs`. Empty on an older Bob; the delta chip then
+    /// renders neutral. Components without a matching ref stay unknown.
+    public let deltaThemeSwatches: [CaptureThemeSwatch]
     /// Budget warning messages in Bob's order, rendered as orange captions.
     public let warningTexts: [String]
     public let accessibilitySummary: String
@@ -56,6 +60,9 @@ public struct CapturePlanBudgetPresentation: Equatable, Sendable {
         linksCapsuleText = "Links \(budget.links.count)/\(budget.links.cap)"
         linksOverCap = budget.links.over
         deltaChipText = includeProposalDetails ? Self.deltaChipText(for: budget) : nil
+        deltaThemeSwatches = includeProposalDetails
+            ? Self.deltaThemeSwatches(for: budget)
+            : []
         warningTexts = includeProposalDetails ? budget.warnings.map(\.message) : []
 
         var parts: [String] = []
@@ -129,5 +136,41 @@ public struct CapturePlanBudgetPresentation: Equatable, Sendable {
             return "+\(delta) \(first)"
         }
         return "+\(delta)"
+    }
+
+    /// Swatches for the added theme names, resolved against Bob's
+    /// `added_theme_refs` in first-added order. Empty when the budget
+    /// reports no added names.
+    private static func deltaThemeSwatches(for budget: CapturePlanBudget) -> [CaptureThemeSwatch] {
+        budget.addedThemes.flatMap { name in
+            PomodoroThemeSwatches.swatches(forName: name, refs: budget.addedThemeRefs)
+        }
+    }
+
+    /// Swatches for a preview destination name, resolved against the
+    /// budget's `added_theme_refs`. Created destinations tint; existing
+    /// names resolve to unknown swatches and render neutral pills until
+    /// Bob ships destination refs. Empty when there is no budget.
+    public static func destinationThemeSwatches(
+        destination: PomodoroLinkEndpoint?,
+        budget: CapturePlanBudget?
+    ) -> [CaptureThemeSwatch] {
+        swatches(forName: destination?.name, budget: budget)
+    }
+
+    /// Swatches for any preview Pomodoro name against a capture's
+    /// budget refs. Shared by destination rows, start/toggle/project-note
+    /// previews, and the Refs Today pill.
+    public static func swatches(
+        forName name: String?,
+        budget: CapturePlanBudget?
+    ) -> [CaptureThemeSwatch] {
+        guard let budget else {
+            return []
+        }
+        return PomodoroThemeSwatches.swatches(
+            forName: name,
+            refs: budget.addedThemeRefs
+        )
     }
 }

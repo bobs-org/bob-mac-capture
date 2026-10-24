@@ -2777,28 +2777,6 @@ private struct CompletionRow: View {
 }
 
 @available(macOS 26.0, *)
-private struct PomodoroThemeSwatchView: View {
-    let hue: PomodoroHomeHue?
-    let known: Bool
-    let size: CGFloat
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        Group {
-            if known, let hue {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(PomodoroHomeColor.color(for: hue, scheme: colorScheme))
-            } else {
-                RoundedRectangle(cornerRadius: 2)
-                    .strokeBorder(Color.secondary.opacity(0.72), lineWidth: 1)
-            }
-        }
-        .frame(width: size, height: size)
-        .accessibilityHidden(true)
-    }
-}
-
-@available(macOS 26.0, *)
 struct PreviewPane: View {
     @ObservedObject var model: CapturePanelModel
     @State private var settledPaneHeight: CGFloat?
@@ -3009,6 +2987,13 @@ struct PreviewPane: View {
                     .fontWeight(.semibold)
                     .lineLimit(1)
                     .textSelection(.enabled)
+                // Created destinations wear their theme pills (PT6);
+                // existing names resolve against `added_theme_refs` and
+                // render neutral pills until Bob ships destination refs.
+                PomodoroPreviewThemePillsView(
+                    name: capture.pomodoroLinkDestination?.name,
+                    budget: capture.planBudget
+                )
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Destination: \(text)")
@@ -3733,6 +3718,12 @@ struct PreviewPane: View {
                     .accessibilityHidden(true)
                 Text(start.title)
                     .fontWeight(.semibold)
+                // The session name wears its theme pills (PT6), tinted for
+                // created sessions and neutral otherwise.
+                PomodoroPreviewThemePillsView(
+                    name: success.pomodoroName,
+                    budget: success.planBudget
+                )
                 // A created session carries a small pink New/Created capsule
                 // next to the title so the fresh entry reads at a glance; a
                 // kept-ledger swap adds a Takes over capsule the same way.
@@ -4287,6 +4278,11 @@ struct PreviewPane: View {
                     Text(projectNote.headerText)
                         .font(.system(.callout, design: .monospaced))
                         .fontWeight(.semibold)
+                    // The destination Pomodoro wears its theme pills (PT6).
+                    PomodoroPreviewThemePillsView(
+                        name: success.pomodoroName,
+                        budget: success.planBudget
+                    )
                 }
                 ForEach(Array(projectNote.linkedTasks.enumerated()), id: \.offset) { _, task in
                     Text("\(task.text) ^\(task.blockID)")
@@ -4751,6 +4747,11 @@ struct PreviewPane: View {
             }
             Text(toggle.routeDestinationLabel)
                 .fontWeight(.semibold)
+            // The toggled Pomodoro wears its theme pills (PT6).
+            PomodoroPreviewThemePillsView(
+                name: toggle.pomodoroName,
+                budget: success.planBudget
+            )
             if isLocalOverride {
                 Text("local override")
                     .foregroundStyle(.secondary)

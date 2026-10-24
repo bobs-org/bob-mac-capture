@@ -91,6 +91,9 @@ public struct RefsTodayLinkPomodoro: Decodable, Equatable, Sendable {
   public let linked: Bool
   public let taskLinkCount: Int
   public let homes: CaptureAgendaHomes?
+  /// Theme refs for the row name. Bob omits them on older binaries;
+  /// they decode as empty and the row renders the plain name.
+  public let themes: [CapturePomodoroThemeRef]
 
   public init(
     ref: String,
@@ -105,7 +108,8 @@ public struct RefsTodayLinkPomodoro: Decodable, Equatable, Sendable {
     isDefault: Bool = false,
     linked: Bool = false,
     taskLinkCount: Int = 0,
-    homes: CaptureAgendaHomes? = nil
+    homes: CaptureAgendaHomes? = nil,
+    themes: [CapturePomodoroThemeRef] = []
   ) {
     self.ref = ref
     self.line = line
@@ -120,6 +124,7 @@ public struct RefsTodayLinkPomodoro: Decodable, Equatable, Sendable {
     self.linked = linked
     self.taskLinkCount = taskLinkCount
     self.homes = homes
+    self.themes = themes
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -136,6 +141,7 @@ public struct RefsTodayLinkPomodoro: Decodable, Equatable, Sendable {
     case linked
     case taskLinkCount = "task_link_count"
     case homes
+    case themes
   }
 
   public init(from decoder: Decoder) throws {
@@ -153,6 +159,11 @@ public struct RefsTodayLinkPomodoro: Decodable, Equatable, Sendable {
     linked = try container.decodeIfPresent(Bool.self, forKey: .linked) ?? false
     taskLinkCount = try container.decodeIfPresent(Int.self, forKey: .taskLinkCount) ?? 0
     homes = try container.decodeIfPresent(CaptureAgendaHomes.self, forKey: .homes)
+    themes =
+      (try? container.decodeIfPresent(
+        [CapturePomodoroThemeRef].self,
+        forKey: .themes
+      )) ?? []
   }
 }
 

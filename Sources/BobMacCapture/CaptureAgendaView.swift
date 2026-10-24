@@ -695,14 +695,24 @@ struct CaptureAgendaRowView: View {
     private var headerStack: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             headerGlyphView
-            Text(row.text)
-                .font(
-                    row.nameIsDerived
-                        ? .subheadline : .subheadline.weight(.semibold)
+            if row.themeRefs.isEmpty {
+                Text(row.text)
+                    .font(
+                        row.nameIsDerived
+                            ? .subheadline : .subheadline.weight(.semibold)
+                    )
+                    .foregroundStyle(row.nameIsDerived ? .secondary : .primary)
+                    .tracking(row.nameIsDerived ? 0 : 0.3)
+                    .lineLimit(row.lineLimit)
+            } else {
+                // Named entries wear one pill per theme component (PT6);
+                // the `+` stays neutral and home dots stay as they are.
+                PomodoroThemeNamePillsView(
+                    names: row.themeRefs.map(\.name),
+                    swatches: row.themeSwatches
                 )
-                .foregroundStyle(row.nameIsDerived ? .secondary : .primary)
-                .tracking(row.nameIsDerived ? 0 : 0.3)
                 .lineLimit(row.lineLimit)
+            }
             if let chip = row.homeChip {
                 PomodoroHomeChipView(chip: chip, hue: row.homeHue, hollow: row.homeIsForecast)
             }
@@ -893,6 +903,14 @@ struct CaptureAgendaRowView: View {
             Image(systemName: "circle.dashed")
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
+            // The one-row fold wears swatches, not pills (PT6).
+            if !row.themeSwatches.isEmpty {
+                HStack(spacing: 3) {
+                    ForEach(Array(row.themeSwatches.enumerated()), id: \.offset) { _, swatch in
+                        PomodoroThemeSwatchView(hue: swatch.hue, known: swatch.known, size: 8)
+                    }
+                }
+            }
             CaptureAgendaRowInlineText.text(
                 row.text,
                 base: .callout,
