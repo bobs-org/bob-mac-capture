@@ -2283,6 +2283,128 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertNotNil(harness.model.scanNotice)
   }
 
+  func testHighlightsSaveScanUsesPanelPreparation() async throws {
+    let harness = try makeHarness()
+    await harness.waitForSnapshot()
+    harness.model.prepareForPresentation()
+    harness.model.panelIsVisible = { true }
+    let selected = "ref/chat/small_reading.md"
+    XCTAssertTrue(harness.model.perform(.select(id: selected)))
+
+    let busy = RefsScanHold(
+      pdf: "lib/busy.pdf",
+      note: selected,
+      title: "Reading",
+      reason: "coordination_timeout",
+      message: "busy"
+    )
+    let receipt = RefsPDFUpdates(
+      response: RefsScanResponse(held: [busy])
+    )
+    harness.model.applyPDFUpdateSurface(
+      RefsPDFUpdatePresentation.surface(
+        for: receipt,
+        panelVisible: true,
+        notificationsEnabled: true,
+        previouslyNotifiedBusyKeys: []
+      )
+    )
+    XCTAssertFalse(harness.model.pdfUpdateFooterClauses.isEmpty)
+    XCTAssertNotNil(harness.model.banner)
+
+    harness.model.requestScan(origin: .highlightsSave)
+    XCTAssertTrue(harness.model.isScanning)
+    XCTAssertEqual(harness.model.selectedID, selected)
+    XCTAssertTrue(harness.model.pdfUpdateFooterClauses.isEmpty)
+    XCTAssertNil(harness.model.banner)
+    await harness.waitForScan()
+  }
+
+  func testVisibleLibraryRefreshRehydratesInspectorInPlaceAndKeepsCopyFrozen() async throws {
+    let notePath = "ref/chat/small_reading.md"
+    let temporaryRoot = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(
+      at: temporaryRoot,
+      withIntermediateDirectories: true
+    )
+    let showFixture = temporaryRoot.appendingPathComponent("show.json")
+    let recordURL = temporaryRoot.appendingPathComponent("commands.log")
+    try Data(showFixtureJSON(path: notePath, quote: "old highlight", count: 8).utf8)
+      .write(to: showFixture)
+    defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+    let harness = try makeHarness(environment: [
+      "FAKE_BOB_DELAY_SECONDS": "0.3",
+      "FAKE_BOB_RECORD_PATH": recordURL.path,
+      "FAKE_BOB_REFS_SHOW_FIXTURE": showFixture.path,
+    ])
+    await harness.waitForSnapshot()
+    harness.model.prepareForPresentation()
+    harness.model.panelIsVisible = { true }
+    XCTAssertTrue(harness.model.perform(.select(id: notePath)))
+    harness.model.inspectorRequested()
+    await harness.waitForModel {
+      $0.inspectorContent(for: notePath)?.highlights.first?.quote == "old highlight 0"
+    }
+    XCTAssertTrue(harness.model.revealMoreInspectorNotes())
+    let oldPage = harness.model.inspectorNotesPage(for: notePath)
+    XCTAssertEqual(oldPage.visibleCount(total: 8), 8)
+
+    harness.model.openCopyCard()
+    let frozenCopyNotes = try XCTUnwrap(harness.model.copyCard?.notes)
+    let inspectorGeneration = harness.model.inspectorGeneration
+    let snapshotGeneration = harness.library.snapshotRefreshGeneration
+    try Data(showFixtureJSON(path: notePath, quote: "new highlight", count: 4).utf8)
+      .write(to: showFixture)
+    harness.library.refresh(reason: .manual)
+
+    await harness.waitForModel { model in
+      harness.library.snapshotRefreshGeneration > snapshotGeneration
+        && self.showCount(recordURL, path: notePath) >= 2
+    }
+    XCTAssertEqual(
+      harness.model.inspectorContent(for: notePath)?.highlights.first?.quote,
+      "old highlight 0"
+    )
+    XCTAssertEqual(harness.model.inspectorGeneration, inspectorGeneration)
+    XCTAssertEqual(harness.model.copyCard?.notes, frozenCopyNotes)
+
+    await harness.waitForModel {
+      $0.inspectorContent(for: notePath)?.highlights.first?.quote == "new highlight 0"
+    }
+    XCTAssertEqual(harness.model.selectedID, notePath)
+    XCTAssertEqual(harness.model.inspectorGeneration, inspectorGeneration)
+    let refreshedPage = harness.model.inspectorNotesPage(for: notePath)
+    XCTAssertEqual(refreshedPage.visibleCount(total: 4), 4)
+    XCTAssertEqual(refreshedPage.hiddenCount(total: 4), 0)
+    XCTAssertEqual(harness.model.copyCard?.notes, frozenCopyNotes)
+  }
+
+  func testHiddenLibraryRefreshDoesNotHydrateInspector() async throws {
+    let temporaryRoot = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(
+      at: temporaryRoot,
+      withIntermediateDirectories: true
+    )
+    let recordURL = temporaryRoot.appendingPathComponent("commands.log")
+    defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+    let harness = try makeHarness(environment: [
+      "FAKE_BOB_RECORD_PATH": recordURL.path,
+    ])
+    await harness.waitForSnapshot()
+    harness.model.prepareForPresentation()
+    harness.model.panelIsVisible = { false }
+    let generation = harness.library.snapshotRefreshGeneration
+    harness.library.refresh(reason: .manual)
+    await harness.waitForModel { harness.library.snapshotRefreshGeneration > generation }
+    try? await Task.sleep(nanoseconds: 100_000_000)
+    let record = (try? String(contentsOf: recordURL)) ?? ""
+    XCTAssertFalse(record.contains("argv=ref show"))
+  }
+
   func testVisibleBrowseSelectsFirstCreated() async throws {
     let markerDir = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
@@ -5175,6 +5297,18 @@ final class RefsPanelModelTests: XCTestCase {
       RefsTodayLinkResponse.self,
       from: Data(contentsOf: harnessFixtureURL(name))
     )
+  }
+
+  private func showFixtureJSON(path: String, quote: String, count: Int) -> String {
+    let annotations = (0..<count).map { index in
+      #"{"kind":"highlight","quote":"\#(quote) \#(index)"}"#
+    }.joined(separator: ",")
+    return #"{"ok":true,"schema_version":1,"command":"ref show","refs":[{"path":"\#(path)","annotations":[\#(annotations)]}]}"#
+  }
+
+  private func showCount(_ recordURL: URL, path: String) -> Int {
+    let record = (try? String(contentsOf: recordURL)) ?? ""
+    return record.components(separatedBy: "argv=ref show \(path) -f json").count - 1
   }
 
   private func fakeBobPath() throws -> String {

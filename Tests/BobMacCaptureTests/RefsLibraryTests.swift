@@ -576,6 +576,83 @@ final class RefsLibraryTests: XCTestCase {
     )
   }
 
+  func testQueuedScanRequestsCollapseToOneFollowUpAfterFinished() async throws {
+    let recordURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    let context = try makeContext(environment: [
+      "FAKE_BOB_DELAY_SECONDS": "0.5",
+      "FAKE_BOB_RECORD_PATH": recordURL.path,
+    ])
+    var transitions: [String] = []
+    let cancellable = context.library.$scanState.dropFirst().sink { state in
+      switch state {
+      case .idle:
+        transitions.append("idle")
+      case .scanning:
+        transitions.append("scanning")
+      case .finished:
+        transitions.append("finished")
+      }
+    }
+
+    XCTAssertEqual(context.library.requestScan(queueIfBusy: false), .started)
+    XCTAssertEqual(context.library.requestScan(queueIfBusy: true), .queued)
+    XCTAssertEqual(context.library.requestScan(queueIfBusy: true), .queued)
+    XCTAssertEqual(context.library.requestScan(queueIfBusy: true), .queued)
+    await waitUntil(timeout: 15) {
+      let record = (try? String(contentsOf: recordURL)) ?? ""
+      return record.components(separatedBy: "argv=ref scan -a -w -f json").count - 1 == 2
+        && transitions.filter { $0 == "finished" }.count == 2
+    }
+
+    XCTAssertEqual(
+      transitions,
+      ["scanning", "finished", "scanning", "finished"]
+    )
+    withExtendedLifetime(cancellable) {}
+  }
+
+  func testScanRequestedDuringRenameStartsAfterRenameEnds() async throws {
+    let recordURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    let context = try makeContext(environment: [
+      "FAKE_BOB_DELAY_SECONDS": "0.5",
+      "FAKE_BOB_RECORD_PATH": recordURL.path,
+    ])
+    let rename = Task {
+      try await context.library.rename(
+        notePath: "ref/blogs/442a6bf555914893e9891c11519de94f.md",
+        name: "renamed"
+      )
+    }
+    await waitUntil(timeout: 5) {
+      ((try? String(contentsOf: recordURL)) ?? "")
+        .contains("argv=ref rename -f json")
+    }
+
+    XCTAssertEqual(context.library.requestScan(queueIfBusy: true), .queued)
+    _ = try await rename.value
+    await waitUntil(timeout: 15) {
+      let record = (try? String(contentsOf: recordURL)) ?? ""
+      let finished: Bool
+      if case .finished = context.library.scanState {
+        finished = true
+      } else {
+        finished = false
+      }
+      return record.contains("argv=ref scan -a -w -f json")
+        && finished
+    }
+    let record = try String(contentsOf: recordURL)
+    guard let renameRange = record.range(of: "argv=ref rename -f json"),
+      let scanRange = record.range(of: "argv=ref scan -a -w -f json")
+    else {
+      XCTFail("expected rename and queued scan commands")
+      return
+    }
+    XCTAssertTrue(renameRange.lowerBound < scanRange.lowerBound)
+  }
+
   func testFinishedAfterPostScanListWithNewRows() async throws {
     let recordURL = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)

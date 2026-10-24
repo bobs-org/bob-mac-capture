@@ -16,6 +16,11 @@ file path, size, and mtime in memory (64) and under
 `~/Library/Caches/org.bobs.bob-mac-capture/refs/` (1,000 entries plus
 one thumbnail PNG each). What each kind shows:
 
+When a library refresh lands while Bob Refs is visible, the selected
+inspector re-hydrates in place, keeping its selection, scroll position, and
+revealed page (clamped if the feed shrinks). Old content stays until the new
+notes and intrinsics are ready; a hidden panel hydrates when shown.
+
 - Papers, articles, and docs show a page-1 thumbnail (fixed space
   is reserved while it loads, so nothing jumps) and the outline:
   150 × 194 pt beside the facts in the wide layout, 112 × 145 pt

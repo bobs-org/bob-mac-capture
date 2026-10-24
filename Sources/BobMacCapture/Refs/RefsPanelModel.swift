@@ -93,6 +93,12 @@ public enum RefsCommand: Equatable, Sendable {
   case consume
 }
 
+/// The user-facing source that requested a scan pass.
+public enum RefsScanOrigin: Equatable, Sendable {
+  case panelKey
+  case highlightsSave
+}
+
 /// A banner above the list: orange card, callout text, action buttons. A
 /// banner dismisses on the next query edit, on Esc, or on a successful
 /// open — never on a re-rank alone.
@@ -657,12 +663,25 @@ public final class RefsPanelModel: ObservableObject {
     library.$todayRefreshGeneration.sink { [weak self] _ in
       self?.scheduleLibraryDidPublish()
     }.store(in: &subscriptions)
-    library.$scanState.sink { [weak self] _ in
-      Task { await self?.scanStateDidChange() }
+    library.$snapshotRefreshGeneration.dropFirst().sink { [weak self] _ in
+      Task { @MainActor in self?.refreshInspectorAfterLibraryRefresh() }
+    }.store(in: &subscriptions)
+    inspectorLoader.$content.sink { [weak self] content in
+      self?.clampRevealedPage(to: content)
     }.store(in: &subscriptions)
     library.$refreshState.sink { [weak self] _ in
       Task { await self?.refreshStateDidChange() }
     }.store(in: &subscriptions)
+    library.onScanStarted = { [weak self] origin, isFollowUp in
+      guard let self else { return }
+      self.renameStatus = nil
+      if isFollowUp, origin == .highlightsSave {
+        self.prepareForScan()
+      }
+    }
+    library.onScanFinished = { [weak self] outcome, origin in
+      self?.scanDidFinish(outcome, origin: origin)
+    }
   }
 
   /// Whether a scan is running on the library lane.
@@ -679,6 +698,37 @@ public final class RefsPanelModel: ObservableObject {
       return startedAt
     }
     return nil
+  }
+
+  /// Requests a scan from Bob Refs or from a save observed in
+  /// Highlights. Panel-key requests keep their current busy behavior;
+  /// Highlights-save requests coalesce one follow-up behind busy work.
+  public func requestScan(origin: RefsScanOrigin) {
+    switch origin {
+    case .panelKey:
+      guard !isScanning else { return }
+      prepareForScan()
+      _ = library.requestScan(queueIfBusy: false, origin: origin)
+    case .highlightsSave:
+      switch library.requestScan(queueIfBusy: true, origin: origin) {
+      case .started:
+        prepareForScan()
+      case .queued:
+        break
+      case .ignored:
+        break
+      }
+    }
+  }
+
+  private func prepareForScan() {
+    if let current = banner, Self.isScanBanner(current) {
+      banner = nil
+    }
+    scanNotice = nil
+    scanNoticeSeen = false
+    pdfUpdateFooterClauses = []
+    selectionAtScanStart = selectedID
   }
 
   /// Called by the controller from `hide()`, after `orderOut`.
@@ -1086,17 +1136,7 @@ public final class RefsPanelModel: ObservableObject {
       toggleSelectedNew()
       return true
     case .scan:
-      if isScanning {
-        return true
-      }
-      if let current = banner, Self.isScanBanner(current) {
-        banner = nil
-      }
-      scanNotice = nil
-      scanNoticeSeen = false
-      pdfUpdateFooterClauses = []
-      selectionAtScanStart = selectedID
-      _ = library.scan()
+      requestScan(origin: .panelKey)
       return true
     case .scrollInspector(let direction):
       inspectorScrollSubject.send(direction)
@@ -1865,6 +1905,30 @@ public final class RefsPanelModel: ObservableObject {
       return
     }
     inspectorLoader.request(item)
+  }
+
+  private func refreshInspectorAfterLibraryRefresh() {
+    guard panelIsVisible(), !isRenaming,
+      let selectedID,
+      let item = library.item(id: selectedID),
+      !inspectorLoader.isPreviewPinned(id: selectedID)
+    else {
+      return
+    }
+    inspectorLoader.refresh(item)
+  }
+
+  private func clampRevealedPage(
+    to contentByID: [String: RefsInspectorContent]
+  ) {
+    guard let id = revealedPageID,
+      var page = revealedPage,
+      let content = contentByID[id],
+      page.clamp(total: content.feed.total)
+    else {
+      return
+    }
+    revealedPage = page
   }
 
   /// Records the current preview place without publishing a model change.
@@ -2897,14 +2961,10 @@ public final class RefsPanelModel: ObservableObject {
   /// A finished scan installs its notice or banner; a scan that just
   /// started clears a stale rename status so it never masks the
   /// scanning state.
-  private func scanStateDidChange() {
-    if case .scanning = library.scanState {
-      renameStatus = nil
-      return
-    }
-    guard case .finished(let outcome) = library.scanState else {
-      return
-    }
+  private func scanDidFinish(_ outcome: RefsScanOutcome, origin: RefsScanOrigin) {
+    // Keep the origin attached to this pass through its presentation
+    // path; the approved silent branch adds no save-only notification.
+    _ = origin
     scanNotice = outcome
     if panelIsVisible() {
       if outcome.kind != .failed {

@@ -573,13 +573,30 @@ public final class RefsInspectorLoader: ObservableObject {
     /// Requests hydration for an item, debouncing rapid selection
     /// movement: the previous load cancels.
     public func request(_ item: RefItem) {
+        schedule(item, waitForSelectionSettle: true)
+    }
+
+    /// Refreshes the selected item immediately, without waiting for the
+    /// selection settle used while the user is moving through the list.
+    public func refresh(_ item: RefItem) {
+        schedule(item, waitForSelectionSettle: false)
+    }
+
+    /// Whether preview-installed content is pinned for this id.
+    public func isPreviewPinned(id: String) -> Bool {
+        previewContentIDs.contains(id)
+    }
+
+    private func schedule(_ item: RefItem, waitForSelectionSettle: Bool) {
         current?.cancel()
         guard !previewContentIDs.contains(item.id) else {
             current = nil
             return
         }
         current = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: Self.settleDelayNanoseconds)
+            if waitForSelectionSettle {
+                try? await Task.sleep(nanoseconds: Self.settleDelayNanoseconds)
+            }
             guard !Task.isCancelled else {
                 return
             }

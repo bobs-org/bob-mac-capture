@@ -587,6 +587,25 @@ public struct RefsNotesPage: Equatable, Sendable {
         max(max(total, 0) - visibleCount(total: total), 0)
     }
 
+    /// Clamps a revealed page after the refreshed feed changes. The
+    /// first page stays fully visible when it still exists, while an
+    /// old reveal never points beyond a shorter feed.
+    @discardableResult
+    public mutating func clamp(total: Int) -> Bool {
+        let safeTotal = max(total, 0)
+        let nextShown = min(max(shown, min(size, safeTotal)), safeTotal)
+        let nextBatchStart: Int? = nextShown <= size
+            ? nil
+            : min(batchStart ?? size, max(safeTotal - size, 0))
+        guard nextShown != shown || nextBatchStart != batchStart else {
+            return false
+        }
+        shown = nextShown
+        batchStart = nextBatchStart
+        generation &+= 1
+        return true
+    }
+
     /// Notes the next reveal would show for a total count.
     public func nextBatchCount(total: Int) -> Int {
         min(size, hiddenCount(total: total))

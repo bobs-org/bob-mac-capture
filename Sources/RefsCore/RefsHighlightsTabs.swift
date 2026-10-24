@@ -53,7 +53,7 @@ public struct HighlightsTabsSnapshot: Equatable, Sendable {
     }
 
     /// The selected tab of the main window, or the first window if none is main.
-    var currentTab: Tab? {
+    public var currentTab: Tab? {
         guard let window = windows.first(where: \.isMain) ?? windows.first else {
             return nil
         }

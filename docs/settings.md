@@ -36,6 +36,7 @@ One Carbon handler (`HotKeyRegistry`, signature `'BOBC'`) owns capture (id 1), R
 | In Highlights, show open tabs with | Command-T | `Command-T`, `Shift-Command-O`, `Command-E`, or `Off`. Registers only for Highlights or the override app. Command-T steps aside while Bob Refs is visible so its in-panel Tabs toggle works. |
 | Highlights app | resolved name, version, and path, or `Not found` | Choose… is limited to `.app`. Use Default clears the override path. |
 | Tell me when Bob updates an open PDF | on | Off suppresses notifications only; footer clauses stay. Caption: "Bob asks Highlights to save your unsaved highlights first; Highlights then reloads the PDF in place." |
+| Scan after ⌘S in Highlights | on | Observes Command-S passively and scans after a library PDF save settles. Shows "Needs Accessibility" when needed; Settings never prompts. |
 | Highlights tabs | `Allowed` / `Not allowed` | Live Accessibility grant for reading Highlights tabs. Never prompts from Settings. Ad-hoc builds caption: "Grants reset when an ad-hoc build is reinstalled." |
 | Reset Open History… | — | Confirmed. Clears recently-opened rows and frecency. Disabled when no reset handler is installed. |
 

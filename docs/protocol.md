@@ -270,6 +270,8 @@ These must exist; without them the feature they serve stays hidden or refuses wi
 - `ref rename` (Rename card)
 - `vault-sync -q` (Refs pull on panel show and before ⌘R)
 
+Bob Refs ⌘S and the enabled Highlights-save trigger use this scan command.
+
 Every writing `bob ref scan` that acquired the scan writer lock writes that JSON
 envelope to `<state>/bob-cli/ref/last-scan.json` (`XDG_STATE_HOME`, else
 `~/.local/state`) and, on macOS, posts the Darwin notification

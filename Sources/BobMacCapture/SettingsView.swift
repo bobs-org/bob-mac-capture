@@ -94,6 +94,24 @@ struct SettingsView: View {
                     "Tell me when Bob updates an open PDF",
                     isOn: $settings.refsNotifyOpenPDFUpdates
                 )
+                HStack {
+                    Toggle(
+                        "Scan after ⌘S in Highlights",
+                        isOn: $settings.refsScanOnHighlightsSave
+                    )
+                    .fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 8)
+                    if settings.refsScanOnHighlightsSave && !highlightsTabsAllowed {
+                        Text("Needs Accessibility")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text(
+                    "Runs `bob ref scan -a -w` once Highlights finishes saving. Uses the Accessibility grant shown under Highlights tabs."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 Text(
                     "Bob asks Highlights to save your unsaved highlights first; Highlights then reloads the PDF in place."
                 )

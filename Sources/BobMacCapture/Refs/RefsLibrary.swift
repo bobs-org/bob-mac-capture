@@ -31,6 +31,13 @@ public enum RefsScanState: Equatable, Sendable {
   case finished(RefsScanOutcome)
 }
 
+/// The result of asking the single-flight scan lane to run.
+public enum RefsScanRequest: Equatable, Sendable {
+  case started
+  case queued
+  case ignored
+}
+
 /// The snapshot refresh state the panel footer reads: idle, a refresh in
 /// flight, or the last failure with its bounded message and date. A failed
 /// refresh keeps the last good snapshot; it never empties the list.
@@ -150,6 +157,14 @@ public final class RefsLibrary: ObservableObject {
   /// Increments after each successful reference snapshot refresh.
   @Published public private(set) var snapshotRefreshGeneration: UInt64 = 0
 
+  /// Every debounced watcher batch reaches this hook before the
+  /// library's own relevance and refresh-deferral checks.
+  var onWatcherBatch: ((VaultChangeBatch) -> Void)?
+  /// Reports the origin when a scan pass starts, including a queued follow-up.
+  var onScanStarted: ((RefsScanOrigin, Bool) -> Void)?
+  /// Publishes the completed outcome with the origin that requested it.
+  var onScanFinished: ((RefsScanOutcome, RefsScanOrigin) -> Void)?
+
   /// Seconds between background Today refreshes.
   public static let todayRefreshInterval: TimeInterval = 600
 
@@ -179,6 +194,9 @@ public final class RefsLibrary: ObservableObject {
   private var gitFollowUp = false
   private var scanTask: Task<Void, Never>?
   private var scanInFlight = false
+  private var followUpScanPending = false
+  private var followUpScanOrigin: RefsScanOrigin?
+  private var currentScanOrigin: RefsScanOrigin = .panelKey
   private var renameInFlight = false
   private var deferredWatcherRefresh = false
   private var pullTask: Task<Void, Never>?
@@ -409,21 +427,49 @@ public final class RefsLibrary: ObservableObject {
     }
   }
 
-  /// Runs `bob ref scan -w -f json` on its own `refs-scan` lane.
+  /// Runs `bob ref scan -a -w -f json` on its own `refs-scan` lane.
   /// Returns false when a scan is already running and starts nothing.
   /// The outcome publishes as `scanState` only after the post-scan
   /// snapshot pass completes, so new rows are already in `items`.
   /// A scan never cancels another lane, and no other lane cancels it.
   @discardableResult
   public func scan() -> Bool {
+    requestScan(queueIfBusy: false, origin: .panelKey) == .started
+  }
+
+  /// Starts a scan, or coalesces a requested follow-up when the scan
+  /// lane or rename is busy. At most one follow-up waits at a time.
+  @discardableResult
+  public func requestScan(queueIfBusy: Bool) -> RefsScanRequest {
+    requestScan(queueIfBusy: queueIfBusy, origin: .panelKey)
+  }
+
+  @discardableResult
+  func requestScan(queueIfBusy: Bool, origin: RefsScanOrigin) -> RefsScanRequest {
     guard scanTask == nil, !scanInFlight, !renameInFlight else {
-      return false
+      guard queueIfBusy else {
+        return .ignored
+      }
+      if !followUpScanPending {
+        followUpScanOrigin = origin
+      }
+      followUpScanPending = true
+      return .queued
     }
+    startScanPass(origin: origin)
+    return .started
+  }
+
+  private func startScanPass(
+    origin: RefsScanOrigin,
+    isFollowUp: Bool = false
+  ) {
+    currentScanOrigin = origin
+    onScanStarted?(origin, isFollowUp)
     scanState = .scanning(startedAt: now())
     scanInFlight = true
     deferredWatcherRefresh = false
     scanTask = Task { [weak self] in await self?.runScanPass() }
-    return true
   }
 
   /// The watcher seam: the watcher callback calls this, so tests can
@@ -580,6 +626,12 @@ public final class RefsLibrary: ObservableObject {
     defer {
       renameInFlight = false
       deferredWatcherRefresh = false
+      if followUpScanPending {
+        followUpScanPending = false
+        let origin = followUpScanOrigin ?? .panelKey
+        followUpScanOrigin = nil
+        startScanPass(origin: origin, isFollowUp: true)
+      }
     }
 
     do {
@@ -825,10 +877,7 @@ public final class RefsLibrary: ObservableObject {
 
   private func runScanPass() async {
     let token = CaptureSignpost.begin("refs-scan")
-    defer {
-      CaptureSignpost.end(token)
-      scanTask = nil
-    }
+    defer { CaptureSignpost.end(token) }
     let outcome: RefsScanOutcome
     if let fetcher {
       do {
@@ -872,6 +921,14 @@ public final class RefsLibrary: ObservableObject {
     signals.now = now()
     self.signals = signals
     scanState = .finished(outcome)
+    onScanFinished?(outcome, currentScanOrigin)
+    scanTask = nil
+    if followUpScanPending {
+      followUpScanPending = false
+      let origin = followUpScanOrigin ?? .panelKey
+      followUpScanOrigin = nil
+      startScanPass(origin: origin, isFollowUp: true)
+    }
   }
 
   private func runPostScanRefresh() async {
@@ -939,15 +996,14 @@ public final class RefsLibrary: ObservableObject {
       latency: 0.5,
       onChange: {},
       onBatch: { [weak self] batch in
-        guard
-          RefsWatcherRelevance.isRelevant(
-            batch,
-            vaultRoot: root.path
-          )
-        else {
-          return
+        Task { @MainActor [weak self] in
+          guard let self else { return }
+          self.onWatcherBatch?(batch)
+          guard RefsWatcherRelevance.isRelevant(batch, vaultRoot: root.path) else {
+            return
+          }
+          self.handleWatcherChange()
         }
-        Task { await self?.handleWatcherChange() }
       },
       onFailure: { [weak self] message in
         Task { await self?.watcherFailed(message) }

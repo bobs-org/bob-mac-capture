@@ -15,6 +15,7 @@ These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspecto
 
 | Key | Action |
 | --- | --- |
+| Command-S (in Highlights) | Scan after the library PDF saves when the setting is on; the key reaches Highlights unchanged |
 | Option-N | Mark the selected Ready or Next reference Seen, or New again; the row stays put until the next re-rank; other rows beep |
 | Command-T | Toggle the Tabs filter; the query and kind scope stay in place |
 | Command-T (in Highlights) | While Highlights is frontmost and Bob Refs is hidden, open Bob Refs in Tabs from fresh defaults (as after Ctrl-C); configurable to Shift-Command-O, Command-E, or Off |

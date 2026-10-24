@@ -48,6 +48,10 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(refsNotifyOpenPDFUpdates, forKey: Keys.refsNotifyOpenPDFUpdates) }
     }
 
+    @Published var refsScanOnHighlightsSave: Bool {
+        didSet { defaults.set(refsScanOnHighlightsSave, forKey: Keys.refsScanOnHighlightsSave) }
+    }
+
     /// Live agenda diagnostic from the store ("Last refreshed 14:32",
     /// "Couldn't refresh: …", or the old-bob hint). Transient: never
     /// persisted. AppDelegate keeps it in sync with the store.
@@ -141,6 +145,10 @@ final class AppSettings: ObservableObject {
             defaults.object(forKey: Keys.refsNotifyOpenPDFUpdates) == nil
             ? true
             : defaults.bool(forKey: Keys.refsNotifyOpenPDFUpdates)
+        refsScanOnHighlightsSave =
+            defaults.object(forKey: Keys.refsScanOnHighlightsSave) == nil
+            ? true
+            : defaults.bool(forKey: Keys.refsScanOnHighlightsSave)
         canceledDraftStashCapacity = Self.loadCanceledDraftStashCapacity(from: defaults)
         refsInspectorNotesPageSize = Self.loadRefsInspectorNotesPageSize(from: defaults)
     }
@@ -207,4 +215,5 @@ private enum Keys {
     static let agendaEnabled = "agendaEnabled"
     static let similarTasksEnabled = "similarTasksEnabled"
     static let refsNotifyOpenPDFUpdates = "refsNotifyOpenPDFUpdates"
+    static let refsScanOnHighlightsSave = "refsScanOnHighlightsSave"
 }

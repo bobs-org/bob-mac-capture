@@ -4222,6 +4222,25 @@ final class BobMacCaptureTests: XCTestCase {
     }
 
     @MainActor
+    func testHighlightsSaveScanDefaultsOnAndPersistsChanges() {
+        let suiteName = "org.bobs.bob-mac-capture.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settings = AppSettings(defaults: defaults)
+        XCTAssertTrue(settings.refsScanOnHighlightsSave)
+
+        settings.refsScanOnHighlightsSave = false
+        XCTAssertFalse(defaults.bool(forKey: "refsScanOnHighlightsSave"))
+        XCTAssertFalse(AppSettings(defaults: defaults).refsScanOnHighlightsSave)
+
+        settings.refsScanOnHighlightsSave = true
+        XCTAssertTrue(defaults.bool(forKey: "refsScanOnHighlightsSave"))
+        XCTAssertTrue(AppSettings(defaults: defaults).refsScanOnHighlightsSave)
+    }
+
+    @MainActor
     func testStashCapacityPropagationTrimsImmediatelyAndPayloadsStayOutOfDefaultsAndDiagnostics() {
         let suiteName = "org.bobs.bob-mac-capture.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

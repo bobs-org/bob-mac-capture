@@ -60,7 +60,9 @@ echo "$BOB_DIR"
 
 ## Signing
 
-Bob Mac Capture needs an Accessibility grant to read Highlights tabs, and macOS ties
+Bob Mac Capture needs Accessibility to read Highlights tabs and passively
+observe ⌘S while Highlights is frontmost; key-event text is never stored or
+logged. macOS ties
 an ad-hoc app's grant to its exact `cdhash` — so every ad-hoc `just install`
 silently revokes the grant while System Settings still shows it on. Signing every
 install with one stable self-signed identity (`Bob Mac Capture Local`) keeps the

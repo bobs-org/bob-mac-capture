@@ -18,9 +18,9 @@ Return opens the original PDF in Highlights and changes nothing in the vault —
 opening never mutates reading state, task lanes, or review state. The panel is
 a thin client of `bob`: it filters, ranks, sections, and presents what `bob`
 returns, never parses frontmatter or note bodies, and never writes the vault
-itself. Pressing ⌘S asks `bob` to run its own writer —
-`bob ref scan -a -w` — and then presents the versioned JSON report
-`bob` returns. The 15-minute cron runs the same writer without `-a`.
+itself. Bob Refs ⌘S runs `bob ref scan -a -w` and presents its JSON report.
+When enabled, Bob Mac Capture passively observes ⌘S in Highlights and scans
+after the library PDF save settles. The 15-minute cron runs without `-a`.
 An older `bob` that rejects `-a` is retried without it and remembered
 for that executable.
 
@@ -93,6 +93,10 @@ show.
 Selecting the reference first cancels the reset. Ctrl-C resets it to the
 fresh-launch defaults; quitting or restarting starts fresh.
 
+Visible inspectors rehydrate notes, highlights, thumbnail, and outline after
+a library refresh. Selection, scroll position, and revealed page stay put;
+old content remains until the new load completes.
+
 `RefsLibrary` owns the refresh service: the snapshot, the `-g`
 backfill on its own lane, Today, a one-shot Spotlight sweep for
 last-used dates and page counts, and missing-PDF checks. It paints from
@@ -131,15 +135,29 @@ a trigger that arrives while a pull is running joins that pull, no pull
 runs during a scan or rename, and a pull failure is only logged — it never
 touches `refreshState`, banners, or the footer. The pull itself never
 refreshes; the existing vault watcher sees the fast-forward and runs the
-normal snapshot refresh. A ⌘S scan
-runs on its own `refs-scan` lane with a 300 s timeout and never cancels
-another lane's work, and no other lane cancels it. Watcher changes are
-deferred while a scan runs — they record that one happened and refresh
-once, after the scan. Every completion runs a post-scan refresh that
-starts after `bob` exited (a snapshot pass plus Today), even after a
-failure, because intake may have moved files; the scan notice publishes
-only after that pass, so new rows are already listed when the panel
-re-ranks.
+normal snapshot refresh. An ⌘S scan runs on `refs-scan` (300 s timeout)
+without cancelling other lanes. Watcher changes defer one refresh until
+it completes; a save during a scan or rename queues one follow-up. After
+`bob` exits, each completion refreshes the snapshot and Today, even on
+failure, before publishing the scan notice, so moved intake files appear
+before re-ranking.
+
+### Scan after saving in Highlights
+
+With **Scan after ⌘S in Highlights** enabled, Bob Mac Capture passively
+observes plain Command-S while Highlights (or the override app) is frontmost;
+the key reaches Highlights unchanged. Only `lib/` or `xlib/` documents scan.
+An unknown path permits the full scan; an outside path disarms it. The trigger
+waits for library events to be quiet for 1 second, falls back after 2.5 seconds
+without events, and caps at 10 seconds. A save during a scan or rename queues
+one follow-up.
+
+The scan runs `bob ref scan -a -w -f json`. With
+`highlights.coordinate_pdf_writes: true`, bob's coordinated `.forMerging`
+write saves first, applies the marker to fresh bytes, and reloads the same tab.
+With coordination off, Highlights may show “changed by another application”;
+choose **Save Anyway** to keep annotations. About 350 PDFs take 8 seconds.
+No save-only notification is added; scan and open-PDF receipt rules stay.
 
 ### Sorting
 

@@ -255,6 +255,16 @@ final class RefsInspectorTests: XCTestCase {
         XCTAssertNil(fresh.reveal(total: 2))
     }
 
+    func testNotesPageClampKeepsTheNearestValidRevealedPage() throws {
+        var page = RefsNotesPage(size: 3)
+        XCTAssertEqual(page.reveal(total: 12), 3..<6)
+        XCTAssertEqual(page.reveal(total: 12), 6..<9)
+        XCTAssertTrue(page.clamp(total: 7))
+        XCTAssertEqual(page.visibleCount(total: 7), 7)
+        XCTAssertEqual(page.hiddenCount(total: 7), 0)
+        XCTAssertFalse(page.clamp(total: 7))
+    }
+
     func testNotesPageTotalWithinFirstPageRevealsNothing() throws {
         var page = RefsNotesPage(size: 3)
         XCTAssertEqual(page.hiddenCount(total: 3), 0)

@@ -51,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var refsPanelController: RefsPanelController?
   private var panelCoordinator: BobPanelCoordinator?
   var highlightsTakeover: HighlightsTakeover?
+  private var highlightsSaveKeyMonitor: HighlightsSaveKeyMonitor?
   private var refsCancellables: Set<AnyCancellable> = []
   private var scanReceiptObserver: RefsScanReceiptObserver?
 
@@ -197,6 +198,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // quit, crash, logout SIGKILL, or a just install that replaces the bundle.
     hotKeyRegistry?.invalidate()
     highlightsTakeover?.stop()
+    highlightsSaveKeyMonitor?.stop()
     scanReceiptObserver?.stop()
     refsLibrary?.stop()
     vaultWatcher?.invalidate()
@@ -600,7 +602,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       self?.highlightsTakeover?.sync()
     }
     controller.prewarm()
-    library.start()
 
     panelCoordinator = BobPanelCoordinator(
       isCaptureVisible: { [weak self] in self?.panelController?.isVisible == true },
@@ -650,6 +651,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     highlightsTakeover = takeover
     takeover.start()
+
+    let saveMonitor = HighlightsSaveKeyMonitor(
+      notificationCenter: NSWorkspace.shared.notificationCenter,
+      installer: AppKitGlobalKeyMonitorInstaller(),
+      frontmostBundleID: { NSWorkspace.shared.frontmostApplication?.bundleIdentifier },
+      expectedBundleID: {
+        Self.highlightsOverrideBundleID(path: settings.refsHighlightsAppPath)
+          ?? HighlightsLocator.bundleIdentifier
+      },
+      isTrusted: { tabsSession.reader.isTrusted() },
+      isEnabled: { settings.refsScanOnHighlightsSave },
+      vaultRoot: { Self.vaultRootURL(bobDirectory: settings.bobDirectory).path },
+      readCurrentDocumentPath: {
+        guard let result = await tabsSession.refresh(),
+          case .snapshot(let snapshot) = result
+        else {
+          return nil
+        }
+        return snapshot.currentTab?.documentPath
+      },
+      onScan: { [weak model] in model?.requestScan(origin: .highlightsSave) }
+    )
+    highlightsSaveKeyMonitor = saveMonitor
+    library.onWatcherBatch = { [weak saveMonitor] batch in
+      saveMonitor?.libraryChanged(batch)
+    }
+    saveMonitor.start()
+    library.start()
 
     observeRefsSettings()
     registerRefsHotKey()
@@ -706,6 +735,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
           tabsKey: keys.1,
           appPath: path
         )
+        self?.highlightsSaveKeyMonitor?.sync()
+      }
+      .store(in: &refsCancellables)
+    settings.$refsScanOnHighlightsSave
+      .sink { [weak self] enabled in
+        self?.highlightsSaveKeyMonitor?.sync(enabled: enabled)
       }
       .store(in: &refsCancellables)
     settings.$refsInspectorNotesPageSize
