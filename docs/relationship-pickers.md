@@ -108,9 +108,13 @@ Disabled explanations appear verbatim from Bob (`its LINKS line is malformed`,
 The action line reads `↩ link · ⇧↩ link with a relation · ~ flips direction`.
 Shift-Return inserts the token and opens the relation card. Typing `|` after a
 relation token also opens the card; Bob removes any spaces or tabs before the
-pipe through the rewrite lane, and Undo restores the typed ` |`. Return with a
-label inserts `|label`; Return with an empty label drops the pipe and leaves the
-bare relation token. Escape returns to the unchanged draft. Command-Return
+pipe through the rewrite lane, and Undo restores the typed ` |`. The card keeps
+its query field separate from the highlighted label and filters the catalog
+fetched when it opens. Ctrl-N/P and Down/Up move the highlight, wrapping through
+the field. Tab inserts the selected label, or the top match when nothing is
+selected. Return inserts the selected label, or uses Bob's fresh typed-label
+replacement; with an empty field it removes the pipe and leaves the bare relation
+token. Shift-Tab is consumed. Escape returns to the unchanged draft. Command-Return
 inserts then captures when the owner is complete;
 Control-Return also opens the reported notes. The `~` / `~~` sigil uses a mint
 knot accent, distinct from the grey Pomodoro-drop `~`. Relation labels render
@@ -129,6 +133,10 @@ read Add ID & Use / Add ID & Capture.
 Relation Picker keys: Return/Tab Link, Shift-Return Link with a relation
 (opens the relation card), tilde Flip direction, Command-Return Insert & Capture,
 Control-Return Insert, Capture & Open when the owner is complete.
+
+Relation card keys: Ctrl-N/Down next, Ctrl-P/Up previous, Tab accept, Return
+accept selected or typed label, Escape back. See [Keyboard](keyboard.md#relation-card-keys)
+for the complete key table.
 
 ## Complete Picker
 

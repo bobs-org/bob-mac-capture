@@ -1905,7 +1905,37 @@ JSON
         all_tasks="true"
       fi
     done
-    if [[ "${draft}" == "@@" ]]; then
+    if [[ "${FAKE_BOB_RELATION_LABEL_CHOOSER:-}" == "1" && "${draft}" == *'|"' ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 22, "end": 24 },
+  "context": "relation_label",
+  "candidates": [
+    { "label": "inspired by", "count": 3, "replacement": "|\"inspired by\"" },
+    { "label": "implements", "count": 2, "replacement": "|implements" },
+    { "label": "duplicate of", "count": 1, "replacement": "|\"duplicate of\"" }
+  ],
+  "query": ""
+}
+JSON
+    elif [[ "${FAKE_BOB_RELATION_LABEL_CHOOSER:-}" == "1" && "${draft}" == *'|"inspired by'* ]]; then
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "cursor": ${cursor},
+  "replacement": { "start": 22, "end": 24 },
+  "context": "relation_label",
+  "candidates": [
+    { "label": "inspired by", "replacement": "|\"inspired by\"", "typed": true }
+  ],
+  "query": "inspired by"
+}
+JSON
+    elif [[ "${draft}" == "@@" ]]; then
       cat "${fixtures_dir}/capture-complete-template-bare.json"
     elif [[ "${draft}" == "@@te" ]]; then
       cat "${fixtures_dir}/capture-complete-template-header.json"

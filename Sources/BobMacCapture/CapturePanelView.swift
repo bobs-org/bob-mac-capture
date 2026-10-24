@@ -1826,7 +1826,7 @@ private struct PomodoroNamePromptCard: View {
 @available(macOS 26.0, *)
 private struct RelationLabelPromptCard: View {
     @ObservedObject var model: CapturePanelModel
-    @FocusState private var fieldFocused: Bool
+    @State private var fieldIsFocused = false
 
     private var prompt: CaptureRelationLabelPromptState? {
         model.relationLabelPrompt
@@ -1834,57 +1834,149 @@ private struct RelationLabelPromptCard: View {
 
     var body: some View {
         if let prompt {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline) {
-                    Label("🪢 Relation", systemImage: "arrow.left.arrow.right")
+            VStack(alignment: .leading, spacing: 9) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("🪢 Relation")
                         .font(.headline)
                     Spacer(minLength: 8)
-                    if prompt.isSaving {
+                    if !prompt.catalogLoaded || prompt.isSaving {
                         ProgressView()
                             .controlSize(.small)
                     }
                 }
 
-                Text(model.relationLabelSentence)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text(model.relationLabelSentenceSource)
+                        .lineLimit(1)
+                    if let label = model.relationLabelDisplayedLabel {
+                        Text(label)
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(1)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(
+                                CaptureEditorPalette.color(for: .relationSigil).opacity(0.14),
+                                in: Capsule()
+                            )
+                    }
+                    Image(systemName: "arrow.right")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Text(model.relationLabelSentenceTarget)
+                        .lineLimit(1)
+                }
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Relation sentence: \(model.relationLabelSentence)")
 
-                TextField(
-                    "follow-up of",
-                    text: Binding(
-                        get: { model.relationLabelPrompt?.authoredLabel ?? "" },
-                        set: { model.updateRelationLabelPromptLabel($0) }
+                HStack(spacing: 8) {
+                    RelationLabelField(
+                        text: Binding(
+                            get: { model.relationLabelPrompt?.authoredLabel ?? "" },
+                            set: { model.updateRelationLabelPromptLabel($0) }
+                        ),
+                        isEnabled: !prompt.isSaving,
+                        focusRequest: model.focusRequest,
+                        focusDidChange: { fieldIsFocused = $0 }
                     )
-                )
-                .textFieldStyle(.roundedBorder)
-                .focused($fieldFocused)
-                .disabled(prompt.isSaving)
-                .onAppear { fieldFocused = true }
-                .accessibilityLabel("Relation label")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 7)
+                    .accessibilityLabel("Search or name a relation")
 
-                if !prompt.suggestions.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 6) {
-                            ForEach(Array(prompt.suggestions.enumerated()), id: \.offset) { index, candidate in
-                                let title: String = {
+                    if let badge = model.relationLabelPromptBadgeText {
+                        Text(badge)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(badge == "invalid" ? Color.red : Color.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.quaternary, in: Capsule())
+                            .accessibilityLabel("Relation label status: \(badge)")
+                    }
+                }
+                .background(.background.opacity(0.55), in: RoundedRectangle(cornerRadius: 7))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .strokeBorder(
+                            fieldIsFocused ? Color.accentColor.opacity(0.75) : Color.secondary.opacity(0.22),
+                            lineWidth: fieldIsFocused ? 1 : 0.5
+                        )
+                )
+                .onDisappear { fieldIsFocused = false }
+
+                let rows = model.relationLabelPromptRows
+                if !rows.isEmpty {
+                    ScrollViewReader { proxy in
+                        ScrollView(.vertical, showsIndicators: true) {
+                            LazyVStack(alignment: .leading, spacing: 3) {
+                                ForEach(rows, id: \.id) { candidate in
                                     let label = candidate.label ?? candidate.replacement
-                                    if let count = candidate.count, count > 0 {
-                                        return "\(label) · \(count)"
+                                    let key = model.relationLabelSelectionKey(for: label)
+                                    let selected = prompt.selectedKey == key
+                                    Button {
+                                        model.selectRelationLabelSuggestion(key: key)
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            matchedLabelText(label, query: prompt.authoredLabel)
+                                                .lineLimit(1)
+                                            Spacer(minLength: 8)
+                                            if let count = candidate.count, count > 0 {
+                                                Text(count == 1 ? "1 link" : "\(count) links")
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            if selected {
+                                                Text("⇥")
+                                                    .font(.system(.caption2, design: .monospaced).weight(.semibold))
+                                                    .padding(.horizontal, 5)
+                                                    .padding(.vertical, 2)
+                                                    .background(.background.opacity(0.8), in: RoundedRectangle(cornerRadius: 4))
+                                            }
+                                        }
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 6)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(
+                                            selected ? Color.accentColor.opacity(0.13) : Color.clear,
+                                            in: RoundedRectangle(cornerRadius: 6)
+                                        )
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .strokeBorder(
+                                                    selected ? Color.accentColor.opacity(0.7) : Color.clear,
+                                                    lineWidth: 1
+                                                )
+                                        )
+                                        .contentShape(RoundedRectangle(cornerRadius: 6))
                                     }
-                                    return label
-                                }()
-                                Button(title) {
-                                    model.insertRelationLabelSuggestion(id: candidate.replacement)
+                                    .buttonStyle(.plain)
+                                    .disabled(prompt.isSaving)
+                                    .id(key)
+                                    .accessibilityLabel(
+                                        "\(label), \(candidate.count ?? 0) links\(selected ? ", selected" : "")"
+                                    )
+                                    .accessibilityHint("Press Tab to insert this relation label")
+                                    .accessibilityAddTraits(selected ? .isSelected : [])
                                 }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                                .disabled(prompt.isSaving)
-                                .accessibilityLabel("Use relation label \(candidate.label ?? candidate.replacement)")
+                            }
+                            .padding(3)
+                        }
+                        .frame(maxHeight: 156)
+                        .background(.background.opacity(0.28), in: RoundedRectangle(cornerRadius: 8))
+                        .onChange(of: prompt.selectedKey) { _, key in
+                            guard let key else { return }
+                            withAnimation(.easeOut(duration: 0.12)) {
+                                proxy.scrollTo(key, anchor: .center)
                             }
                         }
                     }
-                    .accessibilityLabel("Relation suggestions")
+                    .accessibilityLabel("Relation labels")
+                } else if let hint = model.relationLabelPromptHint {
+                    Text(hint)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(hint)
                 }
 
                 if let inserts = model.relationLabelInsertsText {
@@ -1893,9 +1985,21 @@ private struct RelationLabelPromptCard: View {
                         .foregroundStyle(CaptureEditorPalette.color(for: .relationSigil))
                 }
 
-                Text("Tab cycles suggestions · esc back to picker")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 5) {
+                    keycap("⌃N / ↓")
+                    Text("next")
+                    keycap("⌃P / ↑")
+                    Text("previous")
+                    keycap("⇥")
+                    Text("accept")
+                    keycap("↩")
+                    Text("insert")
+                    Spacer(minLength: 0)
+                    Text("esc back")
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Control N or Down next; Control P or Up previous; Tab accept; Return insert; Escape back")
 
                 if let error = prompt.errorMessage {
                     Text(error)
@@ -1925,6 +2029,26 @@ private struct RelationLabelPromptCard: View {
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Relation label")
         }
+    }
+
+    private func matchedLabelText(_ label: String, query: String) -> Text {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let range = label.range(of: trimmed, options: [.caseInsensitive])
+        else {
+            return Text(label).fontWeight(trimmed.isEmpty ? .regular : .semibold)
+        }
+        return Text(String(label[..<range.lowerBound]))
+            + Text(String(label[range])).bold()
+            + Text(String(label[range.upperBound...]))
+    }
+
+    private func keycap(_ title: String) -> some View {
+        Text(title)
+            .font(.system(.caption2, design: .monospaced).weight(.medium))
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 4))
     }
 }
 

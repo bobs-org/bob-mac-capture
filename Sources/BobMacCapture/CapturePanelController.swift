@@ -1775,6 +1775,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .cycleRelationLabelSuggestionBackward:
             model.cycleRelationLabelSuggestionBackward()
             return true
+        case .acceptRelationLabelSuggestion:
+            model.acceptRelationLabelSuggestion()
+            return true
         case .confirmPullInChoice:
             model.confirmPullInChoice()
             return true
@@ -1945,6 +1948,15 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         {
             field.requestFirstResponder()
             CaptureSignpost.event("pomodoro-name-focus-repaired")
+            return
+        }
+
+        if model.relationLabelPromptVisible,
+           model.relationLabelPrompt?.isSaving != true,
+           let field = Self.findRelationLabelField(in: panel.contentView)
+        {
+            field.requestFirstResponder()
+            CaptureSignpost.event("relation-label-focus-repaired")
         }
     }
 
@@ -1966,6 +1978,13 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         findTextField(
             in: view,
             identifier: pomodoroNameFieldAccessibilityIdentifier
+        )
+    }
+
+    static func findRelationLabelField(in view: NSView?) -> RelationLabelNSTextField? {
+        findTextField(
+            in: view,
+            identifier: relationLabelFieldAccessibilityIdentifier
         )
     }
 

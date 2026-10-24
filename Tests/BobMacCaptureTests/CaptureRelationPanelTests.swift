@@ -118,7 +118,7 @@ final class CaptureRelationPanelTests: XCTestCase {
         XCTAssertNil(model.picker)
     }
 
-    func testRelationCardTabCyclesSuggestions() {
+    func testRelationCardNavigationSelectsByKeyWithoutChangingQuery() {
         let model = CapturePanelModel()
         model.installRelationLabelPromptForPreviews(
             authoredLabel: "",
@@ -129,11 +129,206 @@ final class CaptureRelationPanelTests: XCTestCase {
             ]
         )
         model.cycleRelationLabelSuggestionForward()
-        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, "follow-up of")
+        XCTAssertEqual(model.relationLabelPrompt?.selectedKey, "follow-up of")
+        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, "")
         model.cycleRelationLabelSuggestionForward()
-        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, "see")
+        XCTAssertEqual(model.relationLabelPrompt?.selectedKey, "see")
         model.cycleRelationLabelSuggestionBackward()
-        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, "follow-up of")
+        XCTAssertEqual(model.relationLabelPrompt?.selectedKey, "follow-up of")
+        model.acceptRelationLabelSuggestion()
+        XCTAssertNil(model.relationLabelPrompt)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target|\"follow-up of\"")
+    }
+
+    func testRelationCardNavigationWrapsThroughTheField() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            suggestions: [
+                suggestionCandidate(label: "inspired by", count: 3),
+                suggestionCandidate(label: "implements", count: 2),
+            ]
+        )
+        model.cycleRelationLabelSuggestionForward()
+        XCTAssertEqual(model.relationLabelPrompt?.selectedKey, "inspired by")
+        model.cycleRelationLabelSuggestionForward()
+        XCTAssertEqual(model.relationLabelPrompt?.selectedKey, "implements")
+        model.cycleRelationLabelSuggestionForward()
+        XCTAssertNil(model.relationLabelPrompt?.selectedKey)
+        model.cycleRelationLabelSuggestionBackward()
+        XCTAssertEqual(model.relationLabelPrompt?.selectedKey, "implements")
+    }
+
+    func testRelationCardTabWithoutSelectionAcceptsTheTopMatch() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            suggestions: [
+                suggestionCandidate(label: "inspired by", count: 3),
+                suggestionCandidate(label: "implements", count: 2),
+            ]
+        )
+        model.acceptRelationLabelSuggestion()
+        XCTAssertNil(model.relationLabelPrompt)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target|\"inspired by\"")
+    }
+
+    func testRelationCardTabWithoutMatchKeepsCardOpenAndShowsHint() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "missing",
+            suggestions: [suggestionCandidate(label: "inspired by", count: 3)]
+        )
+        model.acceptRelationLabelSuggestion()
+        XCTAssertTrue(model.relationLabelPromptVisible)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertEqual(
+            model.relationLabelPrompt?.errorMessage,
+            "No matching labels · type a relation name"
+        )
+    }
+
+    func testRelationCardSlowAndFastNavigationChooseTheSameKey() async {
+        func makeModel() -> CapturePanelModel {
+            let model = CapturePanelModel()
+            model.installRelationLabelPromptForPreviews(
+                suggestions: [
+                    suggestionCandidate(label: "inspired by", count: 3),
+                    suggestionCandidate(label: "implements", count: 2),
+                    suggestionCandidate(label: "duplicate of", count: 1),
+                ]
+            )
+            return model
+        }
+        let fast = makeModel()
+        let slow = makeModel()
+        for _ in 0..<2 {
+            fast.cycleRelationLabelSuggestionForward()
+        }
+        for _ in 0..<2 {
+            slow.cycleRelationLabelSuggestionForward()
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(fast.relationLabelPrompt?.selectedKey, "implements")
+        XCTAssertEqual(slow.relationLabelPrompt?.selectedKey, fast.relationLabelPrompt?.selectedKey)
+        XCTAssertEqual(slow.relationLabelPrompt?.authoredLabel, "")
+    }
+
+    func testRelationCardFiltersAndRanksCatalogLocally() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "imple",
+            suggestions: [
+                suggestionCandidate(label: "Alpha implements", count: 1),
+                suggestionCandidate(label: "Implement this", count: 2),
+                suggestionCandidate(label: "imPlement safely", count: 3),
+                CaptureCompletionCandidate(
+                    replacement: "|hidden label",
+                    label: "hidden label",
+                    count: 10,
+                    hidden: true
+                ),
+            ]
+        )
+        XCTAssertEqual(
+            model.relationLabelPromptRows.compactMap(\.label),
+            ["Implement this", "imPlement safely", "Alpha implements"]
+        )
+        model.updateRelationLabelPromptLabel(" IM  PLE ")
+        XCTAssertNil(model.relationLabelPrompt?.selectedKey)
+        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, " IM  PLE ")
+        XCTAssertEqual(
+            model.relationLabelPromptRows.compactMap(\.label),
+            ["Implement this", "imPlement safely", "Alpha implements"]
+        )
+    }
+
+    func testRelationCardCatalogRefreshKeepsSelectionByKey() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            suggestions: [
+                suggestionCandidate(label: "inspired by", count: 3),
+                suggestionCandidate(label: "implements", count: 2),
+            ]
+        )
+        model.selectRelationLabelSuggestion(key: "implements")
+        XCTAssertTrue(
+            model.applyRelationLabelCatalog(
+                relationLabelResponse(
+                    query: "",
+                    candidates: [
+                        suggestionCandidate(label: "implements", count: 2),
+                        suggestionCandidate(label: "inspired by", count: 3),
+                    ]
+                ),
+                generation: 0,
+                draftSnapshot: "New task ~tasks:target"
+            )
+        )
+        XCTAssertEqual(model.relationLabelPrompt?.selectedKey, "implements")
+        XCTAssertTrue(
+            model.applyRelationLabelCatalog(
+                relationLabelResponse(
+                    query: "",
+                    candidates: [suggestionCandidate(label: "inspired by", count: 3)]
+                ),
+                generation: 0,
+                draftSnapshot: "New task ~tasks:target"
+            )
+        )
+        XCTAssertNil(model.relationLabelPrompt?.selectedKey)
+    }
+
+    func testRelationCardFakeBobCatalogDoesNotCollapseDuringNavigation() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("relation-card-\(UUID().uuidString).log")
+        _ = FileManager.default.createFile(atPath: recordURL.path, contents: Data())
+        defer { try? FileManager.default.removeItem(at: recordURL) }
+
+        let model = CapturePanelModel(
+            processClient: try relationLabelClient(chooser: true, recordPath: recordURL.path)
+        )
+        model.installRelationLabelPromptForPreviews()
+        await waitUntil { model.relationLabelPrompt?.catalogLoaded == true }
+        XCTAssertEqual(
+            model.relationLabelPromptRows.compactMap(\.label),
+            ["inspired by", "implements", "duplicate of"]
+        )
+
+        model.cycleRelationLabelSuggestionForward()
+        model.cycleRelationLabelSuggestionForward()
+        XCTAssertEqual(model.relationLabelPrompt?.selectedKey, "implements")
+        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, "")
+        let recorded = try String(contentsOf: recordURL, encoding: .utf8)
+        XCTAssertEqual(recorded.components(separatedBy: "argv=capture-complete").count - 1, 1)
+
+        model.acceptRelationLabelSuggestion()
+        XCTAssertNil(model.relationLabelPrompt)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target|implements")
+    }
+
+    func testRelationCardKeysNavigateAndAccept() {
+        let router = CaptureKeyCommandRouter()
+        let context = CaptureKeyRoutingContext(relationLabelPromptVisible: true)
+        func event(_ keyCode: UInt16, modifiers: NSEvent.ModifierFlags = []) -> NSEvent {
+            NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: modifiers,
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                characters: "",
+                charactersIgnoringModifiers: "",
+                isARepeat: false,
+                keyCode: keyCode
+            )!
+        }
+        XCTAssertEqual(router.command(for: event(45, modifiers: .control), context: context), .cycleRelationLabelSuggestionForward)
+        XCTAssertEqual(router.command(for: event(125), context: context), .cycleRelationLabelSuggestionForward)
+        XCTAssertEqual(router.command(for: event(35, modifiers: .control), context: context), .cycleRelationLabelSuggestionBackward)
+        XCTAssertEqual(router.command(for: event(126), context: context), .cycleRelationLabelSuggestionBackward)
+        XCTAssertEqual(router.command(for: event(48), context: context), .acceptRelationLabelSuggestion)
+        XCTAssertEqual(router.command(for: event(48, modifiers: .shift), context: context), .consumeKey)
+        XCTAssertEqual(router.command(for: event(36), context: context), .submitRelationLabelPrompt)
     }
 
     func testOldBobCapabilityWarningRequiresTwoSubmits() {
@@ -192,10 +387,20 @@ final class CaptureRelationPanelTests: XCTestCase {
             .path
     }
 
-    private func relationLabelClient(delaySeconds: String? = nil) throws -> BobProcessClient {
+    private func relationLabelClient(
+        delaySeconds: String? = nil,
+        chooser: Bool = false,
+        recordPath: String? = nil
+    ) throws -> BobProcessClient {
         var environment = ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
         if let delaySeconds {
             environment["FAKE_BOB_DELAY_SECONDS"] = delaySeconds
+        }
+        if chooser {
+            environment["FAKE_BOB_RELATION_LABEL_CHOOSER"] = "1"
+        }
+        if let recordPath {
+            environment["FAKE_BOB_RECORD_PATH"] = recordPath
         }
         return BobProcessClient(executablePath: try fakeBobPath(), environment: environment)
     }

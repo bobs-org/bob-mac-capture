@@ -85,13 +85,29 @@ The footer names the default so the meaning of Return stays visible.
 | `⌫` | Discard mine, when Bob offers it |
 | Escape / Ctrl-[ | Unfocus and return to typing |
 
+## Relation card keys
+
+The relation card keeps the search text separate from its highlighted label. Filtering
+is local after Bob returns the catalog, so moving through labels never starts another
+completion request.
+
+| Key | Action |
+| --- | --- |
+| Ctrl-N / Down | Select the next visible label; from the last label, return to the field |
+| Ctrl-P / Up | Select the previous visible label; from the first label, return to the field |
+| Tab | Insert the selected label, or the first visible match when none is selected |
+| Shift-Tab | Consume the key |
+| Return | Insert the selected label; otherwise insert the authored label Bob validated. With an empty field, remove the label separator |
+| Escape / Ctrl-[ | Return to the relation picker, or to the editor when the card opened from `|` |
+
 ## Focus
 
 Every capture action is reachable from the keyboard alone; the hotkey, editor, completion
 list, Stash/Capture/Preview/Discard buttons, the Open chip, and stash picker never require a pointer.
-Opening the **Add block ID** or **Name Pomodoro** prompt moves keyboard focus into that
-prompt's field; that field's first responder is owned directly by AppKit rather than
-SwiftUI focus, and a keystroke arriving while nothing holds focus re-claims the field.
+Opening the **Add block ID**, **Name Pomodoro**, or **Relation** prompt moves keyboard
+focus into that prompt's field; the field's first responder is owned directly by AppKit
+rather than SwiftUI focus, and a keystroke arriving while nothing holds focus re-claims
+the field.
 
 ## Canceled-draft stash keys
 

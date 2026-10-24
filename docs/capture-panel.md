@@ -160,6 +160,10 @@ The agenda UI behind the store above is described in [Idle agenda](idle-agenda.m
   completion response opens the relation card. Undo restores the literal
   post-key draft. This gesture needs a bob build that implements
   `attach_relation_label`; with an older bob, the space before `|` remains.
+  The relation card keeps the query field separate from the highlighted label.
+  It fetches the label catalog once when it opens, filters locally, and accepts
+  the selected row with Tab without another Bob request; Ctrl-N/P and Down/Up
+  move the selection while leaving the query unchanged.
 
 ## Drafts
 

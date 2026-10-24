@@ -57,6 +57,7 @@ enum CaptureKeyCommand: Equatable {
     case cancelRelationLabelPrompt
     case cycleRelationLabelSuggestionForward
     case cycleRelationLabelSuggestionBackward
+    case acceptRelationLabelSuggestion
     case confirmPullInChoice
     case confirmPullInChoiceAndOpen
     case chooseNoPullInOffers
@@ -535,11 +536,21 @@ struct CaptureKeyCommandRouter {
     ) -> CaptureKeyCommand? {
         if event.keyCode == KeyCode.tab {
             if modifiers.isEmpty {
-                return .cycleRelationLabelSuggestionForward
+                return .acceptRelationLabelSuggestion
             }
             if modifiers == .shift {
-                return .cycleRelationLabelSuggestionBackward
+                return .consumeKey
             }
+        }
+        if event.keyCode == KeyCode.arrowDown && modifiers.isEmpty
+            || event.keyCode == KeyCode.n && modifiers == .control
+        {
+            return .cycleRelationLabelSuggestionForward
+        }
+        if event.keyCode == KeyCode.arrowUp && modifiers.isEmpty
+            || event.keyCode == KeyCode.p && modifiers == .control
+        {
+            return .cycleRelationLabelSuggestionBackward
         }
         return isolatedPromptCommand(
             for: event,
