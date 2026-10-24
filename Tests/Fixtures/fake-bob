@@ -2901,6 +2901,10 @@ JSON
       else
         cat "${fixtures_dir}/relation-label-complete-to.json"
       fi
+    elif [[ "${draft}" == 'New task ~tasks:target|"old' && "${cursor}" == "27" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-typed-old.json"
+    elif [[ "${draft}" == 'New task ~tasks:target|"new' && "${cursor}" == "27" ]]; then
+      cat "${fixtures_dir}/relation-label-complete-typed-new.json"
     elif [[ "${draft}" == "New task ~~tasks:source|" && "${cursor}" == "24" ]]; then
       cat "${fixtures_dir}/relation-label-complete-from.json"
     elif [[ "${draft}" == "New task ~tasks:target| @work" && "${cursor}" == "23" ]]; then

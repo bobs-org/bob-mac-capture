@@ -1,0 +1,1 @@
+{"ok":true,"schema_version":1,"cursor":27,"replacement":{"start":22,"end":27},"context":"relation_label","candidates":[{"label":"new","replacement":"|new","typed":true},{"label":"follow-up of","count":4,"replacement":"|\"follow-up of\""}],"query":"new","owner":{"kind":"new_task","text":"New task"},"relation":{"direction":"to","range":{"start":9,"end":22}}}
