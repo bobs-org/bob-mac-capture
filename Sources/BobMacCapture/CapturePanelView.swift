@@ -365,6 +365,10 @@ struct CapturePanelView: View {
     @State private var measuredFooterHeight: CGFloat = 0
 
     var body: some View {
+        agendaObservedContent
+    }
+
+    private var focusObservedContent: some View {
         content
             .onAppear {
                 applyFocusRequest(model.focusRequest)
@@ -372,6 +376,10 @@ struct CapturePanelView: View {
             .onChange(of: model.focusRequest) { _, request in
                 applyFocusRequest(request)
             }
+    }
+
+    private var visibilityObservedContent: some View {
+        focusObservedContent
             .onChange(of: hasAuxiliaryContent) { _, hasContent in
                 if !hasContent {
                     measuredAuxiliaryContentHeight = 0
@@ -394,6 +402,14 @@ struct CapturePanelView: View {
                 measuredAuxiliaryContentHeight = 0
                 reportContentMetrics()
             }
+            .onChange(of: model.inboxRouteChoiceVisible) { _, _ in
+                measuredAuxiliaryContentHeight = 0
+                reportContentMetrics()
+            }
+    }
+
+    private var metricsObservedContent: some View {
+        visibilityObservedContent
             .onChange(of: model.stashCount) { _, _ in
                 reportContentMetrics()
             }
@@ -412,6 +428,10 @@ struct CapturePanelView: View {
             .onChange(of: measuredFooterHeight) { _, _ in
                 reportContentMetrics()
             }
+    }
+
+    private var agendaObservedContent: some View {
+        metricsObservedContent
             .onChange(of: model.agendaVisible) { oldVisible, newVisible in
                 if oldVisible, !newVisible {
                     model.noteAgendaStoppedShowing()
@@ -490,49 +510,7 @@ struct CapturePanelView: View {
                 auxiliaryRegion
             }
 
-            if model.pullInChoiceVisible {
-                CapturePullInChoiceFooter(model: model)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .layoutPriority(2)
-                    .onGeometryChange(for: CGFloat.self) { geometry in
-                        geometry.size.height
-                    } action: { height in
-                        updateMeasuredFooterHeight(height)
-                    }
-            } else if model.pickerVisible {
-                CapturePickerKeyHints(
-                    source: model.picker?.source ?? .activeTask,
-                    showOperatorHint: model.pickerFilterIsEmpty
-                )
-                    .fixedSize(horizontal: false, vertical: true)
-                    .layoutPriority(2)
-                    .onGeometryChange(for: CGFloat.self) { geometry in
-                        geometry.size.height
-                    } action: { height in
-                        updateMeasuredFooterHeight(height)
-                    }
-            } else if model.isSimilarRowFocused {
-                SimilarTasksFooterHints(model: model)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .layoutPriority(2)
-                    .onGeometryChange(for: CGFloat.self) { geometry in
-                        geometry.size.height
-                    } action: { height in
-                        updateMeasuredFooterHeight(height)
-                    }
-            } else {
-                CapturePanelFooter(model: model)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .layoutPriority(2)
-                    .overlay(alignment: .topTrailing) {
-                        CaptureOpenHintCapsule(model: model)
-                    }
-                    .onGeometryChange(for: CGFloat.self) { geometry in
-                        geometry.size.height
-                    } action: { height in
-                        updateMeasuredFooterHeight(height)
-                    }
-            }
+            footerRegion
         }
         .padding(.top, CapturePanelLayout.titlebarDragInset)
         .padding([.horizontal, .bottom], CapturePanelLayout.rootPadding)
@@ -549,6 +527,62 @@ struct CapturePanelView: View {
         )
     }
 
+    @ViewBuilder
+    private var footerRegion: some View {
+        if model.inboxRouteChoiceVisible {
+            CaptureInboxRouteChoiceFooter(model: model)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(2)
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    updateMeasuredFooterHeight(height)
+                }
+        } else if model.pullInChoiceVisible {
+            CapturePullInChoiceFooter(model: model)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(2)
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    updateMeasuredFooterHeight(height)
+                }
+        } else if model.pickerVisible {
+            CapturePickerKeyHints(
+                source: model.picker?.source ?? .activeTask,
+                showOperatorHint: model.pickerFilterIsEmpty
+            )
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(2)
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    updateMeasuredFooterHeight(height)
+                }
+        } else if model.isSimilarRowFocused {
+            SimilarTasksFooterHints(model: model)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(2)
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    updateMeasuredFooterHeight(height)
+                }
+        } else {
+            CapturePanelFooter(model: model)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(2)
+                .overlay(alignment: .topTrailing) {
+                    CaptureOpenHintCapsule(model: model)
+                }
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    updateMeasuredFooterHeight(height)
+                }
+        }
+    }
+
     private var hasAuxiliaryContent: Bool {
         model.isStashPickerPresented
             || model.isTemplateShelfPresented
@@ -561,12 +595,22 @@ struct CapturePanelView: View {
             || model.previewState != .idle
             || model.agendaVisible
             || model.relationCapabilityWarning != nil
+            || model.inboxRouteChoiceVisible
             || model.pullInChoiceVisible
     }
 
     @ViewBuilder
     private var auxiliaryRegion: some View {
-        if model.pullInChoiceVisible, let choice = model.pullInChoice {
+        if model.inboxRouteChoiceVisible, let choice = model.inboxRouteChoice {
+            CaptureInboxRouteChoiceCard(model: model, choice: choice)
+                .layoutPriority(0)
+                .focused($focusedControl, equals: .inboxRouteRows)
+                .onGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.size.height
+                } action: { height in
+                    updateMeasuredAuxiliaryContentHeight(height)
+                }
+        } else if model.pullInChoiceVisible, let choice = model.pullInChoice {
             CapturePullInChoiceCard(model: model, choice: choice)
                 .layoutPriority(0)
                 .focused($focusedControl, equals: .pullInOfferList)
@@ -884,12 +928,21 @@ struct CapturePanelView: View {
         // `CapturePickerFilterField`), so SwiftUI's stored focus value is cleared
         // while the AppKit field claims first responder directly.
         focusedControl = request.target == .editor || request.target == .pullInOfferList
+            || request.target == .inboxRouteRows
             ? request.target : nil
     }
 
     private var currentAuxiliaryHeight: CapturePanelAuxiliaryHeight? {
         guard hasAuxiliaryContent else {
             return nil
+        }
+
+        if model.inboxRouteChoiceVisible, let choice = model.inboxRouteChoice {
+            let policy = CaptureInboxRouteChoiceHeightPolicy(choice: choice, displayScale: displayScale)
+            return CapturePanelAuxiliaryHeight(
+                idealHeight: max(policy.idealHeight, measuredAuxiliaryContentHeight),
+                minimumVisibleHeight: policy.minimumVisibleHeight
+            )
         }
 
         if model.pullInChoiceVisible, let choice = model.pullInChoice {
@@ -3029,6 +3082,9 @@ struct PreviewPane: View {
         // link landing names where its Task Link went without disturbing the
         // existing card below.
         planDestinationRow(for: success)
+        if index == 0 {
+            inboxRoutePreviewSummary
+        }
         if let complete = success.taskComplete {
             pullInPreviewSummary(for: complete.unblocked)
         }
@@ -3092,6 +3148,27 @@ struct PreviewPane: View {
                 blocks: blocks,
                 taskBlocks: taskBlocks
             )
+        }
+    }
+
+    @ViewBuilder
+    private var inboxRoutePreviewSummary: some View {
+        if let summary = CaptureInboxRoutePresentation.previewSummary(
+            candidates: model.previewInboxRoute?.candidates ?? []
+        ) {
+            HStack(spacing: 6) {
+                Image(systemName: "tray.and.arrow.up")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(summary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(summary)
         }
     }
 

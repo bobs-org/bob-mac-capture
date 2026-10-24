@@ -66,6 +66,12 @@ enum CaptureKeyCommand: Equatable {
     case previousPullInOffer
     case togglePullInOffer
     case markAllPullInOffers
+    case confirmInboxRouteChoice
+    case confirmInboxRouteChoiceAndOpen
+    case keepInboxRouteCandidate
+    case cancelInboxRouteChoice
+    case nextInboxRouteDestination
+    case previousInboxRouteDestination
     case acceptPickerRow
     case acceptPickerRowAndStart
     case acceptPickerRowAndContinue
@@ -108,6 +114,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var pullInChoiceVisible = false
     var pullInFilterFocused = false
     var pullInFilterIsEmpty = true
+    var inboxRouteChoiceVisible = false
     var keyIsRepeat = false
     var pickerVisible = false
     var pickerSourceIsTaskLink = false
@@ -219,6 +226,14 @@ struct CaptureKeyCommandRouter {
                 isRepeat: context.keyIsRepeat || event.isARepeat,
                 filterFocused: context.pullInFilterFocused,
                 filterIsEmpty: context.pullInFilterIsEmpty
+            )
+        }
+
+        if context.inboxRouteChoiceVisible {
+            return inboxRouteChoiceCommand(
+                for: event,
+                modifiers: modifiers,
+                isRepeat: context.keyIsRepeat || event.isARepeat
             )
         }
 
@@ -407,6 +422,46 @@ struct CaptureKeyCommandRouter {
             return (!filterFocused || filterIsEmpty) ? .togglePullInOffer : nil
         case KeyCode.a:
             return modifiers == .command ? .markAllPullInOffers : nil
+        case KeyCode.t:
+            return modifiers == .control ? .consumeKey : nil
+        case KeyCode.backslash:
+            return modifiers == .control ? .consumeKey : nil
+        default:
+            return nil
+        }
+    }
+
+    private func inboxRouteChoiceCommand(
+        for event: NSEvent,
+        modifiers: NSEvent.ModifierFlags,
+        isRepeat: Bool
+    ) -> CaptureKeyCommand? {
+        switch event.keyCode {
+        case KeyCode.return, KeyCode.keypadEnter:
+            guard !isRepeat else { return .consumeKey }
+            let keys = Self.strippedReturnModifiers(modifiers)
+            if keys == .control {
+                return .confirmInboxRouteChoiceAndOpen
+            }
+            if keys == .shift {
+                return .keepInboxRouteCandidate
+            }
+            if keys.isEmpty {
+                return .confirmInboxRouteChoice
+            }
+            return .consumeKey
+        case KeyCode.escape:
+            return .cancelInboxRouteChoice
+        case KeyCode.leftBracket:
+            return modifiers == .control ? .cancelInboxRouteChoice : nil
+        case KeyCode.arrowUp:
+            return modifiers.isEmpty ? .previousInboxRouteDestination : nil
+        case KeyCode.arrowDown:
+            return modifiers.isEmpty ? .nextInboxRouteDestination : nil
+        case KeyCode.n:
+            return modifiers == .control ? .nextInboxRouteDestination : nil
+        case KeyCode.p:
+            return modifiers == .control ? .previousInboxRouteDestination : nil
         case KeyCode.t:
             return modifiers == .control ? .consumeKey : nil
         case KeyCode.backslash:

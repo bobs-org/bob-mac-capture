@@ -243,6 +243,8 @@ enum CapturePanelFocusTarget: Hashable {
     case pickerFilter
     case pullInFilter
     case pullInOfferList
+    case inboxRouteFilter
+    case inboxRouteRows
 }
 
 struct CapturePanelFocusRequest: Equatable {
@@ -257,10 +259,27 @@ private struct CapturePullInPreviewSnapshot {
     let generation: UInt64
     let requestID: UUID?
     let pullIn: CapturePullIn?
+    let inboxRoute: CaptureInboxRoute?
     let planBudget: CapturePlanBudget?
     let offers: [TaskCompleteUnblocked]
     let stillBlocked: [TaskCompleteStillBlocked]
     let hasOverride: Bool
+}
+
+private struct CaptureInboxRouteSubmitContext {
+    var choice: CaptureInboxRouteChoiceState
+    let draft: String
+    let clientIdentity: String
+    var openAfterCapture: Bool
+    let seed: String
+    let generation: UInt64
+    let requestID: UUID?
+    let pullInSelection: CapturePullInSelection?
+    let pullInChoiceForBack: CapturePullInChoiceState?
+    let pullInCapabilityAdvertised: Bool
+    let inboxRouteCapabilityAdvertised: Bool
+    let hasOverride: Bool
+    let vaultDirectoryIdentity: String
 }
 
 @MainActor
@@ -381,6 +400,7 @@ final class CapturePanelModel: ObservableObject {
   @Published private(set) var isWritingThemeVisibility = false
     @Published var relationLabelPrompt: CaptureRelationLabelPromptState?
     @Published var pullInChoice: CapturePullInChoiceState?
+    @Published var inboxRouteChoice: CaptureInboxRouteChoiceState?
     @Published var picker: CapturePickerState?
     /// Recomputed only when the picker snapshot or the filter text changes.
     @Published var pickerPresentation: CapturePickerPresentation?
@@ -406,6 +426,9 @@ final class CapturePanelModel: ObservableObject {
             invalidateAnalysis()
             cancelSimilarTasks(clear: true)
             previewPullInSnapshot = nil
+            inboxRouteChoice = nil
+            inboxRouteChoiceContext = nil
+            activeInboxRouteSubmitContext = nil
             clearPreviewOutputs()
             previewState = .idle
             if isPreviewing {
@@ -415,6 +438,7 @@ final class CapturePanelModel: ObservableObject {
             if pullInChoice != nil {
                 cancelPullInChoiceFromKeyboard()
             }
+            clearEditorInputLockIfFree()
             savedTemplateShelf.processClient = processClient
             savedTemplateShelf.refresh(reason: .recheck)
         }
@@ -510,6 +534,8 @@ final class CapturePanelModel: ObservableObject {
     private var programmaticSelectionOffsetToIgnore: Int?
     private var priorityRollSeed: String?
     private var previewPullInSnapshot: CapturePullInPreviewSnapshot?
+    private var inboxRouteChoiceContext: CaptureInboxRouteSubmitContext?
+    private var activeInboxRouteSubmitContext: CaptureInboxRouteSubmitContext?
     private var overrideRefusalDraft: String?
     private var focusSequence: UInt64 = 0
     /// Display text of accepted `&` / `*` picker replacements, used for the
@@ -603,6 +629,7 @@ final class CapturePanelModel: ObservableObject {
     var similarTasksMayRequest: Bool {
         panelVisible && similarTasksEnabled && !pickerVisible && !taskIDPromptVisible
             && !pomodoroNamePromptVisible && !relationLabelPromptVisible && !pullInChoiceVisible
+            && !inboxRouteChoiceVisible
             && !isStashPickerPresented && !isTemplateShelfPresented
     }
 
@@ -1015,11 +1042,23 @@ final class CapturePanelModel: ObservableObject {
     }
 
     var inlinePromptVisible: Bool {
-        taskIDPrompt != nil || pomodoroNamePrompt != nil || relationLabelPrompt != nil || pullInChoice != nil
+        taskIDPrompt != nil || pomodoroNamePrompt != nil || relationLabelPrompt != nil
+            || pullInChoice != nil || inboxRouteChoice != nil
     }
 
     var pullInChoiceVisible: Bool {
         pullInChoice != nil
+    }
+
+    var inboxRouteChoiceVisible: Bool {
+        inboxRouteChoice != nil
+    }
+
+    var previewInboxRoute: CaptureInboxRoute? {
+        guard let processClient else {
+            return nil
+        }
+        return currentPullInPreview(for: plainDraft, processClient: processClient)?.inboxRoute
     }
 
     var pickerVisible: Bool {
@@ -1751,6 +1790,12 @@ final class CapturePanelModel: ObservableObject {
         if let pullInChoice, pullInChoice.draftSnapshot != draft {
             cancelPullInChoiceFromKeyboard()
         }
+        if let context = inboxRouteChoiceContext, context.draft != draft {
+            discardInboxRouteChoiceForInvalidation()
+        }
+        if activeInboxRouteSubmitContext?.draft != draft {
+            activeInboxRouteSubmitContext = nil
+        }
         if previewPullInSnapshot?.draft != draft {
             previewPullInSnapshot = nil
         }
@@ -2016,7 +2061,8 @@ final class CapturePanelModel: ObservableObject {
         {
             relationCapabilityAcknowledgedDraft = nil
         }
-        if let preview = currentPullInPreview(for: draft, processClient: processClient),
+        let preview = currentPullInPreview(for: draft, processClient: processClient)
+        if let preview,
            preview.pullIn?.supported == true,
            preview.offers.contains(where: { $0.offer.map { !$0.key.isEmpty } == true })
         {
@@ -2034,19 +2080,45 @@ final class CapturePanelModel: ObservableObject {
             )
             return
         }
+        if let preview,
+           let inboxRoute = preview.inboxRoute,
+           inboxRoute.supported,
+           !inboxRoute.candidates.isEmpty
+        {
+            let context = CaptureInboxRouteSubmitContext(
+                choice: CaptureInboxRouteChoiceState(
+                    candidates: inboxRoute.candidates,
+                    destinations: inboxRoute.destinations ?? []
+                ),
+                draft: draft,
+                clientIdentity: preview.clientIdentity,
+                openAfterCapture: openAfterCapture,
+                seed: preview.seed,
+                generation: preview.generation,
+                requestID: preview.requestID,
+                pullInSelection: nil,
+                pullInChoiceForBack: nil,
+                pullInCapabilityAdvertised: preview.pullIn?.supported == true,
+                inboxRouteCapabilityAdvertised: true,
+                hasOverride: preview.hasOverride,
+                vaultDirectoryIdentity: processClient.vaultDirectoryIdentity
+            )
+            if openInboxRouteChoice(inboxRoute, context: context) {
+                return
+            }
+        }
         // Positive capability gate (bob-cli-8a): `--require-pull-in-choice`
         // goes out only after a preview from this same executable advertised
         // `pull_in.supported`. Without that proof no flag is sent, so an
         // older bob files the clean draft instead of a junk flag task.
-        let capabilityAdvertised =
-            currentPullInPreview(for: draft, processClient: processClient)?
-                .pullIn?.supported == true
+        let capabilityAdvertised = preview?.pullIn?.supported == true
         dispatchCapture(
             draft: draft,
             openAfterCapture: openAfterCapture,
             selection: nil,
             capabilityAdvertised: capabilityAdvertised,
-            seed: activePriorityRollSeed()
+            seed: preview?.seed ?? activePriorityRollSeed(),
+            inboxRouteCapabilityAdvertised: preview?.inboxRoute?.supported == true
         )
     }
 
@@ -2055,7 +2127,11 @@ final class CapturePanelModel: ObservableObject {
         openAfterCapture: Bool,
         selection: CapturePullInSelection?,
         capabilityAdvertised: Bool,
-        seed: String
+        seed: String,
+        inboxRouteAnswers: [CaptureInboxRouteSubmission]? = nil,
+        inboxRouteCapabilityAdvertised: Bool = false,
+        routeContext: CaptureInboxRouteSubmitContext? = nil,
+        pullInChoiceForBack: CapturePullInChoiceState? = nil
     ) {
         cancelSimilarTasks(clear: true)
         guard let processClient else {
@@ -2063,8 +2139,26 @@ final class CapturePanelModel: ObservableObject {
             errorCode = nil
             return
         }
-        let allowsOverride =
-            currentPullInPreview(for: draft, processClient: processClient)?.hasOverride == true
+        let matchingPreview = currentPullInPreview(for: draft, processClient: processClient)
+        let allowsOverride = routeContext?.hasOverride ?? (matchingPreview?.hasOverride == true)
+        let submitContext = routeContext ?? CaptureInboxRouteSubmitContext(
+            choice: CaptureInboxRouteChoiceState(),
+            draft: draft,
+            clientIdentity: processClient.identityToken,
+            openAfterCapture: openAfterCapture,
+            seed: seed,
+            generation: matchingPreview?.generation ?? analysisGeneration,
+            requestID: matchingPreview?.requestID,
+            pullInSelection: selection,
+            pullInChoiceForBack: pullInChoiceForBack,
+            pullInCapabilityAdvertised: capabilityAdvertised
+                || matchingPreview?.pullIn?.supported == true,
+            inboxRouteCapabilityAdvertised: inboxRouteCapabilityAdvertised
+                || matchingPreview?.inboxRoute?.supported == true,
+            hasOverride: allowsOverride,
+            vaultDirectoryIdentity: processClient.vaultDirectoryIdentity
+        )
+        activeInboxRouteSubmitContext = submitContext
         invalidateRewrite()
         let requestID = UUID()
         let processClientIdentity = processClient.identityToken
@@ -2085,6 +2179,9 @@ final class CapturePanelModel: ObservableObject {
                         requirePullInChoice: selection == nil,
                         refuseOverride: !allowsOverride,
                         pullInCapabilityAdvertised: capabilityAdvertised,
+                        inboxRouteAnswers: inboxRouteAnswers,
+                        requireInboxRouteChoice: true,
+                        inboxRouteCapabilityAdvertised: submitContext.inboxRouteCapabilityAdvertised,
                         templateOrigin: currentDraftHasTemplate ? templateOrigin : nil
                     )
                 }
@@ -2198,6 +2295,331 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
+    private static let inboxRouteLastUsedDestinationKeyPrefix = "inboxRouteLastUsedDestination."
+
+    private static func inboxRouteLastUsedDestinationKey(vaultDirectoryIdentity: String) -> String {
+        let hash = vaultDirectoryIdentity.utf8.reduce(UInt64(14_695_981_039_346_656_037)) {
+            ($0 ^ UInt64($1)) &* 1_099_511_628_211
+        }
+        return inboxRouteLastUsedDestinationKeyPrefix + String(hash, radix: 16)
+    }
+
+    private func lastUsedInboxRouteDestination(vaultDirectoryIdentity: String) -> String? {
+        UserDefaults.standard.string(
+            forKey: Self.inboxRouteLastUsedDestinationKey(
+                vaultDirectoryIdentity: vaultDirectoryIdentity
+            )
+        )
+    }
+
+    private func rememberInboxRouteDestination(
+        _ destination: String,
+        vaultDirectoryIdentity: String
+    ) {
+        UserDefaults.standard.set(
+            destination,
+            forKey: Self.inboxRouteLastUsedDestinationKey(
+                vaultDirectoryIdentity: vaultDirectoryIdentity
+            )
+        )
+    }
+
+    private func openInboxRouteChoice(
+        _ report: CaptureInboxRoute,
+        context: CaptureInboxRouteSubmitContext,
+        refused: CaptureInboxRouteRefused? = nil,
+        refusalMessage: String? = nil
+    ) -> Bool {
+        guard report.supported, !report.candidates.isEmpty else {
+            return false
+        }
+
+        var nextContext = context
+        var choice = context.choice
+        choice.reseed(
+            candidates: report.candidates,
+            destinations: report.destinations ?? []
+        )
+        if let refused {
+            choice.reopenAtRefusedKey(refused.key, message: refused.message)
+        } else if let refusalMessage, let current = choice.currentCandidate {
+            choice.reopenAtRefusedKey(current.key, message: refusalMessage)
+        } else {
+            choice.refusalMessage = nil
+            choice.refusedKey = nil
+            choice.filterText = ""
+            choice.cursor = choice.candidates.firstIndex { choice.answers[$0.key] == nil } ?? 0
+            let previousDestination = choice.cursor > 0
+                ? Self.routeDestination(for: choice.answers[choice.candidates[choice.cursor - 1].key])
+                : nil
+            choice.applyInitialHighlight(
+                previousAnswerDestination: previousDestination,
+                lastUsedDestination: lastUsedInboxRouteDestination(
+                    vaultDirectoryIdentity: context.vaultDirectoryIdentity
+                )
+            )
+        }
+
+        nextContext.choice = choice
+        inboxRouteChoiceContext = nextContext
+        inboxRouteChoice = choice
+        editorInputLocked = true
+        completionResponse = nil
+        pickerChip = nil
+        requestFocus(.inboxRouteFilter)
+        if let refused {
+            announceStatus(refused.message)
+        } else if let refusalMessage {
+            announceStatus(refusalMessage)
+        } else if let candidate = choice.currentCandidate {
+            announceStatus("Route out of \(candidate.inbox). \(choice.candidates.count) inbox task\(choice.candidates.count == 1 ? "" : "s")")
+        }
+        return true
+    }
+
+    private static func routeDestination(
+        for decision: CaptureInboxRouteDecision?
+    ) -> String? {
+        guard case .move(let destination)? = decision else {
+            return nil
+        }
+        return destination
+    }
+
+    private func updateInboxRouteChoice(_ choice: CaptureInboxRouteChoiceState) {
+        inboxRouteChoice = choice
+        if var context = inboxRouteChoiceContext {
+            context.choice = choice
+            inboxRouteChoiceContext = context
+        }
+    }
+
+    private func inboxRouteContextIsCurrent(_ context: CaptureInboxRouteSubmitContext) -> Bool {
+        plainDraft == context.draft
+            && processClient?.identityToken == context.clientIdentity
+            && context.generation == analysisGeneration
+    }
+
+    func updateInboxRouteChoiceFilter(_ text: String) {
+        guard var choice = inboxRouteChoice else {
+            return
+        }
+        choice.filterText = text
+        updateInboxRouteChoice(choice)
+    }
+
+    func focusInboxRouteChoiceFilter() {
+        requestFocus(.inboxRouteFilter)
+    }
+
+    func moveInboxRouteDestinationHighlight(by delta: Int) {
+        guard var choice = inboxRouteChoice else {
+            return
+        }
+        let previous = choice.highlightedRow?.relativePath
+        if delta < 0 {
+            choice.moveHighlightBackward()
+        } else {
+            choice.moveHighlightForward()
+        }
+        let highlighted = choice.highlightedRow
+        updateInboxRouteChoice(choice)
+        requestFocus(.inboxRouteRows)
+        if let highlighted, highlighted.relativePath != previous {
+            announceStatus(CaptureInboxRoutePresentation.rowText(destination: highlighted))
+        }
+    }
+
+    func selectInboxRouteDestination(_ path: String) {
+        guard var choice = inboxRouteChoice,
+              choice.destinations.contains(where: { $0.relativePath == path })
+        else {
+            return
+        }
+        choice.highlightedDestination = path
+        updateInboxRouteChoice(choice)
+        requestFocus(.inboxRouteRows)
+        if let destination = choice.highlightedRow {
+            announceStatus(CaptureInboxRoutePresentation.rowText(destination: destination))
+        }
+    }
+
+    func confirmInboxRouteChoice(openAfterCapture: Bool = false) {
+        guard var choice = inboxRouteChoice,
+              var context = inboxRouteChoiceContext,
+              !isSubmitting
+        else {
+            return
+        }
+        guard inboxRouteContextIsCurrent(context) else {
+            discardInboxRouteChoiceForInvalidation()
+            return
+        }
+        guard choice.currentCandidate != nil,
+              let destination = choice.highlightedRow
+        else {
+            announceStatus("No matching destinations")
+            return
+        }
+
+        if openAfterCapture {
+            context.openAfterCapture = true
+        }
+        let advanced = choice.answerMoveCurrent(destination: destination.relativePath)
+        rememberInboxRouteDestination(
+            destination.relativePath,
+            vaultDirectoryIdentity: context.vaultDirectoryIdentity
+        )
+        context.choice = choice
+        if advanced {
+            choice.applyInitialHighlight(
+                previousAnswerDestination: destination.relativePath,
+                lastUsedDestination: lastUsedInboxRouteDestination(
+                    vaultDirectoryIdentity: context.vaultDirectoryIdentity
+                )
+            )
+            context.choice = choice
+            updateInboxRouteChoice(choice)
+            inboxRouteChoiceContext = context
+            requestFocus(.inboxRouteFilter)
+            if let next = choice.currentCandidate {
+                announceStatus(
+                    CaptureInboxRoutePresentation.contextLine(
+                        candidate: next,
+                        index: choice.cursor,
+                        total: choice.candidates.count
+                    )
+                )
+            }
+            return
+        }
+        guard choice.isComplete else {
+            announceStatus("Route choice is incomplete")
+            return
+        }
+        context.choice = choice
+        inboxRouteChoice = nil
+        inboxRouteChoiceContext = nil
+        clearEditorInputLockIfFree()
+        submitInboxRouteAnswers(context)
+    }
+
+    func keepInboxRouteCandidate() {
+        guard var choice = inboxRouteChoice,
+              var context = inboxRouteChoiceContext,
+              !isSubmitting
+        else {
+            return
+        }
+        guard inboxRouteContextIsCurrent(context) else {
+            discardInboxRouteChoiceForInvalidation()
+            return
+        }
+        guard choice.currentCandidate != nil else {
+            return
+        }
+        let advanced = choice.answerKeepCurrent()
+        context.choice = choice
+        if advanced {
+            choice.applyInitialHighlight(
+                previousAnswerDestination: nil,
+                lastUsedDestination: lastUsedInboxRouteDestination(
+                    vaultDirectoryIdentity: context.vaultDirectoryIdentity
+                )
+            )
+            context.choice = choice
+            updateInboxRouteChoice(choice)
+            inboxRouteChoiceContext = context
+            requestFocus(.inboxRouteFilter)
+            if let next = choice.currentCandidate {
+                announceStatus(
+                    CaptureInboxRoutePresentation.contextLine(
+                        candidate: next,
+                        index: choice.cursor,
+                        total: choice.candidates.count
+                    )
+                )
+            }
+            return
+        }
+        guard choice.isComplete else {
+            announceStatus("Route choice is incomplete")
+            return
+        }
+        context.choice = choice
+        inboxRouteChoice = nil
+        inboxRouteChoiceContext = nil
+        clearEditorInputLockIfFree()
+        submitInboxRouteAnswers(context)
+    }
+
+    private func submitInboxRouteAnswers(_ context: CaptureInboxRouteSubmitContext) {
+        guard inboxRouteContextIsCurrent(context) else {
+            discardInboxRouteChoiceForInvalidation()
+            return
+        }
+        let answers = context.choice.answersForSubmit
+        guard answers.count == context.choice.candidates.count else {
+            announceStatus("Route choice is incomplete")
+            return
+        }
+        dispatchCapture(
+            draft: context.draft,
+            openAfterCapture: context.openAfterCapture,
+            selection: context.pullInSelection,
+            capabilityAdvertised: context.pullInCapabilityAdvertised,
+            seed: context.seed,
+            inboxRouteAnswers: answers,
+            inboxRouteCapabilityAdvertised: context.inboxRouteCapabilityAdvertised,
+            routeContext: context
+        )
+    }
+
+    func backInboxRouteChoice() {
+        guard var choice = inboxRouteChoice,
+              let context = inboxRouteChoiceContext
+        else {
+            return
+        }
+        if choice.goBack() {
+            updateInboxRouteChoice(choice)
+            requestFocus(.inboxRouteFilter)
+            if let candidate = choice.currentCandidate {
+                announceStatus(
+                    CaptureInboxRoutePresentation.contextLine(
+                        candidate: candidate,
+                        index: choice.cursor,
+                        total: choice.candidates.count
+                    )
+                )
+            }
+            return
+        }
+
+        inboxRouteChoice = nil
+        inboxRouteChoiceContext = nil
+        if let pullInChoice = context.pullInChoiceForBack,
+           inboxRouteContextIsCurrent(context)
+        {
+            self.pullInChoice = pullInChoice
+            editorInputLocked = true
+            requestFocus(.pullInOfferList)
+            announceStatus("Choose successor offers")
+        } else {
+            clearEditorInputLockIfFree()
+            requestFocus(.editor)
+            announceStatus("Inbox route choice canceled")
+        }
+    }
+
+    private func discardInboxRouteChoiceForInvalidation() {
+        inboxRouteChoice = nil
+        inboxRouteChoiceContext = nil
+        activeInboxRouteSubmitContext = nil
+        clearEditorInputLockIfFree()
+        requestFocus(.editor)
+    }
+
     func confirmPullInChoice() {
         confirmPullInChoice(openAfterCapture: false)
     }
@@ -2245,7 +2667,9 @@ final class CapturePanelModel: ObservableObject {
             openAfterCapture: choice.openAfterCapture,
             selection: selection,
             capabilityAdvertised: choice.pullIn.supported,
-            seed: choice.priorityRollSeed
+            seed: choice.priorityRollSeed,
+            inboxRouteCapabilityAdvertised: processClient?.inboxRouteCapabilityKnown == true,
+            pullInChoiceForBack: choice
         )
     }
 
@@ -2336,6 +2760,32 @@ final class CapturePanelModel: ObservableObject {
             generation: analysisGeneration,
             requestID: nil
         )
+    }
+
+    func installInboxRouteChoiceForPreviews(
+        route: CaptureInboxRoute,
+        draft: String,
+        openAfterCapture: Bool = false
+    ) {
+        let context = CaptureInboxRouteSubmitContext(
+            choice: CaptureInboxRouteChoiceState(
+                candidates: route.candidates,
+                destinations: route.destinations ?? []
+            ),
+            draft: draft,
+            clientIdentity: processClient?.identityToken ?? "preview-test",
+            openAfterCapture: openAfterCapture,
+            seed: activePriorityRollSeed(),
+            generation: analysisGeneration,
+            requestID: nil,
+            pullInSelection: nil,
+            pullInChoiceForBack: nil,
+            pullInCapabilityAdvertised: false,
+            inboxRouteCapabilityAdvertised: route.supported,
+            hasOverride: false,
+            vaultDirectoryIdentity: processClient?.vaultDirectoryIdentity ?? "preview-vault"
+        )
+        _ = openInboxRouteChoice(route, context: context)
     }
 
     func preview() {
@@ -3089,6 +3539,9 @@ final class CapturePanelModel: ObservableObject {
         clearTaskIDPrompt()
         clearPomodoroNamePrompt()
         pullInChoice = nil
+        inboxRouteChoice = nil
+        inboxRouteChoiceContext = nil
+        activeInboxRouteSubmitContext = nil
         clearEditorInputLockIfFree()
     }
 
@@ -3113,9 +3566,11 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
-    /// The editor stays locked while the picker or either prompt is open.
+    /// The editor stays locked while the picker or a choice prompt is open.
     private func clearEditorInputLockIfFree() {
-        if taskIDPrompt == nil, pomodoroNamePrompt == nil, pullInChoice == nil, picker == nil {
+        if taskIDPrompt == nil, pomodoroNamePrompt == nil, pullInChoice == nil,
+           inboxRouteChoice == nil, picker == nil
+        {
             clearEditorInputLock()
         }
     }
@@ -8774,6 +9229,8 @@ final class CapturePanelModel: ObservableObject {
         }
         activeRequestID = nil
         isSubmitting = false
+        let routeContext = activeInboxRouteSubmitContext
+        activeInboxRouteSubmitContext = nil
 
         switch response {
         case .success(let success):
@@ -8822,6 +9279,11 @@ final class CapturePanelModel: ObservableObject {
             }
             if let templateStatus = Self.templateCaptureStatus(success.template) {
                 statusText += templateStatus
+            }
+            if let routeStatus = CaptureInboxRoutePresentation.successNoticeSuffix(
+                route: success.inboxRoute
+            ) {
+                statusText += " \(routeStatus)"
             }
             templateOrigin = nil
             successAnnouncementTick += 1
@@ -8884,6 +9346,62 @@ final class CapturePanelModel: ObservableObject {
                 }
                 return
             }
+            if failure.code == "inbox_route_choice_required" {
+                guard let processClient,
+                      plainDraft == draft,
+                      processClient.identityToken == processClientIdentity,
+                      let route = failure.inboxRoute,
+                      route.supported,
+                      let routeContext,
+                      inboxRouteContextIsCurrent(routeContext)
+                else {
+                    errorMessage = "Bob's inbox route response was incomplete or stale. Preview again before submitting."
+                    errorCode = nil
+                    statusText = "Inbox routes need refresh"
+                    return
+                }
+                if openInboxRouteChoice(route, context: routeContext) {
+                    return
+                }
+                errorMessage = "Bob requested an inbox route choice but returned no usable candidates. Preview again before submitting."
+                errorCode = nil
+                statusText = "Inbox routes need refresh"
+                return
+            }
+            if failure.code == "inbox_route_refused" {
+                guard let processClient,
+                      plainDraft == draft,
+                      processClient.identityToken == processClientIdentity,
+                      let route = failure.inboxRoute,
+                      route.supported,
+                      let routeContext,
+                      inboxRouteContextIsCurrent(routeContext)
+                else {
+                    errorMessage = failure.error
+                    errorCode = failure.code
+                    statusText = "Capture failed"
+                    notificationService?.notifyCaptureFailure(message: failure.error)
+                    return
+                }
+                if openInboxRouteChoice(
+                    route,
+                    context: routeContext,
+                    refused: failure.refused,
+                    refusalMessage: failure.refused == nil ? failure.error : nil
+                ) {
+                    return
+                }
+            }
+            if failure.code == "inbox_route_stale" {
+                inboxRouteChoice = nil
+                inboxRouteChoiceContext = nil
+                clearEditorInputLockIfFree()
+                previewPullInSnapshot = nil
+                errorMessage = nil
+                errorCode = nil
+                announceStatus("Inbox tasks changed since the preview; press Return to choose again")
+                return
+            }
             previewPullInSnapshot = nil
             errorMessage = failure.error
             errorCode = failure.code
@@ -8922,6 +9440,7 @@ final class CapturePanelModel: ObservableObject {
         }
         activeRequestID = nil
         isSubmitting = false
+        activeInboxRouteSubmitContext = nil
         previewPullInSnapshot = nil
 
         let message = String(describing: error)
@@ -9032,6 +9551,7 @@ final class CapturePanelModel: ObservableObject {
             generation: generation,
             requestID: requestID,
             pullIn: success.pullIn,
+            inboxRoute: success.inboxRoute,
             planBudget: success.planBudget,
             offers: Self.uniquePullInRows(offers),
             stillBlocked: stillBlocked,
@@ -9188,6 +9708,12 @@ final class CapturePanelModel: ObservableObject {
                 clearEditorInputLockIfFree()
                 requestFocus(.editor)
             }
+            if let context = inboxRouteChoiceContext, context.draft != text {
+                discardInboxRouteChoiceForInvalidation()
+            }
+            if let context = activeInboxRouteSubmitContext, context.draft != text {
+                activeInboxRouteSubmitContext = nil
+            }
             if previewPullInSnapshot?.draft != text {
                 previewPullInSnapshot = nil
             }
@@ -9216,6 +9742,9 @@ final class CapturePanelModel: ObservableObject {
     ) {
         if pullInChoice != nil {
             cancelPullInChoiceFromKeyboard()
+        }
+        if inboxRouteChoice != nil {
+            discardInboxRouteChoiceForInvalidation()
         }
         guard let processClient else {
             statusText = "Bob is not resolved"

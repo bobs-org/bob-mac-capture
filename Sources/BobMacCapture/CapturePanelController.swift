@@ -1804,6 +1804,26 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .markAllPullInOffers:
             model.markAllPullInOffers()
             return true
+        case .confirmInboxRouteChoice:
+            model.confirmInboxRouteChoice()
+            return true
+        case .confirmInboxRouteChoiceAndOpen:
+            model.confirmInboxRouteChoice(openAfterCapture: true)
+            return true
+        case .keepInboxRouteCandidate:
+            model.keepInboxRouteCandidate()
+            return true
+        case .cancelInboxRouteChoice:
+            model.backInboxRouteChoice()
+            return true
+        case .nextInboxRouteDestination:
+            resignInboxRouteFilterIfFocused()
+            model.moveInboxRouteDestinationHighlight(by: 1)
+            return true
+        case .previousInboxRouteDestination:
+            resignInboxRouteFilterIfFocused()
+            model.moveInboxRouteDestinationHighlight(by: -1)
+            return true
         case .continuePickerOperator(let key):
             model.continuePickerOperator(key)
             return true
@@ -1869,6 +1889,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                             firstResponder: self.panel?.firstResponder
                         )?.holdsFirstResponder ?? false),
                     pullInFilterIsEmpty: self.model.pullInChoice?.filterText.isEmpty ?? true,
+                    inboxRouteChoiceVisible: self.model.inboxRouteChoiceVisible,
                     keyIsRepeat: event.isARepeat,
                     pickerVisible: self.model.pickerVisible,
                     pickerSourceIsTaskLink: self.model.pickerSourceIsTaskLink,
@@ -1902,6 +1923,20 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
               let field = Self.findPickerFilterField(
                 in: panel.contentView,
                 identifier: pullInFilterFieldAccessibilityIdentifier,
+                firstResponder: panel.firstResponder
+              ),
+              field.holdsFirstResponder
+        else {
+            return
+        }
+        _ = panel.makeFirstResponder(nil)
+    }
+
+    private func resignInboxRouteFilterIfFocused() {
+        guard let panel,
+              let field = Self.findPickerFilterField(
+                in: panel.contentView,
+                identifier: inboxRouteFilterFieldAccessibilityIdentifier,
                 firstResponder: panel.firstResponder
               ),
               field.holdsFirstResponder
@@ -2053,6 +2088,19 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         {
             field.requestFirstResponder()
             CaptureSignpost.event("pull-in-filter-focus-repaired")
+            return
+        }
+        if model.inboxRouteChoiceVisible,
+           model.focusRequest.target == .inboxRouteFilter,
+           let field = Self.findPickerFilterField(
+               in: panel.contentView,
+               identifier: inboxRouteFilterFieldAccessibilityIdentifier,
+               firstResponder: panel.firstResponder
+           ),
+           !field.holdsFirstResponder
+        {
+            field.requestFirstResponder()
+            CaptureSignpost.event("inbox-route-filter-focus-repaired")
         }
     }
 

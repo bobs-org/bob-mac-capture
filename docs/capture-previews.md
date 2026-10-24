@@ -372,6 +372,24 @@ from a picker, or Control-Return on the card itself), that hint is omitted and b
 buttons show a trailing `arrow.up.forward` glyph. The success notification
 reports what was pulled in.
 
+## Inbox routing
+
+When a matching Bob preview reports that a capture will change the status of an
+existing inbox task, the preview adds an `Inbox · … · ↩ choose where it goes`
+row. Return opens the route card before writing, after the successor choice when
+both choices are needed. The card shows each changed task and Bob's available
+areas and open projects, with the destination path, parent, project status, and
+Blocked mark. Filter the list locally, then use Return to move the task or
+Shift-Return to keep it in its inbox. Control-Return moves it and opens the
+capture notes. With multiple tasks, answer them one at a time; the previous
+destination is highlighted when it remains available.
+
+Escape goes back one task. From the first task it returns to the earlier
+successor card, when present, or to the unchanged draft. If Bob refuses a move,
+the card reopens on that task with Bob's reason. If the task changed since the
+preview, the card closes and Return asks Bob for a fresh choice. The success
+notice says which destination was used or that the task stayed in its inbox.
+
 ## Relationship rows
 
 Preview shows one `⛓ depends on · Buy shoes · foo.md ^bar · Ready → In Progress` or

@@ -325,10 +325,7 @@ public enum CaptureInboxRoutePresentation {
   }
 
   public static func rowDetail(destination: CaptureInboxRouteDestination) -> String {
-    var detail = destination.relativePath
-    if let parent = destination.parent, !parent.isEmpty {
-      detail += " · \(parent)"
-    }
+    var detail = rowPathDetail(destination: destination)
     var badges: [String] = []
     if destination.status == "wip" || destination.status == "waiting" {
       badges.append(destination.status ?? "")
@@ -338,6 +335,14 @@ public enum CaptureInboxRoutePresentation {
     }
     if !badges.isEmpty {
       detail += " · \(badges.joined(separator: " · "))"
+    }
+    return detail
+  }
+
+  public static func rowPathDetail(destination: CaptureInboxRouteDestination) -> String {
+    var detail = destination.relativePath
+    if let parent = destination.parent, !parent.isEmpty {
+      detail += " · \(parent)"
     }
     return detail
   }

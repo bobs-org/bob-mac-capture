@@ -5,6 +5,7 @@ import SwiftUI
 /// reference back into SwiftUI.
 let pickerFilterFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.picker-filter"
 let pullInFilterFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.pull-in-filter"
+let inboxRouteFilterFieldAccessibilityIdentifier = "org.bobs.bob-mac-capture.inbox-route-filter"
 
 @available(macOS 26.0, *)
 final class CapturePickerFilterNSTextField: NSTextField {

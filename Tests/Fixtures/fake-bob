@@ -3835,12 +3835,20 @@ JSON
         break
       fi
     done
+    if [[ "${dry_run}" == "true" && -n "${FAKE_BOB_CAPTURE_DRY_RUN_STDOUT:-}" ]]; then
+      printf '%s\n' "${FAKE_BOB_CAPTURE_DRY_RUN_STDOUT}"
+      exit "${FAKE_BOB_CAPTURE_DRY_RUN_EXIT:-0}"
+    fi
     if [[ "${FAKE_BOB_OVERRIDE_REFUSAL:-0}" == "1" && "${dry_run}" == "false" && " $* " == *" --refuse-override "* ]]; then
       printf '%s\n' '{"ok":false,"error":"refusing capture: override was not previewed","code":"pomodoro_override_refused"}'
       exit 1
     fi
     if [[ "${dry_run}" == "false" && -n "${FAKE_BOB_CAPTURE_WRITE_STDOUT:-}" ]]; then
       printf '%s\n' "${FAKE_BOB_CAPTURE_WRITE_STDOUT}"
+      exit "${FAKE_BOB_CAPTURE_WRITE_EXIT:-0}"
+    fi
+    if [[ "${dry_run}" == "false" && -n "${FAKE_BOB_CAPTURE_WRITE_STDOUT_FILE:-}" ]]; then
+      cat "${FAKE_BOB_CAPTURE_WRITE_STDOUT_FILE}"
       exit "${FAKE_BOB_CAPTURE_WRITE_EXIT:-0}"
     fi
     if [[ -n "${FAKE_BOB_CAPTURE_STDOUT:-}" ]]; then

@@ -69,6 +69,17 @@ While a picker card is open, Return accepts the selected row, Escape cancels, an
 
 When a preview reports successor offers, Return opens the grouped choice card before anything is written. Space marks the highlighted offer, Command-A marks all, Shift-Return skips with no offers, and Escape returns to the unchanged draft. Full card behavior is in [Capture previews](capture-previews.md).
 
+## Inbox routing
+
+When a matching preview reports inbox tasks whose status will change, Return
+opens the route card after any successor choice. Up/Down or Control-N/Control-P
+moves the destination highlight. Return moves the current task, Control-Return
+moves it and opens the capture notes, and Shift-Return keeps it in its inbox.
+Escape goes back one task, then returns to the successor card when one preceded
+the route card, or to the unchanged draft. Control-T and Control-Backslash are consumed
+while the route card is open so the template shelf and Pomodoro action cannot
+take over its modal keys. Full behavior is in [Capture previews](capture-previews.md).
+
 ## Similar tasks keys
 
 While a similar-tasks row is focused, the strip owns its keys and any other

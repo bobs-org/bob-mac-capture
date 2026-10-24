@@ -85,6 +85,17 @@ public final class BobProcessClient: @unchecked Sendable {
     return fileIdentityToken()
   }
 
+  /// Stable namespace for per-vault presentation preferences. `BOB_DIR` is
+  /// the configured vault root; when Bob uses its default configuration,
+  /// the config file (or home directory) keeps that preference separate
+  /// from other Bob setups on this machine.
+  public var vaultDirectoryIdentity: String {
+    let path = environment["BOB_DIR"] ?? environment["BOB_CONFIG_FILE"]
+      ?? environment["HOME"] ?? "default"
+    return URL(fileURLWithPath: NSString(string: path).expandingTildeInPath)
+      .standardizedFileURL.path
+  }
+
   private func fileIdentityToken() -> String {
     let attributes = try? FileManager.default.attributesOfItem(atPath: executablePath)
     let device = attributes?[.systemNumber].map { String(describing: $0) } ?? "?"
