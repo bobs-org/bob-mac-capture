@@ -2442,10 +2442,10 @@ final class CapturePanelModelTests: XCTestCase {
     func testBareXSelectionPreviewSubmitsUntouchedDraft() async throws {
         // Bare x selections get an immediate dry-run and enable Close;
         // submission sends the exact original argv.
-        let cases: [(draft: String, advertisesPullIn: Bool, writeArgv: String)] = [
-            ("x*", false, "argv=capture --format json --refuse-override -- x*"),
-            ("x!", false, "argv=capture --format json --refuse-override -- x!"),
-            ("x*2", false, "argv=capture --format json --refuse-override -- x*2"),
+        let cases: [(draft: String, pullInSupported: Bool?, writeArgv: String)] = [
+            ("x*", nil, "argv=capture --format json --refuse-override -- x*"),
+            ("x!", nil, "argv=capture --format json --refuse-override -- x!"),
+            ("x*2", nil, "argv=capture --format json --refuse-override -- x*2"),
             (
                 "x*!2",
                 true,
@@ -2475,7 +2475,7 @@ final class CapturePanelModelTests: XCTestCase {
             XCTAssertNil(model.pickerPresentation, "\(draft): no completion picker")
             XCTAssertEqual(
                 model.previewResult?.pullIn?.supported,
-                testCase.advertisesPullIn,
+                testCase.pullInSupported,
                 "\(draft): preview capability must match the independent fixture expectation"
             )
             model.submit(openAfterCapture: false)
