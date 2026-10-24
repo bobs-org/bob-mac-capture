@@ -2000,6 +2000,10 @@ public final class RefsPanelModel: ObservableObject {
       notes: notes,
       noteCapacity: copyCardNoteCapacity,
       pickerWindowSize: copyCardPickerWindowSize,
+      pickerGroupHeaderHeight: Double(
+        RefsVisualTokens.copyCardPickerGroupHeaderHeight
+      ),
+      pickerRowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight),
       absoluteNotePath: library.noteURL(for: item).path,
       homeDirectoryPath: FileManager.default.homeDirectoryForCurrentUser.path,
       narrationFileURL: audioURL

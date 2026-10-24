@@ -916,16 +916,12 @@ struct RefsInspectorView: View {
       let feed = inspector.feed
       let visible = notesPage.visibleCount(total: feed.total)
       let entries = feed.entries(visible: visible)
+      let trailing = feed.trailingHeaders(visible: visible)
       let nextBatch = notesPage.nextBatchCount(total: feed.total)
       let more = feed.moreText(visible: visible, nextBatch: nextBatch)
       let hiddenLabel = feed.hiddenAccessibilityLabel(visible: visible)
-      if !entries.isEmpty {
-        VStack(
-          alignment: .leading,
-          spacing: isWide
-            ? RefsVisualTokens.wideInspectorEntrySpacing
-            : RefsVisualTokens.inspectorEntrySpacing
-        ) {
+      if !entries.isEmpty || !trailing.isEmpty {
+        VStack(alignment: .leading, spacing: 0) {
           HStack(spacing: 6) {
             Text("HIGHLIGHTS")
               .font(.caption.weight(.semibold))
@@ -937,29 +933,44 @@ struct RefsInspectorView: View {
               noteChip(count: feed.notedCount)
             }
           }
+          .padding(.bottom, entrySpacing)
           .accessibilityElement(children: .combine)
           .accessibilityLabel(feed.headerAccessibilityLabel)
           .accessibilityAddTraits(.isHeader)
           ForEach(entries, id: \.index) { entry in
-            highlightEntryView(entry)
-              .padding(.top, pageRunTopPadding(entry, in: entries))
-              .modifier(
-                RefsInspectorNoteFade(
-                  isRevealed: entry.index >= notesPage.size,
-                  delay: revealDelay(for: entry.index),
-                  previewMode: previewMode
-                )
+            VStack(alignment: .leading, spacing: 0) {
+              headerStack(
+                entry.leadingHeaders,
+                ungroupedCount: feed.ungroupedCount
               )
-              .background {
-                if !previewMode, notesPage.batchStart == entry.index {
-                  RefsInspectorRevealAnchor(
-                    generation: notesPage.generation
-                  )
-                }
+              highlightEntryView(entry)
+            }
+            .padding(.top, entryTopPadding(entry, in: entries))
+            .modifier(
+              RefsInspectorNoteFade(
+                isRevealed: entry.index >= notesPage.size,
+                delay: revealDelay(for: entry.index),
+                previewMode: previewMode
+              )
+            )
+            .background {
+              if !previewMode, notesPage.batchStart == entry.index {
+                RefsInspectorRevealAnchor(
+                  generation: notesPage.generation
+                )
               }
+            }
+          }
+          if !trailing.isEmpty {
+            headerStack(
+              trailing,
+              ungroupedCount: feed.ungroupedCount
+            )
+            .padding(.top, trailingTopPadding(entries: entries))
           }
           if let more {
             disclosureRow(text: more, hiddenLabel: hiddenLabel)
+              .padding(.top, entrySpacing)
           }
         }
       } else if inspector.showFailed {
@@ -976,6 +987,12 @@ struct RefsInspectorView: View {
     return index >= batchStart ? Double(index - batchStart) * 0.04 : 0
   }
 
+  private var entrySpacing: CGFloat {
+    isWide
+      ? RefsVisualTokens.wideInspectorEntrySpacing
+      : RefsVisualTokens.inspectorEntrySpacing
+  }
+
   private func pageRunTopPadding(
     _ entry: RefsInspectorFeed.Entry,
     in entries: [RefsInspectorFeed.Entry]
@@ -984,6 +1001,96 @@ struct RefsInspectorView: View {
       return 0
     }
     return RefsVisualTokens.inspectorPageRunGap
+  }
+
+  private func entryTopPadding(
+    _ entry: RefsInspectorFeed.Entry,
+    in entries: [RefsInspectorFeed.Entry]
+  ) -> CGFloat {
+    guard entry.index != entries.first?.index else { return 0 }
+    if !entry.leadingHeaders.isEmpty {
+      return RefsVisualTokens.inspectorSectionGap
+    }
+    return entrySpacing + pageRunTopPadding(entry, in: entries)
+  }
+
+  private func trailingTopPadding(entries: [RefsInspectorFeed.Entry]) -> CGFloat {
+    if entries.isEmpty { return 0 }
+    return RefsVisualTokens.inspectorSectionGap
+  }
+
+  @ViewBuilder
+  private func headerStack(
+    _ headers: [RefsInspectorFeedHeader],
+    ungroupedCount: Int
+  ) -> some View {
+    ForEach(Array(headers.enumerated()), id: \.offset) { offset, header in
+      feedHeaderView(header, ungroupedCount: ungroupedCount)
+        .padding(
+          .top,
+          offset == 0 ? 0 : RefsVisualTokens.inspectorSectionGap
+        )
+        .padding(
+          .bottom,
+          offset == headers.count - 1 ? entrySpacing : 0
+        )
+    }
+  }
+
+  @ViewBuilder
+  private func feedHeaderView(
+    _ header: RefsInspectorFeedHeader,
+    ungroupedCount: Int
+  ) -> some View {
+    switch header {
+    case .section(let section):
+      sectionHeaderView(section)
+    case .other:
+      Text("OTHER HIGHLIGHTS \(ungroupedCount)")
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityLabel(
+          header.accessibilityLabel(ungroupedCount: ungroupedCount)
+        )
+    }
+  }
+
+  private func sectionHeaderView(_ section: RefsShowSection) -> some View {
+    let barOpacity: Double = colorSchemeContrast == .increased ? 1.0 : 0.6
+    let description = section.description ?? ""
+    return VStack(alignment: .leading, spacing: 2) {
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
+        Text(section.title)
+          .font(.subheadline.weight(.semibold))
+          .frame(maxWidth: .infinity, alignment: .leading)
+        let countLabel = section.tag.isEmpty
+          ? "\(section.count)"
+          : "\(section.tag) · \(section.count)"
+        Text(countLabel)
+          .font(.caption2.monospacedDigit())
+          .foregroundStyle(.tertiary)
+          .lineLimit(1)
+      }
+      if !description.isEmpty {
+        Text(description)
+          .font(.callout)
+          .foregroundStyle(.secondary)
+          .lineLimit(isWide ? 5 : 3)
+          .help(description)
+      }
+    }
+    .padding(.leading, 8)
+    .overlay(alignment: .leading) {
+      RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+        .fill(Color.purple.opacity(barOpacity))
+        .frame(width: 3)
+    }
+    .accessibilityElement(children: .ignore)
+    .accessibilityAddTraits(.isHeader)
+    .accessibilityLabel(
+      RefsInspectorFeedHeader.section(section).accessibilityLabel(ungroupedCount: 0)
+    )
   }
 
   private func disclosureRow(text: String, hiddenLabel: String?) -> some View {

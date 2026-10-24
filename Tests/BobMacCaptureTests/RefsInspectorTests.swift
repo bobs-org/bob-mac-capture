@@ -341,6 +341,57 @@ final class RefsInspectorLoaderTests: XCTestCase {
     XCTAssertFalse(content.showFailed)
   }
 
+  func testLoaderPropagatesSectionsIntoTheFeed() async throws {
+    let fixtures = makeFixtures()
+    let decoded = try JSONDecoder().decode(
+      RefsShowResponse.self,
+      from: fixtureData("refs-show-sections.json")
+    )
+    let row = try XCTUnwrap(decoded.refs.first)
+    fixtures.fetcher.showResponse = RefsShowResponse(
+      schemaVersion: 1,
+      refs: [
+        RefsShowRow(
+          path: fixtures.paper.id,
+          sections: row.sections,
+          annotations: row.annotations,
+          tasks: row.tasks,
+          annotationsStatus: row.annotationsStatus
+        )
+      ]
+    )
+    let loader = RefsInspectorLoader(
+      library: fixtures.library,
+      intrinsics: fixtures.intrinsics
+    )
+
+    loader.request(fixtures.paper)
+    await waitForContent(loader, id: fixtures.paper.id)
+    let content = try XCTUnwrap(loader.content(for: fixtures.paper.id))
+
+    XCTAssertEqual(content.sections.map(\.id), row.sections.map(\.id))
+    let feed = content.feed
+    XCTAssertEqual(feed.total, row.inspectorEntries.count)
+    XCTAssertEqual(feed.entries(visible: feed.total).map(\.index), Array(0..<feed.total))
+    XCTAssertEqual(
+      headerTitles(feed.entries(visible: 1)[0].leadingHeaders),
+      ["Intro", "Memory"]
+    )
+    XCTAssertEqual(feed.trailingHeaders(visible: 0), [])
+    XCTAssertFalse(content.showFailed)
+  }
+
+  private func headerTitles(_ headers: [RefsInspectorFeedHeader]) -> [String?] {
+    headers.map { header in
+      switch header {
+      case .section(let section):
+        return section.title
+      case .other:
+        return nil
+      }
+    }
+  }
+
   func testLoaderPublishesImageMetricsWithInspectorEntries() async throws {
     let fixtures = makeFixtures()
     let images = StubAnnotationImages()

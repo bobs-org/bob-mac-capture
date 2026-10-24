@@ -69,6 +69,8 @@ enum RefsVisualTokens {
     with: .orange, by: 0.35)
   static let inspectorHighlightLineLimit = 4
   static let inspectorPageRunGap: CGFloat = 4
+  /// Gap above every HIGHLIGHTS section header after the first.
+  static let inspectorSectionGap: CGFloat = 14
   /// Vertical spacing between HIGHLIGHTS entries.
   static let inspectorEntrySpacing: CGFloat = 8
   /// Sticky-note glyph on the note card and the header chip.
@@ -92,6 +94,9 @@ enum RefsVisualTokens {
   static let copyCardHeaderHeight: CGFloat = 44
   static let copyCardRowHeight: CGFloat = 24
   static let copyCardPickerRowHeight: CGFloat = 36
+  static let copyCardPickerGroupHeaderHeight: CGFloat = CGFloat(
+    RefsCopyCardLayout.pickerGroupHeaderHeight
+  )
   static let copyCardSeparatorHeight: CGFloat = 9
   static let copyCardNotesHeaderHeight: CGFloat = 22
   static let copyCardMessageLineHeight: CGFloat = 20

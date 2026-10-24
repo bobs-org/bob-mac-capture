@@ -696,14 +696,54 @@ public enum RefsCopyFormat {
     }
 
     public static func allNotes(from row: RefsShowRow) -> String {
-        var blocks = row.yourNotes.map { annotation -> String in
-            annotation.isStandaloneNote ? standaloneNote(annotation) : noteBlock(annotation)
-        }.filter { !$0.isEmpty }
+        let notes = row.yourNotes
+        let sections = row.sections
+        var blocks: [String] = []
+        if sections.isEmpty {
+            blocks = notes.map { annotation -> String in
+                annotation.isStandaloneNote ? standaloneNote(annotation) : noteBlock(annotation)
+            }.filter { !$0.isEmpty }
+        } else {
+            let ids = Set(sections.compactMap(\.usableID))
+            for section in sections {
+                guard let id = section.usableID else { continue }
+                let members = notes.filter { $0.section == id }
+                let memberBlocks = members.map { annotation -> String in
+                    annotation.isStandaloneNote
+                        ? standaloneNote(annotation) : noteBlock(annotation)
+                }.filter { !$0.isEmpty }
+                guard !memberBlocks.isEmpty else { continue }
+                var group = ["### \(section.title)"]
+                if let description = section.description, !description.isEmpty {
+                    group.append(blockquote(description))
+                }
+                group.append(contentsOf: memberBlocks)
+                blocks.append(group.joined(separator: "\n\n"))
+            }
+            let ungrouped = notes.filter { annotation in
+                guard let id = annotation.section else { return true }
+                return !ids.contains(id)
+            }
+            let otherBlocks = ungrouped.map { annotation -> String in
+                annotation.isStandaloneNote ? standaloneNote(annotation) : noteBlock(annotation)
+            }.filter { !$0.isEmpty }
+            if !otherBlocks.isEmpty {
+                var group = ["### Other highlights"]
+                group.append(contentsOf: otherBlocks)
+                blocks.append(group.joined(separator: "\n\n"))
+            }
+        }
         let ownNotes = row.ownNotes.trimmingCharacters(in: .whitespacesAndNewlines)
         if !ownNotes.isEmpty {
             blocks.append("### Notes\n\n\(ownNotes)")
         }
         return blocks.joined(separator: "\n\n")
+    }
+
+    private static func blockquote(_ text: String) -> String {
+        text.components(separatedBy: "\n").map { line in
+            line.isEmpty ? ">" : "> \(line)"
+        }.joined(separator: "\n")
     }
 
     /// One picker entry: a commented highlight, an uncommented quote
@@ -814,6 +854,11 @@ public enum RefsCopyCardLayout {
         guard rowHeight > 0 else { return 0 }
         return min(9, max(0, Int(floor((cardHeight - fixedHeight) / rowHeight))))
     }
+
+    /// Deterministic height reserved for one picker group header.
+    /// The picker uses this to shrink a sectioned window so headers
+    /// plus entries still fit the unsectioned row budget.
+    public static let pickerGroupHeaderHeight: Double = 22
 }
 
 public struct RefsCopyKeyModifiers: OptionSet, Equatable, Sendable {
@@ -942,6 +987,8 @@ public struct RefsCopyCard: Equatable, Sendable {
     public private(set) var message: RefsCopyMessage?
     public private(set) var isClosed: Bool
     public private(set) var pickerWindowSize: Int
+    public var pickerGroupHeaderHeight: Double
+    public var pickerRowHeight: Double
     public private(set) var highlightPicker: RefsHighlightPicker?
 
     public init(
@@ -952,6 +999,8 @@ public struct RefsCopyCard: Equatable, Sendable {
         notes: RefsCopyNotesState,
         noteCapacity: Int,
         pickerWindowSize: Int = 9,
+        pickerGroupHeaderHeight: Double = 0,
+        pickerRowHeight: Double = 36,
         absoluteNotePath: String? = nil,
         homeDirectoryPath: String? = nil,
         narrationFileURL: URL? = nil
@@ -967,6 +1016,8 @@ public struct RefsCopyCard: Equatable, Sendable {
         self.notes = notes
         self.noteCapacity = max(0, noteCapacity)
         self.pickerWindowSize = min(9, max(0, pickerWindowSize))
+        self.pickerGroupHeaderHeight = max(0, pickerGroupHeaderHeight)
+        self.pickerRowHeight = max(0, pickerRowHeight)
         let catalog = RefsCopyCatalog(
             item: item,
             absolutePDFPath: absolutePDFPath,
@@ -1158,6 +1209,8 @@ public struct RefsCopyCard: Equatable, Sendable {
         guard !isClosed else { return }
         pickerWindowSize = min(9, max(0, size))
         guard var picker = highlightPicker else { return }
+        picker.groupHeaderHeight = pickerGroupHeaderHeight
+        picker.entryRowHeight = pickerRowHeight
         picker.setWindowSize(max(1, pickerWindowSize))
         highlightPicker = picker
     }
@@ -1228,7 +1281,9 @@ public struct RefsCopyCard: Equatable, Sendable {
         selectedKey = .highlightPicker
         highlightPicker = RefsHighlightPicker(
             entries: entries,
-            windowSize: max(1, pickerWindowSize)
+            windowSize: max(1, pickerWindowSize),
+            groupHeaderHeight: pickerGroupHeaderHeight,
+            entryRowHeight: pickerRowHeight
         )
         message = nil
         return .none

@@ -416,9 +416,17 @@ link, `X` arXiv ID, `D` DOI, `N` note path, `O` Obsidian link, `P` PDF path,
 `F` the PDF file,
 `R` reading-task link, and `S` research reference. `1`–`9` copy the visible
 commented highlights, including their page and block-link provenance; `A`
-copies all commented highlights and standalone notes plus Bob's own notes; `H`
+copies all commented highlights and standalone notes plus Bob's own notes,
+grouped under `### <Title>` (with the section description as a blockquote)
+when `bob ref show` supplies sections, then `### Other highlights` for the
+ungrouped tail and `### Notes` for Bob's own notes. Empty sections and
+sections that hold only uncommented quotes omit a group. Older unsectioned
+responses keep the previous A payload. `H`
 opens a highlight picker for every highlight and standalone note (digits copy
-the visible window, arrows scroll the rest, `A` copies all highlights). Rows
+the visible window, arrows scroll the rest, `A` copies all highlights). When
+sections are present, the picker draws non-selectable group titles before
+each visible group and a current-group title when the window starts mid-section;
+digits, arrows, wraparound, and counts stay on the entries. Rows
 that do not apply are hidden without moving the other keys. Return or Command-Y
 copies the selected row (marker ID when available, otherwise wiki link); Up/Down
 and Ctrl-P/N/J/K move the

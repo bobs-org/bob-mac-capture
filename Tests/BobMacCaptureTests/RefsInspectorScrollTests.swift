@@ -641,6 +641,60 @@ final class RefsInspectorScrollTests: XCTestCase {
     )
   }
 
+  func testHostedRevealAtSectionHeaderKeepsFlatIndices() {
+    let highlights = (0..<8).map { index in
+      RefsShowAnnotation(
+        pageLabel: "Page \(index + 1)",
+        kind: "highlight",
+        quote: "Quote \(index).",
+        section: index < 5 ? "memory" : "visuals"
+      )
+    }
+    let sections = [
+      RefsShowSection(id: "memory", title: "Memory", tag: "@memory", count: 5),
+      RefsShowSection(id: "visuals", title: "Visuals", tag: "@visuals", count: 3),
+    ]
+    let harness = makeHostedHarness(
+      highlights: highlights,
+      notesPageSize: 5,
+      sections: sections
+    )
+    defer { harness.panel.orderOut(nil) }
+    settle(harness.panel)
+    focusSearch(harness)
+    let selected = tryUnwrapSelected(harness)
+    guard let content = harness.model.inspectorContent(for: selected) else {
+      XCTFail("inspector content missing")
+      return
+    }
+    XCTAssertEqual(content.feed.total, 8)
+    XCTAssertEqual(
+      content.feed.entries(visible: 5).map(\.index),
+      [0, 1, 2, 3, 4]
+    )
+    scrollInspectorToBottom(in: harness.panel)
+    XCTAssertNil(
+      harness.controller.processKeyEvent(
+        keyEvent(keyCode: Self.dKey, modifiers: .control, characters: "d")
+      )
+    )
+    let page = harness.model.inspectorNotesPage(for: selected)
+    XCTAssertEqual(page.visibleCount(total: 8), 8)
+    XCTAssertEqual(page.batchStart, 5)
+    XCTAssertEqual(page.generation, 1)
+    let revealed = content.feed.entries(visible: 8)
+    XCTAssertEqual(revealed.map(\.index), Array(0...7))
+    XCTAssertEqual(
+      revealed[5].leadingHeaders.compactMap { $0.section?.title },
+      ["Visuals"]
+    )
+    XCTAssertTrue(
+      waitUntilRunLoop(timeout: 1.5) {
+        revealAnchor(in: harness.panel, generation: 1) != nil
+      }
+    )
+  }
+
   func testHostedTwoRapidRevealsStackTwoPages() {
     let harness = makeHostedHarness(highlights: Self.thirteenNotes())
     defer { harness.panel.orderOut(nil) }
@@ -815,7 +869,8 @@ final class RefsInspectorScrollTests: XCTestCase {
     shortContent: Bool = false,
     notesPageSize: Int? = nil,
     imageProvider: RefsAnnotationImageProviding? = nil,
-    imageMetrics: [String: RefsImageMetrics] = [:]
+    imageMetrics: [String: RefsImageMetrics] = [:],
+    sections: [RefsShowSection] = []
   ) -> HostedHarness {
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)
@@ -866,6 +921,7 @@ final class RefsInspectorScrollTests: XCTestCase {
           paragraph: "Short preview."
         ),
         outline: [],
+        sections: sections,
         highlights: highlights ?? [],
         images: imageMetrics
       )
@@ -879,6 +935,7 @@ final class RefsInspectorScrollTests: XCTestCase {
           )
         ),
         outline: (0..<80).map { "Heading \($0)" },
+        sections: sections,
         highlights: highlights,
         images: imageMetrics
       )

@@ -1,0 +1,158 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "command": "ref show",
+  "generated_at": "2026-10-24T12:00:00",
+  "library": {"notes": 1},
+  "refs": [
+    {
+      "path": "ref/articles/sections_preview.md",
+      "link": "[[ref/articles/sections_preview]]",
+      "title": "Synthetic Sections Preview",
+      "origin": "web",
+      "ref_type": "article",
+      "era": "modern",
+      "status": "wip",
+      "status_sync": "ok",
+      "legacy_status": null,
+      "reading_state": "started",
+      "reading_state_source": "ref_task:[/]",
+      "blocked": false,
+      "parent": "obsidian_ref",
+      "urls": [],
+      "identity": {"keys": [], "arxiv": null, "doi": null},
+      "author": null,
+      "published": null,
+      "captured": null,
+      "added": "2026-10-20",
+      "added_source": "created",
+      "finished": null,
+      "finished_source": null,
+      "source_pdf": "lib/articles/sections_preview.pdf",
+      "audio": null,
+      "annotation_count": 8,
+      "comment_count": 3,
+      "snapshot": null,
+      "research_ref": null,
+      "superseded_by": null,
+      "diagnostics": [],
+      "annotations_status": "parsed",
+      "sections": [
+        {
+          "id": "intro",
+          "title": "Intro",
+          "tag": "@intro",
+          "block_id": "s-intro",
+          "link": "[[ref/articles/sections_preview#^s-intro]]",
+          "count": 0
+        },
+        {
+          "id": "memory",
+          "title": "Memory",
+          "tag": "@memory",
+          "description": "Everything that belongs in the blog's memory section.\n\nKeep the second paragraph.",
+          "block_id": "s-memory",
+          "link": "[[ref/articles/sections_preview#^s-memory]]",
+          "count": 3,
+          "pages": "Pages 4–5",
+          "images": ["ref/notes/pic.png"]
+        },
+        {
+          "id": "related",
+          "title": "Related",
+          "tag": "@related",
+          "block_id": "s-related",
+          "link": "[[ref/articles/sections_preview#^s-related]]",
+          "count": 0
+        },
+        {
+          "id": "visuals",
+          "title": "Visuals",
+          "tag": "@visuals",
+          "block_id": "s-visuals",
+          "link": "[[ref/articles/sections_preview#^s-visuals]]",
+          "count": 1,
+          "pages": "Page 4"
+        },
+        {
+          "id": "coda",
+          "title": "Coda",
+          "tag": "@coda",
+          "block_id": "s-coda",
+          "link": "[[ref/articles/sections_preview#^s-coda]]",
+          "count": 0
+        }
+      ],
+      "annotations": [
+        {
+          "page_label": "Page 4",
+          "kind": "highlight",
+          "quote": "Make a point about how if I were building AI from scratch.",
+          "comment": null,
+          "block_id": "h-memory-1",
+          "link": "[[ref/articles/sections_preview#^h-memory-1]]",
+          "section": "memory"
+        },
+        {
+          "page_label": "Page 5",
+          "kind": "highlight",
+          "quote": "Mention that you've implemented project memory every wrong way.",
+          "comment": "Compare with the intro",
+          "block_id": "h-memory-2",
+          "link": "[[ref/articles/sections_preview#^h-memory-2]]",
+          "section": "memory"
+        },
+        {
+          "page_label": "Pages 11–12",
+          "kind": "highlight",
+          "quote": "Head words on eleven\n\nTail words on twelve",
+          "comment": "Follower note",
+          "block_id": "h-memory-3",
+          "link": "[[ref/articles/sections_preview#^h-memory-3]]",
+          "section": "memory",
+          "pieces": [
+            {
+              "page_label": "Page 11",
+              "quote": "Head words on eleven"
+            },
+            {
+              "page_label": "Page 12",
+              "quote": "Tail words on twelve",
+              "comment": "Follower note"
+            }
+          ]
+        },
+        {
+          "page_label": "Page 4",
+          "kind": "image",
+          "comment": "A figure worth keeping.",
+          "asset": "ref/notes/pic.png",
+          "block_id": "h-visuals-1",
+          "link": "[[ref/articles/sections_preview#^h-visuals-1]]",
+          "section": "visuals"
+        },
+        {
+          "page_label": "Page 4",
+          "kind": "highlight",
+          "quote": "POTENTIAL QUOTES: keep these ungrouped.",
+          "comment": null,
+          "block_id": "h-other-1",
+          "link": "[[ref/articles/sections_preview#^h-other-1]]"
+        },
+        {
+          "page_label": "Page 8",
+          "kind": "note",
+          "comment": "A standalone note in the ungrouped tail.",
+          "block_id": "n-other-1",
+          "link": "[[ref/articles/sections_preview#^n-other-1]]"
+        }
+      ],
+      "excluded": {"marker_mirrors": 0, "preamble": 0, "removed": 0},
+      "own_notes": "A short own-notes paragraph.",
+      "tasks": [
+        {"checked": false, "mark": " ", "text": "Draft the memory section."}
+      ],
+      "also": []
+    }
+  ]
+}

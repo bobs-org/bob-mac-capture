@@ -57,6 +57,23 @@ one thumbnail PNG each). What each kind shows:
   piece ("Highlight, continued on Page 12: …"). The Copy card keeps
   the group together: each piece's quote followed by its own
   `Comment:` lines, with a blank line between pieces.
+  When `bob ref show` includes `sections`, HIGHLIGHTS draws those
+  titles, `@tag · N` counts, and descriptions as native headers
+  without changing annotation indices, paging, or keyboard numbering.
+  A populated section's header sits on its first shown member; empty
+  sections (and sections whose members are all filtered out) ride
+  with the next member, and a trailing empty set appears after the
+  last revealed entry once every annotation is visible. With no
+  annotations the HIGHLIGHTS container still shows the empty
+  scaffold. Ungrouped entries follow an `OTHER HIGHLIGHTS N` caption
+  when any usable sections exist; an unknown section id joins that
+  tail with no invented heading. A header restarts the page-label
+  run even when the next member repeats the previous page. The
+  disclosure row adds `· N sections` when hidden entries carry
+  section starts (counting those headers, not Other), and VoiceOver
+  names the section on each member while keeping headers as their
+  own headings. Older `bob` responses with no `sections` keep today's
+  flat feed.
   Same-page entries share one page label. Quotes render balanced
   `**` runs as semibold full-ink words over a thick, rounded gold
   underline — one bar per laid-out line, never under the spaces at

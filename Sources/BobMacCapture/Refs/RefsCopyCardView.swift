@@ -118,10 +118,28 @@ struct RefsCopyCardView: View {
 
     @ViewBuilder
     private func pickerRows(_ picker: RefsHighlightPicker) -> some View {
-        ForEach(Array(picker.windowEntries.enumerated()), id: \.offset) { offset, entry in
-            let position = offset + 1
-            pickerRow(entry, position: position, picker: picker)
+        ForEach(Array(picker.windowRows.enumerated()), id: \.offset) { _, row in
+            switch row {
+            case .group(let title):
+                pickerGroupRow(title)
+            case .entry(let position, let entry):
+                pickerRow(entry, position: position, picker: picker)
+            }
         }
+    }
+
+    private func pickerGroupRow(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: RefsVisualTokens.copyCardPickerGroupHeaderHeight,
+                alignment: .leading
+            )
+            .padding(.horizontal, 6)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityLabel(title)
     }
 
     private func pickerRow(

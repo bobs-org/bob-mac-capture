@@ -860,6 +860,108 @@ final class RefsPanelDesignTests: XCTestCase {
     try write(model: model, name: "refs-inspector-encrypted-880", width: 880)
   }
 
+  private func renderInspectorSections(
+    model: RefsPanelModel,
+    now: Date,
+    width: CGFloat,
+    reveal: Bool = false,
+    dynamicTypeSize: DynamicTypeSize? = nil
+  ) throws {
+    let fixture = makeFixture(now: now)
+    let id = "ref/blogs/harness_engineering_article.md"
+    let longDescription =
+      "Everything that belongs in the blog's memory section, including "
+      + "the long asides that should clamp in compact mode and wrap a "
+      + "little further in the wide column before the help tooltip keeps "
+      + "the rest. A second sentence keeps the description long enough "
+      + "to prove the line cap."
+    let highlights = [
+      RefsShowAnnotation(
+        pageLabel: "Page 4",
+        kind: "highlight",
+        quote: "Make a point about how if I were building AI from scratch.",
+        section: "memory"
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 5",
+        kind: "highlight",
+        quote: "Mention that you've implemented project memory every wrong way.",
+        comment: "Compare with the intro",
+        section: "memory"
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 4",
+        kind: "image",
+        comment: "A figure worth keeping.",
+        asset: "ref/notes/pic.png",
+        section: "visuals"
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 4",
+        kind: "highlight",
+        quote: "POTENTIAL QUOTES: keep these ungrouped."
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 8",
+        kind: "note",
+        comment: "A standalone note in the ungrouped tail."
+      ),
+      RefsShowAnnotation(
+        pageLabel: "Page 9",
+        kind: "highlight",
+        quote: "A later ungrouped highlight past the first page."
+      ),
+    ]
+    let sections = [
+      RefsShowSection(
+        id: "intro", title: "Intro", tag: "@intro", count: 0
+      ),
+      RefsShowSection(
+        id: "memory",
+        title: "Memory",
+        tag: "@memory",
+        description: longDescription,
+        count: 2,
+        pages: "Pages 4–5"
+      ),
+      RefsShowSection(
+        id: "related", title: "Related", tag: "@related", count: 0
+      ),
+      RefsShowSection(
+        id: "visuals",
+        title: "Visuals",
+        tag: "@visuals",
+        count: 1,
+        pages: "Page 4"
+      ),
+    ]
+    model.notesPageSize = 5
+    model.installForPreviews(
+      items: fixture.items,
+      signals: fixture.signals,
+      query: "",
+      scope: .all,
+      selectedID: id,
+      banner: nil,
+      refreshState: .idle,
+      inspector: [
+        id: RefsInspectorContent(sections: sections, highlights: highlights)
+      ]
+    )
+    if reveal {
+      XCTAssertTrue(model.revealMoreInspectorNotes())
+    }
+    var name = "refs-inspector-sections-\(Int(width))"
+    if reveal { name += "-revealed" }
+    if dynamicTypeSize != nil { name += "-ax" }
+    try write(
+      model: model,
+      name: name,
+      width: width,
+      dynamicTypeSize: dynamicTypeSize
+    )
+  }
+
   /// Unified HIGHLIGHTS renders: first page, one reveal, and all
   /// noted. Separate from the monolith so a later failure there
   /// cannot swallow these.
@@ -874,6 +976,27 @@ final class RefsPanelDesignTests: XCTestCase {
     try renderInspectorHighlightsUnified(model: model, now: now)
     try renderInspectorHighlightsRevealed(model: model, now: now)
     try renderInspectorHighlightsNoted(model: model, now: now)
+  }
+
+  func testRefsInspectorSectionsToPNG() throws {
+    let now = fixedNow()
+    let library = makeLibrary(now: now)
+    let model = RefsPanelModel(
+      library: library,
+      opener: StubOpener(),
+      highlights: StubLocator()
+    )
+    try renderInspectorSections(model: model, now: now, width: 880)
+    try renderInspectorSections(model: model, now: now, width: 1344)
+    try renderInspectorSections(
+      model: model, now: now, width: 880, reveal: true
+    )
+    try renderInspectorSections(
+      model: model,
+      now: now,
+      width: 880,
+      dynamicTypeSize: .accessibility2
+    )
   }
 
   /// Gold underline ink: the screenshot's Page 2/4/5 quotes, a
@@ -2071,7 +2194,8 @@ final class RefsPanelDesignTests: XCTestCase {
     model: RefsPanelModel,
     name: String,
     width: CGFloat,
-    reduceTransparency: Bool = false
+    reduceTransparency: Bool = false,
+    dynamicTypeSize: DynamicTypeSize? = nil
   ) throws {
     // Width only: the static preview list sizes to its content so
     // every section shows, while the live panel keeps its fixed
@@ -2086,6 +2210,7 @@ final class RefsPanelDesignTests: XCTestCase {
       reduceTransparencyOverride: reduceTransparency ? true : nil
     )
     .frame(width: width)
+    .modifier(OptionalDynamicTypeModifier(size: dynamicTypeSize))
     for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
       try RenderFixtureWriter.write(
         view,
@@ -2093,6 +2218,18 @@ final class RefsPanelDesignTests: XCTestCase {
         width: width,
         appearance: appearance
       )
+    }
+  }
+
+  private struct OptionalDynamicTypeModifier: ViewModifier {
+    var size: DynamicTypeSize?
+
+    func body(content: Content) -> some View {
+      if let size {
+        content.dynamicTypeSize(size)
+      } else {
+        content
+      }
     }
   }
 

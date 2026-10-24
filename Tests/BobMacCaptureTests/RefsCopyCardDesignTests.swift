@@ -19,6 +19,10 @@ final class RefsCopyCardDesignTests: XCTestCase {
         try write(card: errorCard(), name: "refs-copy-card-error")
         try write(card: highlightPickerCard(), name: "refs-copy-highlight-picker")
         try write(card: underlinedPickerCard(), name: "refs-copy-highlight-picker-underline")
+        try write(
+            card: groupedHighlightPickerCard(),
+            name: "refs-copy-highlight-picker-sections"
+        )
         try write(card: alternatesCard(), name: "refs-copy-card-alternates", alternates: true)
         try write(card: alternatesCard(), name: "refs-copy-card-home-paths")
         try write(
@@ -282,6 +286,76 @@ final class RefsCopyCardDesignTests: XCTestCase {
             pickerWindowSize: 9
         )
         _ = card.handle(.key(.highlightPicker))
+        return card
+    }
+
+    private func groupedHighlightPickerCard() -> RefsCopyCard {
+        let item = makeItem(
+            id: "ref/articles/sections_preview.md",
+            link: "[[ref/articles/sections_preview]]",
+            markerID: .present("sections-id"),
+            title: "Synthetic Sections Preview",
+            kind: .article,
+            commentCount: 4
+        )
+        let annotations = [
+            RefsShowAnnotation(
+                pageLabel: "Page 4",
+                kind: "highlight",
+                quote: "Make a point about how if I were building AI from scratch.",
+                section: "memory"
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 5",
+                kind: "highlight",
+                quote: "Mention that you've implemented project memory every wrong way.",
+                comment: "Compare with the intro",
+                section: "memory"
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 4",
+                kind: "highlight",
+                quote: "A visuals quote that still copies.",
+                section: "visuals"
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 4",
+                kind: "highlight",
+                quote: "POTENTIAL QUOTES: keep these ungrouped."
+            ),
+            RefsShowAnnotation(
+                pageLabel: "Page 8",
+                kind: "note",
+                comment: "A standalone note in the ungrouped tail."
+            ),
+        ]
+        var card = RefsCopyCard(
+            token: 9,
+            item: item,
+            absolutePDFPath: "/vault/lib/articles/sections_preview.pdf",
+            pdfExists: true,
+            notes: .loaded(
+                RefsShowRow(
+                    path: item.id,
+                    sections: [
+                        RefsShowSection(
+                            id: "memory", title: "Memory", tag: "@memory", count: 2
+                        ),
+                        RefsShowSection(
+                            id: "visuals", title: "Visuals", tag: "@visuals", count: 1
+                        ),
+                    ],
+                    annotations: annotations
+                )
+            ),
+            noteCapacity: 4,
+            pickerWindowSize: 9,
+            pickerGroupHeaderHeight: RefsCopyCardLayout.pickerGroupHeaderHeight,
+            pickerRowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight)
+        )
+        _ = card.handle(.key(.highlightPicker))
+        _ = card.handle(.move(1))
+        _ = card.handle(.move(1))
         return card
     }
 
