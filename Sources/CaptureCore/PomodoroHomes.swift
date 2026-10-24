@@ -258,6 +258,21 @@ public enum PomodoroHomeHue: Hashable, Sendable, Codable {
     case red
     case other(String)
 
+    /// Stable palette slot name used for accessible theme color labels.
+    public var slotName: String? {
+        switch self {
+        case .blue: return "blue"
+        case .orange: return "orange"
+        case .aqua: return "aqua"
+        case .yellow: return "yellow"
+        case .magenta: return "magenta"
+        case .green: return "green"
+        case .violet: return "violet"
+        case .red: return "red"
+        case .other: return nil
+        }
+    }
+
     public init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
         switch raw {

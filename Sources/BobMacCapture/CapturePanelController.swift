@@ -1737,6 +1737,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .acceptCompletion:
             model.acceptSelectedCompletion()
             return true
+        case .toggleCompletionThemeVisibility:
+            model.toggleSelectedCompletionThemeVisibility()
+            return true
         case .nextCompletion:
             model.selectNextCompletion()
             return true
@@ -1842,6 +1845,8 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     similarRowsVisible: self.model.similarRowsVisibleForKeys,
                     similarRowFocused: self.model.isSimilarRowFocused,
                     completionVisible: self.model.completionVisible,
+                    completionHasSelectedHistoryTheme: self.model.completionHasSelectedHistoryTheme,
+                    completionThemeVisibilityWriteInFlight: self.model.completionThemeVisibilityWriteInFlight,
                     stashPickerVisible: self.model.isStashPickerPresented,
                     stashEntryCount: self.model.stashCount,
                     templateShelfVisible: self.model.isTemplateShelfPresented,

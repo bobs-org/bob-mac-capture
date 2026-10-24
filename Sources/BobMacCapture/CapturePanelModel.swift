@@ -175,6 +175,10 @@ struct CapturePomodoroNamePromptState: Equatable {
     let replacementRange: CaptureRange
     let selectedCompletionIndex: Int
     var authoredName: String
+  var suggestions: [CapturePomodoroTheme]
+  var suggestionQuery: String?
+  var suggestionsLoading: Bool
+  var suggestionsUnavailable: Bool
     var isSaving: Bool
     var errorMessage: String?
 }
@@ -366,6 +370,8 @@ final class CapturePanelModel: ObservableObject {
     @Published private(set) var isSavingTemplate = false
     @Published var taskIDPrompt: CaptureTaskIDPromptState?
     @Published var pomodoroNamePrompt: CapturePomodoroNamePromptState?
+  @Published private(set) var temporarilyHiddenThemeKey: String?
+  @Published private(set) var isWritingThemeVisibility = false
     @Published var relationLabelPrompt: CaptureRelationLabelPromptState?
     @Published var pullInChoice: CapturePullInChoiceState?
     @Published var picker: CapturePickerState?
@@ -506,6 +512,10 @@ final class CapturePanelModel: ObservableObject {
     private var activeRequestID: UUID?
     private var activeTaskIDRequestID: UUID?
     private var activePomodoroNameRequestID: UUID?
+  private var activePomodoroThemeSuggestionRequestID: UUID?
+  private var activeThemeVisibilityRequestID: UUID?
+  private var pomodoroThemeSuggestionsTask: Task<Void, Never>?
+  private var hiddenThemeDraftSnapshot: String?
     /// Local fuzzy index for the picker's snapshot. Kept private; the view only
     /// sees the derived `pickerPresentation`.
     private var pickerIndex: CapturePickerIndex?
@@ -961,6 +971,7 @@ final class CapturePanelModel: ObservableObject {
         similarTasksTask?.cancel()
         rewriteTask?.cancel()
         todayPomodoroGotoTask?.cancel()
+        pomodoroThemeSuggestionsTask?.cancel()
     }
 
     var plainDraft: String {
@@ -1167,6 +1178,14 @@ final class CapturePanelModel: ObservableObject {
 
     var pomodoroNamePromptVisible: Bool {
         pomodoroNamePrompt != nil
+    }
+
+    var completionHasSelectedHistoryTheme: Bool {
+        selectedHistoryThemeCandidate != nil
+    }
+
+    var completionThemeVisibilityWriteInFlight: Bool {
+        isWritingThemeVisibility
     }
 
     var pomodoroNamePromptCanSubmit: Bool {
@@ -1699,6 +1718,10 @@ final class CapturePanelModel: ObservableObject {
         }
 
         let draft = plainDraft
+        if let hiddenThemeDraftSnapshot, hiddenThemeDraftSnapshot != draft {
+            temporarilyHiddenThemeKey = nil
+            self.hiddenThemeDraftSnapshot = nil
+        }
         if draft.isEmpty {
             templateOrigin = nil
         }
@@ -3055,6 +3078,9 @@ final class CapturePanelModel: ObservableObject {
     private func clearPomodoroNamePrompt() {
         pomodoroNamePrompt = nil
         activePomodoroNameRequestID = nil
+        activePomodoroThemeSuggestionRequestID = nil
+        pomodoroThemeSuggestionsTask?.cancel()
+        pomodoroThemeSuggestionsTask = nil
         clearEditorInputLockIfFree()
     }
 
@@ -6360,6 +6386,99 @@ final class CapturePanelModel: ObservableObject {
         }
         prompt.authoredName = name
         prompt.errorMessage = Self.pomodoroNameValidationMessage(for: name)
+        prompt.suggestions = []
+        prompt.suggestionsLoading = true
+        prompt.suggestionsUnavailable = false
+        pomodoroNamePrompt = prompt
+        refreshPomodoroThemeSuggestions(query: name)
+    }
+
+    func usePomodoroNameSuggestion(_ theme: CapturePomodoroTheme) {
+        updatePomodoroNamePromptName(theme.name)
+    }
+
+    private func refreshPomodoroThemeSuggestions(query: String) {
+        guard var prompt = pomodoroNamePrompt, !prompt.isSaving else {
+            return
+        }
+        pomodoroThemeSuggestionsTask?.cancel()
+        let requestID = UUID()
+        activePomodoroThemeSuggestionRequestID = requestID
+        prompt.suggestions = []
+        prompt.suggestionQuery = query
+        prompt.suggestionsLoading = true
+        prompt.suggestionsUnavailable = false
+        pomodoroNamePrompt = prompt
+
+        guard let processClient else {
+            prompt.suggestionsLoading = false
+            prompt.suggestionsUnavailable = true
+            pomodoroNamePrompt = prompt
+            activePomodoroThemeSuggestionRequestID = nil
+            return
+        }
+
+        let delay = debounceNanoseconds
+        let limit = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 5 : 12
+        pomodoroThemeSuggestionsTask = Task { [weak self] in
+            if delay > 0 {
+                do {
+                    try await Task.sleep(nanoseconds: delay)
+                } catch {
+                    return
+                }
+            }
+            guard !Task.isCancelled else {
+                return
+            }
+            do {
+                let response = try await processClient.pomodoroThemes(query: query, limit: limit)
+                await MainActor.run {
+                    self?.finishPomodoroThemeSuggestions(
+                        requestID: requestID,
+                        query: query,
+                        themes: response.themes
+                    )
+                }
+            } catch {
+                await MainActor.run {
+                    self?.failPomodoroThemeSuggestions(requestID: requestID, query: query)
+                }
+            }
+        }
+    }
+
+    private func finishPomodoroThemeSuggestions(
+        requestID: UUID,
+        query: String,
+        themes: [CapturePomodoroTheme]
+    ) {
+        guard activePomodoroThemeSuggestionRequestID == requestID,
+              var prompt = pomodoroNamePrompt,
+              prompt.suggestionQuery == query
+        else {
+            return
+        }
+        activePomodoroThemeSuggestionRequestID = nil
+        pomodoroThemeSuggestionsTask = nil
+        prompt.suggestions = themes.filter { !$0.hidden }
+        prompt.suggestionsLoading = false
+        prompt.suggestionsUnavailable = false
+        pomodoroNamePrompt = prompt
+    }
+
+    private func failPomodoroThemeSuggestions(requestID: UUID, query: String) {
+        guard activePomodoroThemeSuggestionRequestID == requestID,
+              var prompt = pomodoroNamePrompt,
+              prompt.suggestionQuery == query
+        else {
+            return
+        }
+        activePomodoroThemeSuggestionRequestID = nil
+        pomodoroThemeSuggestionsTask = nil
+        prompt.suggestions = []
+        prompt.suggestionsLoading = false
+        prompt.suggestionsUnavailable = true
         pomodoroNamePrompt = prompt
     }
 
@@ -7305,8 +7424,77 @@ final class CapturePanelModel: ObservableObject {
             for: candidate,
             context: completionResponse?.context,
             query: completionQueryText(),
-            override: completionResponse?.overrideInfo
+            override: completionResponse?.overrideInfo,
+            temporarilyHiddenThemeKey: temporarilyHiddenThemeKey
         )
+    }
+
+    func toggleSelectedCompletionThemeVisibility() {
+        guard let candidate = selectedHistoryThemeCandidate,
+              !isWritingThemeVisibility,
+              let name = candidate.name,
+              !name.isEmpty,
+              let theme = candidate.themes.first
+        else {
+            return
+        }
+        guard let processClient else {
+            statusText = "Bob is not resolved. Check Settings and Recheck Bob."
+            return
+        }
+
+        let hidden = temporarilyHiddenThemeKey != theme.key
+        let draftSnapshot = plainDraft
+        let requestID = UUID()
+        activeThemeVisibilityRequestID = requestID
+        isWritingThemeVisibility = true
+        statusText = hidden ? "Hiding \(name)…" : "Restoring \(name)…"
+
+        Task {
+            do {
+                try await processClient.setPomodoroThemeHidden(name, hidden: hidden)
+                await MainActor.run {
+                    guard self.activeThemeVisibilityRequestID == requestID else {
+                        return
+                    }
+                    self.activeThemeVisibilityRequestID = nil
+                    self.isWritingThemeVisibility = false
+                    let draftIsUnchanged = self.plainDraft == draftSnapshot
+                    self.temporarilyHiddenThemeKey = hidden && draftIsUnchanged ? theme.key : nil
+                    self.hiddenThemeDraftSnapshot = hidden && draftIsUnchanged ? draftSnapshot : nil
+                    self.statusText = hidden
+                        ? "\(name) hidden from Recent suggestions"
+                        : "\(name) restored to Recent suggestions"
+                }
+            } catch {
+                await MainActor.run {
+                    guard self.activeThemeVisibilityRequestID == requestID else {
+                        return
+                    }
+                    self.activeThemeVisibilityRequestID = nil
+                    self.isWritingThemeVisibility = false
+                    self.statusText = "Could not update \(name): \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private var selectedHistoryThemeCandidate: CaptureCompletionCandidate? {
+        guard let completionResponse,
+              completionResponse.context == "pomodoro_name"
+                || completionResponse.context == "pomodoro_start_name",
+              completionResponse.candidates.indices.contains(selectedCompletionIndex)
+        else {
+            return nil
+        }
+        let candidate = completionResponse.candidates[selectedCompletionIndex]
+        guard candidate.origin == "history",
+              candidate.name?.isEmpty == false,
+              !candidate.themes.isEmpty
+        else {
+            return nil
+        }
+        return candidate
     }
 
     private func completionQueryText() -> String {
@@ -7749,10 +7937,15 @@ final class CapturePanelModel: ObservableObject {
             replacementRange: replacementRange,
             selectedCompletionIndex: selectedCompletionIndex,
             authoredName: Self.prefilledPomodoroName(from: completionQueryText()),
+            suggestions: [],
+            suggestionQuery: nil,
+            suggestionsLoading: false,
+            suggestionsUnavailable: false,
             isSaving: false,
             errorMessage: nil
         )
         statusText = "Name Pomodoro"
+        refreshPomodoroThemeSuggestions(query: pomodoroNamePrompt?.authoredName ?? "")
         requestFocus(.pomodoroNamePromptName)
         editorInputLocked = true
     }

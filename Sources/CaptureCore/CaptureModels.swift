@@ -6087,6 +6087,133 @@ public struct TaskCompleteToday: Codable, Equatable, Sendable {
   }
 }
 
+/// A Pomodoro theme reference returned by Bob. Hues and identity are
+/// Bob-owned; clients only decode these values for presentation.
+public struct CapturePomodoroThemeRef: Codable, Equatable, Sendable {
+  public let key: String
+  public let name: String
+  public let hue: PomodoroHomeHue?
+  public let hueSource: String?
+  /// Bob omits `known` for catalogued themes and sends `false` only for an
+  /// unknown typed name.
+  public let known: Bool
+  public let start: Int?
+  public let end: Int?
+
+  public init(
+    key: String,
+    name: String,
+    hue: PomodoroHomeHue? = nil,
+    hueSource: String? = nil,
+    known: Bool = true,
+    start: Int? = nil,
+    end: Int? = nil
+  ) {
+    self.key = key
+    self.name = name
+    self.hue = hue
+    self.hueSource = hueSource
+    self.known = known
+    self.start = start
+    self.end = end
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    key = try container.decodeIfPresent(String.self, forKey: .key) ?? ""
+    name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+    hue = try container.decodeIfPresent(PomodoroHomeHue.self, forKey: .hue)
+    hueSource = try container.decodeIfPresent(String.self, forKey: .hueSource)
+    known = try container.decodeIfPresent(Bool.self, forKey: .known) ?? true
+    start = try container.decodeIfPresent(Int.self, forKey: .start)
+    end = try container.decodeIfPresent(Int.self, forKey: .end)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case key
+    case name
+    case hue
+    case hueSource = "hue_source"
+    case known
+    case start
+    case end
+  }
+}
+
+/// One entry in Bob's read-only `themes list` catalog response.
+public struct CapturePomodoroTheme: Codable, Equatable, Identifiable, Sendable {
+  public let key: String
+  public let name: String
+  public let hue: PomodoroHomeHue?
+  public let hueSource: String?
+  public let hidden: Bool
+  public let lastUsed: String?
+  public let daysUsed: Int?
+
+  public var id: String { key }
+
+  public init(
+    key: String,
+    name: String,
+    hue: PomodoroHomeHue? = nil,
+    hueSource: String? = nil,
+    hidden: Bool = false,
+    lastUsed: String? = nil,
+    daysUsed: Int? = nil
+  ) {
+    self.key = key
+    self.name = name
+    self.hue = hue
+    self.hueSource = hueSource
+    self.hidden = hidden
+    self.lastUsed = lastUsed
+    self.daysUsed = daysUsed
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    key = try container.decode(String.self, forKey: .key)
+    name = try container.decode(String.self, forKey: .name)
+    hue = try container.decodeIfPresent(PomodoroHomeHue.self, forKey: .hue)
+    hueSource = try container.decodeIfPresent(String.self, forKey: .hueSource)
+    hidden = try container.decodeIfPresent(Bool.self, forKey: .hidden) ?? false
+    lastUsed = try container.decodeIfPresent(String.self, forKey: .lastUsed)
+    daysUsed = try container.decodeIfPresent(Int.self, forKey: .daysUsed)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case key
+    case name
+    case hue
+    case hueSource = "hue_source"
+    case hidden
+    case lastUsed = "last_used"
+    case daysUsed = "days_used"
+  }
+}
+
+/// Additive schema-versioned response used by the Mac Capture Name it prompt.
+public struct CapturePomodoroThemesResponse: Codable, Equatable, SchemaVersioned, Sendable {
+  public let schemaVersion: Int
+  public let themes: [CapturePomodoroTheme]
+
+  public init(schemaVersion: Int, themes: [CapturePomodoroTheme] = []) {
+    self.schemaVersion = schemaVersion
+    self.themes = themes
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+    themes = try container.decodeIfPresent([CapturePomodoroTheme].self, forKey: .themes) ?? []
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion = "schema_version"
+    case themes
+  }
+}
+
 public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
   public let replacement: String
   public let route: String?
@@ -6123,6 +6250,13 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
   public let isCurrent: Bool
   public let matchCount: Int?
   public let createsPomodoro: Bool
+  /// Component refs and history metadata for the `pomodoro_name` menu.
+  /// Older Bob versions omit these fields, leaving existing rows unchanged.
+  public let themes: [CapturePomodoroThemeRef]
+  public let origin: String?
+  public let lastUsed: String?
+  public let daysUsed: Int?
+  public let similarTo: [String]
   // Additive `next_up` marker on `pomodoro_start_name` rows: true for the
   // entry a bare `=` would start. Omitted when false, and older Bob never
   // sends it, so missing decodes as false.
@@ -6241,6 +6375,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     isCurrent: Bool = false,
     matchCount: Int? = nil,
     createsPomodoro: Bool = false,
+    themes: [CapturePomodoroThemeRef] = [],
+    origin: String? = nil,
+    lastUsed: String? = nil,
+    daysUsed: Int? = nil,
+    similarTo: [String] = [],
     nextUp: Bool = false,
     planThemesAfter: Int? = nil,
     planThemesCap: Int? = nil,
@@ -6299,6 +6438,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     self.isCurrent = isCurrent
     self.matchCount = matchCount
     self.createsPomodoro = createsPomodoro
+    self.themes = themes
+    self.origin = origin
+    self.lastUsed = lastUsed
+    self.daysUsed = daysUsed
+    self.similarTo = similarTo
     self.nextUp = nextUp
     self.planThemesAfter = planThemesAfter
     self.planThemesCap = planThemesCap
@@ -6360,6 +6504,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     isCurrent = try container.decodeIfPresent(Bool.self, forKey: .isCurrent) ?? false
     matchCount = try container.decodeIfPresent(Int.self, forKey: .matchCount)
     createsPomodoro = try container.decodeIfPresent(Bool.self, forKey: .createsPomodoro) ?? false
+    themes = try container.decodeIfPresent([CapturePomodoroThemeRef].self, forKey: .themes) ?? []
+    origin = try container.decodeIfPresent(String.self, forKey: .origin)
+    lastUsed = try container.decodeIfPresent(String.self, forKey: .lastUsed)
+    daysUsed = try container.decodeIfPresent(Int.self, forKey: .daysUsed)
+    similarTo = try container.decodeIfPresent([String].self, forKey: .similarTo) ?? []
     nextUp = try container.decodeIfPresent(Bool.self, forKey: .nextUp) ?? false
     planThemesAfter = try container.decodeIfPresent(Int.self, forKey: .planThemesAfter)
     planThemesCap = try container.decodeIfPresent(Int.self, forKey: .planThemesCap)
@@ -6423,6 +6572,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     case isCurrent = "is_current"
     case matchCount = "match_count"
     case createsPomodoro = "creates_pomodoro"
+    case themes
+    case origin
+    case lastUsed = "last_used"
+    case daysUsed = "days_used"
+    case similarTo = "similar_to"
     case nextUp = "next_up"
     case planThemesAfter = "plan_themes_after"
     case planThemesCap = "plan_themes_cap"

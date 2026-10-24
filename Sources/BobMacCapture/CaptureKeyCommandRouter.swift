@@ -42,6 +42,7 @@ enum CaptureKeyCommand: Equatable {
     case saveTemplate
     case consumeKey
     case acceptCompletion
+    case toggleCompletionThemeVisibility
     case acceptCompletionThenSubmitAndOpen
     case nextCompletion
     case previousCompletion
@@ -90,6 +91,8 @@ struct CaptureKeyRoutingContext: Equatable {
     var similarRowsVisible = false
     var similarRowFocused = false
     var completionVisible = false
+    var completionHasSelectedHistoryTheme = false
+    var completionThemeVisibilityWriteInFlight = false
     var stashPickerVisible = false
     var stashEntryCount = 0
     var templateShelfVisible = false
@@ -155,6 +158,7 @@ struct CaptureKeyCommandRouter {
         static let s: UInt16 = 1
         static let t: UInt16 = 17
         static let c: UInt16 = 8
+        static let d: UInt16 = 2
         static let e: UInt16 = 14
         static let n: UInt16 = 45
         static let o: UInt16 = 31
@@ -222,6 +226,15 @@ struct CaptureKeyCommandRouter {
                 return .consumeKey
             }
             return pickerCommand(for: event, modifiers: modifiers, context: context)
+        }
+
+        if event.keyCode == KeyCode.d,
+           modifiers == .control,
+           context.completionHasSelectedHistoryTheme
+        {
+            return context.completionThemeVisibilityWriteInFlight
+                ? .consumeKey
+                : .toggleCompletionThemeVisibility
         }
 
         // Similar-tasks focus owns its keys in the main editor. Modal branches

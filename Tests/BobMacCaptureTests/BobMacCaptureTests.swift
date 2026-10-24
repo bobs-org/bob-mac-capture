@@ -647,6 +647,34 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertNil(router.command(for: keyEvent(keyCode: 0, characters: "a"), context: context))
     }
 
+    func testKeyRouterUsesControlDForSelectedRecentThemeAndSwallowsWhileWriting() {
+        let router = CaptureKeyCommandRouter()
+        let selectedRecent = CaptureKeyRoutingContext(
+            completionVisible: true,
+            completionHasSelectedHistoryTheme: true
+        )
+        let writing = CaptureKeyRoutingContext(
+            completionVisible: true,
+            completionHasSelectedHistoryTheme: true,
+            completionThemeVisibilityWriteInFlight: true
+        )
+
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 2, modifiers: .control), context: selectedRecent),
+            .toggleCompletionThemeVisibility
+        )
+        XCTAssertEqual(
+            router.command(for: keyEvent(keyCode: 2, modifiers: .control), context: writing),
+            .consumeKey
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 2, modifiers: .control),
+                context: CaptureKeyRoutingContext(completionVisible: true)
+            )
+        )
+    }
+
     func testKeyRouterMatchesCapturePickerTable() {
         let router = CaptureKeyCommandRouter()
         let context = CaptureKeyRoutingContext(pickerVisible: true)

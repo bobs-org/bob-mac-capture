@@ -252,6 +252,11 @@ public struct CompletionRowContent: Equatable, Sendable {
     public let primaryMatchRange: Range<Int>?
     public let secondaryText: String?
     public let badges: [String]
+  /// Bob-reported hue swatches for Pomodoro-name rows, in component order.
+  public let themeSwatches: [CaptureThemeSwatch]
+  /// A hidden history row remains visible as an undo affordance until the
+  /// next editor change refreshes Bob's completion result.
+  public let isHiddenThemeGhost: Bool
     public let accessibilityLabel: String
     public let accessibilityHint: String
 
@@ -263,6 +268,8 @@ public struct CompletionRowContent: Equatable, Sendable {
         primaryMatchRange: Range<Int>?,
         secondaryText: String?,
         badges: [String],
+        themeSwatches: [CaptureThemeSwatch] = [],
+        isHiddenThemeGhost: Bool = false,
         accessibilityLabel: String,
         accessibilityHint: String
     ) {
@@ -273,8 +280,22 @@ public struct CompletionRowContent: Equatable, Sendable {
         self.primaryMatchRange = primaryMatchRange
         self.secondaryText = secondaryText
         self.badges = badges
+        self.themeSwatches = themeSwatches
+        self.isHiddenThemeGhost = isHiddenThemeGhost
         self.accessibilityLabel = accessibilityLabel
         self.accessibilityHint = accessibilityHint
+    }
+}
+
+/// One Bob-reported theme color, retaining the known/unknown distinction so
+/// unknown typed names stay neutral while exempt themes can use a hollow mark.
+public struct CaptureThemeSwatch: Equatable, Sendable {
+    public let hue: PomodoroHomeHue?
+    public let known: Bool
+
+    public init(hue: PomodoroHomeHue?, known: Bool) {
+        self.hue = hue
+        self.known = known
     }
 }
 
@@ -288,7 +309,8 @@ public func completionRowContent(
     for candidate: CaptureCompletionCandidate,
     context rawContext: String?,
     query: String,
-    override: CaptureCompleteOverride? = nil
+    override: CaptureCompleteOverride? = nil,
+    temporarilyHiddenThemeKey: String? = nil
 ) -> CompletionRowContent {
     let context = CaptureCompletionContext(rawContext: rawContext)
 
@@ -380,7 +402,14 @@ public func completionRowContent(
             : "Nests the capture under this task."
 
     case .pomodoroName:
-        if candidate.createsPomodoro {
+        if candidate.origin == "history", candidate.createsPomodoro {
+            category = .pomodoroStart
+            symbolName = "timer"
+            contextLabel = ""
+            primaryText = candidate.name ?? candidate.replacement
+            secondaryText = themeHistorySummary(lastUsed: candidate.lastUsed, daysUsed: candidate.daysUsed)
+            accessibilityHint = "Uses this recent Pomodoro theme."
+        } else if candidate.createsPomodoro {
             category = .priority
             symbolName = "timer.badge.plus"
             contextLabel = "Pomodoro"
@@ -399,6 +428,9 @@ public func completionRowContent(
                 cap: candidate.planThemesCap
             ) {
                 badges.append(capBadge)
+            }
+            if candidate.hidden {
+                badges.append("Hidden")
             }
             accessibilityHint = "Creates this named future Pomodoro when the draft is captured."
         } else {
@@ -453,6 +485,23 @@ public func completionRowContent(
             secondaryText = candidate.nextUp ? "Next up" : "Planned"
             badges = [startNameLinkBadge(childCount: candidate.childCount), "Name it"]
             accessibilityHint = "Names this Pomodoro, then selects it."
+        } else if candidate.origin == "history", candidate.createsPomodoro {
+            category = .pomodoroStart
+            symbolName = "timer.badge.plus"
+            primaryText = startNameDisplayName(for: candidate)
+            secondaryText = themeHistorySummary(lastUsed: candidate.lastUsed, daysUsed: candidate.daysUsed)
+            badges = ["New"]
+            if let capBadge = planCapBadge(
+                after: candidate.planThemesAfter,
+                cap: candidate.planThemesCap
+            ) {
+                badges.append(capBadge)
+            }
+            if candidate.hidden {
+                badges.append("Hidden")
+            }
+            let name = candidate.name.flatMap { $0.isEmpty ? nil : $0 } ?? candidate.replacement
+            accessibilityHint = "Starts a new \(name) session using this recent theme."
         } else if candidate.createsPomodoro, candidate.state == "completed" {
             category = .pomodoroStart
             symbolName = "arrow.clockwise.circle"
@@ -733,17 +782,58 @@ public func completionRowContent(
         accessibilityHint = "Inserts this completion."
     }
 
+    let themeContext = context == .pomodoroName || context == .pomodoroStartName
+    let themeSwatches = themeContext
+        ? candidate.themes.map { CaptureThemeSwatch(hue: $0.hue, known: $0.known) }
+        : []
+    if themeContext {
+        if candidate.hidden, !badges.contains("Hidden") {
+            badges.append("Hidden")
+        }
+        for theme in candidate.themes {
+            if theme.hueSource == "pin", !badges.contains("Pinned") {
+                badges.append("Pinned")
+            }
+            if theme.hueSource == "exempt", !badges.contains("Exempt") {
+                badges.append("Exempt")
+            }
+        }
+    }
+    let isHistoryTheme = themeContext && candidate.origin == "history"
+    let isHiddenThemeGhost = isHistoryTheme
+        && candidate.themes.contains(where: { $0.key == temporarilyHiddenThemeKey })
+    if isHiddenThemeGhost {
+        secondaryText = "Hidden · ⌃D undo"
+        badges = []
+    }
+
     // Reading tasks (`#task #ref`) draw the book symbol in the task
     // pickers (`^`, `:`, `+`, `&`, `!`). Bob already strips `#ref` from
     // the display text, so only the symbol changes.
     let resolvedSymbolName = bookSymbolName(for: candidate, context: context) ?? symbolName
     let matchRange = completionMatchRange(in: primaryText, query: query)
-    let accessibilityLabel = completionAccessibilityLabel(
+    let baseAccessibilityLabel = completionAccessibilityLabel(
         contextLabel: contextLabel,
         primaryText: primaryText,
         secondaryText: secondaryText,
         badges: badges
     )
+    let themeAccessibilityDetails = themeContext
+        ? candidate.themes.map { theme -> String in
+            guard theme.known else {
+                return "\(theme.name), unknown theme"
+            }
+            if let hueName = theme.hue?.slotName {
+                return "\(theme.name), \(hueName)"
+            }
+            return theme.hueSource == "exempt"
+                ? "\(theme.name), muted"
+                : "\(theme.name), no color"
+        }
+        : []
+    let accessibilityLabel = ([baseAccessibilityLabel] + themeAccessibilityDetails)
+        .filter { !$0.isEmpty }
+        .joined(separator: ", ")
 
     return CompletionRowContent(
         category: category,
@@ -753,9 +843,38 @@ public func completionRowContent(
         primaryMatchRange: matchRange,
         secondaryText: secondaryText,
         badges: badges,
+        themeSwatches: themeSwatches,
+        isHiddenThemeGhost: isHiddenThemeGhost,
         accessibilityLabel: accessibilityLabel,
-        accessibilityHint: accessibilityHint
+        accessibilityHint: isHiddenThemeGhost
+            ? "Theme hidden from Recent. Press Control+D to undo."
+            : accessibilityHint
     )
+}
+
+private func themeHistorySummary(lastUsed: String?, daysUsed: Int?) -> String? {
+    var parts: [String] = []
+    if let lastUsed {
+        let fields = lastUsed.split(separator: "-")
+        if fields.count == 3,
+           let month = Int(fields[1]),
+           let day = Int(fields[2]),
+           (1...12).contains(month)
+        {
+            let formatter = DateFormatter()
+            let availableMonths: [String]? = formatter.shortMonthSymbols
+            if let months = availableMonths, month <= months.count {
+                let monthName = months[month - 1]
+                parts.append("\(monthName) \(day)")
+            }
+        } else if !lastUsed.isEmpty {
+            parts.append(lastUsed)
+        }
+    }
+    if let daysUsed, daysUsed > 0 {
+        parts.append("\(daysUsed) \(daysUsed == 1 ? "day" : "days")")
+    }
+    return parts.isEmpty ? "Recent theme" : parts.joined(separator: " · ")
 }
 
 /// The `book` override for reading-task rows in the task pickers, or

@@ -313,6 +313,47 @@ public final class BobProcessClient: @unchecked Sendable {
     return response
   }
 
+  /// Read recent theme suggestions from Bob's catalog for the Name it prompt.
+  /// Passing a query asks Bob to apply the same exact/prefix/substring ranking
+  /// used by its other theme menus.
+  public func pomodoroThemes(
+    query: String,
+    limit: Int
+  ) async throws -> CapturePomodoroThemesResponse {
+    var arguments = ["themes", "list", "--format", "json", "--limit", String(max(0, limit))]
+    let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !trimmedQuery.isEmpty {
+      arguments += ["--query", trimmedQuery]
+    }
+    return try await decode(
+      arguments: arguments,
+      expectedSchema: 1,
+      lane: "theme-list"
+    )
+  }
+
+  /// Ask Bob to append a hide/unhide event to the theme journal. Mac Capture
+  /// never writes the vault directly.
+  public func setPomodoroThemeHidden(_ name: String, hidden: Bool) async throws {
+    let arguments = [
+      "themes",
+      hidden ? "hide" : "unhide",
+      name,
+      "--via",
+      "bob-mac-capture",
+      "--format",
+      "json",
+    ]
+    let result = try await run(arguments: arguments, lane: "theme-write")
+    guard result.exitStatus == 0 else {
+      throw BobClientError.processFailed(
+        command: result.command,
+        exitStatus: result.exitStatus,
+        stderr: boundedProcessText(result.stderr)
+      )
+    }
+  }
+
   public func assignCaptureTaskID(
     route: String,
     taskRef: String,

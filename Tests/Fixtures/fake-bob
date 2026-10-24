@@ -5241,6 +5241,25 @@ JSON
       cat "${fixtures_dir}/${plan_fixture}"
     fi
     ;;
+  themes)
+    theme_command="${1:-}"
+    case "${theme_command}" in
+      list)
+        if [[ -n "${FAKE_BOB_THEMES_LIST_JSON:-}" ]]; then
+          printf '%s\n' "${FAKE_BOB_THEMES_LIST_JSON}"
+        else
+          printf '{"schema_version":1,"themes":[]}\n'
+        fi
+        ;;
+      hide|unhide)
+        exit "${FAKE_BOB_THEMES_WRITE_EXIT:-0}"
+        ;;
+      *)
+        printf 'unknown fake themes command: %s\n' "${theme_command}" >&2
+        exit 64
+        ;;
+    esac
+    ;;
   vault-sync)
     # `bob vault-sync -q` for the Refs `refs-pull` lane. Quiet success by
     # default; FAKE_BOB_VAULT_SYNC_EXIT fails it so tests can prove a

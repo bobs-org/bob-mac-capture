@@ -1696,6 +1696,71 @@ private struct PomodoroNamePromptCard: View {
                     nameFieldIsFocused = false
                 }
 
+                if !prompt.suggestions.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Recent themes")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                        ScrollView(.horizontal) {
+                            HStack(spacing: 6) {
+                                ForEach(prompt.suggestions) { theme in
+                                    Button {
+                                        model.usePomodoroNameSuggestion(theme)
+                                    } label: {
+                                        HStack(spacing: 5) {
+                                            PomodoroThemeSwatchView(
+                                                hue: theme.hue,
+                                                known: true,
+                                                size: 8
+                                            )
+                                            Text(theme.name)
+                                                .font(.system(.caption, design: .monospaced))
+                                                .lineLimit(1)
+                                            if theme.hueSource == "pin" {
+                                                Text("Pinned")
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                            } else if theme.hueSource == "exempt" {
+                                                Text("Exempt")
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 5)
+                                        .background(.background.opacity(0.5), in: Capsule())
+                                        .overlay(
+                                            Capsule()
+                                                .strokeBorder(Color.secondary.opacity(0.24), lineWidth: 0.7)
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Use exact theme name \(theme.name)")
+                                    .accessibilityLabel(
+                                        "\(theme.name), \(theme.hue?.slotName ?? (theme.hueSource == "exempt" ? "muted" : "no color"))"
+                                    )
+                                }
+                            }
+                            .padding(.vertical, 1)
+                        }
+                        .scrollIndicators(.hidden)
+                        .accessibilityLabel("Recent theme suggestions")
+                    }
+                } else if prompt.suggestionsLoading {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Loading recent themes")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else if prompt.suggestionsUnavailable {
+                    Text("Recent themes unavailable")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 if let canonical = model.pomodoroNamePromptCanonicalName {
                     Text("Saves as \(canonical)")
                         .font(.caption)
@@ -2349,6 +2414,15 @@ private struct CompletionList: View {
                         taskGroup(title: "Needs block ID", rows: taskRows(requiresBlockID: true))
                     } else {
                         ForEach(indexedCandidates) { row in
+                            if let title = completionSectionTitle(for: row) {
+                                Text(title)
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .textCase(.uppercase)
+                                    .padding(.horizontal, 8)
+                                    .padding(.top, 4)
+                                    .accessibilityAddTraits(.isHeader)
+                            }
                             completionRow(row)
                         }
                     }
@@ -2384,6 +2458,26 @@ private struct CompletionList: View {
 
     private func taskRows(requiresBlockID: Bool) -> [IndexedCompletionCandidate] {
         indexedCandidates.filter { $0.candidate.requiresBlockID == requiresBlockID }
+    }
+
+    private func completionSectionTitle(for row: IndexedCompletionCandidate) -> String? {
+        guard model.completionResponse?.context == "pomodoro_name"
+                || model.completionResponse?.context == "pomodoro_start_name"
+        else {
+            return nil
+        }
+        let previous = row.index > 0 ? indexedCandidates[row.index - 1].candidate : nil
+        if row.candidate.origin == "history" {
+            return previous?.origin == "history" ? nil : "Recent"
+        }
+        let isTodayRow = row.candidate.line != nil || row.candidate.requiresName
+        guard isTodayRow else {
+            return nil
+        }
+        if row.index == 0 || previous?.origin == "history" || previous?.createsPomodoro == true {
+            return "Today"
+        }
+        return nil
     }
 
     @ViewBuilder
@@ -2445,6 +2539,9 @@ private struct CompletionRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    ForEach(Array(content.themeSwatches.enumerated()), id: \.offset) { _, swatch in
+                        PomodoroThemeSwatchView(hue: swatch.hue, known: swatch.known, size: 8)
+                    }
                     emphasizedPrimaryText
                         .font(.system(.body, design: .monospaced))
                         .lineLimit(1)
@@ -2473,6 +2570,7 @@ private struct CompletionRow: View {
 
             Spacer(minLength: 8)
         }
+        .opacity(content.isHiddenThemeGhost ? 0.58 : 1)
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(selectionFill)
@@ -2551,6 +2649,28 @@ private struct CompletionRow: View {
         let suffix = String(characters[matchRange.upperBound...])
 
         return Text("\(Text(prefix))\(Text(matched).fontWeight(.semibold))\(Text(suffix))")
+    }
+}
+
+@available(macOS 26.0, *)
+private struct PomodoroThemeSwatchView: View {
+    let hue: PomodoroHomeHue?
+    let known: Bool
+    let size: CGFloat
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        Group {
+            if known, let hue {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(PomodoroHomeColor.color(for: hue, scheme: colorScheme))
+            } else {
+                RoundedRectangle(cornerRadius: 2)
+                    .strokeBorder(Color.secondary.opacity(0.72), lineWidth: 1)
+            }
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
 }
 

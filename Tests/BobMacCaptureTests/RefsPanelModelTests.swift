@@ -2399,7 +2399,7 @@ final class RefsPanelModelTests: XCTestCase {
     harness.model.panelIsVisible = { false }
     let generation = harness.library.snapshotRefreshGeneration
     harness.library.refresh(reason: .manual)
-    await harness.waitForModel { harness.library.snapshotRefreshGeneration > generation }
+    await harness.waitForModel { _ in harness.library.snapshotRefreshGeneration > generation }
     try? await Task.sleep(nanoseconds: 100_000_000)
     let record = (try? String(contentsOf: recordURL)) ?? ""
     XCTAssertFalse(record.contains("argv=ref show"))

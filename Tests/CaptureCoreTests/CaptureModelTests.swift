@@ -1673,6 +1673,38 @@ final class CaptureModelTests: XCTestCase {
     XCTAssertFalse(decoded.candidates[3].requiresName)
   }
 
+  func testCompletionCandidateDecodesThemeHistoryAndBobHueRefs() throws {
+    let candidate = try JSONDecoder().decode(
+      CaptureCompletionCandidate.self,
+      from: Data(
+        """
+        {
+          "replacement":"BOOKS",
+          "name":"BOOKS",
+          "creates_pomodoro":true,
+          "origin":"history",
+          "last_used":"2026-10-21",
+          "days_used":3,
+          "themes":[
+            {"key":"books","name":"BOOKS","hue":"aqua","hue_source":"area"},
+            {"key":"unknown","name":"UNKNOWN","hue":null,"hue_source":"hash","known":false}
+          ]
+        }
+        """.utf8
+      )
+    )
+
+    XCTAssertEqual(candidate.origin, "history")
+    XCTAssertEqual(candidate.lastUsed, "2026-10-21")
+    XCTAssertEqual(candidate.daysUsed, 3)
+    XCTAssertEqual(candidate.themes.count, 2)
+    XCTAssertEqual(candidate.themes[0].hue, .aqua)
+    XCTAssertEqual(candidate.themes[0].hueSource, "area")
+    XCTAssertTrue(candidate.themes[0].known)
+    XCTAssertNil(candidate.themes[1].hue)
+    XCTAssertFalse(candidate.themes[1].known)
+  }
+
   func testCompletionResponseDecodesTaskSectionCandidatesWithoutNewCodingKeys() throws {
     let data = Data(
       """

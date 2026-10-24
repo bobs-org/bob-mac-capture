@@ -6628,6 +6628,90 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertTrue(model.pomodoroNamePromptCanSubmit)
     }
 
+    func testPomodoroNamePromptLoadsAndUsesRecentThemeSuggestions() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_STDOUT": #"{"schema_version":1,"themes":[{"key":"books","name":"BOOKS","hue":"aqua","hue_source":"hash","hidden":false,"last_used":"2026-10-21","days_used":3}]}"#,
+            ]
+        )
+        installPomodoroNameCompletion(on: model, query: "")
+        model.selectedCompletionIndex = 1
+
+        model.acceptSelectedCompletion()
+        await waitUntil {
+            model.pomodoroNamePrompt?.suggestionsLoading == false
+                && model.pomodoroNamePrompt?.suggestions.first?.name == "BOOKS"
+        }
+
+        let theme = try XCTUnwrap(model.pomodoroNamePrompt?.suggestions.first)
+        XCTAssertEqual(theme.hue, .aqua)
+        model.usePomodoroNameSuggestion(theme)
+        XCTAssertEqual(model.pomodoroNamePrompt?.authoredName, "BOOKS")
+        await waitUntil {
+            model.pomodoroNamePrompt?.suggestionQuery == "BOOKS"
+                && model.pomodoroNamePrompt?.suggestionsLoading == false
+        }
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=themes list --format json --limit 5"))
+        XCTAssertTrue(record.contains("argv=themes list --format json --limit 12 --query BOOKS"))
+    }
+
+    func testRecentThemeCtrlDHidesAndUndoesThroughBob() async throws {
+        let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+        let draft = pomodoroNameDraft(query: "boo")
+        let end = draft.utf8.count
+        let candidate = CaptureCompletionCandidate(
+            replacement: "BOOKS",
+            name: "BOOKS",
+            createsPomodoro: true,
+            themes: [CapturePomodoroThemeRef(key: "books", name: "BOOKS", hue: .aqua)],
+            origin: "history",
+            lastUsed: "2026-10-21",
+            daysUsed: 3
+        )
+        model.plainDraft = draft
+        model.completionResponse = CaptureCompletionResponse(
+            ok: true,
+            cursor: end,
+            replacement: CaptureRange(start: end - 3, end: end),
+            context: "pomodoro_name",
+            candidates: [candidate]
+        )
+        model.selectedCompletionIndex = 0
+
+        XCTAssertTrue(model.completionHasSelectedHistoryTheme)
+        model.toggleSelectedCompletionThemeVisibility()
+        await waitUntil {
+            !model.completionThemeVisibilityWriteInFlight
+                && model.temporarilyHiddenThemeKey == "books"
+        }
+        XCTAssertEqual(model.rowContent(for: candidate).secondaryText, "Hidden · ⌃D undo")
+
+        model.toggleSelectedCompletionThemeVisibility()
+        await waitUntil {
+            !model.completionThemeVisibilityWriteInFlight
+                && model.temporarilyHiddenThemeKey == nil
+        }
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=themes hide BOOKS --via bob-mac-capture --format json"))
+        XCTAssertTrue(record.contains("argv=themes unhide BOOKS --via bob-mac-capture --format json"))
+    }
+
     func testDraftChangeWhilePomodoroNamePromptIsOpenCancelsIt() {
         let model = CapturePanelModel()
         installPomodoroNameCompletion(on: model, query: "")

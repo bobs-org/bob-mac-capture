@@ -575,6 +575,50 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(failure.error, "block ID ^duplicate-id already exists in file.md")
     }
 
+    func testPomodoroThemesUsesBobQueryAndDecodesRecentHueMetadata() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+                "FAKE_BOB_STDOUT": #"{"schema_version":1,"themes":[{"key":"books","name":"BOOKS","hue":"aqua","hue_source":"area","hidden":false,"last_used":"2026-10-21","days_used":3}]}"#,
+            ]
+        )
+
+        let response = try await client.pomodoroThemes(query: "BOOK", limit: 12)
+
+        XCTAssertEqual(response.schemaVersion, 1)
+        XCTAssertEqual(response.themes.map(\.name), ["BOOKS"])
+        XCTAssertEqual(response.themes.first?.hue, .aqua)
+        XCTAssertEqual(response.themes.first?.lastUsed, "2026-10-21")
+        XCTAssertEqual(response.themes.first?.daysUsed, 3)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=themes list --format json --limit 12 --query BOOK"))
+    }
+
+    func testSetPomodoroThemeHiddenWritesThroughBobWithClientIdentity() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_RECORD_PATH": recordURL.path,
+            ]
+        )
+
+        try await client.setPomodoroThemeHidden("BOOKS", hidden: true)
+        try await client.setPomodoroThemeHidden("BOOKS", hidden: false)
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertTrue(record.contains("argv=themes hide BOOKS --via bob-mac-capture --format json"))
+        XCTAssertTrue(record.contains("argv=themes unhide BOOKS --via bob-mac-capture --format json"))
+    }
+
     func testAssignPomodoroNameRunsDedicatedCommandAndDecodesSuccess() async throws {
         let recordURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)

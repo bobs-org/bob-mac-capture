@@ -432,6 +432,44 @@ final class CompletionRowContentTests: XCTestCase {
         )
     }
 
+    func testRecentPomodoroThemeShowsBobHueAndCanRenderHiddenUndoState() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "BOOKS",
+            name: "BOOKS",
+            createsPomodoro: true,
+            themes: [
+                CapturePomodoroThemeRef(
+                    key: "books",
+                    name: "BOOKS",
+                    hue: .aqua,
+                    hueSource: "pin"
+                ),
+            ],
+            origin: "history",
+            lastUsed: "2026-10-21",
+            daysUsed: 3
+        )
+
+        let content = completionRowContent(
+            for: candidate,
+            context: "pomodoro_name",
+            query: "boo",
+            temporarilyHiddenThemeKey: "books"
+        )
+
+        XCTAssertEqual(content.primaryText, "BOOKS")
+        XCTAssertEqual(content.secondaryText, "Hidden · ⌃D undo")
+        XCTAssertEqual(content.themeSwatches, [CaptureThemeSwatch(hue: .aqua, known: true)])
+        XCTAssertTrue(content.isHiddenThemeGhost)
+        XCTAssertTrue(content.accessibilityHint.contains("Control+D"))
+
+        let visible = completionRowContent(for: candidate, context: "pomodoro_name", query: "boo")
+        XCTAssertEqual(visible.secondaryText, "Oct 21 · 3 days")
+        XCTAssertTrue(visible.badges.contains("Pinned"))
+        XCTAssertTrue(visible.accessibilityLabel.contains("BOOKS, aqua"))
+        XCTAssertFalse(visible.isHiddenThemeGhost)
+    }
+
     func testPomodoroNameNamedRowIgnoresAbsentCreatesPomodoro() {
         let candidate = CaptureCompletionCandidate(
             replacement: "memory",
