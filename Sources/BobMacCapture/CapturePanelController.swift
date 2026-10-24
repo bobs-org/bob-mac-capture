@@ -1784,6 +1784,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .toggleRelationLabelHiddenSection:
             model.toggleRelationLabelHiddenSection()
             return true
+        case .openRelationLabelRename:
+            model.openRelationLabelRename()
+            return true
         case .relationLabelPromptBackspace:
             return model.relationLabelPromptBackspace()
         case .confirmPullInChoice:
@@ -1888,8 +1891,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                     taskIDPromptIsTaskComplete: self.model.taskIDPromptIsTaskComplete,
                     pomodoroNamePromptVisible: self.model.pomodoroNamePromptVisible,
                     relationLabelPromptVisible: self.model.relationLabelPromptVisible,
-                    relationLabelPromptFieldIsEmpty: self.model.relationLabelPrompt?.authoredLabel.isEmpty ?? true,
+                    relationLabelPromptFieldIsEmpty: self.model.relationLabelFieldText.isEmpty,
                     relationLabelPromptOneOff: self.model.relationLabelPrompt?.oneOff ?? false,
+                    relationLabelRenameActive: self.model.relationLabelRenameIsActive,
                     pickerSourceIsRelation: self.model.pickerSourceIsRelation,
                     pullInChoiceVisible: self.model.pullInChoiceVisible,
                     pullInFilterFocused: self.model.pullInChoiceVisible

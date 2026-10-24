@@ -35,6 +35,29 @@ public struct CaptureInboxRouteSubmission: Equatable, Sendable {
   }
 }
 
+/// One `bob relations rename` answer: bob's previewed or applied rename, or
+/// bob's refusal (`ok: false` with a `code` like `label_exists` and a
+/// human message the card renders inline).
+public enum RelationRenameResult: Equatable, Sendable {
+  case renamed(CaptureRelationRenameResponse)
+  case refused(code: String, message: String)
+}
+
+/// The thin envelope every `bob relations rename -f json` answer carries.
+/// `ok: true` bodies decode as `CaptureRelationRenameResponse`; `ok: false`
+/// bodies carry only `code` and `message`.
+struct RelationRenameEnvelope: Decodable {
+  let ok: Bool
+  let code: String?
+  let message: String?
+
+  private enum CodingKeys: String, CodingKey {
+    case ok
+    case code
+    case message
+  }
+}
+
 public final class BobProcessClient: @unchecked Sendable {
   // Every `bob` invocation is local, offline, and expected to finish in well under a
   // second; 20s is a generous bound that only fires for a genuinely wedged process
@@ -246,6 +269,13 @@ public final class BobProcessClient: @unchecked Sendable {
       || normalized.contains("unrecognized subcommand \"capture-related\"")
   }
 
+  static func isUnsupportedRelationsFailure(exitStatus: Int32, stderr: String) -> Bool {
+    guard exitStatus == 2 else { return false }
+    let normalized = stderr.lowercased()
+    return normalized.contains("unrecognized subcommand 'relations'")
+      || normalized.contains("unrecognized subcommand \"relations\"")
+  }
+
   public func capturePomodoros(includeCompleted: Bool = false) async throws
     -> CapturePomodorosResponse
   {
@@ -431,6 +461,89 @@ public final class BobProcessClient: @unchecked Sendable {
         stderr: boundedProcessText(result.stderr)
       )
     }
+  }
+
+  /// Preview (`dryRun`, `-d`) or apply a relation-label rename through
+  /// `bob relations rename -f json --via bob-mac-capture`. Bob reports
+  /// refusals (`unknown_label`, `label_exists`, `invalid_label`, …) as
+  /// `ok: false` with a `code` and a `message` on a non-zero exit, so this
+  /// decodes stdout itself instead of using `decode`, which rejects
+  /// non-zero exits. An older bob without the `relations` group throws
+  /// `unsupportedCommand`; callers render the update hint.
+  public func renameRelationLabel(
+    oldName: String,
+    newName: String,
+    dryRun: Bool,
+    merge: Bool = false,
+    lane: String = "relation-rename-preview",
+    cancelsPreviousInLane: Bool = true,
+    timeout: TimeInterval = BobProcessClient.defaultTimeout
+  ) async throws -> RelationRenameResult {
+    var arguments = [
+      "relations",
+      "rename",
+      oldName,
+      newName,
+      "--format",
+      "json",
+      "--via",
+      "bob-mac-capture",
+    ]
+    if dryRun {
+      arguments.append("--dry-run")
+    }
+    if merge {
+      arguments.append("--merge")
+    }
+    let result = try await run(
+      arguments: arguments,
+      lane: lane,
+      cancelsPreviousInLane: cancelsPreviousInLane,
+      timeout: timeout
+    )
+    let stderr = boundedProcessText(result.stderr)
+    let trimmedStdout = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !trimmedStdout.isEmpty,
+       let envelope = try? decoder.decode(RelationRenameEnvelope.self, from: Data(trimmedStdout.utf8))
+    {
+      if envelope.ok {
+        do {
+          let preview = try decoder.decode(
+            CaptureRelationRenameResponse.self, from: Data(trimmedStdout.utf8))
+          guard preview.schemaVersion == 1 else {
+            throw BobClientError.schemaMismatch(
+              command: result.command, expected: 1, actual: preview.schemaVersion)
+          }
+          return .renamed(preview)
+        } catch let error as BobClientError {
+          throw error
+        } catch {
+          throw BobClientError.malformedJSON(
+            command: result.command,
+            exitStatus: result.exitStatus,
+            stderr: stderr,
+            reason: error.localizedDescription
+          )
+        }
+      }
+      return .refused(code: envelope.code ?? "refused", message: envelope.message ?? stderr)
+    }
+    if Self.isUnsupportedRelationsFailure(exitStatus: result.exitStatus, stderr: stderr) {
+      throw BobClientError.unsupportedCommand("relations rename")
+    }
+    guard !trimmedStdout.isEmpty else {
+      throw BobClientError.processFailed(
+        command: result.command,
+        exitStatus: result.exitStatus,
+        stderr: stderr
+      )
+    }
+    throw BobClientError.malformedJSON(
+      command: result.command,
+      exitStatus: result.exitStatus,
+      stderr: stderr,
+      reason: "unexpected relations rename output"
+    )
   }
 
   /// Ask Bob to append a hide/unhide event to the theme journal. Mac Capture

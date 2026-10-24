@@ -113,9 +113,10 @@ completion request.
 | `\|` | Turn one-off on; the pipe never enters the field |
 | Backspace on an empty field | Turn one-off off |
 | Ctrl-H | Show or hide the Hidden section; the query and selection are kept |
+| Ctrl-R | Rename the selected label (or the typed label when it names an existing one) everywhere |
 | Click a row | Accept it; the eye icon on a hovered or selected row hides or unhides it |
 | Click ◌ N hidden | Toggle the Hidden section |
-| Escape / Ctrl-[ | Return to the relation picker, or to the editor when the card opened from `|` |
+| Escape / Ctrl-[ | Leave rename mode first; otherwise return to the relation picker, or to the editor when the card opened from `|` |
 
 With one-off on, Return inserts the `||` form: capturing hides the label from
 suggestions everywhere. On an existing visible label the card warns in amber
@@ -125,6 +126,13 @@ Ghost-hide rows read `hidden everywhere · ⌃D undo`; ghost-unhide rows read
 one inserts the `|` form with a `(stays hidden)` footer. An older Bob shows no
 Hidden pill; Ctrl-D and Ctrl-H give the update hint, and `||` is never
 downgraded to `|`.
+
+Ctrl-R opens rename mode with the old name prefilled: the card shows a live
+dry-run preview (`N links in M notes · mirrors · 1 commit`), Return renames
+everywhere in one commit, and Escape returns to the picker with the query and
+selection kept. Merging into an existing label asks twice (`↩ again to merge`).
+After a rename the card selects the new label and rewrites matching relations
+in the open draft. An older Bob shows `Update bob to rename relation labels`.
 
 ## Focus
 

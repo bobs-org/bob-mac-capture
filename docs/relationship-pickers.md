@@ -136,10 +136,14 @@ Control-Return Insert, Capture & Open when the owner is complete.
 
 Relation card keys: Ctrl-N/Down next, Ctrl-P/Up previous, Tab accept, Return
 accept selected or typed label, Ctrl-D hide what Return would insert (or toggle
-one-off), typed `|` one-off on, Ctrl-H Hidden section, Escape back. The card
+one-off), typed `|` one-off on, Ctrl-H Hidden section, Ctrl-R rename the label
+everywhere with a live dry-run preview and merge confirm, Escape back (leaving
+rename mode first). The card
 opens in one-off mode on a `||` token. Hidden labels live in the Hidden section
 and stay insertable; a hide or unhide keeps its row as a ghost with ⌃D undo
 until the query changes, and a failed write restores the row with Bob's message.
+After a rename the card selects the new label and rewrites matching relations
+in the open draft.
 See [Keyboard](keyboard.md#relation-card-keys)
 for the complete key table.
 

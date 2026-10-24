@@ -60,6 +60,7 @@ enum CaptureKeyCommand: Equatable {
     case acceptRelationLabelSuggestion
     case toggleRelationLabelVisibility
     case toggleRelationLabelHiddenSection
+    case openRelationLabelRename
     case relationLabelPromptBackspace
     case confirmPullInChoice
     case confirmPullInChoiceAndOpen
@@ -115,6 +116,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var relationLabelPromptVisible = false
     var relationLabelPromptFieldIsEmpty = true
     var relationLabelPromptOneOff = false
+    var relationLabelRenameActive = false
     var pickerSourceIsRelation = false
     var pullInChoiceVisible = false
     var pullInFilterFocused = false
@@ -173,6 +175,7 @@ struct CaptureKeyCommandRouter {
         static let c: UInt16 = 8
         static let d: UInt16 = 2
         static let h: UInt16 = 4
+        static let r: UInt16 = 15
         static let e: UInt16 = 14
         static let n: UInt16 = 45
         static let o: UInt16 = 31
@@ -226,7 +229,8 @@ struct CaptureKeyCommandRouter {
                 for: event,
                 modifiers: modifiers,
                 fieldIsEmpty: context.relationLabelPromptFieldIsEmpty,
-                oneOff: context.relationLabelPromptOneOff
+                oneOff: context.relationLabelPromptOneOff,
+                renameActive: context.relationLabelRenameActive
             )
         }
 
@@ -600,8 +604,25 @@ struct CaptureKeyCommandRouter {
         for event: NSEvent,
         modifiers: NSEvent.ModifierFlags,
         fieldIsEmpty: Bool,
-        oneOff: Bool
+        oneOff: Bool,
+        renameActive: Bool
     ) -> CaptureKeyCommand? {
+        // Ctrl+R renames the selected row (or the typed existing label)
+        // everywhere. In rename mode it is a no-op; Escape leaves first.
+        if event.keyCode == KeyCode.r, modifiers == .control {
+            return renameActive ? .consumeKey : .openRelationLabelRename
+        }
+        if renameActive {
+            // The rename field owns printable keys through the AppKit
+            // field; Tab, arrows, and Ctrl+N/P stay inside the card
+            // instead of touching choose rows.
+            return isolatedPromptCommand(
+                for: event,
+                modifiers: modifiers,
+                submit: .submitRelationLabelPrompt,
+                cancel: .cancelRelationLabelPrompt
+            )
+        }
         if event.keyCode == KeyCode.tab {
             if modifiers.isEmpty {
                 return .acceptRelationLabelSuggestion

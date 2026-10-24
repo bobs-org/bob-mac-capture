@@ -47,6 +47,9 @@ struct RelationLabelField: NSViewRepresentable {
     let isEnabled: Bool
     let focusRequest: CapturePanelFocusRequest
     let focusDidChange: (Bool) -> Void
+    /// One-shot select-all consumed when rename mode opens with OLD
+    /// prefilled. Defaults to never select (choose mode).
+    var consumeSelectAll: () -> Bool = { false }
 
     func makeNSView(context: Context) -> RelationLabelNSTextField {
         let field = RelationLabelNSTextField()
@@ -81,9 +84,16 @@ struct RelationLabelField: NSViewRepresentable {
         }
         context.coordinator.appliedFocusSequence = focusRequest.sequence
         field.requestFirstResponder()
+        let parent = parent
         DispatchQueue.main.async { [weak field] in
-            guard let field, !field.holdsFirstResponder else { return }
-            field.requestFirstResponder()
+            guard let field else { return }
+            if field.holdsFirstResponder {
+                if parent.consumeSelectAll() {
+                    field.selectAll(nil)
+                }
+            } else {
+                field.requestFirstResponder()
+            }
         }
     }
 

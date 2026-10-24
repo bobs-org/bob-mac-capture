@@ -1888,84 +1888,113 @@ private struct RelationLabelPromptCard: View {
     var body: some View {
         if let prompt {
             VStack(alignment: .leading, spacing: 9) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text("🪢 Relation")
-                        .font(.headline)
-                    Spacer(minLength: 8)
-                    if prompt.hiddenCountKnown, prompt.hiddenCount > 0 {
-                        Button {
-                            model.toggleRelationLabelHiddenSection()
-                        } label: {
-                            Text("◌ \(prompt.hiddenCount) hidden ⌃H")
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(.quaternary, in: Capsule())
+                if let rename = prompt.rename {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("Rename “\(rename.oldName)” everywhere to")
+                            .font(.headline)
+                            .lineLimit(1)
+                        Spacer(minLength: 8)
+                        if prompt.isSaving {
+                            ProgressView()
+                                .controlSize(.small)
                         }
-                        .buttonStyle(.plain)
-                        .disabled(prompt.isSaving)
-                        .accessibilityLabel(
-                            "\(prompt.hiddenCount) hidden relation labels. Press Control H to \(prompt.showHidden ? "hide" : "show") the list."
-                        )
                     }
-                    if !prompt.catalogLoaded || prompt.isSaving {
-                        ProgressView()
-                            .controlSize(.small)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Rename \(rename.oldName) everywhere")
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("🪢 Relation")
+                            .font(.headline)
+                        Spacer(minLength: 8)
+                        if prompt.hiddenCountKnown, prompt.hiddenCount > 0 {
+                            Button {
+                                model.toggleRelationLabelHiddenSection()
+                            } label: {
+                                Text("◌ \(prompt.hiddenCount) hidden ⌃H")
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
+                                    .background(.quaternary, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(prompt.isSaving)
+                            .accessibilityLabel(
+                                "\(prompt.hiddenCount) hidden relation labels. Press Control H to \(prompt.showHidden ? "hide" : "show") the list."
+                            )
+                        }
+                        if !prompt.catalogLoaded || prompt.isSaving {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
                     }
                 }
 
-                HStack(spacing: 6) {
-                    Text(model.relationLabelSentenceSource)
-                        .lineLimit(1)
-                    if let label = model.relationLabelDisplayedLabel {
-                        HStack(spacing: 4) {
-                            if prompt.oneOff {
-                                Image(systemName: "eye.slash")
-                                    .font(.caption2.weight(.medium))
+                if prompt.rename == nil {
+                    HStack(spacing: 6) {
+                        Text(model.relationLabelSentenceSource)
+                            .lineLimit(1)
+                        if let label = model.relationLabelDisplayedLabel {
+                            HStack(spacing: 4) {
+                                if prompt.oneOff {
+                                    Image(systemName: "eye.slash")
+                                        .font(.caption2.weight(.medium))
+                                }
+                                Text(label)
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(1)
                             }
-                            Text(label)
-                                .font(.caption.weight(.semibold))
-                                .lineLimit(1)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(
+                                CaptureEditorPalette.color(for: .relationSigil).opacity(0.14),
+                                in: Capsule()
+                            )
+                            .accessibilityLabel(
+                                prompt.oneOff
+                                    ? "One-off relation \(label)" : "Relation \(label)"
+                            )
                         }
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(
-                            CaptureEditorPalette.color(for: .relationSigil).opacity(0.14),
-                            in: Capsule()
-                        )
-                        .accessibilityLabel(
-                            prompt.oneOff
-                                ? "One-off relation \(label)" : "Relation \(label)"
-                        )
+                        Image(systemName: "arrow.right")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        Text(model.relationLabelSentenceTarget)
+                            .lineLimit(1)
                     }
-                    Image(systemName: "arrow.right")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                    Text(model.relationLabelSentenceTarget)
-                        .lineLimit(1)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Relation sentence: \(model.relationLabelSentence)")
                 }
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Relation sentence: \(model.relationLabelSentence)")
 
                 HStack(spacing: 8) {
                     RelationLabelField(
                         text: Binding(
-                            get: { model.relationLabelPrompt?.authoredLabel ?? "" },
-                            set: { model.updateRelationLabelPromptLabel($0) }
+                            get: { model.relationLabelFieldText },
+                            set: {
+                                if model.relationLabelRenameIsActive {
+                                    model.updateRelationLabelRenameName($0)
+                                } else {
+                                    model.updateRelationLabelPromptLabel($0)
+                                }
+                            }
                         ),
                         isEnabled: !prompt.isSaving,
                         focusRequest: model.focusRequest,
-                        focusDidChange: { fieldIsFocused = $0 }
+                        focusDidChange: { fieldIsFocused = $0 },
+                        consumeSelectAll: { model.consumeRelationLabelRenameSelectAll() }
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 7)
-                    .accessibilityLabel("Search or name a relation")
+                    .accessibilityLabel(
+                        prompt.rename == nil
+                            ? "Search or name a relation" : "New relation label name"
+                    )
 
-                    if let badge = model.relationLabelPromptBadgeText {
+                    if prompt.rename == nil,
+                       let badge = model.relationLabelPromptBadgeText
+                    {
                         Text(badge)
                             .font(.caption.weight(.medium))
                             .foregroundStyle(badge == "invalid" ? Color.red : Color.secondary)
@@ -1985,9 +2014,33 @@ private struct RelationLabelPromptCard: View {
                 )
                 .onDisappear { fieldIsFocused = false }
 
-                let rows = model.relationLabelPromptRows
-                let hiddenRows = model.relationLabelHiddenPromptRows
-                let topKey = rows.first.map { model.relationLabelSelectionKey(for: $0) }
+                if prompt.rename != nil {
+                    if let lines = model.relationLabelRenamePreviewLines {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(lines, id: \.self) { line in
+                                Text(line)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(
+                            "Rename preview: \(lines.joined(separator: "; "))"
+                        )
+                    } else if model.relationLabelPrompt?.errorMessage == nil,
+                              model.relationLabelPrompt?.noticeMessage == nil
+                    {
+                        Text("Previewing…")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .accessibilityLabel("Previewing the rename")
+                    }
+                }
+
+                if prompt.rename == nil {
+                    let rows = model.relationLabelPromptRows
+                    let hiddenRows = model.relationLabelHiddenPromptRows
+                    let topKey = rows.first.map { model.relationLabelSelectionKey(for: $0) }
                 if !rows.isEmpty || !hiddenRows.isEmpty {
                     ScrollViewReader { proxy in
                         ScrollView(.vertical, showsIndicators: true) {
@@ -2089,28 +2142,31 @@ private struct RelationLabelPromptCard: View {
                         .foregroundStyle(.secondary)
                         .accessibilityLabel(hint)
                 }
+                } // end choose-mode rows
 
-                if let inserts = model.relationLabelInsertsText {
-                    Text(inserts)
-                        .font(.caption)
-                        .foregroundStyle(CaptureEditorPalette.color(for: .relationSigil))
-                }
-
-                if let warning = model.relationLabelOneOffWarning {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("⚠ \(warning)")
-                        Spacer(minLength: 8)
-                        Text("⌃D keep visible")
-                            .font(.caption2.weight(.medium))
+                if prompt.rename == nil {
+                    if let inserts = model.relationLabelInsertsText {
+                        Text(inserts)
+                            .font(.caption)
+                            .foregroundStyle(CaptureEditorPalette.color(for: .relationSigil))
                     }
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .accessibilityLabel("Warning: \(warning) Press Control D to keep visible.")
-                } else if let note = model.relationLabelAlreadyHiddenNote {
-                    Text("◌ \(note)")
+
+                    if let warning = model.relationLabelOneOffWarning {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text("⚠ \(warning)")
+                            Spacer(minLength: 8)
+                            Text("⌃D keep visible")
+                                .font(.caption2.weight(.medium))
+                        }
                         .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel(note)
+                        .foregroundStyle(.orange)
+                        .accessibilityLabel("Warning: \(warning) Press Control D to keep visible.")
+                    } else if let note = model.relationLabelAlreadyHiddenNote {
+                        Text("◌ \(note)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel(note)
+                    }
                 }
 
                 if let notice = prompt.noticeMessage {
@@ -2151,7 +2207,7 @@ private struct RelationLabelPromptCard: View {
                         model.cancelRelationLabelPrompt()
                     }
                     .disabled(prompt.isSaving)
-                    Button("Insert") {
+                    Button(prompt.rename == nil ? "Insert" : "Rename") {
                         model.submitRelationLabelPrompt()
                     }
                     .keyboardShortcut(.defaultAction)

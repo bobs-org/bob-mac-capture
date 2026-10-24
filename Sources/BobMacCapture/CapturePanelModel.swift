@@ -254,8 +254,38 @@ struct CaptureRelationLabelPromptState: Equatable {
     /// In-flight hide/unhide write, so a late reply cannot clobber a newer
     /// toggle. A pending write survives card dismissal.
     var visibilityWriteID: UUID?
+    /// Ctrl+R rename mode (nil in choose mode). The choose query, selection,
+    /// and Hidden section are kept underneath and restored on cancel; a
+    /// successful apply selects NEW back in choose mode.
+    var rename: CaptureRelationRenameState?
     var isSaving: Bool
     var errorMessage: String?
+}
+
+/// Ctrl+R rename mode over one existing relation label. `oldKey` is the
+/// catalog key being renamed; `newName` is the rename field text. `preview`
+/// is the latest dry run for exactly (`oldKey`, `newName`, `previewMerge`);
+/// `refusalCode`/`refusalMessage` carry bob's latest inline refusal (a
+/// `label_exists` refusal arms the merge confirm on the next Return when
+/// `mergeArmed` is set). `pendingApply` replays a Return pressed before the
+/// fresh preview arrived; `isApplying` gates the serial apply lane.
+struct CaptureRelationRenameState: Equatable {
+    var oldKey: String
+    /// Display spelling of OLD, prefilled into the rename field.
+    var oldName: String
+    var newName: String
+    var preview: CaptureRelationRenameResponse?
+    /// (`newName`, `merge`) the loaded `preview` was produced for.
+    var previewNewName: String?
+    var previewMerge: Bool
+    var refusalCode: String?
+    var refusalMessage: String?
+    var mergeArmed: Bool
+    var pendingApply: Bool
+    var isApplying: Bool
+    /// One-shot select-all for the prefilled field, consumed by the view
+    /// on the focus claim rename mode raises.
+    var selectAllOnFocus: Bool
 }
 
 enum CapturePanelFocusTarget: Hashable {
@@ -537,6 +567,11 @@ final class CapturePanelModel: ObservableObject {
     private var relationLabelInFlight: (generation: UInt64, draft: String, authored: String)?
     private var relationLabelCatalogGeneration: UInt64 = 0
     private var relationLabelCatalogInFlight: (generation: UInt64, draft: String)?
+    /// Rename dry-run preview generations: typing or arming bumps the
+    /// generation so a stale preview can never overwrite the current one.
+    /// The debounce sleep is a timed wait, never an untimed continuation.
+    private var relationLabelRenameGeneration: UInt64 = 0
+    private var relationLabelRenameInFlight: (generation: UInt64, draft: String, oldKey: String, newName: String, merge: Bool)?
     private var rewriteGeneration: UInt64 = 0
     private var rewriteExpectedCursorUTF8: Int?
     private var rewriteSawMatchingSelection = false
@@ -7366,6 +7401,9 @@ final class CapturePanelModel: ObservableObject {
         guard let prompt = relationLabelPrompt, !prompt.isSaving else {
             return false
         }
+        if prompt.rename != nil {
+            return !prompt.rename!.newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
         if let selected = relationLabelSelectedCandidate {
             return !selected.replacement.isEmpty && selected.disabledReason?.isEmpty != false
         }
@@ -7484,6 +7522,7 @@ final class CapturePanelModel: ObservableObject {
             ghosts: [:],
             noticeMessage: nil,
             visibilityWriteID: nil,
+            rename: nil,
             isSaving: false,
             errorMessage: nil
         )
@@ -7494,7 +7533,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func updateRelationLabelPromptLabel(_ label: String) {
-        guard var prompt = relationLabelPrompt, !prompt.isSaving else {
+        guard var prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil else {
             return
         }
         // A typed `|` never enters the field: it turns one-off on, so
@@ -7519,7 +7558,7 @@ final class CapturePanelModel: ObservableObject {
     /// Ctrl+D with no selection toggles one-off for the typed label.
     /// Ctrl+D is always consumed; key auto-repeat is ignored by the router.
     func toggleRelationLabelOneOff() {
-        guard var prompt = relationLabelPrompt, !prompt.isSaving else {
+        guard var prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil else {
             return
         }
         if prompt.selectedKey != nil {
@@ -7541,7 +7580,7 @@ final class CapturePanelModel: ObservableObject {
     /// failure restores the row with bob's message, and a pending write
     /// survives dismissal. With no selection, Ctrl+D toggles one-off.
     func toggleRelationLabelVisibility() {
-        guard let prompt = relationLabelPrompt, !prompt.isSaving else {
+        guard let prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil else {
             return
         }
         guard let selected = relationLabelSelectedCandidate else {
@@ -7624,7 +7663,7 @@ final class CapturePanelModel: ObservableObject {
     /// Ctrl+H shows or hides the Hidden section. The query and the
     /// selection are kept. An older bob gets the update hint.
     func toggleRelationLabelHiddenSection() {
-        guard var prompt = relationLabelPrompt, !prompt.isSaving else {
+        guard var prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil else {
             return
         }
         guard prompt.hiddenCountKnown else {
@@ -7688,7 +7727,7 @@ final class CapturePanelModel: ObservableObject {
     /// consumed the key; otherwise the field edits normally.
     @discardableResult
     func relationLabelPromptBackspace() -> Bool {
-        guard var prompt = relationLabelPrompt, !prompt.isSaving else {
+        guard var prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil else {
             return false
         }
         guard prompt.authoredLabel.isEmpty, prompt.oneOff else {
@@ -7698,6 +7737,631 @@ final class CapturePanelModel: ObservableObject {
         prompt.noticeMessage = nil
         relationLabelPrompt = prompt
         return true
+    }
+
+    /// Whether the card is in Ctrl+R rename mode (the choose query,
+    /// selection, and Hidden section wait underneath).
+    var relationLabelRenameIsActive: Bool {
+        relationLabelPrompt?.rename != nil
+    }
+
+    /// The rename field text in rename mode, else the choose query.
+    /// The view binds the card field to this.
+    var relationLabelFieldText: String {
+        relationLabelPrompt?.rename?.newName ?? relationLabelPrompt?.authoredLabel ?? ""
+    }
+
+    /// Consume the one-shot select-all request the rename field raises when
+    /// rename mode opens with OLD prefilled. The view calls this from
+    /// `updateNSView` so a late focus claim cannot reselect after typing.
+    func consumeRelationLabelRenameSelectAll() -> Bool {
+        guard var prompt = relationLabelPrompt,
+              var rename = prompt.rename,
+              rename.selectAllOnFocus
+        else {
+            return false
+        }
+        rename.selectAllOnFocus = false
+        prompt.rename = rename
+        relationLabelPrompt = prompt
+        return true
+    }
+
+    /// Ctrl+R opens rename mode for the selected row, or for the typed
+    /// label when it names an existing key. Otherwise hint and stay in
+    /// choose mode. The preview doubles as the capability probe: an older
+    /// bob gets the update hint instead of a preview.
+    func openRelationLabelRename() {
+        guard var prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil else {
+            return
+        }
+        guard processClient != nil else {
+            prompt.errorMessage = "Bob is not resolved. Check Settings and Recheck Bob."
+            relationLabelPrompt = prompt
+            return
+        }
+        let oldKey: String
+        let oldName: String
+        if let selected = relationLabelSelectedCandidate {
+            oldKey = relationLabelKey(selected)
+            oldName = selected.label ?? oldKey
+        } else {
+            let query = relationLabelKey(prompt.authoredLabel)
+            guard !query.isEmpty else {
+                prompt.noticeMessage = "Select a label to rename"
+                relationLabelPrompt = prompt
+                return
+            }
+            if let match = prompt.catalog.first(where: { relationLabelKey($0) == query }) {
+                oldKey = relationLabelKey(match)
+                oldName = match.label ?? oldKey
+            } else if let typed = relationLabelFreshTypedRow,
+                      relationLabelKey(typed) == query,
+                      typed.existing == true,
+                      let label = typed.label
+            {
+                oldKey = query
+                oldName = label
+            } else {
+                prompt.noticeMessage = "Select a label to rename"
+                relationLabelPrompt = prompt
+                return
+            }
+        }
+        prompt.rename = CaptureRelationRenameState(
+            oldKey: oldKey,
+            oldName: oldName,
+            newName: oldName,
+            preview: nil,
+            previewNewName: nil,
+            previewMerge: false,
+            refusalCode: nil,
+            refusalMessage: nil,
+            mergeArmed: false,
+            pendingApply: false,
+            isApplying: false,
+            selectAllOnFocus: true
+        )
+        prompt.errorMessage = nil
+        prompt.noticeMessage = nil
+        relationLabelPrompt = prompt
+        statusText = "Rename a relation label everywhere"
+        requestFocus(.relationLabelPromptField)
+        scheduleRelationLabelRenamePreview()
+    }
+
+    /// Rename field edit: disarm any merge confirm, drop the stale
+    /// preview, and re-debounce the dry run.
+    func updateRelationLabelRenameName(_ name: String) {
+        guard var prompt = relationLabelPrompt, !prompt.isSaving, var rename = prompt.rename else {
+            return
+        }
+        rename.newName = name
+        rename.mergeArmed = false
+        rename.pendingApply = false
+        rename.preview = nil
+        rename.previewNewName = nil
+        rename.refusalCode = nil
+        rename.refusalMessage = nil
+        prompt.rename = rename
+        prompt.errorMessage = nil
+        relationLabelPrompt = prompt
+        scheduleRelationLabelRenamePreview()
+    }
+
+    /// Escape in rename mode returns to choose mode; the query, selection,
+    /// and Hidden section are kept. Returns true when it exited rename mode.
+    @discardableResult
+    func cancelRelationLabelRename() -> Bool {
+        guard var prompt = relationLabelPrompt, prompt.rename != nil, !prompt.isSaving else {
+            return false
+        }
+        prompt.rename = nil
+        prompt.errorMessage = nil
+        prompt.noticeMessage = nil
+        relationLabelPrompt = prompt
+        relationLabelRenameGeneration &+= 1
+        relationLabelRenameInFlight = nil
+        statusText = "Link with a relation"
+        requestFocus(.relationLabelPromptField)
+        return true
+    }
+
+    /// Debounced live dry run (150 ms): a cancellable preview per rename
+    /// field value on the `relation-rename-preview` lane. A generation bump
+    /// from typing, arming, or exiting drops the stale reply.
+    private func scheduleRelationLabelRenamePreview() {
+        guard let prompt = relationLabelPrompt,
+              let rename = prompt.rename,
+              !rename.newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return
+        }
+        relationLabelRenameGeneration &+= 1
+        let generation = relationLabelRenameGeneration
+        let draftSnapshot = prompt.draftSnapshot
+        let oldName = rename.oldName
+        let newName = rename.newName
+        let merge = rename.mergeArmed
+        relationLabelRenameInFlight = (
+            generation: generation, draft: draftSnapshot, oldKey: rename.oldKey,
+            newName: newName, merge: merge
+        )
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            await self?.fetchRelationLabelRenamePreview(
+                generation: generation,
+                draftSnapshot: draftSnapshot,
+                oldName: oldName,
+                oldKey: rename.oldKey,
+                newName: newName,
+                merge: merge
+            )
+        }
+    }
+
+    private func fetchRelationLabelRenamePreview(
+        generation: UInt64,
+        draftSnapshot: String,
+        oldName: String,
+        oldKey: String,
+        newName: String,
+        merge: Bool
+    ) async {
+        guard let processClient else {
+            await MainActor.run {
+                guard var current = self.relationLabelPrompt,
+                      var rename = current.rename,
+                      self.relationLabelRenameGeneration == generation,
+                      current.draftSnapshot == draftSnapshot,
+                      rename.oldKey == oldKey,
+                      rename.newName == newName,
+                      rename.mergeArmed == merge
+                else {
+                    return
+                }
+                rename.pendingApply = false
+                current.rename = rename
+                current.errorMessage = "Bob is not resolved. Check Settings and Recheck Bob."
+                self.relationLabelPrompt = current
+            }
+            return
+        }
+        do {
+            let result = try await processClient.renameRelationLabel(
+                oldName: oldName,
+                newName: newName,
+                dryRun: true,
+                merge: merge
+            )
+            await MainActor.run {
+                self.applyRelationLabelRenamePreview(
+                    result,
+                    generation: generation,
+                    draftSnapshot: draftSnapshot,
+                    oldKey: oldKey,
+                    newName: newName,
+                    merge: merge
+                )
+            }
+        } catch {
+            await MainActor.run {
+                guard var current = self.relationLabelPrompt,
+                      var rename = current.rename,
+                      self.relationLabelRenameGeneration == generation,
+                      current.draftSnapshot == draftSnapshot,
+                      rename.oldKey == oldKey,
+                      rename.newName == newName,
+                      rename.mergeArmed == merge
+                else {
+                    return
+                }
+                self.clearRelationLabelRenameInFlight(generation: generation)
+                rename.pendingApply = false
+                if let clientError = error as? BobClientError,
+                   case .unsupportedCommand = clientError
+                {
+                    rename.preview = nil
+                    rename.previewNewName = nil
+                    current.errorMessage = nil
+                    current.noticeMessage = "Update bob to rename relation labels"
+                } else if error is CancellationError {
+                    current.rename = rename
+                    self.relationLabelPrompt = current
+                    return
+                } else {
+                    current.errorMessage = "Could not preview the rename: \(error.localizedDescription)"
+                }
+                current.rename = rename
+                self.relationLabelPrompt = current
+            }
+        }
+    }
+
+    private func clearRelationLabelRenameInFlight(generation: UInt64) {
+        if relationLabelRenameInFlight?.generation == generation {
+            relationLabelRenameInFlight = nil
+        }
+    }
+
+    /// Store one dry-run answer when it still covers the current rename
+    /// field value, then replay a Return that arrived before it.
+    private func applyRelationLabelRenamePreview(
+        _ result: RelationRenameResult,
+        generation: UInt64,
+        draftSnapshot: String,
+        oldKey: String,
+        newName: String,
+        merge: Bool
+    ) {
+        guard relationLabelRenameGeneration == generation,
+              var current = relationLabelPrompt,
+              var rename = current.rename,
+              current.draftSnapshot == draftSnapshot,
+              rename.oldKey == oldKey,
+              rename.newName == newName,
+              rename.mergeArmed == merge
+        else {
+            return
+        }
+        clearRelationLabelRenameInFlight(generation: generation)
+        switch result {
+        case .renamed(let preview):
+            rename.preview = preview
+            rename.previewNewName = newName
+            rename.previewMerge = merge
+            rename.refusalCode = nil
+            rename.refusalMessage = nil
+            current.errorMessage = nil
+        case .refused(let code, let message):
+            rename.preview = nil
+            rename.previewNewName = nil
+            rename.refusalCode = code
+            rename.refusalMessage = message
+            current.errorMessage = message
+        }
+        current.rename = rename
+        relationLabelPrompt = current
+        // Replay a Return that arrived before this preview — but only on
+        // a success preview. Replaying on a refusal would refetch forever;
+        // the inline refusal is the answer there.
+        if rename.pendingApply, case .renamed = result {
+            if var pending = relationLabelPrompt, var pendingRename = pending.rename {
+                pendingRename.pendingApply = false
+                pending.rename = pendingRename
+                relationLabelPrompt = pending
+            }
+            submitRelationLabelRename()
+        }
+    }
+
+    /// Return in rename mode: apply on a fresh preview, arm the merge
+    /// confirm on a `label_exists` refusal, or wait for the fresh preview
+    /// and replay.
+    func submitRelationLabelRename() {
+        guard var prompt = relationLabelPrompt,
+              var rename = prompt.rename,
+              !prompt.isSaving,
+              !rename.isApplying
+        else {
+            return
+        }
+        guard prompt.draftSnapshot == plainDraft else {
+            prompt.errorMessage = "Draft changed. Reopen the relation card and try again."
+            relationLabelPrompt = prompt
+            return
+        }
+        let trimmed = rename.newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            prompt.noticeMessage = "Type a new name for “\(rename.oldName)”"
+            relationLabelPrompt = prompt
+            return
+        }
+        if rename.previewNewName == rename.newName,
+           rename.previewMerge == rename.mergeArmed,
+           rename.preview != nil
+        {
+            applyRelationLabelRename(merge: rename.mergeArmed)
+            return
+        }
+        if rename.refusalCode == "label_exists", !rename.mergeArmed {
+            rename.mergeArmed = true
+            rename.refusalCode = nil
+            rename.refusalMessage = nil
+            prompt.errorMessage = nil
+            prompt.rename = rename
+            relationLabelPrompt = prompt
+            statusText = "Confirm the merge into “\(trimmed)”"
+            scheduleRelationLabelRenamePreview()
+            return
+        }
+        rename.pendingApply = true
+        prompt.rename = rename
+        relationLabelPrompt = prompt
+        scheduleRelationLabelRenamePreview()
+    }
+
+    /// Apply the rename on the serial `relation-label-pref` lane (a hide
+    /// survives dismissal, and so does a rename) with a 60 s timeout
+    /// behind the `Renaming… syncing vault` progress state.
+    private func applyRelationLabelRename(merge: Bool) {
+        guard var prompt = relationLabelPrompt,
+              var rename = prompt.rename,
+              let processClient,
+              !prompt.isSaving,
+              !rename.isApplying,
+              prompt.draftSnapshot == plainDraft
+        else {
+            return
+        }
+        rename.isApplying = true
+        rename.pendingApply = false
+        prompt.rename = rename
+        prompt.isSaving = true
+        prompt.errorMessage = nil
+        relationLabelPrompt = prompt
+        statusText = "Renaming… syncing vault"
+        let draftSnapshot = prompt.draftSnapshot
+        let oldName = rename.oldName
+        let oldKey = rename.oldKey
+        let newName = rename.newName
+        Task { [weak self, processClient] in
+            do {
+                let result = try await processClient.renameRelationLabel(
+                    oldName: oldName,
+                    newName: newName,
+                    dryRun: false,
+                    merge: merge,
+                    lane: "relation-label-pref",
+                    cancelsPreviousInLane: false,
+                    timeout: 60
+                )
+                await MainActor.run {
+                    self?.finishRelationLabelRename(
+                        result,
+                        draftSnapshot: draftSnapshot,
+                        oldKey: oldKey,
+                        newName: newName
+                    )
+                }
+            } catch {
+                await MainActor.run {
+                    self?.failRelationLabelRename(error, draftSnapshot: draftSnapshot)
+                }
+            }
+        }
+    }
+
+    private func failRelationLabelRename(_ error: Error, draftSnapshot: String) {
+        guard var current = relationLabelPrompt,
+              var rename = current.rename,
+              current.draftSnapshot == draftSnapshot
+        else {
+            return
+        }
+        rename.isApplying = false
+        current.rename = rename
+        current.isSaving = false
+        if let clientError = error as? BobClientError,
+           case .unsupportedCommand = clientError
+        {
+            current.errorMessage = nil
+            current.noticeMessage = "Update bob to rename relation labels"
+        } else {
+            current.errorMessage = "Could not rename: \(error.localizedDescription)"
+        }
+        statusText = "Relation label rename failed"
+        relationLabelPrompt = current
+        requestFocus(.relationLabelPromptField)
+    }
+
+    /// Apply success: fix up the draft from bob's ranges and replacements,
+    /// leave rename mode with NEW selected, refetch the catalog, and report
+    /// the one commit (plus `· sync pending` when the post-sync failed).
+    private func finishRelationLabelRename(
+        _ result: RelationRenameResult,
+        draftSnapshot: String,
+        oldKey: String,
+        newName: String
+    ) {
+        guard var current = relationLabelPrompt,
+              let rename = current.rename,
+              current.draftSnapshot == draftSnapshot,
+              current.draftSnapshot == plainDraft
+        else {
+            return
+        }
+        switch result {
+        case .refused(let code, let message):
+            var failed = current
+            var failedRename = rename
+            failedRename.isApplying = false
+            failedRename.mergeArmed = false
+            failed.rename = failedRename
+            failed.isSaving = false
+            failed.refusalCode = code
+            failed.refusalMessage = message
+            failed.errorMessage = message
+            statusText = "Relation label rename failed"
+            relationLabelPrompt = failed
+            requestFocus(.relationLabelPromptField)
+            return
+        case .renamed(let preview):
+            guard preview.mode == "write" else {
+                var failed = current
+                var failedRename = rename
+                failedRename.isApplying = false
+                failed.rename = failedRename
+                failed.isSaving = false
+                failed.errorMessage = "Bob answered the rename without writing. Try again."
+                statusText = "Relation label rename failed"
+                relationLabelPrompt = failed
+                requestFocus(.relationLabelPromptField)
+                return
+            }
+            // The draft fix-up needs bob's own `label_range`s, so parse
+            // the unchanged draft before leaving rename mode. A parse
+            // failure still reports the successful rename; the draft
+            // simply keeps its OLD labels with a notice.
+            guard let processClient else {
+                var failed = current
+                var failedRename = rename
+                failedRename.isApplying = false
+                failed.rename = failedRename
+                failed.isSaving = false
+                failed.errorMessage = "Bob is not resolved. Check Settings and Recheck Bob."
+                statusText = "Relation label rename failed"
+                relationLabelPrompt = failed
+                return
+            }
+            statusText = "Renaming… updating draft"
+            let oldName = rename.oldName
+            Task { [weak self, processClient] in
+                let markers: [CaptureParseRelationshipMarker]?
+                do {
+                    let parse = try await processClient.captureParse(draftSnapshot)
+                    markers = parse.relations
+                } catch {
+                    markers = nil
+                }
+                await MainActor.run {
+                    self?.completeRelationLabelRename(
+                        preview: preview,
+                        draftSnapshot: draftSnapshot,
+                        oldKey: oldKey,
+                        oldName: oldName,
+                        newName: newName,
+                        markers: markers
+                    )
+                }
+            }
+        }
+    }
+
+    /// Apply-success landing: splice bob's replacements into the draft,
+    /// leave rename mode with NEW selected, refetch the catalog, and
+    /// report the one commit (plus `· sync pending` when post-sync failed).
+    private func completeRelationLabelRename(
+        preview: CaptureRelationRenameResponse,
+        draftSnapshot: String,
+        oldKey: String,
+        oldName: String,
+        newName: String,
+        markers: [CaptureParseRelationshipMarker]?
+    ) {
+        guard var finished = relationLabelPrompt,
+              finished.draftSnapshot == draftSnapshot,
+              finished.draftSnapshot == plainDraft
+        else {
+            return
+        }
+        let newKey = preview.toKey.isEmpty ? relationLabelKey(newName) : preview.toKey
+        let newDisplayName = preview.toName.isEmpty ? newName : preview.toName
+        let fixed = relationLabelRenameDraftFixUp(
+            oldKey: oldKey,
+            replacement: preview.replacement,
+            hideReplacement: preview.hideReplacement,
+            markers: markers ?? [],
+            draft: draftSnapshot,
+            ownLabelRange: finished.labelRange
+        )
+        let parseFailed = markers == nil
+        finished.rename = nil
+        finished.isSaving = false
+        finished.errorMessage = nil
+        finished.noticeMessage =
+            parseFailed
+            ? "Renamed everywhere, but the draft kept “\(oldName)” (parse failed)"
+            : nil
+        finished.selectedKey = newKey
+        finished.authoredLabel = newDisplayName
+        finished.hiddenRowsLoaded = false
+        if let fixed, fixed.text != draftSnapshot {
+            finished.draftSnapshot = fixed.text
+            finished.labelRange = fixed.labelRange
+            if stringRange(in: fixed.text, start: finished.restoreCursor, end: finished.restoreCursor)
+                == nil
+            {
+                finished.restoreCursor = fixed.text.utf8.count
+            }
+            suppressedCompletionAcceptanceDraft = fixed.text
+            setPlainDraft(
+                fixed.text,
+                cursorUTF8Offset: finished.restoreCursor,
+                suppressSelectionCallbacks: true
+            )
+            scheduleAnalysis(
+                cursorUTF8Offset: finished.restoreCursor,
+                requestCompletion: false,
+                trigger: .edit
+            )
+        }
+        relationLabelPrompt = finished
+        statusText =
+            "Renamed “\(oldName)” → “\(newDisplayName)” · \(preview.links) links in \(preview.notes) notes · 1 commit"
+            + (preview.syncPost == "failed" ? " · sync pending" : "")
+        fetchRelationLabelCatalog()
+        fetchRelationLabelHiddenRows()
+        requestFocus(.relationLabelPromptField)
+    }
+
+    /// Rewrite every draft relation whose label key was OLD, splicing
+    /// bob's label text (the `replacement` / `hide_replacement` with the
+    /// leading pipes stripped, so quoting stays bob's) into each
+    /// `label_range`. Splices run from the end so earlier byte offsets stay
+    /// valid, and the card's own suffix range is carried along by the same
+    /// shifts. Returns nil when nothing matched.
+    private func relationLabelRenameDraftFixUp(
+        oldKey: String,
+        replacement: String,
+        hideReplacement: String,
+        markers: [CaptureParseRelationshipMarker],
+        draft: String,
+        ownLabelRange: CaptureRange
+    ) -> (text: String, labelRange: CaptureRange)? {
+        let plain = String(replacement.drop(while: { $0 == "|" }))
+        let oneOff = String(hideReplacement.drop(while: { $0 == "|" }))
+        guard !plain.isEmpty, !oneOff.isEmpty else {
+            return nil
+        }
+        let matches: [(range: CaptureRange, text: String)] = markers.compactMap { marker in
+            guard let label = marker.label,
+                  let range = marker.labelRange,
+                  relationLabelKey(label) == oldKey
+            else {
+                return nil
+            }
+            return (range, marker.hidden ? oneOff : plain)
+        }
+        guard !matches.isEmpty else {
+            return nil
+        }
+        let ascending = matches.sorted { $0.range.start < $1.range.start }
+        var startShift = 0
+        var endShift = 0
+        for (range, labelText) in ascending {
+            let shift = labelText.utf8.count - (range.end - range.start)
+            if range.end <= ownLabelRange.start {
+                startShift += shift
+            }
+            if range.start < ownLabelRange.end {
+                endShift += shift
+            }
+        }
+        var text = draft
+        for (range, labelText) in ascending.sorted(by: { $0.range.start > $1.range.start }) {
+            guard let swiftRange = stringRange(in: text, byteRange: range) else {
+                continue
+            }
+            text.replaceSubrange(swiftRange, with: labelText)
+        }
+        return (
+            text,
+            CaptureRange(
+                start: ownLabelRange.start + startShift,
+                end: ownLabelRange.end + endShift
+            )
+        )
     }
 
     func cycleRelationLabelSuggestionForward() {
@@ -7715,7 +8379,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func moveRelationLabelSelection(by offset: Int) {
-        guard var prompt = relationLabelPrompt, !prompt.isSaving else {
+        guard var prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil else {
             return
         }
         let rows = relationLabelNavigableRows
@@ -7743,7 +8407,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func selectRelationLabelSuggestion(key: String) {
-        guard var prompt = relationLabelPrompt, !prompt.isSaving,
+        guard var prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil,
               relationLabelNavigableRows.contains(where: { relationLabelKey($0) == key })
         else {
             return
@@ -7756,7 +8420,7 @@ final class CapturePanelModel: ObservableObject {
     /// Tab accepts the highlighted row, or the first local match when the
     /// field has no selection. It never changes the query or calls Bob.
     func acceptRelationLabelSuggestion() {
-        guard !relationLabelPromptIsSaving else { return }
+        guard !relationLabelPromptIsSaving, relationLabelPrompt?.rename == nil else { return }
         guard let candidate = relationLabelSelectedCandidate ?? relationLabelPromptRows.first else {
             guard var prompt = relationLabelPrompt else { return }
             prompt.errorMessage = relationLabelPromptHint ?? "No matching labels · type a relation name"
@@ -7767,7 +8431,8 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func insertRelationLabelSuggestion(id: String) {
-        guard let candidate = relationLabelNavigableRows.first(where: {
+        guard relationLabelPrompt?.rename == nil,
+              let candidate = relationLabelNavigableRows.first(where: {
             $0.replacement == id || $0.label == id || $0.key == id
                 || relationLabelKey($0) == id
         }) else {
@@ -7776,10 +8441,82 @@ final class CapturePanelModel: ObservableObject {
         insertRelationLabelSuggestion(candidate: candidate)
     }
 
+    /// Rename-mode footer: `↩` renames (or arms/applies the merge),
+    /// `esc` returns to choose mode. At most three pairs.
+    var relationLabelRenameFooterItems: [(keycap: String, label: String)] {
+        guard let rename = relationLabelPrompt?.rename else { return [] }
+        if rename.isApplying {
+            return [("esc", "cancel")]
+        }
+        if rename.mergeArmed,
+           let preview = rename.preview,
+           rename.previewNewName == rename.newName,
+           rename.previewMerge
+        {
+            return [
+                ("↩", "again to merge \(preview.links) links"),
+                ("esc", "cancel"),
+            ]
+        }
+        if rename.refusalCode == "label_exists", !rename.mergeArmed {
+            let target = rename.newName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let targetCount = relationLabelCatalogCount(for: relationLabelKey(target))
+            let sourceCount = relationLabelCatalogCount(for: rename.oldKey)
+            return [
+                ("↩", "merge into “\(target)” (\(targetCount)) → \(targetCount + sourceCount) links"),
+                ("esc", "cancel"),
+            ]
+        }
+        return [
+            ("↩", "rename everywhere"),
+            ("esc", "cancel"),
+        ]
+    }
+
+    /// Current catalog link count for a key (0 when the key is unknown).
+    /// Feeds the merge-confirm footer before the merge preview lands.
+    private func relationLabelCatalogCount(for key: String) -> Int {
+        guard let prompt = relationLabelPrompt else { return 0 }
+        if let row = prompt.catalog.first(where: { relationLabelKey($0) == key }) {
+            return row.count ?? 0
+        }
+        return prompt.hiddenRows.first(where: { $0.key == key })?.count ?? 0
+    }
+
+    /// Bob's counts line for the rename preview, e.g.
+    /// `3 links in 3 notes · 2 mirrors · 1 in done/ · 1 commit`.
+    /// Nil while no fresh preview covers the rename field.
+    var relationLabelRenamePreviewLines: [String]? {
+        guard let rename = relationLabelPrompt?.rename,
+              let preview = rename.preview,
+              rename.previewNewName == rename.newName,
+              rename.previewMerge == rename.mergeArmed
+        else {
+            return nil
+        }
+        var counts =
+            "\(preview.links) links in \(preview.notes) notes · \(preview.mirrors) mirrors"
+        if preview.doneLinks > 0 {
+            counts += " · \(preview.doneLinks) in done/"
+        }
+        counts += " · 1 commit"
+        var lines = [counts]
+        if !preview.hiddenNote.isEmpty {
+            lines.append(preview.hiddenNote)
+        }
+        if !preview.inverseNote.isEmpty {
+            lines.append(preview.inverseNote)
+        }
+        return lines
+    }
+
     /// Context-sensitive footer keycaps (at most five pairs) that teach the
     /// grammar, including `||`, without repeating the full key table.
     var relationLabelFooterItems: [(keycap: String, label: String)] {
         guard let prompt = relationLabelPrompt else { return [] }
+        if prompt.rename != nil {
+            return relationLabelRenameFooterItems
+        }
         let selectedInsertion = relationLabelSelectedCandidate.map {
             relationLabelInsertion(for: $0, oneOff: prompt.oneOff)
         }
@@ -7860,7 +8597,7 @@ final class CapturePanelModel: ObservableObject {
     }
 
     private func insertRelationLabelSuggestion(candidate: CaptureCompletionCandidate) {
-        guard var prompt = relationLabelPrompt, !prompt.isSaving else { return }
+        guard var prompt = relationLabelPrompt, !prompt.isSaving, prompt.rename == nil else { return }
         if let reason = candidate.disabledReason, !reason.isEmpty {
             prompt.errorMessage = reason
             relationLabelPrompt = prompt
@@ -7877,6 +8614,10 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func submitRelationLabelPrompt() {
+        if relationLabelPrompt?.rename != nil {
+            submitRelationLabelRename()
+            return
+        }
         if let selected = relationLabelSelectedCandidate {
             insertRelationLabelSuggestion(candidate: selected)
             return
@@ -7885,7 +8626,13 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func cancelRelationLabelPrompt() {
-        guard let prompt = relationLabelPrompt else {
+        // Escape leaves rename mode first and never drops the card: the
+        // choose query, selection, and Hidden section wait underneath. A
+        // rename apply in flight (`isSaving`) blocks cancellation.
+        if cancelRelationLabelRename() {
+            return
+        }
+        guard let prompt = relationLabelPrompt, !prompt.isSaving else {
             return
         }
         let returnPicker = prompt.returnPicker
@@ -8045,8 +8792,10 @@ final class CapturePanelModel: ObservableObject {
         relationLabelPrompt = nil
         relationLabelSuggestionGeneration &+= 1
         relationLabelCatalogGeneration &+= 1
+        relationLabelRenameGeneration &+= 1
         relationLabelInFlight = nil
         relationLabelCatalogInFlight = nil
+        relationLabelRenameInFlight = nil
         clearEditorInputLockIfFree()
     }
 
@@ -8493,6 +9242,7 @@ final class CapturePanelModel: ObservableObject {
             ghosts: [:],
             noticeMessage: nil,
             visibilityWriteID: nil,
+            rename: nil,
             isSaving: false,
             errorMessage: nil
         )

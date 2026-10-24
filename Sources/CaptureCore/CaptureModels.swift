@@ -621,7 +621,8 @@ public struct CaptureParseItem: Codable, Equatable {
 
 /// One typed `&`, `*`, `~`, or `~~` marker from `capture-parse`. Unresolvable
 /// entries keep `raw` / `note` / `block_id`. Older Bob omits the array.
-/// Relation markers add `direction` (`to`/`from`), `label`, and `label_range`.
+/// Relation markers add `direction` (`to`/`from`), `label`, `label_range`,
+/// and `hidden` (true for the `||` spelling; omitted otherwise).
 public struct CaptureParseRelationshipMarker: Codable, Equatable, Sendable {
   public let raw: String
   public let note: String?
@@ -632,6 +633,9 @@ public struct CaptureParseRelationshipMarker: Codable, Equatable, Sendable {
   public let direction: String?
   public let label: String?
   public let labelRange: CaptureRange?
+  /// True when the draft spells this relation `||` (one-off). Bob omits
+  /// the key otherwise, so missing decodes as false.
+  public let hidden: Bool
 
   public init(
     raw: String,
@@ -641,7 +645,8 @@ public struct CaptureParseRelationshipMarker: Codable, Equatable, Sendable {
     range: CaptureRange? = nil,
     direction: String? = nil,
     label: String? = nil,
-    labelRange: CaptureRange? = nil
+    labelRange: CaptureRange? = nil,
+    hidden: Bool = false
   ) {
     self.raw = raw
     self.note = note
@@ -651,6 +656,7 @@ public struct CaptureParseRelationshipMarker: Codable, Equatable, Sendable {
     self.direction = direction
     self.label = label
     self.labelRange = labelRange
+    self.hidden = hidden
   }
 
   public init(from decoder: Decoder) throws {
@@ -663,6 +669,7 @@ public struct CaptureParseRelationshipMarker: Codable, Equatable, Sendable {
     direction = (try? container.decodeIfPresent(String.self, forKey: .direction)) ?? nil
     label = (try? container.decodeIfPresent(String.self, forKey: .label)) ?? nil
     labelRange = (try? container.decodeIfPresent(CaptureRange.self, forKey: .labelRange)) ?? nil
+    hidden = (try? container.decodeIfPresent(Bool.self, forKey: .hidden)) ?? false
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -674,6 +681,7 @@ public struct CaptureParseRelationshipMarker: Codable, Equatable, Sendable {
     case direction
     case label
     case labelRange = "label_range"
+    case hidden
   }
 }
 
@@ -3178,6 +3186,224 @@ public struct CaptureRelationLabelsResponse: Codable, Equatable, Sendable {
     case counts
     case labels
     case renamedReappeared = "renamed_reappeared"
+  }
+}
+
+/// Decoded `bob relations rename -f json`: the previewed (`-d`) or applied
+/// rename. Bob reports refusals (`unknown_label`, `label_exists`, …) as
+/// `ok: false` with a `code` and `message`, which
+/// `BobProcessClient.renameRelationLabel` surfaces as
+/// `RelationRenameResult.refused` instead of this shape.
+public struct CaptureRelationRenameResponse: Decodable, Equatable, Sendable {
+  public let schemaVersion: Int
+  public let ok: Bool
+  /// `dry_run` for a preview, `write` once bob commits.
+  public let mode: String
+  public let fromKey: String
+  public let fromName: String
+  public let toKey: String
+  public let toName: String
+  public let merge: Bool
+  public let files: [CaptureRelationRenameFile]
+  public let links: Int
+  public let notes: Int
+  public let mirrors: Int
+  public let doneLinks: Int
+  public let doneNotes: Int
+  public let hiddenNote: String
+  public let inverseNote: String
+  /// Bob's insertion for NEW (`|…`); the draft fix-up splices its label
+  /// part into each matching `|OLD` relation.
+  public let replacement: String
+  /// Bob's insertion for NEW (`||…`); the draft fix-up splices its label
+  /// part into each matching `||OLD` relation.
+  public let hideReplacement: String
+  /// Present only on a write: the one commit bob made.
+  public let commitSubject: String?
+  /// `not_run` on a preview; `ok`, `skipped`, or `failed` on a write.
+  /// A failed post-sync still renamed everything: the card reports
+  /// "· sync pending" instead of failing.
+  public let syncPost: String
+
+  public init(
+    schemaVersion: Int = 1,
+    ok: Bool = true,
+    mode: String = "dry_run",
+    fromKey: String = "",
+    fromName: String = "",
+    toKey: String = "",
+    toName: String = "",
+    merge: Bool = false,
+    files: [CaptureRelationRenameFile] = [],
+    links: Int = 0,
+    notes: Int = 0,
+    mirrors: Int = 0,
+    doneLinks: Int = 0,
+    doneNotes: Int = 0,
+    hiddenNote: String = "",
+    inverseNote: String = "",
+    replacement: String = "",
+    hideReplacement: String = "",
+    commitSubject: String? = nil,
+    syncPost: String = "not_run"
+  ) {
+    self.schemaVersion = schemaVersion
+    self.ok = ok
+    self.mode = mode
+    self.fromKey = fromKey
+    self.fromName = fromName
+    self.toKey = toKey
+    self.toName = toName
+    self.merge = merge
+    self.files = files
+    self.links = links
+    self.notes = notes
+    self.mirrors = mirrors
+    self.doneLinks = doneLinks
+    self.doneNotes = doneNotes
+    self.hiddenNote = hiddenNote
+    self.inverseNote = inverseNote
+    self.replacement = replacement
+    self.hideReplacement = hideReplacement
+    self.commitSubject = commitSubject
+    self.syncPost = syncPost
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+    ok = try container.decodeIfPresent(Bool.self, forKey: .ok) ?? true
+    mode = try container.decodeIfPresent(String.self, forKey: .mode) ?? "dry_run"
+    let from = try container.decodeIfPresent(RenameEndpoint.self, forKey: .from)
+    fromKey = from?.key ?? ""
+    fromName = from?.name ?? ""
+    let to = try container.decodeIfPresent(RenameEndpoint.self, forKey: .to)
+    toKey = to?.key ?? ""
+    toName = to?.name ?? ""
+    merge = try container.decodeIfPresent(Bool.self, forKey: .merge) ?? false
+    files = try container.decodeIfPresent([CaptureRelationRenameFile].self, forKey: .files) ?? []
+    let counts = try container.decodeIfPresent(RenameCounts.self, forKey: .counts)
+    links = counts?.links ?? 0
+    notes = counts?.notes ?? 0
+    mirrors = counts?.mirrors ?? 0
+    doneLinks = counts?.doneLinks ?? 0
+    doneNotes = counts?.doneNotes ?? 0
+    let state = try container.decodeIfPresent(RenameNote.self, forKey: .state)
+    hiddenNote = state?.note ?? ""
+    let inverse = try container.decodeIfPresent(RenameNote.self, forKey: .inverse)
+    inverseNote = inverse?.note ?? ""
+    replacement = try container.decodeIfPresent(String.self, forKey: .replacement) ?? ""
+    hideReplacement = try container.decodeIfPresent(String.self, forKey: .hideReplacement) ?? ""
+    let commit = try container.decodeIfPresent([String: String].self, forKey: .commit)
+    commitSubject = commit?["subject"]
+    let sync = try container.decodeIfPresent(RenameSync.self, forKey: .sync)
+    syncPost = sync?.post ?? "not_run"
+  }
+
+  private struct RenameEndpoint: Codable {
+    let key: String?
+    let name: String?
+  }
+
+  private struct RenameCounts: Codable {
+    let links: Int?
+    let notes: Int?
+    let mirrors: Int?
+    let doneLinks: Int?
+    let doneNotes: Int?
+
+    private enum CodingKeys: String, CodingKey {
+      case links
+      case notes
+      case mirrors
+      case doneLinks = "done_links"
+      case doneNotes = "done_notes"
+    }
+  }
+
+  private struct RenameNote: Codable {
+    let note: String?
+  }
+
+  private struct RenameSync: Codable {
+    let post: String?
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion = "schema_version"
+    case ok
+    case mode
+    case from
+    case to
+    case merge
+    case files
+    case counts
+    case state
+    case inverse
+    case replacement
+    case hideReplacement = "hide_replacement"
+    case commit
+    case sync
+  }
+}
+
+/// One rewritten note in a `bob relations rename` preview or write.
+public struct CaptureRelationRenameFile: Decodable, Equatable, Sendable {
+  public let path: String
+  public let links: Int
+  public let mirrors: Int
+  public let lines: [CaptureRelationRenameLine]
+
+  public init(path: String, links: Int = 0, mirrors: Int = 0, lines: [CaptureRelationRenameLine] = []) {
+    self.path = path
+    self.links = links
+    self.mirrors = mirrors
+    self.lines = lines
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    path = try container.decodeIfPresent(String.self, forKey: .path) ?? ""
+    links = try container.decodeIfPresent(Int.self, forKey: .links) ?? 0
+    mirrors = try container.decodeIfPresent(Int.self, forKey: .mirrors) ?? 0
+    lines = try container.decodeIfPresent([CaptureRelationRenameLine].self, forKey: .lines) ?? []
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case path
+    case links
+    case mirrors
+    case lines
+  }
+}
+
+/// One relabeled LINKS or LINKED FROM line: the before and after text.
+public struct CaptureRelationRenameLine: Decodable, Equatable, Sendable {
+  public let line: Int
+  public let kind: String
+  public let before: String
+  public let after: String
+
+  public init(line: Int, kind: String = "", before: String = "", after: String = "") {
+    self.line = line
+    self.kind = kind
+    self.before = before
+    self.after = after
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    line = try container.decodeIfPresent(Int.self, forKey: .line) ?? 0
+    kind = try container.decodeIfPresent(String.self, forKey: .kind) ?? ""
+    before = try container.decodeIfPresent(String.self, forKey: .before) ?? ""
+    after = try container.decodeIfPresent(String.self, forKey: .after) ?? ""
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case line
+    case kind
+    case before
+    case after
   }
 }
 

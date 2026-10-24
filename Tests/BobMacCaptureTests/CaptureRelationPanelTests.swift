@@ -1089,4 +1089,312 @@ final class CaptureRelationPanelTests: XCTestCase {
         )
         XCTAssertNil(router.command(for: event(51), context: fullOneOff))
     }
+
+    // MARK: - Relation-label rename mode (Ctrl+R)
+
+    private func renameClient(
+        extraEnvironment: [String: String] = [:],
+        recordPath: String? = nil
+    ) throws -> BobProcessClient {
+        var environment = ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        environment["FAKE_BOB_RELATION_LABEL_CHOOSER"] = "1"
+        for (key, value) in extraEnvironment {
+            environment[key] = value
+        }
+        if let recordPath {
+            environment["FAKE_BOB_RECORD_PATH"] = recordPath
+        }
+        return BobProcessClient(executablePath: try fakeBobPath(), environment: environment)
+    }
+
+    private func renameRecordURL() throws -> URL {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("relation-rename-\(UUID().uuidString).log")
+        _ = FileManager.default.createFile(atPath: recordURL.path, contents: Data())
+        return recordURL
+    }
+
+    /// Ctrl+R opens rename mode for the selected row with OLD prefilled,
+    /// renders the dry-run counts line, and Escape returns to choose mode
+    /// with the query and selection kept.
+    func testRelationCardRenameOpensForSelectedRowWithPreview() async throws {
+        let model = CapturePanelModel(
+            processClient: try renameClient()
+        )
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "",
+            suggestions: [suggestionCandidate(label: "inspired by", count: 3)],
+            suggestionAuthoredLabel: ""
+        )
+        model.selectRelationLabelSuggestion(key: "inspired by")
+        model.openRelationLabelRename()
+        XCTAssertEqual(model.relationLabelPrompt?.rename?.oldKey, "inspired by")
+        XCTAssertEqual(model.relationLabelPrompt?.rename?.oldName, "inspired by")
+        XCTAssertEqual(model.relationLabelPrompt?.rename?.newName, "inspired by")
+        XCTAssertEqual(model.relationLabelFieldText, "inspired by")
+        await waitUntil { model.relationLabelRenamePreviewLines != nil }
+        XCTAssertEqual(
+            model.relationLabelRenamePreviewLines?.first,
+            "2 links in 1 notes · 1 mirrors · 1 commit"
+        )
+        XCTAssertEqual(
+            model.relationLabelRenameFooterItems.first?.label,
+            "rename everywhere"
+        )
+
+        model.cancelRelationLabelPrompt()
+        XCTAssertNil(model.relationLabelPrompt?.rename)
+        XCTAssertEqual(model.relationLabelPrompt?.selectedKey, "inspired by")
+    }
+
+    /// Ctrl+R renames the typed label when it names an existing catalog
+    /// key, and stays in choose mode with a hint otherwise.
+    func testRelationCardRenameTypedLabelAndMissingHint() async throws {
+        let model = CapturePanelModel(
+            processClient: try renameClient()
+        )
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "implements",
+            suggestions: [
+                suggestionCandidate(label: "implements", count: 2),
+                typedCandidate(
+                    label: "implements",
+                    replacement: "|implements",
+                    count: 2,
+                    existing: true,
+                    hideReplacement: "||implements"
+                ),
+            ],
+            suggestionAuthoredLabel: "implements"
+        )
+        model.openRelationLabelRename()
+        XCTAssertEqual(model.relationLabelPrompt?.rename?.oldKey, "implements")
+
+        model.cancelRelationLabelRename()
+        model.updateRelationLabelPromptLabel("brand new")
+        model.openRelationLabelRename()
+        XCTAssertNil(model.relationLabelPrompt?.rename)
+        XCTAssertEqual(
+            model.relationLabelPrompt?.noticeMessage,
+            "Select a label to rename"
+        )
+    }
+
+    /// A `label_exists` refusal arms the merge confirm on the first Return
+    /// and applies with `--merge` on the second.
+    func testRelationCardRenameMergeArmsAndApplies() async throws {
+        let recordURL = try renameRecordURL()
+        defer { try? FileManager.default.removeItem(at: recordURL) }
+        let model = CapturePanelModel(
+            processClient: try renameClient(
+                extraEnvironment: [
+                    "FAKE_BOB_RELATIONS_RENAME_REFUSAL":
+                        "label_exists:implements is already a relation label"
+                ],
+                recordPath: recordURL.path
+            )
+        )
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "",
+            suggestions: [
+                suggestionCandidate(label: "inspired by", count: 3),
+                suggestionCandidate(label: "implements", count: 2),
+            ],
+            suggestionAuthoredLabel: ""
+        )
+        model.selectRelationLabelSuggestion(key: "inspired by")
+        model.openRelationLabelRename()
+        model.updateRelationLabelRenameName("implements")
+        await waitUntil { model.relationLabelPrompt?.errorMessage != nil }
+        XCTAssertEqual(
+            model.relationLabelPrompt?.rename?.refusalCode,
+            "label_exists"
+        )
+        XCTAssertEqual(
+            model.relationLabelRenameFooterItems.first?.label,
+            "merge into “implements” (2) → 5 links"
+        )
+
+        model.submitRelationLabelPrompt()
+        XCTAssertTrue(model.relationLabelPrompt?.rename?.mergeArmed ?? false)
+        await waitUntil {
+            model.relationLabelPrompt?.rename?.preview?.merge == true
+        }
+        XCTAssertEqual(
+            model.relationLabelRenameFooterItems.first?.label,
+            "again to merge 2 links"
+        )
+
+        model.submitRelationLabelPrompt()
+        await waitUntil { model.relationLabelPrompt?.rename == nil }
+        XCTAssertTrue(model.statusText.contains("Renamed “inspired by” → “implements”"))
+        let recorded = try String(contentsOf: recordURL, encoding: .utf8)
+        XCTAssertTrue(recorded.contains("--merge"))
+        XCTAssertTrue(recorded.contains("--via"))
+    }
+
+    /// A non-merge refusal renders inline and a late Return does not loop.
+    func testRelationCardRenameRefusalRendersInline() async throws {
+        let model = CapturePanelModel(
+            processClient: try renameClient(extraEnvironment: [
+                "FAKE_BOB_RELATIONS_RENAME_REFUSAL":
+                    "invalid_label:that name cannot be a relation label"
+            ])
+        )
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "",
+            suggestions: [suggestionCandidate(label: "inspired by", count: 3)],
+            suggestionAuthoredLabel: ""
+        )
+        model.selectRelationLabelSuggestion(key: "inspired by")
+        model.openRelationLabelRename()
+        model.updateRelationLabelRenameName("???")
+        await waitUntil { model.relationLabelPrompt?.errorMessage != nil }
+        XCTAssertEqual(
+            model.relationLabelPrompt?.errorMessage,
+            "that name cannot be a relation label"
+        )
+        XCTAssertNil(model.relationLabelRenamePreviewLines)
+    }
+
+    /// An older bob without the relations group gets the update hint.
+    func testRelationCardRenameSkewShowsUpdateHint() async throws {
+        let model = CapturePanelModel(
+            processClient: try renameClient(extraEnvironment: [
+                "FAKE_BOB_RELATIONS_RENAME_SKEW": "1"
+            ])
+        )
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "",
+            suggestions: [suggestionCandidate(label: "inspired by", count: 3)],
+            suggestionAuthoredLabel: ""
+        )
+        model.selectRelationLabelSuggestion(key: "inspired by")
+        model.openRelationLabelRename()
+        await waitUntil { model.relationLabelPrompt?.noticeMessage != nil }
+        XCTAssertEqual(
+            model.relationLabelPrompt?.noticeMessage,
+            "Update bob to rename relation labels"
+        )
+    }
+
+    /// Apply rewrites every OLD relation in the draft from bob's
+    /// `label_range`s and replacements, carries the card's suffix range,
+    /// selects NEW, and reports the one commit.
+    func testRelationCardRenameApplyFixesUpDraft() async throws {
+        let recordURL = try renameRecordURL()
+        defer { try? FileManager.default.removeItem(at: recordURL) }
+        let draft = "New task ~tasks:target|inspired by plus ~tasks:other||inspired by"
+        let model = CapturePanelModel(
+            processClient: try renameClient(
+                extraEnvironment: [
+                    "FAKE_BOB_RELATION_LABEL_EXTRA":
+                        "{\"label\":\"prompted by\",\"key\":\"prompted by\",\"count\":2,\"replacement\":\"|\\\"prompted by\\\"\",\"hide_replacement\":\"||\\\"prompted by\\\"\"}",
+                    "FAKE_BOB_PARSE_FIXTURE": "relation-label-parse-fixup.json",
+                ],
+                recordPath: recordURL.path
+            )
+        )
+        model.installRelationLabelPromptForPreviews(
+            draft: draft,
+            tokenRange: CaptureRange(start: 9, end: 22),
+            labelRange: CaptureRange(start: 22, end: 34),
+            authoredLabel: "",
+            suggestions: [suggestionCandidate(label: "inspired by", count: 3)],
+            suggestionAuthoredLabel: ""
+        )
+        model.selectRelationLabelSuggestion(key: "inspired by")
+        model.openRelationLabelRename()
+        model.updateRelationLabelRenameName("prompted by")
+        await waitUntil {
+            model.relationLabelPrompt?.rename?.preview?.toKey == "prompted by"
+        }
+
+        model.submitRelationLabelPrompt()
+        await waitUntil { model.relationLabelPrompt?.rename == nil }
+        XCTAssertEqual(
+            model.plainDraft,
+            "New task ~tasks:target|\"prompted by\" plus ~tasks:other||\"prompted by\""
+        )
+        XCTAssertEqual(
+            model.relationLabelPrompt?.labelRange,
+            CaptureRange(start: 22, end: 36)
+        )
+        XCTAssertEqual(model.relationLabelPrompt?.selectedKey, "prompted by")
+        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, "prompted by")
+        XCTAssertTrue(model.statusText.contains(
+            "Renamed “inspired by” → “prompted by” · 2 links in 1 notes · 1 commit"
+        ))
+        let recorded = try String(contentsOf: recordURL, encoding: .utf8)
+        XCTAssertTrue(recorded.contains("--via bob-mac-capture"))
+        XCTAssertTrue(recorded.contains("capture-parse"))
+    }
+
+    /// Two fast renames keep the last preview, never the stale first one.
+    func testRelationCardRenamePreviewKeepsLatest() async throws {
+        let model = CapturePanelModel(
+            processClient: try renameClient()
+        )
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "",
+            suggestions: [suggestionCandidate(label: "inspired by", count: 3)],
+            suggestionAuthoredLabel: ""
+        )
+        model.selectRelationLabelSuggestion(key: "inspired by")
+        model.openRelationLabelRename()
+        model.updateRelationLabelRenameName("prompted by")
+        model.updateRelationLabelRenameName("prompted by now")
+        await waitUntil {
+            model.relationLabelPrompt?.rename?.previewNewName == "prompted by now"
+        }
+        XCTAssertEqual(
+            model.relationLabelPrompt?.rename?.preview?.toKey,
+            "prompted by now"
+        )
+    }
+
+    /// Router: Ctrl+R opens rename mode; in rename mode Ctrl+R is consumed,
+    /// Tab stays in the card, and Return submits.
+    func testRelationCardKeysOpenRename() {
+        let router = CaptureKeyCommandRouter()
+        func event(_ keyCode: UInt16, modifiers: NSEvent.ModifierFlags = []) -> NSEvent {
+            NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: modifiers,
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                characters: "",
+                charactersIgnoringModifiers: "",
+                isARepeat: false,
+                keyCode: keyCode
+            )!
+        }
+        let choose = CaptureKeyRoutingContext(relationLabelPromptVisible: true)
+        XCTAssertEqual(
+            router.command(for: event(15, modifiers: .control), context: choose),
+            .openRelationLabelRename
+        )
+        let rename = CaptureKeyRoutingContext(
+            relationLabelPromptVisible: true,
+            relationLabelRenameActive: true
+        )
+        XCTAssertEqual(
+            router.command(for: event(15, modifiers: .control), context: rename),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(for: event(48), context: rename),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(for: event(36), context: rename),
+            .submitRelationLabelPrompt
+        )
+        XCTAssertEqual(
+            router.command(for: event(53), context: rename),
+            .cancelRelationLabelPrompt
+        )
+    }
 }

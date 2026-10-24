@@ -1923,6 +1923,13 @@ JSON
       fi
     done
     if [[ "${FAKE_BOB_RELATION_LABEL_CHOOSER:-}" == "1" && "${draft}" == *'|"' ]]; then
+      # FAKE_BOB_RELATION_LABEL_EXTRA appends one raw candidate row, so a
+      # rename test can refetch a catalog that already contains NEW.
+      if [[ -n "${FAKE_BOB_RELATION_LABEL_EXTRA:-}" ]]; then
+        extra_candidates=", ${FAKE_BOB_RELATION_LABEL_EXTRA}"
+      else
+        extra_candidates=""
+      fi
       cat <<JSON
 {
   "ok": true,
@@ -1933,7 +1940,7 @@ JSON
   "candidates": [
     { "label": "inspired by", "key": "inspired by", "count": 3, "replacement": "|\"inspired by\"", "hide_replacement": "||\"inspired by\"" },
     { "label": "implements", "key": "implements", "count": 2, "replacement": "|implements", "hide_replacement": "||implements" },
-    { "label": "duplicate of", "key": "duplicate of", "inverse": "duplicated by", "count": 1, "replacement": "|\"duplicate of\"", "hide_replacement": "||\"duplicate of\"" }
+    { "label": "duplicate of", "key": "duplicate of", "inverse": "duplicated by", "count": 1, "replacement": "|\"duplicate of\"", "hide_replacement": "||\"duplicate of\"" }${extra_candidates}
   ],
   "query": "",
   "hidden_count": 0
@@ -5350,6 +5357,66 @@ JSON
           printf '%s\n' "${FAKE_BOB_RELATIONS_WRITE_STDERR}" >&2
           exit 2
         fi
+        exit 0
+        ;;
+      rename)
+        # `bob relations rename OLD NEW -d/-f json/--merge --via ...`.
+        # FAKE_BOB_RELATIONS_RENAME_SKEW=1 models a bob without the
+        # relations group. FAKE_BOB_RELATIONS_RENAME_REFUSAL="code:message"
+        # answers a refusal instead of a preview/write, unless --merge is
+        # passed (a merge resolves a `label_exists` refusal, like bob).
+        if [[ "${FAKE_BOB_RELATIONS_RENAME_SKEW:-0}" != "0" ]]; then
+          printf "error: unrecognized subcommand 'relations'\n" >&2
+          exit 2
+        fi
+        rename_old=""
+        rename_new=""
+        rename_dry_run="false"
+        rename_merge="false"
+        rename_args=("$@")
+        for ((i = 1; i < ${#rename_args[@]}; i++)); do
+          case "${rename_args[$i]}" in
+            -d|--dry-run) rename_dry_run="true" ;;
+            -m|--merge) rename_merge="true" ;;
+            -f|--format|--via) i=$((i + 1)) ;;
+            -*) ;;
+            *)
+              if [[ -z "${rename_old}" ]]; then
+                rename_old="${rename_args[$i]}"
+              else
+                rename_new="${rename_args[$i]}"
+              fi
+              ;;
+          esac
+        done
+        if [[ -n "${FAKE_BOB_RELATIONS_RENAME_REFUSAL:-}" && "${rename_merge}" != "true" ]]; then
+          refusal="${FAKE_BOB_RELATIONS_RENAME_REFUSAL}"
+          code="${refusal%%:*}"
+          message="${refusal#*:}"
+          printf '{"schema_version":1,"ok":false,"code":"%s","message":"%s"}\n' \
+            "${code}" "${message}"
+          exit 1
+        fi
+        if [[ "${rename_new}" == *" "* ]]; then
+          rename_replacement="|\\\"${rename_new}\\\""
+          rename_hide_replacement="||\\\"${rename_new}\\\""
+        else
+          rename_replacement="|${rename_new}"
+          rename_hide_replacement="||${rename_new}"
+        fi
+        if [[ "${rename_dry_run}" == "true" ]]; then
+          rename_mode="dry_run"
+          rename_commit="null"
+          rename_post="not_run"
+        else
+          rename_mode="write"
+          rename_commit="{\"sha\":\"abc123\",\"subject\":\"bob relations rename: ${rename_old} → ${rename_new}\"}"
+          rename_post="${FAKE_BOB_RELATIONS_RENAME_SYNC_POST:-ok}"
+        fi
+        printf '{"schema_version":1,"ok":true,"mode":"%s","changed":true,"from":{"key":"%s","name":"%s"},"to":{"key":"%s","name":"%s"},"merge":%s,"files":[{"path":"tasks.md","links":2,"mirrors":1,"lines":[{"line":4,"kind":"links","before":"LINKS: %s","after":"LINKS: %s"}]}],"counts":{"links":2,"notes":1,"mirrors":1,"done_links":0,"done_notes":0},"state":{"hidden_before":false,"hidden_after":false,"moved":false,"note":"%s is not hidden"},"inverse":{"before":null,"after":null,"note":"inverse phrase is unchanged"},"replacement":"%s","hide_replacement":"%s","commit":%s,"sync":{"pre":"skipped","post":"%s"},"warnings":[]}\n' \
+          "${rename_mode}" "${rename_old}" "${rename_old}" "${rename_new}" "${rename_new}" \
+          "${rename_merge}" "${rename_old}" "${rename_new}" "${rename_new}" \
+          "${rename_replacement}" "${rename_hide_replacement}" "${rename_commit}" "${rename_post}"
         exit 0
         ;;
       *)

@@ -662,6 +662,62 @@ final class DependencyDecodingTests: XCTestCase {
         XCTAssertEqual(hidden.hideReplacement, "||\"inspired by\"")
     }
 
+    /// `bob relations rename -f json` dry runs decode the file lines,
+    /// counts, state/inverse notes, both insertions, and the sync state;
+    /// refusals decode as the thin envelope instead.
+    func testRelationRenameDryRunDecodes() throws {
+        let preview = try JSONDecoder().decode(
+            CaptureRelationRenameResponse.self,
+            from: Data(try fixtureText("relations-rename-dry-run.json").utf8)
+        )
+        XCTAssertEqual(preview.mode, "dry_run")
+        XCTAssertEqual(preview.fromKey, "inspired by")
+        XCTAssertEqual(preview.toKey, "prompted by")
+        XCTAssertEqual(preview.toName, "prompted by")
+        XCTAssertFalse(preview.merge)
+        XCTAssertEqual(preview.links, 2)
+        XCTAssertEqual(preview.notes, 1)
+        XCTAssertEqual(preview.mirrors, 0)
+        XCTAssertEqual(preview.doneLinks, 0)
+        XCTAssertEqual(preview.hiddenNote, "prompted by is not hidden")
+        XCTAssertEqual(preview.inverseNote, "inverse phrase is unchanged")
+        XCTAssertEqual(preview.replacement, "|\"prompted by\"")
+        XCTAssertEqual(preview.hideReplacement, "||\"prompted by\"")
+        XCTAssertNil(preview.commitSubject)
+        XCTAssertEqual(preview.syncPost, "not_run")
+        let file = try XCTUnwrap(preview.files.first)
+        XCTAssertEqual(file.path, "tasks.md")
+        XCTAssertEqual(file.lines.count, 2)
+        XCTAssertEqual(file.lines.first?.kind, "links")
+
+        let envelope = try JSONDecoder().decode(
+            RelationRenameEnvelope.self,
+            from: Data("""
+            {"schema_version":1,"ok":false,"code":"label_exists",
+             "message":"implements is already a relation label"}
+            """.utf8)
+        )
+        XCTAssertFalse(envelope.ok)
+        XCTAssertEqual(envelope.code, "label_exists")
+    }
+
+    /// `capture-parse` `relations[]` carry `label_range` byte ranges and the
+    /// `||` spelling as `hidden` (omitted for `|`).
+    func testRelationParseMarkersDecodeRangesAndHidden() throws {
+        let parse = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(try fixtureText("relation-label-parse-fixup.json").utf8)
+        )
+        XCTAssertEqual(parse.relations.count, 2)
+        let plain = try XCTUnwrap(parse.relations.first)
+        XCTAssertEqual(plain.label, "inspired by")
+        XCTAssertEqual(plain.labelRange, CaptureRange(start: 23, end: 34))
+        XCTAssertFalse(plain.hidden)
+        let oneOff = try XCTUnwrap(parse.relations.last)
+        XCTAssertEqual(oneOff.labelRange, CaptureRange(start: 54, end: 65))
+        XCTAssertTrue(oneOff.hidden)
+    }
+
     /// Capture warnings decode both shapes: legacy plain strings and the
     /// structured `hides_existing_relation_label` object. `||` dry runs also
     /// carry `relation_label_hides[]`.
