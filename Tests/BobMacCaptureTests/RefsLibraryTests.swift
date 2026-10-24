@@ -541,7 +541,7 @@ final class RefsLibraryTests: XCTestCase {
     }
     let record = try String(contentsOf: recordURL)
     XCTAssertEqual(
-      record.components(separatedBy: "argv=ref scan -w -f json").count - 1,
+      record.components(separatedBy: "argv=ref scan -a -w -f json").count - 1,
       1
     )
     guard case .finished(let outcome) = context.library.scanState else {
@@ -571,7 +571,7 @@ final class RefsLibraryTests: XCTestCase {
     }
     let record = try String(contentsOf: recordURL)
     XCTAssertEqual(
-      record.components(separatedBy: "argv=ref scan -w -f json").count - 1,
+      record.components(separatedBy: "argv=ref scan -a -w -f json").count - 1,
       1
     )
   }
@@ -608,7 +608,7 @@ final class RefsLibraryTests: XCTestCase {
         $0.id == "ref/papers/harness_notes.md"
       })
     let record = try String(contentsOf: recordURL)
-    guard let scanRange = record.range(of: "argv=ref scan -w -f json"),
+    guard let scanRange = record.range(of: "argv=ref scan -a -w -f json"),
       let listRange = record.range(of: "argv=ref list -R all -A -f json")
     else {
       XCTFail("expected scan and post-scan list in record")
