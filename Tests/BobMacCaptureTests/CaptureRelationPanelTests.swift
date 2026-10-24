@@ -72,18 +72,20 @@ final class CaptureRelationPanelTests: XCTestCase {
             suggestions: [
                 typedCandidate(
                     label: "a (b)",
-                    replacement: "|a (b)",
-                    disabledReason: "Labels cannot contain parentheses"
+                    replacement: "",
+                    disabledReason: "label contains a forbidden character"
                 )
             ],
             suggestionAuthoredLabel: "a (b)"
         )
         XCTAssertFalse(model.relationLabelPromptCanSubmit)
+        XCTAssertNil(model.relationLabelInsertsText)
         model.submitRelationLabelPrompt()
         XCTAssertNotNil(model.relationLabelPrompt)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
         XCTAssertEqual(
             model.relationLabelPrompt?.errorMessage,
-            "Labels cannot contain parentheses"
+            "label contains a forbidden character"
         )
     }
 
@@ -233,7 +235,8 @@ final class CaptureRelationPanelTests: XCTestCase {
     }
 
     /// Harness scenario: typed `old`, changed to `new`, Return before the new
-    /// response arrives. The stale `|old` row must never commit.
+    /// response arrives. The stale `|old` row must never commit; bob's later
+    /// typed `|new` is the only insertion.
     func testRelationLabelSubmitCommitsAuthoredLabelWhileResponsePending() {
         let model = CapturePanelModel()
         model.installRelationLabelPromptForPreviews(
@@ -242,20 +245,47 @@ final class CaptureRelationPanelTests: XCTestCase {
                 typedCandidate(label: "old", replacement: "|old"),
                 suggestionCandidate(label: "follow-up of", count: 4),
             ],
-            suggestionAuthoredLabel: "old"
+            suggestionAuthoredLabel: "old",
+            pendingSubmit: true
         )
         XCTAssertNil(model.relationLabelInsertsText)
-        model.submitRelationLabelPrompt()
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertTrue(
+            model.applyRelationLabelSuggestions(
+                relationLabelResponse(
+                    query: "new",
+                    candidates: [typedCandidate(label: "new", replacement: "|new")]
+                ),
+                generation: 0,
+                draftSnapshot: "New task ~tasks:target",
+                authoredLabel: "new"
+            )
+        )
         XCTAssertNil(model.relationLabelPrompt)
         XCTAssertEqual(model.plainDraft, "New task ~tasks:target|new")
     }
 
-    /// Immediate Return before any response: with no rows at all, submit
-    /// still commits the current input.
+    /// Immediate Return before any response: the card stays open until bob
+    /// supplies a typed row, then that replacement commits.
     func testRelationLabelSubmitWithNoSuggestionsCommitsAuthoredLabel() {
         let model = CapturePanelModel()
-        model.installRelationLabelPromptForPreviews(authoredLabel: "new")
-        model.submitRelationLabelPrompt()
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "new",
+            pendingSubmit: true
+        )
+        XCTAssertNotNil(model.relationLabelPrompt)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertTrue(
+            model.applyRelationLabelSuggestions(
+                relationLabelResponse(
+                    query: "new",
+                    candidates: [typedCandidate(label: "new", replacement: "|new")]
+                ),
+                generation: 0,
+                draftSnapshot: "New task ~tasks:target",
+                authoredLabel: "new"
+            )
+        )
         XCTAssertNil(model.relationLabelPrompt)
         XCTAssertEqual(model.plainDraft, "New task ~tasks:target|new")
     }
@@ -282,7 +312,7 @@ final class CaptureRelationPanelTests: XCTestCase {
     }
 
     /// Editing the field untags the visible rows: the card stops advertising
-    /// the stale `Inserts` line and submit commits the new input.
+    /// the stale `Inserts` line and a later typed row for `new` commits `|new`.
     func testRelationLabelEditInvalidatesStaleCandidates() {
         let model = CapturePanelModel()
         model.installRelationLabelPromptForPreviews(
@@ -294,13 +324,24 @@ final class CaptureRelationPanelTests: XCTestCase {
         model.updateRelationLabelPromptLabel("new")
         XCTAssertNil(model.relationLabelInsertsText)
         XCTAssertTrue(model.relationLabelPromptCanSubmit)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertTrue(
+            model.applyRelationLabelSuggestions(
+                relationLabelResponse(
+                    query: "new",
+                    candidates: [typedCandidate(label: "new", replacement: "|new")]
+                ),
+                generation: 0,
+                draftSnapshot: "New task ~tasks:target",
+                authoredLabel: "new"
+            )
+        )
         model.submitRelationLabelPrompt()
         XCTAssertEqual(model.plainDraft, "New task ~tasks:target|new")
     }
 
     /// A delayed response for a previous request is dropped: rows and tag
-    /// stay where the current input left them. The preview hook stages state
-    /// without fetching, so generation 0 is current until the edit below.
+    /// stay where the current input left them.
     func testRelationLabelStaleGenerationResponseDropped() {
         let model = CapturePanelModel()
         model.installRelationLabelPromptForPreviews(authoredLabel: "")
@@ -317,7 +358,7 @@ final class CaptureRelationPanelTests: XCTestCase {
             )
         )
         XCTAssertEqual(model.relationLabelPrompt?.suggestionAuthoredLabel, "")
-        model.updateRelationLabelPromptLabel("")
+        model.updateRelationLabelPromptLabel("new")
         XCTAssertFalse(
             model.applyRelationLabelSuggestions(
                 stale,
@@ -328,6 +369,7 @@ final class CaptureRelationPanelTests: XCTestCase {
         )
         XCTAssertEqual(model.relationLabelPrompt?.suggestions, stale.candidates)
         XCTAssertNil(model.relationLabelPrompt?.suggestionAuthoredLabel)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
     }
 
     /// A response for a different label is dropped even when its generation
@@ -351,26 +393,132 @@ final class CaptureRelationPanelTests: XCTestCase {
         XCTAssertNil(model.relationLabelPrompt?.suggestionAuthoredLabel)
     }
 
-    /// Local spelling of bob's typed-row replacement: collapse, trailing
-    /// colon, quotes for spaces, and nil where bob offers no typed row.
-    func testRelationLabelAuthoredReplacementSpelling() {
-        XCTAssertEqual(
-            CapturePanelModel.relationLabelAuthoredReplacement(for: "new"),
-            "|new"
+    /// Bob's typed row is the replacement source, including collapsed
+    /// whitespace and a trailing colon.
+    func testRelationLabelNormalizedWhitespaceUsesBobReplacement() {
+        let model = CapturePanelModel()
+        let authored = "  follow-up   of: "
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: authored,
+            pendingSubmit: true
         )
-        XCTAssertEqual(
-            CapturePanelModel.relationLabelAuthoredReplacement(for: "follow-up of"),
-            "|\"follow-up of\""
+        XCTAssertTrue(
+            model.applyRelationLabelSuggestions(
+                relationLabelResponse(
+                    query: authored,
+                    candidates: [
+                        typedCandidate(
+                            label: "follow-up of",
+                            replacement: "|\"follow-up of\""
+                        )
+                    ]
+                ),
+                generation: 0,
+                draftSnapshot: "New task ~tasks:target",
+                authoredLabel: authored
+            )
         )
-        XCTAssertEqual(
-            CapturePanelModel.relationLabelAuthoredReplacement(for: "  follow-up   of: "),
-            "|\"follow-up of\""
-        )
-        XCTAssertNil(CapturePanelModel.relationLabelAuthoredReplacement(for: ":"))
+        XCTAssertNil(model.relationLabelPrompt)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target|\"follow-up of\"")
     }
 
-    /// Delayed response with an immediate Return: the current input commits
-    /// and the late arrival changes nothing.
+    /// Empty replacement on a disabled typed row refuses and leaves the
+    /// authored input visible.
+    func testRelationLabelDisabledEmptyReplacementRefuses() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "a (b)",
+            pendingSubmit: true
+        )
+        XCTAssertTrue(
+            model.applyRelationLabelSuggestions(
+                relationLabelResponse(
+                    query: "a (b)",
+                    candidates: [
+                        typedCandidate(
+                            label: "a (b)",
+                            replacement: "",
+                            disabledReason: "label contains a forbidden character"
+                        )
+                    ]
+                ),
+                generation: 0,
+                draftSnapshot: "New task ~tasks:target",
+                authoredLabel: "a (b)"
+            )
+        )
+        XCTAssertNotNil(model.relationLabelPrompt)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertEqual(
+            model.relationLabelPrompt?.errorMessage,
+            "label contains a forbidden character"
+        )
+        XCTAssertEqual(model.relationLabelPrompt?.pendingSubmit, false)
+    }
+
+    func testRelationLabelTooLongUsesBobDisabledReason() {
+        let model = CapturePanelModel()
+        let authored = String(repeating: "a", count: 41)
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: authored,
+            pendingSubmit: true
+        )
+        XCTAssertTrue(
+            model.applyRelationLabelSuggestions(
+                relationLabelResponse(
+                    query: authored,
+                    candidates: [
+                        typedCandidate(
+                            label: authored,
+                            replacement: "",
+                            disabledReason: "label can't exceed 40 characters"
+                        )
+                    ]
+                ),
+                generation: 0,
+                draftSnapshot: "New task ~tasks:target",
+                authoredLabel: authored
+            )
+        )
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertEqual(
+            model.relationLabelPrompt?.errorMessage,
+            "label can't exceed 40 characters"
+        )
+    }
+
+    func testRelationLabelEmptyAfterCollapseUsesBobDisabledReason() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: ":",
+            pendingSubmit: true
+        )
+        XCTAssertTrue(
+            model.applyRelationLabelSuggestions(
+                relationLabelResponse(
+                    query: ":",
+                    candidates: [
+                        typedCandidate(
+                            label: "",
+                            replacement: "",
+                            disabledReason: "label can't be empty"
+                        )
+                    ]
+                ),
+                generation: 0,
+                draftSnapshot: "New task ~tasks:target",
+                authoredLabel: ":"
+            )
+        )
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertEqual(
+            model.relationLabelPrompt?.errorMessage,
+            "label can't be empty"
+        )
+    }
+
+    /// Delayed response with an immediate Return: the card stays open until
+    /// bob's typed `|new` lands, and that is the only insertion.
     func testRelationLabelImmediateReturnBeatsDelayedResponse() async throws {
         let model = CapturePanelModel(
             processClient: try relationLabelClient(delaySeconds: "1"),
@@ -379,9 +527,10 @@ final class CaptureRelationPanelTests: XCTestCase {
         model.installRelationLabelPromptForPreviews(authoredLabel: "old")
         model.updateRelationLabelPromptLabel("new")
         model.submitRelationLabelPrompt()
-        XCTAssertEqual(model.plainDraft, "New task ~tasks:target|new")
-        XCTAssertNil(model.relationLabelPrompt)
-        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertNotNil(model.relationLabelPrompt)
+        XCTAssertEqual(model.relationLabelPrompt?.pendingSubmit, true)
+        await waitUntil { model.relationLabelPrompt == nil }
         XCTAssertEqual(model.plainDraft, "New task ~tasks:target|new")
         XCTAssertNil(model.relationLabelPrompt)
     }
@@ -404,5 +553,62 @@ final class CaptureRelationPanelTests: XCTestCase {
         // The delayed older response lands here and must not rewrite the draft.
         try? await Task.sleep(nanoseconds: 2_500_000_000)
         XCTAssertEqual(model.plainDraft, "New task ~tasks:target|new")
+    }
+
+    /// Editing after Return cancels the pending submit, so a late `|new`
+    /// must not insert.
+    func testRelationLabelEditAfterReturnCancelsPendingSubmit() async throws {
+        let model = CapturePanelModel(
+            processClient: try relationLabelClient(delaySeconds: "1"),
+            debounceNanoseconds: 9_000_000_000
+        )
+        model.installRelationLabelPromptForPreviews(authoredLabel: "old")
+        model.updateRelationLabelPromptLabel("new")
+        model.submitRelationLabelPrompt()
+        XCTAssertEqual(model.relationLabelPrompt?.pendingSubmit, true)
+        model.updateRelationLabelPromptLabel("newer")
+        XCTAssertEqual(model.relationLabelPrompt?.pendingSubmit, false)
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertNotNil(model.relationLabelPrompt)
+        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, "newer")
+    }
+
+    func testRelationLabelDismissThenReopenDoesNotInsertStaleLabel() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "new",
+            pendingSubmit: true
+        )
+        model.cancelRelationLabelPrompt()
+        XCTAssertFalse(model.relationLabelPromptVisible)
+        XCTAssertFalse(
+            model.applyRelationLabelSuggestions(
+                relationLabelResponse(
+                    query: "new",
+                    candidates: [typedCandidate(label: "new", replacement: "|new")]
+                ),
+                generation: 0,
+                draftSnapshot: "New task ~tasks:target",
+                authoredLabel: "new"
+            )
+        )
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        model.installRelationLabelPromptForPreviews(authoredLabel: "new")
+        XCTAssertEqual(model.relationLabelPrompt?.pendingSubmit, false)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+    }
+
+    func testRelationLabelRepeatedReturnDoesNotSynthesizeWhilePending() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(authoredLabel: "new")
+        model.submitRelationLabelPrompt()
+        model.submitRelationLabelPrompt()
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target")
+        XCTAssertNotNil(model.relationLabelPrompt)
+        XCTAssertEqual(
+            model.relationLabelPrompt?.errorMessage,
+            "Bob is not resolved. Check Settings and Recheck Bob."
+        )
     }
 }

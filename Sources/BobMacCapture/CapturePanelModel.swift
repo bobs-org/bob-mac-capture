@@ -208,6 +208,11 @@ struct CaptureRelationLabelPromptState: Equatable {
     /// label edit clears it, so submit can never commit a candidate fetched
     /// for a previous label (bob-cli-al).
     var suggestionAuthoredLabel: String?
+    /// Return was pressed before a fresh typed row arrived. Commit once bob
+    /// supplies a valid replacement for this exact `authoredLabel`; cancel on
+    /// edit, dismissal, a different prompt, a draft change, or a superseding
+    /// request (bob-cli-al).
+    var pendingSubmit: Bool
     /// Selected chip index for Tab cycling.
     var selectedSuggestionIndex: Int
     var isSaving: Bool
@@ -461,6 +466,10 @@ final class CapturePanelModel: ObservableObject {
     private var analysisGeneration: UInt64 = 0
     private var similarTasksGeneration: UInt64 = 0
     private var relationLabelSuggestionGeneration: UInt64 = 0
+    /// In-flight `relation_label` probe. Submit must not start a second
+    /// request for the same prompt/draft/authored label: bumping generation
+    /// would drop the response the pending Return is waiting for.
+    private var relationLabelInFlight: (generation: UInt64, draft: String, authored: String)?
     private var rewriteGeneration: UInt64 = 0
     private var rewriteExpectedCursorUTF8: Int?
     private var rewriteSawMatchingSelection = false
@@ -6470,8 +6479,11 @@ final class CapturePanelModel: ObservableObject {
         let trimmed = prompt.authoredLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
               let typed = prompt.suggestions.first(where: { $0.typed }),
-              typed.label == trimmed
+              !typed.replacement.isEmpty
         else {
+            return nil
+        }
+        if let reason = typed.disabledReason, !reason.isEmpty {
             return nil
         }
         return "Inserts \(typed.replacement)"
@@ -6485,14 +6497,15 @@ final class CapturePanelModel: ObservableObject {
         if trimmed.isEmpty {
             return true
         }
-        if prompt.suggestionAuthoredLabel == prompt.authoredLabel,
-           let typed = prompt.suggestions.first(where: { $0.typed }),
-           typed.label == trimmed,
-           let reason = typed.disabledReason, !reason.isEmpty
-        {
+        guard prompt.suggestionAuthoredLabel == prompt.authoredLabel,
+              let typed = prompt.suggestions.first(where: { $0.typed })
+        else {
+            return true
+        }
+        if let reason = typed.disabledReason, !reason.isEmpty {
             return false
         }
-        return true
+        return !typed.replacement.isEmpty
     }
 
     /// Shift-Return on a relation picker row: insert the token like Return,
@@ -6581,6 +6594,7 @@ final class CapturePanelModel: ObservableObject {
             authoredLabel: "",
             suggestions: [],
             suggestionAuthoredLabel: nil,
+            pendingSubmit: false,
             selectedSuggestionIndex: 0,
             isSaving: false,
             errorMessage: nil
@@ -6600,6 +6614,7 @@ final class CapturePanelModel: ObservableObject {
         // screen but untag them, so submit and the `Inserts` line treat them
         // as stale until the new fetch lands (bob-cli-al).
         prompt.suggestionAuthoredLabel = nil
+        prompt.pendingSubmit = false
         prompt.errorMessage = nil
         relationLabelPrompt = prompt
         fetchRelationLabelSuggestions()
@@ -6626,6 +6641,7 @@ final class CapturePanelModel: ObservableObject {
             prompt.authoredLabel = label
         }
         prompt.suggestionAuthoredLabel = nil
+        prompt.pendingSubmit = false
         prompt.errorMessage = nil
         relationLabelPrompt = prompt
         fetchRelationLabelSuggestions()
@@ -6640,14 +6656,18 @@ final class CapturePanelModel: ObservableObject {
         }
         if let reason = candidate.disabledReason, !reason.isEmpty {
             prompt.errorMessage = reason
+            prompt.pendingSubmit = false
             relationLabelPrompt = prompt
             return
         }
-        if let label = candidate.label {
-            prompt.authoredLabel = label
+        guard !candidate.replacement.isEmpty else {
+            prompt.errorMessage = "This label cannot be inserted."
+            prompt.pendingSubmit = false
             relationLabelPrompt = prompt
+            return
         }
-        submitRelationLabelPrompt()
+        prompt.pendingSubmit = false
+        insertRelationLabelReplacement(candidate.replacement, prompt: &prompt)
     }
 
     func cancelRelationLabelPrompt() {
@@ -6678,12 +6698,15 @@ final class CapturePanelModel: ObservableObject {
         }
         guard prompt.draftSnapshot == plainDraft else {
             prompt.errorMessage = "Draft changed. Reopen the relation card and try again."
+            prompt.pendingSubmit = false
             relationLabelPrompt = prompt
             requestFocus(.relationLabelPromptField)
             return
         }
         let trimmed = prompt.authoredLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
+            prompt.pendingSubmit = false
+            relationLabelPrompt = prompt
             let returnPicker = prompt.returnPicker
             if returnPicker == nil {
                 guard let replacementRange = stringRange(
@@ -6715,71 +6738,62 @@ final class CapturePanelModel: ObservableObject {
             requestFocus(.editor)
             return
         }
-        // Commit only a candidate produced for the current authored label.
-        // Anything older is stale the moment the field changes (bob-cli-al).
-        if prompt.suggestionAuthoredLabel == prompt.authoredLabel {
-            if let typed = prompt.suggestions.first(where: { $0.typed }),
-               typed.label == trimmed,
-               !typed.replacement.isEmpty
-            {
-                if let reason = typed.disabledReason, !reason.isEmpty {
-                    prompt.errorMessage = reason
-                    relationLabelPrompt = prompt
-                    requestFocus(.relationLabelPromptField)
-                    return
-                }
-                insertRelationLabelReplacement(typed.replacement, prompt: &prompt)
-                return
-            }
-            if let match = prompt.suggestions.first(where: { $0.label == trimmed }),
-               !match.replacement.isEmpty
-            {
-                if let reason = match.disabledReason, !reason.isEmpty {
-                    prompt.errorMessage = reason
-                    relationLabelPrompt = prompt
-                    requestFocus(.relationLabelPromptField)
-                    return
-                }
-                insertRelationLabelReplacement(match.replacement, prompt: &prompt)
-                return
-            }
-        }
-        // No candidate covers the current input — the fetch is still pending
-        // or a stale one was just dropped. Commit bob's authored replacement
-        // for the current input instead of a stale candidate, because bob
-        // owns relation grammar. Never commit a stale candidate.
-        guard let replacement = Self.relationLabelAuthoredReplacement(for: trimmed) else {
-            prompt.errorMessage = "Still loading suggestions — try again in a moment"
-            relationLabelPrompt = prompt
-            requestFocus(.relationLabelPromptField)
-            fetchRelationLabelSuggestions()
+        if commitFreshRelationLabel() {
             return
         }
-        insertRelationLabelReplacement(replacement, prompt: &prompt)
+        prompt.pendingSubmit = true
+        prompt.errorMessage = nil
+        relationLabelPrompt = prompt
+        requestFocus(.relationLabelPromptField)
+        guard processClient != nil else {
+            var waiting = prompt
+            waiting.pendingSubmit = false
+            waiting.errorMessage = "Bob is not resolved. Check Settings and Recheck Bob."
+            relationLabelPrompt = waiting
+            return
+        }
+        fetchRelationLabelSuggestions()
     }
 
-    /// Spelling of bob's `relation_label` typed-row replacement for the
-    /// trimmed field text (`|label`, `|"multi word"`), mirroring bob's label
-    /// collapse and quoted form. The fresh typed row always wins when one
-    /// covers the current input; this is only the still-loading fallback so
-    /// an early Return commits what the user authored (bob-cli-al). Nil when
-    /// nothing remains after collapse (such as `:`), where bob itself offers
-    /// no typed row.
-    static func relationLabelAuthoredReplacement(for trimmed: String) -> String? {
-        let collapsed = trimmed.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        let stripped: String
-        if collapsed.hasSuffix(":") {
-            stripped = String(collapsed.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
-        } else {
-            stripped = collapsed
+    /// Insert or refuse from bob's fresh typed row. Returns false when no
+    /// fresh typed row covers the current authored input yet.
+    @discardableResult
+    private func commitFreshRelationLabel() -> Bool {
+        guard var prompt = relationLabelPrompt, !prompt.isSaving else {
+            return false
         }
-        guard !stripped.isEmpty else {
-            return nil
+        guard prompt.suggestionAuthoredLabel == prompt.authoredLabel else {
+            return false
         }
-        if stripped.contains(" ") {
-            return "|\"\(stripped)\""
+        let trimmed = prompt.authoredLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return false
         }
-        return "|\(stripped)"
+        guard let typed = prompt.suggestions.first(where: { $0.typed }) else {
+            prompt.pendingSubmit = false
+            prompt.errorMessage =
+                "This bob cannot validate relation labels. Update bob, or leave the label empty."
+            relationLabelPrompt = prompt
+            requestFocus(.relationLabelPromptField)
+            return true
+        }
+        if let reason = typed.disabledReason, !reason.isEmpty {
+            prompt.pendingSubmit = false
+            prompt.errorMessage = reason
+            relationLabelPrompt = prompt
+            requestFocus(.relationLabelPromptField)
+            return true
+        }
+        if typed.replacement.isEmpty {
+            prompt.pendingSubmit = false
+            prompt.errorMessage = "This label cannot be inserted."
+            relationLabelPrompt = prompt
+            requestFocus(.relationLabelPromptField)
+            return true
+        }
+        prompt.pendingSubmit = false
+        insertRelationLabelReplacement(typed.replacement, prompt: &prompt)
+        return true
     }
 
     private func insertRelationLabelReplacement(
@@ -6814,21 +6828,34 @@ final class CapturePanelModel: ObservableObject {
 
     private func clearRelationLabelPrompt() {
         relationLabelPrompt = nil
+        relationLabelInFlight = nil
         clearEditorInputLockIfFree()
+    }
+
+    private func clearRelationLabelInFlight(generation: UInt64) {
+        if relationLabelInFlight?.generation == generation {
+            relationLabelInFlight = nil
+        }
     }
 
     /// Probe Bob for `relation_label` suggestions by splicing `|"<typed>`
     /// after the token. Older Bob returns no `relation_label` context; the
-    /// card then keeps its empty state with a calm hint.
+    /// card then keeps its empty state with a calm hint. Generation advances
+    /// only after this request is actually sent, so a pending Return cannot
+    /// drop the in-flight response it is waiting for (bob-cli-al).
     private func fetchRelationLabelSuggestions() {
-        relationLabelSuggestionGeneration &+= 1
-        let generation = relationLabelSuggestionGeneration
         guard let prompt = relationLabelPrompt,
               let processClient
         else {
             return
         }
         guard prompt.draftSnapshot == plainDraft else {
+            return
+        }
+        if let inFlight = relationLabelInFlight,
+           inFlight.draft == prompt.draftSnapshot,
+           inFlight.authored == prompt.authoredLabel
+        {
             return
         }
         let typed = prompt.authoredLabel
@@ -6856,6 +6883,13 @@ final class CapturePanelModel: ObservableObject {
         guard stringRange(in: probe, start: cursor, end: cursor) != nil else {
             return
         }
+        relationLabelSuggestionGeneration &+= 1
+        let generation = relationLabelSuggestionGeneration
+        relationLabelInFlight = (
+            generation: generation,
+            draft: prompt.draftSnapshot,
+            authored: prompt.authoredLabel
+        )
         let draftSnapshot = prompt.draftSnapshot
         let requestedLabel = prompt.authoredLabel
         Task { [weak self, processClient] in
@@ -6865,6 +6899,7 @@ final class CapturePanelModel: ObservableObject {
                     guard let self else {
                         return
                     }
+                    self.clearRelationLabelInFlight(generation: generation)
                     self.applyRelationLabelSuggestions(
                         response,
                         generation: generation,
@@ -6874,15 +6909,23 @@ final class CapturePanelModel: ObservableObject {
                 }
             } catch {
                 await MainActor.run {
-                    guard let self,
-                          self.relationLabelSuggestionGeneration == generation,
+                    guard let self else {
+                        return
+                    }
+                    self.clearRelationLabelInFlight(generation: generation)
+                    guard self.relationLabelSuggestionGeneration == generation,
                           var current = self.relationLabelPrompt,
                           current.draftSnapshot == draftSnapshot,
                           current.authoredLabel == requestedLabel
                     else {
                         return
                     }
-                    current.errorMessage = nil
+                    if current.pendingSubmit {
+                        current.pendingSubmit = false
+                        current.errorMessage = "Could not load label suggestions. Try again."
+                    } else {
+                        current.errorMessage = nil
+                    }
                     self.relationLabelPrompt = current
                 }
             }
@@ -6926,6 +6969,9 @@ final class CapturePanelModel: ObservableObject {
             current.errorMessage = nil
         }
         relationLabelPrompt = current
+        if current.pendingSubmit {
+            commitFreshRelationLabel()
+        }
         return true
     }
 
@@ -7025,11 +7071,9 @@ final class CapturePanelModel: ObservableObject {
             // whatever the card already holds unless it has no fresh rows.
             let verified = completion.query == existing.authoredLabel
             let hasFreshRows = existing.suggestionAuthoredLabel == existing.authoredLabel
-            if verified || completion.query == nil, !hasFreshRows {
+            if verified, !hasFreshRows {
                 existing.suggestions = completion.candidates
-                if verified {
-                    existing.suggestionAuthoredLabel = existing.authoredLabel
-                }
+                existing.suggestionAuthoredLabel = existing.authoredLabel
                 if existing.selectedSuggestionIndex >= completion.candidates.count {
                     existing.selectedSuggestionIndex = 0
                 }
@@ -7041,6 +7085,9 @@ final class CapturePanelModel: ObservableObject {
                     existing.errorMessage = nil
                 }
                 relationLabelPrompt = existing
+                if existing.pendingSubmit {
+                    commitFreshRelationLabel()
+                }
             }
             dismissCompletion()
             return
@@ -7064,7 +7111,7 @@ final class CapturePanelModel: ObservableObject {
         if var opened = relationLabelPrompt {
             opened.suggestions = completion.candidates
             opened.authoredLabel = completion.query ?? ""
-            opened.suggestionAuthoredLabel = opened.authoredLabel
+            opened.suggestionAuthoredLabel = completion.query == nil ? nil : opened.authoredLabel
             opened.selectedSuggestionIndex = 0
             if let typed = completion.candidates.first(where: { $0.typed }),
                let reason = typed.disabledReason, !reason.isEmpty
@@ -7088,6 +7135,7 @@ final class CapturePanelModel: ObservableObject {
         authoredLabel: String = "",
         suggestions: [CaptureCompletionCandidate] = [],
         suggestionAuthoredLabel: String? = nil,
+        pendingSubmit: Bool = false,
         returnPicker: CapturePickerState? = nil
     ) {
         plainDraft = draft
@@ -7103,6 +7151,7 @@ final class CapturePanelModel: ObservableObject {
             authoredLabel: authoredLabel,
             suggestions: suggestions,
             suggestionAuthoredLabel: suggestionAuthoredLabel,
+            pendingSubmit: pendingSubmit,
             selectedSuggestionIndex: 0,
             isSaving: false,
             errorMessage: nil

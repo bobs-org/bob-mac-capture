@@ -321,7 +321,7 @@ final class CaptureTemplateShelfModelTests: XCTestCase {
         XCTAssertEqual(model.templateOrigin, Self.threeTemplates[0].id)
         XCTAssertEqual(model.plainDraft, Self.threeTemplates[0].draft)
         let record = try String(contentsOf: recordURL, encoding: .utf8)
-        XCTAssertTrue(record.contains("argv=capture --format json --require-pull-in-choice --refuse-override --template-origin job --"))
+        XCTAssertTrue(record.contains("argv=capture --format json --refuse-override --template-origin job --"))
     }
 
     func testCurrentFreshParseWithoutTemplateReleasesCheckoutButPendingParseDoesNot() async throws {

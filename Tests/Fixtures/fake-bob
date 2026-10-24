@@ -3792,6 +3792,10 @@ JSON
       printf '%s\n' '{"ok":false,"error":"refusing capture: override was not previewed","code":"pomodoro_override_refused"}'
       exit 1
     fi
+    if [[ "${dry_run}" == "false" && -n "${FAKE_BOB_CAPTURE_WRITE_STDOUT:-}" ]]; then
+      printf '%s\n' "${FAKE_BOB_CAPTURE_WRITE_STDOUT}"
+      exit "${FAKE_BOB_CAPTURE_WRITE_EXIT:-0}"
+    fi
     if [[ -n "${FAKE_BOB_CAPTURE_STDOUT:-}" ]]; then
       printf '%s\n' "${FAKE_BOB_CAPTURE_STDOUT}"
       exit "${FAKE_BOB_CAPTURE_EXIT:-0}"

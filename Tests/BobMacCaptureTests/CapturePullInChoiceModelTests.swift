@@ -134,11 +134,25 @@ final class CapturePullInChoiceModelTests: XCTestCase {
 
   func testGuardRefusalOpensChoiceWithoutFailureOrDraftLoss() async throws {
     let record = temporaryRecordURL()
-    let model = makeModel(record: record, stdout: refusalResponse(), exit: "1")
+    let model = CapturePanelModel(
+      processClient: BobProcessClient(
+        executablePath: fakeBobPath(),
+        environment: [
+          "HOME": "/tmp",
+          "PATH": "/usr/bin:/bin",
+          "FAKE_BOB_RECORD_PATH": record.path,
+          "FAKE_BOB_CAPTURE_STDOUT": capabilityPreviewResponse(),
+          "FAKE_BOB_CAPTURE_WRITE_STDOUT": refusalResponse(),
+          "FAKE_BOB_CAPTURE_WRITE_EXIT": "1",
+        ]
+      ),
+      debounceNanoseconds: 0
+    )
     model.plainDraft = "complete task"
     model.preview()
     try await waitUntil { !model.isPreviewing }
     XCTAssertFalse(model.pullInChoiceVisible)
+    XCTAssertNil(model.errorMessage)
 
     model.submit(openAfterCapture: false)
     try await waitUntil { model.pullInChoiceVisible }
@@ -149,7 +163,9 @@ final class CapturePullInChoiceModelTests: XCTestCase {
     XCTAssertEqual(model.pullInChoice?.selectableKeys, ["refusal:key"])
     let calls = try recordText(record)
     XCTAssertEqual(captureCallCount(calls), 2)
-    XCTAssertTrue(calls.contains("--require-pull-in-choice"))
+    XCTAssertTrue(
+      calls.contains("argv=capture --format json --require-pull-in-choice --refuse-override -- complete task")
+    )
   }
 
   func testDraftChangeInvalidatesChoiceAndPicks() {
@@ -232,6 +248,12 @@ final class CapturePullInChoiceModelTests: XCTestCase {
         destination: TaskCompleteOfferDestination(dayFile: "20261013.md")
       )
     )
+  }
+
+  private func capabilityPreviewResponse() -> String {
+    #"""
+    {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"day.md","target":"/tmp/day.md","text":"!task","task_line":"- [ ] #task Task","kind":"task_complete","created":"2026-10-13","placement":"updated","pull_in":{"supported":true,"offer_count":0,"choice":null,"picked_count":0},"task_complete":{"raw":"!travel:parent","unblocked":[]}}
+    """#
   }
 
   private func successResponse() -> String {
