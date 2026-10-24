@@ -15,10 +15,8 @@ Synthetic CI render. Open the image for full-size text.
 Bob Refs is a quick-open panel for the reference library: one keystroke shows
 every PDF-backed reference note, with kind and reading state on every row.
 Return opens the original PDF in Highlights and changes nothing in the vault —
-opening never mutates reading state, task lanes, or review state. The panel is
-a thin client of `bob`: it filters, ranks, sections, and presents what `bob`
-returns, never parses frontmatter or note bodies, and never writes the vault
-itself. Bob Refs ⌘S runs `bob ref scan -a -w` and presents its JSON report.
+opening never mutates reading state, task lanes, or review state.
+Bob Refs ⌘S runs `bob ref scan -a -w` and presents its JSON report.
 When enabled, Bob Mac Capture passively observes ⌘S in Highlights and scans
 after the library PDF save settles. The 15-minute cron runs without `-a`.
 An older `bob` that rejects `-a` is retried without it and remembered
@@ -29,10 +27,10 @@ for that executable.
 - Snapshot: `bob ref list -R all -A -f json` (schema version 1), plus `-g`
   when some row still lacks an `added` date, or has a git date but no git
   instant yet. Every optional field decodes
-  with `decodeIfPresent`, so an older `bob` still works — a `bob` without
-  `blocked` decodes every row as not blocked, and a row without `task`
-  joins Today on the note path — and unknown fields are ignored. Any
-  other schema version is rejected like any other refresh failure.
+  with `decodeIfPresent`, so an older `bob` still works: no `blocked`
+  reads as not blocked, a row without `task` joins Today on the note
+  path, and unknown fields are ignored. Any other schema version is
+  rejected like any other refresh failure.
   `added_at` is the most precise instant `bob` knows on the row's `added`
   day (RFC 3339, for example `2026-10-17T09:12:44-04:00`) and is `null`
   when `bob` knows only the day. It parses once into `RefItem.addedAt`
@@ -58,16 +56,16 @@ for that executable.
   `org.bobs.bob.ref.scan-finished`. Bob Refs observes that ping, reads the
   receipt off the main thread (bounded at 4 MB), and ignores a duplicate
   content hash. Launch never reads a receipt.
-- The snapshot (including the git-added dates and their instants) and the
-  last Today value persist
+- The snapshot (with git-added dates and instants) and the last Today
+  value persist
   in `refs-snapshot.json` under `~/Library/Application Support/`
-  `org.bobs.bob-mac-capture/`, so a cold launch paints immediately. The
-  `git_added_at` key maps each git-dated note path to its birth commit's
-  RFC 3339 instant; a cache written before the key existed decodes it as
-  empty, and the `-g` pass refills it once. The
-  open history (note paths and timestamps only) lives in `refs-open-log.json`
-  next to it. NEW marks (`new` or `seen`, plus the instant) live in
-  `refs-new-marks.json` beside the open log. All three files are mode 0600
+  `org.bobs.bob-mac-capture/`, so a cold launch paints immediately.
+  `git_added_at` maps each git-dated note path to its birth commit's
+  RFC 3339 instant; older caches decode it as empty and the `-g` pass
+  refills it once. Open history
+  (note paths and timestamps only) lives in `refs-open-log.json`
+  beside it; NEW marks (`new`/`seen` plus the instant) in
+  `refs-new-marks.json`. All three files are mode 0600
   in a 0700 directory.
 - `RefsCore` (the `Sources/RefsCore` target, Foundation plus CaptureCore
   only) owns the decoding, the `RefItem`/`RefKind`/`RefState`/`RefScope`
@@ -94,25 +92,25 @@ Selecting the reference first cancels the reset. Ctrl-C resets it to the
 fresh-launch defaults; quitting or restarting starts fresh.
 
 Visible inspectors rehydrate notes, highlights, thumbnail, and outline after
-a library refresh. Selection, scroll position, and revealed page stay put;
-old content remains until the new load completes.
+a library refresh, keeping selection, scroll position, and revealed page while
+old content stays until the new load completes.
 
 `RefsLibrary` owns the refresh service: the snapshot, the `-g`
 backfill on its own lane, Today, a one-shot Spotlight sweep for
 last-used dates and page counts, and missing-PDF checks. It paints from
-the cache at launch, watches the vault root (root `*.md` notes) plus
+cache at launch and watches the vault root (root `*.md` notes) plus
 `<vault>/ref`, `<vault>/lib`, and `<vault>/done`
-(0.5 s debounce). Dot-path-only batches (`.git/`, `.obsidian/`, and `.trash/`) no
-longer trigger a Refs refresh; any visible path, including a PDF in `lib/`, still
-does. The library refreshes Today every 10 minutes, after sleep, after
+(0.5 s debounce). Dot-path-only batches (`.git/`, `.obsidian/`, `.trash/`) no
+longer trigger a refresh; any visible path, including a `lib/` PDF, still
+does. Today refreshes every 10 minutes, after sleep, after
 every capture, and in the background on panel open unless a panel-open
-Today refresh started in the previous five seconds; it re-reads a stale
-snapshot on every panel open. The `-g` lane runs only while
-some row still lacks an `added` date (or a git-dated row still lacks its
+Today refresh ran in the previous five seconds; a stale
+snapshot is re-read on every panel open. The `-g` lane runs only while
+some row lacks an `added` date (or a git-dated row lacks its
 instant) and only after the snapshot
-publishes, so the first paint never waits for it; merging is
+publishes, so the first paint never waits; it merges
 git-sourced dates into dateless rows, and a `-g` failure keeps the
-published list and is only logged. One refresh per lane runs at a time;
+published list, only logged. One refresh per lane runs at a time;
 a trigger during a refresh schedules exactly one follow-up. A failed
 refresh keeps the last good list and records `.failed`, which the
 footer reads as "Update failed · ⌘R to retry". Only Highlights and
@@ -146,11 +144,10 @@ before re-ranking.
 
 With **Scan after ⌘S in Highlights** enabled, Bob Mac Capture passively
 observes plain Command-S while Highlights (or the override app) is frontmost;
-the key reaches Highlights unchanged. Only `lib/` or `xlib/` documents scan.
-An unknown path permits the full scan; an outside path disarms it. The trigger
-waits for library events to be quiet for 1 second, falls back after 2.5 seconds
-without events, and caps at 10 seconds. A save during a scan or rename queues
-one follow-up.
+the key still reaches Highlights unchanged. Only `lib/`/`xlib/` documents
+scan: an unknown path permits the full scan, an outside path disarms it. The
+trigger waits for quiet library events for 1 second, falls back after 2.5
+seconds without events, and caps at 10 seconds.
 
 The scan runs `bob ref scan -a -w -f json`. With
 `highlights.coordinate_pdf_writes: true`, bob's coordinated `.forMerging`
@@ -191,11 +188,9 @@ quality, prefix bonus 0.15, whole-word bonus 0.10, lane prior (Now
 0.20, reading 0.15, next 0.12, ready 0.08, blocked −0.02, dropped −0.20,
 read/unknown 0), frecency weight 0.25 (half-life
 `frecencyHalfLifeDays`), and added-date recency weight 0.10; ties break
-on shorter title, newer added, then path. One tuning note: the plan
-specified the dropped prior as −0.10, but at −0.10 a dropped
-title-prefix match (prefix bonus +0.15) outscored a Ready non-prefix
-word match, failing the "sinks the dropped row" golden expectation, so
-the constant is −0.20.
+on shorter title, newer added, then path. The dropped prior is −0.20 rather than the planned −0.10: at −0.10 a
+dropped title-prefix match (prefix bonus +0.15) outscored a Ready
+non-prefix word match, failing the "sinks the dropped row" golden.
 
 **Newest** (`RefsListOrder.newest`) lists every reference of the scope in
 a date-grouped timeline instead of the sections above, with the same
@@ -452,9 +447,9 @@ and Ctrl-P/N/J/K move the
 selection, and Escape returns to the inspector. From the picker, Escape
 returns to the card.
 
-Paths under your home folder copy with `~` in place of it (for example,
-`~/bob/lib/…`). Only the Obsidian link and the PDF and narration file copies
-stay absolute, because they need a real path.
+Home-folder paths copy with `~` (for example, `~/bob/lib/…`); only the
+Obsidian link and the PDF and narration file copies stay absolute, needing
+a real path.
 
 Hold Option (⌥) to swap previews in place. Option-W copies a titled wiki link,
 Option-P the absolute PDF path, Option-N the note's full `~` path, and
@@ -563,28 +558,25 @@ the list as a dim row with its filename and a clear match status.
 
 Press Command-T while Highlights is frontmost and Bob Refs is hidden to
 open Tabs; Settings › References can change this to Shift-Command-O,
-Command-E, or Off. In Bob Refs, Command-T toggles the filter between Tabs
-and the library. The filter combines with the kind scopes and keeps the
-current query. The current tab comes first;
-the rest follow most-recently-active order, with tab-bar order as the
-tie-break and unmatched tabs last. When Highlights is frontmost, the
+Command-E, or Off. Inside Bob Refs, Command-T toggles Tabs; the filter
+combines with kind scopes and keeps the current query. The current tab
+comes first; the rest follow most-recently-active order, tab-bar order
+breaking ties, unmatched tabs last. When Highlights is frontmost, the
 previous tab is preselected.
 
-When Tabs remains on across an ordinary or Ctrl+Tab show, the selected
-row is kept while that tab is still open. After Bob Refs switches to a
-tab, the next ordinary or Ctrl+Tab Tabs show uses the current Highlights
-tab as its preselection once. Command-T from Highlights always starts
-fresh.
+A Tabs show keeps the selected row while that tab is still open. After
+Bob Refs switches to a tab, the next Tabs show preselects the current
+Highlights tab once. Command-T from Highlights always starts fresh.
 
 Return, Tab, or double-click switches to the existing tab. Switching
 keeps its page, does not change reading state, and does not add an entry
 to the open log. On a collision or unmatched Tabs row, Command-Return and
 Control-Return show the same warning instead of opening. Control-X closes the selected tab, including collision
 and unmatched rows: the row folds out, the next row is selected, and the
-panel stays up so Control-X Control-X Control-X clears several tabs.
+panel stays up for repeated closes.
 Hovered and selected Tabs rows also show a Close Tab button (⌃X).
-A background tab closes by briefly switching Highlights to it, closing it
-with the window's close button, and switching back.
+A background tab closes by briefly switching Highlights to it, closing it,
+and switching back.
 Closing the last open document also quits Highlights, and the panel
 hides. Shift-Command-T reopens the most recently closed tab (up to 20,
 kept in memory for the app's lifetime). A matched row reopens its library
@@ -592,8 +584,8 @@ PDF; a collision or unmatched row reopens only when its full path was
 known.
 
 If Highlights already closed the tab, the row stays gone with no error.
-If Highlights shows a save sheet instead of closing, Bob Refs hides so
-the sheet is in front. Any other failure puts the row back, selected,
+If a save sheet appears instead of closing, Bob Refs hides so
+the sheet is in front. Any other failure restores the row, selected,
 with "Couldn't close “title” in Highlights."
 
 Tabs refreshes on panel show, Command-T, or Command-R;

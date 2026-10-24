@@ -10,7 +10,9 @@ struct HighlightsSaveKeyEvent: Equatable {
   let option: Bool
   let control: Bool
   let isARepeat: Bool
+}
 
+extension HighlightsSaveKeyEvent {
   init(_ event: NSEvent) {
     charactersIgnoringModifiers = event.charactersIgnoringModifiers
     command = event.modifierFlags.contains(.command)
