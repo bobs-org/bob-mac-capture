@@ -58,6 +58,9 @@ enum CaptureKeyCommand: Equatable {
     case cycleRelationLabelSuggestionForward
     case cycleRelationLabelSuggestionBackward
     case acceptRelationLabelSuggestion
+    case toggleRelationLabelVisibility
+    case toggleRelationLabelHiddenSection
+    case relationLabelPromptBackspace
     case confirmPullInChoice
     case confirmPullInChoiceAndOpen
     case chooseNoPullInOffers
@@ -110,6 +113,8 @@ struct CaptureKeyRoutingContext: Equatable {
     var taskIDPromptIsTaskComplete = false
     var pomodoroNamePromptVisible = false
     var relationLabelPromptVisible = false
+    var relationLabelPromptFieldIsEmpty = true
+    var relationLabelPromptOneOff = false
     var pickerSourceIsRelation = false
     var pullInChoiceVisible = false
     var pullInFilterFocused = false
@@ -167,6 +172,7 @@ struct CaptureKeyCommandRouter {
         static let t: UInt16 = 17
         static let c: UInt16 = 8
         static let d: UInt16 = 2
+        static let h: UInt16 = 4
         static let e: UInt16 = 14
         static let n: UInt16 = 45
         static let o: UInt16 = 31
@@ -216,7 +222,12 @@ struct CaptureKeyCommandRouter {
         }
 
         if context.relationLabelPromptVisible {
-            return relationLabelPromptCommand(for: event, modifiers: modifiers)
+            return relationLabelPromptCommand(
+                for: event,
+                modifiers: modifiers,
+                fieldIsEmpty: context.relationLabelPromptFieldIsEmpty,
+                oneOff: context.relationLabelPromptOneOff
+            )
         }
 
         if context.pullInChoiceVisible {
@@ -587,7 +598,9 @@ struct CaptureKeyCommandRouter {
 
     private func relationLabelPromptCommand(
         for event: NSEvent,
-        modifiers: NSEvent.ModifierFlags
+        modifiers: NSEvent.ModifierFlags,
+        fieldIsEmpty: Bool,
+        oneOff: Bool
     ) -> CaptureKeyCommand? {
         if event.keyCode == KeyCode.tab {
             if modifiers.isEmpty {
@@ -606,6 +619,25 @@ struct CaptureKeyCommandRouter {
             || event.keyCode == KeyCode.p && modifiers == .control
         {
             return .cycleRelationLabelSuggestionBackward
+        }
+        // Ctrl+D hides what Return would insert (or unhides a hidden row);
+        // with no selection it toggles one-off. Claimed only inside this
+        // one-line card. Key auto-repeat is ignored.
+        if event.keyCode == KeyCode.d, modifiers == .control {
+            if event.isARepeat {
+                return .consumeKey
+            }
+            return .toggleRelationLabelVisibility
+        }
+        // Ctrl+H shows or hides the Hidden section, mirroring
+        // `bob relations -H`. Claimed only inside this one-line card.
+        if event.keyCode == KeyCode.h, modifiers == .control {
+            return .toggleRelationLabelHiddenSection
+        }
+        // Backspace on an empty field turns one-off off; otherwise the
+        // field edits normally.
+        if event.keyCode == KeyCode.delete, modifiers.isEmpty, fieldIsEmpty, oneOff {
+            return .relationLabelPromptBackspace
         }
         return isolatedPromptCommand(
             for: event,

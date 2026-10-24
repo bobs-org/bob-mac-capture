@@ -388,6 +388,51 @@ public final class BobProcessClient: @unchecked Sendable {
     )
   }
 
+  /// Read the relation-label vocabulary for the card's Hidden section.
+  /// `hiddenOnly` passes `--hidden` so the card prefetches just the hidden
+  /// rows after it learns `hidden_count > 0`. Runs on a cancellable lane
+  /// the card reuses for catalog-adjacent reads.
+  public func relationLabels(hiddenOnly: Bool) async throws -> CaptureRelationLabelsResponse {
+    var arguments = ["relations", "list", "--format", "json"]
+    if hiddenOnly {
+      arguments += ["--hidden"]
+    }
+    return try await decode(
+      arguments: arguments,
+      expectedSchema: 1,
+      lane: "relation-labels"
+    )
+  }
+
+  /// Ask Bob to append a hide/unhide event to the relation-label journal.
+  /// Mac Capture never writes the vault directly. Runs on a serial,
+  /// non-cancelling lane so a hide survives card dismissal and a second
+  /// press undoes the first instead of racing it. An older bob without the
+  /// `relations` group fails here; callers render the update hint.
+  public func setRelationLabelHidden(_ name: String, hidden: Bool) async throws {
+    let arguments = [
+      "relations",
+      hidden ? "hide" : "unhide",
+      name,
+      "--via",
+      "bob-mac-capture",
+      "--format",
+      "json",
+    ]
+    let result = try await run(
+      arguments: arguments,
+      lane: "relation-label-pref",
+      cancelsPreviousInLane: false
+    )
+    guard result.exitStatus == 0 else {
+      throw BobClientError.processFailed(
+        command: result.command,
+        exitStatus: result.exitStatus,
+        stderr: boundedProcessText(result.stderr)
+      )
+    }
+  }
+
   /// Ask Bob to append a hide/unhide event to the theme journal. Mac Capture
   /// never writes the vault directly.
   public func setPomodoroThemeHidden(_ name: String, hidden: Bool) async throws {
@@ -1422,5 +1467,6 @@ extension CaptureParseResponse: SchemaVersioned {}
 extension CaptureRewriteResponse: SchemaVersioned {}
 extension CaptureTargetsResponse: SchemaVersioned {}
 extension CaptureCompletionResponse: SchemaVersioned {}
+extension CaptureRelationLabelsResponse: SchemaVersioned {}
 extension CapturePomodorosResponse: SchemaVersioned {}
 extension CaptureAgendaSnapshot: SchemaVersioned {}

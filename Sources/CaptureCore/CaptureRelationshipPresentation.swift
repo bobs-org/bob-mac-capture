@@ -68,6 +68,21 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
         !capture.relationUpdates.isEmpty
     }
 
+    /// `· hid "x" from relation suggestions` suffix for captures whose `||`
+    /// labels hid vocabulary on commit. One clause per label the capture
+    /// actually hid; already-hidden labels write no event and get no clause.
+    public static func hideSuffix(for capture: CaptureCommandSuccess) -> String {
+        let hides = capture.relationLabelHides.filter {
+            $0.action == "hide" && !$0.wasHidden
+        }
+        guard !hides.isEmpty else {
+            return ""
+        }
+        return " · "
+            + hides.map { "hid “\($0.label)” from relation suggestions" }
+            .joined(separator: " · ")
+    }
+
     public static func isTaskDependency(_ capture: CaptureCommandSuccess) -> Bool {
         capture.kind.lowercased().replacingOccurrences(of: "-", with: "_") == "task_dependency"
     }
@@ -264,7 +279,7 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
             .filter { !$0.isEmpty }
             .joined(separator: "\n")
         return Notification(
-            title: title,
+            title: title + Self.hideSuffix(for: capture),
             subtitle: capture.routeLabel.isEmpty ? capture.relativeTarget : capture.routeLabel,
             body: body
         )
@@ -287,7 +302,7 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
             title = relationTitle(owner: owner, capture: capture)
         }
         return Notification(
-            title: title,
+            title: title + Self.hideSuffix(for: capture),
             subtitle: capture.routeLabel.isEmpty ? capture.relativeTarget : capture.routeLabel,
             body: ""
         )

@@ -419,7 +419,10 @@ edge, in Bob's `relation_updates[]` order. Relabeled rows say
 `· archived: LINKED FROM shows live only` suffix because the courtesy mirror is
 skipped. Managed `**LINKS:**` / `**LINKED FROM:**` Markdown is omitted from task
 cards while relation rows are present. Relation rows never render red,
-consumption, or status arrows. Success notifications count relations separately:
+consumption, or status arrows. A `||` dry run that would hide a visible label
+renders Bob's `hides_existing_relation_label` message as an amber row; the
+commit appends `· hid "label" from relation suggestions` to the notification.
+Success notifications count relations separately:
 a single `~` reads `🪢 owner now links to "target"`, a single `~~` reads
 `🪢 "source" now links here`, and larger or mixed batches read
 `owner · depends on D · links R`. New relation IDs render as

@@ -321,6 +321,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `open_notes`, `homes`, `task_links`, successor-offer payloads
 - `inbox_route` (candidates, destinations, `repaired_files`, `renamed_block_ids`, `needs_reconcile`) and `refused` detail on `inbox_route_refused`
 - `relation_grammar`, relation-label `relation` token metadata and `owner`, `relation_updates`, `linked_from_line_updates`, `minted_relation_block_ids`, `mirror_skipped`, relation-label `count` / `typed`
+- relation vocabulary: label `key` / `inverse` / `hide_replacement` / `existing` / `hidden`, `hidden_count`, `one_off`, `bob relations list` / `hide` / `unhide`, `relation_label_hides[]`, structured capture warnings
 - Retired inputs (`now` flag, `now_tag` span, `now` picker group) decode as neutral: unknown spans as neutral text, unknown contexts as generic rows, unknown groups as `note`
 
 ## Compatibility
@@ -366,6 +367,9 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | Close-comma assist field | Auto-inserted `,` | Assist off; digits type normally | Upgrade `bob` for assists |
 | `relation_to` / `relation_from` completion | `~` / `~~` picker rows with replacements and intents | No rows; calm browse hint instead of a dry-run error | Upgrade `bob` for relations |
 | `relation_label` completion and `relation` metadata | Relation card suggestions with counts, typed row, token range, direction, and owner | Without the metadata, the app uses its legacy token scan; without the completion context, no card opens | Upgrade `bob` for relation labels and exact token ranges |
+| `relation_label` `key` / `inverse` / `hide_replacement` / `existing` / `hidden`, `hidden_count`, `one_off` | Canonical keys, inverse phrases, `||` insertions, typed validation flags, Hidden pill, one-off mode | Local label folding, no inverses, `|` insertions only, no Hidden section or pill, no one-off mode | Upgrade `bob` for the relation vocabulary |
+| `bob relations list -f json`, `hide`, `unhide` on the `relation-label-pref` lane | Hidden section, ghost hide/unhide rows with ⌃D undo | No Hidden pill; Ctrl-D and Ctrl-H give the update hint | Upgrade `bob` to hide relation labels |
+| `relation_label_hides[]`, structured `hides_existing_relation_label` warning | Amber preview row, card warning, `· hid` notification suffix | No hide rows; structured warnings decode as text | Upgrade `bob` for one-off hides |
 | `relation_grammar` | `~` parses with relation spans; capability warning stays hidden | Calm `predates ~ links` warning; first ⌘↩ only shows it | Upgrade `bob` for `~` |
 | `relation_updates[]`, `linked_from_line_updates[]`, `minted_relation_block_ids[]`, `mirror_skipped[]` | 🪢 preview rows, managed-line suppression, separate notification counts | Legacy preview without relation rows; notifications omit relations | Upgrade `bob` for relation previews |
 | `capture-related` | A settled Similar tasks band beneath matching task cards | Band stays hidden; ordinary preview and capture continue | Upgrade `bob` to show similar tasks |

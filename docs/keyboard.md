@@ -108,8 +108,23 @@ completion request.
 | Ctrl-P / Up | Select the previous visible label; from the first label, return to the field |
 | Tab | Insert the selected label, or the first visible match when none is selected |
 | Shift-Tab | Consume the key |
-| Return | Insert the selected label; otherwise insert the authored label Bob validated. With an empty field, remove the label separator |
+| Return | Insert the selected label; otherwise insert the authored label Bob validated. With an empty field, insert a plain link and drop the pipe |
+| Ctrl-D | Hide what Return would insert (the row stays as a ghost; Ctrl-D on the ghost undoes). With no selection, toggle one-off for the typed label. Key auto-repeat is ignored |
+| `\|` | Turn one-off on; the pipe never enters the field |
+| Backspace on an empty field | Turn one-off off |
+| Ctrl-H | Show or hide the Hidden section; the query and selection are kept |
+| Click a row | Accept it; the eye icon on a hovered or selected row hides or unhides it |
+| Click ◌ N hidden | Toggle the Hidden section |
 | Escape / Ctrl-[ | Return to the relation picker, or to the editor when the card opened from `|` |
+
+With one-off on, Return inserts the `||` form: capturing hides the label from
+suggestions everywhere. On an existing visible label the card warns in amber
+before capturing; on an already-hidden label it notes the label stays hidden.
+Ghost-hide rows read `hidden everywhere · ⌃D undo`; ghost-unhide rows read
+`visible again · ⌃D undo`. Hidden labels stay usable and stay hidden: accepting
+one inserts the `|` form with a `(stays hidden)` footer. An older Bob shows no
+Hidden pill; Ctrl-D and Ctrl-H give the update hint, and `||` is never
+downgraded to `|`.
 
 ## Focus
 

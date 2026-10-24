@@ -1931,11 +1931,12 @@ JSON
   "replacement": { "start": 22, "end": 24 },
   "context": "relation_label",
   "candidates": [
-    { "label": "inspired by", "count": 3, "replacement": "|\"inspired by\"" },
-    { "label": "implements", "count": 2, "replacement": "|implements" },
-    { "label": "duplicate of", "count": 1, "replacement": "|\"duplicate of\"" }
+    { "label": "inspired by", "key": "inspired by", "count": 3, "replacement": "|\"inspired by\"", "hide_replacement": "||\"inspired by\"" },
+    { "label": "implements", "key": "implements", "count": 2, "replacement": "|implements", "hide_replacement": "||implements" },
+    { "label": "duplicate of", "key": "duplicate of", "inverse": "duplicated by", "count": 1, "replacement": "|\"duplicate of\"", "hide_replacement": "||\"duplicate of\"" }
   ],
-  "query": ""
+  "query": "",
+  "hidden_count": 0
 }
 JSON
     elif [[ "${FAKE_BOB_RELATION_LABEL_CHOOSER:-}" == "1" && "${draft}" == *'|"inspired by'* ]]; then
@@ -1947,9 +1948,10 @@ JSON
   "replacement": { "start": 22, "end": 24 },
   "context": "relation_label",
   "candidates": [
-    { "label": "inspired by", "replacement": "|\"inspired by\"", "typed": true }
+    { "label": "inspired by", "key": "inspired by", "replacement": "|\"inspired by\"", "hide_replacement": "||\"inspired by\"", "typed": true, "existing": true, "count": 3 }
   ],
-  "query": "inspired by"
+  "query": "inspired by",
+  "hidden_count": 0
 }
 JSON
     elif [[ "${draft}" == "@@" ]]; then
@@ -5321,6 +5323,37 @@ JSON
         ;;
       *)
         printf 'unknown fake themes command: %s\n' "${theme_command}" >&2
+        exit 64
+        ;;
+    esac
+    ;;
+  relations)
+    relation_command="${1:-}"
+    case "${relation_command}" in
+      list)
+        if [[ " $* " == *" --hidden "* ]]; then
+          if [[ -n "${FAKE_BOB_RELATIONS_LIST_JSON:-}" ]]; then
+            printf '%s\n' "${FAKE_BOB_RELATIONS_LIST_JSON}"
+          else
+            cat "${fixtures_dir}/relations-list-hidden-only.json"
+          fi
+        else
+          printf '{"schema_version":1,"ok":true,"counts":{"labels":3,"links":6,"hidden":0},"labels":[],"renamed_reappeared":[],"warnings":[]}\n'
+        fi
+        ;;
+      hide|unhide)
+        if [[ "${FAKE_BOB_RELATIONS_WRITE_EXIT:-0}" != "0" ]]; then
+          printf 'fake relations write failed\n' >&2
+          exit "${FAKE_BOB_RELATIONS_WRITE_EXIT}"
+        fi
+        if [[ -n "${FAKE_BOB_RELATIONS_WRITE_STDERR:-}" ]]; then
+          printf '%s\n' "${FAKE_BOB_RELATIONS_WRITE_STDERR}" >&2
+          exit 2
+        fi
+        exit 0
+        ;;
+      *)
+        printf 'unknown fake relations command: %s\n' "${relation_command}" >&2
         exit 64
         ;;
     esac

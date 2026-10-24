@@ -602,4 +602,83 @@ final class DependencyDecodingTests: XCTestCase {
         )
         XCTAssertNil(oldBob.relation)
     }
+
+    /// The new vocabulary fields decode additively: bob's canonical `key`,
+    /// `inverse`, `hide_replacement`, typed `existing`/`hidden`, and the
+    /// response `hidden_count` / `one_off`. Older payloads omit them.
+    /// Fixtures are real `bob` output from a scratch vault.
+    func testRelationLabelVocabularyFieldsDecode() throws {
+        let typedHidden = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(fixtureText("relation-label-complete-typed-hidden.json").utf8)
+        )
+        XCTAssertEqual(typedHidden.context, "relation_label")
+        XCTAssertEqual(typedHidden.hiddenCount, 1)
+        XCTAssertNil(typedHidden.oneOff)
+        let row = try XCTUnwrap(typedHidden.candidates.first)
+        XCTAssertEqual(row.key, "inspired by")
+        XCTAssertEqual(row.count, 3)
+        XCTAssertEqual(row.replacement, "|\"inspired by\"")
+        XCTAssertEqual(row.hideReplacement, "||\"inspired by\"")
+        XCTAssertEqual(row.typed, true)
+        XCTAssertEqual(row.existing, true)
+        XCTAssertEqual(row.hidden, true)
+
+        let oneOff = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(fixtureText("relation-label-complete-one-off.json").utf8)
+        )
+        XCTAssertEqual(oneOff.oneOff, true)
+        let typed = try XCTUnwrap(oneOff.candidates.first(where: { $0.typed }))
+        XCTAssertTrue(typed.replacement.hasPrefix("||"))
+        XCTAssertEqual(typed.hideReplacement, typed.replacement)
+
+        let vocabulary = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(fixtureText("relation-label-complete-vocabulary.json").utf8)
+        )
+        XCTAssertEqual(vocabulary.hiddenCount, 1)
+        let newTyped = try XCTUnwrap(vocabulary.candidates.first(where: { $0.typed }))
+        XCTAssertEqual(newTyped.key, "inspired")
+        XCTAssertEqual(newTyped.existing, false)
+        XCTAssertEqual(newTyped.hidden, false)
+    }
+
+    /// `bob relations list -f json` decodes: totals plus one row per label
+    /// with both insertion forms. A row keeps the display spelling.
+    func testRelationLabelsListDecode() throws {
+        let response = try JSONDecoder().decode(
+            CaptureRelationLabelsResponse.self,
+            from: Data(fixtureText("relations-list-hidden.json").utf8)
+        )
+        XCTAssertEqual(response.schemaVersion, 1)
+        XCTAssertEqual(response.hiddenCount, 1)
+        XCTAssertTrue(response.ok)
+        let hidden = try XCTUnwrap(response.labels.first(where: { $0.hidden }))
+        XCTAssertEqual(hidden.key, "inspired by")
+        XCTAssertEqual(hidden.name, "inspired by")
+        XCTAssertEqual(hidden.count, 3)
+        XCTAssertEqual(hidden.replacement, "|\"inspired by\"")
+        XCTAssertEqual(hidden.hideReplacement, "||\"inspired by\"")
+    }
+
+    /// Capture warnings decode both shapes: legacy plain strings and the
+    /// structured `hides_existing_relation_label` object. `||` dry runs also
+    /// carry `relation_label_hides[]`.
+    func testCaptureHideWarningAndHidesDecode() throws {
+        let item = try JSONDecoder().decode(
+            CaptureCommandSuccess.self,
+            from: Data(fixtureText("capture-hide-warning.json").utf8)
+        )
+        let warning = try XCTUnwrap(item.warnings.first(where: { $0.isRelationHideWarning }))
+        XCTAssertEqual(
+            warning.message,
+            "hides \"inspired by\" from relation suggestions (3 links)"
+        )
+        let hide = try XCTUnwrap(item.relationLabelHides.first)
+        XCTAssertEqual(hide.key, "inspired by")
+        XCTAssertEqual(hide.existingCount, 3)
+        XCTAssertFalse(hide.wasHidden)
+        XCTAssertEqual(hide.action, "hide")
+    }
 }

@@ -1,0 +1,1 @@
+{"schema_version": 1, "ok": true, "counts": {"labels": 1, "links": 3, "hidden": 1}, "labels": [{"key": "inspired by", "name": "inspired by", "count": 3, "hidden": true, "spellings": [{"name": "inspired by", "count": 2}, {"name": "Inspired By", "count": 1}], "replacement": "|\"inspired by\"", "hide_replacement": "||\"inspired by\""}], "renamed_reappeared": [], "warnings": []}

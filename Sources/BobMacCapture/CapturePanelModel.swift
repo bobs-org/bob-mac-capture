@@ -223,9 +223,37 @@ struct CaptureRelationLabelPromptState: Equatable {
     /// edit, dismissal, a different prompt, a draft change, or a superseding
     /// request (bob-cli-al).
     var pendingSubmit: Bool
-    /// Selected catalog label key. It is derived from the display label until
-    /// bob supplies canonical keys in a later contract version.
+    /// Selected catalog label key. It is bob's canonical `key` when the
+    /// response carries one, else the locally folded display label.
     var selectedKey: String?
+    /// Whether the Hidden section is open (Ctrl+H). The query and the
+    /// selection are kept across toggles.
+    var showHidden: Bool
+    /// A pending "hide on capture" for whatever Return inserts. Typed `|`
+    /// turns it on, Backspace on an empty field turns it off, and the card
+    /// opens with it on when it opens on a `||` token.
+    var oneOff: Bool
+    /// Hidden catalog rows, prefetched when `hiddenCount` > 0.
+    var hiddenRows: [CaptureRelationLabelInfo]
+    /// How many labels are hidden, from the latest probe (`hidden_count`).
+    /// An older bob omits it and the card shows no Hidden pill.
+    var hiddenCount: Int
+    /// Whether any probe has reported `hidden_count`: false means an older
+    /// bob, where Ctrl+D and Ctrl+H give the update hint.
+    var hiddenCountKnown: Bool
+    /// Whether the hidden rows were loaded (or failed) for this card, so
+    /// the prefetch runs once per open and once per write.
+    var hiddenRowsLoaded: Bool
+    /// Ghost keys with their pending hidden state: true is an optimistic
+    /// hide, false an optimistic unhide. The row stays as a ghost until the
+    /// query changes; Ctrl+D on a ghost flips it back.
+    var ghosts: [String: Bool]
+    /// Neutral card notice (hints, already-hidden notes). Errors stay red
+    /// in `errorMessage`; invalid labels stay red in the capsule.
+    var noticeMessage: String?
+    /// In-flight hide/unhide write, so a late reply cannot clobber a newer
+    /// toggle. A pending write survives card dismissal.
+    var visibilityWriteID: UUID?
     var isSaving: Bool
     var errorMessage: String?
 }
@@ -7046,29 +7074,74 @@ final class CapturePanelModel: ObservableObject {
         label.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
     }
 
+    /// Canonical row key: bob's `key` when the response carries one, else
+    /// the locally folded display label.
+    private func relationLabelKey(_ candidate: CaptureCompletionCandidate) -> String {
+        if let key = candidate.key, !key.isEmpty {
+            return key
+        }
+        return relationLabelKey(candidate.label ?? "")
+    }
+
     func relationLabelSelectionKey(for label: String) -> String {
         relationLabelKey(label)
     }
 
+    func relationLabelSelectionKey(for candidate: CaptureCompletionCandidate) -> String {
+        relationLabelKey(candidate)
+    }
+
+    /// A hidden row as an insertable candidate. Hidden labels stay usable
+    /// and stay hidden, so the card builds the same replacement bob sent.
+    private func relationLabelHiddenCandidate(
+        _ info: CaptureRelationLabelInfo
+    ) -> CaptureCompletionCandidate {
+        CaptureCompletionCandidate(
+            replacement: info.replacement,
+            label: info.name,
+            count: info.count,
+            key: info.key,
+            inverse: info.inverse,
+            hideReplacement: info.hideReplacement,
+            existing: true
+        )
+    }
+
+    /// Ghost-hide rows a refetched catalog no longer contains, rebuilt from
+    /// the prefetched hidden rows so the row stays visible as a ghost.
+    private func relationLabelGhostHideCandidates(
+        _ prompt: CaptureRelationLabelPromptState,
+        query: String
+    ) -> [CaptureCompletionCandidate] {
+        let catalogKeys = Set(prompt.catalog.map { relationLabelKey($0) })
+        return prompt.hiddenRows
+            .filter { info in
+                prompt.ghosts[info.key] == true && !catalogKeys.contains(info.key)
+                    && (query.isEmpty || info.key.contains(query))
+            }
+            .map { relationLabelHiddenCandidate($0) }
+    }
+
     /// Local Bob-compatible filtering: prefix matches first, then substring
     /// matches, preserving Bob's catalog order within each group.
+    /// Hidden labels never appear here; they live in the Hidden section.
     var relationLabelPromptRows: [CaptureCompletionCandidate] {
         guard let prompt = relationLabelPrompt else {
             return []
         }
         let query = relationLabelKey(prompt.authoredLabel)
-        return prompt.catalog.enumerated()
+        let ranked = prompt.catalog.enumerated()
             .filter { entry in
                 let candidate = entry.element
-                guard let label = candidate.label, !candidate.typed, !candidate.hidden else {
+                guard candidate.label != nil, !candidate.typed, !candidate.hidden else {
                     return false
                 }
-                let key = relationLabelKey(label)
+                let key = relationLabelKey(candidate)
                 return !key.isEmpty && (query.isEmpty || key.contains(query))
             }
             .sorted { left, right in
-                let leftKey = relationLabelKey(left.element.label ?? "")
-                let rightKey = relationLabelKey(right.element.label ?? "")
+                let leftKey = relationLabelKey(left.element)
+                let rightKey = relationLabelKey(right.element)
                 let leftPrefix = query.isEmpty || leftKey.hasPrefix(query)
                 let rightPrefix = query.isEmpty || rightKey.hasPrefix(query)
                 if leftPrefix != rightPrefix {
@@ -7077,13 +7150,48 @@ final class CapturePanelModel: ObservableObject {
                 return left.offset < right.offset
             }
             .map(\.element)
+        return ranked + relationLabelGhostHideCandidates(prompt, query: query)
+    }
+
+    /// Hidden-section rows, most-used first with prefix matches on top.
+    /// Ghost-unhide rows stay here as ghosts until the query changes.
+    var relationLabelHiddenPromptRows: [CaptureCompletionCandidate] {
+        guard let prompt = relationLabelPrompt, prompt.showHidden else {
+            return []
+        }
+        let query = relationLabelKey(prompt.authoredLabel)
+        return prompt.hiddenRows.enumerated()
+            .filter { entry in
+                // A ghost-hide row lives in the visible list until the query
+                // changes, so the Hidden section skips it to avoid a double.
+                prompt.ghosts[entry.element.key] != true
+                    && (query.isEmpty || entry.element.key.contains(query))
+            }
+            .sorted { left, right in
+                let leftPrefix = query.isEmpty || left.element.key.hasPrefix(query)
+                let rightPrefix = query.isEmpty || right.element.key.hasPrefix(query)
+                if leftPrefix != rightPrefix {
+                    return leftPrefix
+                }
+                return left.offset < right.offset
+            }
+            .map { relationLabelHiddenCandidate($0.element) }
+    }
+
+    /// Pending ghost state for a row key: true is an optimistic hide,
+    /// false an optimistic unhide, nil is no ghost.
+    func relationLabelGhostState(forKey key: String) -> Bool? {
+        relationLabelPrompt?.ghosts[key]
     }
 
     var relationLabelSelectedCandidate: CaptureCompletionCandidate? {
         guard let key = relationLabelPrompt?.selectedKey else {
             return nil
         }
-        return relationLabelPromptRows.first { relationLabelKey($0.label ?? "") == key }
+        if let visible = relationLabelPromptRows.first(where: { relationLabelKey($0) == key }) {
+            return visible
+        }
+        return relationLabelHiddenPromptRows.first(where: { relationLabelKey($0) == key })
     }
 
     var relationLabelDisplayedLabel: String? {
@@ -7141,25 +7249,95 @@ final class CapturePanelModel: ObservableObject {
         return nil
     }
 
+    /// The typed row Bob validated for the current field, if fresh.
+    private var relationLabelFreshTypedRow: CaptureCompletionCandidate? {
+        guard let prompt = relationLabelPrompt,
+              prompt.suggestionAuthoredLabel == prompt.authoredLabel
+        else {
+            return nil
+        }
+        return prompt.suggestions.first(where: { $0.typed })
+    }
+
+    /// Whether a key is hidden in the vault (prefetched hidden rows).
+    private func relationLabelIsHiddenKey(_ key: String, in prompt: CaptureRelationLabelPromptState) -> Bool {
+        prompt.hiddenRows.contains { $0.key == key }
+    }
+
+    /// The field's trailing capsule: `new`, `N links`, `hidden`,
+    /// `one-off · …`, or the red `invalid` reason.
     var relationLabelPromptBadgeText: String? {
         guard let prompt = relationLabelPrompt else { return nil }
-        if prompt.suggestionAuthoredLabel == prompt.authoredLabel,
-           let typed = prompt.suggestions.first(where: { $0.typed }),
+        if let typed = relationLabelFreshTypedRow,
            let reason = typed.disabledReason, !reason.isEmpty
         {
             return "invalid"
         }
-        if let selected = relationLabelSelectedCandidate, let count = selected.count, count > 0 {
-            return "\(count) links"
+        if let selected = relationLabelSelectedCandidate {
+            let key = relationLabelKey(selected)
+            let hidden =
+                selected.hidden || relationLabelIsHiddenKey(key, in: prompt)
+                || prompt.ghosts[key] == true
+            let base: String
+            if hidden {
+                base = "hidden"
+            } else if let count = selected.count, count > 0 {
+                base = "\(count) links"
+            } else {
+                base = "new"
+            }
+            return prompt.oneOff ? "one-off · \(base)" : base
         }
         let query = relationLabelKey(prompt.authoredLabel)
         guard !query.isEmpty, prompt.catalogLoaded else { return nil }
-        if let existing = prompt.catalog.first(where: { relationLabelKey($0.label ?? "") == query }),
+        if let typed = relationLabelFreshTypedRow {
+            let base: String
+            if typed.hidden == true {
+                base = "hidden"
+            } else if typed.existing == true, let count = typed.count, count > 0 {
+                base = "\(count) links"
+            } else {
+                base = "new"
+            }
+            return prompt.oneOff ? "one-off · \(base)" : base
+        }
+        if let existing = prompt.catalog.first(where: { relationLabelKey($0) == query }),
            let count = existing.count, count > 0
         {
-            return "\(count) links"
+            return prompt.oneOff ? "one-off · \(count) links" : "\(count) links"
         }
-        return "new"
+        return prompt.oneOff ? "one-off · new" : "new"
+    }
+
+    /// Amber one-off warning (state D): one-off is on and the typed label
+    /// names an existing visible label, so capturing hides it everywhere.
+    /// Nil for new labels, hidden labels, and invalid labels.
+    var relationLabelOneOffWarning: String? {
+        guard let prompt = relationLabelPrompt, prompt.oneOff,
+              let typed = relationLabelFreshTypedRow,
+              typed.disabledReason?.isEmpty != false,
+              typed.existing == true,
+              typed.hidden != true,
+              let count = typed.count, count > 0,
+              let label = typed.label
+        else {
+            return nil
+        }
+        return
+            "Capturing will also hide “\(label)” (\(count) links) from suggestions everywhere. Existing links keep their label."
+    }
+
+    /// Neutral note when one-off targets an already-hidden label: the
+    /// capture keeps it hidden and writes no hide event.
+    var relationLabelAlreadyHiddenNote: String? {
+        guard let prompt = relationLabelPrompt, prompt.oneOff,
+              let typed = relationLabelFreshTypedRow,
+              typed.disabledReason?.isEmpty != false,
+              typed.hidden == true
+        else {
+            return nil
+        }
+        return "Already hidden — capturing keeps it hidden."
     }
 
     /// `Inserts <replacement>` line for the card, from Bob's typed row.
@@ -7168,19 +7346,20 @@ final class CapturePanelModel: ObservableObject {
     var relationLabelInsertsText: String? {
         guard let prompt = relationLabelPrompt else { return nil }
         if let selected = relationLabelSelectedCandidate {
-            guard !selected.replacement.isEmpty,
-                  selected.disabledReason?.isEmpty != false
-            else { return nil }
-            return "Inserts \(selected.replacement)"
+            guard selected.disabledReason?.isEmpty != false else { return nil }
+            let replacement = relationLabelInsertion(for: selected, oneOff: prompt.oneOff)
+            guard !replacement.isEmpty else { return nil }
+            return "Inserts \(replacement)"
         }
         guard prompt.suggestionAuthoredLabel == prompt.authoredLabel else { return nil }
         let trimmed = prompt.authoredLabel.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
               let typed = prompt.suggestions.first(where: { $0.typed }),
-              !typed.replacement.isEmpty,
               typed.disabledReason?.isEmpty != false
         else { return nil }
-        return "Inserts \(typed.replacement)"
+        let replacement = relationLabelInsertion(for: typed, oneOff: prompt.oneOff)
+        guard !replacement.isEmpty else { return nil }
+        return "Inserts \(replacement)"
     }
 
     var relationLabelPromptCanSubmit: Bool {
@@ -7296,6 +7475,15 @@ final class CapturePanelModel: ObservableObject {
             suggestionAuthoredLabel: nil,
             pendingSubmit: false,
             selectedKey: nil,
+            showHidden: false,
+            oneOff: false,
+            hiddenRows: [],
+            hiddenCount: 0,
+            hiddenCountKnown: false,
+            hiddenRowsLoaded: false,
+            ghosts: [:],
+            noticeMessage: nil,
+            visibilityWriteID: nil,
             isSaving: false,
             errorMessage: nil
         )
@@ -7309,15 +7497,207 @@ final class CapturePanelModel: ObservableObject {
         guard var prompt = relationLabelPrompt, !prompt.isSaving else {
             return
         }
-        prompt.authoredLabel = label
+        // A typed `|` never enters the field: it turns one-off on, so
+        // `~note:id |label` typed straight through still works.
+        if label.contains("|") {
+            prompt.oneOff = true
+        }
+        prompt.authoredLabel = label.replacingOccurrences(of: "|", with: "")
         prompt.selectedKey = nil
+        // Ghosts belong to the previous query; a new query clears them.
+        prompt.ghosts = [:]
         // The catalog remains visible and is filtered locally. Only the typed
         // row is invalidated while Bob validates the new field text (bob-cli-al).
         prompt.suggestionAuthoredLabel = nil
         prompt.pendingSubmit = false
         prompt.errorMessage = nil
+        prompt.noticeMessage = nil
         relationLabelPrompt = prompt
         fetchRelationLabelSuggestions()
+    }
+
+    /// Ctrl+D with no selection toggles one-off for the typed label.
+    /// Ctrl+D is always consumed; key auto-repeat is ignored by the router.
+    func toggleRelationLabelOneOff() {
+        guard var prompt = relationLabelPrompt, !prompt.isSaving else {
+            return
+        }
+        if prompt.selectedKey != nil {
+            return
+        }
+        if prompt.authoredLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            prompt.noticeMessage = "Type a label to make it one-off"
+            relationLabelPrompt = prompt
+            return
+        }
+        prompt.oneOff.toggle()
+        prompt.noticeMessage = nil
+        relationLabelPrompt = prompt
+    }
+
+    /// Ctrl+D on a row hides what Return would insert, or unhides a
+    /// hidden row. The row stays as a ghost and Ctrl+D on the ghost flips
+    /// it back. The write runs in the background: it is optimistic, a
+    /// failure restores the row with bob's message, and a pending write
+    /// survives dismissal. With no selection, Ctrl+D toggles one-off.
+    func toggleRelationLabelVisibility() {
+        guard let prompt = relationLabelPrompt, !prompt.isSaving else {
+            return
+        }
+        guard let selected = relationLabelSelectedCandidate else {
+            toggleRelationLabelOneOff()
+            return
+        }
+        guard prompt.hiddenCountKnown else {
+            var notice = prompt
+            notice.noticeMessage = "Update bob to hide relation labels"
+            relationLabelPrompt = notice
+            return
+        }
+        let key = relationLabelKey(selected)
+        let label = selected.label ?? key
+        let actualHidden = prompt.hiddenRows.contains { $0.key == key }
+        let effectiveHidden = prompt.ghosts[key] ?? actualHidden
+        let targetHidden = !effectiveHidden
+        guard let processClient else {
+            var waiting = prompt
+            waiting.ghosts.removeValue(forKey: key)
+            waiting.errorMessage = "Bob is not resolved. Check Settings and Recheck Bob."
+            relationLabelPrompt = waiting
+            return
+        }
+        var optimistic = prompt
+        optimistic.ghosts[key] = targetHidden
+        optimistic.errorMessage = nil
+        optimistic.noticeMessage = nil
+        let requestID = UUID()
+        optimistic.visibilityWriteID = requestID
+        relationLabelPrompt = optimistic
+        statusText = targetHidden ? "Hiding \(label)…" : "Restoring \(label)…"
+        Task { [weak self, processClient] in
+            do {
+                try await processClient.setRelationLabelHidden(label, hidden: targetHidden)
+                await MainActor.run {
+                    guard let self,
+                          self.relationLabelPrompt?.visibilityWriteID == requestID
+                    else {
+                        return
+                    }
+                    self.relationLabelPrompt?.visibilityWriteID = nil
+                    self.statusText =
+                        targetHidden
+                        ? "Hid “\(label)” from relation suggestions"
+                        : "Restored “\(label)” to relation suggestions"
+                    // The ghost stays until the query changes; the refetch
+                    // moves the row to its new section underneath it.
+                    // The hidden-rows prefetch runs once per open, so reset
+                    // its gate to pick up the new hidden state now.
+                    self.relationLabelPrompt?.hiddenRowsLoaded = false
+                    self.fetchRelationLabelCatalog()
+                    self.fetchRelationLabelHiddenRows()
+                }
+            } catch {
+                await MainActor.run {
+                    guard let self,
+                          self.relationLabelPrompt?.visibilityWriteID == requestID
+                    else {
+                        return
+                    }
+                    self.relationLabelPrompt?.visibilityWriteID = nil
+                    self.relationLabelPrompt?.ghosts.removeValue(forKey: key)
+                    if let clientError = error as? BobClientError,
+                       case .processFailed(_, _, let stderr) = clientError,
+                       stderr.localizedCaseInsensitiveContains("unrecognized subcommand")
+                    {
+                        self.relationLabelPrompt?.errorMessage =
+                            "Update bob to hide relation labels"
+                    } else {
+                        self.relationLabelPrompt?.errorMessage =
+                            "Could not update “\(label)”: \(error.localizedDescription)"
+                    }
+                    self.statusText = "Relation label update failed"
+                }
+            }
+        }
+    }
+
+    /// Ctrl+H shows or hides the Hidden section. The query and the
+    /// selection are kept. An older bob gets the update hint.
+    func toggleRelationLabelHiddenSection() {
+        guard var prompt = relationLabelPrompt, !prompt.isSaving else {
+            return
+        }
+        guard prompt.hiddenCountKnown else {
+            prompt.noticeMessage = "Update bob to hide relation labels"
+            relationLabelPrompt = prompt
+            return
+        }
+        prompt.showHidden.toggle()
+        prompt.noticeMessage = nil
+        relationLabelPrompt = prompt
+        if prompt.showHidden {
+            fetchRelationLabelHiddenRows()
+        }
+    }
+
+    /// Prefetch the hidden rows once the probe reports `hidden_count` > 0.
+    /// A failure stays silent: the card simply shows no Hidden pill.
+    private func fetchRelationLabelHiddenRows() {
+        guard let prompt = relationLabelPrompt,
+              let processClient,
+              prompt.draftSnapshot == plainDraft,
+              prompt.hiddenCount > 0,
+              !prompt.hiddenRowsLoaded
+        else {
+            return
+        }
+        let draftSnapshot = prompt.draftSnapshot
+        Task { [weak self, processClient] in
+            do {
+                let response = try await processClient.relationLabels(hiddenOnly: true)
+                await MainActor.run {
+                    guard let self,
+                          var current = self.relationLabelPrompt,
+                          current.draftSnapshot == draftSnapshot,
+                          current.draftSnapshot == self.plainDraft
+                    else {
+                        return
+                    }
+                    current.hiddenRows = response.labels
+                    current.hiddenRowsLoaded = true
+                    self.relationLabelPrompt = current
+                }
+            } catch {
+                await MainActor.run {
+                    guard let self,
+                          var current = self.relationLabelPrompt,
+                          current.draftSnapshot == draftSnapshot
+                    else {
+                        return
+                    }
+                    // An older bob has no `relations` group; the card keeps
+                    // working without a Hidden section.
+                    current.hiddenRowsLoaded = true
+                    self.relationLabelPrompt = current
+                }
+            }
+        }
+    }
+
+    /// Backspace on an empty field turns one-off off. Returns true when it
+    /// consumed the key; otherwise the field edits normally.
+    @discardableResult
+    func relationLabelPromptBackspace() -> Bool {
+        guard var prompt = relationLabelPrompt, !prompt.isSaving else {
+            return false
+        }
+        guard prompt.authoredLabel.isEmpty, prompt.oneOff else {
+            return false
+        }
+        prompt.oneOff = false
+        prompt.noticeMessage = nil
+        relationLabelPrompt = prompt
+        return true
     }
 
     func cycleRelationLabelSuggestionForward() {
@@ -7328,40 +7708,48 @@ final class CapturePanelModel: ObservableObject {
         moveRelationLabelSelection(by: -1)
     }
 
+    /// Every row the highlight can land on: visible rows first, then the
+    /// open Hidden section. Hidden rows accept like any row.
+    private var relationLabelNavigableRows: [CaptureCompletionCandidate] {
+        relationLabelPromptRows + relationLabelHiddenPromptRows
+    }
+
     private func moveRelationLabelSelection(by offset: Int) {
         guard var prompt = relationLabelPrompt, !prompt.isSaving else {
             return
         }
-        let rows = relationLabelPromptRows
+        let rows = relationLabelNavigableRows
         guard !rows.isEmpty else { return }
         let selectedIndex = prompt.selectedKey.flatMap { key in
-            rows.firstIndex { relationLabelKey($0.label ?? "") == key }
+            rows.firstIndex { relationLabelKey($0) == key }
         }
         if offset > 0 {
             if let selectedIndex, selectedIndex + 1 < rows.count {
-                prompt.selectedKey = relationLabelKey(rows[selectedIndex + 1].label ?? "")
+                prompt.selectedKey = relationLabelKey(rows[selectedIndex + 1])
             } else if selectedIndex == nil {
-                prompt.selectedKey = relationLabelKey(rows[0].label ?? "")
+                prompt.selectedKey = relationLabelKey(rows[0])
             } else {
                 prompt.selectedKey = nil
             }
         } else if let selectedIndex, selectedIndex > 0 {
-            prompt.selectedKey = relationLabelKey(rows[selectedIndex - 1].label ?? "")
+            prompt.selectedKey = relationLabelKey(rows[selectedIndex - 1])
         } else if selectedIndex == nil {
-            prompt.selectedKey = relationLabelKey(rows[rows.count - 1].label ?? "")
+            prompt.selectedKey = relationLabelKey(rows[rows.count - 1])
         } else {
             prompt.selectedKey = nil
         }
+        prompt.noticeMessage = nil
         relationLabelPrompt = prompt
     }
 
     func selectRelationLabelSuggestion(key: String) {
         guard var prompt = relationLabelPrompt, !prompt.isSaving,
-              relationLabelPromptRows.contains(where: { relationLabelKey($0.label ?? "") == key })
+              relationLabelNavigableRows.contains(where: { relationLabelKey($0) == key })
         else {
             return
         }
         prompt.selectedKey = key
+        prompt.noticeMessage = nil
         relationLabelPrompt = prompt
     }
 
@@ -7379,16 +7767,96 @@ final class CapturePanelModel: ObservableObject {
     }
 
     func insertRelationLabelSuggestion(id: String) {
-        guard let candidate = relationLabelPromptRows.first(where: {
-            $0.replacement == id || $0.label == id || relationLabelKey($0.label ?? "") == id
+        guard let candidate = relationLabelNavigableRows.first(where: {
+            $0.replacement == id || $0.label == id || $0.key == id
+                || relationLabelKey($0) == id
         }) else {
             return
         }
         insertRelationLabelSuggestion(candidate: candidate)
     }
 
+    /// Context-sensitive footer keycaps (at most five pairs) that teach the
+    /// grammar, including `||`, without repeating the full key table.
+    var relationLabelFooterItems: [(keycap: String, label: String)] {
+        guard let prompt = relationLabelPrompt else { return [] }
+        let selectedInsertion = relationLabelSelectedCandidate.map {
+            relationLabelInsertion(for: $0, oneOff: prompt.oneOff)
+        }
+        if prompt.oneOff {
+            if relationLabelOneOffWarning != nil {
+                return [
+                    ("↩", "inserts \(selectedInsertion ?? "||…")"),
+                    ("⌃D", "keep visible"),
+                    ("esc", "back"),
+                ]
+            }
+            if let insertion = selectedInsertion, !insertion.isEmpty {
+                return [
+                    ("↩", "inserts \(insertion) · won't be suggested again"),
+                    ("⌃D", "visible"),
+                    ("esc", "back"),
+                ]
+            }
+            if let typed = relationLabelFreshTypedRow,
+               !relationLabelInsertion(for: typed, oneOff: true).isEmpty,
+               typed.disabledReason?.isEmpty != false
+            {
+                return [
+                    ("↩", "inserts \(relationLabelInsertion(for: typed, oneOff: true)) · won't be suggested again"),
+                    ("⌃D", "visible"),
+                    ("esc", "back"),
+                ]
+            }
+            return [("↩", "inserts plain link"), ("esc", "back")]
+        }
+        var items: [(keycap: String, label: String)] = []
+        if let selected = relationLabelSelectedCandidate {
+            let key = relationLabelKey(selected)
+            let hidden =
+                selected.hidden || relationLabelIsHiddenKey(key, in: prompt)
+                || prompt.ghosts[key] == true
+            let replacement = relationLabelInsertion(for: selected, oneOff: false)
+            if hidden {
+                items.append(("↩", "inserts \(replacement) (stays hidden)"))
+            } else {
+                items.append(("↩", "inserts \(replacement)"))
+            }
+            if prompt.ghosts[key] != nil {
+                items.append(("⌃D", "undo"))
+            } else {
+                items.append(("⌃D", hidden ? "unhide" : "hide"))
+            }
+        } else if relationLabelNavigableRows.first != nil {
+            items.append(("⇥", "accepts top match"))
+            if let typed = relationLabelFreshTypedRow,
+               !typed.replacement.isEmpty,
+               typed.disabledReason?.isEmpty != false
+            {
+                items.append(("↩", "inserts \(typed.replacement)"))
+            }
+            items.append(("⌃D", "one-off"))
+        } else {
+            items.append(("↩", "inserts plain link"))
+        }
+        if prompt.hiddenCountKnown, prompt.hiddenCount > 0 {
+            items.append(("⌃H", prompt.showHidden ? "hide list" : "hidden"))
+        }
+        items.append(("esc", "back"))
+        return Array(items.prefix(5))
+    }
+
     private var relationLabelPromptIsSaving: Bool {
         relationLabelPrompt?.isSaving ?? true
+    }
+
+    /// What Return inserts for a row: the `||` form when one-off is on,
+    /// else bob's plain replacement. The app never builds either token.
+    private func relationLabelInsertion(for candidate: CaptureCompletionCandidate, oneOff: Bool) -> String {
+        if oneOff {
+            return candidate.hideReplacement ?? candidate.replacement
+        }
+        return candidate.replacement
     }
 
     private func insertRelationLabelSuggestion(candidate: CaptureCompletionCandidate) {
@@ -7398,13 +7866,14 @@ final class CapturePanelModel: ObservableObject {
             relationLabelPrompt = prompt
             return
         }
-        guard !candidate.replacement.isEmpty else {
+        let replacement = relationLabelInsertion(for: candidate, oneOff: prompt.oneOff)
+        guard !replacement.isEmpty else {
             prompt.errorMessage = "This label cannot be inserted."
             relationLabelPrompt = prompt
             return
         }
         prompt.pendingSubmit = false
-        insertRelationLabelReplacement(candidate.replacement, prompt: &prompt)
+        insertRelationLabelReplacement(replacement, prompt: &prompt)
     }
 
     func submitRelationLabelPrompt() {
@@ -7529,7 +7998,8 @@ final class CapturePanelModel: ObservableObject {
             requestFocus(.relationLabelPromptField)
             return true
         }
-        if typed.replacement.isEmpty {
+        let replacement = relationLabelInsertion(for: typed, oneOff: prompt.oneOff)
+        if replacement.isEmpty {
             prompt.pendingSubmit = false
             prompt.errorMessage = "This label cannot be inserted."
             relationLabelPrompt = prompt
@@ -7537,7 +8007,7 @@ final class CapturePanelModel: ObservableObject {
             return true
         }
         prompt.pendingSubmit = false
-        insertRelationLabelReplacement(typed.replacement, prompt: &prompt)
+        insertRelationLabelReplacement(replacement, prompt: &prompt)
         return true
     }
 
@@ -7686,14 +8156,22 @@ final class CapturePanelModel: ObservableObject {
         }
         current.catalog = response.candidates.filter { !$0.typed }
         current.catalogErrorMessage = nil
+        if let hiddenCount = response.hiddenCount {
+            current.hiddenCount = hiddenCount
+            current.hiddenCountKnown = true
+        }
         if let selectedKey = current.selectedKey,
            !current.catalog.contains(where: {
-               !($0.hidden) && relationLabelKey($0.label ?? "") == selectedKey
-           })
+               !$0.hidden && relationLabelKey($0) == selectedKey
+           }),
+           current.ghosts[selectedKey] == nil
         {
             current.selectedKey = nil
         }
         relationLabelPrompt = current
+        if current.hiddenCount > 0 {
+            fetchRelationLabelHiddenRows()
+        }
         return true
     }
 
@@ -7793,6 +8271,10 @@ final class CapturePanelModel: ObservableObject {
         }
         current.suggestions = response.candidates
         current.suggestionAuthoredLabel = authoredLabel
+        if let hiddenCount = response.hiddenCount {
+            current.hiddenCount = hiddenCount
+            current.hiddenCountKnown = true
+        }
         if let typed = current.suggestions.first(where: { $0.typed }),
            let reason = typed.disabledReason, !reason.isEmpty
         {
@@ -7801,6 +8283,9 @@ final class CapturePanelModel: ObservableObject {
             current.errorMessage = nil
         }
         relationLabelPrompt = current
+        if current.hiddenCount > 0 {
+            fetchRelationLabelHiddenRows()
+        }
         if current.pendingSubmit {
             commitFreshRelationLabel()
         }
@@ -7941,12 +8426,27 @@ final class CapturePanelModel: ObservableObject {
             opened.suggestions = completion.candidates
             opened.authoredLabel = completion.query ?? ""
             opened.suggestionAuthoredLabel = completion.query == nil ? nil : opened.authoredLabel
+            // The card opens in one-off mode when it opens on a `||` token:
+            // the replacement starts at the first pipe, so two pipes mean
+            // the author already asked to hide the label on capture.
+            let bytes = Array(draft.utf8)
+            let pipe = completion.replacement.start
+            if pipe + 1 < bytes.count, bytes[pipe] == 0x7C, bytes[pipe + 1] == 0x7C {
+                opened.oneOff = true
+            }
             if let typed = completion.candidates.first(where: { $0.typed }),
                let reason = typed.disabledReason, !reason.isEmpty
             {
                 opened.errorMessage = reason
             }
+            if let hiddenCount = completion.hiddenCount {
+                opened.hiddenCount = hiddenCount
+                opened.hiddenCountKnown = true
+            }
             relationLabelPrompt = opened
+            if opened.hiddenCount > 0 {
+                fetchRelationLabelHiddenRows()
+            }
         }
     }
 
@@ -7984,6 +8484,15 @@ final class CapturePanelModel: ObservableObject {
             suggestionAuthoredLabel: suggestionAuthoredLabel,
             pendingSubmit: pendingSubmit,
             selectedKey: nil,
+            showHidden: false,
+            oneOff: false,
+            hiddenRows: [],
+            hiddenCount: 0,
+            hiddenCountKnown: false,
+            hiddenRowsLoaded: false,
+            ghosts: [:],
+            noticeMessage: nil,
+            visibilityWriteID: nil,
             isSaving: false,
             errorMessage: nil
         )

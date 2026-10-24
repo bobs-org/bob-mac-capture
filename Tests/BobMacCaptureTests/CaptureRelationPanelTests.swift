@@ -12,21 +12,57 @@ final class CaptureRelationPanelTests: XCTestCase {
     private func typedCandidate(
         label: String,
         replacement: String,
-        disabledReason: String? = nil
+        disabledReason: String? = nil,
+        key: String? = nil,
+        count: Int? = nil,
+        existing: Bool? = nil,
+        hidden: Bool? = nil,
+        hideReplacement: String? = nil
     ) -> CaptureCompletionCandidate {
         CaptureCompletionCandidate(
             replacement: replacement,
             label: label,
             disabledReason: disabledReason,
-            typed: true
+            hidden: hidden ?? false,
+            count: count,
+            typed: true,
+            key: key ?? label.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased(),
+            hideReplacement: hideReplacement,
+            existing: existing
         )
     }
 
-    private func suggestionCandidate(label: String, count: Int) -> CaptureCompletionCandidate {
+    private func suggestionCandidate(
+        label: String,
+        count: Int,
+        key: String? = nil,
+        inverse: String? = nil
+    ) -> CaptureCompletionCandidate {
         CaptureCompletionCandidate(
             replacement: label.contains(" ") ? "|\"\(label)\"" : "|\(label)",
             label: label,
-            count: count
+            count: count,
+            key: key ?? label.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased(),
+            inverse: inverse,
+            hideReplacement: label.contains(" ") ? "||\"\(label)\"" : "||\(label)"
+        )
+    }
+
+    private func hiddenInfo(
+        key: String,
+        name: String? = nil,
+        count: Int = 1,
+        inverse: String? = nil
+    ) -> CaptureRelationLabelInfo {
+        let display = name ?? key
+        return CaptureRelationLabelInfo(
+            key: key,
+            name: display,
+            count: count,
+            hidden: true,
+            inverse: inverse,
+            replacement: display.contains(" ") ? "|\"\(display)\"" : "|\(display)",
+            hideReplacement: display.contains(" ") ? "||\"\(display)\"" : "||\(display)"
         )
     }
 
@@ -223,8 +259,8 @@ final class CaptureRelationPanelTests: XCTestCase {
                 CaptureCompletionCandidate(
                     replacement: "|hidden label",
                     label: "hidden label",
-                    count: 10,
-                    hidden: true
+                    hidden: true,
+                    count: 10
                 ),
             ]
         )
@@ -815,5 +851,242 @@ final class CaptureRelationPanelTests: XCTestCase {
             model.relationLabelPrompt?.errorMessage,
             "Bob is not resolved. Check Settings and Recheck Bob."
         )
+    }
+
+    /// Ctrl+D with no selection toggles one-off; a typed `|` never enters
+    /// the field; Backspace on an empty field turns one-off off; typing a
+    /// new query clears ghosts.
+    func testRelationCardOneOffTogglePipeAndBackspace() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "",
+            suggestions: [suggestionCandidate(label: "implements", count: 2)],
+            suggestionAuthoredLabel: ""
+        )
+        XCTAssertFalse(model.relationLabelPrompt?.oneOff ?? true)
+        model.toggleRelationLabelOneOff()
+        XCTAssertEqual(model.relationLabelPrompt?.noticeMessage, "Type a label to make it one-off")
+
+        model.updateRelationLabelPromptLabel("prompted|")
+        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, "prompted")
+        XCTAssertTrue(model.relationLabelPrompt?.oneOff ?? false)
+
+        XCTAssertFalse(model.relationLabelPromptBackspace())
+        model.updateRelationLabelPromptLabel("")
+        XCTAssertTrue(model.relationLabelPrompt?.oneOff ?? false)
+        XCTAssertTrue(model.relationLabelPromptBackspace())
+        XCTAssertFalse(model.relationLabelPrompt?.oneOff ?? true)
+
+        model.relationLabelPrompt?.ghosts["implements"] = true
+        model.updateRelationLabelPromptLabel("i")
+        XCTAssertTrue(model.relationLabelPrompt?.ghosts.isEmpty ?? false)
+    }
+
+    /// One-off on an existing visible label warns amber and inserts the
+    /// `||` form; on a hidden label the capsule reads `one-off · hidden`
+    /// with a neutral note and no warning.
+    func testRelationCardOneOffWarningAndCapsule() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "inspired by",
+            suggestions: [
+                typedCandidate(
+                    label: "inspired by",
+                    replacement: "|\"inspired by\"",
+                    count: 3,
+                    existing: true,
+                    hidden: false,
+                    hideReplacement: "||\"inspired by\""
+                )
+            ],
+            suggestionAuthoredLabel: "inspired by"
+        )
+        model.relationLabelPrompt?.oneOff = true
+        XCTAssertEqual(model.relationLabelPromptBadgeText, "one-off · 3 links")
+        XCTAssertNotNil(model.relationLabelOneOffWarning)
+        XCTAssertNil(model.relationLabelAlreadyHiddenNote)
+        XCTAssertEqual(model.relationLabelInsertsText, "Inserts ||\"inspired by\"")
+        XCTAssertEqual(
+            model.relationLabelFooterItems.map(\.keycap),
+            ["↩", "⌃D", "esc"]
+        )
+
+        model.relationLabelPrompt?.suggestions = [
+            typedCandidate(
+                label: "duplicate of",
+                replacement: "|\"duplicate of\"",
+                count: 1,
+                existing: true,
+                hidden: true,
+                hideReplacement: "||\"duplicate of\""
+            )
+        ]
+        XCTAssertEqual(model.relationLabelPromptBadgeText, "one-off · hidden")
+        XCTAssertNil(model.relationLabelOneOffWarning)
+        XCTAssertNotNil(model.relationLabelAlreadyHiddenNote)
+    }
+
+    /// Ctrl+D on a row hides what Return would insert: the row stays as a
+    /// ghost, the write runs on the serial pref lane, success refetches
+    /// without clearing the ghost, Ctrl+D on the ghost flips it back, and
+    /// a new query clears ghosts.
+    func testRelationCardHideGhostUndoAndQueryClear() async throws {
+        let model = CapturePanelModel(
+            processClient: try relationLabelClient(chooser: true)
+        )
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "",
+            suggestions: [
+                suggestionCandidate(label: "implements", count: 2),
+                suggestionCandidate(label: "inspired by", count: 3),
+            ],
+            suggestionAuthoredLabel: ""
+        )
+        model.relationLabelPrompt?.hiddenCountKnown = true
+        model.relationLabelPrompt?.hiddenCount = 1
+        model.relationLabelPrompt?.hiddenRows = [hiddenInfo(key: "duplicate of")]
+        model.selectRelationLabelSuggestion(key: "implements")
+        model.toggleRelationLabelVisibility()
+        XCTAssertEqual(model.relationLabelPrompt?.ghosts["implements"], true)
+        await waitUntil { model.relationLabelPrompt?.visibilityWriteID == nil }
+        XCTAssertEqual(model.statusText, "Hid “implements” from relation suggestions")
+        XCTAssertEqual(model.relationLabelPrompt?.ghosts["implements"], true)
+
+        model.toggleRelationLabelVisibility()
+        XCTAssertEqual(model.relationLabelPrompt?.ghosts["implements"], false)
+        await waitUntil { model.relationLabelPrompt?.visibilityWriteID == nil }
+
+        model.updateRelationLabelPromptLabel("i")
+        XCTAssertTrue(model.relationLabelPrompt?.ghosts.isEmpty ?? false)
+    }
+
+    /// A failed hide restores the row with bob's message; an older bob
+    /// without the `relations` group gets the update hint.
+    func testRelationCardHideFailureRestoresGhost() async throws {
+        var environment = ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+        environment["FAKE_BOB_RELATION_LABEL_CHOOSER"] = "1"
+        environment["FAKE_BOB_RELATIONS_WRITE_EXIT"] = "1"
+        let model = CapturePanelModel(
+            processClient: BobProcessClient(
+                executablePath: try fakeBobPath(),
+                environment: environment
+            )
+        )
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "",
+            suggestions: [suggestionCandidate(label: "implements", count: 2)],
+            suggestionAuthoredLabel: ""
+        )
+        model.relationLabelPrompt?.hiddenCountKnown = true
+        model.relationLabelPrompt?.hiddenCount = 1
+        model.selectRelationLabelSuggestion(key: "implements")
+        model.toggleRelationLabelVisibility()
+        await waitUntil { model.relationLabelPrompt?.visibilityWriteID == nil }
+        XCTAssertNil(model.relationLabelPrompt?.ghosts["implements"])
+        XCTAssertNotNil(model.relationLabelPrompt?.errorMessage)
+    }
+
+    /// Ctrl+H toggles the Hidden section and keeps the query and selection;
+    /// an older bob gets the update hint instead.
+    func testRelationCardHiddenSectionToggle() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "dup",
+            suggestions: [suggestionCandidate(label: "duplicate of", count: 1)],
+            suggestionAuthoredLabel: "dup"
+        )
+        model.toggleRelationLabelHiddenSection()
+        XCTAssertEqual(
+            model.relationLabelPrompt?.noticeMessage,
+            "Update bob to hide relation labels"
+        )
+
+        model.relationLabelPrompt?.hiddenCountKnown = true
+        model.relationLabelPrompt?.hiddenCount = 1
+        model.relationLabelPrompt?.hiddenRows = [hiddenInfo(key: "duplicate of")]
+        model.toggleRelationLabelHiddenSection()
+        XCTAssertTrue(model.relationLabelPrompt?.showHidden ?? false)
+        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, "dup")
+        XCTAssertEqual(
+            model.relationLabelHiddenPromptRows.map(\.label),
+            ["duplicate of"]
+        )
+        model.toggleRelationLabelHiddenSection()
+        XCTAssertFalse(model.relationLabelPrompt?.showHidden ?? true)
+        XCTAssertTrue(model.relationLabelHiddenPromptRows.isEmpty)
+    }
+
+    /// Hidden rows accept like any row: Tab walks into the open section and
+    /// Return inserts the `|` form, which stays hidden.
+    func testRelationCardHiddenRowAcceptsAndStaysHidden() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            authoredLabel: "",
+            suggestions: [suggestionCandidate(label: "implements", count: 2)],
+            suggestionAuthoredLabel: ""
+        )
+        model.relationLabelPrompt?.hiddenCountKnown = true
+        model.relationLabelPrompt?.hiddenCount = 1
+        model.relationLabelPrompt?.hiddenRows = [hiddenInfo(key: "duplicate of")]
+        model.relationLabelPrompt?.showHidden = true
+        model.selectRelationLabelSuggestion(key: "duplicate of")
+        XCTAssertEqual(model.relationLabelInsertsText, "Inserts |\"duplicate of\"")
+        model.acceptRelationLabelSuggestion()
+        XCTAssertNil(model.relationLabelPrompt)
+        XCTAssertEqual(model.plainDraft, "New task ~tasks:target|\"duplicate of\"")
+    }
+
+    /// Router: Ctrl+D toggles visibility (auto-repeat is consumed), Ctrl+H
+    /// toggles the Hidden section, and Backspace is claimed only for an
+    /// empty one-off field.
+    func testRelationCardKeysToggleVisibilityAndHiddenSection() {
+        let router = CaptureKeyCommandRouter()
+        func event(_ keyCode: UInt16, modifiers: NSEvent.ModifierFlags = [], isRepeat: Bool = false) -> NSEvent {
+            NSEvent.keyEvent(
+                with: .keyDown,
+                location: .zero,
+                modifierFlags: modifiers,
+                timestamp: 0,
+                windowNumber: 0,
+                context: nil,
+                characters: "",
+                charactersIgnoringModifiers: "",
+                isARepeat: isRepeat,
+                keyCode: keyCode
+            )!
+        }
+        let context = CaptureKeyRoutingContext(relationLabelPromptVisible: true)
+        XCTAssertEqual(
+            router.command(for: event(2, modifiers: .control), context: context),
+            .toggleRelationLabelVisibility
+        )
+        XCTAssertEqual(
+            router.command(for: event(2, modifiers: .control, isRepeat: true), context: context),
+            .consumeKey
+        )
+        XCTAssertEqual(
+            router.command(for: event(4, modifiers: .control), context: context),
+            .toggleRelationLabelHiddenSection
+        )
+        let emptyOneOff = CaptureKeyRoutingContext(
+            relationLabelPromptVisible: true,
+            relationLabelPromptFieldIsEmpty: true,
+            relationLabelPromptOneOff: true
+        )
+        XCTAssertEqual(
+            router.command(for: event(51), context: emptyOneOff),
+            .relationLabelPromptBackspace
+        )
+        let emptyPlain = CaptureKeyRoutingContext(
+            relationLabelPromptVisible: true,
+            relationLabelPromptFieldIsEmpty: true
+        )
+        XCTAssertNil(router.command(for: event(51), context: emptyPlain))
+        let fullOneOff = CaptureKeyRoutingContext(
+            relationLabelPromptVisible: true,
+            relationLabelPromptFieldIsEmpty: false,
+            relationLabelPromptOneOff: true
+        )
+        XCTAssertNil(router.command(for: event(51), context: fullOneOff))
     }
 }

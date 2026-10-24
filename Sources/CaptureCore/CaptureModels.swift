@@ -2973,6 +2973,214 @@ public struct CaptureLinkGuard: Codable, Equatable, Sendable {
   }
 }
 
+/// One capture warning. Plain strings keep every older draft's JSON
+/// byte-identical; structured variants let machines discriminate by `code`
+/// while clients render the bob-authored `message`. A newer Bob sends
+/// `{code: "hides_existing_relation_label", ...}` objects when a `||`
+/// capture hides a visible label; older Bob sends only strings.
+public enum CaptureWarning: Codable, Equatable, Sendable {
+  case text(String)
+  case structured(StructuredCaptureWarning)
+
+  /// The bob-authored human rendering, for preview rows and notifications.
+  public var message: String {
+    switch self {
+    case .text(let message):
+      return message
+    case .structured(let warning):
+      return warning.message
+    }
+  }
+
+  /// True for the `hides_existing_relation_label` warning, which the
+  /// relation card and the capture preview render as an amber row.
+  public var isRelationHideWarning: Bool {
+    if case .structured(let warning) = self {
+      return warning.code == "hides_existing_relation_label"
+    }
+    return false
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    if let message = try? container.decode(String.self) {
+      self = .text(message)
+      return
+    }
+    self = .structured(try container.decode(StructuredCaptureWarning.self))
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    switch self {
+    case .text(let message):
+      try container.encode(message)
+    case .structured(let warning):
+      try container.encode(warning)
+    }
+  }
+}
+
+/// A machine-readable capture warning: `code` selects the handling,
+/// `message` is the bob-authored rendering, and `label`/`count` carry the
+/// pre-capture catalog facts for `hides_existing_relation_label`.
+public struct StructuredCaptureWarning: Codable, Equatable, Sendable {
+  public let code: String
+  public let label: String?
+  public let count: Int?
+  public let message: String
+
+  public init(code: String, label: String? = nil, count: Int? = nil, message: String) {
+    self.code = code
+    self.label = label
+    self.count = count
+    self.message = message
+  }
+}
+
+/// One `relation_label_hides[]` entry on a capture dry-run or commit: the
+/// label a `||` capture will hide (or already left hidden) from relation
+/// suggestions. Older Bob omits the array; missing decodes as empty.
+public struct CaptureRelationLabelHide: Codable, Equatable, Sendable {
+  public let label: String
+  public let key: String
+  public let existingCount: Int
+  public let wasHidden: Bool
+  public let action: String
+
+  public init(
+    label: String,
+    key: String,
+    existingCount: Int = 0,
+    wasHidden: Bool = false,
+    action: String
+  ) {
+    self.label = label
+    self.key = key
+    self.existingCount = existingCount
+    self.wasHidden = wasHidden
+    self.action = action
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case label
+    case key
+    case existingCount = "existing_count"
+    case wasHidden = "was_hidden"
+    case action
+  }
+}
+
+/// One row of `bob relations list -f json`: the display spelling, usage
+/// count, hidden state, optional inverse phrase, every spelling with its
+/// count, and both insertion forms. Older Bob has no `relations` group.
+public struct CaptureRelationLabelInfo: Codable, Equatable, Sendable {
+  public let key: String
+  public let name: String
+  public let count: Int
+  public let hidden: Bool
+  public let inverse: String?
+  public let replacement: String
+  public let hideReplacement: String
+
+  public init(
+    key: String,
+    name: String,
+    count: Int = 0,
+    hidden: Bool = false,
+    inverse: String? = nil,
+    replacement: String,
+    hideReplacement: String
+  ) {
+    self.key = key
+    self.name = name
+    self.count = count
+    self.hidden = hidden
+    self.inverse = inverse
+    self.replacement = replacement
+    self.hideReplacement = hideReplacement
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case key
+    case name
+    case count
+    case hidden
+    case inverse
+    case replacement
+    case hideReplacement = "hide_replacement"
+  }
+}
+
+/// Decoded `bob relations list -f json`: label/link/hidden totals plus one
+/// row per label. `renamedReappeared` names OLD keys a host rewrote offline.
+public struct CaptureRelationLabelsResponse: Codable, Equatable, Sendable {
+  public let schemaVersion: Int
+  public let ok: Bool
+  public let labelCount: Int
+  public let linkCount: Int
+  public let hiddenCount: Int
+  public let labels: [CaptureRelationLabelInfo]
+  public let renamedReappeared: [String]
+
+  public init(
+    schemaVersion: Int = 1,
+    ok: Bool = true,
+    labelCount: Int = 0,
+    linkCount: Int = 0,
+    hiddenCount: Int = 0,
+    labels: [CaptureRelationLabelInfo] = [],
+    renamedReappeared: [String] = []
+  ) {
+    self.schemaVersion = schemaVersion
+    self.ok = ok
+    self.labelCount = labelCount
+    self.linkCount = linkCount
+    self.hiddenCount = hiddenCount
+    self.labels = labels
+    self.renamedReappeared = renamedReappeared
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+    ok = try container.decodeIfPresent(Bool.self, forKey: .ok) ?? true
+    let counts = try container.decodeIfPresent(Counts.self, forKey: .counts)
+    labelCount = counts?.labels ?? 0
+    linkCount = counts?.links ?? 0
+    hiddenCount = counts?.hidden ?? 0
+    labels = try container.decodeIfPresent([CaptureRelationLabelInfo].self, forKey: .labels) ?? []
+    renamedReappeared =
+      try container.decodeIfPresent([String].self, forKey: .renamedReappeared) ?? []
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(schemaVersion, forKey: .schemaVersion)
+    try container.encode(ok, forKey: .ok)
+    try container.encode(
+      Counts(labels: labelCount, links: linkCount, hidden: hiddenCount),
+      forKey: .counts
+    )
+    try container.encode(labels, forKey: .labels)
+    try container.encode(renamedReappeared, forKey: .renamedReappeared)
+  }
+
+  private struct Counts: Codable {
+    let labels: Int?
+    let links: Int?
+    let hidden: Int?
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case schemaVersion = "schema_version"
+    case ok
+    case counts
+    case labels
+    case renamedReappeared = "renamed_reappeared"
+  }
+}
+
 public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
   public let ok: Bool
   public let dryRun: Bool
@@ -3106,7 +3314,13 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
   public let linkGuard: CaptureLinkGuard?
   public let captures: [CaptureCommandSuccess]
   public let globalDestination: CaptureGlobalDestination?
-  public let warnings: [String]
+  /// Capture warnings: plain strings from older Bob, or structured
+  /// `{code, message, ...}` objects (for example the `||` hide warning).
+  /// Older Bob omits the key; decode as empty.
+  public let warnings: [CaptureWarning]
+  /// Additive per-item `||` hides: one entry per distinct hidden key in a
+  /// dry run or commit. Older Bob omits the key; decode as empty.
+  public let relationLabelHides: [CaptureRelationLabelHide]
   /// Additive template execution summary and row metadata.
   public let template: CaptureTemplateSummary?
   public let templateRow: CaptureTemplateRow?
@@ -3180,7 +3394,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     inboxRoute: CaptureInboxRoute? = nil,
     captures: [CaptureCommandSuccess] = [],
     globalDestination: CaptureGlobalDestination? = nil,
-    warnings: [String] = [],
+    warnings: [CaptureWarning] = [],
+    relationLabelHides: [CaptureRelationLabelHide] = [],
     pomodoroBlocks: [CapturePomodoroBlock] = [],
     taskBlocks: [CaptureTaskBlock] = [],
     droppedDependencies: [CaptureDroppedDependency] = [],
@@ -3259,6 +3474,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     self.captures = captures
     self.globalDestination = globalDestination
     self.warnings = warnings
+    self.relationLabelHides = relationLabelHides
     self.template = template
     self.templateRow = templateRow
     self.openNotes = openNotes?.filter { $0.path.hasPrefix("/") && !$0.path.isEmpty }
@@ -3422,7 +3638,13 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
       CaptureGlobalDestination.self,
       forKey: .globalDestination
     )
-    warnings = try container.decodeIfPresent([String].self, forKey: .warnings) ?? []
+    warnings =
+      (try? container.decodeIfPresent([CaptureWarning].self, forKey: .warnings)) ?? []
+    relationLabelHides =
+      (try? container.decodeIfPresent(
+        [CaptureRelationLabelHide].self,
+        forKey: .relationLabelHides
+      )) ?? []
     template =
       (try? container.decodeIfPresent(CaptureTemplateSummary.self, forKey: .template)) ?? nil
     templateRow =
@@ -3517,6 +3739,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     case captures
     case globalDestination = "global_destination"
     case warnings
+    case relationLabelHides = "relation_label_hides"
     case template
     case templateRow = "template_row"
     case openNotes = "open_notes"
@@ -5664,6 +5887,13 @@ public struct CaptureCompletionResponse: Codable, Equatable {
   /// responses. Older Bob omits it; scoped `task` without one keeps the
   /// inline parent-task list.
   public let picker: CapturePickerDescriptor?
+  /// Additive `relation_label` hidden count: how many catalog labels are
+  /// hidden from suggestions in this context. Present (possibly 0) on
+  /// `relation_label` responses; older Bob omits it.
+  public let hiddenCount: Int?
+  /// Additive `relation_label` one-off flag: true when the probe sits in a
+  /// `||` label. Omitted from every other context and from `|` probes.
+  public let oneOff: Bool?
 
   public init(
     ok: Bool,
@@ -5678,7 +5908,9 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     owner: DependencyOwner? = nil,
     relation: CaptureCompletionRelation? = nil,
     picker: CapturePickerDescriptor? = nil,
-    overrideInfo: CaptureCompleteOverride? = nil
+    overrideInfo: CaptureCompleteOverride? = nil,
+    hiddenCount: Int? = nil,
+    oneOff: Bool? = nil
   ) {
     self.ok = ok
     self.schemaVersion = schemaVersion
@@ -5693,6 +5925,8 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     self.relation = relation
     self.picker = picker
     self.overrideInfo = overrideInfo
+    self.hiddenCount = hiddenCount
+    self.oneOff = oneOff
   }
 
   public init(from decoder: Decoder) throws {
@@ -5712,6 +5946,8 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     picker = try container.decodeIfPresent(CapturePickerDescriptor.self, forKey: .picker)
     overrideInfo = try container.decodeIfPresent(
       CaptureCompleteOverride.self, forKey: .overrideInfo)
+    hiddenCount = (try? container.decodeIfPresent(Int.self, forKey: .hiddenCount)) ?? nil
+    oneOff = (try? container.decodeIfPresent(Bool.self, forKey: .oneOff)) ?? nil
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -5728,6 +5964,8 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     case relation
     case picker
     case overrideInfo = "override"
+    case hiddenCount = "hidden_count"
+    case oneOff = "one_off"
   }
 
 }
@@ -6376,6 +6614,20 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
   /// Additive `relation_label` typed row: true on Bob's canonical spelling
   /// of the typed label. Missing means false for older Bob.
   public let typed: Bool
+  /// Additive `relation_label` canonical key: the writer-normalized,
+  /// lowercased label. Older Bob payloads omit it; then the display label
+  /// folds locally as before.
+  public let key: String?
+  /// Additive `relation_label` display-only inverse phrase
+  /// (`merged into` → `merged from`). Omitted when Bob knows none.
+  public let inverse: String?
+  /// Additive `relation_label` insertion for a pending one-off: always the
+  /// `||` form, so the app never builds either token itself. Omitted by
+  /// older Bob.
+  public let hideReplacement: String?
+  /// Additive `relation_label` typed row: whether the typed text already
+  /// names a catalog label. Omitted on suggestion rows and by older Bob.
+  public let existing: Bool?
 
   public var id: String {
     [
@@ -6461,7 +6713,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     today: TaskCompleteToday? = nil,
     taskKind: String? = nil,
     count: Int? = nil,
-    typed: Bool = false
+    typed: Bool = false,
+    key: String? = nil,
+    inverse: String? = nil,
+    hideReplacement: String? = nil,
+    existing: Bool? = nil
   ) {
     self.replacement = replacement
     self.route = route
@@ -6525,6 +6781,10 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     self.taskKind = taskKind
     self.count = count
     self.typed = typed
+    self.key = key
+    self.inverse = inverse
+    self.hideReplacement = hideReplacement
+    self.existing = existing
   }
 
   public init(from decoder: Decoder) throws {
@@ -6594,6 +6854,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     taskKind = try container.decodeIfPresent(String.self, forKey: .taskKind)
     count = (try? container.decodeIfPresent(Int.self, forKey: .count)) ?? nil
     typed = (try? container.decodeIfPresent(Bool.self, forKey: .typed)) ?? false
+    key = (try? container.decodeIfPresent(String.self, forKey: .key)) ?? nil
+    inverse = (try? container.decodeIfPresent(String.self, forKey: .inverse)) ?? nil
+    hideReplacement =
+      (try? container.decodeIfPresent(String.self, forKey: .hideReplacement)) ?? nil
+    existing = (try? container.decodeIfPresent(Bool.self, forKey: .existing)) ?? nil
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -6659,6 +6924,10 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     case taskKind = "task_kind"
     case count
     case typed
+    case key
+    case inverse
+    case hideReplacement = "hide_replacement"
+    case existing
   }
 }
 

@@ -1892,6 +1892,23 @@ private struct RelationLabelPromptCard: View {
                     Text("🪢 Relation")
                         .font(.headline)
                     Spacer(minLength: 8)
+                    if prompt.hiddenCountKnown, prompt.hiddenCount > 0 {
+                        Button {
+                            model.toggleRelationLabelHiddenSection()
+                        } label: {
+                            Text("◌ \(prompt.hiddenCount) hidden ⌃H")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(.quaternary, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(prompt.isSaving)
+                        .accessibilityLabel(
+                            "\(prompt.hiddenCount) hidden relation labels. Press Control H to \(prompt.showHidden ? "hide" : "show") the list."
+                        )
+                    }
                     if !prompt.catalogLoaded || prompt.isSaving {
                         ProgressView()
                             .controlSize(.small)
@@ -1902,15 +1919,25 @@ private struct RelationLabelPromptCard: View {
                     Text(model.relationLabelSentenceSource)
                         .lineLimit(1)
                     if let label = model.relationLabelDisplayedLabel {
-                        Text(label)
-                            .font(.caption.weight(.semibold))
-                            .lineLimit(1)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(
-                                CaptureEditorPalette.color(for: .relationSigil).opacity(0.14),
-                                in: Capsule()
-                            )
+                        HStack(spacing: 4) {
+                            if prompt.oneOff {
+                                Image(systemName: "eye.slash")
+                                    .font(.caption2.weight(.medium))
+                            }
+                            Text(label)
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(
+                            CaptureEditorPalette.color(for: .relationSigil).opacity(0.14),
+                            in: Capsule()
+                        )
+                        .accessibilityLabel(
+                            prompt.oneOff
+                                ? "One-off relation \(label)" : "Relation \(label)"
+                        )
                     }
                     Image(systemName: "arrow.right")
                         .font(.caption.weight(.medium))
@@ -1959,58 +1986,89 @@ private struct RelationLabelPromptCard: View {
                 .onDisappear { fieldIsFocused = false }
 
                 let rows = model.relationLabelPromptRows
-                if !rows.isEmpty {
+                let hiddenRows = model.relationLabelHiddenPromptRows
+                let topKey = rows.first.map { model.relationLabelSelectionKey(for: $0) }
+                if !rows.isEmpty || !hiddenRows.isEmpty {
                     ScrollViewReader { proxy in
                         ScrollView(.vertical, showsIndicators: true) {
                             LazyVStack(alignment: .leading, spacing: 3) {
                                 ForEach(rows, id: \.id) { candidate in
                                     let label = candidate.label ?? candidate.replacement
-                                    let key = model.relationLabelSelectionKey(for: label)
+                                    let key = model.relationLabelSelectionKey(for: candidate)
                                     let selected = prompt.selectedKey == key
+                                    let ghost = model.relationLabelGhostState(forKey: key)
                                     Button {
-                                        model.selectRelationLabelSuggestion(key: key)
+                                        model.insertRelationLabelSuggestion(id: key)
                                     } label: {
-                                        HStack(spacing: 8) {
-                                            matchedLabelText(label, query: prompt.authoredLabel)
-                                                .lineLimit(1)
-                                            Spacer(minLength: 8)
-                                            if let count = candidate.count, count > 0 {
-                                                Text(count == 1 ? "1 link" : "\(count) links")
-                                                    .font(.caption)
-                                                    .foregroundStyle(.secondary)
-                                            }
-                                            if selected {
-                                                Text("⇥")
-                                                    .font(.system(.caption2, design: .monospaced).weight(.semibold))
-                                                    .padding(.horizontal, 5)
-                                                    .padding(.vertical, 2)
-                                                    .background(.background.opacity(0.8), in: RoundedRectangle(cornerRadius: 4))
-                                            }
-                                        }
-                                        .padding(.horizontal, 9)
-                                        .padding(.vertical, 6)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .background(
-                                            selected ? Color.accentColor.opacity(0.13) : Color.clear,
-                                            in: RoundedRectangle(cornerRadius: 6)
+                                        relationRowContent(
+                                            candidate: candidate,
+                                            label: label,
+                                            query: prompt.authoredLabel,
+                                            selected: selected,
+                                            ghost: ghost,
+                                            showTabTarget: selected
+                                                || (prompt.selectedKey == nil && key == topKey)
                                         )
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 6)
-                                                .strokeBorder(
-                                                    selected ? Color.accentColor.opacity(0.7) : Color.clear,
-                                                    lineWidth: 1
-                                                )
-                                        )
-                                        .contentShape(RoundedRectangle(cornerRadius: 6))
                                     }
                                     .buttonStyle(.plain)
                                     .disabled(prompt.isSaving)
                                     .id(key)
                                     .accessibilityLabel(
-                                        "\(label), \(candidate.count ?? 0) links\(selected ? ", selected" : "")"
+                                        relationRowAccessibilityLabel(
+                                            candidate: candidate,
+                                            label: label,
+                                            selected: selected,
+                                            ghost: ghost
+                                        )
                                     )
                                     .accessibilityHint("Press Tab to insert this relation label")
                                     .accessibilityAddTraits(selected ? .isSelected : [])
+                                }
+                                if !hiddenRows.isEmpty {
+                                    HStack(spacing: 8) {
+                                        Text("Hidden")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.secondary)
+                                        Rectangle()
+                                            .fill(Color.secondary.opacity(0.25))
+                                            .frame(height: 1)
+                                    }
+                                    .padding(.horizontal, 9)
+                                    .padding(.top, 4)
+                                    .accessibilityLabel("Hidden relation labels")
+                                    ForEach(hiddenRows, id: \.id) { candidate in
+                                        let label = candidate.label ?? candidate.replacement
+                                        let key = model.relationLabelSelectionKey(for: candidate)
+                                        let selected = prompt.selectedKey == key
+                                        let ghost = model.relationLabelGhostState(forKey: key)
+                                        Button {
+                                            model.insertRelationLabelSuggestion(id: key)
+                                        } label: {
+                                            relationRowContent(
+                                                candidate: candidate,
+                                                label: label,
+                                                query: prompt.authoredLabel,
+                                                selected: selected,
+                                                ghost: ghost,
+                                                hidden: true,
+                                                showTabTarget: selected
+                                            )
+                                        }
+                                        .buttonStyle(.plain)
+                                        .disabled(prompt.isSaving)
+                                        .id(key)
+                                        .accessibilityLabel(
+                                            relationRowAccessibilityLabel(
+                                                candidate: candidate,
+                                                label: label,
+                                                selected: selected,
+                                                ghost: ghost,
+                                                hidden: true
+                                            )
+                                        )
+                                        .accessibilityHint("Press Tab to insert this relation label")
+                                        .accessibilityAddTraits(selected ? .isSelected : [])
+                                    }
                                 }
                             }
                             .padding(3)
@@ -2038,21 +2096,46 @@ private struct RelationLabelPromptCard: View {
                         .foregroundStyle(CaptureEditorPalette.color(for: .relationSigil))
                 }
 
+                if let warning = model.relationLabelOneOffWarning {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("⚠ \(warning)")
+                        Spacer(minLength: 8)
+                        Text("⌃D keep visible")
+                            .font(.caption2.weight(.medium))
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .accessibilityLabel("Warning: \(warning) Press Control D to keep visible.")
+                } else if let note = model.relationLabelAlreadyHiddenNote {
+                    Text("◌ \(note)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(note)
+                }
+
+                if let notice = prompt.noticeMessage {
+                    Text(notice)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(notice)
+                }
+
                 HStack(spacing: 5) {
-                    keycap("⌃N / ↓")
-                    Text("next")
-                    keycap("⌃P / ↑")
-                    Text("previous")
-                    keycap("⇥")
-                    Text("accept")
-                    keycap("↩")
-                    Text("insert")
+                    ForEach(
+                        Array(model.relationLabelFooterItems.enumerated()),
+                        id: \.offset
+                    ) { _, item in
+                        keycap(item.keycap)
+                        Text(item.label)
+                    }
                     Spacer(minLength: 0)
-                    Text("esc back")
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-                .accessibilityLabel("Control N or Down next; Control P or Up previous; Tab accept; Return insert; Escape back")
+                .accessibilityLabel(
+                    model.relationLabelFooterItems.map { "\($0.keycap) \($0.label)" }
+                        .joined(separator: "; ")
+                )
 
                 if let error = prompt.errorMessage {
                     Text(error)
@@ -2082,6 +2165,101 @@ private struct RelationLabelPromptCard: View {
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Relation label")
         }
+    }
+
+    /// One relation row: bold match, right-aligned `N links`, the inverse
+    /// phrase, the `⇥` Tab target, and the ghost or hidden treatment.
+    /// Hidden rows are never red and never struck through: they wear
+    /// `eye.slash` and secondary text.
+    private func relationRowContent(
+        candidate: CaptureCompletionCandidate,
+        label: String,
+        query: String,
+        selected: Bool,
+        ghost: Bool?,
+        hidden: Bool = false,
+        showTabTarget: Bool
+    ) -> some View {
+        let effectiveHidden = ghost ?? (hidden || candidate.hidden)
+        return HStack(spacing: 8) {
+            if effectiveHidden {
+                Image(systemName: "eye.slash")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            matchedLabelText(label, query: query)
+                .lineLimit(1)
+            if let inverse = candidate.inverse, !inverse.isEmpty {
+                Text("⇄ \(inverse)")
+                    .font(.caption)
+                    .foregroundStyle(.quaternary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if let ghost {
+                Text(
+                    ghost
+                        ? "hidden everywhere · ⌃D undo" : "visible again · ⌃D undo"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            } else if hidden {
+                Text("⌃D unhide")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let count = candidate.count, count > 0 {
+                Text(count == 1 ? "1 link" : "\(count) links")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            if showTabTarget {
+                Text("⇥")
+                    .font(.system(.caption2, design: .monospaced).weight(.semibold))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(.background.opacity(0.8), in: RoundedRectangle(cornerRadius: 4))
+            }
+        }
+        .foregroundStyle(effectiveHidden ? .secondary : .primary)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            selected ? Color.accentColor.opacity(0.13) : Color.clear,
+            in: RoundedRectangle(cornerRadius: 6)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(
+                    selected ? Color.accentColor.opacity(0.7) : Color.clear,
+                    lineWidth: 1
+                )
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func relationRowAccessibilityLabel(
+        candidate: CaptureCompletionCandidate,
+        label: String,
+        selected: Bool,
+        ghost: Bool?,
+        hidden: Bool = false
+    ) -> String {
+        var parts = [label, "\(candidate.count ?? 0) links"]
+        if let inverse = candidate.inverse, !inverse.isEmpty {
+            parts.append("inverse \(inverse)")
+        }
+        if let ghost {
+            parts.append(ghost ? "hidden everywhere, Control D undoes" : "visible again, Control D undoes")
+        } else if hidden {
+            parts.append("hidden")
+        }
+        if selected {
+            parts.append("selected")
+        }
+        return parts.joined(separator: ", ")
     }
 
     private func matchedLabelText(_ label: String, query: String) -> Text {
@@ -3946,7 +4124,7 @@ struct PreviewPane: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             ForEach(Array(success.warnings.enumerated()), id: \.offset) { _, warning in
-                Text(warning)
+                Text(warning.message)
                     .font(.caption)
                     .foregroundStyle(.orange)
                     .textSelection(.enabled)

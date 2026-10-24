@@ -292,6 +292,49 @@ final class CaptureRelationshipPresentationTests: XCTestCase {
         XCTAssertEqual(mixedNotification.title, "Buy milk · depends on 1 · links 1")
     }
 
+    /// A `||` commit that hides a label appends the `hid` clause to the
+    /// relation notification title; already-hidden labels add no clause.
+    func testRelationHideSuffixAppendsToNotification() throws {
+        let hiding = try captureFixture("capture-hide-warning.json")
+        let notification = try XCTUnwrap(
+            CaptureRelationshipPresentation(capture: hiding).notification
+        )
+        XCTAssertEqual(
+            notification.title,
+            "🪢 Do thing now links to “Target” · hid “inspired by” from relation suggestions"
+        )
+
+        var alreadyHidden = hiding
+        alreadyHidden = CaptureCommandSuccess(
+            ok: alreadyHidden.ok,
+            dryRun: alreadyHidden.dryRun,
+            routed: alreadyHidden.routed,
+            route: alreadyHidden.route,
+            routeLabel: alreadyHidden.routeLabel,
+            relativeTarget: alreadyHidden.relativeTarget,
+            target: alreadyHidden.target,
+            text: alreadyHidden.text,
+            taskLine: alreadyHidden.taskLine,
+            kind: alreadyHidden.kind,
+            created: alreadyHidden.created,
+            placement: alreadyHidden.placement,
+            relationUpdates: alreadyHidden.relationUpdates,
+            relationLabelHides: [
+                CaptureRelationLabelHide(
+                    label: "inspired by",
+                    key: "inspired by",
+                    existingCount: 3,
+                    wasHidden: true,
+                    action: "already_hidden"
+                )
+            ]
+        )
+        let plain = try XCTUnwrap(
+            CaptureRelationshipPresentation(capture: alreadyHidden).notification
+        )
+        XCTAssertEqual(plain.title, "🪢 Do thing now links to “Target”")
+    }
+
     func testRelationManagedLinesAreSuppressed() throws {
         let lx3 = try captureFixture("relation-preview-lx3-relabeled.json")
         let suppressed = lx3.taskBlocks.map {

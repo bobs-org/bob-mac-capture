@@ -135,7 +135,12 @@ Relation Picker keys: Return/Tab Link, Shift-Return Link with a relation
 Control-Return Insert, Capture & Open when the owner is complete.
 
 Relation card keys: Ctrl-N/Down next, Ctrl-P/Up previous, Tab accept, Return
-accept selected or typed label, Escape back. See [Keyboard](keyboard.md#relation-card-keys)
+accept selected or typed label, Ctrl-D hide what Return would insert (or toggle
+one-off), typed `|` one-off on, Ctrl-H Hidden section, Escape back. The card
+opens in one-off mode on a `||` token. Hidden labels live in the Hidden section
+and stay insertable; a hide or unhide keeps its row as a ghost with ⌃D undo
+until the query changes, and a failed write restores the row with Bob's message.
+See [Keyboard](keyboard.md#relation-card-keys)
 for the complete key table.
 
 ## Complete Picker
