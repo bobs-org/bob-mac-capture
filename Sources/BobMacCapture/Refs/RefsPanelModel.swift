@@ -6,11 +6,13 @@ import RefsCore
 import SwiftUI
 
 /// Where an open dispatches: Highlights, the reference note in Obsidian,
-/// the PDF revealed in Finder, or the PDF in its default app. Only
-/// Highlights and default-app opens count as opens.
+/// the reading task's file in Obsidian, the PDF revealed in Finder, or
+/// the PDF in its default app. Only Highlights and default-app opens
+/// count as opens.
 public enum RefsOpenTarget: Equatable, Sendable {
   case highlights
   case note
+  case task
   case reveal
   case defaultApp
 }
@@ -175,6 +177,7 @@ public struct RefsRowContent: Equatable, Sendable {
 public protocol RefsOpening: Sendable {
   func openInHighlights(_ pdf: URL, app: URL, completion: @escaping (Error?) -> Void)
   func openNote(_ url: URL)
+  func openTask(_ url: URL, blockID: String?)
   func reveal(_ url: URL)
   func openWithDefaultApp(_ url: URL, completion: @escaping (Error?) -> Void)
 }
@@ -206,6 +209,32 @@ public struct WorkspaceRefsOpener: RefsOpening, Sendable {
       return
     }
     _ = NSWorkspace.shared.open(deep)
+  }
+
+  public func openTask(_ url: URL, blockID: String?) {
+    guard let deep = Self.taskDeepLink(for: url, blockID: blockID) else {
+      return
+    }
+    _ = NSWorkspace.shared.open(deep)
+  }
+
+  /// The `obsidian://bob-goto-task` URL for a reading-task file, falling
+  /// back to the no-block URL when the block ID is invalid, then to
+  /// `obsidian://open` when even that cannot be built.
+  public static func taskDeepLink(for url: URL, blockID: String?) -> URL? {
+    if let blockID, !blockID.isEmpty {
+      if let deep = ObsidianOpenURL.taskGotoURL(
+        path: url.path, line: 1, ref: nil, blockID: blockID
+      ) {
+        return deep
+      }
+    }
+    if let deep = ObsidianOpenURL.taskGotoURL(
+      path: url.path, line: 1, ref: nil, blockID: nil
+    ) {
+      return deep
+    }
+    return ObsidianOpenURL.url(forAbsolutePath: url.path)
   }
 
   public func reveal(_ url: URL) {
@@ -1942,6 +1971,8 @@ public final class RefsPanelModel: ObservableObject {
       _ = openSelected(.highlights)
     case .openNote:
       _ = openSelected(.note)
+    case .openTask:
+      _ = openSelected(.task)
     case .reveal:
       _ = openSelected(.reveal)
     case .copy:
@@ -3019,6 +3050,13 @@ public final class RefsPanelModel: ObservableObject {
     case .note:
       opener.openNote(library.noteURL(for: item))
       return true
+    case .task:
+      guard let url = library.taskURL(for: item) else {
+        noReadingTaskFeedback()
+        return true
+      }
+      opener.openTask(url, blockID: item.task?.blockID)
+      return true
     case .reveal:
       let pdfMissing = library.signals.missingPDFs.contains(item.id)
       if pdfMissing || library.pdfURL(for: item) == nil {
@@ -3050,9 +3088,14 @@ public final class RefsPanelModel: ObservableObject {
       )
     case .defaultApp:
       openWithDefaultApp(item)
-    case .note, .reveal:
+    case .note, .reveal, .task:
       openSelected(pending.target)
     }
+  }
+
+  private func noReadingTaskFeedback() {
+    beep()
+    AccessibilityNotification.Announcement("No reading task for this reference").post()
   }
 
   private func reopenClosedTab(_ closed: RefsClosedTab) -> Bool {

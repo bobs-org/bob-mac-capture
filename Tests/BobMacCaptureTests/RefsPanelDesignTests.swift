@@ -2564,6 +2564,8 @@ private struct StubOpener: RefsOpening {
 
   func openNote(_ url: URL) {}
 
+  func openTask(_ url: URL, blockID: String?) {}
+
   func reveal(_ url: URL) {}
 
   func openWithDefaultApp(

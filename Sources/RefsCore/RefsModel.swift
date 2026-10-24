@@ -435,6 +435,17 @@ extension RefItem {
         return !path.split(separator: "/").contains("..")
     }
 
+    /// The vault-relative file holding this reference's reading task (an
+    /// area/project/inbox note, a `done/` archive, or the ref note itself
+    /// for a frozen v1 tracker), or nil when bob reported no task or the
+    /// path is not a safe vault-relative path.
+    public var readingTaskPath: String? {
+        guard let path = task?.path, !path.isEmpty, Self.isSafePDFPath(path) else {
+            return nil
+        }
+        return path
+    }
+
     static func stem(forPDFPath path: String) -> String {
         let last = path.split(separator: "/").last.map(String.init) ?? ""
         guard last.hasSuffix(".pdf") else {

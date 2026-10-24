@@ -80,7 +80,8 @@ public enum RefsKeyRouter {
   /// Control-X closes a selected Tabs row; Control-D and Control-U
   /// always scroll the inspector; Control-C resets the view.
   /// Shift-Command-T reopens the newest closed tab. Option-N toggles
-  /// NEW except while IME-composing.
+  /// NEW except while IME-composing. Control-Return opens the reading
+  /// task's file in Obsidian.
   public static func command(
     keyCode: UInt16,
     modifiers: NSEvent.ModifierFlags,
@@ -95,6 +96,9 @@ public enum RefsKeyRouter {
       }
       if flags == .command {
         return .open(.note)
+      }
+      if flags == .control {
+        return .open(.task)
       }
       if flags == .option {
         return .open(.reveal)

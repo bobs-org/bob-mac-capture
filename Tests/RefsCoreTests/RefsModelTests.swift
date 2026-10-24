@@ -375,4 +375,37 @@ final class RefsModelTests: XCTestCase {
             contentsOf: packageRoot.appendingPathComponent("Tests/Fixtures/\(name)")
         )
     }
+
+    func testReadingTaskPathReturnsSafePathsOnly() {
+        func item(task: RefTask?) -> RefItem {
+            RefItem(
+                id: "ref/chat/x.md",
+                link: "[[ref/chat/x]]",
+                rawTitle: "X",
+                stem: "x",
+                kind: .chat,
+                state: .ready,
+                isBlocked: false,
+                pdfPath: "lib/chat/x.pdf",
+                task: task
+            )
+        }
+        XCTAssertEqual(
+            item(task: RefTask(path: "sase.md", blockID: "ref-attention")).readingTaskPath,
+            "sase.md"
+        )
+        XCTAssertEqual(
+            item(task: RefTask(path: "done/sase_done.md", blockID: "ref-attention")).readingTaskPath,
+            "done/sase_done.md"
+        )
+        XCTAssertEqual(
+            item(task: RefTask(path: "ref/chat/x.md", blockID: "ref")).readingTaskPath,
+            "ref/chat/x.md"
+        )
+        XCTAssertNil(item(task: nil).readingTaskPath)
+        XCTAssertNil(item(task: RefTask(path: "", blockID: nil)).readingTaskPath)
+        XCTAssertNil(item(task: RefTask(path: "/abs.md", blockID: nil)).readingTaskPath)
+        XCTAssertNil(item(task: RefTask(path: "../outside.md", blockID: nil)).readingTaskPath)
+        XCTAssertNil(item(task: RefTask(path: "a/../b.md", blockID: nil)).readingTaskPath)
+    }
 }

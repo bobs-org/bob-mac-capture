@@ -512,6 +512,12 @@ public final class RefsLibrary: ObservableObject {
     vaultRoot().appendingPathComponent(item.id)
   }
 
+  /// The absolute URL of the file holding the reading task, or nil when
+  /// the row has no safe reading-task path.
+  public func taskURL(for item: RefItem) -> URL? {
+    item.readingTaskPath.map { vaultRoot().appendingPathComponent($0) }
+  }
+
   /// The absolute narration-audio URL, or nil when the stored path is
   /// unsafe or absent.
   public func audioURL(for item: RefItem) -> URL? {

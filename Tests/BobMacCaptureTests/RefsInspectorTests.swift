@@ -1107,6 +1107,30 @@ final class RefsInspectorLoaderTests: XCTestCase {
         .openSourceURL(URL(string: "https://example.com/post")!)
       ))
     XCTAssertTrue(paperActions.contains(.openNarration(paperURL!)))
+
+    XCTAssertEqual(
+      try XCTUnwrap(chatSections.first),
+      [.openHighlights, .openNote, .reveal]
+    )
+    let taskItem = RefItem(
+      id: fixtures.paper.id,
+      link: fixtures.paper.link,
+      rawTitle: fixtures.paper.rawTitle,
+      stem: fixtures.paper.stem,
+      kind: fixtures.paper.kind,
+      state: fixtures.paper.state,
+      isBlocked: false,
+      pdfPath: fixtures.paper.pdfPath,
+      task: RefTask(path: "sase.md", blockID: "ref-harness-buy"),
+      author: fixtures.paper.author,
+      urls: fixtures.paper.urls
+    )
+    XCTAssertEqual(
+      try XCTUnwrap(
+        RefsActionsMenu.sections(for: taskItem, audioURL: nil).first
+      ),
+      [.openHighlights, .openNote, .openTask, .reveal]
+    )
   }
 
   func testActionsMenuEndsWithScanAfterRefresh() {
@@ -1739,6 +1763,8 @@ private struct StubOpener: RefsOpening {
   }
 
   func openNote(_ url: URL) {}
+
+  func openTask(_ url: URL, blockID: String?) {}
 
   func reveal(_ url: URL) {}
 

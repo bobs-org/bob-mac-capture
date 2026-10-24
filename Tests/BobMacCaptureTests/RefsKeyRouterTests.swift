@@ -61,13 +61,18 @@ final class RefsKeyRouterTests: XCTestCase {
     XCTAssertEqual(route(KeyCode.return), .open(.highlights))
     XCTAssertEqual(route(KeyCode.keypadEnter), .open(.highlights))
     XCTAssertEqual(route(KeyCode.return, .command), .open(.note))
+    XCTAssertEqual(route(KeyCode.return, .control), .open(.task))
+    XCTAssertEqual(route(KeyCode.keypadEnter, .control), .open(.task))
     XCTAssertEqual(route(KeyCode.return, .option), .open(.reveal))
     XCTAssertNil(route(KeyCode.return, .shift))
+    XCTAssertNil(route(KeyCode.return, [.control, .shift]))
+    XCTAssertNil(route(KeyCode.return, [.control, .command]))
   }
 
   func testReturnPassesThroughWhileComposing() {
     let composing = RefsKeyContext(markedTextPresent: true)
     XCTAssertNil(route(KeyCode.return, [], context: composing))
+    XCTAssertNil(route(KeyCode.return, .control, context: composing))
     XCTAssertNil(route(KeyCode.tab, [], context: composing))
   }
 

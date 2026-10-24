@@ -1833,12 +1833,13 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(content.caption, "No longer in your library")
 
     // Every open target refuses with the message and opens nothing.
-    for target in [RefsOpenTarget.highlights, .note, .reveal, .defaultApp] {
+    for target in [RefsOpenTarget.highlights, .note, .task, .reveal, .defaultApp] {
       XCTAssertTrue(harness.model.perform(.open(target)))
     }
     XCTAssertTrue(harness.model.perform(.activate(id: vanished)))
     XCTAssertTrue(harness.opener.highlightsOpens.isEmpty)
     XCTAssertTrue(harness.opener.noteOpens.isEmpty)
+    XCTAssertTrue(harness.opener.taskOpens.isEmpty)
     XCTAssertTrue(harness.opener.reveals.isEmpty)
     XCTAssertTrue(harness.opener.defaultAppOpens.isEmpty)
     XCTAssertEqual(harness.dismissed, 0)
@@ -2000,6 +2001,130 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(harness.opener.reveals.count, 1)
     XCTAssertEqual(harness.dismissed, 0)
     XCTAssertEqual(harness.library.signals.opens.count("ref/chat/small_reading.md"), 0)
+  }
+
+  private static func taskRecord(
+    path: String,
+    taskPath: String?,
+    blockID: String? = "ref-attention"
+  ) -> RefRecord {
+    RefRecord(
+      path: path,
+      link: "[[\(path.replacingOccurrences(of: ".md", with: ""))]]",
+      title: "Task row",
+      refType: "blogs",
+      status: "ready",
+      readingState: "queued",
+      task: taskPath.map {
+        RefTask(
+          path: $0, blockID: blockID,
+          link: "[[sase#^ref-attention]]", mark: "*"
+        )
+      },
+      sourcePDF: "lib/blogs/task_row.pdf"
+    )
+  }
+
+  private func makeTaskHarness(
+    records: [RefRecord]
+  ) async throws -> Harness {
+    let fetcher = FakeRefsFetcher()
+    fetcher.listResponse = RefsListResponse(schemaVersion: 1, refs: records)
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await harness.waitForSnapshot(ids: Set(records.map(\.path)))
+    harness.model.prepareForPresentation()
+    return harness
+  }
+
+  func testTaskOpenOpensReadingTaskFile() async throws {
+    let path = "ref/chat/task_row.md"
+    let harness = try await makeTaskHarness(
+      records: [Self.taskRecord(path: path, taskPath: "sase.md")]
+    )
+    XCTAssertTrue(harness.model.perform(.select(id: path)))
+
+    XCTAssertTrue(harness.model.perform(.open(.task)))
+
+    XCTAssertEqual(harness.opener.taskOpens.count, 1)
+    XCTAssertEqual(
+      harness.opener.taskOpens.first?.url,
+      harness.vault.appendingPathComponent("sase.md")
+    )
+    XCTAssertEqual(harness.opener.taskOpens.first?.blockID, "ref-attention")
+    XCTAssertTrue(harness.opener.noteOpens.isEmpty)
+    XCTAssertEqual(harness.dismissed, 0)
+    XCTAssertEqual(harness.library.signals.opens.count(path), 0)
+
+    harness.model.performAction(.openTask)
+    XCTAssertEqual(harness.opener.taskOpens.count, 2)
+  }
+
+  func testTaskOpenArchivedFile() async throws {
+    let path = "ref/chat/task_row.md"
+    let harness = try await makeTaskHarness(
+      records: [Self.taskRecord(path: path, taskPath: "done/sase_done.md")]
+    )
+    XCTAssertTrue(harness.model.perform(.select(id: path)))
+    XCTAssertTrue(harness.model.perform(.open(.task)))
+    XCTAssertEqual(
+      harness.opener.taskOpens.first?.url,
+      harness.vault.appendingPathComponent("done/sase_done.md")
+    )
+    XCTAssertEqual(harness.dismissed, 0)
+  }
+
+  func testTaskOpenWithoutTaskBeepsAndOpensNothing() async throws {
+    for taskPath: String? in [nil, "../outside.md"] {
+      let path = "ref/chat/task_row.md"
+      let harness = try await makeTaskHarness(
+        records: [Self.taskRecord(path: path, taskPath: taskPath)]
+      )
+      XCTAssertTrue(harness.model.perform(.select(id: path)))
+      var beeps = 0
+      harness.model.beep = { beeps += 1 }
+      XCTAssertTrue(harness.model.perform(.open(.task)))
+      XCTAssertEqual(beeps, 1)
+      XCTAssertTrue(harness.opener.taskOpens.isEmpty)
+      XCTAssertTrue(harness.opener.noteOpens.isEmpty)
+      XCTAssertEqual(harness.dismissed, 0)
+    }
+  }
+
+  func testTaskActionsSectionsVaryWithTask() async throws {
+    let path = "ref/chat/task_row.md"
+    let withTask = try await makeTaskHarness(
+      records: [Self.taskRecord(path: path, taskPath: "sase.md")]
+    )
+    XCTAssertTrue(withTask.model.perform(.select(id: path)))
+    XCTAssertEqual(
+      try XCTUnwrap(withTask.model.actionsSections().first),
+      [.openHighlights, .openNote, .openTask, .reveal]
+    )
+    let withoutTask = try await makeTaskHarness(
+      records: [Self.taskRecord(path: path, taskPath: nil)]
+    )
+    XCTAssertTrue(withoutTask.model.perform(.select(id: path)))
+    XCTAssertEqual(
+      try XCTUnwrap(withoutTask.model.actionsSections().first),
+      [.openHighlights, .openNote, .reveal]
+    )
+  }
+
+  func testTaskDeepLinkFallbackChain() {
+    let vault = URL(fileURLWithPath: "/vault")
+    let url = vault.appendingPathComponent("sase.md")
+    XCTAssertEqual(
+      WorkspaceRefsOpener.taskDeepLink(for: url, blockID: "ref-attention")?.absoluteString,
+      "obsidian://bob-goto-task?path=/vault/sase.md&line=1&block=ref-attention"
+    )
+    XCTAssertEqual(
+      WorkspaceRefsOpener.taskDeepLink(for: url, blockID: nil)?.absoluteString,
+      "obsidian://bob-goto-task?path=/vault/sase.md&line=1"
+    )
+    XCTAssertEqual(
+      WorkspaceRefsOpener.taskDeepLink(for: url, blockID: "bad id")?.absoluteString,
+      "obsidian://bob-goto-task?path=/vault/sase.md&line=1"
+    )
   }
 
   func testDefaultAppOpenRecords() async throws {
@@ -3154,6 +3279,11 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(harness.model.rowContent(for: rowID)?.caption, "Not in your library")
 
     XCTAssertTrue(harness.model.perform(.open(.note)))
+    XCTAssertEqual(
+      harness.model.banner?.message,
+      "“\(tabName)” isn't in your library."
+    )
+    XCTAssertTrue(harness.model.perform(.open(.task)))
     XCTAssertEqual(
       harness.model.banner?.message,
       "“\(tabName)” isn't in your library."
@@ -5190,6 +5320,7 @@ final class FakeOpener: RefsOpening, @unchecked Sendable {
   private let lock = NSLock()
   private(set) var highlightsOpens: [(pdf: URL, app: URL)] = []
   private(set) var noteOpens: [URL] = []
+  private(set) var taskOpens: [(url: URL, blockID: String?)] = []
   private(set) var reveals: [URL] = []
   private(set) var defaultAppOpens: [URL] = []
   var highlightsError: Error?
@@ -5206,6 +5337,10 @@ final class FakeOpener: RefsOpening, @unchecked Sendable {
 
   func openNote(_ url: URL) {
     lock.withLock { noteOpens.append(url) }
+  }
+
+  func openTask(_ url: URL, blockID: String?) {
+    lock.withLock { taskOpens.append((url, blockID)) }
   }
 
   func reveal(_ url: URL) {

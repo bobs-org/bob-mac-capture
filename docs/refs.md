@@ -342,6 +342,7 @@ you.
 | --- | -------------- |
 | Return, Tab, double-click | Open in Highlights (the note when the PDF is missing) |
 | Command-Return | Open the note in Obsidian |
+| Control-Return | Open the reading task's file in Obsidian, landing on the task line; rows without a reading task beep |
 | Option-Return | Reveal the PDF in Finder |
 | Up/Down, Ctrl-P/Ctrl-N, Ctrl-K/Ctrl-J | Move (wraps) |
 | Page Up/Page Down | Page the results list by one less than fits |
@@ -559,7 +560,8 @@ fresh.
 
 Return, Tab, or double-click switches to the existing tab. Switching
 keeps its page, does not change reading state, and does not add an entry
-to the open log. Control-X closes the selected tab, including collision
+to the open log. On a collision or unmatched Tabs row, Command-Return and
+Control-Return show the same warning instead of opening. Control-X closes the selected tab, including collision
 and unmatched rows: the row folds out, the next row is selected, and the
 panel stays up so Control-X Control-X Control-X clears several tabs.
 Hovered and selected Tabs rows also show a Close Tab button (⌃X).

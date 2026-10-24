@@ -9,6 +9,7 @@ public enum RefsAction: Equatable, Sendable {
   case openHighlights
   case closeTab
   case openNote
+  case openTask
   case reveal
   case copy
   case rename
@@ -29,6 +30,8 @@ public enum RefsAction: Equatable, Sendable {
       return "Close Tab"
     case .openNote:
       return "Open Note"
+    case .openTask:
+      return "Open Reading Task"
     case .reveal:
       return "Reveal in Finder"
     case .copy:
@@ -55,11 +58,11 @@ public enum RefsAction: Equatable, Sendable {
   }
 
   /// The shortcut hint the menu shows, mirroring the panel keys:
-  /// the opens carry ↵, ⌘↵, and ⌥↵, Close Tab carries ⌃X, Refresh
+  /// the opens carry ↵, ⌘↵, ⌃↵, and ⌥↵, Close Tab carries ⌃X, Refresh
   /// carries ⌘R, and Scan carries ⌘S.
   public var keyEquivalent: String {
     switch self {
-    case .openHighlights, .openNote, .reveal:
+    case .openHighlights, .openNote, .openTask, .reveal:
       return "\r"
     case .closeTab:
       return "x"
@@ -90,7 +93,7 @@ public enum RefsAction: Equatable, Sendable {
       return [.command, .shift]
     case .linkToday:
       return .command
-    case .closeTab:
+    case .closeTab, .openTask:
       return .control
     case .openHighlights, .openSourceURL, .openNarration, .openDefaultApp:
       return []
@@ -111,7 +114,8 @@ public enum RefsActionsMenu {
   /// The menu sections for an item: opens, copies and sources, then
   /// the default-app open, refresh, and scan. "Open Source URL"
   /// appears only when `urls` is non-empty; "Open Narration" only
-  /// when `audio` is set and resolves. Scan comes last in the closing
+  /// when `audio` is set and resolves. "Open Reading Task" appears only
+  /// when bob reports a reading task. Scan comes last in the closing
   /// section, after Refresh Library.
   public static func sections(
     for item: RefItem,
@@ -123,7 +127,11 @@ public enum RefsActionsMenu {
     if canCloseTab {
       opens.append(.closeTab)
     }
-    opens += [.openNote, .reveal]
+    opens.append(.openNote)
+    if item.readingTaskPath != nil {
+      opens.append(.openTask)
+    }
+    opens.append(.reveal)
     var middle: [RefsAction] = [.copy, .rename, .linkToday]
     switch newState {
     case .none:

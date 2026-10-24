@@ -111,7 +111,7 @@ outline headings feed back into the ranking signals, so rows gain
 The ⌘K actions menu pops up below the selected row (at the list's
 center when the row frame is unknown): Open in Highlights (↵), Close Tab
 (⌃X, matched Tabs rows), Open
-Note (⌘↵), Reveal in Finder (⌥↵), Copy… (⌘Y), Rename… (⌘⇧R),
+Note (⌘↵), Open Reading Task (⌃↵, only when `bob` reports a reading task), Reveal in Finder (⌥↵), Copy… (⌘Y), Rename… (⌘⇧R),
 Link to Today… (⌘N), Mark as Seen or Mark as New (⌥N, Ready and Next
 rows), Open
 Source URL (only with `urls`), Open Narration (only with `audio`, in

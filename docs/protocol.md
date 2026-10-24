@@ -66,9 +66,9 @@ Capabilities are detected per response, never pinned to release numbers: unknown
   Bulk templates require Bob's additive `template` / `template_row` parse and capture
   objects, field-indexed `template_placeholder` and `template_field` spans, the
   `template_row` incomplete need, and the `template` route-completion candidate.
-  Go To and Control-\ today-Pomodoro landing also require bob-plugins
-  **bob-navigation-hotkeys ≥ 2.32.0** (or the version that shipped
-  `obsidian://bob-goto-task`). Control-Return landing via
+  Go To and Control-\ today-Pomodoro landing and Bob Refs Control-Return
+  also require bob-plugins **bob-navigation-hotkeys ≥ 2.32.0** (or the
+  version that shipped `obsidian://bob-goto-task`). Control-Return landing via
   `obsidian://bob-open-notes` needs **bob-navigation-hotkeys ≥ 2.44.1**,
   deployed to the vault with `bob plugins sync`.
   Older builds can still capture ordinary drafts, but
@@ -317,7 +317,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `ref.parent`, aliases | File-under prompt, alias-ranked routes | No auto-open; prefix matching only | Upgrade `bob` for filing |
 | `ref list` schema 1, optional `-g` | Refs snapshot with git instants | Refresh fails on any other schema; `-g` omitted until a row still lacks `added`/`added_at` | Upgrade `bob` for Refs |
 | `blocked` on a Refs row | Blocked rows sort last in Next/Ready | Decoded as not blocked | Upgrade `bob` for blocked ranking |
-| `task` on a Refs row | Today joins on `(path, block_id)` | Note-path join; two tasks on one parent can both light up | Upgrade `bob` for task join |
+| `task` on a Refs row | Today joins on `(path, block_id)`; ⌃↵ opens the reading task | Note-path join; two tasks on one parent can both light up; ⌃↵ beeps | Upgrade `bob` for task join |
 | `added_at` | Timed Newest groups and captions | Nil; day-only or undated ranking | Upgrade `bob` for instants |
 | `plan -f json` schema 2 | Today pills from the ledger | Last good Today; footer can say Update failed | Upgrade `bob` for Today |
 | `ref scan -w -f json` schema 1 | Scan report, Just scanned, notifications | Banner or "This bob can't report scans yet" | Upgrade `bob`; retry ⌘S |
