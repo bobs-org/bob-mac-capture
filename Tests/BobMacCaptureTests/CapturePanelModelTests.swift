@@ -2442,7 +2442,18 @@ final class CapturePanelModelTests: XCTestCase {
     func testBareXSelectionPreviewSubmitsUntouchedDraft() async throws {
         // Bare x selections get an immediate dry-run and enable Close;
         // submission sends the exact original argv.
-        for draft in ["x*", "x!", "x*2", "x*!2"] {
+        let cases: [(draft: String, advertisesPullIn: Bool, writeArgv: String)] = [
+            ("x*", false, "argv=capture --format json --refuse-override -- x*"),
+            ("x!", false, "argv=capture --format json --refuse-override -- x!"),
+            ("x*2", false, "argv=capture --format json --refuse-override -- x*2"),
+            (
+                "x*!2",
+                true,
+                "argv=capture --format json --require-pull-in-choice --refuse-override -- x*!2"
+            ),
+        ]
+        for testCase in cases {
+            let draft = testCase.draft
             let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             let model = CapturePanelModel(debounceNanoseconds: 0)
             model.processClient = BobProcessClient(
@@ -2462,17 +2473,24 @@ final class CapturePanelModelTests: XCTestCase {
             XCTAssertEqual(model.primaryActionTitle, "Close", "\(draft)")
             XCTAssertNotNil(model.closePresentation, "\(draft)")
             XCTAssertNil(model.pickerPresentation, "\(draft): no completion picker")
+            XCTAssertEqual(
+                model.previewResult?.pullIn?.supported,
+                testCase.advertisesPullIn,
+                "\(draft): preview capability must match the independent fixture expectation"
+            )
             model.submit(openAfterCapture: false)
             await waitUntil { !model.isSubmitting }
             let record = try String(contentsOf: recordURL)
+            let invocations = record.split(separator: "\n")
+                .filter { $0.hasPrefix("argv=capture --") && !$0.contains("--dry-run") }
+                .map(String.init)
+            XCTAssertEqual(invocations, [testCase.writeArgv], "\(draft)\n\(record)")
             XCTAssertTrue(
                 record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"),
-                "\(draft)"
+                "\(draft)\n\(record)"
             )
-            XCTAssertTrue(
-                record.contains("argv=capture --format json --refuse-override -- \(draft)"),
-                "\(draft)"
-            )
+            XCTAssertNil(model.errorMessage, "\(draft): submission succeeds\n\(record)")
+            XCTAssertEqual(model.plainDraft, "", "\(draft): successful submit clears the draft")
         }
     }
 
@@ -3240,6 +3258,7 @@ final class CapturePanelModelTests: XCTestCase {
             if case .ready = model.previewState { return true }
             return false
         }
+        XCTAssertEqual(model.previewResult?.pullIn?.supported, true, "\(draft)")
 
         XCTAssertEqual(model.sessionStartPresentation?.title, "Restart CAPTURE")
         XCTAssertEqual(model.primaryActionTitle, "Restart")
@@ -3257,7 +3276,14 @@ final class CapturePanelModelTests: XCTestCase {
         )
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- \(draft)"))
-        XCTAssertTrue(record.contains("argv=capture --format json -- \(draft)"))
+        let invocations = record.split(separator: "\n")
+            .filter { $0.hasPrefix("argv=capture --") && !$0.contains("--dry-run") }
+            .map(String.init)
+        XCTAssertEqual(
+            invocations,
+            ["argv=capture --format json --require-pull-in-choice -- ="],
+            "\(draft)\n\(record)"
+        )
         XCTAssertFalse(record.contains("--refuse-override"))
     }
 
@@ -3339,6 +3365,7 @@ final class CapturePanelModelTests: XCTestCase {
 
         XCTAssertEqual(model.plainDraft, "=")
         XCTAssertTrue(model.primaryActionIsOverride)
+        XCTAssertEqual(model.previewResult?.pullIn?.supported, true, "=")
         XCTAssertEqual(
             model.statusText,
             "A Pomodoro is running — review the override, then press Return again"
@@ -3355,8 +3382,17 @@ final class CapturePanelModelTests: XCTestCase {
             "Restarted CAPTURE 0920-0945 → 0935-1000 (25m) at line 5"
         )
         let record = try String(contentsOf: recordURL, encoding: .utf8)
-        XCTAssertTrue(record.contains("argv=capture --format json --refuse-override -- ="))
-        XCTAssertTrue(record.contains("argv=capture --format json -- ="))
+        let invocations = record.split(separator: "\n")
+            .filter { $0.hasPrefix("argv=capture --") && !$0.contains("--dry-run") }
+            .map(String.init)
+        XCTAssertEqual(
+            invocations,
+            [
+                "argv=capture --format json --refuse-override -- =",
+                "argv=capture --format json --require-pull-in-choice -- =",
+            ],
+            "=\n\(record)"
+        )
         XCTAssertTrue(record.contains("argv=capture --dry-run --no-clip --format json -- ="))
     }
 
