@@ -22,6 +22,19 @@ public enum CapturePullInSelection: Equatable, Sendable {
   case none
 }
 
+/// One inbox-route answer: Bob's opaque candidate key plus the destination
+/// vault-relative path, or nil to keep the candidate in its inbox. Keys stay
+/// opaque; the client never parses them.
+public struct CaptureInboxRouteSubmission: Equatable, Sendable {
+  public let key: String
+  public let destination: String?
+
+  public init(key: String, destination: String? = nil) {
+    self.key = key
+    self.destination = destination
+  }
+}
+
 public final class BobProcessClient: @unchecked Sendable {
   // Every `bob` invocation is local, offline, and expected to finish in well under a
   // second; 20s is a generous bound that only fires for a genuinely wedged process
@@ -38,6 +51,12 @@ public final class BobProcessClient: @unchecked Sendable {
   private var unsupportedGuardFlags: Set<String> = []
   private var unsupportedRelatedIdentity: String?
   private var savedTemplatesIdentity: String?
+  /// Per-executable memory that some decoded capture JSON carried
+  /// `inbox_route.supported == true`. Once remembered for the current
+  /// executable identity, every real submit sends
+  /// `--require-inbox-route-choice`, so "always" holds even when Return
+  /// beats the live preview.
+  private var inboxRouteCapabilityIdentities: Set<String> = []
 
   public init(
     executablePath: String,
@@ -77,6 +96,32 @@ public final class BobProcessClient: @unchecked Sendable {
 
   public var refuseOverrideKnownUnsupported: Bool {
     guardFlagKnownUnsupported("--refuse-override")
+  }
+
+  /// Whether this executable already rejected `--require-inbox-route-choice`
+  /// as an unexpected argument. Scoped to the current Bob file identity, so
+  /// replacing Bob retries the guard once.
+  public var requireInboxRouteChoiceKnownUnsupported: Bool {
+    guardFlagKnownUnsupported("--require-inbox-route-choice")
+  }
+
+  /// Whether any decoded capture JSON from the current executable advertised
+  /// `inbox_route.supported == true`. Remembered per executable identity, so
+  /// replacing Bob clears the memory.
+  public var inboxRouteCapabilityKnown: Bool {
+    stateQueue.sync {
+      inboxRouteCapabilityIdentities.contains(identityToken)
+    }
+  }
+
+  /// Records that the current executable advertised inbox-route support.
+  /// Callers may also rely on `decodeCaptureResult` remembering it
+  /// automatically from any decoded capture response.
+  public func rememberInboxRouteCapability() {
+    let identity = identityToken
+    stateQueue.sync {
+      _ = inboxRouteCapabilityIdentities.insert(identity)
+    }
   }
 
   /// Whether this executable has already rejected `ref scan -a`. The
@@ -525,10 +570,20 @@ public final class BobProcessClient: @unchecked Sendable {
     requirePullInChoice: Bool = false,
     refuseOverride: Bool = false,
     pullInCapabilityAdvertised: Bool = false,
+    inboxRouteAnswers: [CaptureInboxRouteSubmission]? = nil,
+    requireInboxRouteChoice: Bool = false,
+    inboxRouteCapabilityAdvertised: Bool = false,
     templateOrigin: String? = nil
   ) async throws -> CaptureCommandResponse {
     if pullInSelection != nil, !pullInCapabilityAdvertised {
       throw BobClientError.unsupportedOption("--pull-in")
+    }
+    let rememberedInboxCapability: Bool = stateQueue.sync {
+      inboxRouteCapabilityIdentities.contains(identityToken)
+    }
+    let inboxCapabilityKnown = inboxRouteCapabilityAdvertised || rememberedInboxCapability
+    if inboxRouteAnswers != nil, !inboxCapabilityKnown {
+      throw BobClientError.unsupportedOption("--inbox-route")
     }
     var arguments = ["capture", "--format", "json"]
     if dryRun {
@@ -548,6 +603,18 @@ public final class BobProcessClient: @unchecked Sendable {
         arguments += ["--pull-in", "none"]
       }
     }
+    if let inboxRouteAnswers {
+      guard inboxRouteAnswers.allSatisfy({ !$0.key.isEmpty }) else {
+        throw BobClientError.unsupportedOption("--inbox-route requires opaque candidate keys")
+      }
+      for answer in inboxRouteAnswers {
+        if let destination = answer.destination {
+          arguments += ["--inbox-route", "\(answer.key)=\(destination)"]
+        } else {
+          arguments += ["--inbox-route", "\(answer.key)="]
+        }
+      }
+    }
     // Positive capability gate (bob-cli-8a): `--require-pull-in-choice`
     // goes out only after this executable proved support through a preview
     // whose `pull_in.supported` was true (`pullInCapabilityAdvertised`).
@@ -556,6 +623,18 @@ public final class BobProcessClient: @unchecked Sendable {
     let requireGuard = requirePullInChoice && pullInCapabilityAdvertised
     if requireGuard {
       arguments.append("--require-pull-in-choice")
+    }
+    // Same positive gate for inbox routing: `--require-inbox-route-choice`
+    // goes out only after this executable proved support through a preview
+    // whose `inbox_route.supported` was true, or through the remembered
+    // per-identity capability. Unlike `--require-pull-in-choice`, an old bob
+    // that still receives it retries without the flag (see
+    // `unsupportedGuardFlag`).
+    let requireInboxGuard =
+      requireInboxRouteChoice && inboxCapabilityKnown
+      && !guardFlagKnownUnsupported("--require-inbox-route-choice")
+    if requireInboxGuard {
+      arguments.append("--require-inbox-route-choice")
     }
     let sendRefuseOverride = refuseOverride && !refuseOverrideKnownUnsupported
     if sendRefuseOverride {
@@ -576,7 +655,7 @@ public final class BobProcessClient: @unchecked Sendable {
       arguments: arguments,
       environmentOverrides: environmentOverrides,
       lane: lane,
-      allowsGuardFallback: sendRefuseOverride
+      allowsGuardFallback: sendRefuseOverride || requireInboxGuard
     )
   }
 
@@ -613,7 +692,9 @@ public final class BobProcessClient: @unchecked Sendable {
   ) -> String? {
     guard exitStatus == 2 else { return nil }
     let normalized = stderr.lowercased()
-    for flag in ["--refuse-override", "-a", "--attended"] {
+    for flag in [
+      "--refuse-override", "--require-inbox-route-choice", "-a", "--attended",
+    ] {
       let mentioned =
         normalized.contains("unexpected argument '\(flag)'")
         || normalized.contains("unexpected argument \"\(flag)\"")
@@ -1057,7 +1138,29 @@ public final class BobProcessClient: @unchecked Sendable {
     }
 
     do {
-      return try decoder.decode(CaptureCommandResponse.self, from: Data(trimmedStdout.utf8))
+      let response = try decoder.decode(
+        CaptureCommandResponse.self,
+        from: Data(trimmedStdout.utf8)
+      )
+      // Any decoded capture JSON whose `inbox_route.supported` is true proves
+      // this executable speaks the inbox-route contract. Remember it per
+      // executable identity so later submits send the guard even when Return
+      // beats the live preview.
+      let advertised: Bool = {
+        switch response {
+        case .success(let success):
+          return success.inboxRoute?.supported == true
+        case .failure(let failure):
+          return failure.inboxRoute?.supported == true
+        }
+      }()
+      if advertised {
+        let identity = identityToken
+        stateQueue.sync {
+          _ = inboxRouteCapabilityIdentities.insert(identity)
+        }
+      }
+      return response
     } catch {
       if result.exitStatus != 0 {
         throw BobClientError.processFailed(

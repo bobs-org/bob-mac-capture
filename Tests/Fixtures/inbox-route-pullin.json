@@ -1,0 +1,357 @@
+{
+  "ok": true,
+  "dry_run": false,
+  "routed": true,
+  "route": null,
+  "route_label": "dev.md",
+  "relative_target": "dev.md",
+  "target": "/tmp/bob-mac-capture-inbox-route/vault/dev.md",
+  "text": "",
+  "task_line": "- [x] #task Prereq [id:: dev__prereq]  [completion:: 2026-10-24] ^prereq",
+  "kind": "task_complete",
+  "created": "2026-10-24",
+  "scheduled": null,
+  "placement": "completed",
+  "block_id": "prereq",
+  "previous_task_line": "- [ ] #task Prereq [id:: dev__prereq] ^prereq",
+  "status_symbol": "x",
+  "status_name": "Done",
+  "previous_status_symbol": " ",
+  "previous_status_name": "Ready",
+  "status_changed": true,
+  "task_complete": {
+    "raw": "!dev:prereq",
+    "note": "dev",
+    "note_path": "dev.md",
+    "block_id": "prereq",
+    "action": "completed",
+    "completion_date": "2026-10-24",
+    "text": "Prereq",
+    "subtasks": [],
+    "subtasks_left_open": [],
+    "unblocked": [
+      {
+        "note_path": "dev.md",
+        "block_id": "dep",
+        "line": 6,
+        "text": "Dev dependent",
+        "previous_status_symbol": "?",
+        "previous_status_name": "Blocked",
+        "status_symbol": " ",
+        "status_name": "Ready",
+        "inbox": false,
+        "unblocked_by": [
+          {
+            "note_path": "dev.md",
+            "block_id": "prereq",
+            "text": "Prereq"
+          }
+        ],
+        "not_linked": "not_selected",
+        "trigger": "dependency",
+        "hide_removed": false,
+        "offer": {
+          "key": "dev.md#^dep",
+          "n": 1,
+          "group": "hand_off",
+          "selected": false,
+          "block_id_needed": false,
+          "destination": {
+            "day_file": "20261024.md",
+            "entry_name": "WORK",
+            "entry_role": "implicit",
+            "fallback": true
+          }
+        }
+      }
+    ],
+    "still_blocked": [],
+    "unblocked_check": "checked"
+  },
+  "captures": [
+    {
+      "ok": true,
+      "dry_run": true,
+      "routed": true,
+      "route": null,
+      "route_label": "dev.md",
+      "relative_target": "dev.md",
+      "target": "/tmp/bob-mac-capture-inbox-route/vault/dev.md",
+      "text": "",
+      "task_line": "- [x] #task Prereq [id:: dev__prereq]  [completion:: 2026-10-24] ^prereq",
+      "kind": "task_complete",
+      "created": "2026-10-24",
+      "scheduled": null,
+      "placement": "completed",
+      "block_id": "prereq",
+      "previous_task_line": "- [ ] #task Prereq [id:: dev__prereq] ^prereq",
+      "status_symbol": "x",
+      "status_name": "Done",
+      "previous_status_symbol": " ",
+      "previous_status_name": "Ready",
+      "status_changed": true,
+      "task_complete": {
+        "raw": "!dev:prereq",
+        "note": "dev",
+        "note_path": "dev.md",
+        "block_id": "prereq",
+        "action": "completed",
+        "completion_date": "2026-10-24",
+        "text": "Prereq",
+        "subtasks": [],
+        "subtasks_left_open": [],
+        "unblocked": [
+          {
+            "note_path": "dev.md",
+            "block_id": "dep",
+            "line": 6,
+            "text": "Dev dependent",
+            "previous_status_symbol": "?",
+            "previous_status_name": "Blocked",
+            "status_symbol": " ",
+            "status_name": "Ready",
+            "inbox": false,
+            "unblocked_by": [
+              {
+                "note_path": "dev.md",
+                "block_id": "prereq",
+                "text": "Prereq"
+              }
+            ],
+            "not_linked": "not_selected",
+            "trigger": "dependency",
+            "hide_removed": false,
+            "offer": {
+              "key": "dev.md#^dep",
+              "n": 1,
+              "group": "hand_off",
+              "selected": false,
+              "block_id_needed": false,
+              "destination": {
+                "day_file": "20261024.md",
+                "entry_name": "WORK",
+                "entry_role": "implicit",
+                "fallback": true
+              }
+            }
+          }
+        ],
+        "still_blocked": [],
+        "unblocked_check": "checked"
+      }
+    },
+    {
+      "ok": true,
+      "dry_run": true,
+      "routed": true,
+      "route": "mac_inbox",
+      "route_label": "mac_inbox.md",
+      "relative_target": "mac_inbox.md",
+      "target": "/tmp/bob-mac-capture-inbox-route/vault/mac_inbox.md",
+      "text": "",
+      "task_line": "- [*] #task Route me [fresh:: 2026-10-24] ^route-task",
+      "kind": "pomodoro_link",
+      "created": "2026-10-24",
+      "scheduled": null,
+      "placement": "linked",
+      "block_id": "route-task",
+      "day_file": "/tmp/bob-mac-capture-inbox-route/vault/20261024.md",
+      "block_link": "[[mac_inbox#^route-task]]",
+      "pomodoro_link_placement": "appended",
+      "previous_task_line": "- [ ] #task Route me ^route-task",
+      "status_symbol": "*",
+      "status_name": "Next",
+      "previous_status_symbol": " ",
+      "previous_status_name": "Ready",
+      "pomodoro_name": "WORK",
+      "creates_pomodoro": false,
+      "status_changed": true,
+      "pomodoro_link_action": "linked",
+      "pomodoro_link_destination": {
+        "line": 2,
+        "name": "WORK",
+        "time_range": "0900-0930",
+        "role": "current"
+      }
+    }
+  ],
+  "plan_budget": {
+    "status": "ok",
+    "themes": {
+      "count": 1,
+      "cap": 3,
+      "over": false,
+      "before": 1
+    },
+    "links": {
+      "count": 1,
+      "cap": 10,
+      "over": false,
+      "before": 0
+    }
+  },
+  "pomodoro_blocks": [
+    {
+      "relative_target": "20261024.md",
+      "line": 2,
+      "name": "WORK",
+      "time_range": "0900-0930",
+      "status": "running",
+      "created": false,
+      "roles": [
+        "linked"
+      ],
+      "lines": [
+        {
+          "text": "- [ ] (**0900-0930**) \u2014 WORK",
+          "depth": 0,
+          "change": "unchanged"
+        },
+        {
+          "text": "\t- [[mac_inbox#^route-task]]",
+          "depth": 1,
+          "change": "added"
+        }
+      ]
+    }
+  ],
+  "task_blocks": [
+    {
+      "relative_target": "dev.md",
+      "route": "dev",
+      "line": 5,
+      "block_id": "prereq",
+      "text": "Prereq",
+      "status_symbol": "x",
+      "status_name": "Done",
+      "created": false,
+      "roles": [
+        "completed"
+      ],
+      "lines": [
+        {
+          "text": "- [x] #task Prereq [id:: dev__prereq]  [completion:: 2026-10-24] ^prereq",
+          "depth": 0,
+          "change": "changed",
+          "before": "- [ ] #task Prereq [id:: dev__prereq] ^prereq"
+        }
+      ]
+    },
+    {
+      "relative_target": "dev.md",
+      "route": "dev",
+      "line": 6,
+      "block_id": "dep",
+      "text": "Dev dependent",
+      "status_symbol": " ",
+      "status_name": "Ready",
+      "created": false,
+      "roles": [
+        "unblocked"
+      ],
+      "lines": [
+        {
+          "text": "- [ ] #task Dev dependent [dependsOn:: dev__prereq] [id:: dev__dep] ^dep",
+          "depth": 0,
+          "change": "changed",
+          "before": "- [?] #task Dev dependent [dependsOn:: dev__prereq] [id:: dev__dep] ^dep"
+        }
+      ]
+    }
+  ],
+  "open_notes": [
+    {
+      "path": "/tmp/bob-mac-capture-inbox-route/vault/dev.md",
+      "relative_path": "dev.md",
+      "role": "note",
+      "label": "dev.md",
+      "line": 5,
+      "ref": "5:d2f8d128",
+      "block_id": "prereq"
+    },
+    {
+      "path": "/tmp/bob-mac-capture-inbox-route/vault/mac_inbox.md",
+      "relative_path": "mac_inbox.md",
+      "role": "note",
+      "label": "mac_inbox.md",
+      "line": 6,
+      "ref": "6:feb0c2c1",
+      "block_id": "route-task"
+    },
+    {
+      "path": "/tmp/bob-mac-capture-inbox-route/vault/20261024.md",
+      "relative_path": "20261024.md",
+      "role": "day",
+      "label": "Today",
+      "line": 2,
+      "ref": "2:13ffaeec"
+    }
+  ],
+  "pull_in": {
+    "supported": true,
+    "offer_count": 1,
+    "choice": null,
+    "picked_count": 0
+  },
+  "inbox_route": {
+    "supported": true,
+    "candidate_count": 1,
+    "routed_count": 0,
+    "kept_count": 0,
+    "candidates": [
+      {
+        "key": "mac_inbox.md#^route-task",
+        "n": 1,
+        "note_path": "mac_inbox.md",
+        "inbox": "mac_inbox",
+        "block_id": "route-task",
+        "line": 6,
+        "text": "Route me",
+        "previous_status_symbol": " ",
+        "previous_status_name": "Ready",
+        "status_symbol": "*",
+        "status_name": "Next",
+        "answer": null,
+        "outcome": "pending"
+      }
+    ],
+    "destinations": [
+      {
+        "relative_path": "app.md",
+        "route": "app",
+        "label": "app",
+        "kind": "project",
+        "status": "wip",
+        "parent": null,
+        "blocked": false
+      },
+      {
+        "relative_path": "dev.md",
+        "route": "dev",
+        "label": "dev",
+        "kind": "area",
+        "status": null,
+        "parent": null,
+        "blocked": false
+      },
+      {
+        "relative_path": "errands.md",
+        "route": "errands",
+        "label": "errands",
+        "kind": "area",
+        "status": null,
+        "parent": null,
+        "blocked": false
+      },
+      {
+        "relative_path": "health.md",
+        "route": "health",
+        "label": "health",
+        "kind": "area",
+        "status": null,
+        "parent": null,
+        "blocked": false
+      }
+    ]
+  }
+}

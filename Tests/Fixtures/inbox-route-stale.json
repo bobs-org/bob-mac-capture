@@ -1,0 +1,57 @@
+{
+  "code": "inbox_route_stale",
+  "error": "stale, unknown, or out-of-range --inbox-route pick: 9\n1 mac_inbox.md#^route-task Route me",
+  "inbox_route": {
+    "candidate_count": 1,
+    "candidates": [
+      {
+        "answer": null,
+        "block_id": "route-task",
+        "inbox": "mac_inbox",
+        "key": "mac_inbox.md#^route-task",
+        "line": 6,
+        "n": 1,
+        "note_path": "mac_inbox.md",
+        "outcome": "pending",
+        "previous_status_name": "Ready",
+        "previous_status_symbol": " ",
+        "status_name": "Next",
+        "status_symbol": "*",
+        "text": "Route me"
+      }
+    ],
+    "destinations": [
+      {
+        "blocked": false,
+        "kind": "project",
+        "label": "app",
+        "parent": null,
+        "relative_path": "app.md",
+        "route": "app",
+        "status": "wip"
+      },
+      {
+        "blocked": false,
+        "kind": "area",
+        "label": "errands",
+        "parent": null,
+        "relative_path": "errands.md",
+        "route": "errands",
+        "status": null
+      },
+      {
+        "blocked": false,
+        "kind": "area",
+        "label": "health",
+        "parent": null,
+        "relative_path": "health.md",
+        "route": "health",
+        "status": null
+      }
+    ],
+    "kept_count": 0,
+    "routed_count": 0,
+    "supported": true
+  },
+  "ok": false
+}

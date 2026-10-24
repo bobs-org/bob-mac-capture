@@ -236,7 +236,11 @@ Capabilities are detected per response, never pinned to release numbers: unknown
   `ref_parent`, or `project_name_aliases` still previews and captures; the
   Mac app decodes each as absent, keeps today's wording, never auto-opens
   File under, and matches routes without aliases, so upgrade Bob before
-  filing links.
+  filing links. Inbox routing needs a Bob that reports the additive
+  `inbox_route` object (`supported`, candidates, and destinations) on every
+  capture JSON and accepts repeated `--inbox-route KEY=<relative_path>` (or
+  `KEY=` to keep) answers plus the hidden `--require-inbox-route-choice`
+  guard; without it the app captures without asking.
 
 The app never invokes a login shell to find `bob`. A Settings override must be an
 absolute executable path.
@@ -250,10 +254,15 @@ Every `bob` invocation is bounded by a 20-second timeout (`BobProcessClient.defa
   indefinitely; a fired timeout surfaces as an actionable `BobClientError.timedOut`. Quit
   cancels every outstanding invocation via `cancelActiveProcess()`.
 
-If Bob rejects the exact `--require-pull-in-choice` or `--refuse-override` flag as an
+If Bob rejects the exact `--refuse-override` flag as an
 unexpected argument (exit 2), the app retries without that guard and remembers the
-answer for that executable. `--require-pull-in-choice` also shows a note that this Bob
-lacks successor-choice checks. Other failures and explicit stale-key refusals are never
+answer for that executable. `--require-pull-in-choice` is never retried: it goes out
+only after a preview from the same executable advertised `pull_in.supported`, so an
+older Bob never sees it; it also shows a note that this Bob lacks successor-choice
+checks. `--require-inbox-route-choice` goes out under the same positive gate (a
+preview, or any decoded capture JSON, that carried `inbox_route.supported == true`,
+remembered per executable identity), and an older Bob that still receives it retries
+without the flag the same way. Other failures and explicit stale-key refusals are never
 retried. The app only sends explicit offer keys from a matching preview or write-free
 refusal back to `bob capture`. An older bob never overrides on `=`, so retrying without
 `--refuse-override` is safe.
@@ -310,6 +319,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - Scan report fields `generated_at`, `summary.held`, `held[]`, `notes[].marker_write` (`mode`, `editor_saved_first`, `status.from`/`to`)
 - `block_id` object, `picker` descriptor, `parent_replacement`, `pomodoro_start_name` context
 - `open_notes`, `homes`, `task_links`, successor-offer payloads
+- `inbox_route` (candidates, destinations, `repaired_files`, `renamed_block_ids`, `needs_reconcile`) and `refused` detail on `inbox_route_refused`
 - `relation_grammar`, relation-label `relation` token metadata and `owner`, `relation_updates`, `linked_from_line_updates`, `minted_relation_block_ids`, `mirror_skipped`, relation-label `count` / `typed`
 - Retired inputs (`now` flag, `now_tag` span, `now` picker group) decode as neutral: unknown spans as neutral text, unknown contexts as generic rows, unknown groups as `note`
 
@@ -350,6 +360,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `override`, guard flags | Orange banner; guarded commit; choice card | Plain start; retry without the flag is remembered | Upgrade `bob` for overrides |
 | `pomodoro_blocks`, `task_blocks` | Full block views below the stack | Standard item stack | Upgrade `bob` for blocks |
 | Successor offers | Grouped Pull-In choice card | Single legacy wording | Upgrade `bob` for offers |
+| Inbox routing | Route card before submit | Captures without asking | Upgrade `bob` |
 | `sub_bullet_depths`, `global_destination`, `items` | Exact children; one shared-scope line | Depth 1; per-item targets | Upgrade `bob` for shared scope |
 | `homes` | Derived names and home chips | Previous naming | Upgrade `bob` for names |
 | Close-comma assist field | Auto-inserted `,` | Assist off; digits type normally | Upgrade `bob` for assists |

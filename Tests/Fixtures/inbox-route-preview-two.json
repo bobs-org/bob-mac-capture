@@ -1,0 +1,250 @@
+{
+  "ok": true,
+  "dry_run": false,
+  "routed": true,
+  "route": "mac_inbox",
+  "route_label": "mac_inbox.md",
+  "relative_target": "mac_inbox.md",
+  "target": "/tmp/bob-mac-capture-inbox-route/vault/mac_inbox.md",
+  "text": "",
+  "task_line": "- [*] #task Route me [fresh:: 2026-10-24] ^route-task",
+  "kind": "pomodoro_link",
+  "created": "2026-10-24",
+  "scheduled": null,
+  "placement": "linked",
+  "block_id": "route-task",
+  "day_file": "/tmp/bob-mac-capture-inbox-route/vault/20261024.md",
+  "block_link": "[[mac_inbox#^route-task]]",
+  "pomodoro_link_placement": "appended",
+  "previous_task_line": "- [ ] #task Route me ^route-task",
+  "status_symbol": "*",
+  "status_name": "Next",
+  "previous_status_symbol": " ",
+  "previous_status_name": "Ready",
+  "pomodoro_name": "WORK",
+  "creates_pomodoro": false,
+  "status_changed": true,
+  "pomodoro_link_action": "linked",
+  "pomodoro_link_destination": {
+    "line": 2,
+    "name": "WORK",
+    "time_range": "0900-0930",
+    "role": "current"
+  },
+  "captures": [
+    {
+      "ok": true,
+      "dry_run": true,
+      "routed": true,
+      "route": "mac_inbox",
+      "route_label": "mac_inbox.md",
+      "relative_target": "mac_inbox.md",
+      "target": "/tmp/bob-mac-capture-inbox-route/vault/mac_inbox.md",
+      "text": "",
+      "task_line": "- [*] #task Route me [fresh:: 2026-10-24] ^route-task",
+      "kind": "pomodoro_link",
+      "created": "2026-10-24",
+      "scheduled": null,
+      "placement": "linked",
+      "block_id": "route-task",
+      "day_file": "/tmp/bob-mac-capture-inbox-route/vault/20261024.md",
+      "block_link": "[[mac_inbox#^route-task]]",
+      "pomodoro_link_placement": "appended",
+      "previous_task_line": "- [ ] #task Route me ^route-task",
+      "status_symbol": "*",
+      "status_name": "Next",
+      "previous_status_symbol": " ",
+      "previous_status_name": "Ready",
+      "pomodoro_name": "WORK",
+      "creates_pomodoro": false,
+      "status_changed": true,
+      "pomodoro_link_action": "linked",
+      "pomodoro_link_destination": {
+        "line": 2,
+        "name": "WORK",
+        "time_range": "0900-0930",
+        "role": "current"
+      }
+    },
+    {
+      "ok": true,
+      "dry_run": true,
+      "routed": true,
+      "route": "gkeep_inbox",
+      "route_label": "gkeep_inbox.md",
+      "relative_target": "gkeep_inbox.md",
+      "target": "/tmp/bob-mac-capture-inbox-route/vault/gkeep_inbox.md",
+      "text": "",
+      "task_line": "- [*] #task GKeep task [fresh:: 2026-10-24] ^gkeep-task",
+      "kind": "pomodoro_link",
+      "created": "2026-10-24",
+      "scheduled": null,
+      "placement": "linked",
+      "block_id": "gkeep-task",
+      "day_file": "/tmp/bob-mac-capture-inbox-route/vault/20261024.md",
+      "block_link": "[[gkeep_inbox#^gkeep-task]]",
+      "pomodoro_link_placement": "appended",
+      "previous_task_line": "- [ ] #task GKeep task ^gkeep-task",
+      "status_symbol": "*",
+      "status_name": "Next",
+      "previous_status_symbol": " ",
+      "previous_status_name": "Ready",
+      "pomodoro_name": "WORK",
+      "creates_pomodoro": false,
+      "status_changed": true,
+      "pomodoro_link_action": "linked",
+      "pomodoro_link_destination": {
+        "line": 2,
+        "name": "WORK",
+        "time_range": "0900-0930",
+        "role": "current"
+      }
+    }
+  ],
+  "plan_budget": {
+    "status": "ok",
+    "themes": {
+      "count": 1,
+      "cap": 3,
+      "over": false,
+      "before": 1
+    },
+    "links": {
+      "count": 2,
+      "cap": 10,
+      "over": false,
+      "before": 0
+    }
+  },
+  "pomodoro_blocks": [
+    {
+      "relative_target": "20261024.md",
+      "line": 2,
+      "name": "WORK",
+      "time_range": "0900-0930",
+      "status": "running",
+      "created": false,
+      "roles": [
+        "linked"
+      ],
+      "lines": [
+        {
+          "text": "- [ ] (**0900-0930**) \u2014 WORK",
+          "depth": 0,
+          "change": "unchanged"
+        },
+        {
+          "text": "\t- [[mac_inbox#^route-task]]",
+          "depth": 1,
+          "change": "added"
+        },
+        {
+          "text": "\t- [[gkeep_inbox#^gkeep-task]]",
+          "depth": 1,
+          "change": "added"
+        }
+      ]
+    }
+  ],
+  "open_notes": [
+    {
+      "path": "/tmp/bob-mac-capture-inbox-route/vault/mac_inbox.md",
+      "relative_path": "mac_inbox.md",
+      "role": "note",
+      "label": "mac_inbox.md",
+      "line": 6,
+      "ref": "6:feb0c2c1",
+      "block_id": "route-task"
+    },
+    {
+      "path": "/tmp/bob-mac-capture-inbox-route/vault/gkeep_inbox.md",
+      "relative_path": "gkeep_inbox.md",
+      "role": "note",
+      "label": "gkeep_inbox.md",
+      "line": 6,
+      "ref": "6:4f81cfcc",
+      "block_id": "gkeep-task"
+    },
+    {
+      "path": "/tmp/bob-mac-capture-inbox-route/vault/20261024.md",
+      "relative_path": "20261024.md",
+      "role": "day",
+      "label": "Today",
+      "line": 2,
+      "ref": "2:13ffaeec"
+    }
+  ],
+  "pull_in": {
+    "supported": true,
+    "offer_count": 0,
+    "choice": null,
+    "picked_count": 0
+  },
+  "inbox_route": {
+    "supported": true,
+    "candidate_count": 2,
+    "routed_count": 0,
+    "kept_count": 0,
+    "candidates": [
+      {
+        "key": "gkeep_inbox.md#^gkeep-task",
+        "n": 1,
+        "note_path": "gkeep_inbox.md",
+        "inbox": "gkeep_inbox",
+        "block_id": "gkeep-task",
+        "line": 6,
+        "text": "GKeep task",
+        "previous_status_symbol": " ",
+        "previous_status_name": "Ready",
+        "status_symbol": "*",
+        "status_name": "Next",
+        "answer": null,
+        "outcome": "pending"
+      },
+      {
+        "key": "mac_inbox.md#^route-task",
+        "n": 2,
+        "note_path": "mac_inbox.md",
+        "inbox": "mac_inbox",
+        "block_id": "route-task",
+        "line": 6,
+        "text": "Route me",
+        "previous_status_symbol": " ",
+        "previous_status_name": "Ready",
+        "status_symbol": "*",
+        "status_name": "Next",
+        "answer": null,
+        "outcome": "pending"
+      }
+    ],
+    "destinations": [
+      {
+        "relative_path": "app.md",
+        "route": "app",
+        "label": "app",
+        "kind": "project",
+        "status": "wip",
+        "parent": null,
+        "blocked": false
+      },
+      {
+        "relative_path": "errands.md",
+        "route": "errands",
+        "label": "errands",
+        "kind": "area",
+        "status": null,
+        "parent": null,
+        "blocked": false
+      },
+      {
+        "relative_path": "health.md",
+        "route": "health",
+        "label": "health",
+        "kind": "area",
+        "status": null,
+        "parent": null,
+        "blocked": false
+      }
+    ]
+  }
+}

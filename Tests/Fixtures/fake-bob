@@ -67,6 +67,11 @@ if [[ "${FAKE_BOB_REFUSE_OVERRIDE_FLAG_UNSUPPORTED:-}" == "1" && " $* " == *" --
   exit 2
 fi
 
+if [[ "${FAKE_BOB_INBOX_ROUTE_GUARD_UNSUPPORTED:-}" == "1" && " $* " == *" --require-inbox-route-choice "* ]]; then
+  printf "error: unexpected argument '--require-inbox-route-choice' found\n\nUsage: bob capture [OPTIONS] -- <TEXT>\n" >&2
+  exit 2
+fi
+
 if [[ "${FAKE_BOB_ATTENDED_FLAG_UNSUPPORTED:-}" == "1" && " $* " == *" -a "* ]]; then
   printf "error: unexpected argument '-a' found\n\nUsage: bob ref scan [OPTIONS]\n" >&2
   exit 2
@@ -74,6 +79,16 @@ fi
 
 if [[ "${FAKE_BOB_STALE_PULL_IN:-}" == "1" ]]; then
   printf '%s\n' '{"ok":false,"error":"Successor offer is stale","code":"pull_in_stale"}'
+  exit 1
+fi
+
+if [[ "${FAKE_BOB_STALE_INBOX_ROUTE:-}" == "1" ]]; then
+  printf '%s\n' '{"ok":false,"error":"stale, unknown, or out-of-range --inbox-route pick: 9","code":"inbox_route_stale","inbox_route":{"supported":true,"candidate_count":1,"candidates":[{"key":"mac_inbox.md#^route-task","n":1}]}}'
+  exit 2
+fi
+
+if [[ "${FAKE_BOB_REFUSED_INBOX_ROUTE:-}" == "1" ]]; then
+  printf '%s\n' '{"ok":false,"error":"mac_inbox.md is an inbox note; routes go to areas and open projects","code":"inbox_route_refused","inbox_route":{"supported":true,"candidate_count":1,"candidates":[{"key":"mac_inbox.md#^route-task","n":1}]},"refused":{"key":"mac_inbox.md#^route-task","n":1,"destination":"mac_inbox.md","message":"mac_inbox.md is an inbox note; routes go to areas and open projects"}}'
   exit 1
 fi
 
@@ -137,6 +152,8 @@ template_one_row_draft=$'@@template:\nTask {0}\n\nvalue'
 template_header_draft='@@template:'
 template_no_rows_draft=$'@@template:\nRecord {0} @work:{1}\n\n'
 template_arity_draft=$'@@template:\nRecord {0} @work:{1}\n\nAcme abc extra'
+inbox_route_preview_draft='@mac_inbox:route-task'
+inbox_route_two_draft=$'@mac_inbox:route-task\n\n@gkeep_inbox:gkeep-task'
 
 case "${command}" in
   capture-related)
@@ -3832,6 +3849,16 @@ JSON
     elif [[ -n "${FAKE_BOB_CAPTURE_TEMPLATE_FIXTURE:-}" ]]; then
       sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/g" \
         "${fixtures_dir}/${FAKE_BOB_CAPTURE_TEMPLATE_FIXTURE}"
+    elif [[ "${draft}" == "${inbox_route_preview_draft}" ]]; then
+      # Inbox-route preview with one candidate (real `bob capture --dry-run`
+      # output; only the dry-run flag varies).
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/g" \
+        "${fixtures_dir}/inbox-route-preview-one.json"
+    elif [[ "${draft}" == "${inbox_route_two_draft}" ]]; then
+      # Inbox-route preview with two candidates (real `bob capture --dry-run`
+      # output; only the dry-run flag varies).
+      sed "s/\"dry_run\":false/\"dry_run\":${dry_run}/g" \
+        "${fixtures_dir}/inbox-route-preview-two.json"
     elif [[ "${draft}" == "${template_example_draft}" ]]; then
       cat "${fixtures_dir}/capture-template-example.json"
     elif [[ "${draft}" == "${template_one_row_draft}" ]]; then

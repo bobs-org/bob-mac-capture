@@ -3083,6 +3083,10 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
   /// Additive batch-level successor-choice capability and grouped offers.
   /// Older Bob binaries omit this field.
   public let pullIn: CapturePullIn?
+  /// Additive batch-level inbox-route capability, candidates, and
+  /// destinations. Older Bob binaries omit this field; a malformed value
+  /// decodes as nil so it can never fail the capture decode.
+  public let inboxRoute: CaptureInboxRoute?
   // Additive batch-level `pomodoro_blocks`: every Pomodoro the capture
   // touches, creates, or reports, in its final after-state. Older Bob
   // omits it entirely, and a malformed value decodes as empty so it can
@@ -3173,6 +3177,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     ref: CaptureRef? = nil,
     planBudget: CapturePlanBudget? = nil,
     pullIn: CapturePullIn? = nil,
+    inboxRoute: CaptureInboxRoute? = nil,
     captures: [CaptureCommandSuccess] = [],
     globalDestination: CaptureGlobalDestination? = nil,
     warnings: [String] = [],
@@ -3246,6 +3251,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     self.ref = ref
     self.planBudget = planBudget
     self.pullIn = pullIn
+    self.inboxRoute = inboxRoute
     self.pomodoroBlocks = pomodoroBlocks
     self.taskBlocks = taskBlocks
     self.droppedDependencies = droppedDependencies
@@ -3390,6 +3396,8 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
       forKey: .planBudget
     )
     pullIn = (try? container.decodeIfPresent(CapturePullIn.self, forKey: .pullIn)) ?? nil
+    inboxRoute =
+      (try? container.decodeIfPresent(CaptureInboxRoute.self, forKey: .inboxRoute)) ?? nil
     pomodoroBlocks =
       (try? container.decodeIfPresent(
         [CapturePomodoroBlock].self,
@@ -3501,6 +3509,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     case ref
     case planBudget = "plan_budget"
     case pullIn = "pull_in"
+    case inboxRoute = "inbox_route"
     case pomodoroBlocks = "pomodoro_blocks"
     case taskBlocks = "task_blocks"
     case droppedDependencies = "dropped_dependencies"
@@ -4967,19 +4976,32 @@ public struct CaptureCommandFailure: Codable, Equatable {
   public let code: String?
   public let pullIn: CapturePullIn?
   public let offers: [TaskCompleteUnblocked]
+  /// Additive batch-level inbox-route payload on
+  /// `inbox_route_choice_required`, `inbox_route_refused`, and
+  /// `inbox_route_stale`. Older Bob omits it; a malformed value decodes
+  /// as nil so it can never fail the failure decode.
+  public let inboxRoute: CaptureInboxRoute?
+  /// Additive refused-route detail on `inbox_route_refused` (`key`, `n`,
+  /// `destination`, `message`). Older Bob omits it; malformed decodes as
+  /// nil.
+  public let refused: CaptureInboxRouteRefused?
 
   public init(
     ok: Bool = false,
     error: String,
     code: String? = nil,
     pullIn: CapturePullIn? = nil,
-    offers: [TaskCompleteUnblocked] = []
+    offers: [TaskCompleteUnblocked] = [],
+    inboxRoute: CaptureInboxRoute? = nil,
+    refused: CaptureInboxRouteRefused? = nil
   ) {
     self.ok = ok
     self.error = error
     self.code = code
     self.pullIn = pullIn
     self.offers = offers
+    self.inboxRoute = inboxRoute
+    self.refused = refused
   }
 
   public init(from decoder: Decoder) throws {
@@ -4989,6 +5011,10 @@ public struct CaptureCommandFailure: Codable, Equatable {
     code = try container.decodeIfPresent(String.self, forKey: .code)
     pullIn = (try? container.decodeIfPresent(CapturePullIn.self, forKey: .pullIn)) ?? nil
     offers = (try? container.decodeIfPresent([TaskCompleteUnblocked].self, forKey: .offers)) ?? []
+    inboxRoute =
+      (try? container.decodeIfPresent(CaptureInboxRoute.self, forKey: .inboxRoute)) ?? nil
+    refused =
+      (try? container.decodeIfPresent(CaptureInboxRouteRefused.self, forKey: .refused)) ?? nil
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -4997,6 +5023,8 @@ public struct CaptureCommandFailure: Codable, Equatable {
     case code
     case pullIn = "pull_in"
     case offers
+    case inboxRoute = "inbox_route"
+    case refused
   }
 }
 
@@ -6920,5 +6948,377 @@ public struct CapturePomodorosListEntry: Decodable, Equatable {
     case taskLinkCount = "task_link_count"
     case ref
     case state
+  }
+}
+
+// MARK: - Inbox routing (`bob capture --inbox-route`)
+
+/// One routable area or open project `bob capture` reports in
+/// `inbox_route.destinations`. Mirrors `TaskMoveDestination` in
+/// `src/native/task_move/plan.rs`; the list never offers another inbox.
+/// Every field uses `decodeIfPresent`, so a malformed row degrades to its
+/// defaults instead of failing the capture decode. Keys stay opaque.
+public struct CaptureInboxRouteDestination: Codable, Equatable, Sendable {
+  public let relativePath: String
+  public let route: String
+  public let label: String
+  public let kind: String
+  public let status: String?
+  public let parent: String?
+  public let blocked: Bool
+
+  public init(
+    relativePath: String = "",
+    route: String = "",
+    label: String = "",
+    kind: String = "",
+    status: String? = nil,
+    parent: String? = nil,
+    blocked: Bool = false
+  ) {
+    self.relativePath = relativePath
+    self.route = route
+    self.label = label
+    self.kind = kind
+    self.status = status
+    self.parent = parent
+    self.blocked = blocked
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    relativePath = (try? container.decodeIfPresent(String.self, forKey: .relativePath)) ?? ""
+    route = (try? container.decodeIfPresent(String.self, forKey: .route)) ?? ""
+    label = (try? container.decodeIfPresent(String.self, forKey: .label)) ?? ""
+    kind = (try? container.decodeIfPresent(String.self, forKey: .kind)) ?? ""
+    status = try? container.decodeIfPresent(String.self, forKey: .status)
+    parent = try? container.decodeIfPresent(String.self, forKey: .parent)
+    blocked = (try? container.decodeIfPresent(Bool.self, forKey: .blocked)) ?? false
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case relativePath = "relative_path"
+    case route
+    case label
+    case kind
+    case status
+    case parent
+    case blocked
+  }
+}
+
+/// The stored answer on one inbox-route candidate: keep it in its inbox,
+/// or move it to a destination. Mirrors `InboxRouteAnswer` in
+/// `src/native/capture/inbox_route.rs`.
+public struct CaptureInboxRouteAnswer: Codable, Equatable, Sendable {
+  public let action: String
+  public let destination: String?
+
+  public init(action: String = "", destination: String? = nil) {
+    self.action = action
+    self.destination = destination
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    action = (try? container.decodeIfPresent(String.self, forKey: .action)) ?? ""
+    destination = try? container.decodeIfPresent(String.self, forKey: .destination)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case action
+    case destination
+  }
+}
+
+/// The post-move landing `bob capture` reports on a moved candidate.
+/// `fresh` is the stamped `[fresh::]` date, or nil when the moved task is
+/// closed and was never stamped.
+public struct CaptureInboxRouteMoved: Codable, Equatable, Sendable {
+  public let destination: String
+  public let line: Int
+  public let blockID: String
+  public let previousBlockID: String
+  public let fresh: String?
+
+  public init(
+    destination: String = "",
+    line: Int = 0,
+    blockID: String = "",
+    previousBlockID: String = "",
+    fresh: String? = nil
+  ) {
+    self.destination = destination
+    self.line = line
+    self.blockID = blockID
+    self.previousBlockID = previousBlockID
+    self.fresh = fresh
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    destination = (try? container.decodeIfPresent(String.self, forKey: .destination)) ?? ""
+    line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+    blockID = (try? container.decodeIfPresent(String.self, forKey: .blockID)) ?? ""
+    previousBlockID = (try? container.decodeIfPresent(String.self, forKey: .previousBlockID)) ?? ""
+    fresh = try? container.decodeIfPresent(String.self, forKey: .fresh)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case destination
+    case line
+    case blockID = "block_id"
+    case previousBlockID = "previous_block_id"
+    case fresh
+  }
+}
+
+/// One inbox task whose checkbox a capture changed. `key` is Bob's opaque
+/// identity (`path#^id`, or `path@<sha8>[~ordinal]` for an id-less task);
+/// never parse or reconstruct it. `outcome` is `pending`, `kept`, or
+/// `moved`. Mirrors `InboxRouteCandidate` in
+/// `src/native/capture/inbox_route.rs`.
+public struct CaptureInboxRouteCandidate: Codable, Equatable, Sendable {
+  public let key: String
+  public let n: Int
+  public let notePath: String
+  public let inbox: String
+  public let blockID: String
+  public let line: Int
+  public let text: String
+  public let previousStatusSymbol: String
+  public let previousStatusName: String
+  public let statusSymbol: String
+  public let statusName: String
+  public let answer: CaptureInboxRouteAnswer?
+  public let outcome: String
+  public let moved: CaptureInboxRouteMoved?
+
+  public init(
+    key: String = "",
+    n: Int = 0,
+    notePath: String = "",
+    inbox: String = "",
+    blockID: String = "",
+    line: Int = 0,
+    text: String = "",
+    previousStatusSymbol: String = "",
+    previousStatusName: String = "",
+    statusSymbol: String = "",
+    statusName: String = "",
+    answer: CaptureInboxRouteAnswer? = nil,
+    outcome: String = "",
+    moved: CaptureInboxRouteMoved? = nil
+  ) {
+    self.key = key
+    self.n = n
+    self.notePath = notePath
+    self.inbox = inbox
+    self.blockID = blockID
+    self.line = line
+    self.text = text
+    self.previousStatusSymbol = previousStatusSymbol
+    self.previousStatusName = previousStatusName
+    self.statusSymbol = statusSymbol
+    self.statusName = statusName
+    self.answer = answer
+    self.outcome = outcome
+    self.moved = moved
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    key = (try? container.decodeIfPresent(String.self, forKey: .key)) ?? ""
+    n = (try? container.decodeIfPresent(Int.self, forKey: .n)) ?? 0
+    notePath = (try? container.decodeIfPresent(String.self, forKey: .notePath)) ?? ""
+    inbox = (try? container.decodeIfPresent(String.self, forKey: .inbox)) ?? ""
+    blockID = (try? container.decodeIfPresent(String.self, forKey: .blockID)) ?? ""
+    line = (try? container.decodeIfPresent(Int.self, forKey: .line)) ?? 0
+    text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? ""
+    previousStatusSymbol =
+      (try? container.decodeIfPresent(String.self, forKey: .previousStatusSymbol)) ?? ""
+    previousStatusName =
+      (try? container.decodeIfPresent(String.self, forKey: .previousStatusName)) ?? ""
+    statusSymbol = (try? container.decodeIfPresent(String.self, forKey: .statusSymbol)) ?? ""
+    statusName = (try? container.decodeIfPresent(String.self, forKey: .statusName)) ?? ""
+    answer = (try? container.decodeIfPresent(CaptureInboxRouteAnswer.self, forKey: .answer)) ?? nil
+    outcome = (try? container.decodeIfPresent(String.self, forKey: .outcome)) ?? ""
+    moved = (try? container.decodeIfPresent(CaptureInboxRouteMoved.self, forKey: .moved)) ?? nil
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case key
+    case n
+    case notePath = "note_path"
+    case inbox
+    case blockID = "block_id"
+    case line
+    case text
+    case previousStatusSymbol = "previous_status_symbol"
+    case previousStatusName = "previous_status_name"
+    case statusSymbol = "status_symbol"
+    case statusName = "status_name"
+    case answer
+    case outcome
+    case moved
+  }
+}
+
+/// One vault-wide repaired file `bob capture` reports once a route is
+/// applied.
+public struct CaptureInboxRouteRepairedFile: Codable, Equatable, Sendable {
+  public let path: String
+  public let linkCount: Int
+  public let dependencyTokenCount: Int
+
+  public init(path: String = "", linkCount: Int = 0, dependencyTokenCount: Int = 0) {
+    self.path = path
+    self.linkCount = linkCount
+    self.dependencyTokenCount = dependencyTokenCount
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    path = (try? container.decodeIfPresent(String.self, forKey: .path)) ?? ""
+    linkCount = (try? container.decodeIfPresent(Int.self, forKey: .linkCount)) ?? 0
+    dependencyTokenCount =
+      (try? container.decodeIfPresent(Int.self, forKey: .dependencyTokenCount)) ?? 0
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case path
+    case linkCount = "link_count"
+    case dependencyTokenCount = "dependency_token_count"
+  }
+}
+
+/// One block-ID collision rename `bob capture` reports once a route is
+/// applied.
+public struct CaptureInboxRouteRename: Codable, Equatable, Sendable {
+  public let path: String
+  public let oldBlockID: String
+  public let newBlockID: String
+
+  public init(path: String = "", oldBlockID: String = "", newBlockID: String = "") {
+    self.path = path
+    self.oldBlockID = oldBlockID
+    self.newBlockID = newBlockID
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    path = (try? container.decodeIfPresent(String.self, forKey: .path)) ?? ""
+    oldBlockID = (try? container.decodeIfPresent(String.self, forKey: .oldBlockID)) ?? ""
+    newBlockID = (try? container.decodeIfPresent(String.self, forKey: .newBlockID)) ?? ""
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case path
+    case oldBlockID = "old_block_id"
+    case newBlockID = "new_block_id"
+  }
+}
+
+/// Batch-level `inbox_route` object on every successful capture JSON.
+/// `destinations` is present only when `candidateCount > 0`; `repairedFiles`,
+/// `renamedBlockIDs`, and `needsReconcile` are present only once a move is
+/// applied. Mirrors `InboxRouteReport` in
+/// `src/native/capture/inbox_route.rs`.
+public struct CaptureInboxRoute: Codable, Equatable, Sendable {
+  public let supported: Bool
+  public let candidateCount: Int
+  public let routedCount: Int
+  public let keptCount: Int
+  public let candidates: [CaptureInboxRouteCandidate]
+  public let destinations: [CaptureInboxRouteDestination]?
+  public let repairedFiles: [CaptureInboxRouteRepairedFile]?
+  public let renamedBlockIDs: [CaptureInboxRouteRename]?
+  public let needsReconcile: Bool?
+
+  public init(
+    supported: Bool = false,
+    candidateCount: Int = 0,
+    routedCount: Int = 0,
+    keptCount: Int = 0,
+    candidates: [CaptureInboxRouteCandidate] = [],
+    destinations: [CaptureInboxRouteDestination]? = nil,
+    repairedFiles: [CaptureInboxRouteRepairedFile]? = nil,
+    renamedBlockIDs: [CaptureInboxRouteRename]? = nil,
+    needsReconcile: Bool? = nil
+  ) {
+    self.supported = supported
+    self.candidateCount = candidateCount
+    self.routedCount = routedCount
+    self.keptCount = keptCount
+    self.candidates = candidates
+    self.destinations = destinations
+    self.repairedFiles = repairedFiles
+    self.renamedBlockIDs = renamedBlockIDs
+    self.needsReconcile = needsReconcile
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    supported = (try? container.decodeIfPresent(Bool.self, forKey: .supported)) ?? false
+    candidateCount = (try? container.decodeIfPresent(Int.self, forKey: .candidateCount)) ?? 0
+    routedCount = (try? container.decodeIfPresent(Int.self, forKey: .routedCount)) ?? 0
+    keptCount = (try? container.decodeIfPresent(Int.self, forKey: .keptCount)) ?? 0
+    candidates =
+      (try? container.decodeIfPresent([CaptureInboxRouteCandidate].self, forKey: .candidates)) ?? []
+    destinations = try? container.decodeIfPresent(
+      [CaptureInboxRouteDestination].self,
+      forKey: .destinations
+    )
+    repairedFiles = try? container.decodeIfPresent(
+      [CaptureInboxRouteRepairedFile].self,
+      forKey: .repairedFiles
+    )
+    renamedBlockIDs = try? container.decodeIfPresent(
+      [CaptureInboxRouteRename].self,
+      forKey: .renamedBlockIDs
+    )
+    needsReconcile = try? container.decodeIfPresent(Bool.self, forKey: .needsReconcile)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case supported
+    case candidateCount = "candidate_count"
+    case routedCount = "routed_count"
+    case keptCount = "kept_count"
+    case candidates
+    case destinations
+    case repairedFiles = "repaired_files"
+    case renamedBlockIDs = "renamed_block_ids"
+    case needsReconcile = "needs_reconcile"
+  }
+}
+
+/// Refused-route detail beside `inbox_route` on `inbox_route_refused`.
+public struct CaptureInboxRouteRefused: Codable, Equatable, Sendable {
+  public let key: String
+  public let n: Int
+  public let destination: String
+  public let message: String
+
+  public init(key: String = "", n: Int = 0, destination: String = "", message: String = "") {
+    self.key = key
+    self.n = n
+    self.destination = destination
+    self.message = message
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    key = (try? container.decodeIfPresent(String.self, forKey: .key)) ?? ""
+    n = (try? container.decodeIfPresent(Int.self, forKey: .n)) ?? 0
+    destination = (try? container.decodeIfPresent(String.self, forKey: .destination)) ?? ""
+    message = (try? container.decodeIfPresent(String.self, forKey: .message)) ?? ""
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case key
+    case n
+    case destination
+    case message
   }
 }
