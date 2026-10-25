@@ -84,7 +84,7 @@ struct RelationLabelField: NSViewRepresentable {
         }
         context.coordinator.appliedFocusSequence = focusRequest.sequence
         field.requestFirstResponder()
-        let parent = parent
+        let parent = self
         DispatchQueue.main.async { [weak field] in
             guard let field else { return }
             if field.holdsFirstResponder {
