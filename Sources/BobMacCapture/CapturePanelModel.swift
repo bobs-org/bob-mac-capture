@@ -187,20 +187,23 @@ struct CapturePomodoroNamePromptState: Equatable {
 /// already sits in `draftSnapshot` at `tokenRange`; the card authors only
 /// the `|label` suffix via Bob's `relation_label` probe.
 struct CaptureRelationLabelPromptState: Equatable {
-    /// Draft containing the accepted relation token.
-    let draftSnapshot: String
+    /// Draft containing the accepted relation token. The rename draft
+    /// fix-up rebases this when the apply rewrites matching relations.
+    var draftSnapshot: String
     /// UTF-8 byte range of the `~note:id` token (excluding any `|label`).
     let tokenRange: CaptureRange
-    /// UTF-8 byte range replaced when committing the `|label` suffix.
-    let labelRange: CaptureRange
+    /// UTF-8 byte range replaced when committing the `|label` suffix. The
+    /// rename draft fix-up rebases this along with the draft text.
+    var labelRange: CaptureRange
     /// Relation direction for the live sentence.
     let direction: DependencyPickerDirection
     /// Draft task text (source side for `~`, target side for `~~`).
     let ownerText: String
     /// Picked task text.
     let targetText: String
-    /// Caret to restore on cancel.
-    let restoreCursor: Int
+    /// Caret to restore on cancel. The rename draft fix-up rebases this
+    /// when the rewritten draft is shorter than the restore offset.
+    var restoreCursor: Int
     /// Picker snapshot to return to on Escape (nil for the `|` flow).
     let returnPicker: CapturePickerState?
     /// Current field text (without `|`, quotes, or escapes).
@@ -8177,10 +8180,10 @@ final class CapturePanelModel: ObservableObject {
             var failedRename = rename
             failedRename.isApplying = false
             failedRename.mergeArmed = false
+            failedRename.refusalCode = code
+            failedRename.refusalMessage = message
             failed.rename = failedRename
             failed.isSaving = false
-            failed.refusalCode = code
-            failed.refusalMessage = message
             failed.errorMessage = message
             statusText = "Relation label rename failed"
             relationLabelPrompt = failed

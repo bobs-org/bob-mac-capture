@@ -681,7 +681,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
 
         XCTAssertTrue(model.relationLabelPromptVisible)
         XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 22, end: 22))
-        await waitUntil { model.relationLabelPrompt?.suggestions.isEmpty == false }
+        await waitUntil { model.relationLabelPrompt?.catalogLoaded == true }
         model.updateRelationLabelPromptLabel("follow")
         await waitUntil {
             model.relationLabelPrompt?.suggestions.contains(where: { $0.typed && $0.label == "follow" }) == true
@@ -766,7 +766,7 @@ final class CaptureSeparatorToggleTests: XCTestCase {
         XCTAssertTrue(model.relationLabelPromptVisible)
         XCTAssertEqual(model.relationLabelPrompt?.tokenRange, CaptureRange(start: 7, end: 20))
         XCTAssertEqual(model.relationLabelPrompt?.labelRange, CaptureRange(start: 20, end: 20))
-        await waitUntil { model.relationLabelPrompt?.suggestions.isEmpty == false }
+        await waitUntil { model.relationLabelPrompt?.catalogLoaded == true }
         model.updateRelationLabelPromptLabel("see")
         await waitUntil {
             model.relationLabelPrompt?.suggestions.contains(where: { $0.typed && $0.label == "see" }) == true

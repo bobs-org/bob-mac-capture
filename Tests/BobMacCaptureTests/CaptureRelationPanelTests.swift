@@ -268,9 +268,9 @@ final class CaptureRelationPanelTests: XCTestCase {
             model.relationLabelPromptRows.compactMap(\.label),
             ["Implement this", "imPlement safely", "Alpha implements"]
         )
-        model.updateRelationLabelPromptLabel(" IM  PLE ")
+        model.updateRelationLabelPromptLabel("  IMPLE ")
         XCTAssertNil(model.relationLabelPrompt?.selectedKey)
-        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, " IM  PLE ")
+        XCTAssertEqual(model.relationLabelPrompt?.authoredLabel, "  IMPLE ")
         XCTAssertEqual(
             model.relationLabelPromptRows.compactMap(\.label),
             ["Implement this", "imPlement safely", "Alpha implements"]
