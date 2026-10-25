@@ -544,6 +544,12 @@ public final class RefsInspectorLoader: ObservableObject {
     /// Insertion order of the published content, so it stays bounded
     /// by the same LRU capacity as the show cache.
     private var contentOrder: [String] = []
+    /// Whether a scheduled hydration may run, checked at fire time
+    /// after the selection-settle delay. The panel model sets this to
+    /// `panelIsVisible`, so a show that is still hidden hydrates
+    /// nothing while a show that has since become visible hydrates
+    /// normally. Defaults to true so direct loader use hydrates.
+    public var shouldHydrate: () -> Bool = { true }
 
     public init(
         library: RefsLibrary,
@@ -690,6 +696,9 @@ public final class RefsInspectorLoader: ObservableObject {
     }
 
     private func load(_ item: RefItem) async {
+        guard shouldHydrate() else {
+            return
+        }
         async let intrinsicsValue = loadIntrinsics(for: item)
         async let showValue = showRow(for: item)
         let (intrinsicsResult, showRow) = await (intrinsicsValue, showValue)

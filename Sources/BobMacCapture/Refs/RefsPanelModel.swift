@@ -649,6 +649,7 @@ public final class RefsPanelModel: ObservableObject {
       library: library,
       images: imageProvider
     )
+    inspectorLoader.shouldHydrate = { [weak self] in self?.panelIsVisible() ?? false }
     inspectorLoader.objectWillChange.sink { [weak self] _ in
       self?.objectWillChange.send()
     }.store(in: &subscriptions)
