@@ -2298,8 +2298,17 @@ final class RefsPanelModelTests: XCTestCase {
       reason: "coordination_timeout",
       message: "busy"
     )
+    // A busy hold alone surfaces only the banner; the refreshed note
+    // supplies the footer clause, as after a real Highlights save.
+    let saved = RefsScanNote(
+      action: "update",
+      path: "ref/papers/open.md",
+      title: "Open",
+      sourcePDF: "lib/open.pdf",
+      markerWrite: RefsScanMarkerWrite(mode: "coordinated", editorSavedFirst: true)
+    )
     let receipt = RefsPDFUpdates(
-      response: RefsScanResponse(held: [busy])
+      response: RefsScanResponse(notes: [saved], held: [busy])
     )
     harness.model.applyPDFUpdateSurface(
       RefsPDFUpdatePresentation.surface(
