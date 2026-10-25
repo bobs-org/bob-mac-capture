@@ -2242,7 +2242,7 @@ final class CapturePanelModel: ObservableObject {
                         readClipboard: true,
                         priorityRollSeed: seed,
                         pullInSelection: selection,
-                        requirePullInChoice: selection == nil,
+                        requirePullInChoice: selection == nil && inboxRouteAnswers == nil,
                         refuseOverride: !allowsOverride,
                         pullInCapabilityAdvertised: capabilityAdvertised,
                         inboxRouteAnswers: inboxRouteAnswers,
