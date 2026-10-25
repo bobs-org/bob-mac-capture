@@ -243,6 +243,31 @@ struct RefsInspectorRevealAnchor: NSViewRepresentable {
   }
 }
 
+/// Layout marker for the Highlights-key focused entry: the controller
+/// converts its frame into document coordinates to scroll the current
+/// page's notes into view. Never hit-tests, mirroring the reveal anchor.
+final class RefsInspectorFocusAnchorView: NSView {
+  var generation: Int = 0
+
+  override func hitTest(_ point: NSPoint) -> NSView? {
+    nil
+  }
+}
+
+struct RefsInspectorFocusAnchor: NSViewRepresentable {
+  var generation: Int
+
+  func makeNSView(context: Context) -> RefsInspectorFocusAnchorView {
+    let view = RefsInspectorFocusAnchorView()
+    view.generation = generation
+    return view
+  }
+
+  func updateNSView(_ nsView: RefsInspectorFocusAnchorView, context: Context) {
+    nsView.generation = generation
+  }
+}
+
 /// Layout marker for the disclosure (`+N more`) row: the controller
 /// converts its frame into document coordinates to reveal the next
 /// notes page as soon as the row is fully visible, instead of
@@ -350,6 +375,9 @@ struct RefsInspectorView: View {
   var restoreOffset: CGFloat? = nil
   /// Reports native preview scrolling without publishing model changes.
   var onOffsetChange: (CGFloat) -> Void = { _ in }
+  /// The Highlights-key focus for the selected row, when the preview
+  /// opened on the current page's notes.
+  var focus: RefsInspectorFocus? = nil
   /// Collision and unmatched inspector hint: switch and close.
   static let tabFallbackHint = "↵ switches to this tab · ⌃X closes it"
   @Environment(\.colorSchemeContrast) private var colorSchemeContrast
@@ -957,6 +985,10 @@ struct RefsInspectorView: View {
               if !previewMode, notesPage.batchStart == entry.index {
                 RefsInspectorRevealAnchor(
                   generation: notesPage.generation
+                )
+              } else if !previewMode, focus?.index == entry.index {
+                RefsInspectorFocusAnchor(
+                  generation: focus?.generation ?? 0
                 )
               }
             }

@@ -299,6 +299,21 @@ public struct RefsInspectorNotesReveal: Equatable, Sendable {
   }
 }
 
+/// One Highlights-key focus event: the model revealed to the current page's
+/// notes and the controller should scroll the focused entry into view.
+/// Not published: every focus must arrive, even successive identical ones.
+public struct RefsInspectorFocus: Equatable, Sendable {
+  public let id: String
+  public let index: Int
+  public let generation: Int
+
+  public init(id: String, index: Int, generation: Int) {
+    self.id = id
+    self.index = index
+    self.generation = generation
+  }
+}
+
 /// Applied inputs for one materialized list row. Tests record these
 /// through `RefsRowRenderProbe` to see what the lazy stack painted.
 struct RefsRowRenderState: Equatable {
@@ -357,6 +372,7 @@ public final class RefsPanelModel: ObservableObject {
         revealedPageID = nil
         revealedPage = nil
         inspectorPlace = nil
+        inspectorFocus = nil
         if copyCard?.frozenItemID != selectedID {
           closeCopyCard()
         }
@@ -370,6 +386,8 @@ public final class RefsPanelModel: ObservableObject {
         {
           closeRenameCard()
         }
+        updateHighlightsKeyFocusArming()
+        tryFireHighlightsKeyFocus()
       }
     }
   }
@@ -484,6 +502,18 @@ public final class RefsPanelModel: ObservableObject {
   public var inspectorNoteReveals: AnyPublisher<RefsInspectorNotesReveal, Never> {
     inspectorNoteRevealsSubject.eraseToAnyPublisher()
   }
+  /// Live inspector focus requests for Highlights-key sessions. Not
+  /// published, matching `inspectorNoteReveals`.
+  public var inspectorFocusRequests: AnyPublisher<RefsInspectorFocus, Never> {
+    inspectorFocusRequestsSubject.eraseToAnyPublisher()
+  }
+  /// The current Highlights-key focus, for the selected row only. The
+  /// view draws the focus anchor when this matches the selected id.
+  @Published public private(set) var inspectorFocus: RefsInspectorFocus?
+  /// The list offset to restore after a Highlights-key session, with its
+  /// generation. The list view applies it once the content can reach it.
+  @Published public private(set) var listRestoreGeneration = 0
+  public private(set) var listRestoreOffset: CGFloat = 0
 
   public var panelDismisser: () -> Void = {}
   public var panelPresenter: () -> Void = {}
@@ -559,6 +589,23 @@ public final class RefsPanelModel: ObservableObject {
   private let inspectorNoteRevealsSubject = PassthroughSubject<
     RefsInspectorNotesReveal, Never
   >()
+  private let inspectorFocusRequestsSubject = PassthroughSubject<
+    RefsInspectorFocus, Never
+  >()
+  private struct RefsRememberedView {
+    var query: String
+    var scope: RefScope
+    var listOrder: RefsListOrder
+    var tabsFilter: Bool
+    var selectedID: String?
+    var revealedPageID: String?
+    var revealedPage: RefsNotesPage?
+    var inspectorOffset: CGFloat?
+    var listOffset: CGFloat
+  }
+  private var highlightsKeySession: RefsRememberedView?
+  private var highlightsKeyFocusArmed = false
+  private var listOffset: CGFloat = 0
   private var subscriptions = Set<AnyCancellable>()
   private var libraryPublishPending = false
   private var libraryPublishTask: Task<Void, Never>?
@@ -669,6 +716,7 @@ public final class RefsPanelModel: ObservableObject {
     }.store(in: &subscriptions)
     inspectorLoader.$content.sink { [weak self] content in
       self?.clampRevealedPage(to: content)
+      self?.tryFireHighlightsKeyFocus()
     }.store(in: &subscriptions)
     library.$refreshState.sink { [weak self] _ in
       Task { await self?.refreshStateDidChange() }
@@ -749,6 +797,8 @@ public final class RefsPanelModel: ObservableObject {
       scanNotice = nil
       scanNoticeSeen = false
     }
+    highlightsKeyFocusArmed = false
+    inspectorFocus = nil
   }
 
   /// The Today Pomodoro name for an id, or nil when the row is not
@@ -813,6 +863,12 @@ public final class RefsPanelModel: ObservableObject {
     preserveTabsSelectionOnNextSnapshot = false
     banner = nil
     pendingOpen = nil
+
+    if source == .highlightsTabs {
+      stashHighlightsKeySessionIfNeeded()
+    } else if !replayingFailedRename {
+      restoreHighlightsKeySessionIfNeeded()
+    }
 
     switch source {
     case .library:
@@ -880,6 +936,99 @@ public final class RefsPanelModel: ObservableObject {
     beginTabsRefresh(preservingSelection: preservingSelection)
   }
 
+  private func stashHighlightsKeySessionIfNeeded() {
+    guard highlightsKeySession == nil else { return }
+    let inspectorOffset: CGFloat? = {
+      guard let place = inspectorPlace,
+        place.id == selectedID,
+        place.generation == inspectorGeneration,
+        place.offset.isFinite
+      else { return nil }
+      return place.offset
+    }()
+    highlightsKeySession = RefsRememberedView(
+      query: query,
+      scope: scope,
+      listOrder: listOrder,
+      tabsFilter: tabsFilter,
+      selectedID: selectedID,
+      revealedPageID: revealedPageID,
+      revealedPage: revealedPage,
+      inspectorOffset: inspectorOffset,
+      listOffset: listOffset
+    )
+    highlightsKeyFocusArmed = false
+    inspectorFocus = nil
+  }
+
+  private func restoreHighlightsKeySessionIfNeeded() {
+    guard let stash = highlightsKeySession else { return }
+    highlightsKeySession = nil
+    highlightsKeyFocusArmed = false
+    inspectorFocus = nil
+    query = stash.query
+    scope = stash.scope
+    listOrder = stash.listOrder
+    if stash.tabsFilter {
+      tabsFilter = true
+    } else if tabsFilter {
+      leaveTabsFilter()
+    }
+    selectedID = stash.selectedID
+    revealedPageID = stash.revealedPageID
+    revealedPage = stash.revealedPage
+    inspectorGeneration &+= 1
+    if let selected = stash.selectedID, let offset = stash.inspectorOffset {
+      inspectorPlace = (selected, inspectorGeneration, offset)
+    } else {
+      inspectorPlace = nil
+    }
+    listRestoreOffset = stash.listOffset
+    listRestoreGeneration &+= 1
+    tabsSelectionConsumed = false
+    preserveTabsSelectionOnNextSnapshot = stash.tabsFilter
+  }
+
+  /// Reports the list's top-relative scroll offset without publishing,
+  /// matching `noteInspectorOffset`.
+  public func noteListOffset(_ offset: CGFloat) {
+    guard offset.isFinite else { return }
+    listOffset = offset
+  }
+
+  private func updateHighlightsKeyFocusArming() {
+    guard highlightsKeySession != nil else {
+      highlightsKeyFocusArmed = false
+      return
+    }
+    guard let selectedID, let tab = tabsListing?.tabs[selectedID], tab.isCurrent else {
+      highlightsKeyFocusArmed = false
+      inspectorFocus = nil
+      return
+    }
+    highlightsKeyFocusArmed = true
+  }
+
+  private func tryFireHighlightsKeyFocus() {
+    guard highlightsKeySession != nil, highlightsKeyFocusArmed else { return }
+    guard tabsState == .loaded else { return }
+    guard let selectedID, let tab = tabsListing?.tabs[selectedID],
+      tab.isCurrent, let page = tab.pageNumber
+    else { return }
+    guard let content = inspectorLoader.content(for: selectedID) else { return }
+    guard let range = content.feed.focusRange(page: page) else { return }
+    var pageState = inspectorNotesPage(for: selectedID)
+    if pageState.reveal(through: range.upperBound, total: content.feed.total) {
+      revealedPageID = selectedID
+      revealedPage = pageState
+    }
+    let focus = RefsInspectorFocus(
+      id: selectedID, index: range.lowerBound, generation: pageState.generation)
+    inspectorFocus = focus
+    inspectorFocusRequestsSubject.send(focus)
+    highlightsKeyFocusArmed = false
+  }
+
   private func resetToDefaults(
     tabs: Bool,
     announcement: String? = "Bob Refs reset"
@@ -896,6 +1045,8 @@ public final class RefsPanelModel: ObservableObject {
     revealedPageID = nil
     revealedPage = nil
     inspectorPlace = nil
+    inspectorFocus = nil
+    highlightsKeyFocusArmed = false
     inspectorGeneration &+= 1
     listResetGeneration &+= 1
     if tabs {
@@ -1140,6 +1291,8 @@ public final class RefsPanelModel: ObservableObject {
       requestScan(origin: .panelKey)
       return true
     case .scrollInspector(let direction):
+      highlightsKeyFocusArmed = false
+      inspectorFocus = nil
       inspectorScrollSubject.send(direction)
       return true
     case .consume:
@@ -1294,7 +1447,13 @@ public final class RefsPanelModel: ObservableObject {
       tabsState = matchedTabs.isEmpty ? .noDocuments : .loaded
       let preserve = preserveTabsSelectionOnNextSnapshot
       preserveTabsSelectionOnNextSnapshot = false
+      let hadSession = highlightsKeySession != nil
+      let previousSelection = selectedID
       rebuildTabsListing(preservingSelection: preserve)
+      if hadSession, !preserve, previousSelection == nil {
+        updateHighlightsKeyFocusArming()
+      }
+      tryFireHighlightsKeyFocus()
       if heldTabsOpen {
         heldTabsOpen = false
         if selectedID != nil {

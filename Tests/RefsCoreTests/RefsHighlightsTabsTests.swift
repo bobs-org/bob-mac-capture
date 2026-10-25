@@ -65,6 +65,22 @@ final class RefsHighlightsTabsTests: XCTestCase {
         XCTAssertNil(HighlightsWindowTitle.pageCaption(fromTitle: "fixture.pdf"))
     }
 
+    func testPageNumberParsesDashVariantsAndNoSuffix() {
+        XCTAssertEqual(
+            HighlightsWindowTitle.pageNumber(fromTitle: "fixture.pdf – Page 5 of 25"),
+            5
+        )
+        XCTAssertEqual(
+            HighlightsWindowTitle.pageNumber(fromTitle: "fixture.pdf - Page 2 of 8"),
+            2
+        )
+        XCTAssertEqual(
+            HighlightsWindowTitle.pageNumber(fromTitle: "fixture.pdf — Page 7 of 9"),
+            7
+        )
+        XCTAssertNil(HighlightsWindowTitle.pageNumber(fromTitle: "fixture.pdf"))
+    }
+
     func testUnavailableReaderReturnsNameFreeFailure() async {
         let reader = UnavailableHighlightsTabsReader()
         XCTAssertFalse(reader.isTrusted())
@@ -300,7 +316,8 @@ final class RefsHighlightsTabsTests: XCTestCase {
         ])
         XCTAssertEqual(all.listing.sections.map(\.kind), [.inHighlights])
         XCTAssertEqual(all.listing.sections[0].kind?.title, "In Highlights")
-        XCTAssertEqual(all.preselectedID, items[1].id)
+        XCTAssertEqual(all.preselectedID, items[0].id)
+        XCTAssertEqual(all.currentID, items[0].id)
 
         let papers = RefsTabsRanker.listing(
             tabs: tabs,
@@ -313,6 +330,7 @@ final class RefsHighlightsTabsTests: XCTestCase {
         )
         XCTAssertEqual(papers.listing.orderedIDs, [items[0].id, items[1].id, items[2].id])
         XCTAssertEqual(papers.preselectedID, items[0].id)
+        XCTAssertEqual(papers.currentID, items[0].id)
         XCTAssertEqual(
             RefsExplanation.whyHere(items[0], listing: all.listing, signals: signals),
             "Current tab in Highlights"
@@ -321,6 +339,58 @@ final class RefsHighlightsTabsTests: XCTestCase {
             RefsExplanation.whyHere(items[1], listing: all.listing, signals: signals),
             "Open in Highlights"
         )
+    }
+
+    func testCurrentIDNilWhenCurrentRowOutOfScope() {
+        let current = item("ref/blogs/current.md", "lib/blogs/current.pdf", kind: .article)
+        let other = item("ref/papers/other.md", "lib/papers/other.pdf")
+        let tabs = [
+            tab("current.pdf", ordinal: 0, itemID: current.id, current: true, match: .path),
+            tab("other.pdf", ordinal: 1, itemID: other.id, match: .fileName),
+        ]
+        let result = RefsTabsRanker.listing(
+            tabs: tabs,
+            items: [current, other],
+            query: "",
+            scope: .papers,
+            signals: RefsSignals(),
+            recency: RefsTabRecency(),
+            highlightsIsFrontmost: true
+        )
+        XCTAssertEqual(result.listing.orderedIDs, [other.id])
+        XCTAssertEqual(result.preselectedID, other.id)
+        XCTAssertNil(result.currentID)
+    }
+
+    func testMatcherSetsPageNumberOnlyOnSelectedTabs() {
+        let one = item("ref/papers/one.md", "lib/papers/one.pdf")
+        let two = item("ref/papers/two.md", "lib/papers/two.pdf")
+        let snapshot = HighlightsTabsSnapshot(
+            windows: [
+                .init(
+                    isMain: true,
+                    pageCaption: "p. 5/25",
+                    pageNumber: 5,
+                    tabs: [
+                        .init(fileName: "one.pdf", documentPath: "/fixture-vault/lib/papers/one.pdf", isSelected: true),
+                        .init(fileName: "two.pdf", documentPath: "/fixture-vault/lib/papers/two.pdf", isSelected: false),
+                    ]
+                ),
+                .init(
+                    isMain: false,
+                    pageCaption: "p. 9/10",
+                    pageNumber: 9,
+                    tabs: [
+                        .init(fileName: "two.pdf", documentPath: "/fixture-vault/lib/papers/two.pdf", isSelected: true),
+                    ]
+                ),
+            ],
+            highlightsIsFrontmost: true
+        )
+        let matched = HighlightsTabMatcher.match(snapshot, items: [one, two], vaultRoot: vaultRoot)
+        let selectedByWindow = Dictionary(grouping: matched, by: { $0.windowOrdinal })
+        XCTAssertEqual(selectedByWindow[0]?.first(where: { $0.tabOrdinal == 0 })?.pageNumber, 5)
+        XCTAssertNil(selectedByWindow[0]?.first(where: { $0.tabOrdinal == 1 })?.pageNumber)
     }
 
     func testTabsSearchRanksMatchedAndSyntheticTitlesAndCounts() {

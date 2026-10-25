@@ -27,6 +27,23 @@ final class RefsListScrollHostedTests: XCTestCase {
       listDiagnostics(in: harness.panel, model: harness.model))
   }
 
+  func testHostedHighlightsKeySessionRestoresListOffset() {
+    let harness = makeHostedHarness()
+    defer { harness.panel.orderOut(nil) }
+    settle(harness.panel)
+
+    harness.model.perform(.move(.last))
+    waitForListOffset(in: harness.panel, model: harness.model) { $0 > 200 }
+    let kept = harness.model.selectedID
+
+    harness.model.prepareForPresentation(source: .highlightsTabs)
+    harness.model.prepareForPresentation(source: .library)
+    waitForListOffset(in: harness.panel, model: harness.model) { $0 > 200 }
+    XCTAssertEqual(
+      harness.model.selectedID, kept,
+      listDiagnostics(in: harness.panel, model: harness.model))
+  }
+
   func testHostedResetReturnsSelectionAndListToTop() {
     let harness = makeHostedHarness()
     defer { harness.panel.orderOut(nil) }

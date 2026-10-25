@@ -182,6 +182,29 @@ struct RefsInspectorScrollPlanner: Equatable, Sendable {
         return target
     }
 
+    /// The focus target for a Highlights-key session: nil when the entry's
+    /// top is already inside the viewport, so an early-page note leaves the
+    /// hero in view. Otherwise the entry top minus context, clamped.
+    static func focusTarget(
+        geometry: RefsInspectorScrollGeometry,
+        entryTop: CGFloat,
+        entryBottom: CGFloat,
+        context: CGFloat
+    ) -> CGFloat? {
+        guard geometry.isValid,
+          entryTop.isFinite, entryBottom.isFinite, context.isFinite
+        else {
+            return nil
+        }
+        let viewportTop = geometry.offsetY
+        let viewportBottom = geometry.offsetY + geometry.viewportHeight
+        if entryTop >= viewportTop - 1, entryTop <= viewportBottom + 1 {
+            return nil
+        }
+        let raw = entryTop - context
+        return geometry.clamped(raw)
+    }
+
     /// Trackpad or mouse scrolling takes over from the measured offset.
     mutating func beginUserScroll(at offset: CGFloat) {
         pendingTarget = nil

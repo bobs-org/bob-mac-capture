@@ -104,6 +104,7 @@ struct RefsListView: View {
   /// `@State` so per-frame scroll updates never re-evaluate the list
   /// body.
   @State private var viewportBox = ViewportBox()
+  @State private var pendingListRestore: (generation: Int, offset: CGFloat)?
   /// Design fixtures lay the same rows out in a static stack:
   /// `ImageRenderer` snapshots `ScrollView` content blank, so the
   /// live scroll view never appears in a fixture.
@@ -174,7 +175,9 @@ struct RefsListView: View {
           viewportBox.offset = new.offset
           viewportBox.height = new.height
           viewportBox.topInset = new.topInset
+          model.noteListOffset(new.offset)
           if old.height <= 0, new.height > 0 {
+            applyPendingListRestore()
             revealSelection()
           }
         }
@@ -182,12 +185,18 @@ struct RefsListView: View {
           revealSelection()
         }
         .onChange(of: model.listing.orderedIDs) { _, _ in
+          applyPendingListRestore()
           revealSelection()
         }
         .onChange(of: model.presentationCount) { _, _ in
           revealSelection()
         }
+        .onChange(of: model.listRestoreGeneration) { _, _ in
+          applyPendingListRestore()
+          revealSelection()
+        }
         .onChange(of: model.listResetGeneration) { _, _ in
+          pendingListRestore = nil
           scrollPosition.scrollTo(edge: .top)
           revealSelection()
         }
@@ -199,6 +208,36 @@ struct RefsListView: View {
         }
         .accessibilityLabel("References")
       }
+    }
+  }
+
+  /// Applies a pending Highlights-key list restore once the content can
+  /// reach the offset, or clamps it when the content is final, mirroring
+  /// the inspector anchor. Updates the viewport box so the restored
+  /// selection stays visible whatever order the change handlers fire in.
+  private func applyPendingListRestore() {
+    let generation = model.listRestoreGeneration
+    if pendingListRestore?.generation != generation, generation > 0 {
+      pendingListRestore = (generation, model.listRestoreOffset)
+    }
+    guard let pending = pendingListRestore else { return }
+    guard viewportBox.height > 0 else { return }
+    let contentHeight = RefsListScrollPolicy.contentHeight(of: model.listing)
+    let maxOffset = max(0, contentHeight - viewportBox.height)
+    let clamped = min(max(pending.offset, 0), maxOffset)
+    if contentHeight <= viewportBox.height + 1 {
+      viewportBox.offset = clamped
+      scrollPosition.scrollTo(y: clamped - viewportBox.topInset)
+      pendingListRestore = nil
+      return
+    }
+    if pending.offset <= maxOffset + 0.5 {
+      viewportBox.offset = clamped
+      scrollPosition.scrollTo(y: clamped - viewportBox.topInset)
+      pendingListRestore = nil
+    } else if maxOffset.isFinite {
+      viewportBox.offset = maxOffset
+      scrollPosition.scrollTo(y: maxOffset - viewportBox.topInset)
     }
   }
 

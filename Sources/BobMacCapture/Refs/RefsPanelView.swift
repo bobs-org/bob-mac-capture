@@ -229,6 +229,7 @@ public struct RefsPanelView: View {
                let content = model.rowContent(for: selected)
             {
                 let inspectorGeneration = model.inspectorGeneration
+                let focus = model.inspectorFocus?.id == selected ? model.inspectorFocus : nil
                 RefsInspectorView(
                     content: content,
                     signals: model.signals,
@@ -246,7 +247,8 @@ public struct RefsPanelView: View {
                         generation: inspectorGeneration,
                         offset: offset
                       )
-                    }
+                    },
+                    focus: focus
                 )
                 .id("\(selected)#\(model.inspectorGeneration)")
                 .onChange(of: selected) { _, _ in model.inspectorRequested() }

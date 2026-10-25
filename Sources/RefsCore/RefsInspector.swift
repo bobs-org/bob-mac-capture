@@ -543,6 +543,85 @@ public struct RefsShowAnnotation: Decodable, Equatable, Sendable {
     }
 }
 
+/// The numeric pages named by a `page_label` string from `bob ref show`.
+public enum RefsPageLabel {
+    /// Parses labels like `Page 5`, `Page: 5`, `Pages 11–12`, `pp. 3–5, 9`,
+    /// `p. 7`, `p 7`, and a bare `12` into page ranges. The range separator
+    /// is a hyphen or dash, prefixes are case-insensitive, and anything else
+    /// (for example roman numerals) returns `[]`.
+    public static func pages(in label: String?) -> [ClosedRange<Int>] {
+        guard let raw = label?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty
+        else {
+            return []
+        }
+        let remainder: String
+        if let stripped = strippedPrefix(from: raw) {
+            remainder = stripped
+        } else if raw.range(of: #"^[\d\s,\-–—]+$"#, options: .regularExpression) != nil,
+                  raw.range(of: #"\d"#, options: .regularExpression) != nil
+        {
+            remainder = raw
+        } else {
+            return []
+        }
+        let trimmedRemainder = remainder.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedRemainder.isEmpty else {
+            return []
+        }
+        var ranges: [ClosedRange<Int>] = []
+        for part in trimmedRemainder.split(separator: ",") {
+            let token = part.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !token.isEmpty else {
+                return []
+            }
+            if let range = rangeFromToken(String(token)) {
+                ranges.append(range)
+            } else {
+                return []
+            }
+        }
+        return ranges
+    }
+
+    private static func strippedPrefix(from raw: String) -> String? {
+        let lowered = raw.lowercased()
+        let prefixes = ["pages", "page", "pp.", "pp", "p.", "p"]
+        for prefix in prefixes {
+            if lowered.hasPrefix(prefix) {
+                let start = raw.index(raw.startIndex, offsetBy: prefix.count)
+                var rest = String(raw[start...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if rest.hasPrefix(":") {
+                    rest = String(rest.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                return rest
+            }
+        }
+        return nil
+    }
+
+    private static func rangeFromToken(_ token: String) -> ClosedRange<Int>? {
+        let separators = CharacterSet(charactersIn: "-–—")
+        let pieces = token.components(separatedBy: separators)
+        if pieces.count == 1 {
+            guard let value = Int(pieces[0].trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                return nil
+            }
+            return value...value
+        }
+        if pieces.count == 2 {
+            guard let lower = Int(pieces[0].trimmingCharacters(in: .whitespacesAndNewlines)),
+                  let upper = Int(pieces[1].trimmingCharacters(in: .whitespacesAndNewlines)),
+                  lower <= upper
+            else {
+                return nil
+            }
+            return lower...upper
+        }
+        return nil
+    }
+}
+
 /// How many of the inspector's notes show at once, and how many more
 /// each Ctrl+D at the bottom reveals. Value-driven: the view reads
 /// `visibleCount(total:)` and the model stores one per selection.
@@ -630,6 +709,32 @@ public struct RefsNotesPage: Equatable, Sendable {
         batchStart = start
         generation += 1
         return start..<end
+    }
+
+    /// Reveals through an entry index for a total count: false when the
+    /// index is already visible or out of bounds, otherwise raises `shown`
+    /// to the smallest whole number of pages covering the index (capped at
+    /// `total`), bumps `generation`, and staggers at most one page batch.
+    @discardableResult
+    public mutating func reveal(through index: Int, total: Int) -> Bool {
+        let safeTotal = max(total, 0)
+        guard safeTotal > 0, index >= 0, index < safeTotal else {
+            return false
+        }
+        guard index >= visibleCount(total: safeTotal) else {
+            return false
+        }
+        let needed = min(safeTotal, ((index / size) + 1) * size)
+        guard needed > shown else {
+            return false
+        }
+        shown = needed
+        batchStart = max(size, needed - size)
+        if shown <= size {
+            batchStart = nil
+        }
+        generation += 1
+        return true
     }
 
     /// The disclosure-row text for hidden notes, or nil when none are
@@ -1052,6 +1157,56 @@ public struct RefsInspectorFeed: Equatable, Sendable {
         }
         guard clamped >= total else { return [] }
         return headerPlacement().trailing
+    }
+
+    /// The entry-index range to reveal for a Highlights current page: the
+    /// first through the last entry labelled with the labelled page closest
+    /// to `page`. Ties go to the lower page, the notes the reader has just
+    /// passed. Nil when the feed is empty or no entry has a numeric page.
+    public func focusRange(page: Int) -> ClosedRange<Int>? {
+        guard !highlights.isEmpty else {
+            return nil
+        }
+        var pagesByIndex: [Int: Set<Int>] = [:]
+        var allPages = Set<Int>()
+        for (index, annotation) in highlights.enumerated() {
+            var pages = Set<Int>()
+            for range in RefsPageLabel.pages(in: annotation.pageLabel) {
+                for value in range {
+                    pages.insert(value)
+                }
+            }
+            for piece in annotation.pieces {
+                for range in RefsPageLabel.pages(in: piece.pageLabel) {
+                    for value in range {
+                        pages.insert(value)
+                    }
+                }
+            }
+            if !pages.isEmpty {
+                pagesByIndex[index] = pages
+                allPages.formUnion(pages)
+            }
+        }
+        guard !allPages.isEmpty else {
+            return nil
+        }
+        var target = allPages.first!
+        var bestDistance = abs(target - page)
+        for candidate in allPages {
+            let distance = abs(candidate - page)
+            if distance < bestDistance || (distance == bestDistance && candidate < target) {
+                target = candidate
+                bestDistance = distance
+            }
+        }
+        let matching = pagesByIndex.compactMap { index, pages in
+            pages.contains(target) ? index : nil
+        }.sorted()
+        guard let first = matching.first, let last = matching.last else {
+            return nil
+        }
+        return first...last
     }
 
     /// The disclosure-row text for hidden entries, or nil when none

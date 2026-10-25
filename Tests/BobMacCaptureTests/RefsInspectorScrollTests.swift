@@ -280,6 +280,26 @@ final class RefsInspectorScrollTests: XCTestCase {
       ))
   }
 
+  func testFocusTarget() {
+    let geometry = RefsInspectorScrollGeometry(
+      offsetY: 0,
+      contentHeight: 1400,
+      viewportHeight: 400,
+      topInset: 0,
+      bottomInset: 0
+    )
+    XCTAssertNil(
+      RefsInspectorScrollPlanner.focusTarget(
+        geometry: geometry, entryTop: 100, entryBottom: 140, context: 24))
+    XCTAssertEqual(
+      RefsInspectorScrollPlanner.focusTarget(
+        geometry: geometry, entryTop: 600, entryBottom: 640, context: 24),
+      576)
+    XCTAssertNil(
+      RefsInspectorScrollPlanner.focusTarget(
+        geometry: .invalid, entryTop: 600, entryBottom: 640, context: 24))
+  }
+
   func testContainsRow() {
     let geometry = RefsInspectorScrollGeometry(
       offsetY: 100,
@@ -721,6 +741,27 @@ final class RefsInspectorScrollTests: XCTestCase {
       harness.model.inspectorNotesPage(for: selected).generation,
       2
     )
+  }
+
+  func testHostedFocusLandsEntryInsideViewport() {
+    let harness = makeHostedHarness(highlights: Self.thirteenNotes())
+    defer { harness.panel.orderOut(nil) }
+    settle(harness.panel)
+    let selected = tryUnwrapSelected(harness)
+    let feed = RefsInspectorFeed(highlights: Self.thirteenNotes())
+    guard let range = feed.focusRange(page: 7) else {
+      XCTFail("expected a focus range for page 7")
+      return
+    }
+    let target = RefsInspectorScrollPlanner.focusTarget(
+      geometry: RefsInspectorScrollGeometry(
+        offsetY: 0, contentHeight: 1400, viewportHeight: 400, topInset: 0, bottomInset: 0),
+      entryTop: CGFloat(600), entryBottom: CGFloat(644),
+      context: RefsVisualTokens.inspectorRevealContext)
+    XCTAssertNotNil(target)
+    XCTAssertEqual(
+      harness.model.inspectorNotesPage(for: selected).visibleCount(total: 13), 5)
+    XCTAssertEqual(range.lowerBound, 6)
   }
 
   /// Reveal page two while the bitmap is held, record height, then

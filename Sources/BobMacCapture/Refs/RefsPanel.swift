@@ -43,11 +43,14 @@ public final class RefsPanelController: NSObject {
     private let glassToast = RefsGlassToastController()
     private var inspectorScrollCancellable: AnyCancellable?
     private var inspectorRevealCancellable: AnyCancellable?
+    private var inspectorFocusCancellable: AnyCancellable?
     private var revealFollowTask: Task<Void, Never>?
     /// While a reveal waits for SwiftUI layout, the next Ctrl+D counts
     /// as at-the-bottom so rapid presses stack into pages.
     private var revealFollowPending = false
     private var pendingRevealGeneration: Int?
+    private var focusFollowTask: Task<Void, Never>?
+    private var pendingFocusGeneration: Int?
     /// While true, a resign-key does not hide the panel. The ⌘K
     /// actions menu sets this while it tracks.
     var suspendHideOnResign = false
@@ -86,6 +89,9 @@ public final class RefsPanelController: NSObject {
         }
         inspectorRevealCancellable = model.inspectorNoteReveals.sink { [weak self] reveal in
             self?.followReveal(reveal)
+        }
+        inspectorFocusCancellable = model.inspectorFocusRequests.sink { [weak self] focus in
+            self?.followFocus(focus)
         }
     }
 
@@ -698,6 +704,23 @@ public final class RefsPanelController: NSObject {
         return nil
     }
 
+    static func findFocusAnchor(generation: Int, in view: NSView?) -> RefsInspectorFocusAnchorView? {
+        guard let view else {
+            return nil
+        }
+        if let anchor = view as? RefsInspectorFocusAnchorView,
+           anchor.generation == generation
+        {
+            return anchor
+        }
+        for subview in view.subviews {
+            if let found = findFocusAnchor(generation: generation, in: subview) {
+                return found
+            }
+        }
+        return nil
+    }
+
     static func findDisclosureAnchor(in view: NSView?) -> RefsInspectorDisclosureAnchorView? {
         guard let view else {
             return nil
@@ -771,6 +794,7 @@ public final class RefsPanelController: NSObject {
     /// restore so a reset or Highlights Tabs open starts from the top.
     private func cancelPendingViewRestores() {
         cancelRevealFollow()
+        cancelFocusFollow()
         Self.findInspectorScrollAnchor(in: panel?.contentView)?.cancelPendingRestore()
     }
 
@@ -781,8 +805,15 @@ public final class RefsPanelController: NSObject {
         pendingRevealGeneration = nil
     }
 
+    private func cancelFocusFollow() {
+        focusFollowTask?.cancel()
+        focusFollowTask = nil
+        pendingFocusGeneration = nil
+    }
+
     func scrollInspector(_ direction: RefsInspectorScrollDirection) {
         Self.findInspectorScrollAnchor(in: panel?.contentView)?.cancelPendingRestore()
+        cancelFocusFollow()
         if direction == .up {
             cancelRevealFollow()
         }
@@ -887,6 +918,79 @@ public final class RefsPanelController: NSObject {
                         if let target = RefsInspectorScrollPlanner.revealTarget(
                             geometry: measured.geometry,
                             batchTop: batchTop,
+                            context: RefsVisualTokens.inspectorRevealContext
+                        ) {
+                            self.setInspectorOffset(
+                                target,
+                                scrollView: measured.scrollView,
+                                flipped: measured.flipped
+                            )
+                        }
+                        return
+                    }
+                }
+                try? await Task.sleep(nanoseconds: 16_000_000)
+            }
+        }
+    }
+
+    private func followFocus(_ focus: RefsInspectorFocus) {
+        focusFollowTask?.cancel()
+        pendingFocusGeneration = focus.generation
+        let id = focus.id
+        let generation = focus.generation
+        focusFollowTask = Task { [weak self] in
+            defer {
+                if self?.pendingFocusGeneration == generation {
+                    self?.pendingFocusGeneration = nil
+                    self?.focusFollowTask = nil
+                }
+            }
+            var initialOffset: CGFloat?
+            let deadline = Date().addingTimeInterval(1)
+            while Date() < deadline {
+                if Task.isCancelled {
+                    return
+                }
+                guard let self else {
+                    return
+                }
+                if !self.isVisible {
+                    return
+                }
+                if self.model.selectedID != id {
+                    return
+                }
+                if self.model.inspectorFocus?.generation != generation {
+                    return
+                }
+                if self.model.inspectorNotesPage(for: id).generation != generation {
+                    return
+                }
+                self.panel?.contentView?.layoutSubtreeIfNeeded()
+                if let measured = self.measureInspectorScroll(),
+                   let anchor = Self.findFocusAnchor(
+                       generation: generation,
+                       in: self.panel?.contentView
+                   ),
+                   let documentView = measured.scrollView.documentView
+                {
+                    if let initial = initialOffset,
+                      abs(measured.geometry.offsetY - initial) > 1
+                    {
+                        return
+                    }
+                    initialOffset = measured.geometry.offsetY
+                    let rect = anchor.convert(anchor.bounds, to: documentView)
+                    if rect.height > 0.5 {
+                        let documentHeight = documentView.frame.height
+                        let entryTop: CGFloat = documentView.isFlipped
+                            ? rect.minY : documentHeight - rect.maxY
+                        let entryBottom = entryTop + rect.height
+                        if let target = RefsInspectorScrollPlanner.focusTarget(
+                            geometry: measured.geometry,
+                            entryTop: entryTop,
+                            entryBottom: entryBottom,
                             context: RefsVisualTokens.inspectorRevealContext
                         ) {
                             self.setInspectorOffset(

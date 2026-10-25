@@ -85,9 +85,10 @@ listed id in that batch). An arrival that lands in the first 10 seconds of
 an untouched ordinary show — typically the show's own pull — also resets
 and selects it. A Ctrl+Tab switch never resets for an arrival: the new
 reference joins the listing without moving the selection. The Highlights Tabs
-key (Command-T) always opens from fresh-launch defaults, as Ctrl-C resets,
-with Tabs on, and still defers a new-reference reset to the next ordinary
-show.
+key (Command-T) opens from fresh defaults with Tabs on and the focused PDF
+selected. Nothing done in that session is remembered: the next ordinary show,
+including Ctrl+Tab back, returns to the view from before it. It still defers
+a new-reference reset to the next ordinary show.
 Selecting the reference first cancels the reset. Ctrl-C resets it to the
 fresh-launch defaults; quitting or restarting starts fresh.
 
@@ -509,21 +510,20 @@ progress finishes if the panel hides.
   activates, so Highlights stays frontmost and the same key closes the
   panel again.
 - While Highlights is frontmost and Bob Refs is hidden, Command-T opens
-  Bob Refs in Tabs (default) from fresh-launch defaults, as after Ctrl-C.
-  Settings › References can change this key to Shift-Command-O, Command-E,
-  or Off. It registers only for Highlights or the override app; the global
-  Control-Shift-Command-O and Command-O library flows are unchanged. While
-  Bob Refs is showing, Command-T switches between Tabs and the library
-  instead of closing the panel; Escape closes it.
+  Bob Refs in Tabs (default) from fresh defaults with the focused PDF
+  selected. Settings › References can change this key to Shift-Command-O,
+  Command-E, or Off. It registers only for Highlights or the override app;
+  the global Control-Shift-Command-O and Command-O library flows are
+  unchanged. While Bob Refs is showing, Command-T switches between Tabs and
+  the library instead of closing the panel; Escape closes it.
 - Ordinary shows restore the remembered query, scope, filters, selection,
   revealed pages, and scroll positions, except when a newly added reference
   resets the view and selects it (including an arrival in the first 10
   seconds of an untouched show). A Ctrl+Tab switch always restores the
   remembered view and never resets for an arrival. The Highlights Tabs key
-  resets query, scope, Newest, selection, revealed pages, and list and
-  preview positions, then turns Tabs on and selects the Tabs preselection.
-  A Tabs show defers a new-reference reset to the next ordinary show.
-  Ctrl-C resets the view to fresh-launch defaults.
+  opens from fresh defaults with Tabs on and the focused PDF selected, and
+  nothing there is remembered. A Tabs show defers a new-reference reset to
+  the next ordinary show. Ctrl-C resets the view to fresh-launch defaults.
 - Clicking a scan notification opens the default view with Just scanned
   at the top and its first row selected. Clicking an open-PDF update
   notification opens Bob Refs and selects that reference when it is in
@@ -561,12 +561,12 @@ open Tabs; Settings › References can change this to Shift-Command-O,
 Command-E, or Off. Inside Bob Refs, Command-T toggles Tabs; the filter
 combines with kind scopes and keeps the current query. The current tab
 comes first; the rest follow most-recently-active order, tab-bar order
-breaking ties, unmatched tabs last. When Highlights is frontmost, the
-previous tab is preselected.
+breaking ties, unmatched tabs last. Every Tabs preselection selects the
+focused PDF.
 
-A Tabs show keeps the selected row while that tab is still open. After
-Bob Refs switches to a tab, the next Tabs show preselects the current
-Highlights tab once. Command-T from Highlights always starts fresh.
+A Tabs show keeps the selected row while that tab is still open. Every
+Tabs show preselects the focused PDF. Command-T from Highlights opens from
+fresh defaults and is never remembered.
 
 Return, Tab, or double-click switches to the existing tab. Switching
 keeps its page, does not change reading state, and does not add an entry

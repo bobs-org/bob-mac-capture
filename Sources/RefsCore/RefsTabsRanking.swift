@@ -8,16 +8,20 @@ public struct RefsTabsListing: Equatable, Sendable {
     public let tabs: [String: RefsOpenTab]
     /// The row selected when the panel first enters Tabs mode.
     public let preselectedID: String?
+    /// The listed row whose tab is the focused PDF, when it is in scope.
+    public let currentID: String?
 
     /// Creates a tab listing.
     public init(
         listing: RefsListing,
         tabs: [String: RefsOpenTab],
-        preselectedID: String?
+        preselectedID: String?,
+        currentID: String? = nil
     ) {
         self.listing = listing
         self.tabs = tabs
         self.preselectedID = preselectedID
+        self.currentID = currentID
     }
 }
 
@@ -74,11 +78,13 @@ public enum RefsTabsRanker {
                 highlightsCurrentIDs: currentIDs,
                 highlightsTabIDs: Set(inScope.map(\.rowID))
             )
-            let selectedIndex = highlightsIsFrontmost && ids.count > 1 ? 1 : 0
+            _ = highlightsIsFrontmost
+            let currentID = orderedTabs.first(where: \.isCurrent).map(\.rowID)
             return RefsTabsListing(
                 listing: listing,
                 tabs: tabMap,
-                preselectedID: ids.indices.contains(selectedIndex) ? ids[selectedIndex] : nil
+                preselectedID: currentID ?? ids.first,
+                currentID: currentID
             )
         }
 
@@ -107,10 +113,13 @@ public enum RefsTabsRanker {
             highlightsCurrentIDs: currentIDs,
             highlightsTabIDs: Set(inScope.map(\.rowID))
         )
+        let idSet = Set(ids)
+        let currentID = inScope.first(where: { $0.isCurrent && idSet.contains($0.rowID) })?.rowID
         return RefsTabsListing(
             listing: listing,
             tabs: tabMap,
-            preselectedID: ids.first
+            preselectedID: ids.first,
+            currentID: currentID
         )
     }
 

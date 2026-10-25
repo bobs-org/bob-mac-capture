@@ -481,6 +481,7 @@ final class AXHighlightsTabsReader: HighlightsTabsReading, @unchecked Sendable {
                 deadline: deadline
             ) as? String
             let pageCaption = windowTitle.flatMap(HighlightsWindowTitle.pageCaption(fromTitle:))
+            let pageNumber = windowTitle.flatMap(HighlightsWindowTitle.pageNumber(fromTitle:))
             let tabGroup = try findTabGroup(in: window, depth: 0, deadline: deadline)
             let tabButtons: [AXUIElement] = try tabGroup.flatMap { group in
                 setMessagingTimeout(on: group)
@@ -535,6 +536,7 @@ final class AXHighlightsTabsReader: HighlightsTabsReading, @unchecked Sendable {
                     value: HighlightsTabsSnapshot.Window(
                         isMain: isMain,
                         pageCaption: pageCaption,
+                        pageNumber: pageNumber,
                         tabs: tabs
                     )
                 )

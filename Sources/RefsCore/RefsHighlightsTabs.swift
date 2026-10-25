@@ -8,13 +8,16 @@ public struct HighlightsTabsSnapshot: Equatable, Sendable {
         public let isMain: Bool
         /// The visible document's formatted page caption, when available.
         public let pageCaption: String?
+        /// The visible document's current page number, when available.
+        public let pageNumber: Int?
         /// Tabs in the window's native tab-bar order.
         public let tabs: [Tab]
 
         /// Creates a window snapshot.
-        public init(isMain: Bool, pageCaption: String? = nil, tabs: [Tab]) {
+        public init(isMain: Bool, pageCaption: String? = nil, pageNumber: Int? = nil, tabs: [Tab]) {
             self.isMain = isMain
             self.pageCaption = pageCaption
+            self.pageNumber = pageNumber
             self.tabs = tabs
         }
     }
@@ -79,6 +82,18 @@ public enum HighlightsWindowTitle {
             return nil
         }
         return "p. \(page)/\(count)"
+    }
+
+    /// Parses `name.pdf – Page 5 of 25` (en dash, hyphen, or em dash) as `5`.
+    public static func pageNumber(fromTitle title: String) -> Int? {
+        let range = NSRange(title.startIndex..<title.endIndex, in: title)
+        guard let match = pageSuffix.firstMatch(in: title, range: range),
+              let pageRange = Range(match.range(at: 1), in: title),
+              let page = Int(title[pageRange])
+        else {
+            return nil
+        }
+        return page
     }
 }
 
@@ -340,6 +355,7 @@ public enum HighlightsTabMatcher {
                     tabOrdinal: tabOrdinal,
                     isCurrent: isCurrent,
                     pageCaption: window.pageCaption,
+                    pageNumber: tab.isSelected ? window.pageNumber : nil,
                     documentPath: tab.documentPath,
                     match: resolved.match
                 )
@@ -428,6 +444,8 @@ public struct RefsOpenTab: Equatable, Sendable {
     public let isCurrent: Bool
     /// The visible window's formatted page caption, if available.
     public let pageCaption: String?
+    /// The visible document's current page number, when available.
+    public let pageNumber: Int?
     /// The absolute path for the visible tab, if available.
     public let documentPath: String?
     /// How the tab matched the library.
@@ -448,6 +466,7 @@ public struct RefsOpenTab: Equatable, Sendable {
         tabOrdinal: Int,
         isCurrent: Bool,
         pageCaption: String?,
+        pageNumber: Int? = nil,
         documentPath: String?,
         match: RefsOpenTabMatch
     ) {
@@ -459,6 +478,7 @@ public struct RefsOpenTab: Equatable, Sendable {
         self.tabOrdinal = tabOrdinal
         self.isCurrent = isCurrent
         self.pageCaption = pageCaption
+        self.pageNumber = pageNumber
         self.documentPath = documentPath
         self.match = match
     }

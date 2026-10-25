@@ -321,6 +321,71 @@ final class RefsInspectorTests: XCTestCase {
         XCTAssertNil(RefsShowAnnotation(pageLabel: nil).displayPageLabel)
     }
 
+    func testPageLabelReaderCoversEveryFormat() throws {
+        XCTAssertEqual(RefsPageLabel.pages(in: "Page 5"), [5...5])
+        XCTAssertEqual(RefsPageLabel.pages(in: "Page: 5"), [5...5])
+        XCTAssertEqual(RefsPageLabel.pages(in: "Pages 11–12"), [11...12])
+        XCTAssertEqual(RefsPageLabel.pages(in: "Pages 11-12"), [11...12])
+        XCTAssertEqual(RefsPageLabel.pages(in: "pp. 3–5, 9"), [3...5, 9...9])
+        XCTAssertEqual(RefsPageLabel.pages(in: "p. 7"), [7...7])
+        XCTAssertEqual(RefsPageLabel.pages(in: "p 7"), [7...7])
+        XCTAssertEqual(RefsPageLabel.pages(in: "12"), [12...12])
+        XCTAssertEqual(RefsPageLabel.pages(in: "PAGE 5"), [5...5])
+        XCTAssertEqual(RefsPageLabel.pages(in: "iv"), [])
+        XCTAssertEqual(RefsPageLabel.pages(in: "Page iv"), [])
+        XCTAssertEqual(RefsPageLabel.pages(in: nil), [])
+        XCTAssertEqual(RefsPageLabel.pages(in: "  "), [])
+    }
+
+    func testFocusRangeExactAndSeveralNotesOnOnePage() throws {
+        let feed = RefsInspectorFeed(highlights: [
+            RefsShowAnnotation(pageLabel: "5", kind: "highlight", quote: "a"),
+            RefsShowAnnotation(pageLabel: "5", kind: "highlight", quote: "b"),
+            RefsShowAnnotation(pageLabel: "7", kind: "highlight", quote: "c"),
+        ])
+        XCTAssertEqual(feed.focusRange(page: 5), 0...1)
+        XCTAssertEqual(feed.focusRange(page: 7), 2...2)
+    }
+
+    func testFocusRangeNearestTieGoesLowerAndGroups() throws {
+        let feed = RefsInspectorFeed(highlights: [
+            RefsShowAnnotation(pageLabel: "5", kind: "highlight", quote: "a"),
+            RefsShowAnnotation(pageLabel: "7", kind: "highlight", quote: "b"),
+            RefsShowAnnotation(
+                pageLabel: "9",
+                kind: "highlight",
+                quote: "g",
+                pieces: [
+                    RefsShowPiece(pageLabel: "11", quote: "p1"),
+                    RefsShowPiece(pageLabel: "12", quote: "p2"),
+                ]
+            ),
+        ])
+        XCTAssertEqual(feed.focusRange(page: 6), 0...0)
+        XCTAssertEqual(feed.focusRange(page: 10), 2...2)
+        XCTAssertEqual(feed.focusRange(page: 12), 2...2)
+    }
+
+    func testFocusRangeNoNumericLabelsAndEmptyFeed() throws {
+        let feed = RefsInspectorFeed(highlights: [
+            RefsShowAnnotation(pageLabel: "iv", kind: "highlight", quote: "a"),
+        ])
+        XCTAssertNil(feed.focusRange(page: 5))
+        XCTAssertNil(RefsInspectorFeed(highlights: []).focusRange(page: 5))
+    }
+
+    func testNotesPageRevealThroughCoversIndexInWholePages() throws {
+        var page = RefsNotesPage(size: 5)
+        XCTAssertFalse(page.reveal(through: 2, total: 13))
+        XCTAssertEqual(page.visibleCount(total: 13), 5)
+        XCTAssertTrue(page.reveal(through: 12, total: 13))
+        XCTAssertEqual(page.visibleCount(total: 13), 13)
+        XCTAssertEqual(page.batchStart, 8)
+        XCTAssertEqual(page.generation, 1)
+        XCTAssertFalse(page.reveal(through: 12, total: 13))
+        XCTAssertFalse(page.reveal(through: 99, total: 13))
+    }
+
     func testHighlightPickerPreservesPluralPageLabels() throws {
         let pages = RefsHighlightPicker.Entry(annotation: RefsShowAnnotation(
             pageLabel: "Pages 11–12", kind: "highlight", quote: "Merged quote"

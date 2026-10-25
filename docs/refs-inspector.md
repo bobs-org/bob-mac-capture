@@ -91,11 +91,14 @@ notes and intrinsics are ready; a hidden panel hydrates when shown.
   by default, Settings › References › Preview highlights per page);
   the disclosure row (`+N more · ⌃D shows …`) or Ctrl-D while that
   row is visible reveals the next page of highlights until all show.
-  Revealed pages reset on selection changes and when the user changes the
-  page size. They survive a show. A new-reference reset clears them like
-  Ctrl-C. The preview also keeps its scroll position
-  across shows and while the Copy, Rename, or Link to Today card is open.
-  Page labels show as bob writes them (`Page 1` stays `Page 1`).
+  A Highlights-key open reveals and scrolls the focused PDF's preview to
+  the notes on Highlights' current page, or the nearest labelled page with
+  ties to the earlier page, staying at the top when the page or labels are
+  unknown. Revealed pages reset on selection changes and when the user
+  changes the page size. They survive a show. A new-reference reset clears
+  them like Ctrl-C. The preview also keeps its scroll position across shows
+  and while the Copy, Rename, or Link to Today card is open. Page labels
+  show as bob writes them (`Page 1` stays `Page 1`).
 - Chats name consolidated reports and researcher drafts in the
   byline from the stem (`__final`, `__x`).
 - The Reading task fact names where the reference's task lives: the
