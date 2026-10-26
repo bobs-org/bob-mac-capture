@@ -1399,7 +1399,7 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(harness.model.copyCard?.highlightedPage, 7)
   }
 
-  func testQueuedCodeKeyCopiesWhenCatalogReturns() async throws {
+  func testQueuedCodeKeyCopiesFirstBlockWhenCatalogReturnsWithoutPage() async throws {
     let path = "ref/chat/example.md"
     let fetcher = FakeRefsFetcher()
     fetcher.codeDelayNanoseconds = 80_000_000
@@ -1414,6 +1414,43 @@ final class RefsPanelModelTests: XCTestCase {
     var completions: [RefsCopyRow] = []
     harness.model.copyCompletion = { completions.append($0) }
     harness.model.openCopyCard()
+    XCTAssertNil(harness.model.copyCard?.highlightedPage)
+    harness.model.handleCopyCardKey(characters: "c", keyCode: 8, modifiers: [])
+    XCTAssertEqual(harness.model.copyCard?.pending, .codePicker)
+    harness.model.handleCopyCardKey(characters: "\r", keyCode: 36, modifiers: [])
+    await harness.waitForModel { $0.copyCard == nil && harness.pasteboard.strings.count == 1 }
+    XCTAssertEqual(
+      harness.pasteboard.strings.first,
+      "build:\n\tswift build\n\tswift test"
+    )
+    XCTAssertEqual(completions.first?.confirmationTitle, "Copied makefile · 3 lines")
+    XCTAssertEqual(completions.count, 1)
+    XCTAssertEqual(harness.pasteboard.strings.count, 1)
+    XCTAssertNil(harness.model.copyCard)
+  }
+
+  func testQueuedCodeKeyCopiesPageBlockWhenCatalogReturnsFromHighlightsTab() async throws {
+    let path = "ref/chat/example.md"
+    let fetcher = FakeRefsFetcher()
+    fetcher.codeDelayNanoseconds = 80_000_000
+    fetcher.codeResponse = try Self.codeResponse(path: path)
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [Self.renameRecord(path: path, stem: "example", sourceMarkdown: ".bob/src.md")]
+    )
+    let reader = FakeTabsReader(isTrusted: true)
+    let harness = try makeRenameHarness(fetcher: fetcher, tabsReader: reader)
+    await harness.waitForSnapshot(ids: [path])
+    let item = try XCTUnwrap(harness.library.items.first)
+    reader.setNextResult(
+      .snapshot(Self.tabsSnapshot([item], vault: harness.vault, frontmost: true, pageNumber: 7))
+    )
+    harness.model.prepareForPresentation(source: .highlightsTabs)
+    await harness.waitForModel { $0.tabsState == .loaded }
+    var completions: [RefsCopyRow] = []
+    harness.model.copyCompletion = { completions.append($0) }
+    harness.model.openCopyCard()
+    XCTAssertEqual(harness.model.copyCard?.highlightedPage, 7)
     harness.model.handleCopyCardKey(characters: "c", keyCode: 8, modifiers: [])
     XCTAssertEqual(harness.model.copyCard?.pending, .codePicker)
     harness.model.handleCopyCardKey(characters: "\r", keyCode: 36, modifiers: [])
@@ -1423,6 +1460,9 @@ final class RefsPanelModelTests: XCTestCase {
       "refresh:\n  interval_ms: 250\n  jitter_ms: 40\n\ton_focus: true\n  backoff:\n    initial_ms: 80\n    max_ms: 4000\n    factor: 1.6\n  watchers:\n    - list\n    - plan\n    - show\n  debug: false\n  retries: 3"
     )
     XCTAssertEqual(completions.first?.confirmationTitle, "Copied yaml · 14 lines")
+    XCTAssertEqual(completions.count, 1)
+    XCTAssertEqual(harness.pasteboard.strings.count, 1)
+    XCTAssertNil(harness.model.copyCard)
   }
 
   func testUnsupportedCodeFetchExplainsNewerBob() async throws {
