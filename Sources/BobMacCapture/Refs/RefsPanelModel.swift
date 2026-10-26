@@ -1515,12 +1515,10 @@ public final class RefsPanelModel: ObservableObject {
       tabsState = matchedTabs.isEmpty ? .noDocuments : .loaded
       let preserve = preserveTabsSelectionOnNextSnapshot
       preserveTabsSelectionOnNextSnapshot = false
-      let hadSession = highlightsKeySession != nil
-      let previousSelection = selectedID
+      // A changed selection arms and tries the focus in selectedID's
+      // didSet; re-arming here after that one-shot fire would deliver
+      // the same focus twice when the content was already cached.
       rebuildTabsListing(preservingSelection: preserve)
-      if hadSession, !preserve, previousSelection == nil {
-        updateHighlightsKeyFocusArming()
-      }
       tryFireHighlightsKeyFocus()
       if heldTabsOpen {
         heldTabsOpen = false
