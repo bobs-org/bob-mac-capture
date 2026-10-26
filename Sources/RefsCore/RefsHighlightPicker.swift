@@ -7,7 +7,7 @@ public struct RefsHighlightPicker: Equatable, Sendable {
     /// Sentinel group id for the ungrouped tail when sections exist.
     public static let otherGroupID = "\u{0}other"
 
-    public struct Entry: Equatable, Sendable {
+    public struct Entry: Equatable, Sendable, RefsSectionedWindowEntry {
         public let annotation: RefsShowAnnotation
         public let payload: String
         public let line1: String
@@ -17,6 +17,9 @@ public struct RefsHighlightPicker: Equatable, Sendable {
         /// Section id, `otherGroupID`, or nil when the picker is unsectioned.
         public let groupID: String?
         public let groupTitle: String?
+
+        public var sectionedWindowGroupID: String? { groupID }
+        public var sectionedWindowGroupTitle: String? { groupTitle }
 
         public init(annotation: RefsShowAnnotation, groupID: String? = nil, groupTitle: String? = nil) {
             self.annotation = annotation
@@ -66,20 +69,22 @@ public struct RefsHighlightPicker: Equatable, Sendable {
         }
     }
 
-    public enum WindowRow: Equatable, Sendable {
-        case group(title: String)
-        case entry(windowPosition: Int, entry: Entry)
-    }
+    public typealias WindowRow = RefsSectionedWindow<Entry>.Row
 
     public let entries: [Entry]
-    public private(set) var selectedIndex: Int
-    public private(set) var windowStart: Int
-    public private(set) var windowSize: Int
+    private var sectionedWindow: RefsSectionedWindow<Entry>
+    public var selectedIndex: Int { sectionedWindow.selectedIndex }
+    public var windowStart: Int { sectionedWindow.windowStart }
+    public var windowSize: Int { sectionedWindow.windowSize }
     /// Unsectioned row budget from the card layout. Sectioned windows
     /// shrink so group headers still fit this many entry-row heights.
-    public private(set) var budgetWindowSize: Int
-    public var groupHeaderHeight: Double
-    public var entryRowHeight: Double
+    public var budgetWindowSize: Int { sectionedWindow.budgetWindowSize }
+    public var groupHeaderHeight: Double {
+        didSet { sectionedWindow.groupHeaderHeight = max(0, groupHeaderHeight) }
+    }
+    public var entryRowHeight: Double {
+        didSet { sectionedWindow.entryRowHeight = max(0, entryRowHeight) }
+    }
 
     public init(
         entries: [Entry],
@@ -89,22 +94,15 @@ public struct RefsHighlightPicker: Equatable, Sendable {
         entryRowHeight: Double = 36
     ) {
         self.entries = entries
-        self.groupHeaderHeight = groupHeaderHeight
-        self.entryRowHeight = entryRowHeight
-        // Card row capacity, not entry count: headers may use leftover
-        // height when the card is taller than the list.
-        budgetWindowSize = Self.clampedBudget(windowSize)
-        if entries.isEmpty {
-            self.selectedIndex = 0
-            self.windowSize = 0
-        } else {
-            self.selectedIndex = min(max(0, selectedIndex), entries.count - 1)
-            self.windowSize = Self.clampedWindowSize(
-                budgetWindowSize, total: entries.count
-            )
-        }
-        windowStart = 0
-        fitWindow()
+        self.groupHeaderHeight = max(0, groupHeaderHeight)
+        self.entryRowHeight = max(0, entryRowHeight)
+        sectionedWindow = RefsSectionedWindow(
+            entries: entries,
+            selectedIndex: selectedIndex,
+            windowSize: windowSize,
+            groupHeaderHeight: groupHeaderHeight,
+            entryRowHeight: entryRowHeight
+        )
     }
 
     public static func entries(from row: RefsShowRow) -> [Entry] {
@@ -136,70 +134,31 @@ public struct RefsHighlightPicker: Equatable, Sendable {
         }
     }
 
-    public var hasGroups: Bool {
-        entries.contains { $0.groupID != nil }
-    }
+    public var hasGroups: Bool { sectionedWindow.hasGroups }
 
     /// Visible picker rows, including non-selectable group headers.
     /// A window that starts mid-group keeps that group's title at the
     /// top; group starts inside the window emit their own header.
-    public var windowRows: [WindowRow] {
-        let slice = windowEntries
-        guard !slice.isEmpty else { return [] }
-        var rows: [WindowRow] = []
-        if hasGroups {
-            let first = entries[windowStart]
-            if !isGroupStart(windowStart), let title = first.groupTitle {
-                rows.append(.group(title: title))
-            }
-        }
-        for (offset, entry) in slice.enumerated() {
-            let index = windowStart + offset
-            if hasGroups, isGroupStart(index), let title = entry.groupTitle {
-                rows.append(.group(title: title))
-            }
-            rows.append(.entry(windowPosition: offset + 1, entry: entry))
-        }
-        return rows
-    }
+    public var windowRows: [WindowRow] { sectionedWindow.windowRows }
 
-    public var windowEntries: ArraySlice<Entry> {
-        guard !entries.isEmpty, windowSize > 0 else { return [] }
-        let end = min(entries.count, windowStart + windowSize)
-        return entries[windowStart..<end]
-    }
+    public var windowEntries: ArraySlice<Entry> { sectionedWindow.windowEntries }
 
-    public var selectedEntry: Entry? {
-        entries.indices.contains(selectedIndex) ? entries[selectedIndex] : nil
-    }
+    public var selectedEntry: Entry? { sectionedWindow.selectedEntry }
 
     public mutating func move(_ delta: Int) {
-        guard !entries.isEmpty, delta != 0 else { return }
-        let count = entries.count
-        selectedIndex = (selectedIndex + (delta % count) + count) % count
-        fitWindow()
+        sectionedWindow.move(delta)
     }
 
     public mutating func selectWindowPosition(_ position: Int) -> Entry? {
-        guard let entry = entry(atWindowPosition: position) else { return nil }
-        selectedIndex = windowStart + position - 1
-        return entry
+        sectionedWindow.selectWindowPosition(position)
     }
 
     public mutating func setWindowSize(_ size: Int) {
-        budgetWindowSize = Self.clampedBudget(size)
-        fitWindow()
+        sectionedWindow.setWindowSize(size)
     }
 
     public func entry(atWindowPosition position: Int) -> Entry? {
-        let index = windowStart + position - 1
-        guard position >= 1,
-              position <= windowSize,
-              entries.indices.contains(index)
-        else {
-            return nil
-        }
-        return entries[index]
+        sectionedWindow.entry(atWindowPosition: position)
     }
 
     public func allHighlightsRow() -> RefsCopyRow {
@@ -220,72 +179,4 @@ public struct RefsHighlightPicker: Equatable, Sendable {
         )
     }
 
-    private mutating func revealSelection() {
-        guard windowSize > 0, !entries.isEmpty else {
-            windowStart = 0
-            return
-        }
-        if selectedIndex < windowStart {
-            windowStart = selectedIndex
-        } else if selectedIndex >= windowStart + windowSize {
-            windowStart = selectedIndex - windowSize + 1
-        }
-        let maxStart = max(0, entries.count - windowSize)
-        windowStart = min(max(0, windowStart), maxStart)
-    }
-
-    private mutating func fitWindow() {
-        guard !entries.isEmpty else {
-            windowSize = 0
-            windowStart = 0
-            return
-        }
-        var size = max(1, min(budgetWindowSize, entries.count))
-        while size > 1 {
-            windowSize = size
-            revealSelection()
-            if !overflowsCurrentWindow() {
-                return
-            }
-            size -= 1
-        }
-        windowSize = 1
-        revealSelection()
-    }
-
-    private func overflowsCurrentWindow() -> Bool {
-        guard hasGroups, groupHeaderHeight > 0, entryRowHeight > 0 else {
-            return false
-        }
-        let visible = min(windowSize, max(0, entries.count - windowStart))
-        let headers = headerCount(start: windowStart, size: visible)
-        let used = Double(visible) * entryRowHeight
-            + Double(headers) * groupHeaderHeight
-        let budget = Double(max(1, budgetWindowSize)) * entryRowHeight
-        return used > budget
-    }
-
-    private func headerCount(start: Int, size: Int) -> Int {
-        let end = min(entries.count, start + max(0, size))
-        guard start < end else { return 0 }
-        var groups = Set<String>()
-        for index in start..<end {
-            groups.insert(entries[index].groupID ?? "")
-        }
-        return groups.count
-    }
-
-    private func isGroupStart(_ index: Int) -> Bool {
-        guard entries.indices.contains(index) else { return false }
-        if index == 0 { return true }
-        return entries[index].groupID != entries[index - 1].groupID
-    }
-
-    private static func clampedBudget(_ size: Int) -> Int {
-        min(9, max(0, size))
-    }
-
-    private static func clampedWindowSize(_ size: Int, total: Int) -> Int {
-        min(clampedBudget(size), max(total, 0))
-    }
 }

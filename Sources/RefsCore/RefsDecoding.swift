@@ -115,6 +115,10 @@ public struct RefRecord: Codable, Equatable, Sendable {
     public let finished: String?
     public let finishedSource: String?
     public let sourcePDF: String?
+    /// Vault-relative saved Markdown pointer from bob, absent on older bob.
+    public let sourceMarkdown: String?
+    /// Whether the JSON row reported `source_markdown` (including null).
+    public let reportsSourceMarkdown: Bool
     public let audio: String?
     public let snapshotSyncedAt: String?
     public let urls: [String]
@@ -145,6 +149,8 @@ public struct RefRecord: Codable, Equatable, Sendable {
         finished: String? = nil,
         finishedSource: String? = nil,
         sourcePDF: String? = nil,
+        sourceMarkdown: String? = nil,
+        reportsSourceMarkdown: Bool = false,
         audio: String? = nil,
         snapshotSyncedAt: String? = nil,
         urls: [String] = [],
@@ -174,6 +180,8 @@ public struct RefRecord: Codable, Equatable, Sendable {
         self.finished = finished
         self.finishedSource = finishedSource
         self.sourcePDF = sourcePDF
+        self.sourceMarkdown = sourceMarkdown
+        self.reportsSourceMarkdown = reportsSourceMarkdown
         self.audio = audio
         self.snapshotSyncedAt = snapshotSyncedAt
         self.urls = urls
@@ -204,6 +212,7 @@ public struct RefRecord: Codable, Equatable, Sendable {
         case finished
         case finishedSource = "finished_source"
         case sourcePDF = "source_pdf"
+        case sourceMarkdown = "source_markdown"
         case audio
         case snapshot
         case urls
@@ -273,6 +282,8 @@ public struct RefRecord: Codable, Equatable, Sendable {
         finished = try container.decodeIfPresent(String.self, forKey: .finished)
         finishedSource = try container.decodeIfPresent(String.self, forKey: .finishedSource)
         sourcePDF = try container.decodeIfPresent(String.self, forKey: .sourcePDF)
+        sourceMarkdown = try container.decodeIfPresent(String.self, forKey: .sourceMarkdown)
+        reportsSourceMarkdown = container.contains(.sourceMarkdown)
         audio = try container.decodeIfPresent(String.self, forKey: .audio)
         snapshotSyncedAt = try container.decodeIfPresent(
             SnapshotPayload.self,
@@ -314,6 +325,12 @@ public struct RefRecord: Codable, Equatable, Sendable {
         try container.encodeIfPresent(finished, forKey: .finished)
         try container.encodeIfPresent(finishedSource, forKey: .finishedSource)
         try container.encodeIfPresent(sourcePDF, forKey: .sourcePDF)
+        if reportsSourceMarkdown {
+            try container.encodeIfPresent(sourceMarkdown, forKey: .sourceMarkdown)
+            if sourceMarkdown == nil {
+                try container.encodeNil(forKey: .sourceMarkdown)
+            }
+        }
         try container.encodeIfPresent(audio, forKey: .audio)
         if let snapshotSyncedAt {
             var snapshot = container.nestedContainer(

@@ -267,6 +267,8 @@ public struct RefItem: Identifiable, Equatable, Sendable {
     public let state: RefState
     public let isBlocked: Bool
     public let pdfPath: String
+    /// Vault-relative pointer to the immutable Markdown saved by bob.
+    public let sourceMarkdown: String?
     public let parentLabel: String?
     public let task: RefTask?
     public let author: String?
@@ -300,6 +302,7 @@ public struct RefItem: Identifiable, Equatable, Sendable {
         state: RefState,
         isBlocked: Bool,
         pdfPath: String,
+        sourceMarkdown: String? = nil,
         parentLabel: String? = nil,
         task: RefTask? = nil,
         author: String? = nil,
@@ -331,6 +334,7 @@ public struct RefItem: Identifiable, Equatable, Sendable {
         self.state = state
         self.isBlocked = isBlocked
         self.pdfPath = pdfPath
+        self.sourceMarkdown = sourceMarkdown
         self.parentLabel = parentLabel
         self.task = task
         self.author = author
@@ -405,6 +409,7 @@ extension RefItem {
             state: RefState(status: record.status, readingState: record.readingState),
             isBlocked: record.blocked,
             pdfPath: pdf,
+            sourceMarkdown: record.sourceMarkdown,
             parentLabel: Self.parentLabel(from: record),
             task: record.task,
             author: record.author,
@@ -532,6 +537,7 @@ public enum RefsCatalog {
                     state: item.state,
                     isBlocked: item.isBlocked,
                     pdfPath: item.pdfPath,
+                    sourceMarkdown: item.sourceMarkdown,
                     parentLabel: item.parentLabel,
                     task: item.task,
                     author: item.author,
