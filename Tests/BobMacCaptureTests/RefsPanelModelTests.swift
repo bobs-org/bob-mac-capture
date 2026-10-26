@@ -3828,8 +3828,8 @@ final class RefsPanelModelTests: XCTestCase {
     await harness.waitForSnapshot()
     let kept = "ref/chat/small_reading.md"
     await harness.waitForModel { $0.listing.contains(id: kept) }
-    harness.model.setQuery("keep")
-    harness.model.perform(.setScope(.papers))
+    harness.model.setQuery("reading")
+    harness.model.perform(.setScope(.chats))
     harness.model.perform(.toggleNewest)
     XCTAssertTrue(harness.model.perform(.select(id: kept)))
 
@@ -3846,8 +3846,8 @@ final class RefsPanelModelTests: XCTestCase {
 
     XCTAssertFalse(harness.model.tabsFilter)
     XCTAssertEqual(harness.model.tabsState, .off)
-    XCTAssertEqual(harness.model.query, "keep")
-    XCTAssertEqual(harness.model.scope, .papers)
+    XCTAssertEqual(harness.model.query, "reading")
+    XCTAssertEqual(harness.model.scope, .chats)
     XCTAssertEqual(harness.model.listOrder, .newest)
     XCTAssertEqual(harness.model.selectedID, kept)
   }
