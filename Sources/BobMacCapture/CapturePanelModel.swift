@@ -1886,6 +1886,13 @@ final class CapturePanelModel: ObservableObject {
         if draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             priorityRollSeed = nil
             resetAnalysisState()
+            if !draft.isEmpty {
+                isApplyingProgrammaticDraft = true
+                attributedDraft.transform(updating: &editorSelection) { text in
+                    Self.clearEditorHighlightAttributes(&text)
+                }
+                isApplyingProgrammaticDraft = false
+            }
             noteAgendaDraftCleared()
             return
         }
@@ -12263,75 +12270,95 @@ final class CapturePanelModel: ObservableObject {
         var ignoredMalformedSpan = false
         isApplyingProgrammaticDraft = true
         attributedDraft.transform(updating: &editorSelection) { text in
-            text.foregroundColor = nil
-            text.underlineStyle = nil
-            text.underlineColor = nil
-            for item in ranges {
-                guard let lower = AttributedString.Index(item.range.lowerBound, within: text),
-                      let upper = AttributedString.Index(item.range.upperBound, within: text)
-                else {
-                    ignoredMalformedSpan = true
-                    return
-                }
-
-                let category = captureSemanticCategory(forSpan: item.span)
-                text[lower..<upper].foregroundColor = CaptureEditorPalette.color(for: category)
-                if category.isUnderlined {
-                    text[lower..<upper].underlineStyle = .single
-                }
-                if category.isItalic {
-                    text[lower..<upper].inlinePresentationIntent = .emphasized
-                }
-                // Theme tints (PT6): wash Bob's hue behind each known
-                // component of a Pomodoro name. The syntax color above is
-                // untouched; unknown and exempt themes stay neutral so a
-                // typed name never flickers through hues.
-                if item.span.kind == "pomodoro_name"
-                    || item.span.kind == "task_toggle_pomodoro_name"
-                {
-                    for theme in item.span.themes where theme.known {
-                        guard let start = theme.start,
-                              let end = theme.end,
-                              start < end,
-                              let themeRange = stringRange(in: draft, start: start, end: end),
-                              let themeLower = AttributedString.Index(
-                                  themeRange.lowerBound,
-                                  within: text
-                              ),
-                              let themeUpper = AttributedString.Index(
-                                  themeRange.upperBound,
-                                  within: text
-                              ),
-                              let tint = PomodoroThemeTint.background(for: theme.hue)
-                        else {
-                            continue
-                        }
-                        text[themeLower..<themeUpper].backgroundColor = tint
-                    }
-                }
-            }
-            if parse.template != nil {
-                for diagnostic in parse.diagnostics where diagnostic.severity != "info" && diagnostic.code != "template_missing_rows" {
-                    guard let range = diagnostic.range,
-                          let typedRange = stringRange(in: draft, byteRange: range),
-                          let lower = AttributedString.Index(typedRange.lowerBound, within: text),
-                          let upper = AttributedString.Index(typedRange.upperBound, within: text),
-                          lower < upper
-                    else {
-                        continue
-                    }
-                    text[lower..<upper].underlineStyle = .single
-                    text[lower..<upper].underlineColor = .red
-                }
-            }
+            ignoredMalformedSpan = Self.paintHighlighting(
+                &text,
+                parse: parse,
+                draft: draft,
+                ranges: ranges
+            )
         }
         isApplyingProgrammaticDraft = false
         if ignoredMalformedSpan {
             statusText = "Ignored malformed parse spans"
         }
-        // A parse that lands while the picker is open repaints spans; restore
-        // the marker wash it may have covered.
+        // Repainting clears every editor-owned background, so restore the
+        // marker wash in the same parse application while the picker is open.
         applyPickerMarkerHighlight()
+    }
+
+    /// Typed text inherits the previous character's attributes, so clear every
+    /// attribute owned by an editor painter before painting current spans.
+    static func clearEditorHighlightAttributes(_ text: inout AttributedString) {
+        text.foregroundColor = nil
+        text.backgroundColor = nil
+        text.underlineStyle = nil
+        text.underlineColor = nil
+        text.inlinePresentationIntent = nil
+    }
+
+    @discardableResult
+    static func paintHighlighting(
+        _ text: inout AttributedString,
+        parse: CaptureParseResponse,
+        draft: String,
+        ranges: [ValidatedCaptureSpan]
+    ) -> Bool {
+        clearEditorHighlightAttributes(&text)
+        for item in ranges {
+            guard let lower = AttributedString.Index(item.range.lowerBound, within: text),
+                  let upper = AttributedString.Index(item.range.upperBound, within: text)
+            else {
+                return true
+            }
+
+            let category = captureSemanticCategory(forSpan: item.span)
+            text[lower..<upper].foregroundColor = CaptureEditorPalette.color(for: category)
+            if category.isUnderlined {
+                text[lower..<upper].underlineStyle = .single
+            }
+            if category.isItalic {
+                text[lower..<upper].inlinePresentationIntent = .emphasized
+            }
+            // Theme tints wash Bob's hue behind each known component of a name.
+            if item.span.kind == "pomodoro_name"
+                || item.span.kind == "task_toggle_pomodoro_name"
+            {
+                for theme in item.span.themes where theme.known {
+                    guard let start = theme.start,
+                          let end = theme.end,
+                          start < end,
+                          let themeRange = stringRange(in: draft, start: start, end: end),
+                          let themeLower = AttributedString.Index(
+                              themeRange.lowerBound,
+                              within: text
+                          ),
+                          let themeUpper = AttributedString.Index(
+                              themeRange.upperBound,
+                              within: text
+                          ),
+                          let tint = PomodoroThemeTint.background(for: theme.hue)
+                    else {
+                        continue
+                    }
+                    text[themeLower..<themeUpper].backgroundColor = tint
+                }
+            }
+        }
+        if parse.template != nil {
+            for diagnostic in parse.diagnostics where diagnostic.severity != "info" && diagnostic.code != "template_missing_rows" {
+                guard let range = diagnostic.range,
+                      let typedRange = stringRange(in: draft, byteRange: range),
+                      let lower = AttributedString.Index(typedRange.lowerBound, within: text),
+                      let upper = AttributedString.Index(typedRange.upperBound, within: text),
+                      lower < upper
+                else {
+                    continue
+                }
+                text[lower..<upper].underlineStyle = .single
+                text[lower..<upper].underlineColor = .red
+            }
+        }
+        return false
     }
 
     private func shouldRequestCompletion(
