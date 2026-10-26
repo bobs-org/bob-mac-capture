@@ -4,7 +4,8 @@ import Foundation
 /// The `bob` calls the Refs library refreshes from. Lanes match the
 /// refresh table: `refs-list` for the snapshot, `refs-git` for the added-
 /// date backfill, `refs-plan` for Today, `refs-show` for the inspector's
-/// per-note hydration, `refs-code` for the Copy card catalog, `refs-rename`
+/// per-note hydration, `refs-code` for the Copy card catalog, `refs-links`
+/// for recorded URI links, `refs-rename`
 /// for the non-cancelling rename, and `refs-pull` for the vault
 /// fast-forward before a panel show or refresh.
 public protocol RefsFetching: Sendable {
@@ -12,6 +13,7 @@ public protocol RefsFetching: Sendable {
   func plan() async throws -> RefsPlanResponse
   func show(path: String) async throws -> RefsShowResponse
   func code(path: String) async throws -> RefsCodeResponse
+  func links(path: String) async throws -> RefsLinksResponse
   func scan() async throws -> RefsScanResponse
   func rename(notePath: String, name: String) async throws -> RefsRenameResponse
   func linkToToday(
@@ -29,6 +31,13 @@ public extension RefsFetching {
   /// test exercises it. The production fetcher maps clap's unknown-
   /// subcommand failure to `.unsupported`.
   func code(path: String) async throws -> RefsCodeResponse {
+    throw RefsFetchingError.unsupported
+  }
+
+  /// Older fake fetchers need not implement `ref links` unless a Copy-card
+  /// test exercises it. The production fetcher maps clap's unknown-
+  /// subcommand failure to `.unsupported`.
+  func links(path: String) async throws -> RefsLinksResponse {
     throw RefsFetchingError.unsupported
   }
 
@@ -100,6 +109,21 @@ public final class BobRefsFetcher: RefsFetching, @unchecked Sendable {
         arguments: ["ref", "code", path, "-f", "json"],
         expectedSchema: 1,
         lane: "refs-code"
+      )
+    } catch let error as BobClientError {
+      if case .processFailed(_, 2, _) = error {
+        throw RefsFetchingError.unsupported
+      }
+      throw error
+    }
+  }
+
+  public func links(path: String) async throws -> RefsLinksResponse {
+    do {
+      return try await client.decode(
+        arguments: ["ref", "links", path, "-f", "json"],
+        expectedSchema: 1,
+        lane: "refs-links"
       )
     } catch let error as BobClientError {
       if case .processFailed(_, 2, _) = error {

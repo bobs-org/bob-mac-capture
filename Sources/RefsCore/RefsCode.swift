@@ -76,6 +76,11 @@ public struct RefsCodeSection: Decodable, Equatable, Sendable {
 
     private enum CodingKeys: String, CodingKey { case number, title }
 
+    public init(number: String? = nil, title: String) {
+        self.number = number
+        self.title = title
+    }
+
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         number = try? values.decodeIfPresent(String.self, forKey: .number)

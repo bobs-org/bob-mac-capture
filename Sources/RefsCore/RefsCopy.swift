@@ -34,6 +34,7 @@ public enum RefsCopyKey: Equatable, Hashable, Sendable {
     case allNotes
     case highlightPicker
     case codePicker
+    case linkPicker
     case sourceMarkdown
 
     public var glyph: String {
@@ -42,7 +43,7 @@ public enum RefsCopyKey: Equatable, Hashable, Sendable {
         case .title: "T"
         case .wikiLink: "W"
         case .sourceURL: "U"
-        case .markdownLink: "L"
+        case .markdownLink, .linkPicker: "L"
         case .arxiv: "X"
         case .doi: "D"
         case .notePath: "N"
@@ -205,6 +206,7 @@ public struct RefsCopyCatalog: Equatable, Sendable {
     public let allNotesCount: Int
     public let notesState: RefsCopyNotesState
     public let codeState: RefsCodeLoadState
+    public let linksState: RefsLinksLoadState
 
     private let item: RefItem
     private let absolutePDFPath: String?
@@ -222,6 +224,7 @@ public struct RefsCopyCatalog: Equatable, Sendable {
         homeDirectoryPath: String? = nil,
         narrationFileURL: URL? = nil,
         code: RefsCodeLoadState = .notRequested,
+        links: RefsLinksLoadState = .notRequested,
         highlightedPage: Int? = nil
     ) {
         self.item = item
@@ -230,6 +233,7 @@ public struct RefsCopyCatalog: Equatable, Sendable {
         self.noteCapacity = max(0, noteCapacity)
         self.highlightedPage = highlightedPage
         self.codeState = Self.validatedCodeState(code, itemID: item.id)
+        self.linksState = Self.validatedLinksState(links, itemID: item.id)
         if case .loaded(let row) = notes, row.path != item.id {
             notesState = .unavailable
         } else {
@@ -299,21 +303,30 @@ public struct RefsCopyCatalog: Equatable, Sendable {
         ))
 
         if let sourceURL = item.urls.first(where: { !$0.isEmpty }) {
+            let markdown = RefsCopyFormat.markdownLink(title: item.rawTitle, url: sourceURL)
             built.append(Self.valueRow(
                 key: .sourceURL,
                 group: .sources,
                 label: "Source URL",
                 value: sourceURL,
-                confirmationTitle: "Copied Source URL"
+                confirmationTitle: "Copied Source URL",
+                alternate: RefsCopyAlternate(
+                    label: "Markdown link",
+                    payload: .text(markdown),
+                    preview: markdown,
+                    confirmationTitle: "Copied Markdown Link"
+                )
             ))
-            built.append(Self.valueRow(
-                key: .markdownLink,
-                group: .sources,
-                label: "Markdown link",
-                value: RefsCopyFormat.markdownLink(title: item.rawTitle, url: sourceURL),
-                truncation: .middle,
-                confirmationTitle: "Copied Markdown Link"
-            ))
+            if item.sourceMarkdown == nil {
+                built.append(Self.valueRow(
+                    key: .markdownLink,
+                    group: .sources,
+                    label: "Markdown link",
+                    value: markdown,
+                    truncation: .middle,
+                    confirmationTitle: "Copied Markdown Link"
+                ))
+            }
         }
         if let arxiv = item.arxivID, !arxiv.isEmpty {
             built.append(Self.valueRow(
@@ -422,8 +435,10 @@ public struct RefsCopyCatalog: Equatable, Sendable {
                 confirmationTitle: "Copied Research Ref"
             ))
         }
-        built.append(contentsOf: Self.codeRows(
-            state: codeState,
+        built.append(contentsOf: Self.contentsRows(
+            code: codeState,
+            links: linksState,
+            item: item,
             highlightedPage: highlightedPage,
             homeDirectoryPath: homeDirectoryPath
         ))
@@ -525,6 +540,8 @@ public struct RefsCopyCatalog: Equatable, Sendable {
             return item.task?.link?.isEmpty == false ? nil : "No reading task for this reference"
         case .researchRef:
             return item.researchRef?.isEmpty == false ? nil : "No research ref for this reference"
+        case .linkPicker:
+            return Self.hiddenLinkReason(item: item, state: linksState)
         case .codePicker, .sourceMarkdown:
             return Self.hiddenCodeReason(
                 for: key,
@@ -593,40 +610,108 @@ public struct RefsCopyCatalog: Equatable, Sendable {
         return response.reference.path == itemID ? state : .failed
     }
 
-    private static func codeRows(
-        state: RefsCodeLoadState,
+    private static func validatedLinksState(
+        _ state: RefsLinksLoadState,
+        itemID: String
+    ) -> RefsLinksLoadState {
+        guard case .loaded(let response) = state else { return state }
+        return response.reference.path == itemID ? state : .failed
+    }
+
+    private static func contentsRows(
+        code: RefsCodeLoadState,
+        links: RefsLinksLoadState,
+        item: RefItem,
         highlightedPage: Int?,
         homeDirectoryPath: String?
     ) -> [RefsCopyRow] {
+        var rows: [RefsCopyRow] = []
+        if let row = codePickerContentsRow(state: code, highlightedPage: highlightedPage) {
+            rows.append(row)
+        }
+        if let row = linkPickerContentsRow(
+            state: links, item: item, highlightedPage: highlightedPage
+        ) {
+            rows.append(row)
+        }
+        if let row = markdownContentsRow(state: code, homeDirectoryPath: homeDirectoryPath) {
+            rows.append(row)
+        }
+        return rows
+    }
+
+    private static func codePickerContentsRow(
+        state: RefsCodeLoadState,
+        highlightedPage: Int?
+    ) -> RefsCopyRow? {
         switch state {
         case .loading:
-            return [
-                RefsCopyRow(
-                    key: .codePicker, group: .contents, label: "Code block…",
-                    payload: .text(""), preview: "Loading code…",
-                    confirmationTitle: "Code blocks"
-                ),
-                RefsCopyRow(
-                    key: .sourceMarkdown, group: .contents, label: "Markdown",
-                    payload: .text(""), preview: "Loading code…",
-                    confirmationTitle: "Copied Markdown"
-                ),
-            ]
+            return RefsCopyRow(
+                key: .codePicker, group: .contents, label: "Code block…",
+                payload: .text(""), preview: "Loading code…",
+                confirmationTitle: "Code blocks"
+            )
         case .loaded(let response):
-            guard let source = response.source, let text = source.text else { return [] }
+            guard response.source?.text != nil, response.status == .available else {
+                return nil
+            }
+            return codeRow(response: response, highlightedPage: highlightedPage)
+        case .notRequested, .unsupported, .failed:
+            return nil
+        }
+    }
+
+    private static func markdownContentsRow(
+        state: RefsCodeLoadState,
+        homeDirectoryPath: String?
+    ) -> RefsCopyRow? {
+        switch state {
+        case .loading:
+            return RefsCopyRow(
+                key: .sourceMarkdown, group: .contents, label: "Markdown",
+                payload: .text(""), preview: "Loading code…",
+                confirmationTitle: "Copied Markdown"
+            )
+        case .loaded(let response):
+            guard let source = response.source, let text = source.text else { return nil }
             switch response.status {
-            case .available:
-                return [codeRow(
-                    response: response,
-                    highlightedPage: highlightedPage
-                ), markdownRow(source: source, text: text, homeDirectoryPath: homeDirectoryPath)]
-            case .noCode, .noCatalog:
-                return [markdownRow(source: source, text: text, homeDirectoryPath: homeDirectoryPath)]
+            case .available, .noCode, .noCatalog:
+                return markdownRow(
+                    source: source, text: text, homeDirectoryPath: homeDirectoryPath)
             case .noSource, .sourceMissing, .sourceInvalid, .unknown:
-                return []
+                return nil
             }
         case .notRequested, .unsupported, .failed:
-            return []
+            return nil
+        }
+    }
+
+    private static func linkPickerContentsRow(
+        state: RefsLinksLoadState,
+        item: RefItem,
+        highlightedPage: Int?
+    ) -> RefsCopyRow? {
+        guard item.sourceMarkdown != nil else { return nil }
+        switch state {
+        case .loading:
+            return RefsCopyRow(
+                key: .linkPicker, group: .contents, label: "Link…",
+                payload: .text(""), preview: "Loading links…",
+                confirmationTitle: "Links"
+            )
+        case .loaded(let response):
+            guard response.status == .available, !response.links.isEmpty else { return nil }
+            return RefsCopyRow(
+                key: .linkPicker,
+                group: .contents,
+                label: "Link…",
+                payload: .text(""),
+                preview: RefsLinkPicker.rowPreview(
+                    links: response.links, highlightedPage: highlightedPage),
+                confirmationTitle: "Links"
+            )
+        case .notRequested, .unsupported, .failed:
+            return nil
         }
     }
 
@@ -749,6 +834,43 @@ public struct RefsCopyCatalog: Equatable, Sendable {
                 return "Saved Markdown doesn't match its digest — run bob ref doctor"
             case .unknown:
                 return "Code unavailable — nothing copied"
+            }
+        }
+    }
+
+    private static func hiddenLinkReason(
+        item: RefItem,
+        state: RefsLinksLoadState
+    ) -> String? {
+        switch state {
+        case .loading:
+            return nil
+        case .notRequested:
+            return item.sourceMarkdown == nil
+                ? "No saved Markdown — link copy needs a reference bob rendered from Markdown"
+                : "Links unavailable — nothing copied"
+        case .unsupported:
+            return "Link copy needs a newer bob"
+        case .failed:
+            return "Links unavailable — nothing copied"
+        case .loaded(let response):
+            switch response.status {
+            case .available:
+                return response.links.isEmpty ? "No links in this reference" : nil
+            case .noLinks:
+                return "No links in this reference"
+            case .notRecorded:
+                return "Links weren't recorded for this reference yet — bob ref recatalog"
+            case .noCatalog:
+                return "Links weren't recorded for this reference — M copies its Markdown"
+            case .noSource:
+                return "No saved Markdown — link copy needs a reference bob rendered from Markdown"
+            case .sourceMissing:
+                return "Saved Markdown isn't on this Mac yet — sync the vault"
+            case .sourceInvalid:
+                return "Saved Markdown doesn't match its digest — run bob ref doctor"
+            case .unknown:
+                return "Links unavailable — nothing copied"
             }
         }
     }
@@ -1171,11 +1293,12 @@ public struct RefsCopyCard: Equatable, Sendable {
     public let narrationFileURL: URL?
     public let highlightedPage: Int?
     private var pendingAlternate = false
-    private enum PendingLoad: Equatable { case notes, code }
+    private enum PendingLoad: Equatable { case notes, code, links }
     private var pendingLoad: PendingLoad?
     private var retryRow: RefsCopyRow?
     public private(set) var notes: RefsCopyNotesState
     public private(set) var code: RefsCodeLoadState
+    public private(set) var links: RefsLinksLoadState
     public private(set) var noteCapacity: Int
     public private(set) var rows: [RefsCopyRow]
     public private(set) var selectedKey: RefsCopyKey
@@ -1187,6 +1310,7 @@ public struct RefsCopyCard: Equatable, Sendable {
     public var pickerRowHeight: Double
     public private(set) var highlightPicker: RefsHighlightPicker?
     public private(set) var codePicker: RefsCodePicker?
+    public private(set) var linkPicker: RefsLinkPicker?
     private var queuedCommands: [QueuedCopyCommand] = []
     private static let commandQueueCap = 16
 
@@ -1209,6 +1333,7 @@ public struct RefsCopyCard: Equatable, Sendable {
         homeDirectoryPath: String? = nil,
         narrationFileURL: URL? = nil,
         code: RefsCodeLoadState = .notRequested,
+        links: RefsLinksLoadState = .notRequested,
         highlightedPage: Int? = nil
     ) {
         self.token = token
@@ -1222,6 +1347,7 @@ public struct RefsCopyCard: Equatable, Sendable {
         self.highlightedPage = highlightedPage
         self.notes = notes
         self.code = code
+        self.links = links
         self.noteCapacity = max(0, noteCapacity)
         self.pickerWindowSize = min(9, max(0, pickerWindowSize))
         self.pickerGroupHeaderHeight = max(0, pickerGroupHeaderHeight)
@@ -1236,6 +1362,7 @@ public struct RefsCopyCard: Equatable, Sendable {
             homeDirectoryPath: homeDirectoryPath,
             narrationFileURL: narrationFileURL,
             code: code,
+            links: links,
             highlightedPage: highlightedPage
         )
         rows = catalog.rows
@@ -1245,6 +1372,7 @@ public struct RefsCopyCard: Equatable, Sendable {
         isClosed = false
         highlightPicker = nil
         codePicker = nil
+        linkPicker = nil
         pendingLoad = nil
         queuedCommands = []
     }
@@ -1260,6 +1388,7 @@ public struct RefsCopyCard: Equatable, Sendable {
             homeDirectoryPath: homeDirectoryPath,
             narrationFileURL: narrationFileURL,
             code: code,
+            links: links,
             highlightedPage: highlightedPage
         )
     }
@@ -1269,6 +1398,10 @@ public struct RefsCopyCard: Equatable, Sendable {
         _ command: RefsCopyCommand, alternatesActive: Bool = false
     ) -> RefsCopyEffect {
         guard !isClosed else { return .none }
+        var command = command
+        if item.sourceMarkdown != nil, case .key(.markdownLink, let alternate) = command {
+            command = .key(.linkPicker, alternate: alternate)
+        }
         if command == .copySelected, let retryRow {
             return .write(retryRow)
         }
@@ -1318,12 +1451,16 @@ public struct RefsCopyCard: Equatable, Sendable {
         pending = nil
         pendingLoad = nil
         queuedCommands = []
-        message = RefsCopyMessage(
-            text: load == .code
-                ? "Code unavailable — nothing copied"
-                : "Notes didn't load — nothing copied",
-            isError: true
-        )
+        let text: String
+        switch load {
+        case .code:
+            text = "Code unavailable — nothing copied"
+        case .links:
+            text = "Links unavailable — nothing copied"
+        case .notes, nil:
+            text = "Notes didn't load — nothing copied"
+        }
+        message = RefsCopyMessage(text: text, isError: true)
     }
 
     @discardableResult
@@ -1350,6 +1487,33 @@ public struct RefsCopyCard: Equatable, Sendable {
         pendingLoad = nil
         let reason = key.flatMap { catalog.hiddenReason(for: $0) }
             ?? "Code unavailable — nothing copied"
+        message = RefsCopyMessage(text: reason, isError: true)
+    }
+
+    @discardableResult
+    public mutating func linksLoaded(path: String, response: RefsLinksResponse) -> RefsCopyEffect {
+        guard !isClosed,
+              path == frozenItemID,
+              response.reference.path == frozenItemID
+        else { return .none }
+        links = .loaded(response)
+        refreshRows()
+        guard pendingLoad == .links else { return .none }
+        let resolved = resolvePendingAfterLoad()
+        return replayQueued(after: resolved)
+    }
+
+    public mutating func linksFailed(path: String, unsupported: Bool = false) {
+        guard !isClosed, path == frozenItemID else { return }
+        links = unsupported ? .unsupported : .failed
+        refreshRows()
+        guard pendingLoad == .links else { return }
+        queuedCommands = []
+        let key = pending
+        pending = nil
+        pendingLoad = nil
+        let reason = key.flatMap { catalog.hiddenReason(for: $0) }
+            ?? "Links unavailable — nothing copied"
         message = RefsCopyMessage(text: reason, isError: true)
     }
 
@@ -1417,11 +1581,22 @@ public struct RefsCopyCard: Equatable, Sendable {
             codePicker.setWindowSize(max(2, pickerWindowSize))
             self.codePicker = codePicker
         }
+        if var linkPicker {
+            linkPicker.setMetrics(
+                groupHeaderHeight: pickerGroupHeaderHeight,
+                entryRowHeight: pickerRowHeight
+            )
+            linkPicker.setWindowSize(max(2, pickerWindowSize))
+            self.linkPicker = linkPicker
+        }
     }
 
     private mutating func perform(
         _ command: RefsCopyCommand, alternatesActive: Bool
     ) -> RefsCopyEffect {
+        if linkPicker != nil {
+            return handleLinkPicker(command, alternatesActive: alternatesActive)
+        }
         if codePicker != nil {
             return handleCodePicker(command, alternatesActive: alternatesActive)
         }
@@ -1430,6 +1605,13 @@ public struct RefsCopyCard: Equatable, Sendable {
         }
         switch command {
         case .key(let key, let alternate):
+            if case .loading = links, isLinkKey(key) {
+                pending = key
+                pendingLoad = .links
+                pendingAlternate = alternate
+                message = RefsCopyMessage(text: "Loading links… esc cancels")
+                return .none
+            }
             if case .loading = code, isCodeKey(key) {
                 pending = key
                 pendingLoad = .code
@@ -1452,6 +1634,9 @@ public struct RefsCopyCard: Equatable, Sendable {
             if key == .codePicker {
                 return openCodePicker()
             }
+            if key == .linkPicker {
+                return openLinkPicker()
+            }
             if let row = rows.first(where: { $0.key == key }) {
                 selectedKey = key
                 message = nil
@@ -1467,6 +1652,9 @@ public struct RefsCopyCard: Equatable, Sendable {
             }
             if selectedKey == .codePicker {
                 return openCodePicker()
+            }
+            if selectedKey == .linkPicker {
+                return openLinkPicker()
             }
             guard let row = rows.first(where: { $0.key == selectedKey }) else {
                 return .none
@@ -1523,6 +1711,9 @@ public struct RefsCopyCard: Equatable, Sendable {
         if load == .code, pending == .codePicker {
             return openCodePicker()
         }
+        if load == .links, pending == .linkPicker {
+            return openLinkPicker()
+        }
         if pending == .highlightPicker {
             return openHighlightPicker()
         }
@@ -1537,10 +1728,120 @@ public struct RefsCopyCard: Equatable, Sendable {
     }
 
     private var waitingMessage: RefsCopyMessage {
-        if pendingLoad == .code {
+        switch pendingLoad {
+        case .code:
             return RefsCopyMessage(text: "Loading code… esc cancels")
+        case .links:
+            return RefsCopyMessage(text: "Loading links… esc cancels")
+        case .notes, nil:
+            return RefsCopyMessage(text: "Waiting for notes… esc cancels")
         }
-        return RefsCopyMessage(text: "Waiting for notes… esc cancels")
+    }
+
+    private mutating func handleLinkPicker(
+        _ command: RefsCopyCommand,
+        alternatesActive: Bool
+    ) -> RefsCopyEffect {
+        switch command {
+        case .key(let key, let alternate):
+            if case .note(let number) = key {
+                return copyLinkPickerWindowRow(number, markdown: alternate)
+            }
+            if key == .allNotes {
+                return copyAllLinks(markdown: alternate)
+            }
+            pending = nil
+            message = RefsCopyMessage(
+                text: "Nothing on ‘\(key.glyph.lowercased())’",
+                isTransient: true
+            )
+            return .none
+        case .copySelected:
+            return copyLinkPickerSelection(markdown: alternatesActive)
+        case .move(let delta):
+            guard var picker = linkPicker else { return .none }
+            picker.move(delta)
+            linkPicker = picker
+            message = nil
+            return .none
+        case .close:
+            linkPicker = nil
+            message = nil
+            return .none
+        case .showActions:
+            linkPicker = nil
+            pending = nil
+            pendingLoad = nil
+            message = nil
+            isClosed = true
+            return .closeThenActions
+        case .unknown(let character):
+            pending = nil
+            message = RefsCopyMessage(
+                text: "Nothing on ‘\(character)’",
+                isTransient: true
+            )
+            return .none
+        case .consume:
+            return .none
+        }
+    }
+
+    private mutating func openLinkPicker() -> RefsCopyEffect {
+        guard case .loaded(let response) = links,
+              response.reference.path == frozenItemID,
+              response.status == .available,
+              !response.links.isEmpty
+        else {
+            let reason = catalog.hiddenReason(for: .linkPicker)
+                ?? "No links in this reference"
+            message = RefsCopyMessage(text: reason, isError: true)
+            return .none
+        }
+        selectedKey = .linkPicker
+        var picker = RefsLinkPicker(
+            links: response.links,
+            highlightedPage: highlightedPage,
+            windowSize: max(2, pickerWindowSize),
+            groupHeaderHeight: pickerGroupHeaderHeight,
+            entryRowHeight: pickerRowHeight
+        )
+        picker.setMetrics(
+            groupHeaderHeight: pickerGroupHeaderHeight,
+            entryRowHeight: pickerRowHeight
+        )
+        linkPicker = picker
+        message = nil
+        return .none
+    }
+
+    private mutating func copyLinkPickerWindowRow(
+        _ number: Int,
+        markdown: Bool
+    ) -> RefsCopyEffect {
+        guard var picker = linkPicker else { return .none }
+        guard let entry = picker.selectWindowPosition(number) else {
+            message = RefsCopyMessage(text: "No link \(number)")
+            return .none
+        }
+        linkPicker = picker
+        message = nil
+        return .write(entry.copyRow(markdown: markdown))
+    }
+
+    private mutating func copyLinkPickerSelection(markdown: Bool) -> RefsCopyEffect {
+        guard let entry = linkPicker?.selectedEntry else { return .none }
+        message = nil
+        return .write(entry.copyRow(markdown: markdown))
+    }
+
+    private mutating func copyAllLinks(markdown: Bool) -> RefsCopyEffect {
+        guard let picker = linkPicker, !picker.entries.isEmpty else {
+            message = RefsCopyMessage(text: "No links in this reference")
+            return .none
+        }
+        message = nil
+        return .write(picker.allLinksRow(markdown: markdown))
     }
 
     private mutating func handleCodePicker(
@@ -1774,7 +2075,7 @@ public struct RefsCopyCard: Equatable, Sendable {
         rows = catalog.rows
         if rows.contains(where: { $0.key == previousSelection }) {
             selectedKey = previousSelection
-        } else if highlightPicker == nil {
+        } else if highlightPicker == nil, codePicker == nil, linkPicker == nil {
             selectedKey = catalog.defaultKey
         }
     }
@@ -1786,5 +2087,9 @@ public struct RefsCopyCard: Equatable, Sendable {
 
     private func isCodeKey(_ key: RefsCopyKey) -> Bool {
         key == .codePicker || key == .sourceMarkdown
+    }
+
+    private func isLinkKey(_ key: RefsCopyKey) -> Bool {
+        key == .linkPicker
     }
 }

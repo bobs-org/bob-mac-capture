@@ -454,6 +454,69 @@ final class RefsFetchingTests: XCTestCase {
     }
   }
 
+  func testLinksRunsTheLinksArgv() async throws {
+    let recordURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    let fetcher = BobRefsFetcher(
+      client: try client(
+        environment: ["FAKE_BOB_RECORD_PATH": recordURL.path]
+      ))
+
+    let response = try await fetcher.links(path: "ref/papers/demo.md")
+
+    XCTAssertEqual(response.schemaVersion, 1)
+    XCTAssertEqual(response.status, .available)
+    XCTAssertEqual(response.links.count, 9)
+    XCTAssertEqual(response.links[1].site, "ai.google.dev")
+    let record = try String(contentsOf: recordURL)
+    XCTAssertTrue(record.contains("argv=ref links ref/papers/demo.md -f json"))
+  }
+
+  func testOlderBobLinksFailureMapsToUnsupported() async throws {
+    let fetcher = BobRefsFetcher(
+      client: try client(environment: [
+        "FAKE_BOB_REFS_LINKS_EXIT": "2"
+      ]))
+
+    do {
+      _ = try await fetcher.links(path: "ref/papers/demo.md")
+      XCTFail("expected unsupported")
+    } catch RefsFetchingError.unsupported {
+    }
+  }
+
+  func testLinksSchemaMismatchSurfaces() async throws {
+    let fetcher = BobRefsFetcher(
+      client: try client(environment: [
+        "FAKE_BOB_REFS_LINKS_FIXTURE": "refs-links-schema2.json"
+      ]))
+
+    do {
+      _ = try await fetcher.links(path: "ref/papers/demo.md")
+      XCTFail("expected a schema mismatch")
+    } catch let error as BobClientError {
+      guard case .schemaMismatch(_, let expected, let actual) = error else {
+        return XCTFail("expected schemaMismatch, got \(error)")
+      }
+      XCTAssertEqual(expected, 1)
+      XCTAssertEqual(actual, 2)
+    }
+  }
+
+  func testLinksLaneDoesNotCancelTheCodeLane() async throws {
+    let fetcher = BobRefsFetcher(
+      client: try client(environment: [
+        "FAKE_BOB_DELAY_SECONDS": "2"
+      ]))
+
+    async let coded = fetcher.code(path: "ref/chat/example.md")
+    async let linked = fetcher.links(path: "ref/papers/demo.md")
+    let (code, links) = try await (coded, linked)
+
+    XCTAssertEqual(code.blocks.count, 5)
+    XCTAssertEqual(links.links.count, 9)
+  }
+
   func testCodeLaneDoesNotCancelTheListLane() async throws {
     let fetcher = BobRefsFetcher(
       client: try client(environment: [
