@@ -4,12 +4,14 @@ import Foundation
 /// The `bob` calls the Refs library refreshes from. Lanes match the
 /// refresh table: `refs-list` for the snapshot, `refs-git` for the added-
 /// date backfill, `refs-plan` for Today, `refs-show` for the inspector's
-/// per-note hydration, `refs-rename` for the non-cancelling rename, and
-/// `refs-pull` for the vault fast-forward before a panel show or refresh.
+/// per-note hydration, `refs-code` for the Copy card catalog, `refs-rename`
+/// for the non-cancelling rename, and `refs-pull` for the vault
+/// fast-forward before a panel show or refresh.
 public protocol RefsFetching: Sendable {
   func list(gitDates: Bool) async throws -> RefsListResponse
   func plan() async throws -> RefsPlanResponse
   func show(path: String) async throws -> RefsShowResponse
+  func code(path: String) async throws -> RefsCodeResponse
   func scan() async throws -> RefsScanResponse
   func rename(notePath: String, name: String) async throws -> RefsRenameResponse
   func linkToToday(
@@ -23,6 +25,13 @@ public enum RefsFetchingError: Error, Sendable {
 }
 
 public extension RefsFetching {
+  /// Older fake fetchers need not implement `ref code` unless a Copy-card
+  /// test exercises it. The production fetcher maps clap's unknown-
+  /// subcommand failure to `.unsupported`.
+  func code(path: String) async throws -> RefsCodeResponse {
+    throw RefsFetchingError.unsupported
+  }
+
   /// Older fake fetchers need not implement the Today-link lane unless a
   /// panel-model test exercises it. The production fetcher supplies the
   /// Bob-backed implementation below.
@@ -83,6 +92,21 @@ public final class BobRefsFetcher: RefsFetching, @unchecked Sendable {
       expectedSchema: 1,
       lane: "refs-show"
     )
+  }
+
+  public func code(path: String) async throws -> RefsCodeResponse {
+    do {
+      return try await client.decode(
+        arguments: ["ref", "code", path, "-f", "json"],
+        expectedSchema: 1,
+        lane: "refs-code"
+      )
+    } catch let error as BobClientError {
+      if case .processFailed(_, 2, _) = error {
+        throw RefsFetchingError.unsupported
+      }
+      throw error
+    }
   }
 
   public func scan() async throws -> RefsScanResponse {

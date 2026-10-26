@@ -27,7 +27,24 @@ final class RefsCopyCardDesignTests: XCTestCase {
         try write(card: alternatesCard(), name: "refs-copy-card-home-paths")
         try write(
             card: highlightPickerCard(), name: "refs-copy-picker-alternates", alternates: true)
+        try write(card: codeRowsCard(), name: "refs-copy-card-code-rows")
+        try write(card: try codePickerCard(), name: "refs-copy-code-picker")
+        try write(
+            card: try codePickerCard(), name: "refs-copy-code-picker-fenced", alternates: true)
+        try write(card: try mermaidPickerCard(), name: "refs-copy-code-picker-mermaid")
+        try write(card: try longLinePickerCard(), name: "refs-copy-code-picker-long-line")
+        try write(card: loadingCodeCard(), name: "refs-copy-card-code-loading")
+        try write(card: try noCodeCard(), name: "refs-copy-card-no-code")
         try writeHUD()
+        try writeHUD(
+            title: "Copied yaml · 14 lines", value: "refresh:", name: "refs-copy-hud-code")
+        try writeHUD(
+            title: "Copied yaml · fenced", value: "refresh:", name: "refs-copy-hud-code-fenced")
+        try writeHUD(
+            title: "Copied Markdown · 41 KB",
+            value: "source.md",
+            name: "refs-copy-hud-markdown"
+        )
     }
 
     private func write(card: RefsCopyCard, name: String, alternates: Bool = false) throws {
@@ -44,17 +61,21 @@ final class RefsCopyCardDesignTests: XCTestCase {
         }
     }
 
-    private func writeHUD() throws {
+    private func writeHUD(
+        title: String = "Copied Marker ID",
+        value: String = "marker-chat-1",
+        name: String = "refs-copy-hud"
+    ) throws {
         let view = RefsCopyHUDView(
-            title: "Copied Marker ID",
-            value: "marker-chat-1",
+            title: title,
+            value: value,
             previewMode: true
         )
         .frame(width: 420)
         for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
             try RenderFixtureWriter.write(
                 view,
-                name: "refs-copy-hud",
+                name: name,
                 width: 420,
                 appearance: appearance
             )
@@ -379,6 +400,94 @@ final class RefsCopyCardDesignTests: XCTestCase {
         )
     }
 
+    private func codeRowsCard() throws -> RefsCopyCard {
+        RefsCopyCard(
+            token: 20,
+            item: makeCodeItem(),
+            absolutePDFPath: "/vault/lib/chat/example.pdf",
+            pdfExists: true,
+            notes: .loaded(RefsShowRow(path: "ref/chat/example.md")),
+            noteCapacity: 5,
+            code: .loaded(try decodeCode()),
+            highlightedPage: 7
+        )
+    }
+
+    private func codePickerCard(page: Int? = 7) throws -> RefsCopyCard {
+        var card = RefsCopyCard(
+            token: 21,
+            item: makeCodeItem(),
+            absolutePDFPath: "/vault/lib/chat/example.pdf",
+            pdfExists: true,
+            notes: .loaded(RefsShowRow(path: "ref/chat/example.md")),
+            noteCapacity: 5,
+            pickerWindowSize: 9,
+            pickerGroupHeaderHeight: RefsCopyCardLayout.pickerGroupHeaderHeight,
+            pickerRowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight),
+            code: .loaded(try decodeCode()),
+            highlightedPage: page
+        )
+        _ = card.handle(.key(.codePicker))
+        return card
+    }
+
+    private func mermaidPickerCard() throws -> RefsCopyCard {
+        var card = try codePickerCard(page: 7)
+        _ = card.handle(.move(1))
+        _ = card.handle(.move(1))
+        return card
+    }
+
+    private func longLinePickerCard() throws -> RefsCopyCard {
+        try codePickerCard(page: 11)
+    }
+
+    private func loadingCodeCard() -> RefsCopyCard {
+        RefsCopyCard(
+            token: 22,
+            item: makeCodeItem(),
+            absolutePDFPath: "/vault/lib/chat/example.pdf",
+            pdfExists: true,
+            notes: .loaded(RefsShowRow(path: "ref/chat/example.md")),
+            noteCapacity: 5,
+            code: .loading,
+            highlightedPage: 7
+        )
+    }
+
+    private func noCodeCard() throws -> RefsCopyCard {
+        RefsCopyCard(
+            token: 23,
+            item: makeCodeItem(),
+            absolutePDFPath: "/vault/lib/chat/example.pdf",
+            pdfExists: true,
+            notes: .loaded(RefsShowRow(path: "ref/chat/example.md")),
+            noteCapacity: 5,
+            code: .loaded(try decodeCode(named: "refs-code-no-code.json")),
+            highlightedPage: 7
+        )
+    }
+
+    private func makeCodeItem() -> RefItem {
+        makeItem(
+            markerID: .present("example"),
+            title: "Why sase ace Is Slow",
+            sourceMarkdown: ".bob/ref-sources/chat/example--abc123/source.md"
+        )
+    }
+
+    private func decodeCode(named fixture: String = "refs-code.json") throws -> RefsCodeResponse {
+        let source = URL(fileURLWithPath: #filePath)
+        let packageRoot = source
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let data = try Data(
+            contentsOf: packageRoot.appendingPathComponent("Tests/Fixtures/\(fixture)")
+        )
+        return try JSONDecoder().decode(RefsCodeResponse.self, from: data)
+    }
+
     private func makeItem(
         id: String = "ref/chat/example.md",
         link: String = "[[ref/chat/example]]",
@@ -392,7 +501,8 @@ final class RefsCopyCardDesignTests: XCTestCase {
         arxivID: String? = nil,
         doi: String? = nil,
         researchRef: String? = nil,
-        task: RefTask? = nil
+        task: RefTask? = nil,
+        sourceMarkdown: String? = nil
     ) -> RefItem {
         RefItem(
             id: id,
@@ -406,6 +516,7 @@ final class RefsCopyCardDesignTests: XCTestCase {
             state: .ready,
             isBlocked: false,
             pdfPath: "lib/chat/example.pdf",
+            sourceMarkdown: sourceMarkdown,
             task: task,
             annotationCount: annotationCount,
             commentCount: commentCount,

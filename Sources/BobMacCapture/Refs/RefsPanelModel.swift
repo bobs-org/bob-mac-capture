@@ -509,8 +509,8 @@ public final class RefsPanelModel: ObservableObject {
       copyCard = card
     }
   }
-  /// How many highlight-picker rows fit in the card. The picker
-  /// window scrolls inside this budget.
+  /// How many highlight- or code-picker rows fit in the card. The
+  /// picker window scrolls inside this budget.
   @Published public var copyCardPickerWindowSize = 9 {
     didSet {
       guard oldValue != copyCardPickerWindowSize,
@@ -679,6 +679,7 @@ public final class RefsPanelModel: ObservableObject {
   private var lastDiagnostic = ""
   private var copyCardSequence: UInt64 = 0
   private var copyNotesTask: Task<Void, Never>?
+  private var copyCodeTask: Task<Void, Never>?
   private var pendingCopyTimeoutTask: Task<Void, Never>?
   private var pendingCopyTimeoutKey: RefsCopyKey?
   private var pendingCopyTimeoutToken: UInt64?
@@ -2421,6 +2422,7 @@ public final class RefsPanelModel: ObservableObject {
     let notes =
       inspectorLoader.cachedShowRow(for: item)
       .map(RefsCopyNotesState.loaded) ?? .loading
+    let wantsCode = item.sourceMarkdown != nil
     copyCard = RefsCopyCard(
       token: token,
       item: item,
@@ -2435,25 +2437,58 @@ public final class RefsPanelModel: ObservableObject {
       pickerRowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight),
       absoluteNotePath: library.noteURL(for: item).path,
       homeDirectoryPath: FileManager.default.homeDirectoryForCurrentUser.path,
-      narrationFileURL: audioURL
+      narrationFileURL: audioURL,
+      code: wantsCode ? .loading : .notRequested,
+      highlightedPage: frozenCopyCardPage()
     )
     copyAlternatesActive = optionHeld
     AccessibilityNotification.Announcement(
       "Copy menu. Press a letter or number."
     ).post()
-    guard case .loading = notes else {
-      return
-    }
-    let loader = inspectorLoader
-    copyNotesTask = Task { [weak self, loader] in
-      let row = await loader.showRow(for: item)
-      guard let self else { return }
-      if let row {
-        self.copyCardNotesLoaded(token: token, path: item.id, row: row)
-      } else {
-        self.copyCardNotesFailed(token: token, path: item.id)
+    if case .loading = notes {
+      let loader = inspectorLoader
+      copyNotesTask = Task { [weak self, loader] in
+        let row = await loader.showRow(for: item)
+        guard let self else { return }
+        if let row {
+          self.copyCardNotesLoaded(token: token, path: item.id, row: row)
+        } else {
+          self.copyCardNotesFailed(token: token, path: item.id)
+        }
       }
     }
+    guard wantsCode else { return }
+    let library = self.library
+    let path = item.id
+    copyCodeTask = Task { [weak self] in
+      do {
+        let response = try await library.code(path: path)
+        self?.copyCardCodeLoaded(token: token, path: path, response: response)
+      } catch is CancellationError {
+        return
+      } catch RefsFetchingError.unsupported {
+        self?.copyCardCodeFailed(token: token, path: path, unsupported: true)
+      } catch let error as BobClientError {
+        if case .unsupportedCommand = error {
+          self?.copyCardCodeFailed(token: token, path: path, unsupported: true)
+        } else {
+          self?.copyCardCodeFailed(token: token, path: path, unsupported: false)
+        }
+      } catch {
+        self?.copyCardCodeFailed(token: token, path: path, unsupported: false)
+      }
+    }
+  }
+
+  /// Page known means the selected row is the focused Highlights tab
+  /// in the current Tabs listing and that tab has a page. Frozen when
+  /// the card opens.
+  private func frozenCopyCardPage() -> Int? {
+    guard let selectedID, let tab = tabsListing?.tabs[selectedID], tab.isCurrent
+    else {
+      return nil
+    }
+    return tab.pageNumber
   }
 
   /// Opens a rename card for the selected, available row. Its title
@@ -2954,16 +2989,19 @@ public final class RefsPanelModel: ObservableObject {
       keyCode: keyCode,
       modifiers: modifiers
     )
+    let hadCodePicker = card.codePicker != nil
     let effect = card.handle(command, alternatesActive: copyAlternatesActive)
     copyCard = card
     updateCopyCardTimers(token: token)
     applyCopyCardEffect(effect, token: token)
+    announceCodePickerIfNeeded(hadPicker: hadCodePicker)
   }
 
   /// A row tap copies that row immediately, matching its printed key.
   public func copyCardRowTapped(_ row: RefsCopyRow) {
     guard let card = copyCard,
       card.highlightPicker == nil,
+      card.codePicker == nil,
       card.rows.contains(where: { $0.key == row.key && $0 == row })
     else {
       return
@@ -2977,7 +3015,9 @@ public final class RefsPanelModel: ObservableObject {
 
   /// A picker-row tap copies that window position, matching its digit.
   public func copyCardPickerRowTapped(_ windowPosition: Int) {
-    guard copyCard?.highlightPicker != nil else { return }
+    guard copyCard?.highlightPicker != nil || copyCard?.codePicker != nil else {
+      return
+    }
     handleCopyCardKey(
       characters: String(windowPosition),
       keyCode: 0,
@@ -2998,6 +3038,32 @@ public final class RefsPanelModel: ObservableObject {
     card.notesFailed(path: path)
     copyCard = card
     updateCopyCardTimers(token: token)
+  }
+
+  private func copyCardCodeLoaded(
+    token: UInt64, path: String, response: RefsCodeResponse
+  ) {
+    guard var card = copyCard, card.token == token else { return }
+    let hadCodePicker = card.codePicker != nil
+    let effect = card.codeLoaded(path: path, response: response)
+    copyCard = card
+    updateCopyCardTimers(token: token)
+    applyCopyCardEffect(effect, token: token)
+    announceCodePickerIfNeeded(hadPicker: hadCodePicker)
+  }
+
+  private func copyCardCodeFailed(token: UInt64, path: String, unsupported: Bool) {
+    guard var card = copyCard, card.token == token else { return }
+    card.codeFailed(path: path, unsupported: unsupported)
+    copyCard = card
+    updateCopyCardTimers(token: token)
+  }
+
+  private func announceCodePickerIfNeeded(hadPicker: Bool) {
+    guard !hadPicker, copyCard?.codePicker != nil else { return }
+    AccessibilityNotification.Announcement(
+      "Code blocks. Press a number or Return."
+    ).post()
   }
 
   private func updateCopyCardTimers(token: UInt64) {
@@ -3089,6 +3155,8 @@ public final class RefsPanelModel: ObservableObject {
     }
     copyNotesTask?.cancel()
     copyNotesTask = nil
+    copyCodeTask?.cancel()
+    copyCodeTask = nil
     pendingCopyTimeoutTask?.cancel()
     pendingCopyTimeoutTask = nil
     pendingCopyTimeoutKey = nil

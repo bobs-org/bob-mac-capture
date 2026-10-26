@@ -405,6 +405,69 @@ final class RefsFetchingTests: XCTestCase {
     }
   }
 
+  func testCodeRunsTheCodeArgv() async throws {
+    let recordURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+    let fetcher = BobRefsFetcher(
+      client: try client(
+        environment: ["FAKE_BOB_RECORD_PATH": recordURL.path]
+      ))
+
+    let response = try await fetcher.code(path: "ref/chat/example.md")
+
+    XCTAssertEqual(response.schemaVersion, 1)
+    XCTAssertEqual(response.status, .available)
+    XCTAssertEqual(response.blocks.count, 5)
+    XCTAssertEqual(response.blocks[1].language, "yaml")
+    let record = try String(contentsOf: recordURL)
+    XCTAssertTrue(record.contains("argv=ref code ref/chat/example.md -f json"))
+  }
+
+  func testOlderBobCodeFailureMapsToUnsupported() async throws {
+    let fetcher = BobRefsFetcher(
+      client: try client(environment: [
+        "FAKE_BOB_REFS_CODE_EXIT": "2"
+      ]))
+
+    do {
+      _ = try await fetcher.code(path: "ref/chat/example.md")
+      XCTFail("expected unsupported")
+    } catch RefsFetchingError.unsupported {
+    }
+  }
+
+  func testCodeSchemaMismatchSurfaces() async throws {
+    let fetcher = BobRefsFetcher(
+      client: try client(environment: [
+        "FAKE_BOB_REFS_CODE_FIXTURE": "refs-code-schema2.json"
+      ]))
+
+    do {
+      _ = try await fetcher.code(path: "ref/chat/example.md")
+      XCTFail("expected a schema mismatch")
+    } catch let error as BobClientError {
+      guard case .schemaMismatch(_, let expected, let actual) = error else {
+        return XCTFail("expected schemaMismatch, got \(error)")
+      }
+      XCTAssertEqual(expected, 1)
+      XCTAssertEqual(actual, 2)
+    }
+  }
+
+  func testCodeLaneDoesNotCancelTheListLane() async throws {
+    let fetcher = BobRefsFetcher(
+      client: try client(environment: [
+        "FAKE_BOB_DELAY_SECONDS": "2"
+      ]))
+
+    async let listed = fetcher.list(gitDates: false)
+    async let coded = fetcher.code(path: "ref/chat/example.md")
+    let (list, code) = try await (listed, coded)
+
+    XCTAssertEqual(list.refs.count, 6)
+    XCTAssertEqual(code.blocks.count, 5)
+  }
+
   func testTodayWritesNeverCancelAndPreviewsUseSeparateLane() async throws {
     let fetcher = BobRefsFetcher(client: try client(environment: ["FAKE_BOB_DELAY_SECONDS": "0.3"]))
     async let first = fetcher.linkToToday(notePath: "ref/a.md", dryRun: false)

@@ -1,3 +1,4 @@
+import CaptureCore
 import Foundation
 
 public enum RefsCodeStatus: Equatable, Sendable {
@@ -215,6 +216,8 @@ public struct RefsCodeResponse: Decodable, Equatable, Sendable {
 
 }
 
+extension RefsCodeResponse: SchemaVersioned {}
+
 public enum RefsCodeLoadState: Equatable, Sendable {
     case notRequested
     case loading
@@ -378,7 +381,7 @@ public struct RefsCodePreviewWell: Equatable, Sendable {
 
     public init(block: RefsCodeBlock, fenced: Bool, visibleLineCount: Int) {
         language = block.displayLanguage
-        sectionTitle = block.section?.heading
+        sectionTitle = block.section?.title
         lineCount = block.lines
         pageLabel = block.pageLabel
         self.fenced = fenced

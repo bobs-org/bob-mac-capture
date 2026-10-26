@@ -108,5 +108,11 @@ final class RefsCopyComponentsTests: XCTestCase {
         XCTAssertEqual(RefsVisualTokens.copyCardKeycapSize, 18)
         XCTAssertEqual(RefsVisualTokens.copyCardLabelWidth, 92)
         XCTAssertEqual(RefsVisualTokens.copyHUDMaxValueWidth, 380)
+        XCTAssertEqual(RefsVisualTokens.copyCardCodeWellRadius, 8)
+        XCTAssertEqual(RefsVisualTokens.copyCardCodeWellHeaderHeight, 18)
+        XCTAssertEqual(RefsVisualTokens.copyCardCodeLineHeight, 16)
+        XCTAssertEqual(RefsVisualTokens.copyCardCodeFontSize, 12)
+        XCTAssertEqual(RefsVisualTokens.copyCardCodeFadeWidth, 8)
+        XCTAssertEqual(RefsVisualTokens.copyCardLanguageChipMinWidth, 52)
     }
 }

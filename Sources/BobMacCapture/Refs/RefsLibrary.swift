@@ -596,6 +596,15 @@ public final class RefsLibrary: ObservableObject {
     return try await fetcher.show(path: path)
   }
 
+  /// Loads the render-time code catalog for the Copy card on the
+  /// `refs-code` lane. Throws when no fetcher is set.
+  public func code(path: String) async throws -> RefsCodeResponse {
+    guard let fetcher else {
+      throw RefsLibraryError.unavailable
+    }
+    return try await fetcher.code(path: path)
+  }
+
   /// Runs Bob's reference-to-Pomodoro preview or write. Bob owns the
   /// selector semantics and the vault mutation.
   public func linkToToday(

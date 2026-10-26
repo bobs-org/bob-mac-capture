@@ -30,6 +30,22 @@ These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspecto
 | Shift-Command-T | Reopen the most recently closed Highlights tab |
 | Ctrl-Tab / Ctrl-Shift-Tab | Switch to Capture, keeping the remembered view |
 
+## Copy card keys
+
+Command-Y opens the Copy card for the selected row, or for the focused Highlights PDF when Highlights is frontmost. While the card is open:
+
+| Key | Action |
+| --- | --- |
+| C | Open the code picker when the reference has saved Markdown and recorded blocks |
+| M | Copy the saved Markdown source; Option-M copies its `~` path |
+| 1–9 | Copy that visible note, or that visible code or highlight once a picker is open |
+| Return | Copy the selected row, or open the C or H picker when that row is selected |
+| Option-Return | Copy the fenced form of the selected code block |
+| Up / Down | Move the selection (and the code preview well) |
+| Escape / Ctrl-[ | Return to the card from a picker, then to the inspector |
+
+Command-Y C Return from Highlights copies the code block on the current PDF page.
+
 ## Editor and completion keys
 
 | Key | In the editor | While completion is visible | While Add block ID is open | While Name Pomodoro is open |

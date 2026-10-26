@@ -1479,6 +1479,10 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
   var showRowPath: String?
   /// When set, `show` returns this envelope instead of the default row.
   var showResponse: RefsShowResponse?
+  var codeResponse: RefsCodeResponse?
+  var codeError: Error?
+  var codeDelayNanoseconds: UInt64 = 0
+  private(set) var codePaths: [String] = []
 
   func list(gitDates: Bool) async throws -> RefsListResponse {
     lock.withLock { listCalls += 1 }
@@ -1541,6 +1545,20 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
       if !todayLinkResponses.isEmpty { return todayLinkResponses.removeFirst() }
       return todayLinkResponse
     }
+  }
+
+  func code(path: String) async throws -> RefsCodeResponse {
+    lock.withLock { codePaths.append(path) }
+    if codeDelayNanoseconds > 0 {
+      try await Task.sleep(nanoseconds: codeDelayNanoseconds)
+    }
+    if let codeError {
+      throw codeError
+    }
+    if let codeResponse {
+      return codeResponse
+    }
+    throw RefsFetchingError.unsupported
   }
 
   func show(path: String) async throws -> RefsShowResponse {

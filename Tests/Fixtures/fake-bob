@@ -5301,6 +5301,21 @@ JSON
         cat "${fixtures_dir}/${rename_fixture}"
       fi
       exit "${rename_exit}"
+    elif [[ "${subcommand}" == "code" ]]; then
+      # `bob ref code PATH -f json` for the Copy card catalog.
+      # Exit 2 models an older bob that has no `ref code` subcommand.
+      code_exit="${FAKE_BOB_REFS_CODE_EXIT:-0}"
+      if [[ "${code_exit}" == "2" ]]; then
+        printf 'error: unrecognized subcommand\n' >&2
+        exit 2
+      fi
+      code_fixture="${FAKE_BOB_REFS_CODE_FIXTURE:-refs-code.json}"
+      if [[ "${code_fixture}" == */* ]]; then
+        cat "${code_fixture}"
+      else
+        cat "${fixtures_dir}/${code_fixture}"
+      fi
+      exit "${code_exit}"
     else
       printf 'unknown fake ref command: %s\n' "${subcommand}" >&2
       exit 64

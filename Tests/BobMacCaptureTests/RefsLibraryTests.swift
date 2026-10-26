@@ -950,6 +950,14 @@ final class RefsLibraryTests: XCTestCase {
     XCTAssertEqual(context.library.signals.newMarks.mark(for: item.id)?.state, .seen)
   }
 
+  func testCodeFetchesTheCatalog() async throws {
+    let context = try makeContext()
+    let response = try await context.library.code(path: "ref/chat/example.md")
+    XCTAssertEqual(response.status, .available)
+    XCTAssertEqual(response.blocks.count, 5)
+    XCTAssertEqual(response.blocks[1].language, "yaml")
+  }
+
   func testPanelOpenPullThrottlesSecondShowWithinFiveSeconds() async throws {
     let root = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString)

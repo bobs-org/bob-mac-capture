@@ -46,6 +46,12 @@ struct RefsCopyCardView: View {
         .onChange(of: card.rows) { _, _ in
             reportMeasuredHeightIfAvailable()
         }
+        .onChange(of: card.codePicker) { _, _ in
+            reportMeasuredHeightIfAvailable()
+        }
+        .onChange(of: card.highlightPicker) { _, _ in
+            reportMeasuredHeightIfAvailable()
+        }
     }
 
     private func reportMeasuredHeightIfAvailable() {
@@ -61,30 +67,43 @@ struct RefsCopyCardView: View {
             )
             .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
-                if let picker = card.highlightPicker {
-                    Text("HIGHLIGHTS \(picker.entries.count)")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("COPY")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
+                Text(headerCaption)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
                 Text(card.item.rawTitle)
                     .font(.headline)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
             Spacer(minLength: 0)
+            if let page = card.highlightedPage {
+                Text("p. \(page) in Highlights")
+                    .font(.caption2)
+                    .foregroundStyle(Color.accentColor)
+                    .lineLimit(1)
+                    .accessibilityLabel("Page \(page) in Highlights")
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(headerAccessibilityLabel)
         .accessibilityAddTraits(.isHeader)
     }
 
+    private var headerCaption: String {
+        if let picker = card.codePicker {
+            return "CODE BLOCKS \(picker.entries.count)"
+        }
+        if let picker = card.highlightPicker {
+            return "HIGHLIGHTS \(picker.entries.count)"
+        }
+        return "COPY"
+    }
+
     @ViewBuilder
     private var rowsBlock: some View {
-        if let picker = card.highlightPicker {
+        if let picker = card.codePicker {
+            codePickerBlock(picker)
+        } else if let picker = card.highlightPicker {
             pickerRows(picker)
         } else {
             catalogRows
@@ -114,6 +133,191 @@ struct RefsCopyCardView: View {
             }
             notesPlaceholder
         }
+    }
+
+    @ViewBuilder
+    private func codePickerBlock(_ picker: RefsCodePicker) -> some View {
+        let layout = codePreviewLayout
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(picker.windowRows.enumerated()), id: \.offset) { _, row in
+                switch row {
+                case .group(let title):
+                    codePickerGroupRow(title)
+                case .entry(let position, let entry):
+                    codePickerRow(entry, position: position, picker: picker)
+                }
+            }
+            if let entry = picker.selectedEntry {
+                RefsCodePreviewWellView(
+                    preview: RefsCore.RefsCodePreviewWell(
+                        block: entry.block,
+                        fenced: alternatesActive,
+                        visibleLineCount: layout.visibleCodeLines
+                    )
+                )
+                .frame(height: CGFloat(layout.height), alignment: .top)
+                .padding(.top, 6)
+            }
+        }
+    }
+
+    private var codePreviewLayout: RefsCodePreviewWellLayout {
+        let available = max(
+            0,
+            Double(measuredHeight)
+                - Double(RefsVisualTokens.copyCardHeaderHeight)
+                - Double(RefsVisualTokens.copyCardMessageLineHeight)
+                - Double(RefsVisualTokens.copyCardVerticalPadding)
+        )
+        return RefsCodePreviewWellLayout.make(
+            availableHeightUnderHeader: available,
+            codeLineHeight: Double(RefsVisualTokens.copyCardCodeLineHeight),
+            headerHeight: Double(RefsVisualTokens.copyCardCodeWellHeaderHeight),
+            entryRowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight)
+        )
+    }
+
+    private func codePickerGroupRow(_ title: String) -> some View {
+        HStack(spacing: 6) {
+            if let number = codeSectionNumber(from: title) {
+                Text(number)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+            Text(codeSectionTitle(from: title))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .frame(
+            maxWidth: .infinity,
+            minHeight: RefsVisualTokens.copyCardPickerGroupHeaderHeight,
+            alignment: .leading
+        )
+        .padding(.horizontal, 6)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityLabel(title)
+    }
+
+    private func codeSectionNumber(from title: String) -> String? {
+        let parts = title.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        guard let first = parts.first, first.allSatisfy({ $0.isNumber || $0 == "." }) else {
+            return nil
+        }
+        return String(first)
+    }
+
+    private func codeSectionTitle(from title: String) -> String {
+        let parts = title.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        guard parts.count == 2, parts[0].allSatisfy({ $0.isNumber || $0 == "." }) else {
+            return title
+        }
+        return String(parts[1])
+    }
+
+    private func codePickerRow(
+        _ entry: RefsCodePicker.Entry,
+        position: Int,
+        picker: RefsCodePicker
+    ) -> some View {
+        let selected = picker.windowStart + position - 1 == picker.selectedIndex
+        let hovering = hoveredPickerPosition == position
+        return HStack(alignment: .top, spacing: 8) {
+            RefsCopyKeycap(glyph: String(position), isSelected: selected)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    languageChip(entry.language)
+                    Text(entry.summary)
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if let page = entry.pageLabel {
+                        HStack(spacing: 4) {
+                            if entry.isOnPage {
+                                Text("●")
+                                    .font(.caption2)
+                                    .foregroundStyle(Color.accentColor)
+                                    .accessibilityHidden(true)
+                            }
+                            Text(page)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                codePickerLineTwo(entry)
+            }
+        }
+        .padding(.horizontal, 6)
+        .frame(height: RefsVisualTokens.copyCardPickerRowHeight, alignment: .top)
+        .background(rowBackground(selected: selected, hovering: hovering))
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            hoveredPickerPosition = hovering ? position : nil
+        }
+        .onTapGesture {
+            onPickerRowTap(position)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(codePickerAccessibilityLabel(entry, position: position, picker: picker))
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction {
+            onPickerRowTap(position)
+        }
+        .help(alternatesActive ? entry.block.fenced : entry.block.text)
+    }
+
+    private func languageChip(_ language: String) -> some View {
+        Text(language)
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .frame(minWidth: RefsVisualTokens.copyCardLanguageChipMinWidth)
+            .background(.primary.opacity(0.06), in: Capsule())
+    }
+
+    private func codePickerLineTwo(_ entry: RefsCodePicker.Entry) -> some View {
+        let caption = entry.block.kind == "mermaid" ? "diagram source" : entry.caption
+        return HStack(spacing: 4) {
+            if !caption.isEmpty {
+                Text(caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text("·")
+                    .foregroundStyle(.tertiary)
+            }
+            Text("\(entry.lineCount) lines")
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .font(.caption)
+    }
+
+    private func codePickerAccessibilityLabel(
+        _ entry: RefsCodePicker.Entry,
+        position: Int,
+        picker: RefsCodePicker
+    ) -> String {
+        var parts = [
+            "Code block \(entry.block.number) of \(picker.entries.count)",
+            entry.language,
+            "\(entry.lineCount) lines",
+        ]
+        if let page = entry.block.page {
+            parts.append("page \(page)")
+        }
+        if entry.isOnPage {
+            parts.append("on this page")
+        }
+        parts.append("key \(position)")
+        return parts.joined(separator: ", ")
     }
 
     @ViewBuilder
@@ -369,13 +573,19 @@ struct RefsCopyCardView: View {
     }
 
     private var hintText: String {
+        if card.codePicker != nil {
+            return "↵ copies · ⌥↵ fenced · 1–9 pick · ↑↓ choose · esc back"
+        }
         if card.highlightPicker != nil {
             return "↵ copies · 1–9 pick · A copies all · esc back"
         }
-        let label =
+        let row =
             card.rows.first { $0.key == card.selectedKey }?
-            .resolved(alternate: alternatesActive).label
-            ?? "selection"
+            .resolved(alternate: alternatesActive)
+        let label = row?.label ?? "selection"
+        if card.selectedKey == .codePicker || card.selectedKey == .highlightPicker {
+            return "↵ opens \(label) · ↑↓ choose · esc back"
+        }
         return "↵ copies \(label) · ↑↓ choose · esc back"
     }
 
@@ -404,13 +614,17 @@ struct RefsCopyCardView: View {
     }
 
     private var headerAccessibilityLabel: String {
-        if let picker = card.highlightPicker {
-            return "HIGHLIGHTS \(picker.entries.count), \(card.item.rawTitle)"
+        var parts = [headerCaption, card.item.rawTitle]
+        if let page = card.highlightedPage {
+            parts.append("Page \(page) in Highlights")
         }
-        return "COPY, \(card.item.rawTitle)"
+        return parts.joined(separator: ", ")
     }
 
     private var cardAccessibilityLabel: String {
+        if let picker = card.codePicker {
+            return "Code picker for \(card.item.rawTitle), \(picker.entries.count) blocks"
+        }
         if let picker = card.highlightPicker {
             return "Highlight picker for \(card.item.rawTitle), \(picker.entries.count) highlights"
         }

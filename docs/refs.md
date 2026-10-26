@@ -430,25 +430,24 @@ Command-Y opens this card on the focused PDF (see
 [Opening Bob Refs](#opening-bob-refs)). The fixed keys
 copy `I` marker ID, `T` title, `W` wiki link, `U` source URL, `L` Markdown
 link, `X` arXiv ID, `D` DOI, `N` note path, `O` Obsidian link, `P` PDF path,
-`F` the PDF file,
-`R` reading-task link, and `S` research reference. `1`–`9` copy the visible
-commented highlights, including their page and block-link provenance; `A`
-copies all commented highlights and standalone notes plus Bob's own notes,
-grouped under `### <Title>` (with the section description as a blockquote)
-when `bob ref show` supplies sections, then `### Other highlights` for the
-ungrouped tail and `### Notes` for Bob's own notes. Empty sections and
-sections that hold only uncommented quotes omit a group. Older unsectioned
-responses keep the previous A payload. `H`
-opens a highlight picker for every highlight and standalone note (digits copy
-the visible window, arrows scroll the rest, `A` copies all highlights). When
-sections are present, the picker draws non-selectable group titles before
-each visible group and a current-group title when the window starts mid-section;
-digits, arrows, wraparound, and counts stay on the entries. Rows
-that do not apply are hidden without moving the other keys. Return or Command-Y
-copies the selected row (marker ID when available, otherwise wiki link); Up/Down
-and Ctrl-P/N/J/K move the
-selection, and Escape returns to the inspector. From the picker, Escape
-returns to the card.
+`F` the PDF file, `R` reading-task link, and `S` research reference. `C` opens
+a code picker with a preview well (`Loading code…` while fetching). `M` copies
+the Markdown (Option-M its `~` path). A `p. N in Highlights` chip marks the
+focused tab. Hidden C/M keys explain why. Command-Y C Return copies the
+page's block. `1`–`9` copy the visible commented highlights
+with page and block-link provenance; `A` copies all commented highlights,
+standalone notes, and Bob's notes, grouped under `### <Title>` (section
+description as a blockquote) when `bob ref show` supplies sections, then
+`### Other highlights` and `### Notes`. Empty sections and uncommented-only
+sections omit a group; older unsectioned responses keep the previous A
+payload. `H` opens a highlight picker for every highlight and standalone note
+(digits copy the window, arrows scroll, `A` copies all). With sections, the
+picker draws non-selectable group titles, repeating the current title when
+the window starts mid-section; digits, arrows, wraparound, and counts stay
+on the entries. Hidden rows leave the other keys in place. Return or
+Command-Y copies the selected row (marker ID when available, otherwise wiki
+link). Up/Down and Ctrl-P/N/J/K move the selection; Escape returns to the
+inspector, or from a picker to the card.
 
 Home-folder paths copy with `~` (for example, `~/bob/lib/…`); only the
 Obsidian link and the PDF and narration file copies stay absolute, needing

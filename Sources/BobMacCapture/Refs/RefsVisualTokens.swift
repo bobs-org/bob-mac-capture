@@ -105,6 +105,16 @@ enum RefsVisualTokens {
   static let copyCardKeycapCornerRadius: CGFloat = 4.5
   static let copyCardLabelWidth: CGFloat = 92
   static let copyCardRowCornerRadius: CGFloat = 8
+  static let copyCardCodeWellRadius: CGFloat = 8
+  static let copyCardCodeWellHeaderHeight: CGFloat = 18
+  static let copyCardCodeLineHeight: CGFloat = 16
+  static let copyCardCodeFontSize: CGFloat = 12
+  static let copyCardCodeWellFillOpacity = 0.04
+  static let copyCardCodeWellFillOpacityIncreased = 0.08
+  static let copyCardCodeWellStrokeOpacity = 0.10
+  static let copyCardCodeWellStrokeOpacityIncreased = 0.25
+  static let copyCardCodeFadeWidth: CGFloat = 8
+  static let copyCardLanguageChipMinWidth: CGFloat = 52
   static let copyHUDMaxValueWidth: CGFloat = 380
 
   /// Metrics the Copy card feeds `RefsCopyCardLayout`.

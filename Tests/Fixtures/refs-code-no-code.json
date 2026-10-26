@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "schema_version": 1,
+  "command": "ref code",
+  "generated_at": "2026-10-26T09:00:00Z",
+  "reference": {
+    "path": "ref/chat/example.md",
+    "title": "Why sase ace Is Slow",
+    "marker_id": "example"
+  },
+  "status": "no_code",
+  "detail": null,
+  "source": {
+    "path": ".bob/ref-sources/chat/example--abc123/source.md",
+    "sha256": "digest",
+    "bytes": 41000,
+    "captured": "2026-10-20",
+    "route": "markdown",
+    "text": "# Example\n"
+  },
+  "blocks": []
+}

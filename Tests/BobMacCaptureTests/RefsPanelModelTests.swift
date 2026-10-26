@@ -1287,6 +1287,164 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(RefsPanelView.copyCardNoteCapacity(for: card, height: 300), 1)
   }
 
+  func testCopyCardPickerWindowSizeShrinksWhenCodePickerIsOpen() throws {
+    var card = RefsCopyCard(
+      token: 1,
+      item: Self.codeItem(),
+      absolutePDFPath: nil,
+      pdfExists: false,
+      notes: .unavailable,
+      noteCapacity: 0,
+      pickerWindowSize: 9,
+      pickerGroupHeaderHeight: RefsCopyCardLayout.pickerGroupHeaderHeight,
+      pickerRowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight),
+      code: .loaded(try Self.codeResponse()),
+      highlightedPage: 7
+    )
+    _ = card.handle(.key(.codePicker))
+    XCTAssertNotNil(card.codePicker)
+    let height: CGFloat = 480
+    let highlightSize = RefsCopyCardLayout.highlightWindowSize(
+      cardHeight: Double(height),
+      metrics: RefsVisualTokens.copyCardMetrics,
+      rowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight)
+    )
+    let codeSize = RefsPanelView.copyCardPickerWindowSize(for: card, height: height)
+    XCTAssertLessThan(codeSize, highlightSize)
+    XCTAssertGreaterThanOrEqual(codeSize, 2)
+    XCTAssertLessThanOrEqual(codeSize, 9)
+  }
+
+  func testOpenCopyCardFetchesCodeWhenSourceMarkdownIsPresent() async throws {
+    let path = "ref/chat/example.md"
+    let fetcher = FakeRefsFetcher()
+    fetcher.codeDelayNanoseconds = 80_000_000
+    fetcher.codeResponse = try Self.codeResponse(path: path)
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [Self.renameRecord(path: path, stem: "example", sourceMarkdown: ".bob/ref-sources/chat/example--abc123/source.md")]
+    )
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await harness.waitForSnapshot(ids: [path])
+    harness.model.prepareForPresentation()
+    XCTAssertTrue(harness.model.perform(.select(id: path)))
+    harness.model.openCopyCard()
+    XCTAssertEqual(harness.model.copyCard?.code, .loading)
+    XCTAssertEqual(
+      harness.model.copyCard?.rows.first { $0.key == .codePicker }?.preview,
+      "Loading code…"
+    )
+    await harness.waitForModel {
+      if case .loaded = $0.copyCard?.code { return true }
+      return false
+    }
+    XCTAssertEqual(fetcher.codePaths, [path])
+    XCTAssertNotNil(harness.model.copyCard?.catalog.row(for: .codePicker))
+    XCTAssertNotNil(harness.model.copyCard?.catalog.row(for: .sourceMarkdown))
+  }
+
+  func testOpenCopyCardSkipsCodeWhenNoSourceMarkdown() async throws {
+    let path = "ref/chat/alpha.md"
+    let fetcher = FakeRefsFetcher()
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1, refs: [Self.renameRecord(path: path, stem: "alpha")])
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await harness.waitForSnapshot(ids: [path])
+    harness.model.prepareForPresentation()
+    harness.model.openCopyCard()
+    XCTAssertEqual(harness.model.copyCard?.code, .notRequested)
+    try? await Task.sleep(nanoseconds: 80_000_000)
+    XCTAssertEqual(fetcher.codePaths, [])
+    XCTAssertNil(harness.model.copyCard?.catalog.row(for: .codePicker))
+  }
+
+  func testCloseCopyCardCancelsCodeFetch() async throws {
+    let path = "ref/chat/example.md"
+    let fetcher = FakeRefsFetcher()
+    fetcher.codeDelayNanoseconds = 2_000_000_000
+    fetcher.codeResponse = try Self.codeResponse(path: path)
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [Self.renameRecord(path: path, stem: "example", sourceMarkdown: ".bob/src.md")]
+    )
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await harness.waitForSnapshot(ids: [path])
+    harness.model.prepareForPresentation()
+    harness.model.openCopyCard()
+    XCTAssertEqual(harness.model.copyCard?.code, .loading)
+    harness.model.panelDidHide()
+    XCTAssertNil(harness.model.copyCard)
+    try? await Task.sleep(nanoseconds: 150_000_000)
+    XCTAssertNil(harness.model.copyCard)
+  }
+
+  func testCopyCardFreezesHighlightedPageFromCurrentTab() async throws {
+    let path = "ref/chat/example.md"
+    let fetcher = FakeRefsFetcher()
+    fetcher.codeResponse = try Self.codeResponse(path: path)
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [Self.renameRecord(path: path, stem: "example", sourceMarkdown: ".bob/src.md")]
+    )
+    let reader = FakeTabsReader(isTrusted: true)
+    let harness = try makeRenameHarness(fetcher: fetcher, tabsReader: reader)
+    await harness.waitForSnapshot(ids: [path])
+    let item = try XCTUnwrap(harness.library.items.first)
+    reader.setNextResult(
+      .snapshot(Self.tabsSnapshot([item], vault: harness.vault, frontmost: true, pageNumber: 7))
+    )
+    harness.model.prepareForPresentation(source: .highlightsTabs)
+    await harness.waitForModel { $0.tabsState == .loaded }
+    harness.model.openCopyCard()
+    XCTAssertEqual(harness.model.copyCard?.highlightedPage, 7)
+  }
+
+  func testQueuedCodeKeyCopiesWhenCatalogReturns() async throws {
+    let path = "ref/chat/example.md"
+    let fetcher = FakeRefsFetcher()
+    fetcher.codeDelayNanoseconds = 80_000_000
+    fetcher.codeResponse = try Self.codeResponse(path: path)
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [Self.renameRecord(path: path, stem: "example", sourceMarkdown: ".bob/src.md")]
+    )
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await harness.waitForSnapshot(ids: [path])
+    harness.model.prepareForPresentation()
+    var completions: [RefsCopyRow] = []
+    harness.model.copyCompletion = { completions.append($0) }
+    harness.model.openCopyCard()
+    harness.model.handleCopyCardKey(characters: "c", keyCode: 8, modifiers: [])
+    XCTAssertEqual(harness.model.copyCard?.pending, .codePicker)
+    harness.model.handleCopyCardKey(characters: "\r", keyCode: 36, modifiers: [])
+    await harness.waitForModel { $0.copyCard == nil && harness.pasteboard.strings.count == 1 }
+    XCTAssertEqual(
+      harness.pasteboard.strings.first,
+      "refresh:\n  interval_ms: 250\n  jitter_ms: 40\n\ton_focus: true\n  backoff:\n    initial_ms: 80\n    max_ms: 4000\n    factor: 1.6\n  watchers:\n    - list\n    - plan\n    - show\n  debug: false\n  retries: 3"
+    )
+    XCTAssertEqual(completions.first?.confirmationTitle, "Copied yaml · 14 lines")
+  }
+
+  func testUnsupportedCodeFetchExplainsNewerBob() async throws {
+    let path = "ref/chat/example.md"
+    let fetcher = FakeRefsFetcher()
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [Self.renameRecord(path: path, stem: "example", sourceMarkdown: ".bob/src.md")]
+    )
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await harness.waitForSnapshot(ids: [path])
+    harness.model.prepareForPresentation()
+    harness.model.openCopyCard()
+    await harness.waitForModel { $0.copyCard?.code == .unsupported }
+    harness.model.handleCopyCardKey(characters: "c", keyCode: 8, modifiers: [])
+    XCTAssertEqual(
+      harness.model.copyCard?.message?.text,
+      "Code copy needs a newer bob"
+    )
+    XCTAssertNil(harness.model.copyCard?.catalog.row(for: .codePicker))
+  }
+
   func testCopyCardWriteFailureKeepsCardOpenAndEscapeClosesOnlyCard() async throws {
     let harness = try makeHarness()
     await harness.waitForSnapshot()
@@ -2967,7 +3125,8 @@ final class RefsPanelModelTests: XCTestCase {
   private static func renameRecord(
     path: String,
     stem: String,
-    added: String? = nil
+    added: String? = nil,
+    sourceMarkdown: String? = nil
   ) -> RefRecord {
     RefRecord(
       path: path,
@@ -2978,8 +3137,41 @@ final class RefsPanelModelTests: XCTestCase {
       readingState: "queued",
       added: added,
       addedSource: added == nil ? nil : "created",
-      sourcePDF: "lib/blogs/\(stem).pdf"
+      sourcePDF: "lib/blogs/\(stem).pdf",
+      sourceMarkdown: sourceMarkdown
     )
+  }
+
+  private static func codeItem() -> RefItem {
+    RefItem(
+      id: "ref/chat/example.md",
+      link: "[[ref/chat/example]]",
+      rawTitle: "Why sase ace Is Slow",
+      stem: "example",
+      kind: .chat,
+      state: .ready,
+      isBlocked: false,
+      pdfPath: "lib/chat/example.pdf",
+      sourceMarkdown: ".bob/ref-sources/chat/example--abc123/source.md"
+    )
+  }
+
+  private static func codeResponse(path: String = "ref/chat/example.md") throws -> RefsCodeResponse {
+    let source = URL(fileURLWithPath: #filePath)
+    let packageRoot = source
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+    let data = try Data(
+      contentsOf: packageRoot.appendingPathComponent("Tests/Fixtures/refs-code.json")
+    )
+    var json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    if var reference = json["reference"] as? [String: Any] {
+      reference["path"] = path
+      json["reference"] = reference
+    }
+    let patched = try JSONSerialization.data(withJSONObject: json)
+    return try JSONDecoder().decode(RefsCodeResponse.self, from: patched)
   }
 
   private static func arrivalRecord(

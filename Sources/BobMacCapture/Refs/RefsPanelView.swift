@@ -304,18 +304,16 @@ public struct RefsPanelView: View {
                     card: card,
                     alternatesActive: model.copyAlternatesActive,
                     previewMode: previewMode,
-                    onMeasuredHeight: {
+                    onMeasuredHeight: { height in
+                        guard let current = model.copyCard else { return }
                         model.copyCardNoteCapacity = Self.copyCardNoteCapacity(
-                            for: card,
-                            height: $0
+                            for: current,
+                            height: height
                         )
                         model.copyCardPickerWindowSize =
-                            RefsCopyCardLayout.highlightWindowSize(
-                                cardHeight: Double($0),
-                                metrics: RefsVisualTokens.copyCardMetrics,
-                                rowHeight: Double(
-                                    RefsVisualTokens.copyCardPickerRowHeight
-                                )
+                            Self.copyCardPickerWindowSize(
+                                for: current,
+                                height: height
                             )
                     },
                     onRowTap: { model.copyCardRowTapped($0) },
@@ -401,6 +399,32 @@ public struct RefsPanelView: View {
             }.count,
             groupCount: groups.count,
             metrics: RefsVisualTokens.copyCardMetrics
+        )
+    }
+
+    /// Highlight pickers fill the space under the header. The code picker
+    /// keeps a fixed well, so its row window is the remainder.
+    static func copyCardPickerWindowSize(
+        for card: RefsCopyCard,
+        height: CGFloat
+    ) -> Int {
+        let metrics = RefsVisualTokens.copyCardMetrics
+        if card.codePicker != nil {
+            let available = Double(height)
+                - metrics.headerHeight
+                - metrics.messageLineHeight
+                - metrics.verticalPadding
+            return RefsCodePreviewWellLayout.make(
+                availableHeightUnderHeader: available,
+                codeLineHeight: Double(RefsVisualTokens.copyCardCodeLineHeight),
+                headerHeight: Double(RefsVisualTokens.copyCardCodeWellHeaderHeight),
+                entryRowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight)
+            ).pickerWindowSize
+        }
+        return RefsCopyCardLayout.highlightWindowSize(
+            cardHeight: Double(height),
+            metrics: metrics,
+            rowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight)
         )
     }
 }
