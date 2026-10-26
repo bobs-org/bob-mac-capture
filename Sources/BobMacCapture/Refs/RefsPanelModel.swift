@@ -765,7 +765,7 @@ public final class RefsPanelModel: ObservableObject {
     }.store(in: &subscriptions)
     inspectorLoader.$content.sink { [weak self] content in
       self?.clampRevealedPage(to: content)
-      self?.tryFireHighlightsKeyFocus()
+      self?.tryFireHighlightsKeyFocus(contentSnapshot: content)
     }.store(in: &subscriptions)
     library.$refreshState.sink { [weak self] _ in
       Task { await self?.refreshStateDidChange() }
@@ -1066,13 +1066,19 @@ public final class RefsPanelModel: ObservableObject {
     highlightsKeyFocusArmed = true
   }
 
-  private func tryFireHighlightsKeyFocus() {
+  private func tryFireHighlightsKeyFocus(
+    contentSnapshot: [String: RefsInspectorContent]? = nil
+  ) {
     guard highlightsKeySession != nil, highlightsKeyFocusArmed else { return }
     guard tabsState == .loaded else { return }
     guard let selectedID, let tab = tabsListing?.tabs[selectedID],
       tab.isCurrent, let page = tab.pageNumber
     else { return }
-    guard let content = inspectorLoader.content(for: selectedID) else { return }
+    // @Published delivers the new value from willSet, before reads of
+    // inspectorLoader.content see it. When called from that publisher,
+    // use its snapshot exactly; other callers use the committed cache.
+    let contentByID = contentSnapshot ?? inspectorLoader.content
+    guard let content = contentByID[selectedID] else { return }
     guard let range = content.feed.focusRange(page: page) else { return }
     var pageState = inspectorNotesPage(for: selectedID)
     if pageState.reveal(through: range.upperBound, total: content.feed.total) {
@@ -3278,10 +3284,14 @@ public final class RefsPanelModel: ObservableObject {
     )
     listing = next
     if tabsFilter, let tabsListing {
+      let currentID = tabsListing.currentID.flatMap { id in
+        next.contains(id: id) ? id : nil
+      }
       self.tabsListing = RefsTabsListing(
         listing: next,
         tabs: tabsListing.tabs,
-        preselectedID: tabsListing.preselectedID
+        preselectedID: tabsListing.preselectedID,
+        currentID: currentID
       )
     }
     // Vanished rows leave the frozen listing, so intersecting with it

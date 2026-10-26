@@ -3245,10 +3245,11 @@ final class RefsPanelModelTests: XCTestCase {
     await harness.waitForSnapshot()
     let kept = "ref/chat/small_reading.md"
     await harness.waitForModel { $0.listing.contains(id: kept) }
-    harness.model.setQuery("keep")
-    harness.model.perform(.setScope(.papers))
+    harness.model.setQuery("small")
+    harness.model.perform(.setScope(.chats))
     harness.model.perform(.toggleNewest)
     XCTAssertEqual(harness.model.listOrder, .newest)
+    XCTAssertTrue(harness.model.listing.contains(id: kept))
     XCTAssertTrue(harness.model.perform(.select(id: kept)))
     let initialInspector = harness.model.inspectorGeneration
     harness.model.noteInspectorOffset(
@@ -3272,10 +3273,11 @@ final class RefsPanelModelTests: XCTestCase {
 
     XCTAssertFalse(harness.model.tabsFilter)
     XCTAssertEqual(harness.model.tabsState, .off)
-    XCTAssertEqual(harness.model.query, "keep")
-    XCTAssertEqual(harness.model.scope, .papers)
+    XCTAssertEqual(harness.model.query, "small")
+    XCTAssertEqual(harness.model.scope, .chats)
     XCTAssertEqual(harness.model.listOrder, .newest)
     XCTAssertEqual(harness.model.selectedID, kept)
+    XCTAssertTrue(harness.model.listing.contains(id: kept))
     XCTAssertEqual(harness.model.inspectorRestoreOffset(for: kept), 90)
     XCTAssertEqual(harness.model.listRestoreOffset, 200)
 
@@ -3283,13 +3285,13 @@ final class RefsPanelModelTests: XCTestCase {
     harness.model.setQuery("gas")
     harness.model.prepareForPresentation(source: .highlightsTabs)
     harness.model.prepareForPresentation(source: .library)
-    XCTAssertEqual(harness.model.query, "keep")
-    XCTAssertEqual(harness.model.scope, .papers)
+    XCTAssertEqual(harness.model.query, "small")
+    XCTAssertEqual(harness.model.scope, .chats)
 
     harness.model.prepareForPresentation(source: .highlightsTabs)
     harness.model.prepareForPresentation(source: .panelSwitch)
-    XCTAssertEqual(harness.model.query, "keep")
-    XCTAssertEqual(harness.model.scope, .papers)
+    XCTAssertEqual(harness.model.query, "small")
+    XCTAssertEqual(harness.model.scope, .chats)
     XCTAssertFalse(harness.model.tabsFilter)
 
     harness.model.prepareForPresentation(source: .highlightsTabs)
@@ -3315,6 +3317,36 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(harness.model.selectedID, items[0].id)
     XCTAssertEqual(harness.model.tabsListing?.preselectedID, items[0].id)
     XCTAssertEqual(harness.model.tabsListing?.currentID, items[0].id)
+
+    var changedSignals = harness.library.signals
+    changedSignals.today = RefsToday(entries: [
+      items[0].id: RefsTodayEntry(order: 0, pomodoroName: "refresh-proof")
+    ])
+    harness.library.installSnapshotForPreviews(
+      items: harness.library.items.filter { $0.id != items[0].id },
+      signals: changedSignals,
+      refreshState: .idle
+    )
+    await harness.waitForModel { $0.unavailableIDs.contains(items[0].id) }
+    XCTAssertEqual(harness.model.selectedID, items[0].id)
+    XCTAssertEqual(harness.model.tabsListing?.preselectedID, items[0].id)
+    XCTAssertEqual(harness.model.tabsListing?.currentID, items[0].id)
+
+    let other = items[1]
+    harness.model.setQuery(other.stem)
+    XCTAssertTrue(harness.model.listing.contains(id: other.id))
+    XCTAssertFalse(harness.model.listing.contains(id: items[0].id))
+    XCTAssertNil(harness.model.tabsListing?.currentID)
+    changedSignals.today = RefsToday(entries: [
+      other.id: RefsTodayEntry(order: 0, pomodoroName: "filtered-refresh-proof")
+    ])
+    harness.library.installSnapshotForPreviews(
+      items: harness.library.items.filter { $0.id != other.id },
+      signals: changedSignals,
+      refreshState: .idle
+    )
+    await harness.waitForModel { $0.unavailableIDs.contains(other.id) }
+    XCTAssertNil(harness.model.tabsListing?.currentID)
   }
 
   func testHighlightsKeyFocusPublishesAndReveals() async throws {
@@ -3325,10 +3357,13 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(items.count, 2)
     let target = items[0]
     let snapshot = Self.tabsSnapshot([target, items[1]], vault: harness.vault, frontmost: true, pageNumber: 7)
+    var received: [RefsInspectorFocus] = []
+    let cancellable = harness.model.inspectorFocusRequests.sink { received.append($0) }
     reader.setNextResult(.snapshot(snapshot))
     harness.model.prepareForPresentation(source: .highlightsTabs)
     await harness.waitForModel { $0.tabsState == .loaded }
     XCTAssertEqual(harness.model.selectedID, target.id)
+    XCTAssertTrue(received.isEmpty)
     harness.model.installForPreviews(
       items: harness.library.items,
       signals: harness.library.signals,
@@ -3339,15 +3374,62 @@ final class RefsPanelModelTests: XCTestCase {
       refreshState: .idle,
       inspector: [target.id: RefsInspectorContent(highlights: Self.thirteenNotes())]
     )
-    await harness.waitForModel { $0.inspectorFocus != nil }
+    await harness.waitForModel { _ in !received.isEmpty }
     let focus = try XCTUnwrap(harness.model.inspectorFocus)
     XCTAssertEqual(focus.id, target.id)
     XCTAssertEqual(focus.index, 6)
+    XCTAssertEqual(focus.generation, harness.model.inspectorNotesPage(for: target.id).generation)
     XCTAssertEqual(
       harness.model.inspectorNotesPage(for: target.id).visibleCount(total: 13), 10)
+    XCTAssertEqual(received, [focus])
+
+    var lateReceived: [RefsInspectorFocus] = []
+    let lateCancellable = harness.model.inspectorFocusRequests.sink {
+      lateReceived.append($0)
+    }
+    XCTAssertTrue(lateReceived.isEmpty)
+
+    harness.model.inspectorLoader.installContentForPreviews([
+      target.id: RefsInspectorContent(highlights: Self.thirteenNotes())
+    ])
+    XCTAssertEqual(received, [focus])
+    XCTAssertTrue(lateReceived.isEmpty)
+    _ = (cancellable, lateCancellable)
+  }
+
+  func testHighlightsKeyFocusUsesContentCachedBeforeTheTabsSnapshot() async throws {
+    let reader = FakeTabsReader(isTrusted: true)
+    let harness = try makeHarness(tabsReader: reader)
+    await harness.waitForSnapshot()
+    let items = Array(harness.library.items.prefix(2))
+    XCTAssertEqual(items.count, 2)
+    let target = items[0]
+    harness.model.installForPreviews(
+      items: harness.library.items,
+      signals: harness.library.signals,
+      query: "",
+      scope: .all,
+      selectedID: target.id,
+      banner: nil,
+      refreshState: .idle,
+      inspector: [target.id: RefsInspectorContent(highlights: Self.thirteenNotes())]
+    )
     var received: [RefsInspectorFocus] = []
     let cancellable = harness.model.inspectorFocusRequests.sink { received.append($0) }
-    XCTAssertEqual(received.count, 0)
+
+    reader.setNextResult(.snapshot(
+      Self.tabsSnapshot([target, items[1]], vault: harness.vault, frontmost: true, pageNumber: 7)
+    ))
+    harness.model.prepareForPresentation(source: .highlightsTabs)
+    await harness.waitForModel { $0.tabsState == .loaded && !received.isEmpty }
+
+    let focus = try XCTUnwrap(harness.model.inspectorFocus)
+    XCTAssertEqual(received, [focus])
+    XCTAssertEqual(focus.id, target.id)
+    XCTAssertEqual(focus.index, 6)
+    XCTAssertEqual(focus.generation, harness.model.inspectorNotesPage(for: target.id).generation)
+    XCTAssertEqual(
+      harness.model.inspectorNotesPage(for: target.id).visibleCount(total: 13), 10)
     _ = cancellable
   }
 
@@ -3410,6 +3492,8 @@ final class RefsPanelModelTests: XCTestCase {
     let target = items[0]
     let other = items[1]
     let snapshot = Self.tabsSnapshot([target, other], vault: harness.vault, frontmost: true, pageNumber: 7)
+    var received: [RefsInspectorFocus] = []
+    let cancellable = harness.model.inspectorFocusRequests.sink { received.append($0) }
     reader.setNextResult(.snapshot(snapshot))
     harness.model.prepareForPresentation(source: .highlightsTabs)
     await harness.waitForModel { $0.tabsState == .loaded }
@@ -3426,10 +3510,28 @@ final class RefsPanelModelTests: XCTestCase {
       refreshState: .idle,
       inspector: [target.id: RefsInspectorContent(highlights: Self.thirteenNotes())]
     )
-    await harness.waitForModel { $0.inspectorFocus != nil }
-    XCTAssertNotNil(harness.model.inspectorFocus)
+    await harness.waitForModel { _ in received.count == 1 }
+    XCTAssertEqual(harness.model.inspectorFocus?.id, target.id)
+    XCTAssertEqual(received.count, 1)
+
+    XCTAssertTrue(harness.model.perform(.select(id: other.id)))
+    XCTAssertNil(harness.model.inspectorFocus)
+    XCTAssertTrue(harness.model.perform(.select(id: target.id)))
+    XCTAssertEqual(received.count, 2)
+    XCTAssertEqual(harness.model.inspectorFocus?.id, target.id)
+
+    XCTAssertTrue(harness.model.perform(.select(id: other.id)))
+    harness.model.inspectorLoader.reset()
+    XCTAssertTrue(harness.model.perform(.select(id: target.id)))
+    XCTAssertNil(harness.model.inspectorFocus)
     harness.model.perform(.scrollInspector(.down))
     XCTAssertNil(harness.model.inspectorFocus)
+    harness.model.inspectorLoader.installContentForPreviews([
+      target.id: RefsInspectorContent(highlights: Self.thirteenNotes())
+    ])
+    XCTAssertNil(harness.model.inspectorFocus)
+    XCTAssertEqual(received.count, 2)
+    _ = cancellable
   }
 
   func testHighlightsTabsShowClearsRememberedQueryAndReselectsPreselection()
@@ -4164,17 +4266,17 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(harness.library.signals.opens.count(item.id), 0)
   }
 
-  func testTabSwitchUsesTheSwitcherPreselectionOnceOnTheNextShow() async throws {
+  func testTabSwitchUsesTheSwitcherPreselectionOnceInPersistentTabs() async throws {
     let reader = FakeTabsReader(isTrusted: true)
     let harness = try makeHarness(tabsReader: reader)
     await harness.waitForSnapshot()
     let items = Array(harness.library.items.prefix(2))
     XCTAssertEqual(items.count, 2)
-    reader.setNextResult(
-      .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: false))
-    )
-
-    harness.model.prepareForPresentation(source: .highlightsTabs)
+    harness.model.prepareForPresentation(source: .library)
+    reader.setNextResult(.snapshot(
+      Self.tabsSnapshot(items, vault: harness.vault, frontmost: false)
+    ))
+    XCTAssertTrue(harness.model.perform(.toggleTabs))
     await harness.waitForModel { $0.tabsState == .loaded }
     let switched = try XCTUnwrap(items.last?.id)
     XCTAssertTrue(harness.model.perform(.select(id: switched)))
@@ -4183,6 +4285,8 @@ final class RefsPanelModelTests: XCTestCase {
     await harness.waitForModel { $0.tabsSession.recency.lastActive(fileName) != nil }
     XCTAssertEqual(harness.opener.highlightsOpens.count, 1)
     XCTAssertTrue(reader.selectedTargets.isEmpty)
+    XCTAssertTrue(harness.openLogStore.load().isEmpty)
+    XCTAssertEqual(harness.library.signals.opens.count(switched), 0)
 
     let nextSnapshot = Self.tabsSnapshot(
       [items[1], items[0]],
@@ -4195,13 +4299,55 @@ final class RefsPanelModelTests: XCTestCase {
     let preselected = try XCTUnwrap(harness.model.tabsListing?.preselectedID)
     XCTAssertEqual(preselected, items[1].id)
     XCTAssertEqual(harness.model.selectedID, preselected)
+    XCTAssertTrue(harness.model.tabsFilter)
+
+    let manualSelection = items[0].id
+    XCTAssertNotEqual(manualSelection, preselected)
+    XCTAssertTrue(harness.model.perform(.select(id: manualSelection)))
 
     reader.setNextResult(
       .snapshot(Self.tabsSnapshot([items[1], items[0]], vault: harness.vault, frontmost: false))
     )
     harness.model.prepareForPresentation(source: .library)
     await harness.waitForModel { $0.tabsState == .loaded }
-    XCTAssertEqual(harness.model.selectedID, preselected)
+    XCTAssertEqual(harness.model.selectedID, manualSelection)
+  }
+
+  func testHighlightsSessionSwitchRestoresTheLibraryViewWithTabsOff() async throws {
+    let reader = FakeTabsReader(isTrusted: true)
+    let harness = try makeHarness(tabsReader: reader)
+    await harness.waitForSnapshot()
+    let kept = "ref/chat/small_reading.md"
+    let items = Array(harness.library.items.prefix(2))
+    XCTAssertEqual(items.count, 2)
+    harness.model.setQuery("small")
+    XCTAssertTrue(harness.model.perform(.setScope(.chats)))
+    XCTAssertTrue(harness.model.perform(.toggleNewest))
+    XCTAssertTrue(harness.model.listing.contains(id: kept))
+    XCTAssertTrue(harness.model.perform(.select(id: kept)))
+
+    reader.setNextResult(.snapshot(
+      Self.tabsSnapshot(items, vault: harness.vault, frontmost: false)
+    ))
+    harness.model.prepareForPresentation(source: .highlightsTabs)
+    await harness.waitForModel { $0.tabsState == .loaded }
+    let switched = try XCTUnwrap(items.last?.id)
+    XCTAssertTrue(harness.model.perform(.select(id: switched)))
+    XCTAssertTrue(harness.model.perform(.open(.highlights)))
+    let fileName = URL(fileURLWithPath: items[1].pdfPath).lastPathComponent
+    await harness.waitForModel { $0.tabsSession.recency.lastActive(fileName) != nil }
+    XCTAssertEqual(harness.opener.highlightsOpens.count, 1)
+    XCTAssertTrue(harness.openLogStore.load().isEmpty)
+    XCTAssertEqual(harness.library.signals.opens.count(switched), 0)
+
+    harness.model.prepareForPresentation(source: .library)
+    XCTAssertFalse(harness.model.tabsFilter)
+    XCTAssertEqual(harness.model.tabsState, .off)
+    XCTAssertEqual(harness.model.query, "small")
+    XCTAssertEqual(harness.model.scope, .chats)
+    XCTAssertEqual(harness.model.listOrder, .newest)
+    XCTAssertEqual(harness.model.selectedID, kept)
+    XCTAssertTrue(harness.model.listing.contains(id: kept))
   }
 
   func testUnmatchedSwitchSelectsTheTabAndShowsClosedBanner() async throws {

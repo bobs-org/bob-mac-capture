@@ -1890,8 +1890,8 @@ final class RefsPanelDesignTests: XCTestCase {
     )
   }
 
-  /// The loaded 9-row list: the current pill on row 1 and, with
-  /// Highlights frontmost, row 2 pre-selected.
+  /// The loaded 9-row list with the focused PDF selected and its
+  /// current-page caption visible.
   private func renderTabsLoaded(model: RefsPanelModel, now: Date) throws {
     installTabs(model: model, now: now, state: .loaded, frontmost: true)
     XCTAssertTrue(model.tabsFilter)
@@ -1900,7 +1900,7 @@ final class RefsPanelDesignTests: XCTestCase {
     XCTAssertEqual(model.listing.totalCount, 9)
     XCTAssertEqual(
       model.selectedID,
-      "ref/chat/morning_notes.md"
+      "ref/chat/today_report.md"
     )
     let current = try XCTUnwrap(
       model.rowContent(
@@ -2076,7 +2076,7 @@ final class RefsPanelDesignTests: XCTestCase {
   /// the pointer were over it. ImageRenderer never drives `onHover`.
   private func renderTabsCloseHoverRow(model: RefsPanelModel, now: Date) throws {
     installTabs(model: model, now: now, state: .loaded, frontmost: true)
-    let id = "ref/chat/today_report.md"
+    let id = "ref/chat/morning_notes.md"
     XCTAssertNotEqual(model.selectedID, id)
     XCTAssertTrue(model.canCloseTab(id: id))
     let content = try XCTUnwrap(model.rowContent(for: id))
