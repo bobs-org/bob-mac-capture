@@ -279,8 +279,8 @@ carries no glass modifier so the `ImageRenderer` design fixtures
 stay reviewable. Under Reduce Transparency an opaque window
 background paints beneath the content. It prewarms at launch
 (already at the show size), recomputes its frame on every show,
-fades in over 0.12 s while the
-content scales from 0.98 to 1.0 on every show (fade only under
+fades in over 0.12 s as
+content scales 0.98 to 1.0 (fade only under
 Reduce Motion), hides at once with no fade-out, and hides when it
 resigns key, like Spotlight. Highlights stays frontmost throughout:
 the panel never calls `NSApp.activate`. The height is fixed while
@@ -305,25 +305,22 @@ panel width: wide when its column reaches 568 pt (24 pt padding, a
 readable column of at most 720 pt centered in the inspector), compact
 otherwise (today's 18 pt padding). Rows are 44 pt and two lines: the New dot (accent, only while the
 row is NEW),
-the kind tile, the rich title (semibold while NEW; code spans styled, matches in the
-accent color) with its caption (a stem-only or secondary match
-renders its part in the accent color, and a matched author the
+the kind tile, the rich title (semibold while NEW; code spans styled, accent matches) with its caption (a stem-only or secondary match
+renders in accent, and a matched author the
 caption already shows is not repeated), and the pink Now pill (the
 Pomodoro name, or `NOW` when it is unnamed),
 annotation and narration marks, and the state glyph. Section headers
-are 26 pt and pinned. Ranked headers read `NEW`, `NOW`, `READING`, …;
-Newest headers read `TODAY`, `YESTERDAY`, … . The selected row always
-stays fully visible
-below the pinned header; a show keeps the selected row when it remains
-listed, unless a newly added reference resets the view, and a re-rank that
-selects the first row returns the list to its
-top. Moving up lands the selected row just under its section header. The NEW header leads with the same accent
-dot; while a NEW-section row is selected it trails "⌥N Mark Seen"
-or "⌥N Mark New". In Newest they are date groups (`TODAY`,
+are 26 pt and pinned (`NEW`, `NOW`, `READING`, …; Newest: `TODAY`,
+`YESTERDAY`, …). The selected row stays fully visible
+below the pinned header; a show keeps it when still listed, unless a
+new reference resets the view, and a re-rank selecting the first row
+returns the list to its
+top. Moving up lands the selection under its section header. The NEW header leads with the same accent
+dot; a selected NEW-section row trails "⌥N Mark Seen"
+or "⌥N Mark New". Newest rows are date groups (`TODAY`,
 `YESTERDAY`, a weekday, a month, `UNDATED`) with the count after the
 title and a trailing day on day groups (`Oct 18`). The Newest token is
-an accent capsule (`calendar.day.timeline.left`, falling back to
-`calendar`) with the text "Newest" and an `xmark`; activating it
+an accent capsule with the text "Newest" and an `xmark`; activating it
 returns to library sections. VoiceOver reads each row as one element —
 "Title, Paper, Ready, added today, 22 pages, Now in BLOG
 Pomodoro, new" — with the kind said once and the selected
@@ -332,24 +329,23 @@ list item (hero, kind/state/New/Now chips, title, byline, an
 Added/Finished/Pages/Opened/Notes/Reading task/Narration facts grid
 with absent rows omitted, the why-here line, and the vault PDF path;
 see [Bob Refs inspector](refs-inspector.md) for the hydrated column); a missing PDF shows an
-orange callout reading "↵ opens the note instead". States: 8
-skeleton rows on first launch, a centered callout card with Retry
-(⌘R) and Copy Diagnostic when no cache exists and the refresh
-failed, a centered "No references match" empty state with a quiet second line
+orange "↵ opens the note instead" callout. States: 8
+skeleton rows on first launch; a centered Retry
+(⌘R) and Copy Diagnostic card when no cache exists and the refresh
+failed; a centered "No references match" empty state
 ("Not in your library yet? ⌘S scans for new references", or "Scanning
-for new references…" while a scan runs), and dimmed
+for new references…" mid-scan); dimmed
 unavailable rows that never open whatever slid into their index. A scan
-that finishes while the panel is visible re-ranks once like ⌘R, puts
-the Just scanned section first with its first row selected, and
-announces the outcome to VoiceOver; a scan that finishes while the
-panel is hidden posts a macOS notification instead ("Added N
+finishing while the panel is visible re-ranks once like ⌘R, puts
+Just scanned first with its first row selected, and
+announces the outcome to VoiceOver; while hidden it posts a macOS notification instead ("Added N
 references", or the failure), and clicking it shows Bob Refs with the
-section on top. A writing scan that refreshed an open PDF, or that
-could not because Highlights did not answer, also notifies or updates
+section on top. A writing scan that refreshed an open PDF — or that
+could not because Highlights did not answer — notifies or updates
 the footer as in [Open PDFs in Highlights](#open-pdfs-in-highlights).
-Problem scans raise a banner: a warning with Copy Diagnostic for
-per-PDF failures, an error with Scan Again and Copy Diagnostic for
-hard failures, and a warning with Scan Again when Highlights needs
+Problem scans raise a banner: a Copy Diagnostic warning for
+per-PDF failures, a Scan Again plus Copy Diagnostic error for
+hard failures, and a Scan Again warning when Highlights needs
 you.
 
 | Key | Bob Refs panel |
@@ -380,20 +376,19 @@ you.
 | Esc, Ctrl-[ | Link to Today, Rename, or Copy card, then banner, then close while keeping the view |
 | Shift-Tab | Consumed (no-op) |
 
-Return and Command-Y while IME-composing pass through to the text system. Ctrl-D,
-Ctrl-U, Ctrl-C, and Ctrl-X also pass through while IME-composing. Ctrl-C
-always resets the view (even when it already has defaults), and Ctrl-D and
+While IME-composing, Return, Command-Y, Ctrl-D, Ctrl-U, Ctrl-C, Ctrl-X,
+and Shift-Command-T pass through to the text system. Ctrl-C
+always resets the view, even with defaults, and Ctrl-D and
 Ctrl-U consume the key even when the preview is hidden, short, empty, or
-already at an edge. In Tabs, Ctrl-X closes the selected tab; Ctrl-D always
-scrolls. While the `+N more` row is fully visible in the viewport —
-or at the very bottom of the preview — Ctrl-D shows the next page of
-highlights at once (clicking the disclosure row does the same);
+at an edge. In Tabs, Ctrl-X closes the selected tab and Ctrl-D always
+scrolls. With the `+N more` row fully visible
+or at the preview bottom, Ctrl-D pages highlights at once
+(clicking the row does the same);
 elsewhere it scrolls half a viewport, and
-when nothing is hidden it is still consumed and does nothing.
-Shift-Command-T reopens the most recently closed tab, or does nothing
-when none remain; it also passes through while IME-composing.
-Printable keys fall through to the search field. Result counts are
-announced 600 ms after typing stops, never on every keystroke.
+with nothing hidden it is consumed and does nothing.
+Shift-Command-T reopens the most recently closed tab, or does nothing.
+Printable keys fall through to search. Result counts
+announce 600 ms after typing stops, never on every keystroke.
 
 ### Open PDFs in Highlights
 
@@ -425,50 +420,58 @@ PDF" (on by default) suppresses notifications only; footer clauses stay.
 
 ### Copy card
 
-Command-Y opens an in-panel card for the selected reference. From Highlights,
-Command-Y opens this card on the focused PDF (see
-[Opening Bob Refs](#opening-bob-refs)). The fixed keys
-copy `I` marker ID, `T` title, `W` wiki link, `U` source URL, `L` Markdown
-link, `X` arXiv ID, `D` DOI, `N` note path, `O` Obsidian link, `P` PDF path,
-`F` the PDF file, `R` reading-task link, and `S` research reference. `C` opens
-a code picker with a preview well (`Loading code…` while fetching). `M` copies
-the Markdown (Option-M its `~` path). A `p. N in Highlights` chip marks the
-focused tab. Hidden C/M keys explain why. Command-Y C Return copies the
-page's block. `1`–`9` copy the visible commented highlights
-with page and block-link provenance; `A` copies all commented highlights,
-standalone notes, and Bob's notes, grouped under `### <Title>` (section
-description as a blockquote) when `bob ref show` supplies sections, then
-`### Other highlights` and `### Notes`. Empty sections and uncommented-only
-sections omit a group; older unsectioned responses keep the previous A
-payload. `H` opens a highlight picker for every highlight and standalone note
-(digits copy the window, arrows scroll, `A` copies all). With sections, the
-picker draws non-selectable group titles, repeating the current title when
-the window starts mid-section; digits, arrows, wraparound, and counts stay
-on the entries. Hidden rows leave the other keys in place. Return or
-Command-Y copies the selected row (marker ID when available, otherwise wiki
-link). Up/Down and Ctrl-P/N/J/K move the selection; Escape returns to the
-inspector, or from a picker to the card.
+Command-Y opens an in-panel card for the selected reference, or for the
+focused Highlights PDF (see [Opening Bob Refs](#opening-bob-refs)). The fixed
+keys copy `I` marker ID, `T` title, `W` wiki link, `U` source URL, `X` arXiv
+ID, `D` DOI, `N` note path, `O` Obsidian link, `P` PDF path, `F` the PDF file,
+`R` reading-task link, and `S` research reference. `C` opens a code picker
+with a preview well (`Loading code…` while fetching). `M` copies the Markdown
+(Option-M its `~` path). `L` opens a link picker on references bob rendered
+from Markdown (`L` stays the Markdown link elsewhere; Option-U always copies
+it). A `p. N in Highlights` chip marks the focused tab. Hidden C/L/M
+keys explain why. Command-Y C Return copies the page's block; Command-Y L
+Return copies the page's link.
+
+`1`–`9` copy the visible commented highlights with page and block-link
+provenance; `A` copies all commented highlights, standalone notes, and Bob's
+notes, grouped under `### <Title>` (section description as a blockquote) when
+`bob ref show` supplies sections, then `### Other highlights` and `### Notes`.
+Empty sections and uncommented-only sections omit a group; older unsectioned
+responses keep the previous A payload. `H` opens a highlight picker for every
+highlight and standalone note (digits copy the window, arrows scroll, `A`
+copies all) with non-selectable section titles that repeat when the window
+starts mid-section. Return copies the selected row (marker ID
+when available, otherwise wiki link).
+
+The link picker lists every recorded link in document order under a `LINKS N`
+header, grouped by report section, opening on the current page's first link
+when the Highlights page is known. Rows show the label first and the site and
+path second, with the page on the right (a `●` marks current-page links). A
+well below the rows shows the URL to copy, wrapped with its host
+emphasized; while Option is held the header gains `· Markdown` and the well
+shows the Markdown form. Return copies the URL, Option-Return its Markdown
+form, `1`–`9` copy that visible row, `A` copies every distinct URL one per
+line (Option-A as a Markdown list), and Escape returns to the card. Pressing
+`L` while its row is hidden explains why: links not yet recorded
+(`bob ref recatalog`), an older bob without `ref links`, or saved Markdown
+missing on this Mac. `L` typed before the links arrive queues like `C`.
 
 Home-folder paths copy with `~` (for example, `~/bob/lib/…`); only the
-Obsidian link and the PDF and narration file copies stay absolute, needing
-a real path.
+Obsidian link and the PDF and narration file copies stay absolute.
 
-Hold Option (⌥) to swap previews in place. Option-W copies a titled wiki link,
-Option-P the absolute PDF path, Option-N the note's full `~` path, and
-Option-F the narration file when it exists. Option-1–9 copies the highlight's
-quote verbatim, without comment or provenance, on either the card or picker.
-Rows without an alternate keep their normal payload, including standalone notes.
-Option-click and Option-Return copy the displayed alternate too. A queued note
-copy remembers whether Option was held; Return retries the same payload after a
-failed write, even if Option has since been released.
+Hold Option (⌥) to swap previews in place: Option-W a titled wiki link,
+Option-P the absolute PDF path, Option-N the full `~` note path, Option-F the
+narration file, and Option-1–9 the highlight's quote verbatim. Rows without
+an alternate keep their payload. Option-click and Option-Return copy the
+displayed alternate too. A queued copy remembers whether Option was held;
+Return retries the same payload after a failed write.
 
 Each row previews the exact value it copies. A shared marker ID shows its
 `shared ×N` count; press `N` to copy this note's path. If the installed Bob
 does not report `marker_id`, `I` explains that a newer Bob is needed and the
-other rows still work. A successful copy checks the pasteboard write, hides
-Refs, and shows a glass HUD. When Refs was opened over a Capture draft,
-Capture returns with that draft ready for ⌘V. A failed write leaves the card
-open so Return can retry.
+other rows still work. A successful copy hides Refs and shows a glass HUD.
+Over a Capture draft, Capture returns with that draft. A
+failed write leaves the card open so Return can retry.
 
 ### Rename card
 

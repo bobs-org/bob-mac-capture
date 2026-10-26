@@ -115,7 +115,50 @@ enum RefsVisualTokens {
   static let copyCardCodeWellStrokeOpacityIncreased = 0.25
   static let copyCardCodeFadeWidth: CGFloat = 8
   static let copyCardLanguageChipMinWidth: CGFloat = 52
+  static let copyCardLinkWellRadius: CGFloat = 8
+  static let copyCardLinkWellHeaderHeight: CGFloat = 18
+  static let copyCardLinkWellFontSize: CGFloat = 12
+  static let copyCardLinkWellLineHeight: CGFloat = 16
+  static let copyCardLinkWellHorizontalInset: CGFloat = 8
+  static let copyCardLinkWellBottomPadding: CGFloat = 6
+  static let copyCardLinkWellFillOpacity = 0.04
+  static let copyCardLinkWellFillOpacityIncreased = 0.08
+  static let copyCardLinkWellStrokeOpacity = 0.10
+  static let copyCardLinkWellStrokeOpacityIncreased = 0.25
+  static let copyCardLinkWellFadeHeight: CGFloat = 16
   static let copyHUDMaxValueWidth: CGFloat = 380
+
+  /// Monospaced columns available to the link well's payload at a card
+  /// width. The text spans the card minus the inspector padding on both
+  /// sides and the well's own horizontal inset.
+  static func linkWellColumns(cardWidth: CGFloat) -> Int {
+    let font = NSFont.monospacedSystemFont(
+      ofSize: copyCardLinkWellFontSize, weight: .regular)
+    let sample = NSAttributedString(
+      string: String(repeating: "0", count: 64), attributes: [.font: font])
+    let advance = sample.size().width / 64
+    guard advance > 0 else { return 40 }
+    let textWidth = Double(cardWidth)
+      - 2 * Double(inspectorPadding)
+      - 2 * Double(copyCardLinkWellHorizontalInset)
+    return max(1, Int(floor(textWidth / Double(advance))))
+  }
+
+  /// Shared layout for the link picker well: the longest plain URL sets
+  /// the fixed well height (2–5 body lines) and the row window gets the
+  /// rest (2–9 rows).
+  static func linkWellLayout(
+    cardWidth: CGFloat, availableHeight: Double, longestURL: String
+  ) -> RefsLinkPreviewLayout {
+    RefsLinkPreviewLayout.make(
+      availableHeightUnderHeader: availableHeight,
+      columns: linkWellColumns(cardWidth: cardWidth),
+      longestURL: longestURL,
+      headerHeight: Double(copyCardLinkWellHeaderHeight),
+      lineHeight: Double(copyCardLinkWellLineHeight),
+      entryRowHeight: Double(copyCardPickerRowHeight)
+    )
+  }
 
   /// Metrics the Copy card feeds `RefsCopyCardLayout`.
   static var copyCardMetrics: RefsCopyCardMetrics {

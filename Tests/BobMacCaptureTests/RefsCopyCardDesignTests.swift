@@ -35,6 +35,22 @@ final class RefsCopyCardDesignTests: XCTestCase {
         try write(card: try longLinePickerCard(), name: "refs-copy-code-picker-long-line")
         try write(card: loadingCodeCard(), name: "refs-copy-card-code-loading")
         try write(card: try noCodeCard(), name: "refs-copy-card-no-code")
+        try write(card: try linkRowsCard(), name: "refs-copy-card-link-rows")
+        try write(card: try linkPickerCard(), name: "refs-copy-link-picker")
+        try write(
+            card: try linkPickerCard(), name: "refs-copy-link-picker-markdown", alternates: true)
+        try write(card: try urlLabelPickerCard(), name: "refs-copy-link-picker-url-label")
+        try write(card: longLinkPickerCard(), name: "refs-copy-link-picker-long-line")
+        try write(card: loadingLinksCard(), name: "refs-copy-card-links-loading")
+        try write(card: linksNotRecordedCard(), name: "refs-copy-card-links-not-recorded")
+        try writeHUD(
+            title: "Copied link · ai.google.dev",
+            value: "https://ai.google.dev/gemini-api/docs/imagen",
+            name: "refs-copy-hud-link")
+        try writeHUD(
+            title: "Copied 8 links",
+            value: "https://developers.openai.com/docs/image-generation…",
+            name: "refs-copy-hud-links-all")
         try writeHUD()
         try writeHUD(
             title: "Copied yaml · 14 lines", value: "refresh:", name: "refs-copy-hud-code")
@@ -468,6 +484,136 @@ final class RefsCopyCardDesignTests: XCTestCase {
         )
     }
 
+    private func linkRowsCard() throws -> RefsCopyCard {
+        RefsCopyCard(
+            token: 30,
+            item: makeLinkItem(),
+            absolutePDFPath: "/vault/lib/chat/example.pdf",
+            pdfExists: true,
+            notes: .loaded(RefsShowRow(path: "ref/chat/example.md")),
+            noteCapacity: 5,
+            code: .loaded(try decodeCode()),
+            links: .loaded(try decodeLinks()),
+            highlightedPage: 7
+        )
+    }
+
+    private func linkPickerCard(page: Int? = 7) throws -> RefsCopyCard {
+        var card = RefsCopyCard(
+            token: 31,
+            item: makeLinkItem(),
+            absolutePDFPath: "/vault/lib/chat/example.pdf",
+            pdfExists: true,
+            notes: .loaded(RefsShowRow(path: "ref/chat/example.md")),
+            noteCapacity: 5,
+            pickerWindowSize: 9,
+            pickerGroupHeaderHeight: RefsCopyCardLayout.pickerGroupHeaderHeight,
+            pickerRowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight),
+            links: .loaded(try decodeLinks()),
+            highlightedPage: page
+        )
+        _ = card.handle(.key(.markdownLink))
+        return card
+    }
+
+    private func urlLabelPickerCard() throws -> RefsCopyCard {
+        var card = try linkPickerCard(page: 7)
+        _ = card.handle(.move(1))
+        _ = card.handle(.move(1))
+        return card
+    }
+
+    private func longLinkPickerCard() -> RefsCopyCard {
+        let longURL =
+            "https://example.com/reports/2026/agent-image-generation-toolset"
+            + "/appendix-a/methodology-and-ablations?source=highlights&sort=desc#section-4"
+        let item = makeLinkItem()
+        let response = RefsLinksResponse(
+            reference: RefsCodeReference(path: item.id, title: item.rawTitle),
+            status: .available,
+            links: [
+                RefsLink(
+                    number: 1,
+                    url: "https://developers.openai.com/docs/image-generation",
+                    label: "OpenAI image guide",
+                    site: "developers.openai.com",
+                    markdown:
+                        "[OpenAI image guide](https://developers.openai.com/docs/image-generation)",
+                    section: RefsCodeSection(number: "3", title: "Prior art"),
+                    page: 6,
+                    pageSource: "anchor"
+                ),
+                RefsLink(
+                    number: 2,
+                    url: longURL,
+                    label: "Appendix A methodology and ablations",
+                    site: "example.com",
+                    markdown: "[Appendix A methodology and ablations](\(longURL))",
+                    section: RefsCodeSection(number: "9", title: "Appendix"),
+                    page: 7,
+                    pageSource: "anchor"
+                ),
+            ]
+        )
+        var card = RefsCopyCard(
+            token: 32,
+            item: item,
+            absolutePDFPath: "/vault/lib/chat/example.pdf",
+            pdfExists: true,
+            notes: .loaded(RefsShowRow(path: "ref/chat/example.md")),
+            noteCapacity: 5,
+            pickerWindowSize: 9,
+            pickerGroupHeaderHeight: RefsCopyCardLayout.pickerGroupHeaderHeight,
+            pickerRowHeight: Double(RefsVisualTokens.copyCardPickerRowHeight),
+            links: .loaded(response),
+            highlightedPage: 7
+        )
+        _ = card.handle(.key(.markdownLink))
+        return card
+    }
+
+    private func loadingLinksCard() -> RefsCopyCard {
+        RefsCopyCard(
+            token: 33,
+            item: makeLinkItem(),
+            absolutePDFPath: "/vault/lib/chat/example.pdf",
+            pdfExists: true,
+            notes: .loaded(RefsShowRow(path: "ref/chat/example.md")),
+            noteCapacity: 5,
+            links: .loading,
+            highlightedPage: 7
+        )
+    }
+
+    private func linksNotRecordedCard() -> RefsCopyCard {
+        let item = makeLinkItem()
+        return RefsCopyCard(
+            token: 34,
+            item: item,
+            absolutePDFPath: "/vault/lib/chat/example.pdf",
+            pdfExists: true,
+            notes: .loaded(RefsShowRow(path: "ref/chat/example.md")),
+            noteCapacity: 5,
+            links: .loaded(
+                RefsLinksResponse(
+                    reference: RefsCodeReference(path: item.id, title: item.rawTitle),
+                    status: .notRecorded,
+                    detail: "links were not recorded for this reference; run bob ref recatalog",
+                    links: []
+                )
+            ),
+            highlightedPage: 7
+        )
+    }
+
+    private func makeLinkItem() -> RefItem {
+        makeItem(
+            markerID: .present("example"),
+            title: "Agent Image Generation Toolset",
+            sourceMarkdown: ".bob/ref-sources/chat/example--abc123/source.md"
+        )
+    }
+
     private func makeCodeItem() -> RefItem {
         makeItem(
             markerID: .present("example"),
@@ -486,6 +632,25 @@ final class RefsCopyCardDesignTests: XCTestCase {
             contentsOf: packageRoot.appendingPathComponent("Tests/Fixtures/\(fixture)")
         )
         return try JSONDecoder().decode(RefsCodeResponse.self, from: data)
+    }
+
+    private func decodeLinks(path: String = "ref/chat/example.md") throws -> RefsLinksResponse {
+        let source = URL(fileURLWithPath: #filePath)
+        let packageRoot = source
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let data = try Data(
+            contentsOf: packageRoot.appendingPathComponent("Tests/Fixtures/refs-links.json")
+        )
+        var json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any])
+        if var reference = json["reference"] as? [String: Any] {
+            reference["path"] = path
+            json["reference"] = reference
+        }
+        let patched = try JSONSerialization.data(withJSONObject: json)
+        return try JSONDecoder().decode(RefsLinksResponse.self, from: patched)
     }
 
     private func makeItem(

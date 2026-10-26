@@ -381,8 +381,10 @@ public struct RefsLinkPicker: Equatable, Sendable {
             .joined(separator: ", ")
     }
 
+    public static let openingAnnouncement = "Links. Press a number or Return."
+
     public var openingVoiceOverLabel: String {
-        "Links. Press a number or Return."
+        Self.openingAnnouncement
     }
 
     public mutating func move(_ delta: Int) { sectionedWindow.move(delta) }

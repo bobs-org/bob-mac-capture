@@ -1485,6 +1485,150 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertNil(harness.model.copyCard?.catalog.row(for: .codePicker))
   }
 
+  func testOpenCopyCardFetchesLinksBesideCode() async throws {
+    let path = "ref/chat/example.md"
+    let fetcher = FakeRefsFetcher()
+    fetcher.codeResponse = try Self.codeResponse(path: path)
+    fetcher.linksResponse = try Self.linksResponse(path: path)
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [Self.renameRecord(path: path, stem: "example", sourceMarkdown: ".bob/src.md")]
+    )
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await harness.waitForSnapshot(ids: [path])
+    harness.model.prepareForPresentation()
+    harness.model.openCopyCard()
+    XCTAssertEqual(harness.model.copyCard?.links, .loading)
+    await harness.waitForModel {
+      if case .loaded = $0.copyCard?.links { return true }
+      return false
+    }
+    XCTAssertEqual(fetcher.linksPaths, [path])
+    XCTAssertEqual(fetcher.codePaths, [path])
+    XCTAssertEqual(
+      harness.model.copyCard?.rows.first { $0.key == .linkPicker }?.preview,
+      "9 links · example.com, ai.google.dev, developers.openai.com"
+    )
+  }
+
+  func testOpenCopyCardFetchesLinksWithOnPageCount() async throws {
+    let path = "ref/chat/example.md"
+    let fetcher = FakeRefsFetcher()
+    fetcher.codeResponse = try Self.codeResponse(path: path)
+    fetcher.linksResponse = try Self.linksResponse(path: path)
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [Self.renameRecord(path: path, stem: "example", sourceMarkdown: ".bob/src.md")]
+    )
+    let reader = FakeTabsReader(isTrusted: true)
+    let harness = try makeRenameHarness(fetcher: fetcher, tabsReader: reader)
+    await harness.waitForSnapshot(ids: [path])
+    let item = try XCTUnwrap(harness.library.items.first)
+    reader.setNextResult(
+      .snapshot(Self.tabsSnapshot([item], vault: harness.vault, frontmost: true, pageNumber: 7))
+    )
+    harness.model.prepareForPresentation(source: .highlightsTabs)
+    await harness.waitForModel { $0.tabsState == .loaded }
+    harness.model.openCopyCard()
+    await harness.waitForModel {
+      if case .loaded = $0.copyCard?.links { return true }
+      return false
+    }
+    XCTAssertEqual(
+      harness.model.copyCard?.rows.first { $0.key == .linkPicker }?.preview,
+      "9 links · ● 3 on this page · example.com, ai.google.dev, developers.openai.com"
+    )
+  }
+
+  func testOpenCopyCardSkipsLinksWhenNoSourceMarkdown() async throws {
+    let path = "ref/chat/alpha.md"
+    let fetcher = FakeRefsFetcher()
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1, refs: [Self.renameRecord(path: path, stem: "alpha")])
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await harness.waitForSnapshot(ids: [path])
+    harness.model.prepareForPresentation()
+    harness.model.openCopyCard()
+    XCTAssertEqual(harness.model.copyCard?.links, .notRequested)
+    try? await Task.sleep(nanoseconds: 80_000_000)
+    XCTAssertEqual(fetcher.linksPaths, [])
+    XCTAssertNil(harness.model.copyCard?.catalog.row(for: .linkPicker))
+  }
+
+  func testCloseCopyCardCancelsLinksFetch() async throws {
+    let path = "ref/chat/example.md"
+    let fetcher = FakeRefsFetcher()
+    fetcher.linksDelayNanoseconds = 2_000_000_000
+    fetcher.linksResponse = try Self.linksResponse(path: path)
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [Self.renameRecord(path: path, stem: "example", sourceMarkdown: ".bob/src.md")]
+    )
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await harness.waitForSnapshot(ids: [path])
+    harness.model.prepareForPresentation()
+    harness.model.openCopyCard()
+    XCTAssertEqual(harness.model.copyCard?.links, .loading)
+    harness.model.panelDidHide()
+    XCTAssertNil(harness.model.copyCard)
+    try? await Task.sleep(nanoseconds: 150_000_000)
+    XCTAssertNil(harness.model.copyCard)
+  }
+
+  func testQueuedLinkKeyCopiesPageLinkWhenCatalogReturns() async throws {
+    let path = "ref/chat/example.md"
+    let fetcher = FakeRefsFetcher()
+    fetcher.linksDelayNanoseconds = 80_000_000
+    fetcher.linksResponse = try Self.linksResponse(path: path)
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [Self.renameRecord(path: path, stem: "example", sourceMarkdown: ".bob/src.md")]
+    )
+    let reader = FakeTabsReader(isTrusted: true)
+    let harness = try makeRenameHarness(fetcher: fetcher, tabsReader: reader)
+    await harness.waitForSnapshot(ids: [path])
+    let item = try XCTUnwrap(harness.library.items.first)
+    reader.setNextResult(
+      .snapshot(Self.tabsSnapshot([item], vault: harness.vault, frontmost: true, pageNumber: 7))
+    )
+    harness.model.prepareForPresentation(source: .highlightsTabs)
+    await harness.waitForModel { $0.tabsState == .loaded }
+    var completions: [RefsCopyRow] = []
+    harness.model.copyCompletion = { completions.append($0) }
+    harness.model.openCopyCard()
+    harness.model.handleCopyCardKey(characters: "l", keyCode: 37, modifiers: [])
+    XCTAssertEqual(harness.model.copyCard?.pending, .linkPicker)
+    harness.model.handleCopyCardKey(characters: "\r", keyCode: 36, modifiers: [])
+    await harness.waitForModel { $0.copyCard == nil && harness.pasteboard.strings.count == 1 }
+    XCTAssertEqual(
+      harness.pasteboard.strings.first,
+      "https://ai.google.dev/gemini-api/docs/imagen"
+    )
+    XCTAssertEqual(completions.first?.confirmationTitle, "Copied link · ai.google.dev")
+    XCTAssertEqual(completions.count, 1)
+    XCTAssertNil(harness.model.copyCard)
+  }
+
+  func testUnsupportedLinksFetchExplainsNewerBob() async throws {
+    let path = "ref/chat/example.md"
+    let fetcher = FakeRefsFetcher()
+    fetcher.listResponse = RefsListResponse(
+      schemaVersion: 1,
+      refs: [Self.renameRecord(path: path, stem: "example", sourceMarkdown: ".bob/src.md")]
+    )
+    let harness = try makeRenameHarness(fetcher: fetcher)
+    await harness.waitForSnapshot(ids: [path])
+    harness.model.prepareForPresentation()
+    harness.model.openCopyCard()
+    await harness.waitForModel { $0.copyCard?.links == .unsupported }
+    harness.model.handleCopyCardKey(characters: "l", keyCode: 37, modifiers: [])
+    XCTAssertEqual(
+      harness.model.copyCard?.message?.text,
+      "Link copy needs a newer bob"
+    )
+    XCTAssertNil(harness.model.copyCard?.catalog.row(for: .linkPicker))
+  }
+
   func testCopyCardWriteFailureKeepsCardOpenAndEscapeClosesOnlyCard() async throws {
     let harness = try makeHarness()
     await harness.waitForSnapshot()
@@ -3212,6 +3356,24 @@ final class RefsPanelModelTests: XCTestCase {
     }
     let patched = try JSONSerialization.data(withJSONObject: json)
     return try JSONDecoder().decode(RefsCodeResponse.self, from: patched)
+  }
+
+  private static func linksResponse(path: String = "ref/chat/example.md") throws -> RefsLinksResponse {
+    let source = URL(fileURLWithPath: #filePath)
+    let packageRoot = source
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+      .deletingLastPathComponent()
+    let data = try Data(
+      contentsOf: packageRoot.appendingPathComponent("Tests/Fixtures/refs-links.json")
+    )
+    var json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    if var reference = json["reference"] as? [String: Any] {
+      reference["path"] = path
+      json["reference"] = reference
+    }
+    let patched = try JSONSerialization.data(withJSONObject: json)
+    return try JSONDecoder().decode(RefsLinksResponse.self, from: patched)
   }
 
   private static func arrivalRecord(

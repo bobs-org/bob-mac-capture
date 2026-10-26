@@ -680,6 +680,7 @@ public final class RefsPanelModel: ObservableObject {
   private var copyCardSequence: UInt64 = 0
   private var copyNotesTask: Task<Void, Never>?
   private var copyCodeTask: Task<Void, Never>?
+  private var copyLinksTask: Task<Void, Never>?
   private var pendingCopyTimeoutTask: Task<Void, Never>?
   private var pendingCopyTimeoutKey: RefsCopyKey?
   private var pendingCopyTimeoutToken: UInt64?
@@ -2443,6 +2444,7 @@ public final class RefsPanelModel: ObservableObject {
       homeDirectoryPath: FileManager.default.homeDirectoryForCurrentUser.path,
       narrationFileURL: audioURL,
       code: wantsCode ? .loading : .notRequested,
+      links: wantsCode ? .loading : .notRequested,
       highlightedPage: frozenCopyCardPage()
     )
     copyAlternatesActive = optionHeld
@@ -2480,6 +2482,24 @@ public final class RefsPanelModel: ObservableObject {
         }
       } catch {
         self?.copyCardCodeFailed(token: token, path: path, unsupported: false)
+      }
+    }
+    copyLinksTask = Task { [weak self] in
+      do {
+        let response = try await library.links(path: path)
+        self?.copyCardLinksLoaded(token: token, path: path, response: response)
+      } catch is CancellationError {
+        return
+      } catch RefsFetchingError.unsupported {
+        self?.copyCardLinksFailed(token: token, path: path, unsupported: true)
+      } catch let error as BobClientError {
+        if case .unsupportedCommand = error {
+          self?.copyCardLinksFailed(token: token, path: path, unsupported: true)
+        } else {
+          self?.copyCardLinksFailed(token: token, path: path, unsupported: false)
+        }
+      } catch {
+        self?.copyCardLinksFailed(token: token, path: path, unsupported: false)
       }
     }
   }
@@ -2994,11 +3014,13 @@ public final class RefsPanelModel: ObservableObject {
       modifiers: modifiers
     )
     let hadCodePicker = card.codePicker != nil
+    let hadLinkPicker = card.linkPicker != nil
     let effect = card.handle(command, alternatesActive: copyAlternatesActive)
     copyCard = card
     updateCopyCardTimers(token: token)
     applyCopyCardEffect(effect, token: token)
     announceCodePickerIfNeeded(hadPicker: hadCodePicker)
+    announceLinkPickerIfNeeded(hadPicker: hadLinkPicker)
   }
 
   /// A row tap copies that row immediately, matching its printed key.
@@ -3006,6 +3028,7 @@ public final class RefsPanelModel: ObservableObject {
     guard let card = copyCard,
       card.highlightPicker == nil,
       card.codePicker == nil,
+      card.linkPicker == nil,
       card.rows.contains(where: { $0.key == row.key && $0 == row })
     else {
       return
@@ -3019,7 +3042,9 @@ public final class RefsPanelModel: ObservableObject {
 
   /// A picker-row tap copies that window position, matching its digit.
   public func copyCardPickerRowTapped(_ windowPosition: Int) {
-    guard copyCard?.highlightPicker != nil || copyCard?.codePicker != nil else {
+    guard copyCard?.highlightPicker != nil || copyCard?.codePicker != nil
+      || copyCard?.linkPicker != nil
+    else {
       return
     }
     handleCopyCardKey(
@@ -3067,6 +3092,32 @@ public final class RefsPanelModel: ObservableObject {
     guard !hadPicker, copyCard?.codePicker != nil else { return }
     AccessibilityNotification.Announcement(
       "Code blocks. Press a number or Return."
+    ).post()
+  }
+
+  private func copyCardLinksLoaded(
+    token: UInt64, path: String, response: RefsLinksResponse
+  ) {
+    guard var card = copyCard, card.token == token else { return }
+    let hadLinkPicker = card.linkPicker != nil
+    let effect = card.linksLoaded(path: path, response: response)
+    copyCard = card
+    updateCopyCardTimers(token: token)
+    applyCopyCardEffect(effect, token: token)
+    announceLinkPickerIfNeeded(hadPicker: hadLinkPicker)
+  }
+
+  private func copyCardLinksFailed(token: UInt64, path: String, unsupported: Bool) {
+    guard var card = copyCard, card.token == token else { return }
+    card.linksFailed(path: path, unsupported: unsupported)
+    copyCard = card
+    updateCopyCardTimers(token: token)
+  }
+
+  private func announceLinkPickerIfNeeded(hadPicker: Bool) {
+    guard !hadPicker, copyCard?.linkPicker != nil else { return }
+    AccessibilityNotification.Announcement(
+      RefsLinkPicker.openingAnnouncement
     ).post()
   }
 
@@ -3161,6 +3212,8 @@ public final class RefsPanelModel: ObservableObject {
     copyNotesTask = nil
     copyCodeTask?.cancel()
     copyCodeTask = nil
+    copyLinksTask?.cancel()
+    copyLinksTask = nil
     pendingCopyTimeoutTask?.cancel()
     pendingCopyTimeoutTask = nil
     pendingCopyTimeoutKey = nil

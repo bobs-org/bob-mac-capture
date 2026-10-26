@@ -1483,6 +1483,10 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
   var codeError: Error?
   var codeDelayNanoseconds: UInt64 = 0
   private(set) var codePaths: [String] = []
+  var linksResponse: RefsLinksResponse?
+  var linksError: Error?
+  var linksDelayNanoseconds: UInt64 = 0
+  private(set) var linksPaths: [String] = []
 
   func list(gitDates: Bool) async throws -> RefsListResponse {
     lock.withLock { listCalls += 1 }
@@ -1557,6 +1561,20 @@ final class FakeRefsFetcher: RefsFetching, @unchecked Sendable {
     }
     if let codeResponse {
       return codeResponse
+    }
+    throw RefsFetchingError.unsupported
+  }
+
+  func links(path: String) async throws -> RefsLinksResponse {
+    lock.withLock { linksPaths.append(path) }
+    if linksDelayNanoseconds > 0 {
+      try await Task.sleep(nanoseconds: linksDelayNanoseconds)
+    }
+    if let linksError {
+      throw linksError
+    }
+    if let linksResponse {
+      return linksResponse
     }
     throw RefsFetchingError.unsupported
   }
