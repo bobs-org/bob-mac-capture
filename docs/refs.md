@@ -425,7 +425,9 @@ PDF" (on by default) suppresses notifications only; footer clauses stay.
 
 ### Copy card
 
-Command-Y opens an in-panel card for the selected reference. The fixed keys
+Command-Y opens an in-panel card for the selected reference. From Highlights,
+Command-Y opens this card on the focused PDF (see
+[Opening Bob Refs](#opening-bob-refs)). The fixed keys
 copy `I` marker ID, `T` title, `W` wiki link, `U` source URL, `L` Markdown
 link, `X` arXiv ID, `D` DOI, `N` note path, `O` Obsidian link, `P` PDF path,
 `F` the PDF file,
@@ -516,6 +518,11 @@ progress finishes if the panel hides.
   the global Control-Shift-Command-O and Command-O library flows are
   unchanged. While Bob Refs is showing, Command-T switches between Tabs and
   the library instead of closing the panel; Escape closes it.
+- While Highlights is frontmost and Bob Refs is hidden, Command-Y opens
+  the Copy card on the focused PDF. Settings › References can turn this
+  Off. It registers only for Highlights or the override app, and steps
+  aside while Bob Refs is visible so the panel's Command-Y opens the card
+  for the selection. Keys typed before the PDF is known replay on the card.
 - Ordinary shows restore the remembered query, scope, filters, selection,
   revealed pages, and scroll positions, except when a newly added reference
   resets the view and selects it (including an arrival in the first 10

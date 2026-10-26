@@ -30,7 +30,7 @@ struct RefsFooter: View {
         Group {
             if let card = model.todayLinkCard {
                 Text(RefsTodayLinkPresentation.hints(query: card.query))
-            } else if model.copyCard != nil {
+            } else if model.copyCard != nil || model.pendingHighlightsCopy != nil {
                 Text("Copy — press a key")
             } else {
                 ViewThatFits(in: .horizontal) {

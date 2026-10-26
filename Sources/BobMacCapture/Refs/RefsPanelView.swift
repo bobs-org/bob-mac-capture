@@ -131,33 +131,37 @@ public struct RefsPanelView: View {
     /// The Tabs-mode well, driven by the published tab read state.
     @ViewBuilder
     private var tabsContent: some View {
-        switch model.tabsState {
-        case .off, .loaded:
-            if model.listing.orderedIDs.isEmpty {
-                RefsTabsEmptyView(query: model.query, scope: model.scope)
-            } else {
-                listContent()
-            }
-        case .loading:
-            if model.listing.orderedIDs.isEmpty {
-                RefsTabsDelayedSkeleton(previewMode: previewMode)
-            } else {
-                listContent()
-            }
-        case .needsPermission(let adHoc):
-            RefsTabsPermissionCard(model: model, adHoc: adHoc)
-        case .notRunning:
-            RefsTabsNotRunningCard()
-        case .noDocuments:
-            RefsTabsNoDocumentsCard()
-        case .failed(_, let hasStaleRows):
-            if hasStaleRows, !model.listing.orderedIDs.isEmpty {
-                VStack(spacing: 0) {
-                    RefsTabsFailedNotice()
-                    listContent(dimRows: true)
+        if model.pendingHighlightsCopy != nil {
+            listContent()
+        } else {
+            switch model.tabsState {
+            case .off, .loaded:
+                if model.listing.orderedIDs.isEmpty {
+                    RefsTabsEmptyView(query: model.query, scope: model.scope)
+                } else {
+                    listContent()
                 }
-            } else {
-                RefsTabsFailedCard()
+            case .loading:
+                if model.listing.orderedIDs.isEmpty {
+                    RefsTabsDelayedSkeleton(previewMode: previewMode)
+                } else {
+                    listContent()
+                }
+            case .needsPermission(let adHoc):
+                RefsTabsPermissionCard(model: model, adHoc: adHoc)
+            case .notRunning:
+                RefsTabsNotRunningCard()
+            case .noDocuments:
+                RefsTabsNoDocumentsCard()
+            case .failed(_, let hasStaleRows):
+                if hasStaleRows, !model.listing.orderedIDs.isEmpty {
+                    VStack(spacing: 0) {
+                        RefsTabsFailedNotice()
+                        listContent(dimRows: true)
+                    }
+                } else {
+                    RefsTabsFailedCard()
+                }
             }
         }
     }
@@ -198,6 +202,8 @@ public struct RefsPanelView: View {
                     renameCard
                 } else if model.copyCard != nil {
                     copyCard
+                } else if let pending = model.pendingHighlightsCopy {
+                    RefsCopySkeletonView(pending: pending)
                 } else {
                     RefsListView(model: model, previewMode: previewMode, dimRows: dimRows)
                         .transition(.opacity)
@@ -205,7 +211,8 @@ public struct RefsPanelView: View {
             }
             .animation(
                 copyCardAnimation,
-                value: model.copyCard != nil || model.renameCard != nil || model.todayLinkCard != nil
+                value: model.copyCard != nil || model.renameCard != nil
+                    || model.todayLinkCard != nil || model.pendingHighlightsCopy != nil
             )
         }
     }
@@ -225,6 +232,8 @@ public struct RefsPanelView: View {
                 readableCard(renameCard, layout: layout)
             } else if model.copyCard != nil {
                 readableCard(copyCard, layout: layout)
+            } else if let pending = model.pendingHighlightsCopy {
+                readableCard(RefsCopySkeletonView(pending: pending), layout: layout)
             } else if let selected = model.selectedID,
                let content = model.rowContent(for: selected)
             {
@@ -263,7 +272,8 @@ public struct RefsPanelView: View {
         }
         .animation(
             copyCardAnimation,
-            value: model.copyCard != nil || model.renameCard != nil || model.todayLinkCard != nil
+            value: model.copyCard != nil || model.renameCard != nil
+                || model.todayLinkCard != nil || model.pendingHighlightsCopy != nil
         )
     }
 

@@ -24,7 +24,7 @@ Candidate locations when the override is empty are in [Install](install.md#requi
 | Use production Control-Shift-Command-I | on | Off selects the development/rollback binding Control-Shift-Command-R. Turn it off only when restoring the retired Hammerspoon capture workflow. |
 | Active binding | Control-Shift-Command-I | Read-only display of the live capture chord. |
 
-One Carbon handler (`HotKeyRegistry`, signature `'BOBC'`) owns capture (id 1), Refs (id 2), the Highlights-frontmost open key (id 3), and the Highlights Tabs key (id 4). Each registration is independent: a failed one leaves the others intact. A conflict reports `Hotkey conflict` (or `Refs hotkey conflict: …`) in Diagnostics and Recent Activity. Recovery is in [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/).
+One Carbon handler (`HotKeyRegistry`, signature `'BOBC'`) owns capture (id 1), Refs (id 2), the Highlights-frontmost open key (id 3), the Highlights Tabs key (id 4), and the Highlights Copy key (id 5). Each registration is independent: a failed one leaves the others intact. A conflict reports `Hotkey conflict` (or `Refs hotkey conflict: …`) in Diagnostics and Recent Activity. Recovery is in [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/).
 
 ## References
 
@@ -34,6 +34,7 @@ One Carbon handler (`HotKeyRegistry`, signature `'BOBC'`) owns capture (id 1), R
 | Preview highlights per page | 5 | Range 1–20 (`RefsNotesPage.sizeRange`). Control-D at the bottom of the inspector preview shows this many more. Also `defaults write org.bobs.bob-mac-capture refsInspectorNotesPageSize -int 5`. |
 | In Highlights, open Bob Refs with | Command-O | `Off`, `Command-O`, or `Control-O`. Registers only while Highlights or the override app is frontmost. Highlights' File › Open… keeps its own dialog. |
 | In Highlights, show open tabs with | Command-T | `Command-T`, `Shift-Command-O`, `Command-E`, or `Off`. Registers only for Highlights or the override app. Command-T steps aside while Bob Refs is visible so its in-panel Tabs toggle works. |
+| Copy key in Highlights | Command-Y | `Command-Y` or `Off`. Registers only for Highlights or the override app, and only while Bob Refs is hidden, so the panel's own Command-Y can open the Copy card. |
 | Highlights app | resolved name, version, and path, or `Not found` | Choose… is limited to `.app`. Use Default clears the override path. |
 | Tell me when Bob updates an open PDF | on | Off suppresses notifications only; footer clauses stay. Caption: "Bob asks Highlights to save your unsaved highlights first; Highlights then reloads the PDF in place." |
 | Scan after ⌘S in Highlights | on | Observes Command-S passively and scans after a library PDF save settles. Shows "Needs Accessibility" when needed; Settings never prompts. |

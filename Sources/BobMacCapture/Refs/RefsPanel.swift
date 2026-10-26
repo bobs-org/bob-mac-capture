@@ -123,7 +123,7 @@ public final class RefsPanelController: NSObject {
         do {
             let prepareToken = CaptureSignpost.begin("refs-panel-prepare")
             defer { CaptureSignpost.end(prepareToken) }
-            if source == .highlightsTabs {
+            if source == .highlightsTabs || source == .highlightsCopy {
                 cancelPendingViewRestores()
             }
             model.prepareForPresentation(source: source)
@@ -411,7 +411,7 @@ public final class RefsPanelController: NSObject {
             return event
         }
         if event.type == .flagsChanged {
-            if model.copyCard != nil {
+            if model.copyCard != nil || model.isPendingHighlightsCopyArmed {
                 model.updateCopyModifiers(Self.copyModifiers(event.modifierFlags))
             }
             return event
@@ -432,6 +432,20 @@ public final class RefsPanelController: NSObject {
                 }
             }
             return nil
+        }
+        if model.pendingHighlightsCopy != nil {
+            if Self.isCopyCancel(event) {
+                model.cancelPendingHighlightsCopy()
+                return nil
+            }
+            if event.type == .keyDown, model.isPendingHighlightsCopyArmed {
+                model.bufferPendingHighlightsCopyKey(
+                    characters: event.charactersIgnoringModifiers,
+                    keyCode: event.keyCode,
+                    modifiers: Self.copyModifiers(event.modifierFlags)
+                )
+                return nil
+            }
         }
         if model.todayLinkCard != nil {
             guard let command = model.todayLinkCardKeyCommand(
@@ -471,6 +485,19 @@ public final class RefsPanelController: NSObject {
             cancelPendingViewRestores()
         }
         return model.perform(command) ? nil : event
+    }
+
+    private static func isCopyCancel(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags
+            .intersection(.deviceIndependentFlagsMask)
+            .subtracting(.capsLock)
+        if event.keyCode == 53, flags.isEmpty {
+            return true
+        }
+        if event.keyCode == 33, flags == .control {
+            return true
+        }
+        return false
     }
 
     private static func copyModifiers(

@@ -21,12 +21,17 @@ final class HotKeyRegistryTests: XCTestCase {
             .refsHighlightsTabs,
             configuration: .highlightsShiftCommandO
         )
+        try registry.register(
+            .refsHighlightsCopy,
+            configuration: .highlightsCommandY
+        )
 
         XCTAssertEqual(
             registrar.identifiers.map { $0.id },
             [HotKeyAction.capture.rawValue, HotKeyAction.refs.rawValue,
                 HotKeyAction.refsHighlightsOpen.rawValue,
-                HotKeyAction.refsHighlightsTabs.rawValue]
+                HotKeyAction.refsHighlightsTabs.rawValue,
+                HotKeyAction.refsHighlightsCopy.rawValue]
         )
         XCTAssertTrue(
             registrar.identifiers.allSatisfy {
@@ -37,6 +42,7 @@ final class HotKeyRegistryTests: XCTestCase {
         XCTAssertTrue(registry.isRegistered(.refs))
         XCTAssertTrue(registry.isRegistered(.refsHighlightsOpen))
         XCTAssertTrue(registry.isRegistered(.refsHighlightsTabs))
+        XCTAssertTrue(registry.isRegistered(.refsHighlightsCopy))
     }
 
     func testHandleRoutesEachActionByID() {
@@ -224,6 +230,15 @@ final class HotKeyRegistryTests: XCTestCase {
             UInt32(cmdKey)
         )
         XCTAssertEqual(HotKeyConfiguration.highlightsCommandT.displayName, "Command-T")
+        XCTAssertEqual(
+            HotKeyConfiguration.highlightsCommandY.keyCode,
+            UInt32(kVK_ANSI_Y)
+        )
+        XCTAssertEqual(
+            HotKeyConfiguration.highlightsCommandY.modifiers,
+            UInt32(cmdKey)
+        )
+        XCTAssertEqual(HotKeyConfiguration.highlightsCommandY.displayName, "Command-Y")
     }
 
     func testCapturePresetsDoNotCollideWithRefs() {

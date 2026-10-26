@@ -53,6 +53,12 @@ struct HotKeyConfiguration: Equatable {
         modifiers: UInt32(cmdKey),
         displayName: "Command-T"
     )
+
+    static let highlightsCommandY = HotKeyConfiguration(
+        keyCode: UInt32(kVK_ANSI_Y),
+        modifiers: UInt32(cmdKey),
+        displayName: "Command-Y"
+    )
 }
 
 protocol HotKeyRegistering {
@@ -102,6 +108,7 @@ enum HotKeyAction: UInt32, CaseIterable {
     case refs = 2
     case refsHighlightsOpen = 3
     case refsHighlightsTabs = 4
+    case refsHighlightsCopy = 5
 }
 
 /// One Carbon event handler routing every Bob hotkey by `EventHotKeyID`.

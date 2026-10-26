@@ -10,6 +10,7 @@ final class HighlightsTakeover {
     private let frontmostBundleID: () -> String?
     private let openKey: () -> RefsHighlightsOpenKey
     private let tabsKey: () -> RefsHighlightsTabsKey
+    private let copyKey: () -> RefsHighlightsCopyKey
     private let isRefsVisible: () -> Bool
     private let overrideBundleID: () -> String?
     private let deactivatedBundleID: (Notification) -> String?
@@ -23,6 +24,7 @@ final class HighlightsTakeover {
         frontmostBundleID: @escaping () -> String?,
         openKey: @escaping () -> RefsHighlightsOpenKey,
         tabsKey: @escaping () -> RefsHighlightsTabsKey = { .off },
+        copyKey: @escaping () -> RefsHighlightsCopyKey = { .off },
         isRefsVisible: @escaping () -> Bool = { false },
         overrideBundleID: @escaping () -> String?,
         deactivatedBundleID: @escaping (Notification) -> String? = { notification in
@@ -39,6 +41,7 @@ final class HighlightsTakeover {
         self.frontmostBundleID = frontmostBundleID
         self.openKey = openKey
         self.tabsKey = tabsKey
+        self.copyKey = copyKey
         self.isRefsVisible = isRefsVisible
         self.overrideBundleID = overrideBundleID
         self.deactivatedBundleID = deactivatedBundleID
@@ -83,6 +86,7 @@ final class HighlightsTakeover {
         stopObserving()
         registry.unregister(.refsHighlightsOpen)
         registry.unregister(.refsHighlightsTabs)
+        registry.unregister(.refsHighlightsCopy)
     }
 
     /// Syncs both takeover keys with the current settings.
@@ -90,6 +94,7 @@ final class HighlightsTakeover {
         sync(
             openKey: openKey(),
             tabsKey: tabsKey(),
+            copyKey: copyKey(),
             overrideBundleID: overrideBundleID()
         )
     }
@@ -98,11 +103,13 @@ final class HighlightsTakeover {
     func sync(
         openKey: RefsHighlightsOpenKey,
         tabsKey: RefsHighlightsTabsKey,
+        copyKey: RefsHighlightsCopyKey,
         appPath: String
     ) {
         sync(
             openKey: openKey,
             tabsKey: tabsKey,
+            copyKey: copyKey,
             overrideBundleID: AppDelegate.highlightsOverrideBundleID(path: appPath)
         )
     }
@@ -110,12 +117,14 @@ final class HighlightsTakeover {
     private func sync(
         openKey: RefsHighlightsOpenKey,
         tabsKey: RefsHighlightsTabsKey,
+        copyKey: RefsHighlightsCopyKey,
         overrideBundleID: String?
     ) {
         let expected = overrideBundleID ?? HighlightsLocator.bundleIdentifier
         guard frontmostBundleID() == expected else {
             registry.unregister(.refsHighlightsOpen)
             registry.unregister(.refsHighlightsTabs)
+            registry.unregister(.refsHighlightsCopy)
             return
         }
         sync(action: .refsHighlightsOpen, configuration: openKey.configuration)
@@ -123,6 +132,10 @@ final class HighlightsTakeover {
             ? nil
             : tabsKey.configuration
         sync(action: .refsHighlightsTabs, configuration: tabsConfiguration)
+        // Command-Y always yields while Refs is visible so the panel's
+        // own Command-Y can open the Copy card.
+        let copyConfiguration = isRefsVisible() ? nil : copyKey.configuration
+        sync(action: .refsHighlightsCopy, configuration: copyConfiguration)
     }
 
     private var expectedBundleID: String {

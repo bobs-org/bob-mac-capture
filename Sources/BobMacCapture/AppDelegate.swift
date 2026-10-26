@@ -174,6 +174,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
           self?.panelCoordinator?.toggleRefsTabs()
         }
+      case .refsHighlightsCopy:
+        CaptureSignpost.event("refs-copy-hotkey-received")
+        Task { @MainActor in
+          self?.panelCoordinator?.openRefsCopyFromHighlights()
+        }
       }
     }
     registerHotKey()
@@ -640,6 +645,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       frontmostBundleID: { NSWorkspace.shared.frontmostApplication?.bundleIdentifier },
       openKey: { settings.refsHighlightsOpenKey },
       tabsKey: { settings.refsHighlightsTabsKey },
+      copyKey: { settings.refsHighlightsCopyKey },
       isRefsVisible: { [weak self] in self?.refsPanelController?.isVisible == true },
       overrideBundleID: {
         Self.highlightsOverrideBundleID(path: settings.refsHighlightsAppPath)
@@ -727,12 +733,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       .sink { [weak self] enabled in self?.registerRefsHotKey(enabled: enabled) }
       .store(in: &refsCancellables)
     settings.$refsHighlightsOpenKey
-      .combineLatest(settings.$refsHighlightsTabsKey)
-      .combineLatest(settings.$refsHighlightsAppPath)
-      .sink { [weak self] keys, path in
+      .combineLatest(
+        settings.$refsHighlightsTabsKey,
+        settings.$refsHighlightsCopyKey,
+        settings.$refsHighlightsAppPath
+      )
+      .sink { [weak self] openKey, tabsKey, copyKey, path in
         self?.highlightsTakeover?.sync(
-          openKey: keys.0,
-          tabsKey: keys.1,
+          openKey: openKey,
+          tabsKey: tabsKey,
+          copyKey: copyKey,
           appPath: path
         )
         self?.highlightsSaveKeyMonitor?.sync()

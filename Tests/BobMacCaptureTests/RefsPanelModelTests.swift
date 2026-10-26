@@ -3302,6 +3302,350 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(harness.model.listResetGeneration, initialList + 1)
   }
 
+  func testHighlightsCopyShowOpensCopyCardOnFocusedPDF() async throws {
+    let reader = FakeTabsReader(isTrusted: true)
+    let harness = try makeHarness(tabsReader: reader)
+    await harness.waitForSnapshot()
+    let items = Array(harness.library.items.prefix(2))
+    XCTAssertEqual(items.count, 2)
+    let target = items[0]
+    reader.setNextResult(
+      .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: true))
+    )
+    harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
+    harness.model.prepareForPresentation(source: .highlightsCopy)
+    XCTAssertTrue(harness.model.isPendingHighlightsCopyArmed)
+    XCTAssertTrue(harness.model.tabsFilter)
+
+    await harness.waitForModel {
+      $0.copyCard != nil && $0.pendingHighlightsCopy == nil
+    }
+    XCTAssertEqual(harness.model.copyCard?.item.id, target.id)
+    XCTAssertEqual(harness.model.selectedID, target.id)
+    XCTAssertNil(harness.model.pendingHighlightsCopy)
+  }
+
+  func testHighlightsCopyBuffersWikiThenCopiesAfterTabsLoad() async throws {
+    let reader = FakeTabsReader(isTrusted: true)
+    let harness = try makeHarness(tabsReader: reader)
+    await harness.waitForSnapshot()
+    let items = Array(harness.library.items.prefix(2))
+    let target = items[0]
+    reader.setNextResult(
+      .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: true))
+    )
+    harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
+    harness.model.copyCompletion = { _ in }
+    harness.model.prepareForPresentation(source: .highlightsCopy)
+    XCTAssertTrue(harness.model.isPendingHighlightsCopyArmed)
+    harness.model.bufferPendingHighlightsCopyKey(
+      characters: "w",
+      keyCode: 13,
+      modifiers: []
+    )
+
+    await harness.waitForPasteboard(containing: target.link)
+    XCTAssertEqual(harness.pasteboard.strings, [target.link])
+    XCTAssertNil(harness.model.copyCard)
+    XCTAssertNil(harness.model.pendingHighlightsCopy)
+  }
+
+  func testHighlightsCopyEscapeCancelsAndLeavesTabs() async throws {
+    let reader = FakeTabsReader(
+      isTrusted: true,
+      readDelayNanoseconds: 80_000_000
+    )
+    let harness = try makeHarness(tabsReader: reader)
+    await harness.waitForSnapshot()
+    let items = Array(harness.library.items.prefix(2))
+    reader.setNextResult(
+      .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: true))
+    )
+    harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
+    harness.model.prepareForPresentation(source: .highlightsCopy)
+    XCTAssertTrue(harness.model.isPendingHighlightsCopyArmed)
+    harness.model.bufferPendingHighlightsCopyKey(
+      characters: "w",
+      keyCode: 13,
+      modifiers: []
+    )
+
+    XCTAssertTrue(harness.model.perform(.escape))
+    XCTAssertNil(harness.model.pendingHighlightsCopy)
+    XCTAssertNil(harness.model.copyCard)
+    XCTAssertTrue(harness.model.tabsFilter)
+    XCTAssertEqual(harness.pasteboard.strings, [])
+
+    await harness.waitForModel { $0.tabsState == .loaded }
+    XCTAssertNil(harness.model.copyCard)
+    XCTAssertNil(harness.model.pendingHighlightsCopy)
+    XCTAssertEqual(harness.pasteboard.strings, [])
+  }
+
+  func testHighlightsCopyTimeoutShowsFailedSkeleton() async throws {
+    let reader = FakeTabsReader(
+      isTrusted: true,
+      readDelayNanoseconds: 200_000_000
+    )
+    let harness = try makeHarness(tabsReader: reader)
+    await harness.waitForSnapshot()
+    let items = Array(harness.library.items.prefix(2))
+    reader.setNextResult(
+      .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: true))
+    )
+    harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
+    harness.model.prepareForPresentation(source: .highlightsCopy)
+    XCTAssertTrue(harness.model.isPendingHighlightsCopyArmed)
+    harness.model.bufferPendingHighlightsCopyKey(
+      characters: "w",
+      keyCode: 13,
+      modifiers: []
+    )
+    harness.model.pendingHighlightsCopyTimedOut()
+
+    XCTAssertEqual(
+      harness.model.pendingHighlightsCopy,
+      .failed(message: "Highlights didn't answer — try ⌘Y again")
+    )
+    XCTAssertNil(harness.model.copyCard)
+    XCTAssertEqual(harness.pasteboard.strings, [])
+
+    await harness.waitForModel { $0.tabsState == .loaded }
+    XCTAssertEqual(
+      harness.model.pendingHighlightsCopy,
+      .failed(message: "Highlights didn't answer — try ⌘Y again")
+    )
+    XCTAssertNil(harness.model.copyCard)
+  }
+
+  func testHighlightsCopyUnmatchedShowsLibraryMessage() async throws {
+    let reader = FakeTabsReader(isTrusted: true)
+    let harness = try makeHarness(tabsReader: reader)
+    await harness.waitForSnapshot()
+    reader.setNextResult(
+      .snapshot(Self.tabsSnapshot(fileNames: ["cv.pdf"], frontmost: true))
+    )
+    harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
+    harness.model.prepareForPresentation(source: .highlightsCopy)
+
+    await harness.waitForModel {
+      if case .failed = $0.pendingHighlightsCopy { return true }
+      return false
+    }
+    XCTAssertEqual(
+      harness.model.pendingHighlightsCopy,
+      .failed(message: "“cv.pdf” isn't in your Bob library")
+    )
+    XCTAssertNil(harness.model.copyCard)
+    XCTAssertTrue(harness.model.tabsFilter)
+  }
+
+  func testHighlightsCopyCollisionShowsPickMessage() async throws {
+    let list = try Self.collisionListFixture()
+    defer { try? FileManager.default.removeItem(at: list) }
+    let reader = FakeTabsReader(isTrusted: true)
+    let harness = try makeHarness(
+      environment: ["FAKE_BOB_REFS_LIST_FIXTURE": list.path],
+      tabsReader: reader
+    )
+    await harness.waitForSnapshot()
+    reader.setNextResult(
+      .snapshot(
+        Self.tabsSnapshot(
+          fileNames: ["harness_engineering.pdf"],
+          frontmost: true
+        )
+      )
+    )
+    harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
+    harness.model.prepareForPresentation(source: .highlightsCopy)
+
+    await harness.waitForModel {
+      if case .failed = $0.pendingHighlightsCopy { return true }
+      return false
+    }
+    XCTAssertEqual(
+      harness.model.pendingHighlightsCopy,
+      .failed(
+        message:
+          "Two references match “harness_engineering.pdf” — pick one, then ⌘Y"
+      )
+    )
+    XCTAssertNil(harness.model.copyCard)
+  }
+
+  func testHighlightsCopyNoDocumentsShowsMessage() async throws {
+    let reader = FakeTabsReader(isTrusted: true)
+    let harness = try makeHarness(tabsReader: reader)
+    await harness.waitForSnapshot()
+    reader.setNextResult(
+      .snapshot(Self.tabsSnapshot(fileNames: [], frontmost: true))
+    )
+    harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
+    harness.model.prepareForPresentation(source: .highlightsCopy)
+
+    await harness.waitForModel {
+      if case .failed = $0.pendingHighlightsCopy { return true }
+      return false
+    }
+    XCTAssertEqual(
+      harness.model.pendingHighlightsCopy,
+      .failed(message: "Highlights has no open document")
+    )
+    XCTAssertEqual(harness.model.tabsState, .noDocuments)
+    XCTAssertNil(harness.model.copyCard)
+  }
+
+  func testHighlightsCopyFailedReadShowsRetryMessage() async throws {
+    let reader = FakeTabsReader(isTrusted: true)
+    let harness = try makeHarness(tabsReader: reader)
+    await harness.waitForSnapshot()
+    reader.setNextResult(.failed("AX timed out"))
+    harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
+    harness.model.prepareForPresentation(source: .highlightsCopy)
+
+    await harness.waitForModel {
+      if case .failed = $0.pendingHighlightsCopy { return true }
+      return false
+    }
+    XCTAssertEqual(
+      harness.model.pendingHighlightsCopy,
+      .failed(message: "Couldn't read Highlights — ⌘R retries")
+    )
+    XCTAssertNil(harness.model.copyCard)
+  }
+
+  func testHighlightsCopyPermissionShowsTabsExplainer() async throws {
+    let reader = FakeTabsReader(isTrusted: false)
+    let harness = try makeHarness(tabsReader: reader, isAdHocSigned: true)
+    await harness.waitForSnapshot()
+    harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
+    harness.model.prepareForPresentation(source: .highlightsCopy)
+
+    XCTAssertNil(harness.model.pendingHighlightsCopy)
+    XCTAssertEqual(harness.model.tabsState, .needsPermission(adHoc: true))
+    XCTAssertTrue(harness.model.tabsFilter)
+    XCTAssertNil(harness.model.copyCard)
+  }
+
+  func testHighlightsCopyShowStashesAndLibraryRestoresTheFilter() async throws {
+    let reader = FakeTabsReader(isTrusted: false)
+    let harness = try makeHarness(tabsReader: reader, isAdHocSigned: true)
+    await harness.waitForSnapshot()
+    let kept = "ref/chat/small_reading.md"
+    await harness.waitForModel { $0.listing.contains(id: kept) }
+    harness.model.setQuery("keep")
+    harness.model.perform(.setScope(.papers))
+    harness.model.perform(.toggleNewest)
+    XCTAssertTrue(harness.model.perform(.select(id: kept)))
+
+    harness.model.prepareForPresentation(source: .highlightsCopy)
+
+    XCTAssertTrue(harness.model.tabsFilter)
+    XCTAssertEqual(harness.model.query, "")
+    XCTAssertEqual(harness.model.scope, .all)
+    XCTAssertEqual(harness.model.listOrder, .ranked)
+    XCTAssertEqual(harness.model.tabsState, .needsPermission(adHoc: true))
+    XCTAssertNil(harness.model.pendingHighlightsCopy)
+
+    harness.model.prepareForPresentation(source: .library)
+
+    XCTAssertFalse(harness.model.tabsFilter)
+    XCTAssertEqual(harness.model.tabsState, .off)
+    XCTAssertEqual(harness.model.query, "keep")
+    XCTAssertEqual(harness.model.scope, .papers)
+    XCTAssertEqual(harness.model.listOrder, .newest)
+    XCTAssertEqual(harness.model.selectedID, kept)
+  }
+
+  func testControllerBuffersCopyKeysAndEscapeCancelsPendingCopy() async throws {
+    let reader = FakeTabsReader(
+      isTrusted: true,
+      readDelayNanoseconds: 80_000_000
+    )
+    let harness = try makeHarness(tabsReader: reader)
+    await harness.waitForSnapshot()
+    let items = Array(harness.library.items.prefix(2))
+    reader.setNextResult(
+      .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: true))
+    )
+    harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
+    harness.model.copyCompletion = { _ in }
+    harness.model.prepareForPresentation(source: .highlightsCopy)
+    let controller = RefsPanelController(model: harness.model)
+    let wiki = try XCTUnwrap(
+      NSEvent.keyEvent(
+        with: .keyDown,
+        location: .zero,
+        modifierFlags: [],
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        characters: "w",
+        charactersIgnoringModifiers: "w",
+        isARepeat: false,
+        keyCode: 13
+      ))
+    XCTAssertNil(controller.processKeyEvent(wiki))
+    XCTAssertTrue(harness.model.isPendingHighlightsCopyArmed)
+    XCTAssertEqual(harness.pasteboard.strings, [])
+
+    let escape = try XCTUnwrap(
+      NSEvent.keyEvent(
+        with: .keyDown,
+        location: .zero,
+        modifierFlags: [],
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        characters: "\u{1b}",
+        charactersIgnoringModifiers: "\u{1b}",
+        isARepeat: false,
+        keyCode: 53
+      ))
+    XCTAssertNil(controller.processKeyEvent(escape))
+    XCTAssertNil(harness.model.pendingHighlightsCopy)
+    XCTAssertTrue(harness.model.tabsFilter)
+
+    await harness.waitForModel { $0.tabsState == .loaded }
+    XCTAssertNil(harness.model.copyCard)
+    XCTAssertEqual(harness.pasteboard.strings, [])
+  }
+
+  func testControllerReplaysBufferedWikiAfterHighlightsCopyResolves()
+    async throws
+  {
+    let reader = FakeTabsReader(isTrusted: true)
+    let harness = try makeHarness(tabsReader: reader)
+    await harness.waitForSnapshot()
+    let items = Array(harness.library.items.prefix(2))
+    let target = items[0]
+    reader.setNextResult(
+      .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: true))
+    )
+    harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
+    harness.model.copyCompletion = { _ in }
+    harness.model.prepareForPresentation(source: .highlightsCopy)
+    let controller = RefsPanelController(model: harness.model)
+    let wiki = try XCTUnwrap(
+      NSEvent.keyEvent(
+        with: .keyDown,
+        location: .zero,
+        modifierFlags: [],
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        characters: "w",
+        charactersIgnoringModifiers: "w",
+        isARepeat: false,
+        keyCode: 13
+      ))
+    XCTAssertNil(controller.processKeyEvent(wiki))
+
+    await harness.waitForPasteboard(containing: target.link)
+    XCTAssertEqual(harness.pasteboard.strings, [target.link])
+  }
+
   func testResetViewRestoresDefaultsAndAlwaysConsumes() async throws {
     let harness = try makeHarness()
     await harness.waitForSnapshot()
@@ -5307,6 +5651,17 @@ final class RefsPanelModelTests: XCTestCase {
       XCTFail("model condition not met before timeout")
     }
 
+    func waitForPasteboard(containing string: String) async {
+      let deadline = Date().addingTimeInterval(5)
+      while Date() < deadline {
+        if pasteboard.strings.contains(string) {
+          return
+        }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+      }
+      XCTFail("pasteboard did not contain \(string) before timeout")
+    }
+
     func waitForScan() async {
       let deadline = Date().addingTimeInterval(15)
       while Date() < deadline {
@@ -5493,6 +5848,20 @@ final class RefsPanelModelTests: XCTestCase {
       packageRoot
       .appendingPathComponent("Tests/Fixtures/fake-bob")
       .path
+  }
+
+  private static func collisionListFixture() throws -> URL {
+    let data = try Data(contentsOf: harnessFixtureURL("refs-list.json"))
+    var document = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+    var refs = document["refs"] as! [[String: Any]]
+    refs[0]["source_pdf"] = "lib/chat/harness_engineering.pdf"
+    refs[1]["source_pdf"] = "lib/papers/harness_engineering.pdf"
+    document["refs"] = refs
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension("json")
+    try JSONSerialization.data(withJSONObject: document).write(to: url)
+    return url
   }
 }
 

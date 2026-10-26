@@ -374,6 +374,55 @@ final class RefsCopyTests: XCTestCase {
         XCTAssertNil(closing.pending)
     }
 
+    func testHighlightThenReturnWhileNotesLoadCopiesTheFirstHighlight() {
+        let item = makeItem(markerID: .absent)
+        var card = RefsCopyCard(
+            token: 12, item: item, absolutePDFPath: nil, pdfExists: false,
+            notes: .loading, noteCapacity: 5
+        )
+        XCTAssertEqual(card.handle(.key(.highlightPicker)), .none)
+        XCTAssertEqual(card.pending, .highlightPicker)
+        XCTAssertEqual(card.handle(.copySelected), .none)
+        XCTAssertEqual(card.pending, .highlightPicker)
+        let loaded = RefsShowRow(path: item.id, annotations: [
+            RefsShowAnnotation(kind: "highlight", quote: "First quote", comment: "Keep"),
+            RefsShowAnnotation(kind: "highlight", quote: "Second quote"),
+        ])
+        let effect = card.notesLoaded(path: item.id, row: loaded)
+        guard case .write(let row) = effect else {
+            return XCTFail("Expected H ↵ to copy the first highlight")
+        }
+        XCTAssertEqual(row.key, .note(1))
+        XCTAssertEqual(card.highlightPicker?.selectedIndex, 0)
+        if case .text(let value) = row.payload {
+            XCTAssertTrue(value.contains("> First quote"))
+        } else {
+            XCTFail("Expected text payload")
+        }
+    }
+
+    func testDigitThenReturnWhileNotesLoadCopiesThatNoteAndDropsTheRest() {
+        let item = makeItem(markerID: .absent)
+        var card = RefsCopyCard(
+            token: 13, item: item, absolutePDFPath: nil, pdfExists: false,
+            notes: .loading, noteCapacity: 5
+        )
+        XCTAssertEqual(card.handle(.key(.note(1))), .none)
+        XCTAssertEqual(card.handle(.copySelected), .none)
+        XCTAssertEqual(card.handle(.key(.note(2))), .none)
+        let loaded = RefsShowRow(path: item.id, annotations: [
+            RefsShowAnnotation(kind: "highlight", comment: "First"),
+            RefsShowAnnotation(kind: "highlight", comment: "Second"),
+        ])
+        let effect = card.notesLoaded(path: item.id, row: loaded)
+        guard case .write(let row) = effect else {
+            return XCTFail("Expected queued note 1 write")
+        }
+        XCTAssertEqual(row.key, .note(1))
+        XCTAssertEqual(row.payload, .text("Comment: First"))
+        XCTAssertNil(card.pending)
+    }
+
     func testPendingTimeoutShowsErrorAndClearsQueuedCopy() {
         let item = makeItem(markerID: .absent)
         var card = RefsCopyCard(

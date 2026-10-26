@@ -32,6 +32,10 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(refsHighlightsTabsKey.rawValue, forKey: Keys.refsHighlightsTabsKey) }
     }
 
+    @Published var refsHighlightsCopyKey: RefsHighlightsCopyKey {
+        didSet { defaults.set(refsHighlightsCopyKey.rawValue, forKey: Keys.refsHighlightsCopyKey) }
+    }
+
     @Published var refsHighlightsAppPath: String {
         didSet { defaults.set(refsHighlightsAppPath, forKey: Keys.refsHighlightsAppPath) }
     }
@@ -134,6 +138,14 @@ final class AppSettings: ObservableObject {
             // The Highlights Tabs key defaults to Command-T.
             refsHighlightsTabsKey = .cmdT
         }
+        if let raw = defaults.string(forKey: Keys.refsHighlightsCopyKey),
+            let key = RefsHighlightsCopyKey(rawValue: raw)
+        {
+            refsHighlightsCopyKey = key
+        } else {
+            // The Highlights Copy key defaults to Command-Y.
+            refsHighlightsCopyKey = .cmdY
+        }
         refsHighlightsAppPath = defaults.string(forKey: Keys.refsHighlightsAppPath) ?? ""
         agendaEnabled = defaults.object(forKey: Keys.agendaEnabled) == nil
             ? true
@@ -209,6 +221,7 @@ private enum Keys {
     static let refsHotkeyEnabled = "refsHotkeyEnabled"
     static let refsHighlightsOpenKey = "refsHighlightsOpenKey"
     static let refsHighlightsTabsKey = "refsHighlightsTabsKey"
+    static let refsHighlightsCopyKey = "refsHighlightsCopyKey"
     static let refsHighlightsAppPath = AppSettings.refsHighlightsAppPathKey
     static let canceledDraftStashCapacity = "canceledDraftStashCapacity"
     static let refsInspectorNotesPageSize = "refsInspectorNotesPageSize"

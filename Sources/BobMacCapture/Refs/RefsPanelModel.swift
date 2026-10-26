@@ -24,6 +24,9 @@ public enum RefsPresentationSource: Equatable, Sendable {
   /// Show the current Highlights tabs from fresh-launch defaults, as
   /// after Ctrl-C.
   case highlightsTabs
+  /// Command-T plus Copy: the same fresh Tabs show, then a pending
+  /// Copy card on the focused PDF.
+  case highlightsCopy
   /// Show the default view after the user opens a scan notification.
   case scanResults
   /// Show the library via a Ctrl+Tab panel switch. Restores the
@@ -31,6 +34,31 @@ public enum RefsPresentationSource: Equatable, Sendable {
   /// arrival: the fresh listing already contains the new reference at
   /// its ranked place.
   case panelSwitch
+}
+
+/// A key captured while Command-Y is waiting for the focused PDF.
+public struct RefsHighlightsCopyBufferedKey: Equatable, Sendable {
+  public var characters: String?
+  public var keyCode: UInt16
+  public var modifiers: RefsCopyKeyModifiers
+
+  public init(
+    characters: String?,
+    keyCode: UInt16,
+    modifiers: RefsCopyKeyModifiers
+  ) {
+    self.characters = characters
+    self.keyCode = keyCode
+    self.modifiers = modifiers
+  }
+}
+
+/// The Command-Y session that opens the Copy card on the focused PDF.
+public enum RefsHighlightsCopyPending: Equatable, Sendable {
+  /// Waiting for the Tabs read; keys are buffered.
+  case finding(token: UInt64)
+  /// The Tabs read failed or timed out; the skeleton shows `message`.
+  case failed(message: String)
 }
 
 /// The state of the Highlights Tabs filter.
@@ -427,6 +455,9 @@ public final class RefsPanelModel: ObservableObject {
   @Published public var visibleRowBudget: Int = 10
   /// The active fixed-letter copy card, if one is open.
   @Published public private(set) var copyCard: RefsCopyCard?
+  /// Command-Y session that is waiting for the focused PDF, or showing
+  /// why that session could not open the Copy card.
+  @Published public private(set) var pendingHighlightsCopy: RefsHighlightsCopyPending?
   @Published public private(set) var copyAlternatesActive = false
   /// The editable filename card; Bob remains the authority for the
   /// rename rules and the returned destination path.
@@ -448,11 +479,22 @@ public final class RefsPanelModel: ObservableObject {
     todayLinkCard?.phase == .running
   }
 
-  /// Flags only affect an open card (including its picker layer).
+  /// Flags only affect an open card (including its picker layer) or a
+  /// Command-Y session that is still buffering keys.
   public func updateCopyModifiers(_ modifiers: RefsCopyKeyModifiers) {
-    let active = copyCard != nil && modifiers.contains(.option)
+    let active =
+      (copyCard != nil || isPendingHighlightsCopyArmed)
+      && modifiers.contains(.option)
     guard copyAlternatesActive != active else { return }
     copyAlternatesActive = active
+  }
+
+  /// True while Command-Y is buffering keys for the focused PDF.
+  public var isPendingHighlightsCopyArmed: Bool {
+    if case .finding = pendingHighlightsCopy {
+      return true
+    }
+    return false
   }
   /// The measured note capacity of the copy card. The card keeps this
   /// value when its size changes and drops note rows that no longer fit.
@@ -641,6 +683,12 @@ public final class RefsPanelModel: ObservableObject {
   private var pendingCopyTimeoutKey: RefsCopyKey?
   private var pendingCopyTimeoutToken: UInt64?
   private var copyMessageTask: Task<Void, Never>?
+  private var pendingHighlightsCopySequence: UInt64 = 0
+  private var pendingHighlightsCopyBuffer: [RefsHighlightsCopyBufferedKey] = []
+  private var pendingHighlightsCopyDeadlineTask: Task<Void, Never>?
+  /// Test seam for the Command-Y 2 s deadline.
+  var highlightsCopyDeadlineNanoseconds: UInt64 = 2_000_000_000
+  private static let highlightsCopyBufferCap = 16
   private var renameTask: Task<Void, Never>?
   private var todayLinkSequence: UInt64 = 0
   private var todayLinkListingSequence: UInt64 = 0
@@ -784,6 +832,7 @@ public final class RefsPanelModel: ObservableObject {
   /// Clears the scan notice once it has been seen.
   public func panelDidHide() {
     visibleArrivalDeadline = nil
+    clearPendingHighlightsCopy()
     closeCopyCard()
     if !isLinkingToday {
       closeTodayLinkCard()
@@ -838,10 +887,11 @@ public final class RefsPanelModel: ObservableObject {
   /// Restores the remembered view on ordinary shows, except when a newly
   /// added reference is pending: then the show resets to fresh-launch
   /// defaults and selects that reference. Scan-result shows start from
-  /// fresh-launch defaults. A `.highlightsTabs` show resets to those
-  /// defaults with Tabs on. A `.panelSwitch` show always restores the
-  /// remembered view and never resets for a pending arrival. Per-show
-  /// cards, banners, and presentation animation are still handled here.
+  /// fresh-launch defaults. A `.highlightsTabs` or `.highlightsCopy`
+  /// show resets to those defaults with Tabs on. A `.panelSwitch` show
+  /// always restores the remembered view and never resets for a pending
+  /// arrival. Per-show cards, banners, and presentation animation are
+  /// still handled here.
   public func prepareForPresentation(source: RefsPresentationSource = .library) {
     presentationCount += 1
     selectedRowRect = nil
@@ -850,6 +900,9 @@ public final class RefsPanelModel: ObservableObject {
       return
     }
     closeCopyCard()
+    if source != .highlightsCopy {
+      clearPendingHighlightsCopy()
+    }
     // A failed rename card is re-presented with its inline error and
     // draft instead of closed; refocus its field.
     let replayingFailedRename = renameCard?.isFailed == true
@@ -864,7 +917,7 @@ public final class RefsPanelModel: ObservableObject {
     banner = nil
     pendingOpen = nil
 
-    if source == .highlightsTabs {
+    if source == .highlightsTabs || source == .highlightsCopy {
       stashHighlightsKeySessionIfNeeded()
     } else if !replayingFailedRename {
       restoreHighlightsKeySessionIfNeeded()
@@ -892,6 +945,9 @@ public final class RefsPanelModel: ObservableObject {
       // The Highlights Tabs key always starts fresh, as after Ctrl-C,
       // with Tabs on. Pending arrivals stay deferred to the next
       // ordinary show.
+      resetToDefaults(tabs: true, announcement: nil)
+    case .highlightsCopy:
+      armPendingHighlightsCopy()
       resetToDefaults(tabs: true, announcement: nil)
     case .scanResults:
       resetToDefaults(tabs: false)
@@ -1170,6 +1226,10 @@ public final class RefsPanelModel: ObservableObject {
       }
       return reopenClosedTab(closed)
     case .escape:
+      if pendingHighlightsCopy != nil {
+        cancelPendingHighlightsCopy()
+        return true
+      }
       if todayLinkCard != nil {
         if !isLinkingToday {
           closeTodayLinkCard()
@@ -1399,6 +1459,7 @@ public final class RefsPanelModel: ObservableObject {
       tabsHighlightsIsFrontmost = false
       tabsState = .needsPermission(adHoc: isAdHocSigned())
       rebuildTabsListing(preservingSelection: false)
+      resolvePendingHighlightsCopy()
       return
     }
     tabsState = .loading
@@ -1461,6 +1522,7 @@ public final class RefsPanelModel: ObservableObject {
         }
       }
     }
+    resolvePendingHighlightsCopy()
   }
 
   private func rebuildTabsListing(preservingSelection: Bool) {
@@ -2220,6 +2282,118 @@ public final class RefsPanelModel: ObservableObject {
       perform(.refresh)
     case .scanLibrary:
       _ = perform(.scan)
+    }
+  }
+
+  /// Buffers one key while Command-Y is waiting for the focused PDF.
+  public func bufferPendingHighlightsCopyKey(
+    characters: String?,
+    keyCode: UInt16,
+    modifiers: RefsCopyKeyModifiers
+  ) {
+    guard isPendingHighlightsCopyArmed else { return }
+    updateCopyModifiers(modifiers)
+    guard pendingHighlightsCopyBuffer.count < Self.highlightsCopyBufferCap else {
+      return
+    }
+    pendingHighlightsCopyBuffer.append(
+      RefsHighlightsCopyBufferedKey(
+        characters: characters,
+        keyCode: keyCode,
+        modifiers: modifiers
+      )
+    )
+  }
+
+  /// Cancels a Command-Y session and leaves the Tabs view.
+  public func cancelPendingHighlightsCopy() {
+    clearPendingHighlightsCopy()
+  }
+
+  /// Test seam: fires the 2 s Command-Y deadline.
+  public func pendingHighlightsCopyTimedOut() {
+    guard case .finding = pendingHighlightsCopy else { return }
+    failPendingHighlightsCopy("Highlights didn't answer — try ⌘Y again")
+  }
+
+  private func armPendingHighlightsCopy() {
+    pendingHighlightsCopySequence &+= 1
+    let token = pendingHighlightsCopySequence
+    pendingHighlightsCopyBuffer = []
+    pendingHighlightsCopy = .finding(token: token)
+    pendingHighlightsCopyDeadlineTask?.cancel()
+    let nanoseconds = highlightsCopyDeadlineNanoseconds
+    pendingHighlightsCopyDeadlineTask = Task { [weak self] in
+      try? await Task.sleep(nanoseconds: nanoseconds)
+      guard !Task.isCancelled else { return }
+      self?.pendingHighlightsCopyTimedOut()
+    }
+  }
+
+  private func clearPendingHighlightsCopy() {
+    pendingHighlightsCopyDeadlineTask?.cancel()
+    pendingHighlightsCopyDeadlineTask = nil
+    pendingHighlightsCopyBuffer = []
+    pendingHighlightsCopy = nil
+  }
+
+  private func failPendingHighlightsCopy(_ message: String) {
+    pendingHighlightsCopyDeadlineTask?.cancel()
+    pendingHighlightsCopyDeadlineTask = nil
+    pendingHighlightsCopyBuffer = []
+    pendingHighlightsCopy = .failed(message: message)
+  }
+
+  private func resolvePendingHighlightsCopy() {
+    guard case .finding = pendingHighlightsCopy else { return }
+    switch tabsState {
+    case .needsPermission, .notRunning:
+      clearPendingHighlightsCopy()
+      return
+    case .loading, .off:
+      return
+    case .noDocuments:
+      failPendingHighlightsCopy("Highlights has no open document")
+      return
+    case .failed:
+      failPendingHighlightsCopy("Couldn't read Highlights — ⌘R retries")
+      return
+    case .loaded:
+      break
+    }
+
+    guard let selectedID, let tab = tabsListing?.tabs[selectedID], tab.isCurrent
+    else {
+      failPendingHighlightsCopy("Highlights has no open document")
+      return
+    }
+    if tab.match == .collision {
+      failPendingHighlightsCopy(
+        "Two references match “\(tab.fileName)” — pick one, then ⌘Y"
+      )
+      return
+    }
+    if tab.match == .none || tab.itemID == nil {
+      failPendingHighlightsCopy(
+        "“\(tab.fileName)” isn't in your Bob library"
+      )
+      return
+    }
+
+    let buffer = pendingHighlightsCopyBuffer
+    let optionHeld = copyAlternatesActive
+    clearPendingHighlightsCopy()
+    openCopyCard(optionHeld: optionHeld)
+    guard copyCard != nil else {
+      failPendingHighlightsCopy("Couldn't read Highlights — ⌘R retries")
+      return
+    }
+    for event in buffer {
+      handleCopyCardKey(
+        characters: event.characters,
+        keyCode: event.keyCode,
+        modifiers: event.modifiers
+      )
     }
   }
 

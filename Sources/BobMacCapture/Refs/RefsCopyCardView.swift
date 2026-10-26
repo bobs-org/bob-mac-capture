@@ -418,6 +418,84 @@ struct RefsCopyCardView: View {
     }
 }
 
+/// Inspector placeholder while Command-Y waits for the focused PDF, using
+/// the Copy card's tokens so it morphs into the card without a jump.
+@available(macOS 26.0, *)
+struct RefsCopySkeletonView: View {
+    let pending: RefsHighlightsCopyPending
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+                .frame(height: RefsVisualTokens.copyCardHeaderHeight)
+            findingLine
+            Spacer(minLength: 0)
+            messageLine
+                .frame(height: RefsVisualTokens.copyCardMessageLineHeight)
+        }
+        .padding(.horizontal, RefsVisualTokens.inspectorPadding)
+        .padding(.vertical, RefsVisualTokens.copyCardVerticalPadding / 2)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var header: some View {
+        Text("COPY")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    @ViewBuilder
+    private var findingLine: some View {
+        switch pending {
+        case .finding:
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("Finding the open PDF in Highlights…")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .frame(height: RefsVisualTokens.copyCardRowHeight)
+        case .failed:
+            EmptyView()
+        }
+    }
+
+    private var messageLine: some View {
+        let text: String
+        let error: Bool
+        switch pending {
+        case .finding:
+            text = "esc cancels"
+            error = false
+        case .failed(let message):
+            text = message
+            error = true
+        }
+        return Text(text)
+            .font(.caption)
+            .foregroundStyle(error ? Color.red : Color.secondary)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityLabel(text)
+    }
+
+    private var accessibilityText: String {
+        switch pending {
+        case .finding:
+            return "Copy menu. Finding the open PDF in Highlights."
+        case .failed(let message):
+            return "Copy menu. \(message)"
+        }
+    }
+}
+
 @available(macOS 26.0, *)
 private struct RefsCopyKeycap: View {
     let glyph: String

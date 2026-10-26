@@ -283,6 +283,74 @@ final class RefsEntryPointsTests: XCTestCase {
     )
   }
 
+  func testCommandYTakeoverRegistersOnlyForHighlightsAndStepsAsideWhileRefsIsVisible() {
+    let fixture = makeTakeover(
+      frontmost: HighlightsLocator.bundleIdentifier,
+      openKey: .cmdO,
+      copyKey: .cmdY
+    )
+
+    fixture.takeover.start()
+
+    XCTAssertEqual(
+      fixture.registrar.configuration(for: .refsHighlightsCopy),
+      .highlightsCommandY
+    )
+    fixture.refsVisible = true
+    fixture.takeover.sync()
+
+    XCTAssertFalse(fixture.isCopyTakeoverRegistered)
+    XCTAssertEqual(
+      fixture.registrar.configuration(for: .refsHighlightsOpen),
+      .highlightsCommandO
+    )
+
+    fixture.refsVisible = false
+    fixture.takeover.sync()
+
+    XCTAssertEqual(
+      fixture.registrar.configuration(for: .refsHighlightsCopy),
+      .highlightsCommandY
+    )
+
+    fixture.frontmost = "com.apple.Safari"
+    fixture.takeover.sync()
+    XCTAssertFalse(fixture.isCopyTakeoverRegistered)
+  }
+
+  func testCopyTakeoverOffNeverRegisters() {
+    let fixture = makeTakeover(
+      frontmost: HighlightsLocator.bundleIdentifier,
+      openKey: .cmdO,
+      copyKey: .off
+    )
+
+    fixture.takeover.start()
+
+    XCTAssertFalse(fixture.isCopyTakeoverRegistered)
+  }
+
+  func testOpenRefsCopyFromHighlightsPresentsCopySource() {
+    let capture = CapturePanelModel()
+    let log = EventLog()
+    var sources: [RefsPresentationSource] = []
+    let coordinator = makeCoordinator(
+      capture: capture,
+      captureVisible: false,
+      refsVisible: false,
+      log: log,
+      presentRefsWithSource: { source in
+        sources.append(source)
+        log.events.append("show-refs")
+      }
+    )
+
+    coordinator.openRefsCopyFromHighlights()
+
+    XCTAssertEqual(sources, [.highlightsCopy])
+    XCTAssertEqual(log.events, ["show-refs"])
+  }
+
   func testCommandTTakeoverStepsAsideWhileRefsIsVisible() {
     let fixture = makeTakeover(
       frontmost: HighlightsLocator.bundleIdentifier,
@@ -483,16 +551,19 @@ final class RefsEntryPointsTests: XCTestCase {
     XCTAssertTrue(settings.refsHotkeyEnabled)
     XCTAssertEqual(settings.refsHighlightsOpenKey, .cmdO)
     XCTAssertEqual(settings.refsHighlightsTabsKey, .cmdT)
+    XCTAssertEqual(settings.refsHighlightsCopyKey, .cmdY)
     XCTAssertEqual(settings.refsHighlightsAppPath, "")
 
     settings.refsHotkeyEnabled = false
     settings.refsHighlightsOpenKey = .ctrlO
     settings.refsHighlightsTabsKey = .cmdE
+    settings.refsHighlightsCopyKey = .off
     settings.refsHighlightsAppPath = "/Applications/Highlights.app"
 
     XCTAssertFalse(defaults.bool(forKey: "refsHotkeyEnabled"))
     XCTAssertEqual(defaults.string(forKey: "refsHighlightsOpenKey"), "ctrlO")
     XCTAssertEqual(defaults.string(forKey: "refsHighlightsTabsKey"), "cmdE")
+    XCTAssertEqual(defaults.string(forKey: "refsHighlightsCopyKey"), "off")
     XCTAssertEqual(
       defaults.string(forKey: "refsHighlightsAppPath"),
       "/Applications/Highlights.app"
@@ -502,12 +573,15 @@ final class RefsEntryPointsTests: XCTestCase {
     XCTAssertFalse(reloaded.refsHotkeyEnabled)
     XCTAssertEqual(reloaded.refsHighlightsOpenKey, .ctrlO)
     XCTAssertEqual(reloaded.refsHighlightsTabsKey, .cmdE)
+    XCTAssertEqual(reloaded.refsHighlightsCopyKey, .off)
     XCTAssertEqual(reloaded.refsHighlightsAppPath, "/Applications/Highlights.app")
 
     defaults.set("bogus", forKey: "refsHighlightsOpenKey")
     XCTAssertEqual(AppSettings(defaults: defaults).refsHighlightsOpenKey, .cmdO)
     defaults.set("bogus", forKey: "refsHighlightsTabsKey")
     XCTAssertEqual(AppSettings(defaults: defaults).refsHighlightsTabsKey, .cmdT)
+    defaults.set("bogus", forKey: "refsHighlightsCopyKey")
+    XCTAssertEqual(AppSettings(defaults: defaults).refsHighlightsCopyKey, .cmdY)
   }
 
   func testVaultRootFallsBackToHomeBob() {
@@ -626,15 +700,18 @@ final class RefsEntryPointsTests: XCTestCase {
     )
     let originalKey = delegate.settings.refsHighlightsOpenKey
     let originalTabsKey = delegate.settings.refsHighlightsTabsKey
+    let originalCopyKey = delegate.settings.refsHighlightsCopyKey
     let originalPath = delegate.settings.refsHighlightsAppPath
     delegate.settings.refsHighlightsOpenKey = .cmdO
     delegate.settings.refsHighlightsTabsKey = .cmdT
+    delegate.settings.refsHighlightsCopyKey = .cmdY
     delegate.settings.refsHighlightsAppPath = ""
     delegate.highlightsTakeover = fixture.takeover
     delegate.observeRefsSettings()
     defer {
       delegate.settings.refsHighlightsOpenKey = originalKey
       delegate.settings.refsHighlightsTabsKey = originalTabsKey
+      delegate.settings.refsHighlightsCopyKey = originalCopyKey
       delegate.settings.refsHighlightsAppPath = originalPath
     }
 
@@ -647,6 +724,10 @@ final class RefsEntryPointsTests: XCTestCase {
       fixture.registrar.configuration(for: .refsHighlightsTabs),
       .highlightsCommandT
     )
+    XCTAssertEqual(
+      fixture.registrar.configuration(for: .refsHighlightsCopy),
+      .highlightsCommandY
+    )
 
     delegate.settings.refsHighlightsTabsKey = .cmdE
     XCTAssertEqual(
@@ -656,6 +737,9 @@ final class RefsEntryPointsTests: XCTestCase {
 
     delegate.settings.refsHighlightsTabsKey = .off
     XCTAssertFalse(fixture.isTabsTakeoverRegistered)
+
+    delegate.settings.refsHighlightsCopyKey = .off
+    XCTAssertFalse(fixture.isCopyTakeoverRegistered)
 
     delegate.settings.refsHighlightsOpenKey = .ctrlO
     XCTAssertEqual(
@@ -834,6 +918,7 @@ final class RefsEntryPointsTests: XCTestCase {
     var frontmost: String?
     var openKey: RefsHighlightsOpenKey
     var tabsKey: RefsHighlightsTabsKey
+    var copyKey: RefsHighlightsCopyKey
     var refsVisible = false
     var override: String?
     var deactivatedAppBundleID: String?
@@ -847,6 +932,7 @@ final class RefsEntryPointsTests: XCTestCase {
         frontmostBundleID: { [weak self] in self?.frontmost },
         openKey: { [weak self] in self?.openKey ?? .cmdO },
         tabsKey: { [weak self] in self?.tabsKey ?? .off },
+        copyKey: { [weak self] in self?.copyKey ?? .off },
         isRefsVisible: { [weak self] in self?.refsVisible == true },
         overrideBundleID: { [weak self] in self?.override },
         deactivatedBundleID: { [weak self] _ in self?.deactivatedAppBundleID },
@@ -861,12 +947,14 @@ final class RefsEntryPointsTests: XCTestCase {
       frontmost: String?,
       openKey: RefsHighlightsOpenKey,
       tabsKey: RefsHighlightsTabsKey,
+      copyKey: RefsHighlightsCopyKey,
       override: String?,
       failIDs: Set<HotKeyAction>
     ) {
       self.frontmost = frontmost
       self.openKey = openKey
       self.tabsKey = tabsKey
+      self.copyKey = copyKey
       self.override = override
       registrar.failIDs = Set(failIDs.map(\.rawValue))
     }
@@ -877,6 +965,10 @@ final class RefsEntryPointsTests: XCTestCase {
 
     var isTabsTakeoverRegistered: Bool {
       registrar.liveIDs.contains(HotKeyAction.refsHighlightsTabs.rawValue)
+    }
+
+    var isCopyTakeoverRegistered: Bool {
+      registrar.liveIDs.contains(HotKeyAction.refsHighlightsCopy.rawValue)
     }
 
     func waitUntil(
@@ -898,6 +990,7 @@ final class RefsEntryPointsTests: XCTestCase {
     frontmost: String?,
     openKey: RefsHighlightsOpenKey,
     tabsKey: RefsHighlightsTabsKey = .off,
+    copyKey: RefsHighlightsCopyKey = .off,
     override: String? = nil,
     failIDs: Set<HotKeyAction> = []
   ) -> TakeoverFixture {
@@ -905,6 +998,7 @@ final class RefsEntryPointsTests: XCTestCase {
       frontmost: frontmost,
       openKey: openKey,
       tabsKey: tabsKey,
+      copyKey: copyKey,
       override: override,
       failIDs: failIDs
     )

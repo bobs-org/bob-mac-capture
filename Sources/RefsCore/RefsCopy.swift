@@ -990,6 +990,13 @@ public struct RefsCopyCard: Equatable, Sendable {
     public var pickerGroupHeaderHeight: Double
     public var pickerRowHeight: Double
     public private(set) var highlightPicker: RefsHighlightPicker?
+    private var queuedCommands: [QueuedCopyCommand] = []
+    private static let commandQueueCap = 16
+
+    private struct QueuedCopyCommand: Equatable, Sendable {
+        var command: RefsCopyCommand
+        var alternatesActive: Bool
+    }
 
     public init(
         token: UInt64,
@@ -1034,6 +1041,7 @@ public struct RefsCopyCard: Equatable, Sendable {
         message = nil
         isClosed = false
         highlightPicker = nil
+        queuedCommands = []
     }
 
     public var catalog: RefsCopyCatalog {
@@ -1058,65 +1066,17 @@ public struct RefsCopyCard: Equatable, Sendable {
             return .write(retryRow)
         }
         if command != .consume { retryRow = nil }
-        if highlightPicker != nil {
-            return handlePicker(command, alternatesActive: alternatesActive)
-        }
         switch command {
-        case .key(let key, let alternate):
-            if case .loading = notes, isNotesKey(key) {
-                pending = key
-                pendingAlternate = alternate
-                message = RefsCopyMessage(text: "Waiting for notes… esc cancels")
-                return .none
-            }
-            pending = nil
-            if key == .highlightPicker {
-                return openHighlightPicker()
-            }
-            if let row = rows.first(where: { $0.key == key }) {
-                selectedKey = key
-                message = nil
-                return .write(row.resolved(alternate: alternate))
-            }
-            message = catalog.hiddenReason(for: key).map {
-                RefsCopyMessage(text: $0, isError: $0.hasPrefix("Notes unavailable"))
-            }
-            return .none
-        case .copySelected:
-            if selectedKey == .highlightPicker {
-                return openHighlightPicker()
-            }
-            guard let row = rows.first(where: { $0.key == selectedKey }) else {
-                return .none
-            }
-            message = nil
-            return .write(row.resolved(alternate: alternatesActive))
-        case .move(let delta):
-            guard !rows.isEmpty, delta != 0 else { return .none }
-            let current = rows.firstIndex(where: { $0.key == selectedKey }) ?? 0
-            let next = (current + delta % rows.count + rows.count) % rows.count
-            selectedKey = rows[next].key
-            message = pending == nil
-                ? nil
-                : RefsCopyMessage(text: "Waiting for notes… esc cancels")
-            return .none
-        case .close:
-            pending = nil
-            message = nil
-            isClosed = true
-            return .close
-        case .showActions:
-            pending = nil
-            message = nil
-            isClosed = true
-            return .closeThenActions
-        case .unknown(let character):
-            pending = nil
-            message = RefsCopyMessage(text: "Nothing on ‘\(character)’", isTransient: true)
-            return .none
-        case .consume:
+        case .close, .showActions, .consume:
+            return perform(command, alternatesActive: alternatesActive)
+        default:
+            break
+        }
+        if pending != nil {
+            enqueue(command, alternatesActive: alternatesActive)
             return .none
         }
+        return perform(command, alternatesActive: alternatesActive)
     }
 
     @discardableResult
@@ -1124,25 +1084,15 @@ public struct RefsCopyCard: Equatable, Sendable {
         guard !isClosed, path == frozenItemID, row.path == frozenItemID else { return .none }
         notes = .loaded(row)
         refreshRows()
-        guard let pending else { return .none }
-        self.pending = nil
-        if pending == .highlightPicker {
-            return openHighlightPicker()
-        }
-        if let value = rows.first(where: { $0.key == pending }) {
-            message = nil
-            selectedKey = pending
-            return .write(value.resolved(alternate: pendingAlternate))
-        }
-        let reason = catalog.hiddenReason(for: pending) ?? "No notes on this reference"
-        message = RefsCopyMessage(text: reason, isError: reason.hasPrefix("Notes unavailable"))
-        return .none
+        let resolved = resolvePendingAfterLoad()
+        return replayQueued(after: resolved)
     }
 
     public mutating func notesFailed(path: String) {
         guard !isClosed, path == frozenItemID else { return }
         notes = .unavailable
         refreshRows()
+        queuedCommands = []
         if pending != nil {
             pending = nil
             message = RefsCopyMessage(
@@ -1155,6 +1105,7 @@ public struct RefsCopyCard: Equatable, Sendable {
     public mutating func pendingTimedOut() {
         guard !isClosed, pending != nil else { return }
         pending = nil
+        queuedCommands = []
         message = RefsCopyMessage(text: "Notes didn't load — nothing copied", isError: true)
     }
 
@@ -1213,6 +1164,124 @@ public struct RefsCopyCard: Equatable, Sendable {
         picker.entryRowHeight = pickerRowHeight
         picker.setWindowSize(max(1, pickerWindowSize))
         highlightPicker = picker
+    }
+
+    private mutating func perform(
+        _ command: RefsCopyCommand, alternatesActive: Bool
+    ) -> RefsCopyEffect {
+        if highlightPicker != nil {
+            return handlePicker(command, alternatesActive: alternatesActive)
+        }
+        switch command {
+        case .key(let key, let alternate):
+            if case .loading = notes, isNotesKey(key) {
+                pending = key
+                pendingAlternate = alternate
+                message = RefsCopyMessage(text: "Waiting for notes… esc cancels")
+                return .none
+            }
+            pending = nil
+            if key == .highlightPicker {
+                return openHighlightPicker()
+            }
+            if let row = rows.first(where: { $0.key == key }) {
+                selectedKey = key
+                message = nil
+                return .write(row.resolved(alternate: alternate))
+            }
+            message = catalog.hiddenReason(for: key).map {
+                RefsCopyMessage(text: $0, isError: $0.hasPrefix("Notes unavailable"))
+            }
+            return .none
+        case .copySelected:
+            if selectedKey == .highlightPicker {
+                return openHighlightPicker()
+            }
+            guard let row = rows.first(where: { $0.key == selectedKey }) else {
+                return .none
+            }
+            message = nil
+            return .write(row.resolved(alternate: alternatesActive))
+        case .move(let delta):
+            guard !rows.isEmpty, delta != 0 else { return .none }
+            let current = rows.firstIndex(where: { $0.key == selectedKey }) ?? 0
+            let next = (current + delta % rows.count + rows.count) % rows.count
+            selectedKey = rows[next].key
+            message = pending == nil
+                ? nil
+                : RefsCopyMessage(text: "Waiting for notes… esc cancels")
+            return .none
+        case .close:
+            pending = nil
+            queuedCommands = []
+            message = nil
+            isClosed = true
+            return .close
+        case .showActions:
+            pending = nil
+            queuedCommands = []
+            message = nil
+            isClosed = true
+            return .closeThenActions
+        case .unknown(let character):
+            pending = nil
+            message = RefsCopyMessage(text: "Nothing on ‘\(character)’", isTransient: true)
+            return .none
+        case .consume:
+            return .none
+        }
+    }
+
+    private mutating func enqueue(
+        _ command: RefsCopyCommand, alternatesActive: Bool
+    ) {
+        guard queuedCommands.count < Self.commandQueueCap else { return }
+        queuedCommands.append(
+            QueuedCopyCommand(command: command, alternatesActive: alternatesActive)
+        )
+    }
+
+    private mutating func resolvePendingAfterLoad() -> RefsCopyEffect {
+        guard let pending else { return .none }
+        self.pending = nil
+        if pending == .highlightPicker {
+            return openHighlightPicker()
+        }
+        if let value = rows.first(where: { $0.key == pending }) {
+            message = nil
+            selectedKey = pending
+            return .write(value.resolved(alternate: pendingAlternate))
+        }
+        let reason = catalog.hiddenReason(for: pending) ?? "No notes on this reference"
+        message = RefsCopyMessage(text: reason, isError: reason.hasPrefix("Notes unavailable"))
+        return .none
+    }
+
+    private mutating func replayQueued(after first: RefsCopyEffect) -> RefsCopyEffect {
+        if isTerminal(first) {
+            queuedCommands = []
+            return first
+        }
+        var last = first
+        while !queuedCommands.isEmpty {
+            let next = queuedCommands.removeFirst()
+            let effect = perform(next.command, alternatesActive: next.alternatesActive)
+            if isTerminal(effect) {
+                queuedCommands = []
+                return effect
+            }
+            last = effect
+        }
+        return last
+    }
+
+    private func isTerminal(_ effect: RefsCopyEffect) -> Bool {
+        switch effect {
+        case .write, .close, .closeThenActions:
+            return true
+        case .none:
+            return false
+        }
     }
 
     private mutating func handlePicker(
