@@ -426,11 +426,12 @@ Highlights PDF (see [Opening Bob Refs](#opening-bob-refs)). Fixed keys copy
 `N` note path, `O` Obsidian link, `P` PDF path, `F` PDF file, `R` reading-task
 link, and `S` research reference. `C` opens a code picker with a preview
 (`Loading code…` while fetching); `M` copies saved Markdown (Option-M its `~`
-path). `L` opens the link picker for Markdown references; elsewhere it copies
-the Markdown link, and Option-U always copies it. A `p. N in Highlights` chip
-marks the focused tab. Hidden C/L/M keys explain why. Command-B Return and
-Command-L Return copy the page's code or link; Command-L Shift-Return also
-opens its link in the default browser. See [Keyboard](keyboard.md).
+path). `L` opens the link picker on references bob created from Markdown or a
+web page; elsewhere it copies the Markdown link. Option-U always copies that
+link. A `p. N in Highlights` chip marks the focused tab. Hidden C/L/M keys
+explain why. Command-B Return and Command-L Return copy the page's code block
+and link in one chord; Command-L Shift-Return also opens its link in the default
+browser. See [Keyboard](keyboard.md).
 
 `1`–`9` copy visible commented highlights with page and block-link provenance.
 `A` copies all commented highlights, standalone notes, and Bob's notes under

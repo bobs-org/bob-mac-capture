@@ -222,7 +222,7 @@ final class RefsLinksTests: XCTestCase {
             ),
             (
                 .loaded(try decodeStatus("no_source")),
-                "No saved Markdown — link copy needs a reference bob rendered from Markdown"
+                "No saved Markdown — link copy needs a reference bob created from Markdown or a web page"
             ),
             (
                 .loaded(try decodeStatus("source_missing")),

@@ -817,7 +817,8 @@ public struct RefsCopyCatalog: Equatable, Sendable {
             return nil
         case .notRequested:
             return item.sourceMarkdown == nil
-                ? "No saved Markdown — code copy needs a reference bob rendered from Markdown"
+                ? "No saved Markdown — code copy needs a reference bob "
+                    + "created from Markdown or a web page"
                 : "Code unavailable — nothing copied"
         case .unsupported:
             return "Code copy needs a newer bob"
@@ -836,7 +837,8 @@ public struct RefsCopyCatalog: Equatable, Sendable {
                     ? "Code blocks weren't recorded for this reference — M copies its Markdown"
                     : nil
             case .noSource:
-                return "No saved Markdown — code copy needs a reference bob rendered from Markdown"
+                return "No saved Markdown — code copy needs a reference bob "
+                    + "created from Markdown or a web page"
             case .sourceMissing:
                 return "Saved Markdown isn't on this Mac yet — sync the vault"
             case .sourceInvalid:
@@ -856,7 +858,8 @@ public struct RefsCopyCatalog: Equatable, Sendable {
             return nil
         case .notRequested:
             return item.sourceMarkdown == nil
-                ? "No saved Markdown — link copy needs a reference bob rendered from Markdown"
+                ? "No saved Markdown — link copy needs a reference bob "
+                    + "created from Markdown or a web page"
                 : "Links unavailable — nothing copied"
         case .unsupported:
             return "Link copy needs a newer bob"
@@ -873,7 +876,8 @@ public struct RefsCopyCatalog: Equatable, Sendable {
             case .noCatalog:
                 return "Links weren't recorded for this reference — M copies its Markdown"
             case .noSource:
-                return "No saved Markdown — link copy needs a reference bob rendered from Markdown"
+                return "No saved Markdown — link copy needs a reference bob "
+                    + "created from Markdown or a web page"
             case .sourceMissing:
                 return "Saved Markdown isn't on this Mac yet — sync the vault"
             case .sourceInvalid:

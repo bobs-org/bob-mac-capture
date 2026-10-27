@@ -104,7 +104,10 @@ final class RefsCodeTests: XCTestCase {
             ("no_catalog", "Code blocks weren't recorded for this reference — M copies its Markdown"),
             ("source_missing", "Saved Markdown isn't on this Mac yet — sync the vault"),
             ("source_invalid", "Saved Markdown doesn't match its digest — run bob ref doctor"),
-            ("no_source", "No saved Markdown — code copy needs a reference bob rendered from Markdown"),
+            (
+                "no_source",
+                "No saved Markdown — code copy needs a reference bob created from Markdown or a web page"
+            ),
         ] {
             let response = try decodeResponse(status: status, blocks: "[]", source: status == "no_source" || status == "source_missing" || status == "source_invalid" ? "null" : nil)
             let catalog = RefsCopyCatalog(
