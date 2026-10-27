@@ -627,6 +627,7 @@ final class RefsEntryPointsTests: XCTestCase {
 
         let settings = AppSettings(defaults: defaults)
         XCTAssertTrue(settings.refsHotkeyEnabled)
+        XCTAssertTrue(settings.refsAliasHotkeyEnabled)
         XCTAssertEqual(settings.refsHighlightsOpenKey, .cmdO)
         XCTAssertEqual(settings.refsHighlightsTabsKey, .cmdT)
         XCTAssertEqual(settings.refsHighlightsCopyKey, .cmdY)
@@ -635,6 +636,7 @@ final class RefsEntryPointsTests: XCTestCase {
         XCTAssertEqual(settings.refsHighlightsAppPath, "")
 
         settings.refsHotkeyEnabled = false
+        settings.refsAliasHotkeyEnabled = false
         settings.refsHighlightsOpenKey = .ctrlO
         settings.refsHighlightsTabsKey = .cmdE
         settings.refsHighlightsCopyKey = .off
@@ -643,6 +645,7 @@ final class RefsEntryPointsTests: XCTestCase {
         settings.refsHighlightsAppPath = "/Applications/Highlights.app"
 
         XCTAssertFalse(defaults.bool(forKey: "refsHotkeyEnabled"))
+        XCTAssertFalse(defaults.bool(forKey: "refsAliasHotkeyEnabled"))
         XCTAssertEqual(defaults.string(forKey: "refsHighlightsOpenKey"), "ctrlO")
         XCTAssertEqual(defaults.string(forKey: "refsHighlightsTabsKey"), "cmdE")
         XCTAssertEqual(defaults.string(forKey: "refsHighlightsCopyKey"), "off")
@@ -655,6 +658,7 @@ final class RefsEntryPointsTests: XCTestCase {
 
         let reloaded = AppSettings(defaults: defaults)
         XCTAssertFalse(reloaded.refsHotkeyEnabled)
+        XCTAssertFalse(reloaded.refsAliasHotkeyEnabled)
         XCTAssertEqual(reloaded.refsHighlightsOpenKey, .ctrlO)
         XCTAssertEqual(reloaded.refsHighlightsTabsKey, .cmdE)
         XCTAssertEqual(reloaded.refsHighlightsCopyKey, .off)
@@ -780,6 +784,27 @@ final class RefsEntryPointsTests: XCTestCase {
 
         delegate.settings.refsHotkeyEnabled = true
         XCTAssertTrue(registrar.liveIDs.contains(HotKeyAction.refs.rawValue))
+    }
+
+    func testTogglingRefsAliasHotkeyEnabledRegistersLive() {
+        let delegate = AppDelegate()
+        let registrar = EntryPointsFakeRegistrar()
+        delegate.hotKeyRegistry = HotKeyRegistry(registrar: registrar) { _ in }
+        let original = delegate.settings.refsAliasHotkeyEnabled
+        delegate.settings.refsAliasHotkeyEnabled = true
+        delegate.observeRefsSettings()
+        defer { delegate.settings.refsAliasHotkeyEnabled = original }
+
+        // The alias sink drops its subscribe-time emission, so drive one
+        // live emission to establish the registration before toggling.
+        delegate.settings.refsAliasHotkeyEnabled = true
+        XCTAssertTrue(registrar.liveIDs.contains(HotKeyAction.refsAlias.rawValue))
+
+        delegate.settings.refsAliasHotkeyEnabled = false
+        XCTAssertFalse(registrar.liveIDs.contains(HotKeyAction.refsAlias.rawValue))
+
+        delegate.settings.refsAliasHotkeyEnabled = true
+        XCTAssertTrue(registrar.liveIDs.contains(HotKeyAction.refsAlias.rawValue))
     }
 
     func testChangingTakeoverKeySwapsRegistrationLive() {

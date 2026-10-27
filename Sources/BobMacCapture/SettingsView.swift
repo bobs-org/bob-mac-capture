@@ -49,6 +49,15 @@ struct SettingsView: View {
                     "Open Bob Refs with Control-Shift-Command-O",
                     isOn: $settings.refsHotkeyEnabled
                 )
+                Toggle(
+                    "Also open Bob Refs with Command-/",
+                    isOn: $settings.refsAliasHotkeyEnabled
+                )
+                Text(
+                    "Command-/ is global: while this is on, other apps never receive Command-/."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 Stepper(
                     value: Binding(
                         get: { settings.refsInspectorNotesPageSize },

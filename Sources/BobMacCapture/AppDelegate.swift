@@ -170,7 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Task { @MainActor in
                     self?.handleCaptureAliasPress()
                 }
-            case .refs, .refsHighlightsOpen:
+            case .refs, .refsAlias, .refsHighlightsOpen:
                 CaptureSignpost.event("refs-hotkey-received")
                 Task { @MainActor in
                     self?.panelCoordinator?.toggleRefs()
@@ -451,6 +451,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         registerCaptureAliasHotKey()
         registerRefsHotKey()
+        registerRefsAliasHotKey()
     }
 
     /// Registers the global Capture alias (Command-\) when its setting is
@@ -507,6 +508,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyRegisteredHotkeyStatus()
     }
 
+    /// Registers the global Refs alias (Command-/) when its setting is
+    /// on. Success names every registered Refs chord on the Diagnostics
+    /// line; a failure is reported as a Refs alias conflict. The primary
+    /// chord re-registers only at launch and on Recheck Bob; the alias
+    /// also re-registers live. The settings sink passes the value it
+    /// receives, because `@Published` emits before the property itself
+    /// changes.
+    private func registerRefsAliasHotKey(enabled: Bool? = nil) {
+        guard let hotKeyRegistry else {
+            return
+        }
+        let wanted = enabled ?? settings.refsAliasHotkeyEnabled
+        let registered = RefsAliasHotkeyRegistration.sync(
+            registry: hotKeyRegistry,
+            enabled: wanted
+        ) { [weak self] message in
+            self?.settings.diagnosticStatus = message
+        }
+        if registered || (enabled != nil && !wanted) {
+            applyRegisteredHotkeyStatus()
+        }
+    }
+
     /// Names every capture chord that is currently registered.
     private func captureHotkeyRegisteredStatus() -> String? {
         guard let hotKeyRegistry else {
@@ -525,17 +549,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return "Hotkey registered: " + names.joined(separator: " and ")
     }
 
-    /// Combined Diagnostics success line: capture chords, then Refs if
-    /// registered.
+    /// Names every Refs chord that is currently registered.
+    private func refsHotkeyRegisteredStatus() -> String? {
+        guard let hotKeyRegistry else {
+            return nil
+        }
+        var names: [String] = []
+        if hotKeyRegistry.isRegistered(.refs) {
+            names.append(HotKeyConfiguration.refs.displayName)
+        }
+        if hotKeyRegistry.isRegistered(.refsAlias) {
+            names.append(HotKeyConfiguration.refsCommandSlash.displayName)
+        }
+        guard !names.isEmpty else {
+            return nil
+        }
+        return "Refs hotkey registered: " + names.joined(separator: " and ")
+    }
+
+    /// Combined Diagnostics success line: capture chords, then Refs
+    /// chords when either is registered.
     private func applyRegisteredHotkeyStatus() {
         var parts: [String] = []
         if let capture = captureHotkeyRegisteredStatus() {
             parts.append(capture)
         }
-        if hotKeyRegistry?.isRegistered(.refs) == true {
-            parts.append(
-                "Refs hotkey registered: \(HotKeyConfiguration.refs.displayName)"
-            )
+        if let refs = refsHotkeyRegisteredStatus() {
+            parts.append(refs)
         }
         guard !parts.isEmpty else {
             return
@@ -813,14 +853,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Re-registers the Refs hotkeys live when the References settings
-    /// change. Capture's primary hotkey is untouched here: it re-registers
-    /// only at launch and on Recheck Bob, as before. The alias also
-    /// re-registers live from its own sink. Each sink applies the value
-    /// it receives: `@Published` emits before the property changes, so
-    /// re-reading settings here would always see the old value.
+    /// change, including the Refs alias. Capture's primary hotkey is
+    /// untouched here: it re-registers only at launch and on Recheck Bob,
+    /// as before. The alias also re-registers live from its own sink.
+    /// Each sink applies the value it receives: `@Published` emits before
+    /// the property changes, so re-reading settings here would always see
+    /// the old value.
     func observeRefsSettings() {
         settings.$refsHotkeyEnabled
             .sink { [weak self] enabled in self?.registerRefsHotKey(enabled: enabled) }
+            .store(in: &refsCancellables)
+        settings.$refsAliasHotkeyEnabled
+            .dropFirst()
+            .sink { [weak self] enabled in
+                self?.registerRefsAliasHotKey(enabled: enabled)
+            }
             .store(in: &refsCancellables)
         settings.$refsHighlightsOpenKey
             .combineLatest(

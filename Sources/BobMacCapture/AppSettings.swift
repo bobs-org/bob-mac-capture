@@ -30,6 +30,12 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(refsHotkeyEnabled, forKey: Keys.refsHotkeyEnabled) }
     }
 
+    @Published var refsAliasHotkeyEnabled: Bool {
+        didSet {
+            defaults.set(refsAliasHotkeyEnabled, forKey: Keys.refsAliasHotkeyEnabled)
+        }
+    }
+
     @Published var refsHighlightsOpenKey: RefsHighlightsOpenKey {
         didSet { defaults.set(refsHighlightsOpenKey.rawValue, forKey: Keys.refsHighlightsOpenKey) }
     }
@@ -139,6 +145,10 @@ final class AppSettings: ObservableObject {
         refsHotkeyEnabled = defaults.object(forKey: Keys.refsHotkeyEnabled) == nil
             ? true
             : defaults.bool(forKey: Keys.refsHotkeyEnabled)
+        refsAliasHotkeyEnabled =
+            defaults.object(forKey: Keys.refsAliasHotkeyEnabled) == nil
+            ? true
+            : defaults.bool(forKey: Keys.refsAliasHotkeyEnabled)
         if let raw = defaults.string(forKey: Keys.refsHighlightsOpenKey),
             let key = RefsHighlightsOpenKey(rawValue: raw)
         {
@@ -252,6 +262,7 @@ private enum Keys {
     static let useProductionHotkey = "useProductionHotkey"
     static let captureAliasHotkeyEnabled = "captureAliasHotkeyEnabled"
     static let refsHotkeyEnabled = "refsHotkeyEnabled"
+    static let refsAliasHotkeyEnabled = "refsAliasHotkeyEnabled"
     static let refsHighlightsOpenKey = "refsHighlightsOpenKey"
     static let refsHighlightsTabsKey = "refsHighlightsTabsKey"
     static let refsHighlightsCopyKey = "refsHighlightsCopyKey"

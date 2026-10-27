@@ -72,8 +72,8 @@ removes the legacy `intrinsics.json` and `thumbs/`, so stale
 `bob ref show` names are read from the vault, read-only, and the
 decoded previews stay in a bounded in-memory cache; nothing new is
 written to disk. The References
-settings persist a small set of `UserDefaults` keys (the ⌃⇧⌘O
-binding flag, the Highlights-frontmost open key, the Highlights Tabs
+settings persist a small set of `UserDefaults` keys (the ⌃⇧⌘O and ⌘/
+binding flags, the Highlights-frontmost open key, the Highlights Tabs
 key (`refsHighlightsTabsKey`, default `cmdT`), the Highlights
 override path, the scan-after-Highlights-save toggle, and the preview
 notes page size). Accessibility is used

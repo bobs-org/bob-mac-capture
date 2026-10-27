@@ -11,7 +11,7 @@ In either panel, Ctrl-Tab and Ctrl-Shift-Tab switch to the other panel. From Cap
 
 ## Bob Refs shortcuts
 
-These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspector](refs-inspector.md) expand them.
+These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspector](refs-inspector.md) expand them. Global Control-Shift-Command-O and `Command-/` toggle the panel from any app; see [Opening Bob Refs](refs.md#opening-bob-refs).
 
 | Key | Action |
 | --- | --- |

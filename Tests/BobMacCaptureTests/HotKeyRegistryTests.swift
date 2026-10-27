@@ -37,6 +37,10 @@ final class HotKeyRegistryTests: XCTestCase {
             .captureAlias,
             configuration: .captureCommandBackslash
         )
+        try registry.register(
+            .refsAlias,
+            configuration: .refsCommandSlash
+        )
 
         XCTAssertEqual(
             registrar.identifiers.map { $0.id },
@@ -49,6 +53,7 @@ final class HotKeyRegistryTests: XCTestCase {
                 HotKeyAction.refsHighlightsCode.rawValue,
                 HotKeyAction.refsHighlightsLinks.rawValue,
                 HotKeyAction.captureAlias.rawValue,
+                HotKeyAction.refsAlias.rawValue,
             ]
         )
         XCTAssertTrue(
@@ -64,6 +69,7 @@ final class HotKeyRegistryTests: XCTestCase {
         XCTAssertTrue(registry.isRegistered(.refsHighlightsCode))
         XCTAssertTrue(registry.isRegistered(.refsHighlightsLinks))
         XCTAssertTrue(registry.isRegistered(.captureAlias))
+        XCTAssertTrue(registry.isRegistered(.refsAlias))
     }
 
     func testHandleRoutesEachActionByID() {
@@ -278,6 +284,18 @@ final class HotKeyRegistryTests: XCTestCase {
             HotKeyConfiguration.captureCommandBackslash.displayName,
             "Command-\\"
         )
+        XCTAssertEqual(
+            HotKeyConfiguration.refsCommandSlash.keyCode,
+            UInt32(kVK_ANSI_Slash)
+        )
+        XCTAssertEqual(
+            HotKeyConfiguration.refsCommandSlash.modifiers,
+            UInt32(cmdKey)
+        )
+        XCTAssertEqual(
+            HotKeyConfiguration.refsCommandSlash.displayName,
+            "Command-/"
+        )
     }
 
     func testCapturePresetsDoNotCollideWithRefs() {
@@ -309,6 +327,30 @@ final class HotKeyRegistryTests: XCTestCase {
         let alias = HotKeyConfiguration.captureCommandBackslash
         let others: [HotKeyConfiguration] =
             [.production, .development]
+            + RefsHighlightsOpenKey.allCases.compactMap(\.configuration)
+            + RefsHighlightsTabsKey.allCases.compactMap(\.configuration)
+            + RefsHighlightsCopyKey.allCases.compactMap(\.configuration)
+            + RefsHighlightsCodeKey.allCases.compactMap(\.configuration)
+            + RefsHighlightsLinkKey.allCases.compactMap(\.configuration)
+        for other in others {
+            let collides =
+                alias.keyCode == other.keyCode && alias.modifiers == other.modifiers
+            XCTAssertFalse(
+                collides,
+                "\(alias.displayName) must not claim \(other.displayName)"
+            )
+        }
+    }
+
+    func testRefsAliasDoesNotCollideWithOtherPresets() {
+        let alias = HotKeyConfiguration.refsCommandSlash
+        let others: [HotKeyConfiguration] =
+            [
+                .production,
+                .development,
+                .captureCommandBackslash,
+                .refs,
+            ]
             + RefsHighlightsOpenKey.allCases.compactMap(\.configuration)
             + RefsHighlightsTabsKey.allCases.compactMap(\.configuration)
             + RefsHighlightsCopyKey.allCases.compactMap(\.configuration)
