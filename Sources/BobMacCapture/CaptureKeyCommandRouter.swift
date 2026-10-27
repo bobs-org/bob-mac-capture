@@ -296,7 +296,7 @@ struct CaptureKeyCommandRouter {
             return .toggleTemplateShelf
         }
 
-        if event.keyCode == KeyCode.backslash, modifiers == .control {
+        if event.keyCode == KeyCode.backslash, modifiers == .command {
             return .openTodayPomodoro
         }
 
@@ -440,7 +440,7 @@ struct CaptureKeyCommandRouter {
         case KeyCode.t:
             return modifiers == .control ? .consumeKey : nil
         case KeyCode.backslash:
-            return modifiers == .control ? .consumeKey : nil
+            return modifiers == .command ? .consumeKey : nil
         default:
             return nil
         }
@@ -480,7 +480,7 @@ struct CaptureKeyCommandRouter {
         case KeyCode.t:
             return modifiers == .control ? .consumeKey : nil
         case KeyCode.backslash:
-            return modifiers == .control ? .consumeKey : nil
+            return modifiers == .command ? .consumeKey : nil
         default:
             return nil
         }
@@ -766,7 +766,7 @@ struct CaptureKeyCommandRouter {
         case KeyCode.t:
             return modifiers == .control ? .consumeKey : nil
         case KeyCode.backslash:
-            return modifiers == .control ? .consumeKey : nil
+            return modifiers == .command ? .consumeKey : nil
         case KeyCode.c:
             return modifiers == .control ? .stashDraftAndClose : nil
         default:
@@ -810,7 +810,7 @@ struct CaptureKeyCommandRouter {
         case KeyCode.t:
             return modifiers == .control ? .consumeKey : nil
         case KeyCode.backslash:
-            return modifiers == .control ? .consumeKey : nil
+            return modifiers == .command ? .consumeKey : nil
         default:
             return nil
         }
@@ -824,7 +824,7 @@ struct CaptureKeyCommandRouter {
         if event.keyCode == KeyCode.t, modifiers == .control {
             return .toggleTemplateShelf
         }
-        if event.keyCode == KeyCode.backslash, modifiers == .control {
+        if event.keyCode == KeyCode.backslash, modifiers == .command {
             return .consumeKey
         }
 
@@ -877,7 +877,7 @@ struct CaptureKeyCommandRouter {
         if event.keyCode == KeyCode.s, modifiers == .control {
             return .switchTemplateShelfToStash
         }
-        if event.keyCode == KeyCode.backslash, modifiers == .control {
+        if event.keyCode == KeyCode.backslash, modifiers == .command {
             return .consumeKey
         }
 

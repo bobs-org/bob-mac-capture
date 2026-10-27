@@ -5,7 +5,7 @@ import XCTest
 
 @testable import BobMacCapture
 
-/// Control-\ today-Pomodoro landing: fetch, dispatch, retain, and drop.
+/// Command-\ today-Pomodoro landing: fetch, dispatch, retain, and drop.
 @MainActor
 final class CaptureTodayPomodoroPanelTests: XCTestCase {
     func testCurrentFixtureDispatchesURLDismissesAndRetainsDraft() async throws {

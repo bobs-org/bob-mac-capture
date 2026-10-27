@@ -66,7 +66,7 @@ final class CaptureInboxRouteChoiceDesignTests: XCTestCase {
         XCTAssertEqual(
             router.command(for: keyEvent(36, repeat: true), context: context), .consumeKey)
         XCTAssertEqual(router.command(for: keyEvent(17, modifiers: .control), context: context), .consumeKey)
-        XCTAssertEqual(router.command(for: keyEvent(42, modifiers: .control), context: context), .consumeKey)
+        XCTAssertEqual(router.command(for: keyEvent(42, modifiers: .command), context: context), .consumeKey)
         XCTAssertNil(router.command(for: keyEvent(0), context: context))
         XCTAssertNil(router.command(for: keyEvent(45, modifiers: [.control, .shift]), context: context))
     }

@@ -37,7 +37,8 @@ struct SettingsView: View {
                     isOn: $settings.captureAliasHotkeyEnabled
                 )
                 Text(
-                    "Command-\\ is global: while this is on, other apps never receive Command-\\."
+                    "Command-\\ is global: while this is on, other apps never receive Command-\\. "
+                        + "Press it again while Capture is open to jump to today's Pomodoro."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)

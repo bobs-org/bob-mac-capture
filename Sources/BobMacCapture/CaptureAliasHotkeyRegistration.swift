@@ -1,5 +1,6 @@
 /// Registers the global Capture alias hotkey (Command-\) when its
-/// setting is on, and unregisters it when off. Registering replaces
+/// setting is on, and unregisters it when off. A press while Capture is
+/// key opens today's Pomodoro. Registering replaces
 /// only the alias key: a failure leaves every other registration intact
 /// and is reported, never thrown.
 enum CaptureAliasHotkeyRegistration {

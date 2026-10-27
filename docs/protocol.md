@@ -66,7 +66,7 @@ Capabilities are detected per response, never pinned to release numbers: unknown
   Bulk templates require Bob's additive `template` / `template_row` parse and capture
   objects, field-indexed `template_placeholder` and `template_field` spans, the
   `template_row` incomplete need, and the `template` route-completion candidate.
-  Go To and Control-\ today-Pomodoro landing and Bob Refs Control-Return
+  Go To and Command-\ today-Pomodoro landing and Bob Refs Control-Return
   also require bob-plugins **bob-navigation-hotkeys ≥ 2.32.0** (or the
   version that shipped `obsidian://bob-goto-task`). Control-Return landing via
   `obsidian://bob-open-notes` needs **bob-navigation-hotkeys ≥ 2.44.1**,

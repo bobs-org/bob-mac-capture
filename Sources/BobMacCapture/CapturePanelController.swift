@@ -361,6 +361,36 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         CaptureSignpost.event("editor-focus-requested")
     }
 
+    /// Builds the event Carbon consumed for Command-\ so tests and the alias path
+    /// route the same key code, modifiers, and characters as the physical chord.
+    static func captureAliasKeyEvent(windowNumber: Int) -> NSEvent? {
+        NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: .command,
+            timestamp: 0,
+            windowNumber: windowNumber,
+            context: nil,
+            characters: "\\",
+            charactersIgnoringModifiers: "\\",
+            isARepeat: false,
+            keyCode: 42
+        )
+    }
+
+    /// Routes Carbon's Command-\ press through the normal key path while this
+    /// panel is key. Carbon swallows the registered alias before the local monitor
+    /// can see it; the synthetic event must not be sent back through AppKit.
+    func routeCaptureAliasPress() -> Bool {
+        guard let panel, panel.isVisible, panel.isKeyWindow,
+              let event = Self.captureAliasKeyEvent(windowNumber: panel.windowNumber)
+        else {
+            return false
+        }
+        _ = routeKeyDown(event)
+        return true
+    }
+
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         model.prepareForRetainedClose()
         return true
@@ -1870,66 +1900,70 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 self.model.noteModifierFlagsChanged(event.modifierFlags)
                 return event
             }
-            self.model.clearOpenHintReveal()
-            self.repairPromptFieldFocusIfOrphaned()
-            self.repairPickerFilterFocusIfNeeded()
-            guard let command = self.keyRouter.command(
-                for: event,
-                context: CaptureKeyRoutingContext(
-                    similarRowsVisible: self.model.similarRowsVisibleForKeys,
-                    similarRowFocused: self.model.isSimilarRowFocused,
-                    completionVisible: self.model.completionVisible,
-                    completionHasSelectedHistoryTheme: self.model.completionHasSelectedHistoryTheme,
-                    completionThemeVisibilityWriteInFlight: self.model.completionThemeVisibilityWriteInFlight,
-                    stashPickerVisible: self.model.isStashPickerPresented,
-                    stashEntryCount: self.model.stashCount,
-                    templateShelfVisible: self.model.isTemplateShelfPresented,
-                    templateEntryCount: self.model.templateShelfCount,
-                    taskIDPromptVisible: self.model.taskIDPromptVisible,
-                    taskIDPromptIsTaskLink: self.model.taskIDPromptIsTaskLink,
-                    taskIDPromptIsDependency: self.model.taskIDPromptIsDependency,
-                    taskIDPromptIsTaskComplete: self.model.taskIDPromptIsTaskComplete,
-                    pomodoroNamePromptVisible: self.model.pomodoroNamePromptVisible,
-                    relationLabelPromptVisible: self.model.relationLabelPromptVisible,
-                    relationLabelPromptFieldIsEmpty: self.model.relationLabelFieldText.isEmpty,
-                    relationLabelPromptOneOff: self.model.relationLabelPrompt?.oneOff ?? false,
-                    relationLabelRenameActive: self.model.relationLabelRenameIsActive,
-                    pickerSourceIsRelation: self.model.pickerSourceIsRelation,
-                    pullInChoiceVisible: self.model.pullInChoiceVisible,
-                    pullInFilterFocused: self.model.pullInChoiceVisible
-                        && (Self.findPickerFilterField(
-                            in: self.panel?.contentView,
-                            identifier: pullInFilterFieldAccessibilityIdentifier,
-                            firstResponder: self.panel?.firstResponder
-                        )?.holdsFirstResponder ?? false),
-                    pullInFilterIsEmpty: self.model.pullInChoice?.filterText.isEmpty ?? true,
-                    inboxRouteChoiceVisible: self.model.inboxRouteChoiceVisible,
-                    keyIsRepeat: event.isARepeat,
-                    pickerVisible: self.model.pickerVisible,
-                    pickerSourceIsTaskLink: self.model.pickerSourceIsTaskLink,
-                    pickerSourceIsTaskComplete: self.model.pickerSourceIsTaskComplete,
-                    pickerSourceIsTaskGoto: self.model.pickerSourceIsTaskGoto,
-                    pickerDispatchInFlight: self.model.taskGotoDispatchInFlight,
-                    pickerFilterIsEmpty: self.model.pickerFilterIsEmpty,
-                    pickerChipVisible: self.model.pickerChipVisible,
-                    pickerOperatorContinuationKeys: self.model.pickerOperatorContinuationKeys,
-                    taskIDPromptCyclesSuggestions: self.model.taskIDPromptCyclesSuggestions,
-                    closeTaskCommaArmed: self.model.closeTaskCommaArmed,
-                    editorHasMarkedText: (self.panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false
-                )
-            ) else {
-                // A focused similar-task row owns its strip keys. Any other
-                // key unfocuses and passes through unchanged (⌘Z and ⌘↩
-                // included) so typing stays native.
-                if self.model.isSimilarRowFocused {
-                    self.model.unfocusSimilarRow()
-                }
-                self.noteSeparatorToggleIntentFromEvent(event)
-                return event
-            }
-
-            return self.perform(command) ? nil : event
+            return self.routeKeyDown(event)
         }
+    }
+
+    private func routeKeyDown(_ event: NSEvent) -> NSEvent? {
+        model.clearOpenHintReveal()
+        repairPromptFieldFocusIfOrphaned()
+        repairPickerFilterFocusIfNeeded()
+        guard let command = keyRouter.command(
+            for: event,
+            context: CaptureKeyRoutingContext(
+                similarRowsVisible: model.similarRowsVisibleForKeys,
+                similarRowFocused: model.isSimilarRowFocused,
+                completionVisible: model.completionVisible,
+                completionHasSelectedHistoryTheme: model.completionHasSelectedHistoryTheme,
+                completionThemeVisibilityWriteInFlight: model.completionThemeVisibilityWriteInFlight,
+                stashPickerVisible: model.isStashPickerPresented,
+                stashEntryCount: model.stashCount,
+                templateShelfVisible: model.isTemplateShelfPresented,
+                templateEntryCount: model.templateShelfCount,
+                taskIDPromptVisible: model.taskIDPromptVisible,
+                taskIDPromptIsTaskLink: model.taskIDPromptIsTaskLink,
+                taskIDPromptIsDependency: model.taskIDPromptIsDependency,
+                taskIDPromptIsTaskComplete: model.taskIDPromptIsTaskComplete,
+                pomodoroNamePromptVisible: model.pomodoroNamePromptVisible,
+                relationLabelPromptVisible: model.relationLabelPromptVisible,
+                relationLabelPromptFieldIsEmpty: model.relationLabelFieldText.isEmpty,
+                relationLabelPromptOneOff: model.relationLabelPrompt?.oneOff ?? false,
+                relationLabelRenameActive: model.relationLabelRenameIsActive,
+                pickerSourceIsRelation: model.pickerSourceIsRelation,
+                pullInChoiceVisible: model.pullInChoiceVisible,
+                pullInFilterFocused: model.pullInChoiceVisible
+                    && (Self.findPickerFilterField(
+                        in: panel?.contentView,
+                        identifier: pullInFilterFieldAccessibilityIdentifier,
+                        firstResponder: panel?.firstResponder
+                    )?.holdsFirstResponder ?? false),
+                pullInFilterIsEmpty: model.pullInChoice?.filterText.isEmpty ?? true,
+                inboxRouteChoiceVisible: model.inboxRouteChoiceVisible,
+                keyIsRepeat: event.isARepeat,
+                pickerVisible: model.pickerVisible,
+                pickerSourceIsTaskLink: model.pickerSourceIsTaskLink,
+                pickerSourceIsTaskComplete: model.pickerSourceIsTaskComplete,
+                pickerSourceIsTaskGoto: model.pickerSourceIsTaskGoto,
+                pickerDispatchInFlight: model.taskGotoDispatchInFlight,
+                pickerFilterIsEmpty: model.pickerFilterIsEmpty,
+                pickerChipVisible: model.pickerChipVisible,
+                pickerOperatorContinuationKeys: model.pickerOperatorContinuationKeys,
+                taskIDPromptCyclesSuggestions: model.taskIDPromptCyclesSuggestions,
+                closeTaskCommaArmed: model.closeTaskCommaArmed,
+                editorHasMarkedText: (panel?.firstResponder as? NSTextView)?.hasMarkedText() ?? false
+            )
+        ) else {
+            // A focused similar-task row owns its strip keys. Any other
+            // key unfocuses and passes through unchanged (⌘Z and ⌘↩
+            // included) so typing stays native.
+            if model.isSimilarRowFocused {
+                model.unfocusSimilarRow()
+            }
+            noteSeparatorToggleIntentFromEvent(event)
+            return event
+        }
+
+        return perform(command) ? nil : event
     }
 
     private func resignPullInFilterIfFocused() {

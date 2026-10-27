@@ -624,7 +624,7 @@ final class CapturePanelModel: ObservableObject {
     /// swallowed until the opener reports, so a double Return cannot dispatch
     /// twice.
     private(set) var taskGotoDispatchInFlight = false
-    /// True while Control-\ is fetching today's Pomodoros or dispatching
+    /// True while Command-\ is fetching today's Pomodoros or dispatching
     /// the goto URL. A second press is a no-op until it clears.
     private(set) var todayPomodoroGotoInFlight = false
     private var todayPomodoroGotoGeneration: UInt64 = 0

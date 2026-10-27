@@ -550,24 +550,24 @@ final class BobMacCaptureTests: XCTestCase {
         XCTAssertNil(router.command(for: keyEvent(keyCode: 1)))
         XCTAssertNil(router.command(for: keyEvent(keyCode: 1, modifiers: [.control, .shift])))
         XCTAssertEqual(
-            router.command(for: keyEvent(keyCode: 42, modifiers: .control)),
+            router.command(for: keyEvent(keyCode: 42, modifiers: .command)),
             .openTodayPomodoro
         )
         XCTAssertEqual(
-            router.command(for: keyEvent(keyCode: 42, modifiers: .control), completionVisible: true),
+            router.command(for: keyEvent(keyCode: 42, modifiers: .command), completionVisible: true),
             .openTodayPomodoro
         )
         XCTAssertEqual(
             router.command(
-                for: keyEvent(keyCode: 42, modifiers: .control),
+                for: keyEvent(keyCode: 42, modifiers: .command),
                 context: CaptureKeyRoutingContext(pickerChipVisible: true)
             ),
             .openTodayPomodoro
         )
         XCTAssertNil(router.command(for: keyEvent(keyCode: 42)))
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: .command)))
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: [.control, .shift])))
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: [.control, .option])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: .control)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: [.command, .shift])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: [.command, .option])))
         XCTAssertEqual(router.command(for: keyEvent(keyCode: 36), completionVisible: true), .acceptCompletion)
         XCTAssertEqual(
             router.command(for: keyEvent(keyCode: 36, modifiers: .control), completionVisible: true),
@@ -1090,34 +1090,34 @@ final class BobMacCaptureTests: XCTestCase {
         )
     }
 
-    func testKeyRouterMapsControlBackslashToOpenTodayPomodoroAndConsumesOnModals() {
+    func testKeyRouterMapsCommandBackslashToOpenTodayPomodoroAndConsumesOnModals() {
         let router = CaptureKeyCommandRouter()
-        let controlBackslash = keyEvent(keyCode: 42, modifiers: .control)
+        let commandBackslash = keyEvent(keyCode: 42, modifiers: .command)
         XCTAssertEqual(
-            router.command(for: controlBackslash),
+            router.command(for: commandBackslash),
             .openTodayPomodoro
         )
         XCTAssertEqual(
-            router.command(for: controlBackslash, completionVisible: true),
+            router.command(for: commandBackslash, completionVisible: true),
             .openTodayPomodoro
         )
         XCTAssertEqual(
             router.command(
-                for: controlBackslash,
+                for: commandBackslash,
                 context: CaptureKeyRoutingContext(pickerChipVisible: true)
             ),
             .openTodayPomodoro
         )
         XCTAssertEqual(
             router.command(
-                for: controlBackslash,
+                for: commandBackslash,
                 context: CaptureKeyRoutingContext(stashPickerVisible: true, stashEntryCount: 1)
             ),
             .consumeKey
         )
         XCTAssertEqual(
             router.command(
-                for: controlBackslash,
+                for: commandBackslash,
                 context: CaptureKeyRoutingContext(
                     templateShelfVisible: true,
                     templateEntryCount: 1
@@ -1127,35 +1127,36 @@ final class BobMacCaptureTests: XCTestCase {
         )
         XCTAssertEqual(
             router.command(
-                for: controlBackslash,
+                for: commandBackslash,
                 context: CaptureKeyRoutingContext(taskIDPromptVisible: true)
             ),
             .consumeKey
         )
         XCTAssertEqual(
             router.command(
-                for: controlBackslash,
+                for: commandBackslash,
                 context: CaptureKeyRoutingContext(pomodoroNamePromptVisible: true)
             ),
             .consumeKey
         )
         XCTAssertEqual(
             router.command(
-                for: controlBackslash,
+                for: commandBackslash,
                 context: CaptureKeyRoutingContext(pullInChoiceVisible: true)
             ),
             .consumeKey
         )
         XCTAssertEqual(
             router.command(
-                for: controlBackslash,
+                for: commandBackslash,
                 context: CaptureKeyRoutingContext(pickerVisible: true)
             ),
             .consumeKey
         )
         XCTAssertNil(router.command(for: keyEvent(keyCode: 42)))
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: .command)))
-        XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: [.control, .shift])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: .control)))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: [.command, .shift])))
+        XCTAssertNil(router.command(for: keyEvent(keyCode: 42, modifiers: [.command, .option])))
     }
 
     func testKeyRouterConsumesPrintableKeysWhileStashPickerIsModalButLeavesCommandShortcuts() {

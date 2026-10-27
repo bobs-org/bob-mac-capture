@@ -20,7 +20,7 @@ The panel owns presentation, process orchestration, and the hotkey. Capture gram
   manual Restart item.
 - Production hotkey (the default): Control-Shift-Command-I.
 - Development/rollback hotkey: Control-Shift-Command-R, selectable in Settings.
-- `Command-\` also opens Capture. It is on by default (Settings › Hotkey) and is independent of the production/development choice.
+- `Command-\` also opens Capture. It is on by default (Settings › Hotkey) and is independent of the production/development choice. Pressing it again while Capture is focused opens today's Pomodoro ([Keyboard](keyboard.md)).
 - The hotkey path uses a pre-warmed non-activating `NSPanel`; subprocess work is kept
   off that path. A show (hotkey or Ctrl+Tab) skips re-spawning `capture-targets` when
   the last targets refresh started less than 5 s ago; vault watchers, Recheck Bob,

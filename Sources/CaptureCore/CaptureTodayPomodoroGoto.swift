@@ -1,6 +1,6 @@
 import Foundation
 
-/// Pure landing rule for Control-\: choose among the entries
+/// Pure landing rule for Command-\: choose among the entries
 /// `bob capture-pomodoros --format json --all` returned, then build a
 /// read-only `obsidian://bob-goto-task` URL. The app never reads the daily
 /// note.

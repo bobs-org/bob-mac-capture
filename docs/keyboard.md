@@ -98,7 +98,7 @@ as Command-Y L does.
 | Ctrl-Tab / Ctrl-Shift-Tab | Switch to Bob Refs, retaining the draft and caret | Same switch, closing completion | Same switch; the prompt closes and the draft is retained | Same switch; the prompt closes and the draft is retained |
 | Control-S | Open the canceled-draft stash picker | Open the canceled-draft stash picker | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-T | Open the saved-template shelf | Open the shelf and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
-| Control-\ | Open today's daily note in Obsidian with the caret on the running Pomodoro (when none is running: the first open entry, else the last completed, else the note's first line), hide the panel, and retain a nonempty draft | Same, and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
+| Command-\ | Open today's daily note in Obsidian with the caret on the running Pomodoro (when none is running: the first open entry, else the last completed, else the note's first line), hide the panel, and retain a nonempty draft | Same, and close completion | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Command-S | Save the current `@@template:` draft | Save the current `@@template:` draft | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
 | Control-C | Stash a nonempty draft, then clear and close. A Go To (`/`) draft is discarded instead of stashed, and nothing is retained when stashing is off (capacity 0) | Same as in the editor | Same as in the editor | Same as in the editor |
 | Command-1…5 | Focus that similar-tasks row and open its strip; pressing the same key again unfocuses it | Close completion, then focus that row | Consume the key; finish or cancel the prompt first | Consume the key; finish or cancel the prompt first |
@@ -118,7 +118,7 @@ opens the route card after any successor choice. Up/Down or Control-N/Control-P
 moves the destination highlight. Return moves the current task, Control-Return
 moves it and opens the capture notes, and Shift-Return keeps it in its inbox.
 Escape goes back one task, then returns to the successor card when one preceded
-the route card, or to the unchanged draft. Control-T and Control-Backslash are consumed
+the route card, or to the unchanged draft. Control-T and Command-\ are consumed
 while the route card is open so the template shelf and Pomodoro action cannot
 take over its modal keys. Full behavior is in [Capture previews](capture-previews.md).
 
@@ -197,7 +197,7 @@ the field.
 | Escape / Ctrl-[ | Close only the stash picker |
 | Control-S | Close the stash picker |
 | Control-T | Close the stash and open the saved-template shelf |
-| Control-\ | Consume the key; finish or cancel the stash first |
+| Command-\ | Consume the key; finish or cancel the stash first |
 
 The 36-entry upper bound exists so every retained row always has a unique one-key
 accelerator while reserving `D` for Delete All: `1` through `9`, then `0`, then `A`
@@ -213,18 +213,21 @@ through `C`, `-`, and `E` through `Z`.
 | Backspace twice | Arm, then delete the selected template |
 | Control-S | Close the shelf and open the stash |
 | Control-T | Close the shelf |
-| Control-\ | Consume the key; finish or cancel the shelf first |
+| Command-\ | Consume the key; finish or cancel the shelf first |
 | Escape / Ctrl-[ | Disarm deletion, or close the shelf |
 
 Control-T replaces AppKit's transpose-characters shortcut in the capture editor. Inside
 capture pickers, prompts, and successor choices it is consumed so it never edits or
 transposes text.
 
-## Opening today's Pomodoro (Control-\)
+## Opening today's Pomodoro (Command-\)
 
-Control-\ is an in-panel key, not a global hotkey (a global Control-\ would take
-SIGQUIT from terminals and Vim's `Ctrl-\ Ctrl-N`). Global `Command-\` opens Capture
-and is a different chord from this in-panel `Control-\`. Each press runs a fresh
+`Command-\` is both the global Capture alias and the in-panel key. From another app,
+the first press opens (or focuses) Capture, and a press while Capture is focused opens
+today's Pomodoro. So `Command-\` `Command-\` from anywhere lands on today's Pomodoro.
+With Settings › Hotkey › **Also open Capture with Command-\\** off, `Command-\` works
+only inside the panel, and other apps receive it. Control plus backslash is no longer
+bound in Capture. Each press runs a fresh
 `bob capture-pomodoros --format json --all` through the pomodoros lane; it does
 not use the idle-agenda cache. The app never reads the daily note.
 
@@ -248,7 +251,7 @@ stashed, discarded, or captured. On a failed open, status is
 `Bob is not resolved`. A second press while a fetch or open is already in
 flight does nothing. If the panel is hidden before the result lands, the
 result is dropped. While the stash, saved-template shelf, Add block ID or
-Name Pomodoro prompt, successor-choice card, or a picker is open, Control-\
+Name Pomodoro prompt, successor-choice card, or a picker is open, Command-\
 is consumed so you finish or cancel that surface first.
 
 ## Editing the draft

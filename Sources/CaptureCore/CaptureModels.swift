@@ -7394,7 +7394,7 @@ extension CapturePomodorosEntryState: Codable {
 }
 
 /// Minimal `capture-pomodoros` entry: the fields the close-comma assist
-/// and Control-\ today-Pomodoro landing need. `taskLinkCount` is the size
+/// and Command-\ today-Pomodoro landing need. `taskLinkCount` is the size
 /// of the numbered Task Link lineup a plain `x` close indexes; it is an
 /// integer only on the `isCurrent` entry and null elsewhere. Older bob
 /// binaries omit `task_link_count`, `ref`, and `state`.

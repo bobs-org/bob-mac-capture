@@ -2,7 +2,7 @@ import Foundation
 
 // Bob returns absolute filesystem `target` paths, not `obsidian://open` URLs.
 // The app builds that URL for note opens and uses the dedicated read-only
-// `bob-goto-task` protocol for the `/` Go To picker and Control-\ today-
+// `bob-goto-task` protocol for the `/` Go To picker and Command-\ today-
 // Pomodoro landing.
 public enum ObsidianOpenURL {
     public static func url(forAbsolutePath path: String) -> URL? {

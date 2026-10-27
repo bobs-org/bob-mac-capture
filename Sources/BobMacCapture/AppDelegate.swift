@@ -160,10 +160,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         hotKeyRegistry = HotKeyRegistry { [weak self] action in
             switch action {
-            case .capture, .captureAlias:
+            case .capture:
                 CaptureSignpost.event("hotkey-received")
                 Task { @MainActor in
                     self?.showCapturePanel()
+                }
+            case .captureAlias:
+                CaptureSignpost.event("hotkey-received")
+                Task { @MainActor in
+                    self?.handleCaptureAliasPress()
                 }
             case .refs, .refsHighlightsOpen:
                 CaptureSignpost.event("refs-hotkey-received")
@@ -449,8 +454,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Registers the global Capture alias (Command-\) when its setting is
-    /// on. Success names every registered capture chord on the Diagnostics
-    /// line; a failure is reported as a Capture alias conflict. The primary
+    /// on. While Capture is key, Command-\ opens today's Pomodoro. Success
+    /// names every registered capture chord on the Diagnostics line; a failure
+    /// is reported as a Capture alias conflict. The primary
     /// chord re-registers only at launch and on Recheck Bob; the alias also
     /// re-registers live. The settings sink passes the value it receives,
     /// because `@Published` emits before the property itself changes.
@@ -468,6 +474,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if registered || (enabled != nil && !wanted) {
             applyRegisteredHotkeyStatus()
         }
+    }
+
+    private func handleCaptureAliasPress() {
+        if panelController?.routeCaptureAliasPress() == true {
+            CaptureSignpost.event("capture-alias-in-panel")
+            return
+        }
+        showCapturePanel()
     }
 
     /// Registers the global Refs hotkey when its setting is on. Success
