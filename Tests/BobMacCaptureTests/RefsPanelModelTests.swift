@@ -842,6 +842,82 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(harness.model.renameCardGeneration, openedGeneration + 2)
   }
 
+  func testRetryableCoordinationRenameErrorsRetainDraftAndDoNotAnnounceSuccess() async throws {
+    let oldPath = "ref/blogs/old_stem.md"
+    let retryableFailures = [
+      (
+        code: "coordination_timeout",
+        message: "Highlights didn't answer; no rename was written.",
+        hint: "Close it in Highlights and retry the rename."
+      ),
+      (
+        code: "marker_changed",
+        message: "The marker changed in Highlights; no files were written.",
+        hint: "Close it in Highlights and retry the rename."
+      ),
+    ]
+
+    for expected in retryableFailures {
+      let fetcher = FakeRefsFetcher()
+      fetcher.listResponse = RefsListResponse(
+        schemaVersion: 1,
+        refs: [Self.renameRecord(path: oldPath, stem: "old_stem")]
+      )
+      fetcher.renameResponse = RefsRenameResponse(
+        schemaVersion: 1,
+        ok: false,
+        error: RefsRenameFailure(
+          code: expected.code,
+          message: expected.message,
+          hint: expected.hint
+        )
+      )
+      let harness = try makeRenameHarness(fetcher: fetcher)
+      await harness.waitForSnapshot(ids: [oldPath])
+      harness.model.prepareForPresentation()
+
+      var failures: [(message: String, hint: String?)] = []
+      var successNotifications: [RefsRenameResponse] = []
+      var announcements: [String] = []
+      harness.model.renameFailureNotifier = { failures.append(($0, $1)) }
+      harness.model.renameNotifier = { successNotifications.append($0) }
+      harness.model.renameAnnouncer = { announcements.append($0) }
+      harness.model.openRenameCard()
+      harness.model.editRenameDraft("retry_after_hold")
+      harness.model.handleRenameCardKey(.submit)
+      harness.model.panelDidHide()
+
+      await harness.waitForModel {
+        if case .failed(let message, let hint) = $0.renameCard?.phase {
+          return message == expected.message && hint == expected.hint
+        }
+        return false
+      }
+
+      XCTAssertEqual(harness.model.renameCard?.draftStem, "retry_after_hold")
+      XCTAssertEqual(harness.model.selectedID, oldPath)
+      XCTAssertNil(harness.model.renameStatus)
+      XCTAssertTrue(successNotifications.isEmpty)
+      XCTAssertTrue(announcements.isEmpty)
+      XCTAssertEqual(failures.count, 1)
+      XCTAssertEqual(failures.first?.message, expected.message)
+      XCTAssertEqual(failures.first?.hint, expected.hint)
+
+      harness.model.prepareForPresentation()
+      if case .failed(let message, let hint) = harness.model.renameCard?.phase {
+        XCTAssertEqual(message, expected.message)
+        XCTAssertEqual(hint, expected.hint)
+      } else {
+        XCTFail("retryable rename error was not shown on the restored card")
+      }
+      XCTAssertEqual(harness.model.renameCard?.draftStem, "retry_after_hold")
+      XCTAssertEqual(harness.model.selectedID, oldPath)
+      XCTAssertNil(harness.model.renameStatus)
+      XCTAssertTrue(successNotifications.isEmpty)
+      XCTAssertTrue(announcements.isEmpty)
+    }
+  }
+
   func testRenameMapsOlderBobFailureToInlineUpdateMessage() async throws {
     let oldPath = "ref/blogs/old_stem.md"
     let fetcher = FakeRefsFetcher()

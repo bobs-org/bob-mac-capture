@@ -611,6 +611,10 @@ public final class RefsPanelModel: ObservableObject {
   /// Called with the inline message when a rename fails after the
   /// panel was hidden.
   public var renameFailureNotifier: (String, String?) -> Void = { _, _ in }
+  /// Announces a successful rename when the panel is visible.
+  public var renameAnnouncer: (String) -> Void = {
+    AccessibilityNotification.Announcement($0).post()
+  }
   /// Hidden-panel Today-link outcomes use system notifications.
   public var todayLinkNotifier: (RefsTodayLinkResponse, String) -> Void = { _, _ in }
   public var todayLinkFailureNotifier: (String, String?) -> Void = { _, _ in }
@@ -2671,9 +2675,7 @@ public final class RefsPanelModel: ObservableObject {
       )
       freshListing(selecting: destination)
       if wasVisible {
-        AccessibilityNotification.Announcement(
-          RefsRenamePresentation.announcement(stem: stem)
-        ).post()
+        renameAnnouncer(RefsRenamePresentation.announcement(stem: stem))
       } else {
         renameNotifier(response)
       }

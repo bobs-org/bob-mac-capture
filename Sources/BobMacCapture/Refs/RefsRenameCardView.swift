@@ -68,11 +68,6 @@ struct RefsRenameCardView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text(RefsRenamePresentation.quietHint)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .fixedSize(horizontal: false, vertical: true)
-
             switch card.phase {
             case .idle:
                 EmptyView()

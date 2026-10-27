@@ -403,7 +403,6 @@ public struct RefsRenameCard: Equatable, Sendable {
 
 public enum RefsRenamePresentation {
   public static let caption = "Also renames the note and updates links. Keeps the reading task."
-  public static let quietHint = "Close the PDF in Highlights first."
 
   public static func footerStatus(stem: String, rewrittenLinks: Int) -> String {
     let fileName = stem + RefsRenameCard.pdfSuffix

@@ -198,7 +198,6 @@ final class RefsRenameTests: XCTestCase {
       RefsRenamePresentation.caption,
       "Also renames the note and updates links. Keeps the reading task."
     )
-    XCTAssertEqual(RefsRenamePresentation.quietHint, "Close the PDF in Highlights first.")
     XCTAssertEqual(
       RefsRenamePresentation.footerStatus(stem: "karpathy_llm_wiki", rewrittenLinks: 1),
       "Renamed → karpathy_llm_wiki.pdf · 1 link updated"
