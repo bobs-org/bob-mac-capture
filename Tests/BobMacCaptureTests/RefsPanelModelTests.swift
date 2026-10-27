@@ -3167,51 +3167,51 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertEqual(notified, 0)
     }
 
-  func testScanWithDirtyHoldKeepsCleanResultsAndRefreshesLibrary() async throws {
-    let markerDir = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    try FileManager.default.createDirectory(
-      at: markerDir,
-      withIntermediateDirectories: true
-    )
-    let scanURL = try harnessFixtureURL("refs-scan-dirty-mixed.json").path
-    let harness = try makeHarness(environment: [
-      "FAKE_BOB_REFS_SCAN_FIXTURE": scanURL,
-      "FAKE_BOB_REFS_LIST_AFTER_SCAN_FIXTURE": "refs-list-after-scan.json",
-      "FAKE_BOB_SCAN_MARKER_DIR": markerDir.path,
-    ])
-    await harness.waitForSnapshot()
-    harness.model.prepareForPresentation()
-    harness.model.panelIsVisible = { true }
+    func testScanWithDirtyHoldKeepsCleanResultsAndRefreshesLibrary() async throws {
+        let markerDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: markerDir,
+            withIntermediateDirectories: true
+        )
+        let scanURL = try harnessFixtureURL("refs-scan-dirty-mixed.json").path
+        let harness = try makeHarness(environment: [
+            "FAKE_BOB_REFS_SCAN_FIXTURE": scanURL,
+            "FAKE_BOB_REFS_LIST_AFTER_SCAN_FIXTURE": "refs-list-after-scan.json",
+            "FAKE_BOB_SCAN_MARKER_DIR": markerDir.path,
+        ])
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        harness.model.panelIsVisible = { true }
 
-    XCTAssertTrue(harness.model.perform(.scan))
-    await harness.waitForScan()
+        XCTAssertTrue(harness.model.perform(.scan))
+        await harness.waitForScan()
 
-    XCTAssertEqual(harness.model.scanNotice?.kind, .succeeded)
-    XCTAssertEqual(
-      harness.model.scanNotice?.created.map(\.path),
-      ["ref/chat/omni_report.md"]
-    )
-    XCTAssertTrue(harness.model.listing.contains(id: "ref/chat/omni_report.md"))
-    XCTAssertNil(harness.model.banner, "a dirty hold is not a scan failure")
-  }
+        XCTAssertEqual(harness.model.scanNotice?.kind, .succeeded)
+        XCTAssertEqual(
+            harness.model.scanNotice?.created.map(\.path),
+            ["ref/chat/omni_report.md"]
+        )
+        XCTAssertTrue(harness.model.listing.contains(id: "ref/chat/omni_report.md"))
+        XCTAssertNil(harness.model.banner, "a dirty hold is not a scan failure")
+    }
 
-  func testAllDirtyScanDoesNotShowFailureBanner() async throws {
-    let scanURL = try harnessFixtureURL("refs-scan-dirty-all.json").path
-    let harness = try makeHarness(environment: [
-      "FAKE_BOB_REFS_SCAN_FIXTURE": scanURL
-    ])
-    await harness.waitForSnapshot()
-    harness.model.prepareForPresentation()
-    harness.model.panelIsVisible = { true }
+    func testAllDirtyScanDoesNotShowFailureBanner() async throws {
+        let scanURL = try harnessFixtureURL("refs-scan-dirty-all.json").path
+        let harness = try makeHarness(environment: [
+            "FAKE_BOB_REFS_SCAN_FIXTURE": scanURL
+        ])
+        await harness.waitForSnapshot()
+        harness.model.prepareForPresentation()
+        harness.model.panelIsVisible = { true }
 
-    XCTAssertTrue(harness.model.perform(.scan))
-    await harness.waitForScan()
+        XCTAssertTrue(harness.model.perform(.scan))
+        await harness.waitForScan()
 
-    XCTAssertEqual(harness.model.scanNotice?.kind, .succeeded)
-    XCTAssertTrue(harness.model.scanNotice?.created.isEmpty == true)
-    XCTAssertNil(harness.model.banner, "all-held is still a successful scan")
-  }
+        XCTAssertEqual(harness.model.scanNotice?.kind, .succeeded)
+        XCTAssertTrue(harness.model.scanNotice?.created.isEmpty == true)
+        XCTAssertNil(harness.model.banner, "all-held is still a successful scan")
+    }
 
     func testNoticeClearsOnHideAfterSeen() async throws {
         let harness = try makeHarness()

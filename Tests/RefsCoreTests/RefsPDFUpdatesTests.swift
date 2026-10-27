@@ -8,12 +8,12 @@ final class RefsPDFUpdatesTests: XCTestCase {
         let response = try decode(scanJSON)
 
         XCTAssertEqual(response.generatedAt, "2026-10-23T10:15:00Z")
-    XCTAssertEqual(response.summary.held, 4)
-    XCTAssertEqual(response.held.count, 4)
+        XCTAssertEqual(response.summary.held, 4)
+        XCTAssertEqual(response.held.count, 4)
         XCTAssertEqual(
-      response.held.map(\.reason), [
-        "editor_active", "coordination_timeout", "marker_changed", "dirty_targets",
-      ])
+            response.held.map(\.reason), [
+                "editor_active", "coordination_timeout", "marker_changed", "dirty_targets",
+            ])
         XCTAssertEqual(response.notes.count, 4)
         XCTAssertEqual(response.notes[0].markerWrite?.mode, "coordinated")
         XCTAssertTrue(try XCTUnwrap(response.notes[0].markerWrite).editorSavedFirst)
@@ -45,7 +45,7 @@ final class RefsPDFUpdatesTests: XCTestCase {
         XCTAssertEqual(updates.readingHolds.map(\.pdf), ["lib/reading.pdf"])
         XCTAssertEqual(updates.busyHolds.map(\.pdf), ["lib/busy.pdf"])
         XCTAssertEqual(updates.changedHolds.map(\.pdf), ["lib/changed.pdf"])
-    XCTAssertEqual(updates.dirtyHolds.map(\.pdf), ["lib/local.pdf"])
+        XCTAssertEqual(updates.dirtyHolds.map(\.pdf), ["lib/local.pdf"])
         XCTAssertEqual(updates.busyHoldDedupeKeys, ["busy:lib/busy.pdf"])
     }
 
@@ -301,31 +301,31 @@ final class RefsPDFUpdatesTests: XCTestCase {
         )
     }
 
-  func testDirtyHoldsHaveRetryFooterWithoutBusyWarningOrNotification() {
-    let one = hold("lib/local.pdf", reason: "dirty_targets")
-    let two = hold("lib/other-local.pdf", reason: "dirty_targets")
-    let updates = RefsPDFUpdates(response: RefsScanResponse(held: [one, two]))
-    let surface = RefsPDFUpdatePresentation.surface(
-      for: updates,
-      panelVisible: false,
-      notificationsEnabled: true,
-      previouslyNotifiedBusyKeys: []
-    )
+    func testDirtyHoldsHaveRetryFooterWithoutBusyWarningOrNotification() {
+        let one = hold("lib/local.pdf", reason: "dirty_targets")
+        let two = hold("lib/other-local.pdf", reason: "dirty_targets")
+        let updates = RefsPDFUpdates(response: RefsScanResponse(held: [one, two]))
+        let surface = RefsPDFUpdatePresentation.surface(
+            for: updates,
+            panelVisible: false,
+            notificationsEnabled: true,
+            previouslyNotifiedBusyKeys: []
+        )
 
-    XCTAssertEqual(updates.dirtyHolds.map(\.pdf), ["lib/local.pdf", "lib/other-local.pdf"])
-    XCTAssertEqual(
-      surface.footerClauses,
-      ["2 PDFs held for local changes · retrying next scan"]
-    )
-    XCTAssertNil(surface.banner)
-    XCTAssertTrue(surface.notifications.isEmpty)
+        XCTAssertEqual(updates.dirtyHolds.map(\.pdf), ["lib/local.pdf", "lib/other-local.pdf"])
+        XCTAssertEqual(
+            surface.footerClauses,
+            ["2 PDFs held for local changes · retrying next scan"]
+        )
+        XCTAssertNil(surface.banner)
+        XCTAssertTrue(surface.notifications.isEmpty)
 
-    let single = RefsPDFUpdates(response: RefsScanResponse(held: [one]))
-    XCTAssertEqual(
-      RefsPDFUpdatePresentation.footerClauses(for: single),
-      ["1 PDF held for local changes · retrying next scan"]
-    )
-  }
+        let single = RefsPDFUpdates(response: RefsScanResponse(held: [one]))
+        XCTAssertEqual(
+            RefsPDFUpdatePresentation.footerClauses(for: single),
+            ["1 PDF held for local changes · retrying next scan"]
+        )
+    }
 
     private func hold(
         _ pdf: String,
