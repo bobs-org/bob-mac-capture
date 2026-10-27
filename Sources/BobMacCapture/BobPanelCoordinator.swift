@@ -1,3 +1,5 @@
+import RefsCore
+
 /// Owns the one-Bob-panel rule: Capture and Refs are never visible
 /// together. Showing Refs while Capture is visible first retains the
 /// capture draft, so reopening Capture restores it. Showing Capture while
