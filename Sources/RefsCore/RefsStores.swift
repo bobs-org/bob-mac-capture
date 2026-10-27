@@ -6,592 +6,592 @@ import Foundation
 /// is renamed to `*.corrupt.json` and reported through `onError`, and saves
 /// are atomic with a 0600 file in a 0700 directory.
 public struct RefsSnapshotFile: Codable, Equatable, Sendable {
-  public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 1
 
-  public var schemaVersion: Int
-  public var snapshot: RefsSnapshot?
-  public var today: RefsToday?
+    public var schemaVersion: Int
+    public var snapshot: RefsSnapshot?
+    public var today: RefsToday?
 
-  public init(
-    schemaVersion: Int = RefsSnapshotFile.currentSchemaVersion,
-    snapshot: RefsSnapshot? = nil,
-    today: RefsToday? = nil
-  ) {
-    self.schemaVersion = schemaVersion
-    self.snapshot = snapshot
-    self.today = today
-  }
+    public init(
+        schemaVersion: Int = RefsSnapshotFile.currentSchemaVersion,
+        snapshot: RefsSnapshot? = nil,
+        today: RefsToday? = nil
+    ) {
+        self.schemaVersion = schemaVersion
+        self.snapshot = snapshot
+        self.today = today
+    }
 
-  private enum CodingKeys: String, CodingKey {
-    case schemaVersion = "schema_version"
-    case snapshot
-    case today
-  }
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case snapshot
+        case today
+    }
 }
 
 public struct RefsSnapshotStore: Sendable {
-  public static let bundleIdentifier = "org.bobs.bob-mac-capture"
-  public static let fileName = "refs-snapshot.json"
-  public static let quarantineFileName = "refs-snapshot.corrupt.json"
+    public static let bundleIdentifier = "org.bobs.bob-mac-capture"
+    public static let fileName = "refs-snapshot.json"
+    public static let quarantineFileName = "refs-snapshot.corrupt.json"
 
-  public static let unreadableQuarantinedMessage =
-    "Refs snapshot unreadable; quarantined and started empty"
-  public static let unreadableStartedEmptyMessage =
-    "Refs snapshot unreadable; started empty"
+    public static let unreadableQuarantinedMessage =
+        "Refs snapshot unreadable; quarantined and started empty"
+    public static let unreadableStartedEmptyMessage =
+        "Refs snapshot unreadable; started empty"
 
-  private let fileURL: URL
-  private let fileManager: FileManager
-  private let onError: @Sendable (String) -> Void
+    private let fileURL: URL
+    private let fileManager: FileManager
+    private let onError: @Sendable (String) -> Void
 
-  public init(
-    fileURL: URL,
-    fileManager: FileManager = .default,
-    onError: @escaping @Sendable (String) -> Void = { _ in }
-  ) {
-    self.fileURL = fileURL
-    self.fileManager = fileManager
-    self.onError = onError
-  }
-
-  public static func defaultFileURL(fileManager: FileManager = .default) throws -> URL {
-    let support = try fileManager.url(
-      for: .applicationSupportDirectory,
-      in: .userDomainMask,
-      appropriateFor: nil,
-      create: false
-    )
-    return
-      support
-      .appendingPathComponent(bundleIdentifier, isDirectory: true)
-      .appendingPathComponent(fileName, isDirectory: false)
-  }
-
-  public static func saveFailureMessage(for error: Error) -> String {
-    "Refs snapshot not saved: \(error.localizedDescription)"
-  }
-
-  // Load never creates the Application Support directory or the cache
-  // file. AppDelegate construction under `swift test` must not litter
-  // the developer's real support directory.
-  public func load() -> RefsSnapshotFile {
-    guard fileManager.fileExists(atPath: fileURL.path) else {
-      return RefsSnapshotFile()
+    public init(
+        fileURL: URL,
+        fileManager: FileManager = .default,
+        onError: @escaping @Sendable (String) -> Void = { _ in }
+    ) {
+        self.fileURL = fileURL
+        self.fileManager = fileManager
+        self.onError = onError
     }
 
-    do {
-      let data = try Data(contentsOf: fileURL)
-      let file = try RefsStoreCodecs.decoder().decode(RefsSnapshotFile.self, from: data)
-      guard file.schemaVersion == RefsSnapshotFile.currentSchemaVersion else {
-        quarantineUnreadableFile()
-        return RefsSnapshotFile()
-      }
-      return file
-    } catch {
-      quarantineUnreadableFile()
-      return RefsSnapshotFile()
+    public static func defaultFileURL(fileManager: FileManager = .default) throws -> URL {
+        let support = try fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        )
+        return
+            support
+            .appendingPathComponent(bundleIdentifier, isDirectory: true)
+            .appendingPathComponent(fileName, isDirectory: false)
     }
-  }
 
-  public func save(snapshot: RefsSnapshot, today: RefsToday?) {
-    do {
-      try RefsStoreCodecs.ensureParentDirectory(for: fileURL, fileManager: fileManager)
-      let file = RefsSnapshotFile(snapshot: snapshot, today: today)
-      let data = try RefsStoreCodecs.encoder().encode(file)
-      try RefsStoreCodecs.writeAtomically(
-        data,
-        to: fileURL,
-        fileManager: fileManager
-      )
-    } catch {
-      onError(Self.saveFailureMessage(for: error))
+    public static func saveFailureMessage(for error: Error) -> String {
+        "Refs snapshot not saved: \(error.localizedDescription)"
     }
-  }
 
-  private var parentDirectoryURL: URL {
-    fileURL.deletingLastPathComponent()
-  }
+    // Load never creates the Application Support directory or the cache
+    // file. AppDelegate construction under `swift test` must not litter
+    // the developer's real support directory.
+    public func load() -> RefsSnapshotFile {
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            return RefsSnapshotFile()
+        }
 
-  private var quarantineURL: URL {
-    parentDirectoryURL.appendingPathComponent(
-      Self.quarantineFileName,
-      isDirectory: false
-    )
-  }
-
-  private func quarantineUnreadableFile() {
-    do {
-      try RefsStoreCodecs.removeItemIfExists(at: quarantineURL, fileManager: fileManager)
-      try fileManager.moveItem(at: fileURL, to: quarantineURL)
-      onError(Self.unreadableQuarantinedMessage)
-    } catch {
-      onError(Self.unreadableStartedEmptyMessage)
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let file = try RefsStoreCodecs.decoder().decode(RefsSnapshotFile.self, from: data)
+            guard file.schemaVersion == RefsSnapshotFile.currentSchemaVersion else {
+                quarantineUnreadableFile()
+                return RefsSnapshotFile()
+            }
+            return file
+        } catch {
+            quarantineUnreadableFile()
+            return RefsSnapshotFile()
+        }
     }
-  }
+
+    public func save(snapshot: RefsSnapshot, today: RefsToday?) {
+        do {
+            try RefsStoreCodecs.ensureParentDirectory(for: fileURL, fileManager: fileManager)
+            let file = RefsSnapshotFile(snapshot: snapshot, today: today)
+            let data = try RefsStoreCodecs.encoder().encode(file)
+            try RefsStoreCodecs.writeAtomically(
+                data,
+                to: fileURL,
+                fileManager: fileManager
+            )
+        } catch {
+            onError(Self.saveFailureMessage(for: error))
+        }
+    }
+
+    private var parentDirectoryURL: URL {
+        fileURL.deletingLastPathComponent()
+    }
+
+    private var quarantineURL: URL {
+        parentDirectoryURL.appendingPathComponent(
+            Self.quarantineFileName,
+            isDirectory: false
+        )
+    }
+
+    private func quarantineUnreadableFile() {
+        do {
+            try RefsStoreCodecs.removeItemIfExists(at: quarantineURL, fileManager: fileManager)
+            try fileManager.moveItem(at: fileURL, to: quarantineURL)
+            onError(Self.unreadableQuarantinedMessage)
+        } catch {
+            onError(Self.unreadableStartedEmptyMessage)
+        }
+    }
 }
 
 /// One successful open of a reference PDF in Highlights or the default app.
 /// Note opens, reveals, selections, and previews are never recorded.
 public struct RefsOpenEvent: Codable, Equatable, Sendable {
-  public let path: String
-  public let at: Date
+    public let path: String
+    public let at: Date
 
-  public init(path: String, at: Date) {
-    self.path = path
-    self.at = at
-  }
+    public init(path: String, at: Date) {
+        self.path = path
+        self.at = at
+    }
 
-  private enum CodingKeys: String, CodingKey {
-    case path
-    case at
-  }
+    private enum CodingKeys: String, CodingKey {
+        case path
+        case at
+    }
 }
 
 public struct RefsOpenLogFile: Codable, Equatable, Sendable {
-  public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 1
 
-  public var schemaVersion: Int
-  public var opens: [RefsOpenEvent]
+    public var schemaVersion: Int
+    public var opens: [RefsOpenEvent]
 
-  public init(
-    schemaVersion: Int = RefsOpenLogFile.currentSchemaVersion,
-    opens: [RefsOpenEvent] = []
-  ) {
-    self.schemaVersion = schemaVersion
-    self.opens = opens
-  }
+    public init(
+        schemaVersion: Int = RefsOpenLogFile.currentSchemaVersion,
+        opens: [RefsOpenEvent] = []
+    ) {
+        self.schemaVersion = schemaVersion
+        self.opens = opens
+    }
 
-  private enum CodingKeys: String, CodingKey {
-    case schemaVersion = "schema_version"
-    case opens
-  }
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case opens
+    }
 }
 
 /// The append-only open history: note paths and timestamps only. Pruning
 /// drops events older than 365 days, then keeps the newest 2000.
 public struct RefsOpenLogStore: Sendable {
-  public static let bundleIdentifier = "org.bobs.bob-mac-capture"
-  public static let fileName = "refs-open-log.json"
-  public static let quarantineFileName = "refs-open-log.corrupt.json"
-  public static let maxEvents = 2000
-  public static let maxAgeDays = 365
+    public static let bundleIdentifier = "org.bobs.bob-mac-capture"
+    public static let fileName = "refs-open-log.json"
+    public static let quarantineFileName = "refs-open-log.corrupt.json"
+    public static let maxEvents = 2000
+    public static let maxAgeDays = 365
 
-  public static let unreadableQuarantinedMessage =
-    "Refs open log unreadable; quarantined and started empty"
-  public static let unreadableStartedEmptyMessage =
-    "Refs open log unreadable; started empty"
+    public static let unreadableQuarantinedMessage =
+        "Refs open log unreadable; quarantined and started empty"
+    public static let unreadableStartedEmptyMessage =
+        "Refs open log unreadable; started empty"
 
-  private let fileURL: URL
-  private let fileManager: FileManager
-  private let onError: @Sendable (String) -> Void
-  private let now: @Sendable () -> Date
+    private let fileURL: URL
+    private let fileManager: FileManager
+    private let onError: @Sendable (String) -> Void
+    private let now: @Sendable () -> Date
 
-  public init(
-    fileURL: URL,
-    fileManager: FileManager = .default,
-    onError: @escaping @Sendable (String) -> Void = { _ in },
-    now: @escaping @Sendable () -> Date = { Date() }
-  ) {
-    self.fileURL = fileURL
-    self.fileManager = fileManager
-    self.onError = onError
-    self.now = now
-  }
-
-  public static func defaultFileURL(fileManager: FileManager = .default) throws -> URL {
-    let support = try fileManager.url(
-      for: .applicationSupportDirectory,
-      in: .userDomainMask,
-      appropriateFor: nil,
-      create: false
-    )
-    return
-      support
-      .appendingPathComponent(bundleIdentifier, isDirectory: true)
-      .appendingPathComponent(fileName, isDirectory: false)
-  }
-
-  public static func saveFailureMessage(for error: Error) -> String {
-    "Refs open log not saved: \(error.localizedDescription)"
-  }
-
-  public func load() -> [RefsOpenEvent] {
-    guard fileManager.fileExists(atPath: fileURL.path) else {
-      return []
+    public init(
+        fileURL: URL,
+        fileManager: FileManager = .default,
+        onError: @escaping @Sendable (String) -> Void = { _ in },
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) {
+        self.fileURL = fileURL
+        self.fileManager = fileManager
+        self.onError = onError
+        self.now = now
     }
 
-    do {
-      let data = try Data(contentsOf: fileURL)
-      let file = try RefsStoreCodecs.decoder().decode(RefsOpenLogFile.self, from: data)
-      guard file.schemaVersion == RefsOpenLogFile.currentSchemaVersion else {
-        quarantineUnreadableFile()
-        return []
-      }
-      return file.opens
-    } catch {
-      quarantineUnreadableFile()
-      return []
+    public static func defaultFileURL(fileManager: FileManager = .default) throws -> URL {
+        let support = try fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        )
+        return
+            support
+            .appendingPathComponent(bundleIdentifier, isDirectory: true)
+            .appendingPathComponent(fileName, isDirectory: false)
     }
-  }
 
-  /// Loads, appends, prunes, and saves, so concurrent panels cannot lose
-  /// each other's opens.
-  public func append(_ event: RefsOpenEvent) {
-    var opens = load()
-    opens.append(event)
-    save(pruned(opens))
-  }
-
-  /// Rewrites matching history paths while retaining each event's
-  /// timestamp and position in the append-only log.
-  public func rename(from oldPath: String, to newPath: String) {
-    var opens = load()
-    var changed = false
-    for index in opens.indices where opens[index].path == oldPath {
-      opens[index] = RefsOpenEvent(path: newPath, at: opens[index].at)
-      changed = true
+    public static func saveFailureMessage(for error: Error) -> String {
+        "Refs open log not saved: \(error.localizedDescription)"
     }
-    if changed {
-      save(opens)
+
+    public func load() -> [RefsOpenEvent] {
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            return []
+        }
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let file = try RefsStoreCodecs.decoder().decode(RefsOpenLogFile.self, from: data)
+            guard file.schemaVersion == RefsOpenLogFile.currentSchemaVersion else {
+                quarantineUnreadableFile()
+                return []
+            }
+            return file.opens
+        } catch {
+            quarantineUnreadableFile()
+            return []
+        }
     }
-  }
 
-  public func reset() {
-    do {
-      try RefsStoreCodecs.removeItemIfExists(at: fileURL, fileManager: fileManager)
-      try RefsStoreCodecs.removeItemIfExists(
-        at: quarantineURL,
-        fileManager: fileManager
-      )
-    } catch {
-      onError(Self.saveFailureMessage(for: error))
+    /// Loads, appends, prunes, and saves, so concurrent panels cannot lose
+    /// each other's opens.
+    public func append(_ event: RefsOpenEvent) {
+        var opens = load()
+        opens.append(event)
+        save(pruned(opens))
     }
-  }
 
-  func pruned(_ opens: [RefsOpenEvent]) -> [RefsOpenEvent] {
-    let cutoff = now().addingTimeInterval(TimeInterval(-Self.maxAgeDays * 24 * 3_600))
-    let fresh = opens.filter { $0.at >= cutoff }
-    guard fresh.count > Self.maxEvents else {
-      return fresh
+    /// Rewrites matching history paths while retaining each event's
+    /// timestamp and position in the append-only log.
+    public func rename(from oldPath: String, to newPath: String) {
+        var opens = load()
+        var changed = false
+        for index in opens.indices where opens[index].path == oldPath {
+            opens[index] = RefsOpenEvent(path: newPath, at: opens[index].at)
+            changed = true
+        }
+        if changed {
+            save(opens)
+        }
     }
-    return Array(fresh.sorted { $0.at < $1.at }.suffix(Self.maxEvents))
-  }
 
-  private func save(_ opens: [RefsOpenEvent]) {
-    do {
-      try RefsStoreCodecs.ensureParentDirectory(for: fileURL, fileManager: fileManager)
-      let file = RefsOpenLogFile(opens: opens)
-      let data = try RefsStoreCodecs.encoder().encode(file)
-      try RefsStoreCodecs.writeAtomically(
-        data,
-        to: fileURL,
-        fileManager: fileManager
-      )
-    } catch {
-      onError(Self.saveFailureMessage(for: error))
+    public func reset() {
+        do {
+            try RefsStoreCodecs.removeItemIfExists(at: fileURL, fileManager: fileManager)
+            try RefsStoreCodecs.removeItemIfExists(
+                at: quarantineURL,
+                fileManager: fileManager
+            )
+        } catch {
+            onError(Self.saveFailureMessage(for: error))
+        }
     }
-  }
 
-  private var parentDirectoryURL: URL {
-    fileURL.deletingLastPathComponent()
-  }
-
-  private var quarantineURL: URL {
-    parentDirectoryURL.appendingPathComponent(
-      Self.quarantineFileName,
-      isDirectory: false
-    )
-  }
-
-  private func quarantineUnreadableFile() {
-    do {
-      try RefsStoreCodecs.removeItemIfExists(at: quarantineURL, fileManager: fileManager)
-      try fileManager.moveItem(at: fileURL, to: quarantineURL)
-      onError(Self.unreadableQuarantinedMessage)
-    } catch {
-      onError(Self.unreadableStartedEmptyMessage)
+    func pruned(_ opens: [RefsOpenEvent]) -> [RefsOpenEvent] {
+        let cutoff = now().addingTimeInterval(TimeInterval(-Self.maxAgeDays * 24 * 3_600))
+        let fresh = opens.filter { $0.at >= cutoff }
+        guard fresh.count > Self.maxEvents else {
+            return fresh
+        }
+        return Array(fresh.sorted { $0.at < $1.at }.suffix(Self.maxEvents))
     }
-  }
+
+    private func save(_ opens: [RefsOpenEvent]) {
+        do {
+            try RefsStoreCodecs.ensureParentDirectory(for: fileURL, fileManager: fileManager)
+            let file = RefsOpenLogFile(opens: opens)
+            let data = try RefsStoreCodecs.encoder().encode(file)
+            try RefsStoreCodecs.writeAtomically(
+                data,
+                to: fileURL,
+                fileManager: fileManager
+            )
+        } catch {
+            onError(Self.saveFailureMessage(for: error))
+        }
+    }
+
+    private var parentDirectoryURL: URL {
+        fileURL.deletingLastPathComponent()
+    }
+
+    private var quarantineURL: URL {
+        parentDirectoryURL.appendingPathComponent(
+            Self.quarantineFileName,
+            isDirectory: false
+        )
+    }
+
+    private func quarantineUnreadableFile() {
+        do {
+            try RefsStoreCodecs.removeItemIfExists(at: quarantineURL, fileManager: fileManager)
+            try fileManager.moveItem(at: fileURL, to: quarantineURL)
+            onError(Self.unreadableQuarantinedMessage)
+        } catch {
+            onError(Self.unreadableStartedEmptyMessage)
+        }
+    }
 }
 
 public struct RefsNewMarksFile: Codable, Equatable, Sendable {
-  public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 1
 
-  public var schemaVersion: Int
-  public var marks: [RefsNewMarkEntry]
+    public var schemaVersion: Int
+    public var marks: [RefsNewMarkEntry]
 
-  public init(
-    schemaVersion: Int = RefsNewMarksFile.currentSchemaVersion,
-    marks: [RefsNewMarkEntry] = []
-  ) {
-    self.schemaVersion = schemaVersion
-    self.marks = marks
-  }
-
-  private enum CodingKeys: String, CodingKey {
-    case schemaVersion = "schema_version"
-    case marks
-  }
-
-  private struct RawMark: Codable {
-    var path: String
-    var state: String
-    var at: Date
-  }
-
-  public init(from decoder: Decoder) throws {
-    let container = try decoder.container(keyedBy: CodingKeys.self)
-    schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
-    let raw = try container.decode([RawMark].self, forKey: .marks)
-    marks = raw.compactMap { row in
-      guard let state = RefsNewMarkState(rawValue: row.state) else {
-        return nil
-      }
-      return RefsNewMarkEntry(path: row.path, state: state, at: row.at)
+    public init(
+        schemaVersion: Int = RefsNewMarksFile.currentSchemaVersion,
+        marks: [RefsNewMarkEntry] = []
+    ) {
+        self.schemaVersion = schemaVersion
+        self.marks = marks
     }
-  }
 
-  public func encode(to encoder: Encoder) throws {
-    var container = encoder.container(keyedBy: CodingKeys.self)
-    try container.encode(schemaVersion, forKey: .schemaVersion)
-    try container.encode(
-      marks.map { RawMark(path: $0.path, state: $0.state.rawValue, at: $0.at) },
-      forKey: .marks
-    )
-  }
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case marks
+    }
+
+    private struct RawMark: Codable {
+        var path: String
+        var state: String
+        var at: Date
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        let raw = try container.decode([RawMark].self, forKey: .marks)
+        marks = raw.compactMap { row in
+            guard let state = RefsNewMarkState(rawValue: row.state) else {
+                return nil
+            }
+            return RefsNewMarkEntry(path: row.path, state: state, at: row.at)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(
+            marks.map { RawMark(path: $0.path, state: $0.state.rawValue, at: $0.at) },
+            forKey: .marks
+        )
+    }
 }
 
 /// Mac-local NEW marks: note paths, `new`/`seen`, and timestamps.
 /// Pruning drops marks older than 365 days, then keeps the newest 2000.
 public struct RefsNewMarkStore: Sendable {
-  public static let bundleIdentifier = "org.bobs.bob-mac-capture"
-  public static let fileName = "refs-new-marks.json"
-  public static let quarantineFileName = "refs-new-marks.corrupt.json"
-  public static let maxEvents = 2000
-  public static let maxAgeDays = 365
+    public static let bundleIdentifier = "org.bobs.bob-mac-capture"
+    public static let fileName = "refs-new-marks.json"
+    public static let quarantineFileName = "refs-new-marks.corrupt.json"
+    public static let maxEvents = 2000
+    public static let maxAgeDays = 365
 
-  public static let unreadableQuarantinedMessage =
-    "Refs new marks unreadable; quarantined and started empty"
-  public static let unreadableStartedEmptyMessage =
-    "Refs new marks unreadable; started empty"
+    public static let unreadableQuarantinedMessage =
+        "Refs new marks unreadable; quarantined and started empty"
+    public static let unreadableStartedEmptyMessage =
+        "Refs new marks unreadable; started empty"
 
-  private let fileURL: URL
-  private let fileManager: FileManager
-  private let onError: @Sendable (String) -> Void
-  private let now: @Sendable () -> Date
+    private let fileURL: URL
+    private let fileManager: FileManager
+    private let onError: @Sendable (String) -> Void
+    private let now: @Sendable () -> Date
 
-  public init(
-    fileURL: URL,
-    fileManager: FileManager = .default,
-    onError: @escaping @Sendable (String) -> Void = { _ in },
-    now: @escaping @Sendable () -> Date = { Date() }
-  ) {
-    self.fileURL = fileURL
-    self.fileManager = fileManager
-    self.onError = onError
-    self.now = now
-  }
-
-  public static func defaultFileURL(fileManager: FileManager = .default) throws -> URL {
-    let support = try fileManager.url(
-      for: .applicationSupportDirectory,
-      in: .userDomainMask,
-      appropriateFor: nil,
-      create: false
-    )
-    return
-      support
-      .appendingPathComponent(bundleIdentifier, isDirectory: true)
-      .appendingPathComponent(fileName, isDirectory: false)
-  }
-
-  public static func saveFailureMessage(for error: Error) -> String {
-    "Refs new marks not saved: \(error.localizedDescription)"
-  }
-
-  public func load() -> RefsNewMarks {
-    RefsNewMarks(entries: loadEntries())
-  }
-
-  /// Loads, replaces or removes that path's entry, prunes, and saves,
-  /// so concurrent writers cannot lose each other's marks.
-  public func apply(path: String, mark: RefsNewMark?) {
-    var marks = loadEntries()
-    marks.removeAll { $0.path == path }
-    if let mark {
-      marks.append(RefsNewMarkEntry(path: path, state: mark.state, at: mark.at))
-    }
-    save(pruned(marks))
-  }
-
-  /// Rewrites matching history paths while retaining each entry's
-  /// state and instant.
-  public func rename(from oldPath: String, to newPath: String) {
-    var marks = loadEntries()
-    var changed = false
-    for index in marks.indices where marks[index].path == oldPath {
-      marks[index] = RefsNewMarkEntry(
-        path: newPath,
-        state: marks[index].state,
-        at: marks[index].at
-      )
-      changed = true
-    }
-    if changed {
-      save(marks)
-    }
-  }
-
-  func pruned(_ marks: [RefsNewMarkEntry]) -> [RefsNewMarkEntry] {
-    let cutoff = now().addingTimeInterval(TimeInterval(-Self.maxAgeDays * 24 * 3_600))
-    let fresh = marks.filter { $0.at >= cutoff }
-    guard fresh.count > Self.maxEvents else {
-      return fresh
-    }
-    return Array(fresh.sorted { $0.at < $1.at }.suffix(Self.maxEvents))
-  }
-
-  private func loadEntries() -> [RefsNewMarkEntry] {
-    guard fileManager.fileExists(atPath: fileURL.path) else {
-      return []
+    public init(
+        fileURL: URL,
+        fileManager: FileManager = .default,
+        onError: @escaping @Sendable (String) -> Void = { _ in },
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) {
+        self.fileURL = fileURL
+        self.fileManager = fileManager
+        self.onError = onError
+        self.now = now
     }
 
-    do {
-      let data = try Data(contentsOf: fileURL)
-      let file = try RefsStoreCodecs.decoder().decode(RefsNewMarksFile.self, from: data)
-      guard file.schemaVersion == RefsNewMarksFile.currentSchemaVersion else {
-        quarantineUnreadableFile()
-        return []
-      }
-      return file.marks
-    } catch {
-      quarantineUnreadableFile()
-      return []
+    public static func defaultFileURL(fileManager: FileManager = .default) throws -> URL {
+        let support = try fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        )
+        return
+            support
+            .appendingPathComponent(bundleIdentifier, isDirectory: true)
+            .appendingPathComponent(fileName, isDirectory: false)
     }
-  }
 
-  private func save(_ marks: [RefsNewMarkEntry]) {
-    do {
-      try RefsStoreCodecs.ensureParentDirectory(for: fileURL, fileManager: fileManager)
-      let file = RefsNewMarksFile(marks: marks)
-      let data = try RefsStoreCodecs.encoder().encode(file)
-      try RefsStoreCodecs.writeAtomically(
-        data,
-        to: fileURL,
-        fileManager: fileManager
-      )
-    } catch {
-      onError(Self.saveFailureMessage(for: error))
+    public static func saveFailureMessage(for error: Error) -> String {
+        "Refs new marks not saved: \(error.localizedDescription)"
     }
-  }
 
-  private var parentDirectoryURL: URL {
-    fileURL.deletingLastPathComponent()
-  }
-
-  private var quarantineURL: URL {
-    parentDirectoryURL.appendingPathComponent(
-      Self.quarantineFileName,
-      isDirectory: false
-    )
-  }
-
-  private func quarantineUnreadableFile() {
-    do {
-      try RefsStoreCodecs.removeItemIfExists(at: quarantineURL, fileManager: fileManager)
-      try fileManager.moveItem(at: fileURL, to: quarantineURL)
-      onError(Self.unreadableQuarantinedMessage)
-    } catch {
-      onError(Self.unreadableStartedEmptyMessage)
+    public func load() -> RefsNewMarks {
+        RefsNewMarks(entries: loadEntries())
     }
-  }
+
+    /// Loads, replaces or removes that path's entry, prunes, and saves,
+    /// so concurrent writers cannot lose each other's marks.
+    public func apply(path: String, mark: RefsNewMark?) {
+        var marks = loadEntries()
+        marks.removeAll { $0.path == path }
+        if let mark {
+            marks.append(RefsNewMarkEntry(path: path, state: mark.state, at: mark.at))
+        }
+        save(pruned(marks))
+    }
+
+    /// Rewrites matching history paths while retaining each entry's
+    /// state and instant.
+    public func rename(from oldPath: String, to newPath: String) {
+        var marks = loadEntries()
+        var changed = false
+        for index in marks.indices where marks[index].path == oldPath {
+            marks[index] = RefsNewMarkEntry(
+                path: newPath,
+                state: marks[index].state,
+                at: marks[index].at
+            )
+            changed = true
+        }
+        if changed {
+            save(marks)
+        }
+    }
+
+    func pruned(_ marks: [RefsNewMarkEntry]) -> [RefsNewMarkEntry] {
+        let cutoff = now().addingTimeInterval(TimeInterval(-Self.maxAgeDays * 24 * 3_600))
+        let fresh = marks.filter { $0.at >= cutoff }
+        guard fresh.count > Self.maxEvents else {
+            return fresh
+        }
+        return Array(fresh.sorted { $0.at < $1.at }.suffix(Self.maxEvents))
+    }
+
+    private func loadEntries() -> [RefsNewMarkEntry] {
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            return []
+        }
+
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let file = try RefsStoreCodecs.decoder().decode(RefsNewMarksFile.self, from: data)
+            guard file.schemaVersion == RefsNewMarksFile.currentSchemaVersion else {
+                quarantineUnreadableFile()
+                return []
+            }
+            return file.marks
+        } catch {
+            quarantineUnreadableFile()
+            return []
+        }
+    }
+
+    private func save(_ marks: [RefsNewMarkEntry]) {
+        do {
+            try RefsStoreCodecs.ensureParentDirectory(for: fileURL, fileManager: fileManager)
+            let file = RefsNewMarksFile(marks: marks)
+            let data = try RefsStoreCodecs.encoder().encode(file)
+            try RefsStoreCodecs.writeAtomically(
+                data,
+                to: fileURL,
+                fileManager: fileManager
+            )
+        } catch {
+            onError(Self.saveFailureMessage(for: error))
+        }
+    }
+
+    private var parentDirectoryURL: URL {
+        fileURL.deletingLastPathComponent()
+    }
+
+    private var quarantineURL: URL {
+        parentDirectoryURL.appendingPathComponent(
+            Self.quarantineFileName,
+            isDirectory: false
+        )
+    }
+
+    private func quarantineUnreadableFile() {
+        do {
+            try RefsStoreCodecs.removeItemIfExists(at: quarantineURL, fileManager: fileManager)
+            try fileManager.moveItem(at: fileURL, to: quarantineURL)
+            onError(Self.unreadableQuarantinedMessage)
+        } catch {
+            onError(Self.unreadableStartedEmptyMessage)
+        }
+    }
 }
 
 /// Read model over the open log: last-opened dates, open counts, and the
 /// frecency decay `Σ 0.5^(ageDays / frecencyHalfLifeDays)` the ranker
 /// weights.
 public struct RefsOpenStats: Equatable, Sendable {
-  private let lastOpenedByPath: [String: Date]
-  private let countByPath: [String: Int]
-  private let frecencyByPath: [String: Double]
-  public let maxFrecency: Double
+    private let lastOpenedByPath: [String: Date]
+    private let countByPath: [String: Int]
+    private let frecencyByPath: [String: Double]
+    public let maxFrecency: Double
 
-  public init(events: [RefsOpenEvent], now: Date) {
-    var lastOpened: [String: Date] = [:]
-    var counts: [String: Int] = [:]
-    var frecency: [String: Double] = [:]
-    for event in events {
-      counts[event.path, default: 0] += 1
-      if let known = lastOpened[event.path] {
-        lastOpened[event.path] = max(known, event.at)
-      } else {
-        lastOpened[event.path] = event.at
-      }
-      let ageDays = max(0, now.timeIntervalSince(event.at) / 86_400)
-      frecency[event.path, default: 0] += pow(
-        0.5, ageDays / RefsRankingConstants.frecencyHalfLifeDays
-      )
+    public init(events: [RefsOpenEvent], now: Date) {
+        var lastOpened: [String: Date] = [:]
+        var counts: [String: Int] = [:]
+        var frecency: [String: Double] = [:]
+        for event in events {
+            counts[event.path, default: 0] += 1
+            if let known = lastOpened[event.path] {
+                lastOpened[event.path] = max(known, event.at)
+            } else {
+                lastOpened[event.path] = event.at
+            }
+            let ageDays = max(0, now.timeIntervalSince(event.at) / 86_400)
+            frecency[event.path, default: 0] += pow(
+                0.5, ageDays / RefsRankingConstants.frecencyHalfLifeDays
+            )
+        }
+        lastOpenedByPath = lastOpened
+        countByPath = counts
+        frecencyByPath = frecency
+        maxFrecency = frecency.values.max() ?? 0
     }
-    lastOpenedByPath = lastOpened
-    countByPath = counts
-    frecencyByPath = frecency
-    maxFrecency = frecency.values.max() ?? 0
-  }
 
-  public func lastOpened(_ path: String) -> Date? {
-    lastOpenedByPath[path]
-  }
+    public func lastOpened(_ path: String) -> Date? {
+        lastOpenedByPath[path]
+    }
 
-  public func count(_ path: String) -> Int {
-    countByPath[path] ?? 0
-  }
+    public func count(_ path: String) -> Int {
+        countByPath[path] ?? 0
+    }
 
-  public func frecency(_ path: String) -> Double {
-    frecencyByPath[path] ?? 0
-  }
+    public func frecency(_ path: String) -> Double {
+        frecencyByPath[path] ?? 0
+    }
 }
 
 enum RefsStoreCodecs {
-  static func encoder() -> JSONEncoder {
-    let encoder = JSONEncoder()
-    encoder.dateEncodingStrategy = .secondsSince1970
-    encoder.outputFormatting = [.sortedKeys]
-    return encoder
-  }
-
-  static func decoder() -> JSONDecoder {
-    let decoder = JSONDecoder()
-    decoder.dateDecodingStrategy = .secondsSince1970
-    return decoder
-  }
-
-  static func ensureParentDirectory(for fileURL: URL, fileManager: FileManager) throws {
-    try fileManager.createDirectory(
-      at: fileURL.deletingLastPathComponent(),
-      withIntermediateDirectories: true,
-      attributes: [.posixPermissions: 0o700]
-    )
-  }
-
-  static func writeAtomically(
-    _ data: Data,
-    to fileURL: URL,
-    fileManager: FileManager
-  ) throws {
-    try data.write(to: fileURL, options: [.atomic])
-    try fileManager.setAttributes(
-      [.posixPermissions: 0o600],
-      ofItemAtPath: fileURL.path
-    )
-    try fileManager.setAttributes(
-      [.posixPermissions: 0o700],
-      ofItemAtPath: fileURL.deletingLastPathComponent().path
-    )
-  }
-
-  static func removeItemIfExists(at url: URL, fileManager: FileManager) throws {
-    guard fileManager.fileExists(atPath: url.path) else {
-      return
+    static func encoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        encoder.outputFormatting = [.sortedKeys]
+        return encoder
     }
-    try fileManager.removeItem(at: url)
-  }
+
+    static func decoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        return decoder
+    }
+
+    static func ensureParentDirectory(for fileURL: URL, fileManager: FileManager) throws {
+        try fileManager.createDirectory(
+            at: fileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+    }
+
+    static func writeAtomically(
+        _ data: Data,
+        to fileURL: URL,
+        fileManager: FileManager
+    ) throws {
+        try data.write(to: fileURL, options: [.atomic])
+        try fileManager.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: fileURL.path
+        )
+        try fileManager.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: fileURL.deletingLastPathComponent().path
+        )
+    }
+
+    static func removeItemIfExists(at url: URL, fileManager: FileManager) throws {
+        guard fileManager.fileExists(atPath: url.path) else {
+            return
+        }
+        try fileManager.removeItem(at: url)
+    }
 }

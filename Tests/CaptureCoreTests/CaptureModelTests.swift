@@ -3,3549 +3,3549 @@ import XCTest
 @testable import CaptureCore
 
 final class CaptureModelTests: XCTestCase {
-  func testParseResponseDecodesUnknownAdditiveKeys() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "Call bank @Cash+",
-        "body": "Call bank",
-        "mode": "incomplete",
-        "route": "cash",
-        "needs": ["task"],
-        "spans": [
-          { "start": 10, "end": 15, "kind": "sub_bullet_route", "future": true }
-        ],
-        "diagnostics": [],
-        "future_key": "ignored"
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertEqual(decoded.schemaVersion, 1)
-    XCTAssertEqual(
-      decoded.spans,
-      [CaptureSpan(start: 10, end: 15, kind: "sub_bullet_route")]
-    )
-    XCTAssertEqual(decoded.needs, ["task"])
-    XCTAssertEqual(decoded.subBullets, [])
-    XCTAssertEqual(decoded.subBulletDepths, [])
-  }
-
-  func testParseResponseDecodesSubBulletsAndDepthsWhenPresent() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "Prepare launch\\n- confirm owner\\n  - text owner\\n- attach checklist",
-        "body": "Prepare launch",
-        "mode": "task",
-        "needs": [],
-        "spans": [],
-        "diagnostics": [],
-        "sub_bullets": ["confirm owner", "text owner", "attach checklist"],
-        "sub_bullet_depths": [1, 2, 1]
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertEqual(
-      decoded.subBullets,
-      ["confirm owner", "text owner", "attach checklist"]
-    )
-    XCTAssertEqual(decoded.subBulletDepths, [1, 2, 1])
-  }
-
-  func testParseResponseSynthesizesDepthOneForOlderSubBulletResponses() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "Prepare launch\\n- confirm owner\\n- attach checklist",
-        "body": "Prepare launch",
-        "mode": "task",
-        "needs": [],
-        "spans": [],
-        "diagnostics": [],
-        "sub_bullets": ["confirm owner", "attach checklist"]
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertEqual(decoded.subBullets, ["confirm owner", "attach checklist"])
-    XCTAssertEqual(decoded.subBulletDepths, [1, 1])
-  }
-
-  func testParseResponseIgnoresMismatchedSubBulletDepthsSafely() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "Prepare launch\\n- confirm owner\\n  - text owner",
-        "body": "Prepare launch",
-        "mode": "task",
-        "needs": [],
-        "spans": [],
-        "diagnostics": [],
-        "sub_bullets": ["confirm owner", "text owner"],
-        "sub_bullet_depths": [1]
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertEqual(decoded.subBullets, ["confirm owner", "text owner"])
-    XCTAssertEqual(decoded.subBulletDepths, [1, 1])
-  }
-
-  func testParseResponseDecodesBatchItemsWhenPresent() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "First @cash\\n\\nSecond @notes#Ideas",
-        "body": "First",
-        "mode": "task",
-        "route": "cash",
-        "needs": [],
-        "spans": [],
-        "diagnostics": [],
-        "items": [
-          {
-            "index": 1,
-            "range": { "start": 0, "end": 11 },
-            "line_start": 1,
-            "line_end": 1,
-            "body": "First",
-            "mode": "task",
-            "route": "cash",
-            "needs": []
-          },
-          {
-            "index": 2,
-            "range": { "start": 13, "end": 32 },
-            "line_start": 3,
-            "line_end": 3,
-            "body": "Second",
-            "mode": "bullet",
-            "route": "notes",
-            "section": "Ideas",
-            "needs": [],
-            "sub_bullets": ["nested"],
-            "sub_bullet_depths": [2]
-          }
-        ]
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertEqual(decoded.items.count, 2)
-    XCTAssertEqual(decoded.items[0].range, CaptureRange(start: 0, end: 11))
-    XCTAssertEqual(decoded.items[0].lineStart, 1)
-    XCTAssertEqual(decoded.items[1].mode, "bullet")
-    XCTAssertEqual(decoded.items[1].section, "Ideas")
-    XCTAssertEqual(decoded.items[1].subBullets, ["nested"])
-    XCTAssertEqual(decoded.items[1].subBulletDepths, [2])
-  }
-
-  func testParseResponseDecodesTaskBlockIDMarkerAdditions() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "idea @ma^new-id",
-        "body": "idea",
-        "mode": "task",
-        "route": "ma",
-        "block_id": "new-id",
-        "needs": [],
-        "spans": [
-          { "start": 5, "end": 8, "kind": "task_block_id_route" },
-          { "start": 9, "end": 15, "kind": "task_block_id" }
-        ],
-        "diagnostics": []
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertEqual(decoded.mode, "task")
-    XCTAssertEqual(decoded.route, "ma")
-    XCTAssertEqual(decoded.blockID, "new-id")
-    XCTAssertEqual(decoded.spans.map(\.kind), ["task_block_id_route", "task_block_id"])
-  }
-
-  func testParseResponseDecodesEmptySubBulletsArray() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "Prepare launch",
-        "body": "Prepare launch",
-        "mode": "task",
-        "needs": [],
-        "spans": [],
-        "diagnostics": [],
-        "sub_bullets": []
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertEqual(decoded.subBullets, [])
-    XCTAssertEqual(decoded.subBulletDepths, [])
-  }
-
-  func testParseResponseDecodesMissingCollectionsAsEmpty() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "Call bank",
-        "body": "Call bank",
-        "mode": "task"
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertEqual(decoded.needs, [])
-    XCTAssertEqual(decoded.spans, [])
-    XCTAssertEqual(decoded.diagnostics, [])
-    XCTAssertEqual(decoded.subBullets, [])
-    XCTAssertEqual(decoded.subBulletDepths, [])
-  }
-
-  func testParseResponseDecodesGlobalDestinationMetadataTolerantly() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "@@foo+a-id\\nFirst note",
-        "body": "First note",
-        "mode": "sub_bullet",
-        "route": "foo",
-        "block_id": "a-id",
-        "needs": [],
-        "spans": [
-          { "start": 0, "end": 5, "kind": "global_sub_bullet_route" },
-          { "start": 6, "end": 10, "kind": "global_sub_bullet_block_id" }
-        ],
-        "diagnostics": [],
-        "global_destination": {
-          "range": { "start": 0, "end": 10 },
-          "mode": "sub_bullet",
-          "route": "foo",
-          "block_id": "a-id"
-        }
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertEqual(decoded.globalDestination?.range, CaptureRange(start: 0, end: 10))
-    XCTAssertEqual(decoded.globalDestination?.scopeSummary, "foo.md \u{00b7} under ^a-id")
-    XCTAssertEqual(decoded.globalDestination?.needs, [])
-    XCTAssertEqual(
-      decoded.spans.map { captureSemanticCategory(forSpanKind: $0.kind) },
-      [.route, .blockID]
-    )
-  }
-
-  func testCaptureRewriteResponseDecodesFullPayload() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "Buy milk @dev @@",
-        "text": "Buy milk @@dev",
-        "changed": true,
-        "cursor": 14,
-        "rule": "absorb_local_marker",
-        "edits": [
-          { "range": { "start": 9, "end": 14 }, "replacement": "" },
-          { "range": { "start": 14, "end": 16 }, "replacement": "@@dev" }
-        ],
-        "summary": "Moved @dev into @@dev",
-        "notices": ["future notice"],
-        "future_key": "ignored"
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureRewriteResponse.self, from: data)
-
-    XCTAssertEqual(decoded.schemaVersion, 1)
-    XCTAssertTrue(decoded.changed)
-    XCTAssertEqual(decoded.cursor, 14)
-    XCTAssertEqual(decoded.rule, "absorb_local_marker")
-    XCTAssertEqual(
-      decoded.edits,
-      [
-        CaptureRewriteEdit(range: CaptureRange(start: 9, end: 14), replacement: ""),
-        CaptureRewriteEdit(range: CaptureRange(start: 14, end: 16), replacement: "@@dev"),
-      ]
-    )
-    XCTAssertEqual(decoded.summary, "Moved @dev into @@dev")
-    XCTAssertEqual(decoded.notices, ["future notice"])
-  }
-
-  func testCaptureRewriteResponseDecodesSeparatorTogglePayload() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "Do work @file:id^",
-        "text": "Do work @file^id",
-        "changed": true,
-        "cursor": 16,
-        "rule": "switch_block_id_separator",
-        "edits": [
-          { "range": { "start": 8, "end": 17 }, "replacement": "@file^id" }
-        ],
-        "summary": "Changed @file:id to @file^id"
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureRewriteResponse.self, from: data)
-
-    XCTAssertEqual(decoded.rule, "switch_block_id_separator")
-    XCTAssertEqual(decoded.text, "Do work @file^id")
-    XCTAssertEqual(decoded.cursor, 16)
-    XCTAssertEqual(
-      decoded.edits,
-      [CaptureRewriteEdit(range: CaptureRange(start: 8, end: 17), replacement: "@file^id")]
-    )
-  }
-
-  func testCaptureRewriteResponseDecodesMinimalNoopPayload() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "No marker",
-        "text": "No marker",
-        "changed": false
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureRewriteResponse.self, from: data)
-
-    XCTAssertFalse(decoded.changed)
-    XCTAssertNil(decoded.cursor)
-    XCTAssertNil(decoded.rule)
-    XCTAssertEqual(decoded.edits, [])
-    XCTAssertNil(decoded.summary)
-    XCTAssertEqual(decoded.notices, [])
-  }
-
-  func testCaptureCommandResponseDecodesRealSuccessShapeWithNoSchemaVersion() throws {
-    let data = Data(
-      """
-      {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
-       "relative_target":"cash.md","target":"/home/bryan/bob/cash.md","text":"Call bank",
-       "task_line":"- [ ] #task Call bank [created::2026-08-13]","kind":"task",
-       "created":"2026-08-13","scheduled":null,"placement":"inserted","future_key":"ignored"}
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
-
-    guard case .success(let success) = decoded else {
-      return XCTFail("Expected a successful response")
-    }
-    XCTAssertTrue(decoded.ok)
-    XCTAssertEqual(success.routeLabel, "cash.md")
-    XCTAssertEqual(success.target, "/home/bryan/bob/cash.md")
-    XCTAssertNil(success.clip)
-    XCTAssertNil(success.scheduleLog)
-    XCTAssertEqual(success.subBullets, [])
-    XCTAssertEqual(success.normalizedCaptures.count, 1)
-  }
-
-  func testCaptureCommandResponseDecodesOrderedMultiCaptureArray() throws {
-    let success = try decodeCaptureSuccess(
-      """
-      {
-        "ok": true,
-        "dry_run": false,
-        "routed": true,
-        "route": "cash",
-        "route_label": "cash.md",
-        "relative_target": "cash.md",
-        "target": "/tmp/bob/cash.md",
-        "text": "First",
-        "task_line": "- [ ] #task First [created::2026-08-14]",
-        "kind": "task",
-        "created": "2026-08-14",
-        "scheduled": null,
-        "placement": "inserted",
-        "captures": [
-          {
-            "ok": true,
-            "dry_run": false,
-            "routed": true,
-            "route": "cash",
-            "route_label": "cash.md",
-            "relative_target": "cash.md",
-            "target": "/tmp/bob/cash.md",
-            "text": "First",
-            "task_line": "- [ ] #task First [created::2026-08-14]",
-            "kind": "task",
-            "created": "2026-08-14",
-            "scheduled": null,
-            "placement": "inserted"
-          },
-          {
-            "ok": true,
-            "dry_run": false,
-            "routed": true,
-            "route": "notes",
-            "route_label": "notes.md",
-            "relative_target": "notes.md",
-            "target": "/tmp/bob/notes.md",
-            "text": "Second",
-            "task_line": "- Second",
-            "kind": "bullet",
-            "created": "2026-08-14",
-            "scheduled": null,
-            "placement": "appended",
-            "sub_bullets": ["  - nested detail"]
-          }
-        ]
-      }
-      """
-    )
-
-    XCTAssertEqual(success.routeLabel, "cash.md")
-    XCTAssertEqual(success.captures.map(\.text), ["First", "Second"])
-    XCTAssertEqual(success.normalizedCaptures.map(\.relativeTarget), ["cash.md", "notes.md"])
-    XCTAssertEqual(
-      success.normalizedCaptures[1].previewBlockLines, ["- Second", "  - nested detail"])
-  }
-
-  func testCaptureCommandResponseDecodesGlobalDestinationSummary() throws {
-    let success = try decodeCaptureSuccess(
-      """
-      {
-        "ok": true,
-        "dry_run": false,
-        "routed": true,
-        "route": "foo",
-        "route_label": "foo.md",
-        "relative_target": "foo.md",
-        "target": "/tmp/bob/foo.md",
-        "text": "First",
-        "task_line": "- [ ] #task First [created::2026-08-14]",
-        "kind": "task",
-        "created": "2026-08-14",
-        "scheduled": null,
-        "placement": "inserted",
-        "global_destination": { "mode": "task", "route": "foo" },
-        "captures": [
-          {
-            "ok": true,
-            "dry_run": false,
-            "routed": true,
-            "route": "foo",
-            "route_label": "foo.md",
-            "relative_target": "foo.md",
-            "target": "/tmp/bob/foo.md",
-            "text": "First",
-            "task_line": "- [ ] #task First [created::2026-08-14]",
-            "kind": "task",
-            "created": "2026-08-14",
-            "scheduled": null,
-            "placement": "inserted"
-          }
-        ]
-      }
-      """
-    )
-
-    let globalDestination = try XCTUnwrap(success.globalDestination)
-    XCTAssertEqual(globalDestination.scopeSummary, "foo.md")
-    XCTAssertTrue(captureUsesGlobalDestination(success.normalizedCaptures[0], globalDestination))
-  }
-
-  func testMalformedMultiCaptureArrayFailsDecode() {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "dry_run": false,
-        "routed": true,
-        "route": "cash",
-        "route_label": "cash.md",
-        "relative_target": "cash.md",
-        "target": "/tmp/bob/cash.md",
-        "text": "First",
-        "task_line": "- [ ] #task First [created::2026-08-14]",
-        "kind": "task",
-        "created": "2026-08-14",
-        "scheduled": null,
-        "placement": "inserted",
-        "captures": [
-          { "ok": true, "dry_run": false }
-        ]
-      }
-      """.utf8
-    )
-
-    XCTAssertThrowsError(try JSONDecoder().decode(CaptureCommandResponse.self, from: data))
-  }
-
-  func testCaptureCommandResponseDecodesRenderedNestedSubBulletsWhenPresent() throws {
-    let data = Data(
-      """
-      {"ok":true,"dry_run":false,"routed":true,"route":"cash","route_label":"cash.md",
-       "relative_target":"cash.md","target":"/home/bryan/bob/cash.md","text":"Prepare launch",
-       "task_line":"- [ ] #task Prepare launch [created::2026-08-14]","kind":"task",
-       "created":"2026-08-14","scheduled":null,"placement":"inserted",
-       "sub_bullets":["  - confirm owner","    - text owner","  - attach checklist",
-                      "    - verify links"]}
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
-
-    guard case .success(let success) = decoded else {
-      return XCTFail("Expected a successful response")
-    }
-    XCTAssertEqual(
-      success.subBullets,
-      [
-        "  - confirm owner",
-        "    - text owner",
-        "  - attach checklist",
-        "    - verify links",
-      ])
-  }
-
-  func testCaptureCommandResponseDecodesUnknownAdditiveTopLevelKeys() throws {
-    let data = Data(
-      """
-      {"ok":true,"dry_run":false,"routed":true,"route":"cash","route_label":"cash.md",
-       "relative_target":"cash.md","target":"/home/bryan/bob/cash.md","text":"Prepare launch",
-       "task_line":"- [ ] #task Prepare launch [created::2026-08-14]","kind":"task",
-       "created":"2026-08-14","scheduled":null,"placement":"inserted",
-       "future_field":{"nested":true}}
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
-
-    guard case .success(let success) = decoded else {
-      return XCTFail("Expected a successful response")
-    }
-    XCTAssertEqual(success.subBullets, [])
-  }
-
-  func testCaptureCommandResponseDecodesHeaderlessSingleClipWithOmittedEntries() throws {
-    let success = try decodeCaptureSuccess(
-      #"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"inline","lines":["\t- hello-clip"],"attachments":[]}}"#
-    )
-
-    XCTAssertEqual(success.clip?.header, nil)
-    XCTAssertEqual(success.clip?.mode, "inline")
-    XCTAssertEqual(success.clip?.lines, ["\t- hello-clip"])
-    XCTAssertEqual(success.clip?.attachments, [])
-    XCTAssertEqual(success.clip?.entries, [])
-  }
-
-  func testCaptureCommandResponseDecodesHeaderedClipWithOmittedEntries() throws {
-    let success = try decodeCaptureSuccess(
-      #"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":"MYNOTE","mode":"inline","lines":["\t- **MYNOTE:** hello-clip"],"attachments":[]}}"#
-    )
-
-    XCTAssertEqual(success.clip?.header, "MYNOTE")
-    XCTAssertEqual(success.clip?.mode, "inline")
-    XCTAssertEqual(success.clip?.lines, ["\t- **MYNOTE:** hello-clip"])
-    XCTAssertEqual(success.clip?.entries, [])
-  }
-
-  func testCaptureCommandResponseDecodesAttachmentClipWithOmittedEntries() throws {
-    let success = try decodeCaptureSuccess(
-      #"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"attachments","lines":["\t- ![[img/shot.png|400]]"],"attachments":[{"source":"/tmp/tmp.GQUVrOEvrX/shot.png","saved":"img/shot.png","kind":"image","reused":false}]}}"#
-    )
-
-    XCTAssertEqual(success.clip?.mode, "attachments")
-    XCTAssertEqual(success.clip?.lines, ["\t- ![[img/shot.png|400]]"])
-    XCTAssertEqual(
-      success.clip?.attachments,
-      [
-        CaptureAttachmentOutput(
-          source: "/tmp/tmp.GQUVrOEvrX/shot.png",
-          saved: "img/shot.png",
-          kind: "image",
-          reused: false
-        )
-      ])
-    XCTAssertEqual(success.clip?.entries, [])
-  }
-
-  func testCaptureCommandResponseDecodesSnippetClipWithOmittedEntries() throws {
-    let success = try decodeCaptureSuccess(
-      #"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"snippet","lines":["\t- [[file/clip-20260715-131415-heading]]"],"attachments":[],"snippet":"file/clip-20260715-131415-heading.md"}}"#
-    )
-
-    XCTAssertEqual(success.clip?.mode, "snippet")
-    XCTAssertEqual(success.clip?.snippet, "file/clip-20260715-131415-heading.md")
-    XCTAssertEqual(success.clip?.entries, [])
-  }
-
-  func testCaptureCommandResponseDecodesHistoryClipWithNestedOmittedEntries() throws {
-    let success = try decodeCaptureSuccess(
-      #"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.XA4h1kbsUm/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"history","lines":["\t- hello-clip","\t- older one","\t- older two"],"attachments":[],"entries":[{"header":null,"mode":"inline","lines":["\t- hello-clip"],"attachments":[]},{"header":null,"mode":"lines","lines":["\t- older one","\t- older two"],"attachments":[]}]}}"#
-    )
-
-    XCTAssertEqual(success.clip?.mode, "history")
-    XCTAssertEqual(success.clip?.entries.count, 2)
-    XCTAssertEqual(success.clip?.entries[0].lines, ["\t- hello-clip"])
-    XCTAssertEqual(success.clip?.entries[0].entries, [])
-    XCTAssertEqual(success.clip?.entries[1].mode, "lines")
-    XCTAssertEqual(success.clip?.entries[1].entries, [])
-  }
-
-  func testPreviewBlockLinesOrderAuthoredChildrenClipThenScheduleLog() throws {
-    let data = Data(
-      """
-      {"ok":true,"dry_run":true,"routed":true,"route":"work","route_label":"work.md",
-       "relative_target":"work.md","target":"/home/bryan/bob/work.md",
-       "text":"Prepare the launch review",
-       "task_line":"- [ ] #task Prepare the launch review [created::2026-08-14] [priority::high] [scheduled::2026-08-18]",
-       "kind":"task","created":"2026-08-14","scheduled":"2026-08-18","placement":"inserted",
-       "sub_bullets":["  - Confirm the rollout owner",
-                      "    - Text the owner",
-                      "  - Attach the final checklist",
-                      "    - Verify the links"],
-       "clip":{"header":null,"mode":"lines","lines":["  - clipped one","  - clipped two"],
-               "attachments":[],"entries":[]},
-       "schedule_log":{"reason":"p:1 roll","lines":["  - **SCHEDULE LOG**",
-                                                    "    - _2026-08-18_ — p:1 roll"]}}
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
-
-    guard case .success(let success) = decoded else {
-      return XCTFail("Expected a successful response")
-    }
-    XCTAssertEqual(
-      success.previewBlockLines,
-      [
-        success.taskLine,
-        "  - Confirm the rollout owner",
-        "    - Text the owner",
-        "  - Attach the final checklist",
-        "    - Verify the links",
-        "  - clipped one",
-        "  - clipped two",
-        "  - **SCHEDULE LOG**",
-        "    - _2026-08-18_ — p:1 roll",
-      ]
-    )
-  }
-
-  func testPreviewBlockLinesIsJustTheTaskLineForAPlainCapture() throws {
-    let data = Data(
-      """
-      {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
-       "relative_target":"cash.md","target":"/home/bryan/bob/cash.md","text":"Call bank",
-       "task_line":"- [ ] #task Call bank [created::2026-08-14]","kind":"task",
-       "created":"2026-08-14","scheduled":null,"placement":"inserted"}
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
-
-    guard case .success(let success) = decoded else {
-      return XCTFail("Expected a successful response")
-    }
-    XCTAssertEqual(success.previewBlockLines, [success.taskLine])
-    XCTAssertEqual(success.normalizedCaptures.map(\.text), ["Call bank"])
-  }
-
-  func testCaptureCommandSuccessNormalizesOrderedMultiCaptureArray() throws {
-    let data = Data(
-      """
-      {"ok":true,"dry_run":false,"routed":true,"route":"work","route_label":"work.md",
-       "relative_target":"work.md","target":"/home/bryan/bob/work.md",
-       "text":"Ship release","task_line":"- [ ] #task Ship release [created::2026-08-14]",
-       "kind":"task","created":"2026-08-14","scheduled":null,"placement":"inserted",
-       "captures":[
-         {"ok":true,"dry_run":false,"routed":true,"route":"work","route_label":"work.md",
-          "relative_target":"work.md","target":"/home/bryan/bob/work.md",
-          "text":"Ship release","task_line":"- [ ] #task Ship release [created::2026-08-14]",
-          "kind":"task","created":"2026-08-14","scheduled":null,"placement":"inserted"},
-         {"ok":true,"dry_run":false,"routed":true,"route":"ideas","route_label":"ideas.md",
-          "relative_target":"ideas.md","target":"/home/bryan/bob/ideas.md",
-          "text":"Capture follow-up","task_line":"- Capture follow-up",
-          "kind":"bullet","created":"2026-08-14","scheduled":"2026-08-19","placement":"append"}
-       ]}
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
-
-    guard case .success(let success) = decoded else {
-      return XCTFail("Expected a successful response")
-    }
-    XCTAssertEqual(success.normalizedCaptures.map(\.text), ["Ship release", "Capture follow-up"])
-    XCTAssertEqual(
-      success.normalizedCaptures.map(\.target),
-      [
-        "/home/bryan/bob/work.md",
-        "/home/bryan/bob/ideas.md",
-      ])
-  }
-
-  func testPreviewBlockLinesOmitsClipForNoClipLivePreview() {
-    // Continuous live preview runs `--no-clip`, so `clip` is absent while the same
-    // draft's explicit Preview resolves it. Only the schedule log survives.
-    let success = CaptureCommandSuccess(
-      ok: true,
-      dryRun: true,
-      routed: true,
-      routeLabel: "work.md",
-      relativeTarget: "work.md",
-      target: "/home/bryan/bob/work.md",
-      text: "Prepare the launch review",
-      taskLine: "- [ ] #task Prepare the launch review [created::2026-08-14]",
-      kind: "task",
-      created: "2026-08-14",
-      placement: "inserted",
-      subBullets: ["\t- Confirm the rollout owner"],
-      scheduleLog: CaptureScheduleLog(
-        reason: "p:1 roll",
-        lines: ["\t- **SCHEDULE LOG**"]
-      )
-    )
-
-    XCTAssertEqual(
-      success.previewBlockLines,
-      [
-        "- [ ] #task Prepare the launch review [created::2026-08-14]",
-        "\t- Confirm the rollout owner",
-        "\t- **SCHEDULE LOG**",
-      ]
-    )
-  }
-
-  func testCaptureCommandResponseDecodesRealFailureShape() throws {
-    let data = Data(
-      #"{"error":"clipboard command xclip exited with 1","ok":false}"#.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
-
-    guard case .failure(let failure) = decoded else {
-      return XCTFail("Expected a failed response")
-    }
-    XCTAssertFalse(decoded.ok)
-    XCTAssertEqual(failure.error, "clipboard command xclip exited with 1")
-  }
-
-  func testObsidianOpenURLRoundTripsAbsolutePath() throws {
-    let path = "/Users/bryan/bob/cash & notes #1.md"
-    let url = try XCTUnwrap(ObsidianOpenURL.url(forAbsolutePath: path))
-
-    XCTAssertEqual(url.scheme, "obsidian")
-    XCTAssertEqual(url.host, "open")
-    let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
-    let decodedPath = components.queryItems?.first { $0.name == "path" }?.value
-    XCTAssertEqual(decodedPath, path)
-  }
-
-  func testObsidianOpenURLReturnsNilForEmptyPath() {
-    XCTAssertNil(ObsidianOpenURL.url(forAbsolutePath: ""))
-  }
-
-  func testBoundedProcessTextPreservesUtf8Boundary() {
-    let text = String(repeating: "a", count: 4) + "é" + String(repeating: "b", count: 10)
-    let bounded = boundedProcessText(text, limit: 5)
-
-    XCTAssertTrue(bounded.hasSuffix("..."))
-    XCTAssertFalse(bounded.contains("\u{FFFD}"))
-  }
-
-  func testCaptureTargetsResponseDecodesCurrentBobCliShape() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "bob_dir": "/tmp/bob",
-        "count": 1,
-        "targets": [
-          {
-            "route": "cash",
-            "name": "cash",
-            "label": "cash.md",
-            "kind": "area",
-            "is_default": false,
-            "status": null,
-            "relative_path": "cash.md"
-          }
-        ]
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureTargetsResponse.self, from: data)
-
-    XCTAssertEqual(decoded.schemaVersion, 1)
-    XCTAssertEqual(decoded.bobDirectory, "/tmp/bob")
-    XCTAssertEqual(decoded.targets.first?.label, "cash.md")
-    XCTAssertEqual(decoded.targets.first?.kind, "area")
-  }
-
-  func testCaptureCommandResponseDecodesCurrentDryRunShape() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "dry_run": true,
-        "routed": true,
-        "route": "mac_inbox",
-        "route_label": "mac_inbox.md",
-        "relative_target": "mac_inbox.md",
-        "target": "/tmp/bob/mac_inbox.md",
-        "text": "buy milk",
-        "task_line": "- [ ] #task buy milk [created::2026-08-14]",
-        "kind": "task",
-        "created": "2026-08-14",
-        "scheduled": null,
-        "placement": "created"
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
-
-    guard case .success(let success) = decoded else {
-      return XCTFail("Expected a successful response")
-    }
-    XCTAssertEqual(success.taskLine, "- [ ] #task buy milk [created::2026-08-14]")
-    XCTAssertEqual(success.routeLabel, "mac_inbox.md")
-    XCTAssertEqual(success.placement, "created")
-  }
-
-  func testCaptureCommandResponseDecodesOrdinaryTaskWithBlockID() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "dry_run": false,
-        "routed": true,
-        "route": "dev",
-        "route_label": "dev.md",
-        "relative_target": "dev.md",
-        "target": "/tmp/bob/dev.md",
-        "text": "Do work",
-        "task_line": "- [ ] #task Do work [created::2026-08-14] ^new-id",
-        "kind": "task",
-        "created": "2026-08-14",
-        "scheduled": null,
-        "placement": "inserted",
-        "block_id": "new-id"
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
-
-    guard case .success(let success) = decoded else {
-      return XCTFail("Expected a successful response")
-    }
-    XCTAssertEqual(success.kind, "task")
-    XCTAssertEqual(success.blockID, "new-id")
-    XCTAssertEqual(success.taskLine, "- [ ] #task Do work [created::2026-08-14] ^new-id")
-    XCTAssertNil(success.dayFile)
-    XCTAssertNil(success.blockLink)
-    XCTAssertNil(success.pomodoroLinkPlacement)
-    XCTAssertNil(success.parentText)
-    XCTAssertEqual(success.previewBlockLines, [success.taskLine])
-  }
-
-  func testCaptureCommandResponseDecodesSubBulletSuccess() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "dry_run": false,
-        "routed": true,
-        "route": "file",
-        "route_label": "file.md",
-        "relative_target": "file.md",
-        "target": "/tmp/bob/file.md",
-        "text": "Add context",
-        "task_line": "- Add context",
-        "kind": "sub_bullet",
-        "block_id": "parent-id",
-        "parent_text": "Parent",
-        "parent_line": 1,
-        "created": "2026-08-14",
-        "scheduled": null,
-        "placement": "inserted"
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
-
-    guard case .success(let success) = decoded else {
-      return XCTFail("Expected a successful response")
-    }
-    XCTAssertEqual(success.kind, "sub_bullet")
-    XCTAssertEqual(success.blockID, "parent-id")
-    XCTAssertEqual(success.parentText, "Parent")
-    XCTAssertEqual(success.parentLine, 1)
-  }
-
-  func testCaptureCommandResponseDecodesTaskToggleSuccessAdditiveFields() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "dry_run": false,
-        "routed": true,
-        "route": "cash",
-        "route_label": "cash.md",
-        "relative_target": "cash.md",
-        "target": "/tmp/bob/cash.md",
-        "text": "",
-        "task_line": "- [*] #task Finish Google Exit Packet! ^goog-exit",
-        "kind": "task_toggle",
-        "created": "2026-09-10",
-        "scheduled": null,
-        "placement": "toggled",
-        "block_id": "goog-exit",
-        "day_file": "/tmp/bob/2026/20260910.md",
-        "block_link": "[[cash#^goog-exit]]",
-        "toggle_direction": "next",
-        "previous_task_line": "- [ ] #task Finish Google Exit Packet! ^goog-exit",
-        "status_symbol": "*",
-        "status_name": "Next",
-        "previous_status_symbol": " ",
-        "previous_status_name": "Ready",
-        "pomodoro_name": "CODING",
-        "creates_pomodoro": true,
-        "pomodoro_already_linked": false,
-        "removed_pomodoro_links": 2,
-        "removed_scheduled": "2026-09-20",
-        "pomodoro_selector_unused": false
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
-
-    guard case .success(let success) = decoded else {
-      return XCTFail("Expected a successful response")
-    }
-    XCTAssertEqual(success.kind, "task_toggle")
-    XCTAssertEqual(success.placement, "toggled")
-    XCTAssertEqual(success.toggleDirection, "next")
-    XCTAssertEqual(success.previousTaskLine, "- [ ] #task Finish Google Exit Packet! ^goog-exit")
-    XCTAssertEqual(success.statusSymbol, "*")
-    XCTAssertEqual(success.statusName, "Next")
-    XCTAssertEqual(success.previousStatusSymbol, " ")
-    XCTAssertEqual(success.previousStatusName, "Ready")
-    XCTAssertEqual(success.pomodoroName, "CODING")
-    XCTAssertEqual(success.createsPomodoro, true)
-    XCTAssertEqual(success.pomodoroAlreadyLinked, false)
-    XCTAssertEqual(success.removedPomodoroLinks, 2)
-    XCTAssertEqual(success.removedScheduled, "2026-09-20")
-    XCTAssertEqual(success.pomodoroSelectorUnused, false)
-    XCTAssertEqual(success.previewBlockLines, [success.taskLine])
-    XCTAssertNil(success.toggleBehavior)
-    XCTAssertNil(success.statusChanged)
-    XCTAssertNil(success.pomodoroLinkAction)
-    XCTAssertNil(success.pomodoroLinkSource)
-    XCTAssertNil(success.pomodoroLinkDestination)
-  }
-
-  func testCaptureCommandResponseDecodesEnsureNextAdditiveFields() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "dry_run": false,
-        "routed": true,
-        "route": "cash",
-        "route_label": "cash.md",
-        "relative_target": "cash.md",
-        "target": "/tmp/bob/cash.md",
-        "text": "",
-        "task_line": "- [*] #task Finish Google Exit Packet! ^goog-exit",
-        "kind": "task_toggle",
-        "created": "2026-09-10",
-        "placement": "toggled",
-        "block_id": "goog-exit",
-        "day_file": "/tmp/bob/2026/20260910.md",
-        "block_link": "[[cash#^goog-exit]]",
-        "toggle_direction": "next",
-        "previous_task_line": "- [ ] #task Finish Google Exit Packet! ^goog-exit",
-        "status_symbol": "*",
-        "status_name": "Next",
-        "previous_status_symbol": " ",
-        "previous_status_name": "Ready",
-        "creates_pomodoro": false,
-        "pomodoro_already_linked": false,
-        "removed_pomodoro_links": 0,
-        "toggle_behavior": "ensure_next",
-        "status_changed": true,
-        "pomodoro_link_action": "moved",
-        "pomodoro_link_source": { "line": 4, "name": "LATER" },
-        "pomodoro_link_destination": { "line": 2, "name": "CURRENT", "time_range": "0900-0930" }
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
-    guard case .success(let success) = decoded else {
-      return XCTFail("Expected a successful response")
-    }
-    XCTAssertEqual(success.toggleBehavior, "ensure_next")
-    XCTAssertEqual(success.statusChanged, true)
-    XCTAssertEqual(success.pomodoroLinkAction, "moved")
-    XCTAssertEqual(success.pomodoroLinkSource?.line, 4)
-    XCTAssertEqual(success.pomodoroLinkSource?.name, "LATER")
-    XCTAssertEqual(success.pomodoroLinkDestination?.name, "CURRENT")
-    XCTAssertEqual(success.pomodoroLinkDestination?.timeRange, "0900-0930")
-  }
-
-  func testCaptureCommandResponseDecodesNamedEnsureNextCreationFields() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "dry_run": false,
-        "routed": true,
-        "route": "cash",
-        "route_label": "cash.md",
-        "relative_target": "cash.md",
-        "target": "/tmp/bob/cash.md",
-        "text": "",
-        "task_line": "- [*] #task Finish Google Exit Packet! ^goog-exit",
-        "kind": "task_toggle",
-        "created": "2026-09-10",
-        "placement": "toggled",
-        "block_id": "goog-exit",
-        "day_file": "/tmp/bob/2026/20260910.md",
-        "block_link": "[[cash#^goog-exit]]",
-        "toggle_direction": "next",
-        "previous_task_line": "- [ ] #task Finish Google Exit Packet! ^goog-exit",
-        "status_symbol": "*",
-        "status_name": "Next",
-        "previous_status_symbol": " ",
-        "previous_status_name": "Ready",
-        "pomodoro_name": "FRESH",
-        "creates_pomodoro": true,
-        "pomodoro_already_linked": false,
-        "removed_pomodoro_links": 0,
-        "toggle_behavior": "ensure_next",
-        "status_changed": true,
-        "pomodoro_link_action": "moved",
-        "pomodoro_link_source": { "line": 4, "name": "LATER" },
-        "pomodoro_link_destination": { "line": 5, "name": "FRESH" }
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
-    guard case .success(let success) = decoded else {
-      return XCTFail("Expected a successful response")
-    }
-    XCTAssertEqual(success.toggleBehavior, "ensure_next")
-    XCTAssertEqual(success.createsPomodoro, true)
-    XCTAssertEqual(success.pomodoroName, "FRESH")
-    XCTAssertEqual(success.pomodoroLinkAction, "moved")
-    XCTAssertEqual(success.pomodoroLinkDestination?.name, "FRESH")
-    XCTAssertEqual(success.removedPomodoroLinks, 0)
-    XCTAssertNotEqual(success.pomodoroSelectorUnused, true)
-  }
-
-  func testCaptureCommandResponseDecodesTaskToggleAdditiveFieldsAsNilWhenAbsent() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "dry_run": false,
-        "routed": true,
-        "route": "dev",
-        "route_label": "dev.md",
-        "relative_target": "dev.md",
-        "target": "/tmp/bob/dev.md",
-        "text": "Do work",
-        "task_line": "- [ ] #task Do work ^new-id",
-        "kind": "task",
-        "created": "2026-08-14",
-        "placement": "inserted",
-        "block_id": "new-id"
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
-
-    guard case .success(let success) = decoded else {
-      return XCTFail("Expected a successful response")
-    }
-    XCTAssertNil(success.toggleDirection)
-    XCTAssertNil(success.previousTaskLine)
-    XCTAssertNil(success.statusSymbol)
-    XCTAssertNil(success.statusName)
-    XCTAssertNil(success.previousStatusSymbol)
-    XCTAssertNil(success.previousStatusName)
-    XCTAssertNil(success.pomodoroName)
-    XCTAssertNil(success.createsPomodoro)
-    XCTAssertNil(success.pomodoroAlreadyLinked)
-    XCTAssertNil(success.removedPomodoroLinks)
-    XCTAssertNil(success.removedScheduled)
-    XCTAssertNil(success.toggleBehavior)
-    XCTAssertNil(success.statusChanged)
-    XCTAssertNil(success.pomodoroLinkAction)
-    XCTAssertNil(success.pomodoroLinkSource)
-    XCTAssertNil(success.pomodoroLinkDestination)
-    XCTAssertNil(success.pomodoroSelectorUnused)
-  }
-
-  func testCaptureCommandResponseDecodesPomodoroLinkSuccessFields() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "dry_run": true,
-        "routed": true,
-        "route": "sase",
-        "route_label": "sase.md",
-        "relative_target": "sase.md",
-        "target": "/tmp/bob/sase.md",
-        "text": "",
-        "task_line": "- [*] #task Fix deep bug ^deep-fix",
-        "kind": "pomodoro_link",
-        "created": "2026-07-10",
-        "scheduled": null,
-        "placement": "linked",
-        "block_id": "deep-fix",
-        "day_file": "/tmp/bob/2026/20260710.md",
-        "block_link": "[[sase#^deep-fix]]",
-        "previous_task_line": "- [*] #task Fix deep bug ^deep-fix",
-        "status_symbol": "*",
-        "status_name": "Next",
-        "previous_status_symbol": "*",
-        "previous_status_name": "Next",
-        "pomodoro_name": "BUGS",
-        "creates_pomodoro": false,
-        "status_changed": false,
-        "pomodoro_link_action": "already_current",
-        "pomodoro_link_source": { "line": 5, "name": "BUGS" },
-        "pomodoro_link_destination": { "line": 5, "name": "BUGS" }
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
-
-    guard case .success(let success) = decoded else {
-      return XCTFail("Expected a successful response")
-    }
-    XCTAssertEqual(success.kind, "pomodoro_link")
-    XCTAssertEqual(success.placement, "linked")
-    XCTAssertEqual(success.pomodoroLinkAction, "already_current")
-    XCTAssertEqual(
-      success.pomodoroLinkSource,
-      PomodoroLinkEndpoint(line: 5, name: "BUGS")
-    )
-    XCTAssertEqual(
-      success.pomodoroLinkDestination,
-      PomodoroLinkEndpoint(line: 5, name: "BUGS")
-    )
-    XCTAssertEqual(success.statusChanged, false)
-    XCTAssertNil(success.toggleDirection)
-    XCTAssertNil(success.toggleBehavior)
-    XCTAssertNil(success.pomodoroStart)
-    XCTAssertNotNil(CapturePomodoroLinkPresentation(capture: success))
-    XCTAssertNil(CaptureTogglePresentation(capture: success))
-  }
-
-  func testCaptureCommandResponseDecodesPomodoroLinkFieldsAsNilForOlderBob() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "dry_run": false,
-        "routed": true,
-        "route": "sase",
-        "route_label": "sase.md",
-        "relative_target": "sase.md",
-        "target": "/tmp/bob/sase.md",
-        "text": "Write outline",
-        "task_line": "- [*] #task Write outline [created::2026-08-14] ^outline",
-        "kind": "pomodoro_task",
-        "created": "2026-08-14",
-        "placement": "inserted",
-        "block_id": "outline"
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
-
-    guard case .success(let success) = decoded else {
-      return XCTFail("Expected a successful response")
-    }
-    XCTAssertNil(success.pomodoroLinkAction)
-    XCTAssertNil(success.pomodoroLinkSource)
-    XCTAssertNil(success.pomodoroLinkDestination)
-    XCTAssertEqual(success.droppedDependencies, [])
-    XCTAssertNil(success.linkGuard)
-    XCTAssertNil(CapturePomodoroLinkPresentation(capture: success))
-    XCTAssertNil(CaptureLinkGuardPresentation(capture: success))
-  }
-
-  func testCaptureCommandResponseDecodesDroppedDependenciesFromBob() throws {
-    let success = try decodeFixture("pomodoro-link-dropped-one.json")
-
-    XCTAssertEqual(success.kind, "pomodoro_link")
-    XCTAssertEqual(success.droppedDependencies.count, 1)
-    let dropped = try XCTUnwrap(success.droppedDependencies.first)
-    XCTAssertEqual(dropped.notePath, "job.md")
-    XCTAssertEqual(dropped.blockID, "prep")
-    XCTAssertEqual(dropped.link, "[[job#^prep]]")
-    XCTAssertEqual(dropped.text, "Prep work")
-    XCTAssertEqual(dropped.statusSymbol, " ")
-    XCTAssertEqual(dropped.statusName, "Ready")
-    XCTAssertNil(success.linkGuard)
-    XCTAssertEqual(
-      CaptureDroppedDependency.chip(from: success.droppedDependencies),
-      "dropped dependency on Prep work"
-    )
-  }
-
-  func testCaptureCommandResponseDecodesSeveralDroppedDependencies() throws {
-    let success = try decodeFixture("pomodoro-link-dropped-two.json")
-
-    XCTAssertEqual(success.droppedDependencies.count, 2)
-    XCTAssertEqual(success.droppedDependencies[1].text, "Budget work")
-    XCTAssertEqual(
-      CaptureDroppedDependency.chip(from: success.droppedDependencies),
-      "dropped 2 dependencies"
-    )
-  }
-
-  func testCaptureCommandResponseDecodesLinkGuardWithDropRefused() throws {
-    let success = try decodeFixture("link-guard-project-blocked.json")
-
-    XCTAssertEqual(success.kind, "link_guard")
-    XCTAssertEqual(success.droppedDependencies, [])
-    let linkGuard = try XCTUnwrap(success.linkGuard)
-    XCTAssertEqual(linkGuard.reasons, ["local_dependency", "project_dependency"])
-    XCTAssertEqual(linkGuard.promoted, ["local.md#^prep"])
-    XCTAssertEqual(linkGuard.dropRefused, "project_blocked")
-    XCTAssertTrue(
-      (linkGuard.detail ?? "").contains("dependencies kept: its project is blocked")
-    )
-    XCTAssertNotNil(CaptureLinkGuardPresentation(capture: success))
-    XCTAssertNil(CapturePomodoroLinkPresentation(capture: success))
-    XCTAssertNil(CaptureTogglePresentation(capture: success))
-  }
-
-  func testCompletionResponseDecodesActiveTaskCandidatesWithPomodoro() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "cursor": 1,
-        "replacement": { "start": 1, "end": 1 },
-        "context": "active_task",
-        "candidates": [
-          {
-            "replacement": "sase:deep-fix",
-            "ref": "5:41d049f2",
-            "route": "sase",
-            "block_id": "deep-fix",
-            "status_symbol": "*",
-            "status_name": "Next",
-            "status_type": "ON_HOLD",
-            "text": "Fix deep bug",
-            "section": "Tasks",
-            "pomodoro": { "line": 5, "name": "BUGS", "time_range": null, "is_current": false }
-          },
-          {
-            "replacement": "sase:outline",
-            "ref": "1:f867fe6b",
-            "route": "sase",
-            "block_id": "outline",
-            "status_symbol": "/",
-            "status_name": "In Progress",
-            "status_type": "IN_PROGRESS",
-            "text": "Outline talk",
-            "pomodoro": null
-          }
-        ]
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
-
-    XCTAssertEqual(decoded.context, "active_task")
-    XCTAssertEqual(decoded.candidates.count, 2)
-    XCTAssertEqual(
-      decoded.candidates[0].pomodoro,
-      ActiveTaskPomodoro(line: 5, name: "BUGS", isCurrent: false)
-    )
-    XCTAssertEqual(decoded.candidates[0].statusSymbol, "*")
-    XCTAssertNil(decoded.candidates[1].pomodoro)
-    XCTAssertEqual(
-      CaptureCompletionContext(rawContext: decoded.context),
-      .activeTask
-    )
-  }
-
-  func testCompletionResponseDecodesParentTaskPickerDescriptor() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "cursor": 1,
-        "replacement": { "start": 0, "end": 1 },
-        "context": "task_parent",
-        "query": "",
-        "picker": {
-          "kind": "parent_task",
-          "scope": "vault",
-          "scope_token": "+",
-          "marker_range": { "start": 0, "end": 1 },
-          "trigger_removal_range": { "start": 0, "end": 1 },
-          "action_continuation_keys": ["0", "1", "+"]
-        },
-        "candidates": [
-          {
-            "replacement": "@sase+deep-fix",
-            "ref": "6:41d049f2",
-            "route": "sase",
-            "block_id": "deep-fix",
-            "text": "Fix deep bug"
-          }
-        ]
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
-    XCTAssertEqual(decoded.context, "task_parent")
-    XCTAssertEqual(decoded.query, "")
-    let picker = try XCTUnwrap(decoded.picker)
-    XCTAssertTrue(picker.isParentTask)
-    XCTAssertEqual(picker.scope, "vault")
-    XCTAssertEqual(picker.scopeToken, "+")
-    XCTAssertNil(picker.noteTarget)
-    XCTAssertEqual(picker.actionContinuationKeys, ["0", "1", "+"])
-    let context = try XCTUnwrap(picker.parentTaskContext)
-    XCTAssertTrue(context.isVault)
-    XCTAssertTrue(context.isLonePlusOperator)
-    XCTAssertEqual(decoded.candidates[0].replacement, "@sase+deep-fix")
-  }
-
-  func testCompletionResponseDecodesScopedPickerAndOmitsDescriptorForOlderBob() throws {
-    let scoped = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "cursor": 6,
-        "replacement": { "start": 6, "end": 6 },
-        "context": "task",
-        "query": "",
-        "picker": {
-          "kind": "parent_task",
-          "scope": "note",
-          "scope_token": "@cash+",
-          "note_target": "cash.md",
-          "marker_range": { "start": 0, "end": 6 },
-          "trigger_removal_range": { "start": 5, "end": 6 }
-        },
-        "candidates": [
-          { "replacement": "goog-exit", "block_id": "goog-exit", "route": "cash" }
-        ]
-      }
-      """.utf8
-    )
-    let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: scoped)
-    let picker = try XCTUnwrap(decoded.picker)
-    XCTAssertEqual(picker.scope, "note")
-    XCTAssertEqual(picker.noteTarget, "cash.md")
-    XCTAssertEqual(picker.actionContinuationKeys, [])
-    XCTAssertEqual(picker.triggerRemovalRange, CaptureRange(start: 5, end: 6))
-    let context = try XCTUnwrap(picker.parentTaskContext)
-    XCTAssertFalse(context.isVault)
-    XCTAssertFalse(context.isLonePlusOperator)
-
-    let older = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "cursor": 6,
-        "replacement": { "start": 6, "end": 6 },
-        "context": "task",
-        "candidates": [
-          { "replacement": "goog-exit", "block_id": "goog-exit" }
-        ]
-      }
-      """.utf8
-    )
-    let olderDecoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: older)
-    XCTAssertNil(olderDecoded.picker)
-    XCTAssertNil(olderDecoded.query)
-  }
-
-  func testTaskIDSuccessDecodesParentReplacementAndOmitsForOlderBob() throws {
-    let withField = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "dry_run": false,
-        "route": "mac_inbox",
-        "relative_target": "mac_inbox.md",
-        "block_id": "call-bank",
-        "line": 4,
-        "ref": "4:callbank",
-        "parent_replacement": "@mac_inbox+call-bank",
-        "task": {
-          "ref": "4:callbank",
-          "line": 4,
-          "block_id": "call-bank",
-          "status_symbol": " ",
-          "status_name": "Todo",
-          "status_type": "TODO",
-          "text": "Call the bank",
-          "depth": 0,
-          "child_count": 0
-        }
-      }
-      """.utf8
-    )
-    let success = try JSONDecoder().decode(CaptureTaskIDSuccess.self, from: withField)
-    XCTAssertEqual(success.parentReplacement, "@mac_inbox+call-bank")
-
-    let older = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "dry_run": false,
-        "route": "sase",
-        "relative_target": "sase.md",
-        "block_id": "fix-flaky-gkeep",
-        "line": 7,
-        "ref": "7:198b8e3e",
-        "task": {
-          "ref": "7:198b8e3e",
-          "line": 7,
-          "block_id": "fix-flaky-gkeep",
-          "status_symbol": " ",
-          "status_name": "Todo",
-          "status_type": "TODO",
-          "text": "Fix flaky gkeep test",
-          "depth": 0,
-          "child_count": 0
-        }
-      }
-      """.utf8
-    )
-    let olderSuccess = try JSONDecoder().decode(CaptureTaskIDSuccess.self, from: older)
-    XCTAssertNil(olderSuccess.parentReplacement)
-  }
-
-  func testCompletionResponseDecodesCandidatesWithoutPomodoroForOlderBob() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "cursor": 6,
-        "replacement": { "start": 6, "end": 6 },
-        "context": "route",
-        "candidates": [
-          { "replacement": "today", "route": "today", "label": "today.md", "kind": "inbox" }
-        ]
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
-
-    XCTAssertEqual(decoded.candidates.count, 1)
-    XCTAssertNil(decoded.candidates[0].pomodoro)
-  }
-
-  func testCompletionResponseDecodesRouteAndTaskCandidates() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "cursor": 8,
-        "replacement": { "start": 6, "end": 8 },
-        "context": "task",
-        "candidates": [
-          {
-            "replacement": "goog-exit",
-            "ref": "4:googexit",
-            "block_id": "goog-exit",
-            "route": "cash",
-            "requires_block_id": false,
-            "status_symbol": "*",
-            "status_name": "in-progress",
-            "status_type": "TODO",
-            "text": "Finish Google Exit Packet!",
-            "section": "Tasks",
-            "depth": 0,
-            "child_count": 2
-          },
-          {
-            "replacement": "",
-            "ref": "8:missing",
-            "block_id": null,
-            "route": "cash",
-            "requires_block_id": true,
-            "status_symbol": " ",
-            "status_name": "Todo",
-            "status_type": "TODO",
-            "text": "Plan handoff",
-            "section": "Tasks",
-            "depth": 1,
-            "child_count": 0
-          }
-        ]
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
-
-    XCTAssertEqual(decoded.context, "task")
-    XCTAssertEqual(decoded.replacement, CaptureRange(start: 6, end: 8))
-    XCTAssertEqual(decoded.candidates.first?.taskRef, "4:googexit")
-    XCTAssertEqual(decoded.candidates.first?.route, "cash")
-    XCTAssertEqual(decoded.candidates.first?.requiresBlockID, false)
-    XCTAssertEqual(decoded.candidates.first?.childCount, 2)
-    XCTAssertEqual(decoded.candidates[1].taskRef, "8:missing")
-    XCTAssertNil(decoded.candidates[1].blockID)
-    XCTAssertTrue(decoded.candidates[1].requiresBlockID)
-    XCTAssertEqual(decoded.candidates[1].replacement, "")
-    XCTAssertFalse(decoded.candidates[0].requiresName)
-    XCTAssertNil(decoded.candidates[0].line)
-    XCTAssertNil(decoded.candidates[0].state)
-    XCTAssertNil(decoded.candidates[0].timeRange)
-    XCTAssertFalse(decoded.candidates[0].placeholder)
-    XCTAssertFalse(decoded.candidates[0].isCurrent)
-    XCTAssertNil(decoded.candidates[0].matchCount)
-  }
-
-  func testCompletionResponseDecodesPomodoroNameCandidatesIncludingAbsentAdditiveFields() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "cursor": 26,
-        "replacement": { "start": 26, "end": 26 },
-        "context": "pomodoro_name",
-        "candidates": [
-          {
-            "replacement": "memory",
-            "ref": "31:1a2b3c4d",
-            "name": "MEMORY",
-            "requires_name": false,
-            "line": 31,
-            "state": "open",
-            "status_symbol": " ",
-            "time_range": "1205-1230",
-            "placeholder": false,
-            "is_current": true,
-            "child_count": 5,
-            "match_count": 2
-          },
-          {
-            "replacement": "",
-            "ref": "38:9f8e7d6c",
-            "name": null,
-            "requires_name": true,
-            "line": 38,
-            "state": "open",
-            "status_symbol": " ",
-            "time_range": null,
-            "placeholder": true,
-            "is_current": false,
-            "child_count": 0,
-            "match_count": 1
-          },
-          {
-            "replacement": "bugs",
-            "ref": "12:abcd1234",
-            "name": "BUGS"
-          },
-          {
-            "replacement": "future",
-            "name": "FUTURE",
-            "requires_name": false,
-            "creates_pomodoro": true,
-            "state": "open",
-            "status_symbol": " ",
-            "placeholder": true,
-            "is_current": false,
-            "child_count": 0,
-            "match_count": 1
-          }
-        ]
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
-
-    XCTAssertEqual(decoded.context, "pomodoro_name")
-    XCTAssertEqual(decoded.candidates[0].taskRef, "31:1a2b3c4d")
-    XCTAssertEqual(decoded.candidates[0].name, "MEMORY")
-    XCTAssertFalse(decoded.candidates[0].requiresName)
-    XCTAssertEqual(decoded.candidates[0].line, 31)
-    XCTAssertEqual(decoded.candidates[0].state, "open")
-    XCTAssertEqual(decoded.candidates[0].timeRange, "1205-1230")
-    XCTAssertFalse(decoded.candidates[0].placeholder)
-    XCTAssertTrue(decoded.candidates[0].isCurrent)
-    XCTAssertEqual(decoded.candidates[0].childCount, 5)
-    XCTAssertEqual(decoded.candidates[0].matchCount, 2)
-    XCTAssertTrue(decoded.candidates[1].requiresName)
-    XCTAssertEqual(decoded.candidates[1].replacement, "")
-    XCTAssertNil(decoded.candidates[1].name)
-    XCTAssertTrue(decoded.candidates[1].placeholder)
-    XCTAssertEqual(decoded.candidates[1].childCount, 0)
-    XCTAssertFalse(decoded.candidates[2].requiresName)
-    XCTAssertNil(decoded.candidates[2].line)
-    XCTAssertNil(decoded.candidates[2].timeRange)
-    XCTAssertFalse(decoded.candidates[2].placeholder)
-    XCTAssertFalse(decoded.candidates[2].isCurrent)
-    XCTAssertNil(decoded.candidates[2].matchCount)
-    XCTAssertFalse(decoded.candidates[0].createsPomodoro)
-    XCTAssertFalse(decoded.candidates[1].createsPomodoro)
-    XCTAssertFalse(decoded.candidates[2].createsPomodoro)
-    XCTAssertTrue(decoded.candidates[3].createsPomodoro)
-    XCTAssertEqual(decoded.candidates[3].replacement, "future")
-    XCTAssertEqual(decoded.candidates[3].name, "FUTURE")
-    XCTAssertNil(decoded.candidates[3].taskRef)
-    XCTAssertNil(decoded.candidates[3].line)
-    XCTAssertTrue(decoded.candidates[3].placeholder)
-    XCTAssertFalse(decoded.candidates[3].requiresName)
-  }
-
-  func testCompletionCandidateDecodesThemeHistoryAndBobHueRefs() throws {
-    let candidate = try JSONDecoder().decode(
-      CaptureCompletionCandidate.self,
-      from: Data(
-        """
-        {
-          "replacement":"BOOKS",
-          "name":"BOOKS",
-          "creates_pomodoro":true,
-          "origin":"history",
-          "last_used":"2026-10-21",
-          "days_used":3,
-          "themes":[
-            {"key":"books","name":"BOOKS","hue":"aqua","hue_source":"area"},
-            {"key":"unknown","name":"UNKNOWN","hue":null,"hue_source":"hash","known":false}
-          ]
-        }
-        """.utf8
-      )
-    )
-
-    XCTAssertEqual(candidate.origin, "history")
-    XCTAssertEqual(candidate.lastUsed, "2026-10-21")
-    XCTAssertEqual(candidate.daysUsed, 3)
-    XCTAssertEqual(candidate.themes.count, 2)
-    XCTAssertEqual(candidate.themes[0].hue, .aqua)
-    XCTAssertEqual(candidate.themes[0].hueSource, "area")
-    XCTAssertTrue(candidate.themes[0].known)
-    XCTAssertNil(candidate.themes[1].hue)
-    XCTAssertFalse(candidate.themes[1].known)
-  }
-
-  func testCompletionResponseDecodesTaskSectionCandidatesWithoutNewCodingKeys() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "cursor": 29,
-        "replacement": { "start": 29, "end": 29 },
-        "context": "task_section",
-        "candidates": [
-          {
-            "replacement": "requirements",
-            "title": "REQUIREMENTS",
-            "slug": "requirements",
-            "route": "foo",
-            "block_id": "bar",
-            "text": "Parent task",
-            "line": 4,
-            "child_count": 2,
-            "cursor_after": 41
-          }
-        ]
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
-
-    XCTAssertEqual(decoded.context, "task_section")
-    XCTAssertEqual(decoded.replacement, CaptureRange(start: 29, end: 29))
-    XCTAssertEqual(decoded.candidates.first?.replacement, "requirements")
-    XCTAssertEqual(decoded.candidates.first?.title, "REQUIREMENTS")
-    XCTAssertEqual(decoded.candidates.first?.route, "foo")
-    XCTAssertEqual(decoded.candidates.first?.blockID, "bar")
-    XCTAssertEqual(decoded.candidates.first?.text, "Parent task")
-    XCTAssertEqual(decoded.candidates.first?.childCount, 2)
-    XCTAssertEqual(decoded.candidates.first?.cursorAfter, 41)
-  }
-
-  func testCompletionResponseDecodesMissingCandidatesAsEmpty() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "cursor": 6,
-        "replacement": { "start": 6, "end": 6 },
-        "context": "route"
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
-
-    XCTAssertEqual(decoded.candidates, [])
-  }
-
-  func testCompletionResponseDecodesWikilinkMetadataWarningsAndCursorAfter() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "cursor": 4,
-        "replacement": { "start": 2, "end": 4 },
-        "context": "wikilink_note",
-        "candidates": [
-          {
-            "replacement": "Artificial Intelligence|AI]]",
-            "cursor_after": 30,
-            "path": "Artificial Intelligence.md",
-            "name": "Artificial Intelligence",
-            "alias": "AI",
-            "match_kind": "exact_alias",
-            "future_key": true
-          }
-        ],
-        "warnings": ["skipped unreadable note"],
-        "future_key": "ignored"
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
-
-    XCTAssertEqual(decoded.context, "wikilink_note")
-    XCTAssertEqual(decoded.warnings, ["skipped unreadable note"])
-    XCTAssertEqual(decoded.candidates.first?.cursorAfter, 30)
-    XCTAssertEqual(decoded.candidates.first?.path, "Artificial Intelligence.md")
-    XCTAssertEqual(decoded.candidates.first?.alias, "AI")
-    XCTAssertEqual(decoded.candidates.first?.matchKind, "exact_alias")
-  }
-
-  func testCompletionResponseDecodesWikilinkHeadingAndBlockMetadata() throws {
-    let headingData = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "cursor": 12,
-        "replacement": { "start": 10, "end": 12 },
-        "context": "wikilink_heading",
-        "candidates": [
-          {
-            "replacement": "Design]]",
-            "cursor_after": 18,
-            "path": "sase.md",
-            "heading": "Design",
-            "level": 1,
-            "match_kind": "prefix"
-          }
-        ]
-      }
-      """.utf8
-    )
-    let blockData = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "cursor": 12,
-        "replacement": { "start": 10, "end": 12 },
-        "context": "wikilink_block",
-        "candidates": [
-          {
-            "replacement": "^next-step]]",
-            "cursor_after": 22,
-            "path": "sase.md",
-            "block_id": "next-step",
-            "preview": "Plan the next step",
-            "match_kind": "prefix"
-          }
-        ]
-      }
-      """.utf8
-    )
-
-    let heading = try JSONDecoder().decode(CaptureCompletionResponse.self, from: headingData)
-    let block = try JSONDecoder().decode(CaptureCompletionResponse.self, from: blockData)
-
-    XCTAssertEqual(heading.candidates.first?.heading, "Design")
-    XCTAssertEqual(heading.candidates.first?.level, 1)
-    XCTAssertEqual(block.candidates.first?.blockID, "next-step")
-    XCTAssertEqual(block.candidates.first?.preview, "Plan the next step")
-  }
-
-  func testCaptureTaskIDResponseDecodesVersionedSuccessAndFailure() throws {
-    let successData = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "dry_run": false,
-        "route": "file",
-        "relative_target": "file.md",
-        "block_id": "new-id",
-        "line": 8,
-        "ref": "8:updated",
-        "task": {
-          "ref": "8:updated",
-          "line": 8,
-          "block_id": "new-id",
-          "status_symbol": " ",
-          "status_name": "Todo",
-          "status_type": "TODO",
-          "text": "Plan handoff",
-          "section": "Tasks",
-          "depth": 1,
-          "child_count": 0
-        }
-      }
-      """.utf8
-    )
-    let failureData = Data(
-      #"{"ok":false,"error":"block ID ^new-id already exists in file.md"}"#.utf8)
-
-    let successResponse = try JSONDecoder().decode(CaptureTaskIDResponse.self, from: successData)
-    let failureResponse = try JSONDecoder().decode(CaptureTaskIDResponse.self, from: failureData)
-
-    guard case .success(let success) = successResponse else {
-      return XCTFail("Expected task ID success")
-    }
-    XCTAssertEqual(success.schemaVersion, 1)
-    XCTAssertEqual(success.blockID, "new-id")
-    XCTAssertEqual(success.taskRef, "8:updated")
-    XCTAssertEqual(success.task.text, "Plan handoff")
-
-    guard case .failure(let failure) = failureResponse else {
-      return XCTFail("Expected task ID failure")
-    }
-    XCTAssertEqual(failure.error, "block ID ^new-id already exists in file.md")
-  }
-
-  func testCapturePomodoroNameResponseDecodesVersionedSuccessAndFailure() throws {
-    let successData = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "dry_run": false,
-        "day_file": "/tmp/bob/2026/20260828.md",
-        "relative_day_file": "2026/20260828.md",
-        "name": "DEEP WORK",
-        "slug": "deep-work",
-        "line": 38,
-        "ref": "38:0b1c2d3e",
-        "pomodoro": {
-          "ref": "38:0b1c2d3e",
-          "line": 38,
-          "state": "open",
-          "status_symbol": " ",
-          "name": "DEEP WORK",
-          "slug": "deep-work",
-          "selectable": true,
-          "time_range": null,
-          "placeholder": true,
-          "is_current": false,
-          "child_count": 0
-        }
-      }
-      """.utf8
-    )
-    let failureData = Data(
-      #"{"ok":false,"error":"Pomodoro 38:0b1c2d3e already has a selectable name"}"#.utf8)
-
-    let successResponse = try JSONDecoder().decode(
-      CapturePomodoroNameResponse.self, from: successData)
-    let failureResponse = try JSONDecoder().decode(
-      CapturePomodoroNameResponse.self, from: failureData)
-
-    guard case .success(let success) = successResponse else {
-      return XCTFail("Expected pomodoro name success")
-    }
-    XCTAssertEqual(success.schemaVersion, 1)
-    XCTAssertEqual(success.name, "DEEP WORK")
-    XCTAssertEqual(success.slug, "deep-work")
-    XCTAssertEqual(success.relativeDayFile, "2026/20260828.md")
-    XCTAssertEqual(success.pomodoroRef, "38:0b1c2d3e")
-    XCTAssertEqual(success.pomodoro.name, "DEEP WORK")
-    XCTAssertTrue(success.pomodoro.selectable)
-
-    guard case .failure(let failure) = failureResponse else {
-      return XCTFail("Expected pomodoro name failure")
-    }
-    XCTAssertEqual(failure.error, "Pomodoro 38:0b1c2d3e already has a selectable name")
-  }
-
-  func testAttributedStringUtf8OffsetRoundTripsCollapsedCaret() throws {
-    let text = AttributedString("a 🧪 cafe\u{301}")
-    let plain = String(text.characters)
-    let target = try XCTUnwrap(plain.range(of: "caf"))
-    let offset = plain[..<target.lowerBound].utf8.count
-
-    let index = try XCTUnwrap(attributedStringIndex(in: text, utf8Offset: offset))
-
-    XCTAssertEqual(utf8Offset(in: text, at: index), offset)
-    XCTAssertNil(attributedStringIndex(in: text, utf8Offset: 3))
-  }
-
-  func testUtf16RangeRoundTripsEmojiMarker() throws {
-    let text = "Hi 🧪 @file:id^"
-    let markerStart = text.utf8.count - "@file:id^".utf8.count
-    let markerEnd = text.utf8.count
-    let range = try XCTUnwrap(utf16Range(in: text, start: markerStart, end: markerEnd))
-    XCTAssertEqual((text as NSString).substring(with: range), "@file:id^")
-    XCTAssertEqual(utf8Offset(in: text, utf16Offset: range.location), markerStart)
-    XCTAssertNil(
-      utf16Range(in: text, start: 3, end: 5), "emoji interior is not a UTF-8 boundary pair")
-    XCTAssertNil(utf8Offset(in: text, utf16Offset: 4), "interior surrogate is not a caret")
-  }
-
-  func testValidatedSpanRangesRejectMalformedUtf8AndOverlaps() {
-    let text = "Call 🧪 @Cash"
-    let routeStart = text.utf8.count - "@Cash".utf8.count
-    let routeEnd = text.utf8.count
-
-    let valid = validatedSpanRanges(
-      in: text,
-      spans: [CaptureSpan(start: routeStart, end: routeEnd, kind: "route")]
-    )
-    XCTAssertEqual(valid?.first?.span.kind, "route")
-    if let first = valid?.first {
-      XCTAssertEqual(String(text[first.range]), "@Cash")
-    } else {
-      XCTFail("Expected a valid route span")
-    }
-
-    XCTAssertNil(
-      validatedSpanRanges(
-        in: text,
-        spans: [CaptureSpan(start: 6, end: 7, kind: "route")]
-      ))
-    XCTAssertNil(
-      validatedSpanRanges(
-        in: text,
-        spans: [
-          CaptureSpan(start: routeStart, end: routeEnd, kind: "route"),
-          CaptureSpan(start: routeStart + 1, end: routeEnd, kind: "route"),
-        ]
-      ))
-  }
-
-  private enum CaptureFixtureError: Error {
-    case expectedSuccess
-  }
-
-  func testParseResponseDecodesPomodoroStartSuffix() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "Do work @sase:outline#deep=-2",
-        "body": "Do work",
-        "mode": "pomodoro_task",
-        "route": "sase",
-        "section": "deep",
-        "block_id": "outline",
-        "needs": [],
-        "spans": [
-          { "start": 8, "end": 13, "kind": "pomodoro_route" },
-          { "start": 14, "end": 21, "kind": "pomodoro_block_id" },
-          { "start": 22, "end": 26, "kind": "pomodoro_name" },
-          { "start": 26, "end": 29, "kind": "pomodoro_start" }
-        ],
-        "diagnostics": [],
-        "pomodoro_start": { "raw": "-2", "duration_units": 5, "offset_units": 2 }
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertEqual(
-      decoded.pomodoroStart,
-      PomodoroStartSpec(raw: "-2", durationUnits: 5, offsetUnits: 2)
-    )
-    XCTAssertEqual(
-      decoded.spans.map { captureSemanticCategory(forSpanKind: $0.kind) },
-      [.route, .blockID, .section, .pomodoroStart]
-    )
-  }
-
-  func testParseResponseDecodesWholeItemStart() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "=",
-        "body": "=",
-        "mode": "pomodoro_start",
-        "route": null,
-        "section": null,
-        "block_id": null,
-        "needs": [],
-        "spans": [
-          { "start": 0, "end": 1, "kind": "pomodoro_start" }
-        ],
-        "diagnostics": [],
-        "pomodoro_start": { "raw": "", "duration_units": 5, "offset_units": 0 }
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertEqual(decoded.mode, "pomodoro_start")
-    XCTAssertEqual(
-      decoded.pomodoroStart,
-      PomodoroStartSpec(raw: "", durationUnits: 5, offsetUnits: 0)
-    )
-    XCTAssertEqual(
-      decoded.spans.map { captureSemanticCategory(forSpanKind: $0.kind) },
-      [.pomodoroStart]
-    )
-  }
-
-  func testParseResponseOmitsPomodoroStartForOlderMarkers() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "Do work @dev:id#bugs",
-        "body": "Do work",
-        "mode": "pomodoro_task",
-        "needs": [],
-        "spans": [],
-        "diagnostics": []
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertNil(decoded.pomodoroStart)
-  }
-
-  func testParseResponseDecodesArrayPairDiagnosticRanges() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "Do work @sase:outline=abc",
-        "body": "Do work",
-        "mode": "task",
-        "needs": [],
-        "spans": [],
-        "diagnostics": [
-          {
-            "severity": "error",
-            "code": "invalid_pomodoro_start",
-            "message": "bad suffix",
-            "range": [8, 25]
-          }
-        ]
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertNil(decoded.pomodoroStart)
-    XCTAssertEqual(decoded.diagnostics.first?.code, "invalid_pomodoro_start")
-    XCTAssertEqual(decoded.diagnostics.first?.range, CaptureRange(start: 8, end: 25))
-  }
-
-  func testCaptureCommandDecodesPomodoroStartSummary() throws {
-    let success = try decodeCaptureSuccess(
-      """
-      {
-        "ok": true,
-        "dry_run": true,
-        "routed": true,
-        "route": "sase",
-        "route_label": "sase.md",
-        "relative_target": "sase.md",
-        "target": "/tmp/bob/sase.md",
-        "text": "Write outline",
-        "task_line": "- [*] #task Write outline [created::2026-08-14] ^outline",
-        "kind": "pomodoro_task",
-        "created": "2026-08-14",
-        "scheduled": null,
-        "placement": "inserted",
-        "block_id": "outline",
-        "pomodoro_start": {
-          "start": "0930",
-          "end": "0945",
-          "duration_minutes": 15,
-          "offset_units": 0,
-          "pomodoro_name": null,
-          "pomodoro_line": 12,
-          "created_pomodoro": false,
-          "time_range": "(**0930-0945** [t:: 15m])"
-        }
-      }
-      """
-    )
-
-    XCTAssertEqual(
-      success.pomodoroStart,
-      PomodoroStartSummary(
-        start: "0930",
-        end: "0945",
-        durationMinutes: 15,
-        offsetUnits: 0,
-        pomodoroName: nil,
-        pomodoroLine: 12,
-        createdPomodoro: false,
-        timeRange: "(**0930-0945** [t:: 15m])"
-      )
-    )
-  }
-
-  func testCaptureCommandDecodesWholeItemStartTasks() throws {
-    let success = try decodeCaptureSuccess(
-      """
-      {
-        "ok": true,
-        "dry_run": true,
-        "routed": false,
-        "route": null,
-        "route_label": "",
-        "relative_target": "2026/20260928.md",
-        "target": "/tmp/bob/2026/20260928.md",
-        "text": "=",
-        "task_line": "- [ ] (**0945-1010** [t:: 25m]) — CAPTURE",
-        "kind": "pomodoro_start",
-        "created": "2026-09-28",
-        "scheduled": null,
-        "placement": "started",
-        "pomodoro_name": "CAPTURE",
-        "pomodoro_start": {
-          "start": "0945",
-          "end": "1010",
-          "duration_minutes": 25,
-          "offset_units": 0,
-          "pomodoro_name": "CAPTURE",
-          "pomodoro_line": 4,
-          "created_pomodoro": false,
-          "time_range": "(**0945-1010** [t:: 25m])",
-          "tasks": [
+    func testParseResponseDecodesUnknownAdditiveKeys() throws {
+        let data = Data(
+            """
             {
-              "block_link": "[[bob#^capture-stop]]",
-              "embedded": false,
-              "ledger_line": 5,
-              "resolved": true,
-              "relative_target": "bob.md",
-              "block_id": "capture-stop",
-              "text": "Stop capture from the panel",
-              "status_symbol": "/",
-              "status_name": "In Progress",
-              "warning": null
-            },
-            {
-              "block_link": "[[bob#^gone]]",
-              "embedded": false,
-              "ledger_line": 6,
-              "resolved": false,
-              "relative_target": "bob.md",
-              "block_id": "gone",
-              "text": null,
-              "status_symbol": null,
-              "status_name": null,
-              "warning": "bob.md has no task with block ID ^gone"
+              "ok": true,
+              "schema_version": 1,
+              "input": "Call bank @Cash+",
+              "body": "Call bank",
+              "mode": "incomplete",
+              "route": "cash",
+              "needs": ["task"],
+              "spans": [
+                { "start": 10, "end": 15, "kind": "sub_bullet_route", "future": true }
+              ],
+              "diagnostics": [],
+              "future_key": "ignored"
             }
-          ]
-        }
-      }
-      """
-    )
-
-    XCTAssertEqual(
-      success.pomodoroStart,
-      PomodoroStartSummary(
-        start: "0945",
-        end: "1010",
-        durationMinutes: 25,
-        offsetUnits: 0,
-        pomodoroName: "CAPTURE",
-        pomodoroLine: 4,
-        createdPomodoro: false,
-        timeRange: "(**0945-1010** [t:: 25m])",
-        tasks: [
-          PomodoroStartTask(
-            blockLink: "[[bob#^capture-stop]]",
-            ledgerLine: 5,
-            resolved: true,
-            relativeTarget: "bob.md",
-            blockID: "capture-stop",
-            text: "Stop capture from the panel",
-            statusSymbol: "/",
-            statusName: "In Progress"
-          ),
-          PomodoroStartTask(
-            blockLink: "[[bob#^gone]]",
-            ledgerLine: 6,
-            relativeTarget: "bob.md",
-            blockID: "gone",
-            warning: "bob.md has no task with block ID ^gone"
-          ),
-        ]
-      )
-    )
-  }
-
-  func testCaptureCommandOmitsStartTasksForLinkStartsAndOlderBob() throws {
-    let linkStart = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":true,"routed":true,"route":"sase","route_label":"sase.md",
-       "relative_target":"sase.md","target":"/tmp/bob/sase.md","text":"Do work",
-       "task_line":"- [*] #task Do work [created::2026-08-14] ^outline",
-       "kind":"pomodoro_task","created":"2026-08-14","scheduled":null,
-       "placement":"inserted","block_id":"outline",
-       "pomodoro_start":{"start":"0930","end":"0945","duration_minutes":15,
-        "offset_units":0,"pomodoro_name":null,"pomodoro_line":12,
-        "created_pomodoro":false,"time_range":"(**0930-0945** [t:: 15m])"}}
-      """
-    )
-
-    XCTAssertNil(linkStart.pomodoroStart?.tasks)
-  }
-
-  func testSparsePomodoroStartSummaryStillDecodes() throws {
-    let success = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"",
-       "relative_target":"2026/20260928.md","target":"/tmp/bob/2026/20260928.md",
-       "text":"=","task_line":"- [ ] entry","kind":"pomodoro_start",
-       "created":"2026-09-28","scheduled":null,"placement":"started",
-       "pomodoro_start":{"tasks":[{}]}}
-      """
-    )
-
-    XCTAssertEqual(
-      success.pomodoroStart,
-      PomodoroStartSummary(
-        start: "",
-        end: "",
-        durationMinutes: 0,
-        offsetUnits: 0,
-        pomodoroLine: 0,
-        createdPomodoro: false,
-        timeRange: "",
-        tasks: [PomodoroStartTask(blockLink: "")]
-      )
-    )
-  }
-
-  func testCaptureCommandOmitsPomodoroStartForOlderBobBinaries() throws {
-    let success = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
-       "relative_target":"cash.md","target":"/tmp/bob/cash.md","text":"Call bank",
-       "task_line":"- [ ] #task Call bank [created::2026-08-14]","kind":"task",
-       "created":"2026-08-14","scheduled":null,"placement":"inserted"}
-      """
-    )
-
-    XCTAssertNil(success.pomodoroStart)
-    XCTAssertNil(CapturePomodoroStartPresentation(capture: success))
-  }
-
-  func testParseResponseDecodesPomodoroAdjustSpec() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "+5",
-        "body": "+5",
-        "mode": "pomodoro_adjust",
-        "route": null,
-        "section": null,
-        "block_id": null,
-        "needs": [],
-        "spans": [
-          { "start": 0, "end": 2, "kind": "pomodoro_adjust" }
-        ],
-        "diagnostics": [],
-        "pomodoro_adjust": { "raw": "+5", "plus": true, "units": 5 }
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertEqual(
-      decoded.pomodoroAdjust,
-      PomodoroAdjustSpec(raw: "+5", plus: true, units: 5)
-    )
-    XCTAssertEqual(
-      decoded.spans.map { captureSemanticCategory(forSpanKind: $0.kind) },
-      [.pomodoroStart]
-    )
-  }
-
-  func testParseResponseDecodesMixedDraftAdjustItem() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "+5\\n\\njot idea\\n",
-        "body": "+5",
-        "mode": "pomodoro_adjust",
-        "needs": [],
-        "spans": [
-          { "start": 0, "end": 2, "kind": "pomodoro_adjust" }
-        ],
-        "diagnostics": [],
-        "items": [
-          {
-            "index": 1,
-            "range": { "start": 0, "end": 2 },
-            "line_start": 1,
-            "line_end": 1,
-            "body": "+5",
-            "mode": "pomodoro_adjust",
-            "needs": [],
-            "pomodoro_adjust": { "raw": "+5", "plus": true, "units": 5 }
-          },
-          {
-            "index": 2,
-            "range": { "start": 4, "end": 12 },
-            "line_start": 3,
-            "line_end": 3,
-            "body": "jot idea",
-            "mode": "task",
-            "needs": []
-          }
-        ],
-        "pomodoro_adjust": { "raw": "+5", "plus": true, "units": 5 }
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertEqual(decoded.items.count, 2)
-    XCTAssertEqual(
-      decoded.items[0].pomodoroAdjust,
-      PomodoroAdjustSpec(raw: "+5", plus: true, units: 5)
-    )
-    XCTAssertNil(decoded.items[1].pomodoroAdjust)
-  }
-
-  func testParseResponseOmitsPomodoroAdjustForOlderBobBinaries() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "Call bank",
-        "body": "Call bank",
-        "mode": "task",
-        "needs": [],
-        "spans": [],
-        "diagnostics": []
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertNil(decoded.pomodoroAdjust)
-  }
-
-  func testParseResponseSurfacesInvalidAdjustMagnitudeAsDiagnostic() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "+0",
-        "body": "+0",
-        "mode": "pomodoro_adjust",
-        "needs": [],
-        "spans": [
-          { "start": 0, "end": 2, "kind": "pomodoro_adjust" }
-        ],
-        "diagnostics": [
-          {
-            "severity": "error",
-            "code": "invalid_pomodoro_adjustment",
-            "message": "bad magnitude",
-            "range": [0, 2]
-          }
-        ]
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertNil(decoded.pomodoroAdjust)
-    XCTAssertEqual(decoded.diagnostics.first?.code, "invalid_pomodoro_adjustment")
-    XCTAssertEqual(decoded.diagnostics.first?.range, CaptureRange(start: 0, end: 2))
-  }
-
-  func testCaptureCommandDecodesPomodoroAdjustSummary() throws {
-    let success = try decodeCaptureSuccess(
-      """
-      {
-        "ok": true,
-        "dry_run": true,
-        "routed": false,
-        "route": null,
-        "route_label": "",
-        "relative_target": "day.md",
-        "target": "/tmp/bob/day.md",
-        "text": "-9",
-        "task_line": "- [ ] (**0900-0900** [t:: 0m]) — FOCUS",
-        "kind": "pomodoro_adjust",
-        "created": "2026-08-14",
-        "scheduled": null,
-        "placement": "toggled",
-        "pomodoro_name": "FOCUS",
-        "pomodoro_adjust": {
-          "direction": "minus",
-          "requested_units": 9,
-          "requested_minutes": -45,
-          "delta_minutes": -10,
-          "before_start": "0900",
-          "before_end": "0910",
-          "before_duration_minutes": 10,
-          "after_start": "0900",
-          "after_end": "0900",
-          "after_duration_minutes": 0,
-          "pomodoro_line": 3,
-          "pomodoro_name": "FOCUS",
-          "time_range": "(**0900-0900** [t:: 0m])",
-          "clamped": true
-        }
-      }
-      """
-    )
-
-    XCTAssertEqual(
-      success.pomodoroAdjust,
-      PomodoroAdjustSummary(
-        direction: "minus",
-        requestedUnits: 9,
-        requestedMinutes: -45,
-        deltaMinutes: -10,
-        beforeStart: "0900",
-        beforeEnd: "0910",
-        beforeDurationMinutes: 10,
-        afterStart: "0900",
-        afterEnd: "0900",
-        afterDurationMinutes: 0,
-        pomodoroLine: 3,
-        pomodoroName: "FOCUS",
-        timeRange: "(**0900-0900** [t:: 0m])",
-        clamped: true
-      )
-    )
-  }
-
-  func testCaptureCommandOmitsPomodoroAdjustForOlderBobBinaries() throws {
-    let success = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
-       "relative_target":"cash.md","target":"/tmp/bob/cash.md","text":"Call bank",
-       "task_line":"- [ ] #task Call bank [created::2026-08-14]","kind":"task",
-       "created":"2026-08-14","scheduled":null,"placement":"inserted"}
-      """
-    )
-
-    XCTAssertNil(success.pomodoroAdjust)
-    XCTAssertNil(CapturePomodoroAdjustPresentation(capture: success))
-  }
-
-  func testParseResponseDecodesPomodoroShiftSpec() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "++3",
-        "body": "++3",
-        "mode": "pomodoro_shift",
-        "route": null,
-        "section": null,
-        "block_id": null,
-        "needs": [],
-        "spans": [
-          { "start": 0, "end": 3, "kind": "pomodoro_shift" }
-        ],
-        "diagnostics": [],
-        "pomodoro_shift": { "raw": "++3", "later": true, "units": 3 }
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertEqual(
-      decoded.pomodoroShift,
-      PomodoroShiftSpec(raw: "++3", later: true, units: 3)
-    )
-    XCTAssertEqual(
-      decoded.spans.map { captureSemanticCategory(forSpanKind: $0.kind) },
-      [.pomodoroStart]
-    )
-  }
-
-  func testParseResponseDecodesMixedDraftShiftItem() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "++3\\n\\nTest note\\n",
-        "body": "++3",
-        "mode": "pomodoro_shift",
-        "needs": [],
-        "spans": [
-          { "start": 0, "end": 3, "kind": "pomodoro_shift" }
-        ],
-        "diagnostics": [],
-        "items": [
-          {
-            "index": 1,
-            "range": { "start": 0, "end": 3 },
-            "line_start": 1,
-            "line_end": 1,
-            "body": "++3",
-            "mode": "pomodoro_shift",
-            "needs": [],
-            "pomodoro_shift": { "raw": "++3", "later": true, "units": 3 }
-          },
-          {
-            "index": 2,
-            "range": { "start": 5, "end": 14 },
-            "line_start": 3,
-            "line_end": 3,
-            "body": "Test note",
-            "mode": "task",
-            "needs": []
-          }
-        ],
-        "pomodoro_shift": { "raw": "++3", "later": true, "units": 3 }
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertEqual(decoded.items.count, 2)
-    XCTAssertEqual(
-      decoded.items[0].pomodoroShift,
-      PomodoroShiftSpec(raw: "++3", later: true, units: 3)
-    )
-    XCTAssertNil(decoded.items[1].pomodoroShift)
-  }
-
-  func testParseResponseOmitsPomodoroShiftForOlderBobBinaries() throws {
-    let data = Data(
-      """
-      {
-        "ok": true,
-        "schema_version": 1,
-        "input": "Call bank",
-        "body": "Call bank",
-        "mode": "task",
-        "needs": [],
-        "spans": [],
-        "diagnostics": []
-      }
-      """.utf8
-    )
-
-    let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-
-    XCTAssertNil(decoded.pomodoroShift)
-  }
-
-  func testCaptureCommandDecodesPomodoroShiftSummary() throws {
-    let success = try decodeCaptureSuccess(
-      """
-      {
-        "ok": true,
-        "dry_run": true,
-        "routed": false,
-        "route": null,
-        "route_label": "",
-        "relative_target": "2026/20260928.md",
-        "target": "/tmp/bob/2026/20260928.md",
-        "text": "++3",
-        "task_line": "- [ ] (**0915-0940** [t:: 25m]) — FOCUS",
-        "kind": "pomodoro_shift",
-        "created": "2026-09-28",
-        "scheduled": null,
-        "placement": "toggled",
-        "pomodoro_name": "FOCUS",
-        "pomodoro_shift": {
-          "direction": "later",
-          "requested_units": 3,
-          "delta_minutes": 15,
-          "before_start": "0900",
-          "before_end": "0925",
-          "after_start": "0915",
-          "after_end": "0940",
-          "duration_minutes": 25,
-          "pomodoro_line": 3,
-          "pomodoro_name": "FOCUS",
-          "time_range": "(**0915-0940** [t:: 25m])"
-        }
-      }
-      """
-    )
-
-    XCTAssertEqual(
-      success.pomodoroShift,
-      PomodoroShiftSummary(
-        direction: "later",
-        requestedUnits: 3,
-        deltaMinutes: 15,
-        beforeStart: "0900",
-        beforeEnd: "0925",
-        afterStart: "0915",
-        afterEnd: "0940",
-        durationMinutes: 25,
-        pomodoroLine: 3,
-        pomodoroName: "FOCUS",
-        timeRange: "(**0915-0940** [t:: 25m])"
-      )
-    )
-  }
-
-  func testCaptureCommandOmitsPomodoroShiftForOlderBobBinaries() throws {
-    let success = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
-       "relative_target":"cash.md","target":"/tmp/bob/cash.md","text":"Call bank",
-       "task_line":"- [ ] #task Call bank [created::2026-08-14]","kind":"task",
-       "created":"2026-08-14","scheduled":null,"placement":"inserted"}
-      """
-    )
-
-    XCTAssertNil(success.pomodoroShift)
-    XCTAssertNil(CapturePomodoroShiftPresentation(capture: success))
-  }
-
-  func testCaptureDiagnosticDecodesAllRangeShapesTolerantly() throws {
-    let decoder = JSONDecoder()
-    func decodeRange(_ rangeJSON: String) throws -> CaptureRange? {
-      let data = Data(
-        """
-        {"severity":"error","code":"invalid_pomodoro_start","message":"Bad start","range":\(rangeJSON)}
-        """.utf8
-      )
-      return try decoder.decode(CaptureDiagnostic.self, from: data).range
-    }
-
-    XCTAssertEqual(
-      try decodeRange(#"{"start":3,"end":9}"#),
-      CaptureRange(start: 3, end: 9)
-    )
-    XCTAssertEqual(
-      try decodeRange("[3,9]"),
-      CaptureRange(start: 3, end: 9)
-    )
-    XCTAssertNil(try decodeRange("null"))
-    XCTAssertNil(try decodeRange("[3]"))
-    XCTAssertNil(try decodeRange(#"{"start":"x"}"#))
-
-    let absent = try decoder.decode(
-      CaptureDiagnostic.self,
-      from: Data(
-        #"{"severity":"error","code":"invalid_pomodoro_start","message":"Bad start"}"#.utf8
-      )
-    )
-    XCTAssertNil(absent.range)
-  }
-
-  private func decodeCaptureSuccess(_ json: String) throws -> CaptureCommandSuccess {
-    let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: Data(json.utf8))
-    guard case .success(let success) = decoded else {
-      throw CaptureFixtureError.expectedSuccess
-    }
-    return success
-  }
-
-  private func decodeFixture(_ name: String) throws -> CaptureCommandSuccess {
-    let fixtures = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .appendingPathComponent("Fixtures", isDirectory: true)
-    let text = try String(contentsOf: fixtures.appendingPathComponent(name), encoding: .utf8)
-    return try decodeCaptureSuccess(text)
-  }
-
-  func testProjectNoteDecodesTaskLinksTolerantly() throws {
-    let withLinks = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash_goog_exit.md",
-      "relative_target":"cash_goog_exit.md","target":"/tmp/vault/cash_goog_exit.md",
-      "text":"Finish it","task_line":"- [ ] #task #prj Finish it #hide ^prj",
-      "kind":"project_note","created":"2026-09-20","placement":"created","block_id":"prj",
-      "day_file":"/tmp/vault/day.md","pomodoro_name":"ADMIN","creates_pomodoro":true,
-      "project_note":{"basename":"cash_goog_exit.md","parent_route":"cash","parent_link":"[[cash]]",
-      "tasks":1,"sections":[],"task_links":[
-      {"block_id":"draft-memo","block_link":"[[cash_goog_exit#^draft-memo]]",
-      "text":"Draft the memo","task_line":"- [*] #task Draft the memo ^draft-memo"}]}}
-      """
-    )
-    XCTAssertEqual(
-      withLinks.projectNote?.taskLinks,
-      [
-        CaptureProjectTaskLink(
-          blockID: "draft-memo",
-          blockLink: "[[cash_goog_exit#^draft-memo]]",
-          text: "Draft the memo",
-          taskLine: "- [*] #task Draft the memo ^draft-memo"
+            """.utf8
         )
-      ]
-    )
 
-    let withoutNote = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash_goog_exit.md",
-      "relative_target":"cash_goog_exit.md","target":"/tmp/vault/cash_goog_exit.md",
-      "text":"Finish it","task_line":"- [ ] #task #prj Finish it #hide ^prj",
-      "kind":"project_note","created":"2026-09-20","placement":"created","block_id":"prj"}
-      """
-    )
-    XCTAssertNil(withoutNote.projectNote)
-  }
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
 
-  func testTaskCompleteDecodesTolerantly() throws {
-    let success = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
-      "relative_target":"sase.md","target":"/tmp/bob/sase.md",
-      "text":"","task_line":"- [x] #task Done ^fin",
-      "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fin",
-      "previous_task_line":"- [*] #task Done ^fin",
-      "status_symbol":"x","status_name":"Done",
-      "previous_status_symbol":"*","previous_status_name":"Next","status_changed":true,
-      "task_complete":{"raw":"!sase:fin","note":"sase","note_path":"sase.md",
-      "block_id":"fin","action":"completed","completion_date":"2026-10-05",
-      "subtasks":[{"note_path":"sase.md","block_id":"sub","line":2,"text":"Sub",
-      "previous_status_symbol":"/","previous_status_name":"In Progress",
-      "status_symbol":"x","status_name":"Done"}],
-      "subtasks_left_open":[{"note_path":"sase.md","block_id":"open","line":3,
-      "text":"Open","status_symbol":"?","status_name":"Blocked","reason":"blocked"}],
-      "ledger":{"day_file":"20261005.md","struck":1,"moved":[],
-      "deduplicated":0,"removed_placeholders":[]},
-      "unblocked":[{"note_path":"travel.md","block_id":"waiter","line":2,"text":"Waiter",
-      "previous_status_symbol":"?","previous_status_name":"Blocked",
-      "status_symbol":" ","status_name":"Ready"}]}}
-      """
-    )
-    let summary = try XCTUnwrap(success.taskComplete)
-    XCTAssertEqual(summary.raw, "!sase:fin")
-    XCTAssertEqual(summary.action, "completed")
-    // Older payloads omit `text`, `struck_in`, and `dropped`: clean text
-    // defaults to empty and the ledger arrays decode as nil so the
-    // presentation keeps its count-based fallback.
-    XCTAssertEqual(summary.text, "")
-    XCTAssertEqual(summary.subtasks.count, 1)
-    XCTAssertEqual(summary.subtasksLeftOpen.count, 1)
-    XCTAssertEqual(summary.unblocked.count, 1)
-    XCTAssertEqual(summary.ledger?.struck, 1)
-    XCTAssertNil(summary.ledger?.struckIn)
-    XCTAssertNil(summary.ledger?.dropped)
-
-    let withoutComplete = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
-      "relative_target":"sase.md","target":"/tmp/bob/sase.md",
-      "text":"","task_line":"- [x] #task Done ^fin",
-      "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fin"}
-      """
-    )
-    XCTAssertNil(withoutComplete.taskComplete)
-
-    // A malformed `task_complete` object never fails the capture decode.
-    let malformed = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
-      "relative_target":"sase.md","target":"/tmp/bob/sase.md",
-      "text":"","task_line":"- [x] #task Done ^fin",
-      "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fin",
-      "task_complete":{"raw":42}}
-      """
-    )
-    XCTAssertNil(malformed.taskComplete)
-  }
-
-  func testTaskCompleteDecodesNewTextAndLedgerNames() throws {
-    let success = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
-      "relative_target":"sase.md","target":"/tmp/bob/sase.md",
-      "text":"","task_line":"- [x] #task Done ^fin",
-      "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fin",
-      "status_symbol":"x","status_name":"Done",
-      "previous_status_symbol":"*","previous_status_name":"Next","status_changed":true,
-      "task_complete":{"raw":"!sase:fin","note":"sase","note_path":"sase.md",
-      "block_id":"fin","action":"completed","completion_date":"2026-10-05",
-      "text":"Done","subtasks":[],"subtasks_left_open":[],
-      "ledger":{"day_file":"20261005.md","struck":1,
-      "struck_in":[{"line":2,"name":"CAPTURE","status":"running"}],
-      "moved":[],"deduplicated":1,
-      "dropped":[{"from":{"line":4,"name":"SASE","status":"queued"},
-      "to":{"line":2,"name":"MORNING","status":"completed"}}],
-      "removed_placeholders":[{"name":"SASE"}]},
-      "unblocked":[]}}
-      """
-    )
-    let summary = try XCTUnwrap(success.taskComplete)
-    XCTAssertEqual(summary.text, "Done")
-    let ledger = try XCTUnwrap(summary.ledger)
-    XCTAssertEqual(ledger.struckIn?.count, 1)
-    XCTAssertEqual(ledger.struckIn?.first?.name, "CAPTURE")
-    XCTAssertEqual(ledger.struckIn?.first?.status, "running")
-    XCTAssertEqual(ledger.dropped?.count, 1)
-    XCTAssertEqual(ledger.dropped?.first?.from.name, "SASE")
-    XCTAssertEqual(ledger.dropped?.first?.to.name, "MORNING")
-    // Present-but-empty arrays stay non-nil so the presentation uses
-    // the named wording rather than the count fallback.
-    let emptyArrays = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
-      "relative_target":"sase.md","target":"/tmp/bob/sase.md",
-      "text":"","task_line":"- [x] #task Done ^fin",
-      "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fin",
-      "task_complete":{"raw":"!sase:fin","note":"sase","note_path":"sase.md",
-      "block_id":"fin","action":"completed","text":"",
-      "subtasks":[],"subtasks_left_open":[],
-      "ledger":{"day_file":"20261005.md","struck":0,
-      "struck_in":[],"moved":[],"deduplicated":0,"dropped":[],
-      "removed_placeholders":[]},
-      "unblocked":[]}}
-      """
-    )
-    let emptyLedger = try XCTUnwrap(emptyArrays.taskComplete?.ledger)
-    XCTAssertEqual(emptyLedger.struckIn, [])
-    XCTAssertEqual(emptyLedger.dropped, [])
-  }
-
-  func testSuccessorJSONDecodesTolerantly() throws {
-    let success = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
-      "relative_target":"sase.md","target":"/tmp/bob/sase.md",
-      "text":"","task_line":"- [x] #task Fix apollo ^fix-apollo",
-      "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fix-apollo",
-      "task_complete":{"raw":"!sase:fix-apollo","note":"sase","note_path":"sase.md",
-      "block_id":"fix-apollo","action":"completed","text":"Fix apollo",
-      "subtasks":[],"subtasks_left_open":[],
-      "unblocked":[{"note_path":"sase.md","block_id":"book-flights","line":8,
-      "text":"Book flights","previous_status_symbol":"?","previous_status_name":"Blocked",
-      "status_symbol":"*","status_name":"Next","inbox":false,
-      "unblocked_by":[{"note_path":"sase.md","block_id":"fix-apollo","text":"Fix apollo"}],
-      "link":{"day_file":"20261005.md","entry_name":"FIX","entry_line":4,
-      "entry_created":false,"next_up":true,"line":8,
-      "block_link":"[[sase#^book-flights]]","block_id_created":true}}],
-      "still_blocked":[{"note_path":"sase.md","block_id":"renew-domain","line":9,
-      "text":"Renew domain","status_symbol":"?","status_name":"Blocked",
-      "reason":"scheduled","waits_on":0,"scheduled":"2026-10-13"}],
-      "unblocked_check":"checked"}}
-      """
-    )
-    let summary = try XCTUnwrap(success.taskComplete)
-    XCTAssertEqual(summary.unblocked.count, 1)
-    let row = summary.unblocked[0]
-    XCTAssertFalse(row.inbox)
-    XCTAssertEqual(row.unblockedBy.count, 1)
-    XCTAssertEqual(row.unblockedBy[0].blockID, "fix-apollo")
-    let link = try XCTUnwrap(row.link)
-    XCTAssertEqual(link.entryName, "FIX")
-    XCTAssertTrue(link.nextUp)
-    XCTAssertTrue(link.blockIDCreated)
-    XCTAssertNil(row.notLinked)
-    XCTAssertEqual(summary.stillBlocked.count, 1)
-    XCTAssertEqual(summary.stillBlocked[0].reason, "scheduled")
-    XCTAssertEqual(summary.stillBlocked[0].scheduled, "2026-10-13")
-    XCTAssertEqual(summary.unblockedCheck, "checked")
-
-    // Every new nested value decodes on its own: malformed fields
-    // degrade to empty instead of failing the capture or dropping the
-    // completion card.
-    let degraded = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
-      "relative_target":"sase.md","target":"/tmp/bob/sase.md",
-      "text":"","task_line":"- [x] #task Fix apollo ^fix-apollo",
-      "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fix-apollo",
-      "task_complete":{"raw":"!sase:fix-apollo","note":"sase","note_path":"sase.md",
-      "block_id":"fix-apollo","action":"completed","text":"Fix apollo",
-      "subtasks":[],"subtasks_left_open":[],
-      "unblocked":[{"note_path":"sase.md","block_id":"book-flights","line":8,
-      "text":"Book flights","previous_status_symbol":"?","previous_status_name":"Blocked",
-      "status_symbol":"*","status_name":"Next","inbox":"yes",
-      "unblocked_by":"nobody",
-      "link":"nowhere","not_linked":42}],
-      "still_blocked":"nothing","unblocked_check":7}}
-      """
-    )
-    let degradedSummary = try XCTUnwrap(degraded.taskComplete)
-    XCTAssertEqual(degradedSummary.unblocked.count, 1)
-    XCTAssertFalse(degradedSummary.unblocked[0].inbox)
-    XCTAssertEqual(degradedSummary.unblocked[0].unblockedBy, [])
-    XCTAssertNil(degradedSummary.unblocked[0].link)
-    XCTAssertNil(degradedSummary.unblocked[0].notLinked)
-    XCTAssertEqual(degradedSummary.stillBlocked, [])
-    XCTAssertNil(degradedSummary.unblockedCheck)
-
-    // Older Bob omits every successor key.
-    let old = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
-      "relative_target":"sase.md","target":"/tmp/bob/sase.md",
-      "text":"","task_line":"- [x] #task Fix apollo ^fix-apollo",
-      "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fix-apollo",
-      "task_complete":{"raw":"!sase:fix-apollo","note":"sase","note_path":"sase.md",
-      "block_id":"fix-apollo","action":"completed","text":"Fix apollo",
-      "subtasks":[],"subtasks_left_open":[]}}
-      """
-    )
-    let oldSummary = try XCTUnwrap(old.taskComplete)
-    XCTAssertEqual(oldSummary.unblocked, [])
-    XCTAssertEqual(oldSummary.stillBlocked, [])
-    XCTAssertNil(oldSummary.unblockedCheck)
-  }
-
-  func testCloseSuccessorJSONDecodesTolerantly() throws {
-    let success = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"2026/20261005.md",
-      "relative_target":"2026/20261005.md","target":"/tmp/bob/2026/20261005.md",
-      "text":"","task_line":"","kind":"pomodoro_close","created":"2026-10-05",
-      "placement":"closed",
-      "pomodoro_close":{"raw":"x!1","complete":[1],"complete_all":false,
-      "task_links":[],"pomodoro_line":5,"day_relative":"2026/20261005.md",
-      "entry_line":"- [ ] (**0920-0950**) — BOB",
-      "planned":{"start":"09:20","end":"09:50","duration_minutes":30,"time_range":"0920-0950"},
-      "closed":{"start":"09:20","end":"09:30","duration_minutes":10,"time_range":"0920-0930"},
-      "closed_at":"09:30","remaining_minutes":20,"decremented_minutes":10,
-      "tasks":[],"carried":[],"notes":[],
-      "unblocked":[{"note_path":"sase.md","block_id":"relaunch","line":2,
-      "text":"Re-launch","previous_status_symbol":"?","previous_status_name":"Blocked",
-      "status_symbol":"*","status_name":"Next","inbox":true,
-      "unblocked_by":[],"not_linked":null,
-      "link":{"day_file":"20261005.md","entry_name":"BOB","entry_line":4,
-      "entry_created":true,"next_up":true,"line":5,
-      "block_link":"[[sase#^relaunch]]","block_id_created":false}}],
-      "still_blocked":[],"unblocked_check":"checked"}}
-      """
-    )
-    let close = try XCTUnwrap(success.pomodoroClose)
-    XCTAssertEqual(close.unblocked.count, 1)
-    XCTAssertTrue(close.unblocked[0].inbox)
-    XCTAssertEqual(close.unblocked[0].link?.entryCreated, true)
-    XCTAssertEqual(close.stillBlocked, [])
-    XCTAssertEqual(close.unblockedCheck, "checked")
-
-    // Malformed successor values degrade to empty without failing the
-    // whole capture decode (the close summary itself uses plain `try`).
-    let degraded = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"2026/20261005.md",
-      "relative_target":"2026/20261005.md","target":"/tmp/bob/2026/20261005.md",
-      "text":"","task_line":"","kind":"pomodoro_close","created":"2026-10-05",
-      "placement":"closed",
-      "pomodoro_close":{"raw":"x!1",
-      "unblocked":42,"still_blocked":42,"unblocked_check":[]}}
-      """
-    )
-    let degradedClose = try XCTUnwrap(degraded.pomodoroClose)
-    XCTAssertEqual(degradedClose.unblocked, [])
-    XCTAssertEqual(degradedClose.stillBlocked, [])
-    XCTAssertNil(degradedClose.unblockedCheck)
-  }
-
-  func testBlockLineReasonDecodesTolerantly() throws {
-    let line = try JSONDecoder().decode(
-      CapturePomodoroBlockLine.self,
-      from: Data(
-        """
-        {"text":"\\t- [[sase#^relaunch]]","depth":1,"change":"added","reason":"unblocked"}
-        """.utf8
-      )
-    )
-    XCTAssertEqual(line.reason, "unblocked")
-    let malformed = try JSONDecoder().decode(
-      CapturePomodoroBlockLine.self,
-      from: Data(
-        """
-        {"text":"x","depth":0,"change":"added","reason":7}
-        """.utf8
-      )
-    )
-    XCTAssertNil(malformed.reason)
-    let old = try JSONDecoder().decode(
-      CapturePomodoroBlockLine.self,
-      from: Data(
-        """
-        {"text":"x","depth":0,"change":"added"}
-        """.utf8
-      )
-    )
-    XCTAssertNil(old.reason)
-  }
-
-  // MARK: - Pomodoro blocks
-
-  private func decodeBlockFixture(_ name: String) throws -> CaptureCommandSuccess {
-    let fixtures = URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .appendingPathComponent("Fixtures", isDirectory: true)
-    let text = try String(
-      contentsOf: fixtures.appendingPathComponent(name),
-      encoding: .utf8
-    )
-    return try decodeCaptureSuccess(text)
-  }
-
-  func testPomodoroBlocksDecodeAdjustFixture() throws {
-    let success = try decodeBlockFixture("pomodoro-adjust-blocks.json")
-
-    XCTAssertEqual(success.pomodoroBlocks.count, 1)
-    let block = try XCTUnwrap(success.pomodoroBlocks.first)
-    XCTAssertEqual(block.relativeTarget, "2026/20260930.md")
-    XCTAssertEqual(block.line, 5)
-    XCTAssertEqual(block.name, "CLEANUP")
-    XCTAssertEqual(block.timeRange, "0620-0735")
-    XCTAssertEqual(block.status, .running)
-    XCTAssertFalse(block.created)
-    XCTAssertEqual(block.roles, ["adjusted"])
-    XCTAssertEqual(block.lines.count, 4)
-
-    let headline = try XCTUnwrap(block.lines.first)
-    XCTAssertEqual(headline.text, "- [ ] (**0620-0735** [t:: 75m]) — CLEANUP")
-    XCTAssertEqual(headline.depth, 0)
-    XCTAssertEqual(headline.change, .changed)
-    XCTAssertEqual(headline.before, "- [ ] (**0620-0710** [t:: 50m]) — CLEANUP")
-
-    for child in block.lines.dropFirst() {
-      XCTAssertEqual(child.depth, 1)
-      XCTAssertEqual(child.change, .unchanged)
-      XCTAssertNil(child.before)
+        XCTAssertEqual(decoded.schemaVersion, 1)
+        XCTAssertEqual(
+            decoded.spans,
+            [CaptureSpan(start: 10, end: 15, kind: "sub_bullet_route")]
+        )
+        XCTAssertEqual(decoded.needs, ["task"])
+        XCTAssertEqual(decoded.subBullets, [])
+        XCTAssertEqual(decoded.subBulletDepths, [])
     }
-    XCTAssertEqual(
-      block.lines.map(\.text),
-      [
-        "- [ ] (**0620-0735** [t:: 75m]) — CLEANUP",
-        "\t- [[sase#^re-launch-failed]]",
-        "\t- [[sase#^clean-prompt-history]]",
-        "\t- [[bob#^decision-web]]",
-      ]
-    )
-  }
 
-  func testPomodoroBlocksDecodeShiftFixture() throws {
-    let success = try decodeBlockFixture("pomodoro-shift-blocks.json")
+    func testParseResponseDecodesSubBulletsAndDepthsWhenPresent() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Prepare launch\\n- confirm owner\\n  - text owner\\n- attach checklist",
+              "body": "Prepare launch",
+              "mode": "task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": [],
+              "sub_bullets": ["confirm owner", "text owner", "attach checklist"],
+              "sub_bullet_depths": [1, 2, 1]
+            }
+            """.utf8
+        )
 
-    let block = try XCTUnwrap(success.pomodoroBlocks.first)
-    XCTAssertEqual(success.pomodoroBlocks.count, 1)
-    XCTAssertEqual(block.roles, ["shifted"])
-    XCTAssertEqual(block.timeRange, "0625-0715")
-    XCTAssertEqual(block.status, .running)
-    XCTAssertEqual(block.lines.first?.change, .changed)
-    XCTAssertEqual(
-      block.lines.first?.before,
-      "- [ ] (**0620-0710** [t:: 50m]) — CLEANUP"
-    )
-  }
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
 
-  func testPomodoroBlocksDecodeStartFixture() throws {
-    let success = try decodeBlockFixture("pomodoro-start-blocks.json")
-
-    let block = try XCTUnwrap(success.pomodoroBlocks.first)
-    XCTAssertEqual(success.pomodoroBlocks.count, 1)
-    XCTAssertEqual(block.relativeTarget, "day.md")
-    XCTAssertEqual(block.line, 3)
-    XCTAssertEqual(block.name, "GTD")
-    XCTAssertEqual(block.timeRange, "0945-1010")
-    XCTAssertEqual(block.status, .running)
-    XCTAssertFalse(block.created)
-    XCTAssertEqual(block.roles, ["started"])
-    XCTAssertEqual(
-      block.lines.map(\.change),
-      [.changed, .unchanged, .unchanged]
-    )
-    XCTAssertEqual(block.lines.first?.before, "- [ ] () — GTD")
-  }
-
-  func testPomodoroBlocksDecodeCreatedNamedStartFixture() throws {
-    let success = try decodeBlockFixture("pomodoro-start-named-blocks-created.json")
-
-    let block = try XCTUnwrap(success.pomodoroBlocks.first)
-    XCTAssertEqual(success.pomodoroBlocks.count, 1)
-    XCTAssertEqual(block.name, "FOCUS")
-    XCTAssertEqual(block.timeRange, "0720-0745")
-    XCTAssertEqual(block.status, .running)
-    XCTAssertTrue(block.created)
-    XCTAssertEqual(block.roles, ["started"])
-    XCTAssertEqual(block.lines.count, 1)
-    XCTAssertEqual(block.lines.first?.change, .added)
-    XCTAssertNil(block.lines.first?.before)
-  }
-
-  func testPomodoroBlocksDecodeCloseFixture() throws {
-    let success = try decodeBlockFixture("pomodoro-close-blocks.json")
-
-    XCTAssertEqual(success.pomodoroBlocks.count, 2)
-    let closed = success.pomodoroBlocks[0]
-    XCTAssertEqual(closed.line, 5)
-    XCTAssertEqual(closed.name, "CAPTURE")
-    XCTAssertEqual(closed.timeRange, "0920-0940")
-    XCTAssertEqual(closed.status, .completed)
-    XCTAssertFalse(closed.created)
-    XCTAssertEqual(closed.roles, ["closed"])
-    XCTAssertEqual(
-      closed.lines.map(\.change),
-      [
-        .changed, .changed, .unchanged, .unchanged, .unchanged,
-        .removed, .unchanged, .unchanged, .unchanged,
-      ]
-    )
-    XCTAssertEqual(closed.lines[5].text, "\t- [[bob#^web-capture]]#")
-    XCTAssertEqual(closed.lines[5].depth, 1)
-
-    let next = success.pomodoroBlocks[1]
-    XCTAssertEqual(next.line, 13)
-    XCTAssertEqual(next.name, "CAPTURE")
-    XCTAssertNil(next.timeRange)
-    XCTAssertEqual(next.status, .queued)
-    XCTAssertTrue(next.created)
-    XCTAssertEqual(next.roles, ["next"])
-    XCTAssertTrue(next.lines.allSatisfy { $0.change == .added })
-  }
-
-  func testPomodoroBlocksDecodeChainFixture() throws {
-    let success = try decodeBlockFixture("pomodoro-chain-blocks.json")
-
-    XCTAssertEqual(success.pomodoroBlocks.count, 2)
-    let first = success.pomodoroBlocks[0]
-    XCTAssertEqual(first.name, "CLEANUP")
-    XCTAssertEqual(first.status, .completed)
-    XCTAssertEqual(first.roles, ["adjusted", "closed"])
-    XCTAssertEqual(
-      first.lines.first?.before,
-      "- [ ] (**0620-0710** [t:: 50m]) — CLEANUP"
-    )
-    let second = success.pomodoroBlocks[1]
-    XCTAssertEqual(second.status, .queued)
-    XCTAssertTrue(second.created)
-    XCTAssertEqual(second.roles, ["next"])
-  }
-
-  func testPomodoroBlocksAbsentKeyDecodesAsEmpty() throws {
-    let success = try decodeBlockFixture("pomodoro-close-worked.json")
-
-    XCTAssertEqual(success.pomodoroBlocks, [])
-  }
-
-  func testPomodoroBlocksMalformedValueDecodesAsEmpty() throws {
-    let objectInsteadOfArray = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":false,"routed":false,"route":null,"route_label":"",
-      "relative_target":"day.md","target":"/tmp/vault/day.md",
-      "text":"+5","task_line":"- [ ] () — GTD",
-      "kind":"pomodoro_adjust","created":"2026-09-30","placement":"toggled",
-      "pomodoro_blocks":{"line":5}}
-      """
-    )
-    XCTAssertEqual(objectInsteadOfArray.pomodoroBlocks, [])
-
-    let mistypedElement = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":false,"routed":false,"route":null,"route_label":"",
-      "relative_target":"day.md","target":"/tmp/vault/day.md",
-      "text":"+5","task_line":"- [ ] () — GTD",
-      "kind":"pomodoro_adjust","created":"2026-09-30","placement":"toggled",
-      "pomodoro_blocks":[{"relative_target":"day.md","line":"five"}]}
-      """
-    )
-    XCTAssertEqual(mistypedElement.pomodoroBlocks, [])
-  }
-
-  func testPomodoroBlocksUnknownStatusAndChangeDegrade() throws {
-    XCTAssertEqual(CapturePomodoroBlockStatus(wireValue: "running"), .running)
-    XCTAssertEqual(CapturePomodoroBlockStatus(wireValue: "queued"), .queued)
-    XCTAssertEqual(CapturePomodoroBlockStatus(wireValue: "completed"), .completed)
-    XCTAssertEqual(CapturePomodoroBlockStatus(wireValue: "napping"), .other)
-    XCTAssertEqual(CapturePomodoroBlockStatus(wireValue: nil), .other)
-
-    XCTAssertEqual(CapturePomodoroBlockChange(wireValue: "changed"), .changed)
-    XCTAssertEqual(CapturePomodoroBlockChange(wireValue: "added"), .added)
-    XCTAssertEqual(CapturePomodoroBlockChange(wireValue: "removed"), .removed)
-    XCTAssertEqual(CapturePomodoroBlockChange(wireValue: "morphed"), .unchanged)
-    XCTAssertEqual(CapturePomodoroBlockChange(wireValue: nil), .unchanged)
-
-    let success = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":false,"routed":false,"route":null,"route_label":"",
-      "relative_target":"day.md","target":"/tmp/vault/day.md",
-      "text":"+5","task_line":"- [ ] () — GTD",
-      "kind":"pomodoro_adjust","created":"2026-09-30","placement":"toggled",
-      "pomodoro_blocks":[{"relative_target":"day.md","line":2,"status":"napping",
-      "lines":[{"text":"- [ ] () — GTD","depth":0,"change":"morphed"}]}]}
-      """
-    )
-    let block = try XCTUnwrap(success.pomodoroBlocks.first)
-    XCTAssertEqual(block.status, .other)
-    XCTAssertEqual(block.lines.first?.change, .unchanged)
-  }
-
-  // MARK: - Task blocks
-
-  // Fixtures (`Tests/Fixtures/sub-bullet-*-task-block.json`) were
-  // generated by a `bob` built from bob-cli master (after the
-  // `task_blocks_contract` phase) with dry-run captures against sandbox
-  // vaults holding an obsidian-tasks-plugin `data.json` (global filter
-  // `#task`; `Ready`/`Done` core plus `Next`/`Blocked`/`In
-  // Progress`/`Canceled` custom statuses, so status names are real) and
-  // `BOB_NOW="2026-10-02"`, then committed with `"dry_run": false` and a
-  // stable `/tmp/bob-mac-capture-task-blocks/vault/…` target, as the
-  // existing fixtures do:
-  //
-  //   sub-bullet-task-block (`vault/sase.md` holding the `^capture` task
-  //   with `REQUIREMENTS`, an entry, and a Schedule Log):
-  //     bob capture -b vault -f json --dry-run -- \
-  //       'Should reuse as much of PIW sase-core code as possible! @sase+capture'
-  //   sub-bullet-section-task-block (`vault/foo.md` holding the
-  //   `docs/capture.md` `^bar` example with `REQUIREMENTS` and
-  //   `FUTURE WORK`):
-  //     bob capture -b vault -f json --dry-run -- \
-  //       'Postgres 17 minimum @foo+bar#requirements'
-  //   sub-bullet-children-task-block (`vault/sase.md` holding
-  //   `- [/] #task Parent ^capture` with one `keep` child):
-  //     bob capture -b vault -f json --dry-run -- 'new note @sase+capture
-  //     - child one
-  //     - child two'
-  //   sub-bullet-global-task-block (same vault as children):
-  //     bob capture -b vault -f json --dry-run -- '@@sase+capture
-  //     first note
-  //
-  //     second note'
-  //   sub-bullet-long-task-block (`vault/sase.md` holding
-  //   `- [/] #task Long parent ^long` with a `keep` child and a
-  //   30-entry Work Log):
-  //     bob capture -b vault -f json --dry-run -- 'fresh note @sase+long'
-
-  func testTaskBlocksDecodeSubBulletFixture() throws {
-    let success = try decodeBlockFixture("sub-bullet-task-block.json")
-
-    XCTAssertEqual(success.kind, "sub_bullet")
-    XCTAssertEqual(success.taskBlocks.count, 1)
-    let block = try XCTUnwrap(success.taskBlocks.first)
-    XCTAssertEqual(block.relativeTarget, "sase.md")
-    XCTAssertEqual(block.route, "sase")
-    XCTAssertEqual(block.line, 1)
-    XCTAssertEqual(block.blockID, "capture")
-    XCTAssertEqual(block.text, "Port capture to PIW sase-core")
-    XCTAssertEqual(block.statusSymbol, "/")
-    XCTAssertEqual(block.statusName, "In Progress")
-    XCTAssertFalse(block.created)
-    XCTAssertEqual(block.roles, ["sub_bullet"])
-    XCTAssertEqual(
-      block.lines.map(\.change),
-      [.unchanged, .unchanged, .unchanged, .added, .unchanged, .unchanged]
-    )
-    XCTAssertEqual(block.lines.map(\.depth), [0, 1, 2, 1, 1, 2])
-    XCTAssertEqual(
-      block.lines[3].text,
-      "\t- Should reuse as much of PIW sase-core code as possible!"
-    )
-    XCTAssertNil(block.lines[3].before)
-    // Per-item parent fields decode alongside the batch blocks.
-    XCTAssertEqual(success.parentText, "Port capture to PIW sase-core")
-    XCTAssertNil(success.parentSection)
-    XCTAssertEqual(success.parentStatusSymbol, "/")
-    XCTAssertEqual(success.parentStatusName, "In Progress")
-  }
-
-  func testTaskBlocksDecodeSectionFixture() throws {
-    let success = try decodeBlockFixture("sub-bullet-section-task-block.json")
-
-    XCTAssertEqual(success.parentSection, "REQUIREMENTS")
-    let block = try XCTUnwrap(success.taskBlocks.first)
-    XCTAssertEqual(block.relativeTarget, "foo.md")
-    XCTAssertEqual(block.blockID, "bar")
-    XCTAssertEqual(block.text, "Upgrade Postgres")
-    XCTAssertEqual(block.statusSymbol, " ")
-    XCTAssertEqual(block.statusName, "Ready")
-    XCTAssertEqual(
-      block.lines.map { ($0.text, $0.depth, $0.change) }.map { "\($0.0)|\($0.1)|\($0.2)" },
-      [
-        "- [ ] #task Upgrade Postgres [created:: 2026-07-31] ^bar|0|unchanged",
-        "\t- REQUIREMENTS|1|unchanged",
-        "\t\t- existing|2|unchanged",
-        "\t\t- Postgres 17 minimum|2|added",
-        "\t- FUTURE WORK|1|unchanged",
-      ]
-    )
-  }
-
-  func testTaskBlocksDecodeChildrenFixture() throws {
-    let success = try decodeBlockFixture("sub-bullet-children-task-block.json")
-
-    let block = try XCTUnwrap(success.taskBlocks.first)
-    XCTAssertEqual(
-      block.lines.map(\.depth),
-      [0, 1, 1, 2, 2]
-    )
-    XCTAssertEqual(
-      block.lines.map(\.change),
-      [.unchanged, .unchanged, .added, .added, .added]
-    )
-    XCTAssertTrue(block.lines[2].text.contains("new note"))
-    XCTAssertTrue(block.lines[3].text.contains("child one"))
-    XCTAssertTrue(block.lines[4].text.contains("child two"))
-  }
-
-  func testTaskBlocksDecodeGlobalFixture() throws {
-    let success = try decodeBlockFixture("sub-bullet-global-task-block.json")
-
-    XCTAssertEqual(success.taskBlocks.count, 1)
-    let block = try XCTUnwrap(success.taskBlocks.first)
-    XCTAssertEqual(block.roles, ["sub_bullet"])
-    XCTAssertEqual(
-      block.lines.map(\.change),
-      [.unchanged, .unchanged, .added, .added]
-    )
-    XCTAssertEqual(success.captures.count, 2)
-    for item in success.normalizedCaptures {
-      XCTAssertEqual(item.kind, "sub_bullet")
-      XCTAssertTrue(
-        CaptureTaskBlockPresentation.covers(item, blocks: success.taskBlocks),
-        "global item \(item.taskLine) should be covered"
-      )
+        XCTAssertEqual(
+            decoded.subBullets,
+            ["confirm owner", "text owner", "attach checklist"]
+        )
+        XCTAssertEqual(decoded.subBulletDepths, [1, 2, 1])
     }
-  }
 
-  func testTaskBlocksDecodeLongFixture() throws {
-    let success = try decodeBlockFixture("sub-bullet-long-task-block.json")
+    func testParseResponseSynthesizesDepthOneForOlderSubBulletResponses() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Prepare launch\\n- confirm owner\\n- attach checklist",
+              "body": "Prepare launch",
+              "mode": "task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": [],
+              "sub_bullets": ["confirm owner", "attach checklist"]
+            }
+            """.utf8
+        )
 
-    let block = try XCTUnwrap(success.taskBlocks.first)
-    XCTAssertEqual(block.lines.count, 34)
-    XCTAssertEqual(block.lines[2].change, .added)
-    XCTAssertTrue(block.lines[2].text.contains("fresh note"))
-    XCTAssertTrue(block.lines.dropFirst(3).allSatisfy { $0.change == .unchanged })
-  }
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
 
-  func testTaskBlocksAbsentKeyDecodesAsEmpty() throws {
-    let success = try decodeBlockFixture("pomodoro-close-worked.json")
+        XCTAssertEqual(decoded.subBullets, ["confirm owner", "attach checklist"])
+        XCTAssertEqual(decoded.subBulletDepths, [1, 1])
+    }
 
-    XCTAssertEqual(success.taskBlocks, [])
-  }
+    func testParseResponseIgnoresMismatchedSubBulletDepthsSafely() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Prepare launch\\n- confirm owner\\n  - text owner",
+              "body": "Prepare launch",
+              "mode": "task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": [],
+              "sub_bullets": ["confirm owner", "text owner"],
+              "sub_bullet_depths": [1]
+            }
+            """.utf8
+        )
 
-  func testTaskBlocksMalformedValueDecodesAsEmpty() throws {
-    let objectInsteadOfArray = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":false,"routed":true,"route":"sase","route_label":"sase.md",
-      "relative_target":"sase.md","target":"/tmp/vault/sase.md",
-      "text":"note","task_line":"- note",
-      "kind":"sub_bullet","created":"2026-10-02","placement":"appended",
-      "task_blocks":{"line":1}}
-      """
-    )
-    XCTAssertEqual(objectInsteadOfArray.taskBlocks, [])
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
 
-    let mistypedElement = try decodeCaptureSuccess(
-      """
-      {"ok":true,"dry_run":false,"routed":true,"route":"sase","route_label":"sase.md",
-      "relative_target":"sase.md","target":"/tmp/vault/sase.md",
-      "text":"note","task_line":"- note",
-      "kind":"sub_bullet","created":"2026-10-02","placement":"appended",
-      "task_blocks":[{"relative_target":"sase.md","line":"one"}]}
-      """
-    )
-    XCTAssertEqual(mistypedElement.taskBlocks, [])
-  }
+        XCTAssertEqual(decoded.subBullets, ["confirm owner", "text owner"])
+        XCTAssertEqual(decoded.subBulletDepths, [1, 1])
+    }
 
-  func testTemplateParseFixtureDecodesRangesRowsFieldsAndSlotSpans() throws {
-    let data = try Data(contentsOf: fixtureURL("capture-parse-template-example.json"))
-    let parse = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+    func testParseResponseDecodesBatchItemsWhenPresent() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "First @cash\\n\\nSecond @notes#Ideas",
+              "body": "First",
+              "mode": "task",
+              "route": "cash",
+              "needs": [],
+              "spans": [],
+              "diagnostics": [],
+              "items": [
+                {
+                  "index": 1,
+                  "range": { "start": 0, "end": 11 },
+                  "line_start": 1,
+                  "line_end": 1,
+                  "body": "First",
+                  "mode": "task",
+                  "route": "cash",
+                  "needs": []
+                },
+                {
+                  "index": 2,
+                  "range": { "start": 13, "end": 32 },
+                  "line_start": 3,
+                  "line_end": 3,
+                  "body": "Second",
+                  "mode": "bullet",
+                  "route": "notes",
+                  "section": "Ideas",
+                  "needs": [],
+                  "sub_bullets": ["nested"],
+                  "sub_bullet_depths": [2]
+                }
+              ]
+            }
+            """.utf8
+        )
 
-    let template = try XCTUnwrap(parse.template)
-    XCTAssertEqual(template.header.line, 1)
-    XCTAssertEqual(template.fieldCount, 3)
-    XCTAssertEqual(template.rows.count, 3)
-    XCTAssertEqual(template.rows[0].row, 1)
-    XCTAssertEqual(template.rows[0].mode, "pomodoro_task")
-    XCTAssertEqual(template.rows[0].body, "Apply to Foobar!")
-    XCTAssertEqual(
-      template.rows[0].fields.map(\.value),
-      ["Foobar", "foo", "http://foobar.com/career/some_foo_job"])
-    XCTAssertEqual(parse.items.last?.mode, "template_row")
-    XCTAssertEqual(parse.items.last?.templateRow?.row, 3)
-    XCTAssertEqual(
-      parse.spans.filter { $0.kind == "template_placeholder" }.map(\.field), [0, 1, 2])
-    XCTAssertEqual(parse.spans.filter { $0.kind == "template_field" }.first?.field, 0)
-  }
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
 
-  func testTemplateParseStateFixturesDecodeHeaderOnlyNoRowsAndArityError() throws {
-    let headerOnly = try decodeParseFixture("capture-parse-template-header-only.json")
-    XCTAssertNotNil(headerOnly.template)
-    XCTAssertTrue(headerOnly.needs.contains("template_row"))
-    XCTAssertTrue(headerOnly.diagnostics.contains { $0.code == "template_missing_rows" })
+        XCTAssertEqual(decoded.items.count, 2)
+        XCTAssertEqual(decoded.items[0].range, CaptureRange(start: 0, end: 11))
+        XCTAssertEqual(decoded.items[0].lineStart, 1)
+        XCTAssertEqual(decoded.items[1].mode, "bullet")
+        XCTAssertEqual(decoded.items[1].section, "Ideas")
+        XCTAssertEqual(decoded.items[1].subBullets, ["nested"])
+        XCTAssertEqual(decoded.items[1].subBulletDepths, [2])
+    }
 
-    let noRows = try decodeParseFixture("capture-parse-template-no-rows.json")
-    XCTAssertNotNil(noRows.template)
-    XCTAssertTrue(noRows.needs.contains("template_row"))
-    XCTAssertTrue(noRows.diagnostics.contains { $0.code == "template_missing_rows" })
-    XCTAssertEqual(
-      noRows.diagnostics.first { $0.code == "template_missing_rows" }?.message,
-      "add one row per capture: 2 values separated by spaces"
-    )
+    func testParseResponseDecodesTaskBlockIDMarkerAdditions() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "idea @ma^new-id",
+              "body": "idea",
+              "mode": "task",
+              "route": "ma",
+              "block_id": "new-id",
+              "needs": [],
+              "spans": [
+                { "start": 5, "end": 8, "kind": "task_block_id_route" },
+                { "start": 9, "end": 15, "kind": "task_block_id" }
+              ],
+              "diagnostics": []
+            }
+            """.utf8
+        )
 
-    let arity = try decodeParseFixture("capture-parse-template-arity-error.json")
-    XCTAssertNotNil(arity.template)
-    XCTAssertTrue(arity.diagnostics.contains { $0.code == "template_row_arity" })
-  }
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
 
-  func testTemplateExecutionFixturesDecodeSummaryAndOneRowLegacyShape() throws {
-    let batch = try decodeCaptureSuccess(
-      String(contentsOf: fixtureURL("capture-template-example.json"), encoding: .utf8)
-    )
-    XCTAssertEqual(batch.template?.fieldCount, 3)
-    XCTAssertEqual(batch.template?.rowCount, 3)
-    XCTAssertEqual(batch.captures.map(\.templateRow?.row), [1, 2, 3])
-    XCTAssertEqual(batch.template?.previewChipTitle, "Template · 3 rows")
-    XCTAssertEqual(batch.template?.previewAccessibilityLabel, "3 capture items from a template")
+        XCTAssertEqual(decoded.mode, "task")
+        XCTAssertEqual(decoded.route, "ma")
+        XCTAssertEqual(decoded.blockID, "new-id")
+        XCTAssertEqual(decoded.spans.map(\.kind), ["task_block_id_route", "task_block_id"])
+    }
 
-    let one = try decodeCaptureSuccess(
-      String(contentsOf: fixtureURL("capture-template-one-row.json"), encoding: .utf8)
-    )
-    XCTAssertEqual(one.template?.rowCount, 1)
-    XCTAssertEqual(one.templateRow?.row, 1)
-    XCTAssertEqual(one.template?.previewChipTitle, "Template · 1 row")
-    XCTAssertEqual(one.template?.previewAccessibilityLabel, "1 capture items from a template")
-  }
+    func testParseResponseDecodesEmptySubBulletsArray() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Prepare launch",
+              "body": "Prepare launch",
+              "mode": "task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": [],
+              "sub_bullets": []
+            }
+            """.utf8
+        )
 
-  func testOlderCapturePayloadKeepsTemplateFieldsAbsent() throws {
-    let success = try decodeFixture("pomodoro-close-worked.json")
-    XCTAssertNil(success.template)
-    XCTAssertNil(success.templateRow)
-    let parse = try JSONDecoder().decode(
-      CaptureParseResponse.self,
-      from: Data(
-        #"{"ok":true,"schema_version":1,"input":"Write","body":"Write","mode":"task","needs":[],"spans":[],"diagnostics":[]}"#
-          .utf8
-      )
-    )
-    XCTAssertNil(parse.template)
-    XCTAssertNil(parse.items.first?.templateRow)
-  }
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
 
-  func testMalformedTemplateObjectDoesNotFailCaptureParseDecoding() throws {
-    let parse = try JSONDecoder().decode(
-      CaptureParseResponse.self,
-      from: Data(
-        #"{"ok":true,"schema_version":1,"input":"@@template:","body":"","mode":"task","needs":[],"spans":[],"diagnostics":[],"template":42}"#
-          .utf8
-      )
-    )
+        XCTAssertEqual(decoded.subBullets, [])
+        XCTAssertEqual(decoded.subBulletDepths, [])
+    }
 
-    XCTAssertNil(parse.template)
-  }
+    func testParseResponseDecodesMissingCollectionsAsEmpty() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Call bank",
+              "body": "Call bank",
+              "mode": "task"
+            }
+            """.utf8
+        )
 
-  private func fixtureURL(_ name: String) -> URL {
-    URL(fileURLWithPath: #filePath)
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .appendingPathComponent("Fixtures", isDirectory: true)
-      .appendingPathComponent(name)
-  }
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
 
-  private func decodeParseFixture(_ name: String) throws -> CaptureParseResponse {
-    let data = try Data(contentsOf: fixtureURL(name))
-    return try JSONDecoder().decode(CaptureParseResponse.self, from: data)
-  }
+        XCTAssertEqual(decoded.needs, [])
+        XCTAssertEqual(decoded.spans, [])
+        XCTAssertEqual(decoded.diagnostics, [])
+        XCTAssertEqual(decoded.subBullets, [])
+        XCTAssertEqual(decoded.subBulletDepths, [])
+    }
+
+    func testParseResponseDecodesGlobalDestinationMetadataTolerantly() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "@@foo+a-id\\nFirst note",
+              "body": "First note",
+              "mode": "sub_bullet",
+              "route": "foo",
+              "block_id": "a-id",
+              "needs": [],
+              "spans": [
+                { "start": 0, "end": 5, "kind": "global_sub_bullet_route" },
+                { "start": 6, "end": 10, "kind": "global_sub_bullet_block_id" }
+              ],
+              "diagnostics": [],
+              "global_destination": {
+                "range": { "start": 0, "end": 10 },
+                "mode": "sub_bullet",
+                "route": "foo",
+                "block_id": "a-id"
+              }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(decoded.globalDestination?.range, CaptureRange(start: 0, end: 10))
+        XCTAssertEqual(decoded.globalDestination?.scopeSummary, "foo.md \u{00b7} under ^a-id")
+        XCTAssertEqual(decoded.globalDestination?.needs, [])
+        XCTAssertEqual(
+            decoded.spans.map { captureSemanticCategory(forSpanKind: $0.kind) },
+            [.route, .blockID]
+        )
+    }
+
+    func testCaptureRewriteResponseDecodesFullPayload() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Buy milk @dev @@",
+              "text": "Buy milk @@dev",
+              "changed": true,
+              "cursor": 14,
+              "rule": "absorb_local_marker",
+              "edits": [
+                { "range": { "start": 9, "end": 14 }, "replacement": "" },
+                { "range": { "start": 14, "end": 16 }, "replacement": "@@dev" }
+              ],
+              "summary": "Moved @dev into @@dev",
+              "notices": ["future notice"],
+              "future_key": "ignored"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureRewriteResponse.self, from: data)
+
+        XCTAssertEqual(decoded.schemaVersion, 1)
+        XCTAssertTrue(decoded.changed)
+        XCTAssertEqual(decoded.cursor, 14)
+        XCTAssertEqual(decoded.rule, "absorb_local_marker")
+        XCTAssertEqual(
+            decoded.edits,
+            [
+                CaptureRewriteEdit(range: CaptureRange(start: 9, end: 14), replacement: ""),
+                CaptureRewriteEdit(range: CaptureRange(start: 14, end: 16), replacement: "@@dev"),
+            ]
+        )
+        XCTAssertEqual(decoded.summary, "Moved @dev into @@dev")
+        XCTAssertEqual(decoded.notices, ["future notice"])
+    }
+
+    func testCaptureRewriteResponseDecodesSeparatorTogglePayload() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Do work @file:id^",
+              "text": "Do work @file^id",
+              "changed": true,
+              "cursor": 16,
+              "rule": "switch_block_id_separator",
+              "edits": [
+                { "range": { "start": 8, "end": 17 }, "replacement": "@file^id" }
+              ],
+              "summary": "Changed @file:id to @file^id"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureRewriteResponse.self, from: data)
+
+        XCTAssertEqual(decoded.rule, "switch_block_id_separator")
+        XCTAssertEqual(decoded.text, "Do work @file^id")
+        XCTAssertEqual(decoded.cursor, 16)
+        XCTAssertEqual(
+            decoded.edits,
+            [CaptureRewriteEdit(range: CaptureRange(start: 8, end: 17), replacement: "@file^id")]
+        )
+    }
+
+    func testCaptureRewriteResponseDecodesMinimalNoopPayload() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "No marker",
+              "text": "No marker",
+              "changed": false
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureRewriteResponse.self, from: data)
+
+        XCTAssertFalse(decoded.changed)
+        XCTAssertNil(decoded.cursor)
+        XCTAssertNil(decoded.rule)
+        XCTAssertEqual(decoded.edits, [])
+        XCTAssertNil(decoded.summary)
+        XCTAssertEqual(decoded.notices, [])
+    }
+
+    func testCaptureCommandResponseDecodesRealSuccessShapeWithNoSchemaVersion() throws {
+        let data = Data(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
+             "relative_target":"cash.md","target":"/home/bryan/bob/cash.md","text":"Call bank",
+             "task_line":"- [ ] #task Call bank [created::2026-08-13]","kind":"task",
+             "created":"2026-08-13","scheduled":null,"placement":"inserted","future_key":"ignored"}
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertTrue(decoded.ok)
+        XCTAssertEqual(success.routeLabel, "cash.md")
+        XCTAssertEqual(success.target, "/home/bryan/bob/cash.md")
+        XCTAssertNil(success.clip)
+        XCTAssertNil(success.scheduleLog)
+        XCTAssertEqual(success.subBullets, [])
+        XCTAssertEqual(success.normalizedCaptures.count, 1)
+    }
+
+    func testCaptureCommandResponseDecodesOrderedMultiCaptureArray() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "cash",
+              "route_label": "cash.md",
+              "relative_target": "cash.md",
+              "target": "/tmp/bob/cash.md",
+              "text": "First",
+              "task_line": "- [ ] #task First [created::2026-08-14]",
+              "kind": "task",
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "inserted",
+              "captures": [
+                {
+                  "ok": true,
+                  "dry_run": false,
+                  "routed": true,
+                  "route": "cash",
+                  "route_label": "cash.md",
+                  "relative_target": "cash.md",
+                  "target": "/tmp/bob/cash.md",
+                  "text": "First",
+                  "task_line": "- [ ] #task First [created::2026-08-14]",
+                  "kind": "task",
+                  "created": "2026-08-14",
+                  "scheduled": null,
+                  "placement": "inserted"
+                },
+                {
+                  "ok": true,
+                  "dry_run": false,
+                  "routed": true,
+                  "route": "notes",
+                  "route_label": "notes.md",
+                  "relative_target": "notes.md",
+                  "target": "/tmp/bob/notes.md",
+                  "text": "Second",
+                  "task_line": "- Second",
+                  "kind": "bullet",
+                  "created": "2026-08-14",
+                  "scheduled": null,
+                  "placement": "appended",
+                  "sub_bullets": ["  - nested detail"]
+                }
+              ]
+            }
+            """
+        )
+
+        XCTAssertEqual(success.routeLabel, "cash.md")
+        XCTAssertEqual(success.captures.map(\.text), ["First", "Second"])
+        XCTAssertEqual(success.normalizedCaptures.map(\.relativeTarget), ["cash.md", "notes.md"])
+        XCTAssertEqual(
+            success.normalizedCaptures[1].previewBlockLines, ["- Second", "  - nested detail"])
+    }
+
+    func testCaptureCommandResponseDecodesGlobalDestinationSummary() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "foo",
+              "route_label": "foo.md",
+              "relative_target": "foo.md",
+              "target": "/tmp/bob/foo.md",
+              "text": "First",
+              "task_line": "- [ ] #task First [created::2026-08-14]",
+              "kind": "task",
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "inserted",
+              "global_destination": { "mode": "task", "route": "foo" },
+              "captures": [
+                {
+                  "ok": true,
+                  "dry_run": false,
+                  "routed": true,
+                  "route": "foo",
+                  "route_label": "foo.md",
+                  "relative_target": "foo.md",
+                  "target": "/tmp/bob/foo.md",
+                  "text": "First",
+                  "task_line": "- [ ] #task First [created::2026-08-14]",
+                  "kind": "task",
+                  "created": "2026-08-14",
+                  "scheduled": null,
+                  "placement": "inserted"
+                }
+              ]
+            }
+            """
+        )
+
+        let globalDestination = try XCTUnwrap(success.globalDestination)
+        XCTAssertEqual(globalDestination.scopeSummary, "foo.md")
+        XCTAssertTrue(captureUsesGlobalDestination(success.normalizedCaptures[0], globalDestination))
+    }
+
+    func testMalformedMultiCaptureArrayFailsDecode() {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "cash",
+              "route_label": "cash.md",
+              "relative_target": "cash.md",
+              "target": "/tmp/bob/cash.md",
+              "text": "First",
+              "task_line": "- [ ] #task First [created::2026-08-14]",
+              "kind": "task",
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "inserted",
+              "captures": [
+                { "ok": true, "dry_run": false }
+              ]
+            }
+            """.utf8
+        )
+
+        XCTAssertThrowsError(try JSONDecoder().decode(CaptureCommandResponse.self, from: data))
+    }
+
+    func testCaptureCommandResponseDecodesRenderedNestedSubBulletsWhenPresent() throws {
+        let data = Data(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":"cash","route_label":"cash.md",
+             "relative_target":"cash.md","target":"/home/bryan/bob/cash.md","text":"Prepare launch",
+             "task_line":"- [ ] #task Prepare launch [created::2026-08-14]","kind":"task",
+             "created":"2026-08-14","scheduled":null,"placement":"inserted",
+             "sub_bullets":["  - confirm owner","    - text owner","  - attach checklist",
+                            "    - verify links"]}
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(
+            success.subBullets,
+            [
+                "  - confirm owner",
+                "    - text owner",
+                "  - attach checklist",
+                "    - verify links",
+            ])
+    }
+
+    func testCaptureCommandResponseDecodesUnknownAdditiveTopLevelKeys() throws {
+        let data = Data(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":"cash","route_label":"cash.md",
+             "relative_target":"cash.md","target":"/home/bryan/bob/cash.md","text":"Prepare launch",
+             "task_line":"- [ ] #task Prepare launch [created::2026-08-14]","kind":"task",
+             "created":"2026-08-14","scheduled":null,"placement":"inserted",
+             "future_field":{"nested":true}}
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.subBullets, [])
+    }
+
+    func testCaptureCommandResponseDecodesHeaderlessSingleClipWithOmittedEntries() throws {
+        let success = try decodeCaptureSuccess(
+            #"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"inline","lines":["\t- hello-clip"],"attachments":[]}}"#
+        )
+
+        XCTAssertEqual(success.clip?.header, nil)
+        XCTAssertEqual(success.clip?.mode, "inline")
+        XCTAssertEqual(success.clip?.lines, ["\t- hello-clip"])
+        XCTAssertEqual(success.clip?.attachments, [])
+        XCTAssertEqual(success.clip?.entries, [])
+    }
+
+    func testCaptureCommandResponseDecodesHeaderedClipWithOmittedEntries() throws {
+        let success = try decodeCaptureSuccess(
+            #"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":"MYNOTE","mode":"inline","lines":["\t- **MYNOTE:** hello-clip"],"attachments":[]}}"#
+        )
+
+        XCTAssertEqual(success.clip?.header, "MYNOTE")
+        XCTAssertEqual(success.clip?.mode, "inline")
+        XCTAssertEqual(success.clip?.lines, ["\t- **MYNOTE:** hello-clip"])
+        XCTAssertEqual(success.clip?.entries, [])
+    }
+
+    func testCaptureCommandResponseDecodesAttachmentClipWithOmittedEntries() throws {
+        let success = try decodeCaptureSuccess(
+            #"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"attachments","lines":["\t- ![[img/shot.png|400]]"],"attachments":[{"source":"/tmp/tmp.GQUVrOEvrX/shot.png","saved":"img/shot.png","kind":"image","reused":false}]}}"#
+        )
+
+        XCTAssertEqual(success.clip?.mode, "attachments")
+        XCTAssertEqual(success.clip?.lines, ["\t- ![[img/shot.png|400]]"])
+        XCTAssertEqual(
+            success.clip?.attachments,
+            [
+                CaptureAttachmentOutput(
+                    source: "/tmp/tmp.GQUVrOEvrX/shot.png",
+                    saved: "img/shot.png",
+                    kind: "image",
+                    reused: false
+                )
+            ])
+        XCTAssertEqual(success.clip?.entries, [])
+    }
+
+    func testCaptureCommandResponseDecodesSnippetClipWithOmittedEntries() throws {
+        let success = try decodeCaptureSuccess(
+            #"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.GQUVrOEvrX/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"snippet","lines":["\t- [[file/clip-20260715-131415-heading]]"],"attachments":[],"snippet":"file/clip-20260715-131415-heading.md"}}"#
+        )
+
+        XCTAssertEqual(success.clip?.mode, "snippet")
+        XCTAssertEqual(success.clip?.snippet, "file/clip-20260715-131415-heading.md")
+        XCTAssertEqual(success.clip?.entries, [])
+    }
+
+    func testCaptureCommandResponseDecodesHistoryClipWithNestedOmittedEntries() throws {
+        let success = try decodeCaptureSuccess(
+            #"{"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"","relative_target":"mac_inbox.md","target":"/tmp/tmp.XA4h1kbsUm/vault/mac_inbox.md","text":"test","task_line":"- [ ] #task test [created::2026-07-15]","kind":"task","created":"2026-07-15","scheduled":null,"placement":"created","clip":{"header":null,"mode":"history","lines":["\t- hello-clip","\t- older one","\t- older two"],"attachments":[],"entries":[{"header":null,"mode":"inline","lines":["\t- hello-clip"],"attachments":[]},{"header":null,"mode":"lines","lines":["\t- older one","\t- older two"],"attachments":[]}]}}"#
+        )
+
+        XCTAssertEqual(success.clip?.mode, "history")
+        XCTAssertEqual(success.clip?.entries.count, 2)
+        XCTAssertEqual(success.clip?.entries[0].lines, ["\t- hello-clip"])
+        XCTAssertEqual(success.clip?.entries[0].entries, [])
+        XCTAssertEqual(success.clip?.entries[1].mode, "lines")
+        XCTAssertEqual(success.clip?.entries[1].entries, [])
+    }
+
+    func testPreviewBlockLinesOrderAuthoredChildrenClipThenScheduleLog() throws {
+        let data = Data(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"work","route_label":"work.md",
+             "relative_target":"work.md","target":"/home/bryan/bob/work.md",
+             "text":"Prepare the launch review",
+             "task_line":"- [ ] #task Prepare the launch review [created::2026-08-14] [priority::high] [scheduled::2026-08-18]",
+             "kind":"task","created":"2026-08-14","scheduled":"2026-08-18","placement":"inserted",
+             "sub_bullets":["  - Confirm the rollout owner",
+                            "    - Text the owner",
+                            "  - Attach the final checklist",
+                            "    - Verify the links"],
+             "clip":{"header":null,"mode":"lines","lines":["  - clipped one","  - clipped two"],
+                     "attachments":[],"entries":[]},
+             "schedule_log":{"reason":"p:1 roll","lines":["  - **SCHEDULE LOG**",
+                                                          "    - _2026-08-18_ — p:1 roll"]}}
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(
+            success.previewBlockLines,
+            [
+                success.taskLine,
+                "  - Confirm the rollout owner",
+                "    - Text the owner",
+                "  - Attach the final checklist",
+                "    - Verify the links",
+                "  - clipped one",
+                "  - clipped two",
+                "  - **SCHEDULE LOG**",
+                "    - _2026-08-18_ — p:1 roll",
+            ]
+        )
+    }
+
+    func testPreviewBlockLinesIsJustTheTaskLineForAPlainCapture() throws {
+        let data = Data(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
+             "relative_target":"cash.md","target":"/home/bryan/bob/cash.md","text":"Call bank",
+             "task_line":"- [ ] #task Call bank [created::2026-08-14]","kind":"task",
+             "created":"2026-08-14","scheduled":null,"placement":"inserted"}
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.previewBlockLines, [success.taskLine])
+        XCTAssertEqual(success.normalizedCaptures.map(\.text), ["Call bank"])
+    }
+
+    func testCaptureCommandSuccessNormalizesOrderedMultiCaptureArray() throws {
+        let data = Data(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":"work","route_label":"work.md",
+             "relative_target":"work.md","target":"/home/bryan/bob/work.md",
+             "text":"Ship release","task_line":"- [ ] #task Ship release [created::2026-08-14]",
+             "kind":"task","created":"2026-08-14","scheduled":null,"placement":"inserted",
+             "captures":[
+               {"ok":true,"dry_run":false,"routed":true,"route":"work","route_label":"work.md",
+                "relative_target":"work.md","target":"/home/bryan/bob/work.md",
+                "text":"Ship release","task_line":"- [ ] #task Ship release [created::2026-08-14]",
+                "kind":"task","created":"2026-08-14","scheduled":null,"placement":"inserted"},
+               {"ok":true,"dry_run":false,"routed":true,"route":"ideas","route_label":"ideas.md",
+                "relative_target":"ideas.md","target":"/home/bryan/bob/ideas.md",
+                "text":"Capture follow-up","task_line":"- Capture follow-up",
+                "kind":"bullet","created":"2026-08-14","scheduled":"2026-08-19","placement":"append"}
+             ]}
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.normalizedCaptures.map(\.text), ["Ship release", "Capture follow-up"])
+        XCTAssertEqual(
+            success.normalizedCaptures.map(\.target),
+            [
+                "/home/bryan/bob/work.md",
+                "/home/bryan/bob/ideas.md",
+            ])
+    }
+
+    func testPreviewBlockLinesOmitsClipForNoClipLivePreview() {
+        // Continuous live preview runs `--no-clip`, so `clip` is absent while the same
+        // draft's explicit Preview resolves it. Only the schedule log survives.
+        let success = CaptureCommandSuccess(
+            ok: true,
+            dryRun: true,
+            routed: true,
+            routeLabel: "work.md",
+            relativeTarget: "work.md",
+            target: "/home/bryan/bob/work.md",
+            text: "Prepare the launch review",
+            taskLine: "- [ ] #task Prepare the launch review [created::2026-08-14]",
+            kind: "task",
+            created: "2026-08-14",
+            placement: "inserted",
+            subBullets: ["\t- Confirm the rollout owner"],
+            scheduleLog: CaptureScheduleLog(
+                reason: "p:1 roll",
+                lines: ["\t- **SCHEDULE LOG**"]
+            )
+        )
+
+        XCTAssertEqual(
+            success.previewBlockLines,
+            [
+                "- [ ] #task Prepare the launch review [created::2026-08-14]",
+                "\t- Confirm the rollout owner",
+                "\t- **SCHEDULE LOG**",
+            ]
+        )
+    }
+
+    func testCaptureCommandResponseDecodesRealFailureShape() throws {
+        let data = Data(
+            #"{"error":"clipboard command xclip exited with 1","ok":false}"#.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .failure(let failure) = decoded else {
+            return XCTFail("Expected a failed response")
+        }
+        XCTAssertFalse(decoded.ok)
+        XCTAssertEqual(failure.error, "clipboard command xclip exited with 1")
+    }
+
+    func testObsidianOpenURLRoundTripsAbsolutePath() throws {
+        let path = "/Users/bryan/bob/cash & notes #1.md"
+        let url = try XCTUnwrap(ObsidianOpenURL.url(forAbsolutePath: path))
+
+        XCTAssertEqual(url.scheme, "obsidian")
+        XCTAssertEqual(url.host, "open")
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        let decodedPath = components.queryItems?.first { $0.name == "path" }?.value
+        XCTAssertEqual(decodedPath, path)
+    }
+
+    func testObsidianOpenURLReturnsNilForEmptyPath() {
+        XCTAssertNil(ObsidianOpenURL.url(forAbsolutePath: ""))
+    }
+
+    func testBoundedProcessTextPreservesUtf8Boundary() {
+        let text = String(repeating: "a", count: 4) + "é" + String(repeating: "b", count: 10)
+        let bounded = boundedProcessText(text, limit: 5)
+
+        XCTAssertTrue(bounded.hasSuffix("..."))
+        XCTAssertFalse(bounded.contains("\u{FFFD}"))
+    }
+
+    func testCaptureTargetsResponseDecodesCurrentBobCliShape() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "bob_dir": "/tmp/bob",
+              "count": 1,
+              "targets": [
+                {
+                  "route": "cash",
+                  "name": "cash",
+                  "label": "cash.md",
+                  "kind": "area",
+                  "is_default": false,
+                  "status": null,
+                  "relative_path": "cash.md"
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureTargetsResponse.self, from: data)
+
+        XCTAssertEqual(decoded.schemaVersion, 1)
+        XCTAssertEqual(decoded.bobDirectory, "/tmp/bob")
+        XCTAssertEqual(decoded.targets.first?.label, "cash.md")
+        XCTAssertEqual(decoded.targets.first?.kind, "area")
+    }
+
+    func testCaptureCommandResponseDecodesCurrentDryRunShape() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": true,
+              "routed": true,
+              "route": "mac_inbox",
+              "route_label": "mac_inbox.md",
+              "relative_target": "mac_inbox.md",
+              "target": "/tmp/bob/mac_inbox.md",
+              "text": "buy milk",
+              "task_line": "- [ ] #task buy milk [created::2026-08-14]",
+              "kind": "task",
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "created"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.taskLine, "- [ ] #task buy milk [created::2026-08-14]")
+        XCTAssertEqual(success.routeLabel, "mac_inbox.md")
+        XCTAssertEqual(success.placement, "created")
+    }
+
+    func testCaptureCommandResponseDecodesOrdinaryTaskWithBlockID() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "dev",
+              "route_label": "dev.md",
+              "relative_target": "dev.md",
+              "target": "/tmp/bob/dev.md",
+              "text": "Do work",
+              "task_line": "- [ ] #task Do work [created::2026-08-14] ^new-id",
+              "kind": "task",
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "inserted",
+              "block_id": "new-id"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.kind, "task")
+        XCTAssertEqual(success.blockID, "new-id")
+        XCTAssertEqual(success.taskLine, "- [ ] #task Do work [created::2026-08-14] ^new-id")
+        XCTAssertNil(success.dayFile)
+        XCTAssertNil(success.blockLink)
+        XCTAssertNil(success.pomodoroLinkPlacement)
+        XCTAssertNil(success.parentText)
+        XCTAssertEqual(success.previewBlockLines, [success.taskLine])
+    }
+
+    func testCaptureCommandResponseDecodesSubBulletSuccess() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "file",
+              "route_label": "file.md",
+              "relative_target": "file.md",
+              "target": "/tmp/bob/file.md",
+              "text": "Add context",
+              "task_line": "- Add context",
+              "kind": "sub_bullet",
+              "block_id": "parent-id",
+              "parent_text": "Parent",
+              "parent_line": 1,
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "inserted"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.kind, "sub_bullet")
+        XCTAssertEqual(success.blockID, "parent-id")
+        XCTAssertEqual(success.parentText, "Parent")
+        XCTAssertEqual(success.parentLine, 1)
+    }
+
+    func testCaptureCommandResponseDecodesTaskToggleSuccessAdditiveFields() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "cash",
+              "route_label": "cash.md",
+              "relative_target": "cash.md",
+              "target": "/tmp/bob/cash.md",
+              "text": "",
+              "task_line": "- [*] #task Finish Google Exit Packet! ^goog-exit",
+              "kind": "task_toggle",
+              "created": "2026-09-10",
+              "scheduled": null,
+              "placement": "toggled",
+              "block_id": "goog-exit",
+              "day_file": "/tmp/bob/2026/20260910.md",
+              "block_link": "[[cash#^goog-exit]]",
+              "toggle_direction": "next",
+              "previous_task_line": "- [ ] #task Finish Google Exit Packet! ^goog-exit",
+              "status_symbol": "*",
+              "status_name": "Next",
+              "previous_status_symbol": " ",
+              "previous_status_name": "Ready",
+              "pomodoro_name": "CODING",
+              "creates_pomodoro": true,
+              "pomodoro_already_linked": false,
+              "removed_pomodoro_links": 2,
+              "removed_scheduled": "2026-09-20",
+              "pomodoro_selector_unused": false
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.kind, "task_toggle")
+        XCTAssertEqual(success.placement, "toggled")
+        XCTAssertEqual(success.toggleDirection, "next")
+        XCTAssertEqual(success.previousTaskLine, "- [ ] #task Finish Google Exit Packet! ^goog-exit")
+        XCTAssertEqual(success.statusSymbol, "*")
+        XCTAssertEqual(success.statusName, "Next")
+        XCTAssertEqual(success.previousStatusSymbol, " ")
+        XCTAssertEqual(success.previousStatusName, "Ready")
+        XCTAssertEqual(success.pomodoroName, "CODING")
+        XCTAssertEqual(success.createsPomodoro, true)
+        XCTAssertEqual(success.pomodoroAlreadyLinked, false)
+        XCTAssertEqual(success.removedPomodoroLinks, 2)
+        XCTAssertEqual(success.removedScheduled, "2026-09-20")
+        XCTAssertEqual(success.pomodoroSelectorUnused, false)
+        XCTAssertEqual(success.previewBlockLines, [success.taskLine])
+        XCTAssertNil(success.toggleBehavior)
+        XCTAssertNil(success.statusChanged)
+        XCTAssertNil(success.pomodoroLinkAction)
+        XCTAssertNil(success.pomodoroLinkSource)
+        XCTAssertNil(success.pomodoroLinkDestination)
+    }
+
+    func testCaptureCommandResponseDecodesEnsureNextAdditiveFields() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "cash",
+              "route_label": "cash.md",
+              "relative_target": "cash.md",
+              "target": "/tmp/bob/cash.md",
+              "text": "",
+              "task_line": "- [*] #task Finish Google Exit Packet! ^goog-exit",
+              "kind": "task_toggle",
+              "created": "2026-09-10",
+              "placement": "toggled",
+              "block_id": "goog-exit",
+              "day_file": "/tmp/bob/2026/20260910.md",
+              "block_link": "[[cash#^goog-exit]]",
+              "toggle_direction": "next",
+              "previous_task_line": "- [ ] #task Finish Google Exit Packet! ^goog-exit",
+              "status_symbol": "*",
+              "status_name": "Next",
+              "previous_status_symbol": " ",
+              "previous_status_name": "Ready",
+              "creates_pomodoro": false,
+              "pomodoro_already_linked": false,
+              "removed_pomodoro_links": 0,
+              "toggle_behavior": "ensure_next",
+              "status_changed": true,
+              "pomodoro_link_action": "moved",
+              "pomodoro_link_source": { "line": 4, "name": "LATER" },
+              "pomodoro_link_destination": { "line": 2, "name": "CURRENT", "time_range": "0900-0930" }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.toggleBehavior, "ensure_next")
+        XCTAssertEqual(success.statusChanged, true)
+        XCTAssertEqual(success.pomodoroLinkAction, "moved")
+        XCTAssertEqual(success.pomodoroLinkSource?.line, 4)
+        XCTAssertEqual(success.pomodoroLinkSource?.name, "LATER")
+        XCTAssertEqual(success.pomodoroLinkDestination?.name, "CURRENT")
+        XCTAssertEqual(success.pomodoroLinkDestination?.timeRange, "0900-0930")
+    }
+
+    func testCaptureCommandResponseDecodesNamedEnsureNextCreationFields() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "cash",
+              "route_label": "cash.md",
+              "relative_target": "cash.md",
+              "target": "/tmp/bob/cash.md",
+              "text": "",
+              "task_line": "- [*] #task Finish Google Exit Packet! ^goog-exit",
+              "kind": "task_toggle",
+              "created": "2026-09-10",
+              "placement": "toggled",
+              "block_id": "goog-exit",
+              "day_file": "/tmp/bob/2026/20260910.md",
+              "block_link": "[[cash#^goog-exit]]",
+              "toggle_direction": "next",
+              "previous_task_line": "- [ ] #task Finish Google Exit Packet! ^goog-exit",
+              "status_symbol": "*",
+              "status_name": "Next",
+              "previous_status_symbol": " ",
+              "previous_status_name": "Ready",
+              "pomodoro_name": "FRESH",
+              "creates_pomodoro": true,
+              "pomodoro_already_linked": false,
+              "removed_pomodoro_links": 0,
+              "toggle_behavior": "ensure_next",
+              "status_changed": true,
+              "pomodoro_link_action": "moved",
+              "pomodoro_link_source": { "line": 4, "name": "LATER" },
+              "pomodoro_link_destination": { "line": 5, "name": "FRESH" }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.toggleBehavior, "ensure_next")
+        XCTAssertEqual(success.createsPomodoro, true)
+        XCTAssertEqual(success.pomodoroName, "FRESH")
+        XCTAssertEqual(success.pomodoroLinkAction, "moved")
+        XCTAssertEqual(success.pomodoroLinkDestination?.name, "FRESH")
+        XCTAssertEqual(success.removedPomodoroLinks, 0)
+        XCTAssertNotEqual(success.pomodoroSelectorUnused, true)
+    }
+
+    func testCaptureCommandResponseDecodesTaskToggleAdditiveFieldsAsNilWhenAbsent() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "dev",
+              "route_label": "dev.md",
+              "relative_target": "dev.md",
+              "target": "/tmp/bob/dev.md",
+              "text": "Do work",
+              "task_line": "- [ ] #task Do work ^new-id",
+              "kind": "task",
+              "created": "2026-08-14",
+              "placement": "inserted",
+              "block_id": "new-id"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertNil(success.toggleDirection)
+        XCTAssertNil(success.previousTaskLine)
+        XCTAssertNil(success.statusSymbol)
+        XCTAssertNil(success.statusName)
+        XCTAssertNil(success.previousStatusSymbol)
+        XCTAssertNil(success.previousStatusName)
+        XCTAssertNil(success.pomodoroName)
+        XCTAssertNil(success.createsPomodoro)
+        XCTAssertNil(success.pomodoroAlreadyLinked)
+        XCTAssertNil(success.removedPomodoroLinks)
+        XCTAssertNil(success.removedScheduled)
+        XCTAssertNil(success.toggleBehavior)
+        XCTAssertNil(success.statusChanged)
+        XCTAssertNil(success.pomodoroLinkAction)
+        XCTAssertNil(success.pomodoroLinkSource)
+        XCTAssertNil(success.pomodoroLinkDestination)
+        XCTAssertNil(success.pomodoroSelectorUnused)
+    }
+
+    func testCaptureCommandResponseDecodesPomodoroLinkSuccessFields() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": true,
+              "routed": true,
+              "route": "sase",
+              "route_label": "sase.md",
+              "relative_target": "sase.md",
+              "target": "/tmp/bob/sase.md",
+              "text": "",
+              "task_line": "- [*] #task Fix deep bug ^deep-fix",
+              "kind": "pomodoro_link",
+              "created": "2026-07-10",
+              "scheduled": null,
+              "placement": "linked",
+              "block_id": "deep-fix",
+              "day_file": "/tmp/bob/2026/20260710.md",
+              "block_link": "[[sase#^deep-fix]]",
+              "previous_task_line": "- [*] #task Fix deep bug ^deep-fix",
+              "status_symbol": "*",
+              "status_name": "Next",
+              "previous_status_symbol": "*",
+              "previous_status_name": "Next",
+              "pomodoro_name": "BUGS",
+              "creates_pomodoro": false,
+              "status_changed": false,
+              "pomodoro_link_action": "already_current",
+              "pomodoro_link_source": { "line": 5, "name": "BUGS" },
+              "pomodoro_link_destination": { "line": 5, "name": "BUGS" }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.kind, "pomodoro_link")
+        XCTAssertEqual(success.placement, "linked")
+        XCTAssertEqual(success.pomodoroLinkAction, "already_current")
+        XCTAssertEqual(
+            success.pomodoroLinkSource,
+            PomodoroLinkEndpoint(line: 5, name: "BUGS")
+        )
+        XCTAssertEqual(
+            success.pomodoroLinkDestination,
+            PomodoroLinkEndpoint(line: 5, name: "BUGS")
+        )
+        XCTAssertEqual(success.statusChanged, false)
+        XCTAssertNil(success.toggleDirection)
+        XCTAssertNil(success.toggleBehavior)
+        XCTAssertNil(success.pomodoroStart)
+        XCTAssertNotNil(CapturePomodoroLinkPresentation(capture: success))
+        XCTAssertNil(CaptureTogglePresentation(capture: success))
+    }
+
+    func testCaptureCommandResponseDecodesPomodoroLinkFieldsAsNilForOlderBob() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": false,
+              "routed": true,
+              "route": "sase",
+              "route_label": "sase.md",
+              "relative_target": "sase.md",
+              "target": "/tmp/bob/sase.md",
+              "text": "Write outline",
+              "task_line": "- [*] #task Write outline [created::2026-08-14] ^outline",
+              "kind": "pomodoro_task",
+              "created": "2026-08-14",
+              "placement": "inserted",
+              "block_id": "outline"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertNil(success.pomodoroLinkAction)
+        XCTAssertNil(success.pomodoroLinkSource)
+        XCTAssertNil(success.pomodoroLinkDestination)
+        XCTAssertEqual(success.droppedDependencies, [])
+        XCTAssertNil(success.linkGuard)
+        XCTAssertNil(CapturePomodoroLinkPresentation(capture: success))
+        XCTAssertNil(CaptureLinkGuardPresentation(capture: success))
+    }
+
+    func testCaptureCommandResponseDecodesDroppedDependenciesFromBob() throws {
+        let success = try decodeFixture("pomodoro-link-dropped-one.json")
+
+        XCTAssertEqual(success.kind, "pomodoro_link")
+        XCTAssertEqual(success.droppedDependencies.count, 1)
+        let dropped = try XCTUnwrap(success.droppedDependencies.first)
+        XCTAssertEqual(dropped.notePath, "job.md")
+        XCTAssertEqual(dropped.blockID, "prep")
+        XCTAssertEqual(dropped.link, "[[job#^prep]]")
+        XCTAssertEqual(dropped.text, "Prep work")
+        XCTAssertEqual(dropped.statusSymbol, " ")
+        XCTAssertEqual(dropped.statusName, "Ready")
+        XCTAssertNil(success.linkGuard)
+        XCTAssertEqual(
+            CaptureDroppedDependency.chip(from: success.droppedDependencies),
+            "dropped dependency on Prep work"
+        )
+    }
+
+    func testCaptureCommandResponseDecodesSeveralDroppedDependencies() throws {
+        let success = try decodeFixture("pomodoro-link-dropped-two.json")
+
+        XCTAssertEqual(success.droppedDependencies.count, 2)
+        XCTAssertEqual(success.droppedDependencies[1].text, "Budget work")
+        XCTAssertEqual(
+            CaptureDroppedDependency.chip(from: success.droppedDependencies),
+            "dropped 2 dependencies"
+        )
+    }
+
+    func testCaptureCommandResponseDecodesLinkGuardWithDropRefused() throws {
+        let success = try decodeFixture("link-guard-project-blocked.json")
+
+        XCTAssertEqual(success.kind, "link_guard")
+        XCTAssertEqual(success.droppedDependencies, [])
+        let linkGuard = try XCTUnwrap(success.linkGuard)
+        XCTAssertEqual(linkGuard.reasons, ["local_dependency", "project_dependency"])
+        XCTAssertEqual(linkGuard.promoted, ["local.md#^prep"])
+        XCTAssertEqual(linkGuard.dropRefused, "project_blocked")
+        XCTAssertTrue(
+            (linkGuard.detail ?? "").contains("dependencies kept: its project is blocked")
+        )
+        XCTAssertNotNil(CaptureLinkGuardPresentation(capture: success))
+        XCTAssertNil(CapturePomodoroLinkPresentation(capture: success))
+        XCTAssertNil(CaptureTogglePresentation(capture: success))
+    }
+
+    func testCompletionResponseDecodesActiveTaskCandidatesWithPomodoro() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 1,
+              "replacement": { "start": 1, "end": 1 },
+              "context": "active_task",
+              "candidates": [
+                {
+                  "replacement": "sase:deep-fix",
+                  "ref": "5:41d049f2",
+                  "route": "sase",
+                  "block_id": "deep-fix",
+                  "status_symbol": "*",
+                  "status_name": "Next",
+                  "status_type": "ON_HOLD",
+                  "text": "Fix deep bug",
+                  "section": "Tasks",
+                  "pomodoro": { "line": 5, "name": "BUGS", "time_range": null, "is_current": false }
+                },
+                {
+                  "replacement": "sase:outline",
+                  "ref": "1:f867fe6b",
+                  "route": "sase",
+                  "block_id": "outline",
+                  "status_symbol": "/",
+                  "status_name": "In Progress",
+                  "status_type": "IN_PROGRESS",
+                  "text": "Outline talk",
+                  "pomodoro": null
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+
+        XCTAssertEqual(decoded.context, "active_task")
+        XCTAssertEqual(decoded.candidates.count, 2)
+        XCTAssertEqual(
+            decoded.candidates[0].pomodoro,
+            ActiveTaskPomodoro(line: 5, name: "BUGS", isCurrent: false)
+        )
+        XCTAssertEqual(decoded.candidates[0].statusSymbol, "*")
+        XCTAssertNil(decoded.candidates[1].pomodoro)
+        XCTAssertEqual(
+            CaptureCompletionContext(rawContext: decoded.context),
+            .activeTask
+        )
+    }
+
+    func testCompletionResponseDecodesParentTaskPickerDescriptor() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 1,
+              "replacement": { "start": 0, "end": 1 },
+              "context": "task_parent",
+              "query": "",
+              "picker": {
+                "kind": "parent_task",
+                "scope": "vault",
+                "scope_token": "+",
+                "marker_range": { "start": 0, "end": 1 },
+                "trigger_removal_range": { "start": 0, "end": 1 },
+                "action_continuation_keys": ["0", "1", "+"]
+              },
+              "candidates": [
+                {
+                  "replacement": "@sase+deep-fix",
+                  "ref": "6:41d049f2",
+                  "route": "sase",
+                  "block_id": "deep-fix",
+                  "text": "Fix deep bug"
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+        XCTAssertEqual(decoded.context, "task_parent")
+        XCTAssertEqual(decoded.query, "")
+        let picker = try XCTUnwrap(decoded.picker)
+        XCTAssertTrue(picker.isParentTask)
+        XCTAssertEqual(picker.scope, "vault")
+        XCTAssertEqual(picker.scopeToken, "+")
+        XCTAssertNil(picker.noteTarget)
+        XCTAssertEqual(picker.actionContinuationKeys, ["0", "1", "+"])
+        let context = try XCTUnwrap(picker.parentTaskContext)
+        XCTAssertTrue(context.isVault)
+        XCTAssertTrue(context.isLonePlusOperator)
+        XCTAssertEqual(decoded.candidates[0].replacement, "@sase+deep-fix")
+    }
+
+    func testCompletionResponseDecodesScopedPickerAndOmitsDescriptorForOlderBob() throws {
+        let scoped = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 6,
+              "replacement": { "start": 6, "end": 6 },
+              "context": "task",
+              "query": "",
+              "picker": {
+                "kind": "parent_task",
+                "scope": "note",
+                "scope_token": "@cash+",
+                "note_target": "cash.md",
+                "marker_range": { "start": 0, "end": 6 },
+                "trigger_removal_range": { "start": 5, "end": 6 }
+              },
+              "candidates": [
+                { "replacement": "goog-exit", "block_id": "goog-exit", "route": "cash" }
+              ]
+            }
+            """.utf8
+        )
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: scoped)
+        let picker = try XCTUnwrap(decoded.picker)
+        XCTAssertEqual(picker.scope, "note")
+        XCTAssertEqual(picker.noteTarget, "cash.md")
+        XCTAssertEqual(picker.actionContinuationKeys, [])
+        XCTAssertEqual(picker.triggerRemovalRange, CaptureRange(start: 5, end: 6))
+        let context = try XCTUnwrap(picker.parentTaskContext)
+        XCTAssertFalse(context.isVault)
+        XCTAssertFalse(context.isLonePlusOperator)
+
+        let older = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 6,
+              "replacement": { "start": 6, "end": 6 },
+              "context": "task",
+              "candidates": [
+                { "replacement": "goog-exit", "block_id": "goog-exit" }
+              ]
+            }
+            """.utf8
+        )
+        let olderDecoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: older)
+        XCTAssertNil(olderDecoded.picker)
+        XCTAssertNil(olderDecoded.query)
+    }
+
+    func testTaskIDSuccessDecodesParentReplacementAndOmitsForOlderBob() throws {
+        let withField = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "dry_run": false,
+              "route": "mac_inbox",
+              "relative_target": "mac_inbox.md",
+              "block_id": "call-bank",
+              "line": 4,
+              "ref": "4:callbank",
+              "parent_replacement": "@mac_inbox+call-bank",
+              "task": {
+                "ref": "4:callbank",
+                "line": 4,
+                "block_id": "call-bank",
+                "status_symbol": " ",
+                "status_name": "Todo",
+                "status_type": "TODO",
+                "text": "Call the bank",
+                "depth": 0,
+                "child_count": 0
+              }
+            }
+            """.utf8
+        )
+        let success = try JSONDecoder().decode(CaptureTaskIDSuccess.self, from: withField)
+        XCTAssertEqual(success.parentReplacement, "@mac_inbox+call-bank")
+
+        let older = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "dry_run": false,
+              "route": "sase",
+              "relative_target": "sase.md",
+              "block_id": "fix-flaky-gkeep",
+              "line": 7,
+              "ref": "7:198b8e3e",
+              "task": {
+                "ref": "7:198b8e3e",
+                "line": 7,
+                "block_id": "fix-flaky-gkeep",
+                "status_symbol": " ",
+                "status_name": "Todo",
+                "status_type": "TODO",
+                "text": "Fix flaky gkeep test",
+                "depth": 0,
+                "child_count": 0
+              }
+            }
+            """.utf8
+        )
+        let olderSuccess = try JSONDecoder().decode(CaptureTaskIDSuccess.self, from: older)
+        XCTAssertNil(olderSuccess.parentReplacement)
+    }
+
+    func testCompletionResponseDecodesCandidatesWithoutPomodoroForOlderBob() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 6,
+              "replacement": { "start": 6, "end": 6 },
+              "context": "route",
+              "candidates": [
+                { "replacement": "today", "route": "today", "label": "today.md", "kind": "inbox" }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+
+        XCTAssertEqual(decoded.candidates.count, 1)
+        XCTAssertNil(decoded.candidates[0].pomodoro)
+    }
+
+    func testCompletionResponseDecodesRouteAndTaskCandidates() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 8,
+              "replacement": { "start": 6, "end": 8 },
+              "context": "task",
+              "candidates": [
+                {
+                  "replacement": "goog-exit",
+                  "ref": "4:googexit",
+                  "block_id": "goog-exit",
+                  "route": "cash",
+                  "requires_block_id": false,
+                  "status_symbol": "*",
+                  "status_name": "in-progress",
+                  "status_type": "TODO",
+                  "text": "Finish Google Exit Packet!",
+                  "section": "Tasks",
+                  "depth": 0,
+                  "child_count": 2
+                },
+                {
+                  "replacement": "",
+                  "ref": "8:missing",
+                  "block_id": null,
+                  "route": "cash",
+                  "requires_block_id": true,
+                  "status_symbol": " ",
+                  "status_name": "Todo",
+                  "status_type": "TODO",
+                  "text": "Plan handoff",
+                  "section": "Tasks",
+                  "depth": 1,
+                  "child_count": 0
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+
+        XCTAssertEqual(decoded.context, "task")
+        XCTAssertEqual(decoded.replacement, CaptureRange(start: 6, end: 8))
+        XCTAssertEqual(decoded.candidates.first?.taskRef, "4:googexit")
+        XCTAssertEqual(decoded.candidates.first?.route, "cash")
+        XCTAssertEqual(decoded.candidates.first?.requiresBlockID, false)
+        XCTAssertEqual(decoded.candidates.first?.childCount, 2)
+        XCTAssertEqual(decoded.candidates[1].taskRef, "8:missing")
+        XCTAssertNil(decoded.candidates[1].blockID)
+        XCTAssertTrue(decoded.candidates[1].requiresBlockID)
+        XCTAssertEqual(decoded.candidates[1].replacement, "")
+        XCTAssertFalse(decoded.candidates[0].requiresName)
+        XCTAssertNil(decoded.candidates[0].line)
+        XCTAssertNil(decoded.candidates[0].state)
+        XCTAssertNil(decoded.candidates[0].timeRange)
+        XCTAssertFalse(decoded.candidates[0].placeholder)
+        XCTAssertFalse(decoded.candidates[0].isCurrent)
+        XCTAssertNil(decoded.candidates[0].matchCount)
+    }
+
+    func testCompletionResponseDecodesPomodoroNameCandidatesIncludingAbsentAdditiveFields() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 26,
+              "replacement": { "start": 26, "end": 26 },
+              "context": "pomodoro_name",
+              "candidates": [
+                {
+                  "replacement": "memory",
+                  "ref": "31:1a2b3c4d",
+                  "name": "MEMORY",
+                  "requires_name": false,
+                  "line": 31,
+                  "state": "open",
+                  "status_symbol": " ",
+                  "time_range": "1205-1230",
+                  "placeholder": false,
+                  "is_current": true,
+                  "child_count": 5,
+                  "match_count": 2
+                },
+                {
+                  "replacement": "",
+                  "ref": "38:9f8e7d6c",
+                  "name": null,
+                  "requires_name": true,
+                  "line": 38,
+                  "state": "open",
+                  "status_symbol": " ",
+                  "time_range": null,
+                  "placeholder": true,
+                  "is_current": false,
+                  "child_count": 0,
+                  "match_count": 1
+                },
+                {
+                  "replacement": "bugs",
+                  "ref": "12:abcd1234",
+                  "name": "BUGS"
+                },
+                {
+                  "replacement": "future",
+                  "name": "FUTURE",
+                  "requires_name": false,
+                  "creates_pomodoro": true,
+                  "state": "open",
+                  "status_symbol": " ",
+                  "placeholder": true,
+                  "is_current": false,
+                  "child_count": 0,
+                  "match_count": 1
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+
+        XCTAssertEqual(decoded.context, "pomodoro_name")
+        XCTAssertEqual(decoded.candidates[0].taskRef, "31:1a2b3c4d")
+        XCTAssertEqual(decoded.candidates[0].name, "MEMORY")
+        XCTAssertFalse(decoded.candidates[0].requiresName)
+        XCTAssertEqual(decoded.candidates[0].line, 31)
+        XCTAssertEqual(decoded.candidates[0].state, "open")
+        XCTAssertEqual(decoded.candidates[0].timeRange, "1205-1230")
+        XCTAssertFalse(decoded.candidates[0].placeholder)
+        XCTAssertTrue(decoded.candidates[0].isCurrent)
+        XCTAssertEqual(decoded.candidates[0].childCount, 5)
+        XCTAssertEqual(decoded.candidates[0].matchCount, 2)
+        XCTAssertTrue(decoded.candidates[1].requiresName)
+        XCTAssertEqual(decoded.candidates[1].replacement, "")
+        XCTAssertNil(decoded.candidates[1].name)
+        XCTAssertTrue(decoded.candidates[1].placeholder)
+        XCTAssertEqual(decoded.candidates[1].childCount, 0)
+        XCTAssertFalse(decoded.candidates[2].requiresName)
+        XCTAssertNil(decoded.candidates[2].line)
+        XCTAssertNil(decoded.candidates[2].timeRange)
+        XCTAssertFalse(decoded.candidates[2].placeholder)
+        XCTAssertFalse(decoded.candidates[2].isCurrent)
+        XCTAssertNil(decoded.candidates[2].matchCount)
+        XCTAssertFalse(decoded.candidates[0].createsPomodoro)
+        XCTAssertFalse(decoded.candidates[1].createsPomodoro)
+        XCTAssertFalse(decoded.candidates[2].createsPomodoro)
+        XCTAssertTrue(decoded.candidates[3].createsPomodoro)
+        XCTAssertEqual(decoded.candidates[3].replacement, "future")
+        XCTAssertEqual(decoded.candidates[3].name, "FUTURE")
+        XCTAssertNil(decoded.candidates[3].taskRef)
+        XCTAssertNil(decoded.candidates[3].line)
+        XCTAssertTrue(decoded.candidates[3].placeholder)
+        XCTAssertFalse(decoded.candidates[3].requiresName)
+    }
+
+    func testCompletionCandidateDecodesThemeHistoryAndBobHueRefs() throws {
+        let candidate = try JSONDecoder().decode(
+            CaptureCompletionCandidate.self,
+            from: Data(
+                """
+                {
+                  "replacement":"BOOKS",
+                  "name":"BOOKS",
+                  "creates_pomodoro":true,
+                  "origin":"history",
+                  "last_used":"2026-10-21",
+                  "days_used":3,
+                  "themes":[
+                    {"key":"books","name":"BOOKS","hue":"aqua","hue_source":"area"},
+                    {"key":"unknown","name":"UNKNOWN","hue":null,"hue_source":"hash","known":false}
+                  ]
+                }
+                """.utf8
+            )
+        )
+
+        XCTAssertEqual(candidate.origin, "history")
+        XCTAssertEqual(candidate.lastUsed, "2026-10-21")
+        XCTAssertEqual(candidate.daysUsed, 3)
+        XCTAssertEqual(candidate.themes.count, 2)
+        XCTAssertEqual(candidate.themes[0].hue, .aqua)
+        XCTAssertEqual(candidate.themes[0].hueSource, "area")
+        XCTAssertTrue(candidate.themes[0].known)
+        XCTAssertNil(candidate.themes[1].hue)
+        XCTAssertFalse(candidate.themes[1].known)
+    }
+
+    func testCompletionResponseDecodesTaskSectionCandidatesWithoutNewCodingKeys() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 29,
+              "replacement": { "start": 29, "end": 29 },
+              "context": "task_section",
+              "candidates": [
+                {
+                  "replacement": "requirements",
+                  "title": "REQUIREMENTS",
+                  "slug": "requirements",
+                  "route": "foo",
+                  "block_id": "bar",
+                  "text": "Parent task",
+                  "line": 4,
+                  "child_count": 2,
+                  "cursor_after": 41
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+
+        XCTAssertEqual(decoded.context, "task_section")
+        XCTAssertEqual(decoded.replacement, CaptureRange(start: 29, end: 29))
+        XCTAssertEqual(decoded.candidates.first?.replacement, "requirements")
+        XCTAssertEqual(decoded.candidates.first?.title, "REQUIREMENTS")
+        XCTAssertEqual(decoded.candidates.first?.route, "foo")
+        XCTAssertEqual(decoded.candidates.first?.blockID, "bar")
+        XCTAssertEqual(decoded.candidates.first?.text, "Parent task")
+        XCTAssertEqual(decoded.candidates.first?.childCount, 2)
+        XCTAssertEqual(decoded.candidates.first?.cursorAfter, 41)
+    }
+
+    func testCompletionResponseDecodesMissingCandidatesAsEmpty() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 6,
+              "replacement": { "start": 6, "end": 6 },
+              "context": "route"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+
+        XCTAssertEqual(decoded.candidates, [])
+    }
+
+    func testCompletionResponseDecodesWikilinkMetadataWarningsAndCursorAfter() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 4,
+              "replacement": { "start": 2, "end": 4 },
+              "context": "wikilink_note",
+              "candidates": [
+                {
+                  "replacement": "Artificial Intelligence|AI]]",
+                  "cursor_after": 30,
+                  "path": "Artificial Intelligence.md",
+                  "name": "Artificial Intelligence",
+                  "alias": "AI",
+                  "match_kind": "exact_alias",
+                  "future_key": true
+                }
+              ],
+              "warnings": ["skipped unreadable note"],
+              "future_key": "ignored"
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+
+        XCTAssertEqual(decoded.context, "wikilink_note")
+        XCTAssertEqual(decoded.warnings, ["skipped unreadable note"])
+        XCTAssertEqual(decoded.candidates.first?.cursorAfter, 30)
+        XCTAssertEqual(decoded.candidates.first?.path, "Artificial Intelligence.md")
+        XCTAssertEqual(decoded.candidates.first?.alias, "AI")
+        XCTAssertEqual(decoded.candidates.first?.matchKind, "exact_alias")
+    }
+
+    func testCompletionResponseDecodesWikilinkHeadingAndBlockMetadata() throws {
+        let headingData = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 12,
+              "replacement": { "start": 10, "end": 12 },
+              "context": "wikilink_heading",
+              "candidates": [
+                {
+                  "replacement": "Design]]",
+                  "cursor_after": 18,
+                  "path": "sase.md",
+                  "heading": "Design",
+                  "level": 1,
+                  "match_kind": "prefix"
+                }
+              ]
+            }
+            """.utf8
+        )
+        let blockData = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 12,
+              "replacement": { "start": 10, "end": 12 },
+              "context": "wikilink_block",
+              "candidates": [
+                {
+                  "replacement": "^next-step]]",
+                  "cursor_after": 22,
+                  "path": "sase.md",
+                  "block_id": "next-step",
+                  "preview": "Plan the next step",
+                  "match_kind": "prefix"
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let heading = try JSONDecoder().decode(CaptureCompletionResponse.self, from: headingData)
+        let block = try JSONDecoder().decode(CaptureCompletionResponse.self, from: blockData)
+
+        XCTAssertEqual(heading.candidates.first?.heading, "Design")
+        XCTAssertEqual(heading.candidates.first?.level, 1)
+        XCTAssertEqual(block.candidates.first?.blockID, "next-step")
+        XCTAssertEqual(block.candidates.first?.preview, "Plan the next step")
+    }
+
+    func testCaptureTaskIDResponseDecodesVersionedSuccessAndFailure() throws {
+        let successData = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "dry_run": false,
+              "route": "file",
+              "relative_target": "file.md",
+              "block_id": "new-id",
+              "line": 8,
+              "ref": "8:updated",
+              "task": {
+                "ref": "8:updated",
+                "line": 8,
+                "block_id": "new-id",
+                "status_symbol": " ",
+                "status_name": "Todo",
+                "status_type": "TODO",
+                "text": "Plan handoff",
+                "section": "Tasks",
+                "depth": 1,
+                "child_count": 0
+              }
+            }
+            """.utf8
+        )
+        let failureData = Data(
+            #"{"ok":false,"error":"block ID ^new-id already exists in file.md"}"#.utf8)
+
+        let successResponse = try JSONDecoder().decode(CaptureTaskIDResponse.self, from: successData)
+        let failureResponse = try JSONDecoder().decode(CaptureTaskIDResponse.self, from: failureData)
+
+        guard case .success(let success) = successResponse else {
+            return XCTFail("Expected task ID success")
+        }
+        XCTAssertEqual(success.schemaVersion, 1)
+        XCTAssertEqual(success.blockID, "new-id")
+        XCTAssertEqual(success.taskRef, "8:updated")
+        XCTAssertEqual(success.task.text, "Plan handoff")
+
+        guard case .failure(let failure) = failureResponse else {
+            return XCTFail("Expected task ID failure")
+        }
+        XCTAssertEqual(failure.error, "block ID ^new-id already exists in file.md")
+    }
+
+    func testCapturePomodoroNameResponseDecodesVersionedSuccessAndFailure() throws {
+        let successData = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "dry_run": false,
+              "day_file": "/tmp/bob/2026/20260828.md",
+              "relative_day_file": "2026/20260828.md",
+              "name": "DEEP WORK",
+              "slug": "deep-work",
+              "line": 38,
+              "ref": "38:0b1c2d3e",
+              "pomodoro": {
+                "ref": "38:0b1c2d3e",
+                "line": 38,
+                "state": "open",
+                "status_symbol": " ",
+                "name": "DEEP WORK",
+                "slug": "deep-work",
+                "selectable": true,
+                "time_range": null,
+                "placeholder": true,
+                "is_current": false,
+                "child_count": 0
+              }
+            }
+            """.utf8
+        )
+        let failureData = Data(
+            #"{"ok":false,"error":"Pomodoro 38:0b1c2d3e already has a selectable name"}"#.utf8)
+
+        let successResponse = try JSONDecoder().decode(
+            CapturePomodoroNameResponse.self, from: successData)
+        let failureResponse = try JSONDecoder().decode(
+            CapturePomodoroNameResponse.self, from: failureData)
+
+        guard case .success(let success) = successResponse else {
+            return XCTFail("Expected pomodoro name success")
+        }
+        XCTAssertEqual(success.schemaVersion, 1)
+        XCTAssertEqual(success.name, "DEEP WORK")
+        XCTAssertEqual(success.slug, "deep-work")
+        XCTAssertEqual(success.relativeDayFile, "2026/20260828.md")
+        XCTAssertEqual(success.pomodoroRef, "38:0b1c2d3e")
+        XCTAssertEqual(success.pomodoro.name, "DEEP WORK")
+        XCTAssertTrue(success.pomodoro.selectable)
+
+        guard case .failure(let failure) = failureResponse else {
+            return XCTFail("Expected pomodoro name failure")
+        }
+        XCTAssertEqual(failure.error, "Pomodoro 38:0b1c2d3e already has a selectable name")
+    }
+
+    func testAttributedStringUtf8OffsetRoundTripsCollapsedCaret() throws {
+        let text = AttributedString("a 🧪 cafe\u{301}")
+        let plain = String(text.characters)
+        let target = try XCTUnwrap(plain.range(of: "caf"))
+        let offset = plain[..<target.lowerBound].utf8.count
+
+        let index = try XCTUnwrap(attributedStringIndex(in: text, utf8Offset: offset))
+
+        XCTAssertEqual(utf8Offset(in: text, at: index), offset)
+        XCTAssertNil(attributedStringIndex(in: text, utf8Offset: 3))
+    }
+
+    func testUtf16RangeRoundTripsEmojiMarker() throws {
+        let text = "Hi 🧪 @file:id^"
+        let markerStart = text.utf8.count - "@file:id^".utf8.count
+        let markerEnd = text.utf8.count
+        let range = try XCTUnwrap(utf16Range(in: text, start: markerStart, end: markerEnd))
+        XCTAssertEqual((text as NSString).substring(with: range), "@file:id^")
+        XCTAssertEqual(utf8Offset(in: text, utf16Offset: range.location), markerStart)
+        XCTAssertNil(
+            utf16Range(in: text, start: 3, end: 5), "emoji interior is not a UTF-8 boundary pair")
+        XCTAssertNil(utf8Offset(in: text, utf16Offset: 4), "interior surrogate is not a caret")
+    }
+
+    func testValidatedSpanRangesRejectMalformedUtf8AndOverlaps() {
+        let text = "Call 🧪 @Cash"
+        let routeStart = text.utf8.count - "@Cash".utf8.count
+        let routeEnd = text.utf8.count
+
+        let valid = validatedSpanRanges(
+            in: text,
+            spans: [CaptureSpan(start: routeStart, end: routeEnd, kind: "route")]
+        )
+        XCTAssertEqual(valid?.first?.span.kind, "route")
+        if let first = valid?.first {
+            XCTAssertEqual(String(text[first.range]), "@Cash")
+        } else {
+            XCTFail("Expected a valid route span")
+        }
+
+        XCTAssertNil(
+            validatedSpanRanges(
+                in: text,
+                spans: [CaptureSpan(start: 6, end: 7, kind: "route")]
+            ))
+        XCTAssertNil(
+            validatedSpanRanges(
+                in: text,
+                spans: [
+                    CaptureSpan(start: routeStart, end: routeEnd, kind: "route"),
+                    CaptureSpan(start: routeStart + 1, end: routeEnd, kind: "route"),
+                ]
+            ))
+    }
+
+    private enum CaptureFixtureError: Error {
+        case expectedSuccess
+    }
+
+    func testParseResponseDecodesPomodoroStartSuffix() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Do work @sase:outline#deep=-2",
+              "body": "Do work",
+              "mode": "pomodoro_task",
+              "route": "sase",
+              "section": "deep",
+              "block_id": "outline",
+              "needs": [],
+              "spans": [
+                { "start": 8, "end": 13, "kind": "pomodoro_route" },
+                { "start": 14, "end": 21, "kind": "pomodoro_block_id" },
+                { "start": 22, "end": 26, "kind": "pomodoro_name" },
+                { "start": 26, "end": 29, "kind": "pomodoro_start" }
+              ],
+              "diagnostics": [],
+              "pomodoro_start": { "raw": "-2", "duration_units": 5, "offset_units": 2 }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(
+            decoded.pomodoroStart,
+            PomodoroStartSpec(raw: "-2", durationUnits: 5, offsetUnits: 2)
+        )
+        XCTAssertEqual(
+            decoded.spans.map { captureSemanticCategory(forSpanKind: $0.kind) },
+            [.route, .blockID, .section, .pomodoroStart]
+        )
+    }
+
+    func testParseResponseDecodesWholeItemStart() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "=",
+              "body": "=",
+              "mode": "pomodoro_start",
+              "route": null,
+              "section": null,
+              "block_id": null,
+              "needs": [],
+              "spans": [
+                { "start": 0, "end": 1, "kind": "pomodoro_start" }
+              ],
+              "diagnostics": [],
+              "pomodoro_start": { "raw": "", "duration_units": 5, "offset_units": 0 }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(decoded.mode, "pomodoro_start")
+        XCTAssertEqual(
+            decoded.pomodoroStart,
+            PomodoroStartSpec(raw: "", durationUnits: 5, offsetUnits: 0)
+        )
+        XCTAssertEqual(
+            decoded.spans.map { captureSemanticCategory(forSpanKind: $0.kind) },
+            [.pomodoroStart]
+        )
+    }
+
+    func testParseResponseOmitsPomodoroStartForOlderMarkers() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Do work @dev:id#bugs",
+              "body": "Do work",
+              "mode": "pomodoro_task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": []
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertNil(decoded.pomodoroStart)
+    }
+
+    func testParseResponseDecodesArrayPairDiagnosticRanges() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Do work @sase:outline=abc",
+              "body": "Do work",
+              "mode": "task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": [
+                {
+                  "severity": "error",
+                  "code": "invalid_pomodoro_start",
+                  "message": "bad suffix",
+                  "range": [8, 25]
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertNil(decoded.pomodoroStart)
+        XCTAssertEqual(decoded.diagnostics.first?.code, "invalid_pomodoro_start")
+        XCTAssertEqual(decoded.diagnostics.first?.range, CaptureRange(start: 8, end: 25))
+    }
+
+    func testCaptureCommandDecodesPomodoroStartSummary() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {
+              "ok": true,
+              "dry_run": true,
+              "routed": true,
+              "route": "sase",
+              "route_label": "sase.md",
+              "relative_target": "sase.md",
+              "target": "/tmp/bob/sase.md",
+              "text": "Write outline",
+              "task_line": "- [*] #task Write outline [created::2026-08-14] ^outline",
+              "kind": "pomodoro_task",
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "inserted",
+              "block_id": "outline",
+              "pomodoro_start": {
+                "start": "0930",
+                "end": "0945",
+                "duration_minutes": 15,
+                "offset_units": 0,
+                "pomodoro_name": null,
+                "pomodoro_line": 12,
+                "created_pomodoro": false,
+                "time_range": "(**0930-0945** [t:: 15m])"
+              }
+            }
+            """
+        )
+
+        XCTAssertEqual(
+            success.pomodoroStart,
+            PomodoroStartSummary(
+                start: "0930",
+                end: "0945",
+                durationMinutes: 15,
+                offsetUnits: 0,
+                pomodoroName: nil,
+                pomodoroLine: 12,
+                createdPomodoro: false,
+                timeRange: "(**0930-0945** [t:: 15m])"
+            )
+        )
+    }
+
+    func testCaptureCommandDecodesWholeItemStartTasks() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {
+              "ok": true,
+              "dry_run": true,
+              "routed": false,
+              "route": null,
+              "route_label": "",
+              "relative_target": "2026/20260928.md",
+              "target": "/tmp/bob/2026/20260928.md",
+              "text": "=",
+              "task_line": "- [ ] (**0945-1010** [t:: 25m]) — CAPTURE",
+              "kind": "pomodoro_start",
+              "created": "2026-09-28",
+              "scheduled": null,
+              "placement": "started",
+              "pomodoro_name": "CAPTURE",
+              "pomodoro_start": {
+                "start": "0945",
+                "end": "1010",
+                "duration_minutes": 25,
+                "offset_units": 0,
+                "pomodoro_name": "CAPTURE",
+                "pomodoro_line": 4,
+                "created_pomodoro": false,
+                "time_range": "(**0945-1010** [t:: 25m])",
+                "tasks": [
+                  {
+                    "block_link": "[[bob#^capture-stop]]",
+                    "embedded": false,
+                    "ledger_line": 5,
+                    "resolved": true,
+                    "relative_target": "bob.md",
+                    "block_id": "capture-stop",
+                    "text": "Stop capture from the panel",
+                    "status_symbol": "/",
+                    "status_name": "In Progress",
+                    "warning": null
+                  },
+                  {
+                    "block_link": "[[bob#^gone]]",
+                    "embedded": false,
+                    "ledger_line": 6,
+                    "resolved": false,
+                    "relative_target": "bob.md",
+                    "block_id": "gone",
+                    "text": null,
+                    "status_symbol": null,
+                    "status_name": null,
+                    "warning": "bob.md has no task with block ID ^gone"
+                  }
+                ]
+              }
+            }
+            """
+        )
+
+        XCTAssertEqual(
+            success.pomodoroStart,
+            PomodoroStartSummary(
+                start: "0945",
+                end: "1010",
+                durationMinutes: 25,
+                offsetUnits: 0,
+                pomodoroName: "CAPTURE",
+                pomodoroLine: 4,
+                createdPomodoro: false,
+                timeRange: "(**0945-1010** [t:: 25m])",
+                tasks: [
+                    PomodoroStartTask(
+                        blockLink: "[[bob#^capture-stop]]",
+                        ledgerLine: 5,
+                        resolved: true,
+                        relativeTarget: "bob.md",
+                        blockID: "capture-stop",
+                        text: "Stop capture from the panel",
+                        statusSymbol: "/",
+                        statusName: "In Progress"
+                    ),
+                    PomodoroStartTask(
+                        blockLink: "[[bob#^gone]]",
+                        ledgerLine: 6,
+                        relativeTarget: "bob.md",
+                        blockID: "gone",
+                        warning: "bob.md has no task with block ID ^gone"
+                    ),
+                ]
+            )
+        )
+    }
+
+    func testCaptureCommandOmitsStartTasksForLinkStartsAndOlderBob() throws {
+        let linkStart = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"sase","route_label":"sase.md",
+             "relative_target":"sase.md","target":"/tmp/bob/sase.md","text":"Do work",
+             "task_line":"- [*] #task Do work [created::2026-08-14] ^outline",
+             "kind":"pomodoro_task","created":"2026-08-14","scheduled":null,
+             "placement":"inserted","block_id":"outline",
+             "pomodoro_start":{"start":"0930","end":"0945","duration_minutes":15,
+              "offset_units":0,"pomodoro_name":null,"pomodoro_line":12,
+              "created_pomodoro":false,"time_range":"(**0930-0945** [t:: 15m])"}}
+            """
+        )
+
+        XCTAssertNil(linkStart.pomodoroStart?.tasks)
+    }
+
+    func testSparsePomodoroStartSummaryStillDecodes() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":false,"route":null,"route_label":"",
+             "relative_target":"2026/20260928.md","target":"/tmp/bob/2026/20260928.md",
+             "text":"=","task_line":"- [ ] entry","kind":"pomodoro_start",
+             "created":"2026-09-28","scheduled":null,"placement":"started",
+             "pomodoro_start":{"tasks":[{}]}}
+            """
+        )
+
+        XCTAssertEqual(
+            success.pomodoroStart,
+            PomodoroStartSummary(
+                start: "",
+                end: "",
+                durationMinutes: 0,
+                offsetUnits: 0,
+                pomodoroLine: 0,
+                createdPomodoro: false,
+                timeRange: "",
+                tasks: [PomodoroStartTask(blockLink: "")]
+            )
+        )
+    }
+
+    func testCaptureCommandOmitsPomodoroStartForOlderBobBinaries() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
+             "relative_target":"cash.md","target":"/tmp/bob/cash.md","text":"Call bank",
+             "task_line":"- [ ] #task Call bank [created::2026-08-14]","kind":"task",
+             "created":"2026-08-14","scheduled":null,"placement":"inserted"}
+            """
+        )
+
+        XCTAssertNil(success.pomodoroStart)
+        XCTAssertNil(CapturePomodoroStartPresentation(capture: success))
+    }
+
+    func testParseResponseDecodesPomodoroAdjustSpec() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "+5",
+              "body": "+5",
+              "mode": "pomodoro_adjust",
+              "route": null,
+              "section": null,
+              "block_id": null,
+              "needs": [],
+              "spans": [
+                { "start": 0, "end": 2, "kind": "pomodoro_adjust" }
+              ],
+              "diagnostics": [],
+              "pomodoro_adjust": { "raw": "+5", "plus": true, "units": 5 }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(
+            decoded.pomodoroAdjust,
+            PomodoroAdjustSpec(raw: "+5", plus: true, units: 5)
+        )
+        XCTAssertEqual(
+            decoded.spans.map { captureSemanticCategory(forSpanKind: $0.kind) },
+            [.pomodoroStart]
+        )
+    }
+
+    func testParseResponseDecodesMixedDraftAdjustItem() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "+5\\n\\njot idea\\n",
+              "body": "+5",
+              "mode": "pomodoro_adjust",
+              "needs": [],
+              "spans": [
+                { "start": 0, "end": 2, "kind": "pomodoro_adjust" }
+              ],
+              "diagnostics": [],
+              "items": [
+                {
+                  "index": 1,
+                  "range": { "start": 0, "end": 2 },
+                  "line_start": 1,
+                  "line_end": 1,
+                  "body": "+5",
+                  "mode": "pomodoro_adjust",
+                  "needs": [],
+                  "pomodoro_adjust": { "raw": "+5", "plus": true, "units": 5 }
+                },
+                {
+                  "index": 2,
+                  "range": { "start": 4, "end": 12 },
+                  "line_start": 3,
+                  "line_end": 3,
+                  "body": "jot idea",
+                  "mode": "task",
+                  "needs": []
+                }
+              ],
+              "pomodoro_adjust": { "raw": "+5", "plus": true, "units": 5 }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(decoded.items.count, 2)
+        XCTAssertEqual(
+            decoded.items[0].pomodoroAdjust,
+            PomodoroAdjustSpec(raw: "+5", plus: true, units: 5)
+        )
+        XCTAssertNil(decoded.items[1].pomodoroAdjust)
+    }
+
+    func testParseResponseOmitsPomodoroAdjustForOlderBobBinaries() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Call bank",
+              "body": "Call bank",
+              "mode": "task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": []
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertNil(decoded.pomodoroAdjust)
+    }
+
+    func testParseResponseSurfacesInvalidAdjustMagnitudeAsDiagnostic() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "+0",
+              "body": "+0",
+              "mode": "pomodoro_adjust",
+              "needs": [],
+              "spans": [
+                { "start": 0, "end": 2, "kind": "pomodoro_adjust" }
+              ],
+              "diagnostics": [
+                {
+                  "severity": "error",
+                  "code": "invalid_pomodoro_adjustment",
+                  "message": "bad magnitude",
+                  "range": [0, 2]
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertNil(decoded.pomodoroAdjust)
+        XCTAssertEqual(decoded.diagnostics.first?.code, "invalid_pomodoro_adjustment")
+        XCTAssertEqual(decoded.diagnostics.first?.range, CaptureRange(start: 0, end: 2))
+    }
+
+    func testCaptureCommandDecodesPomodoroAdjustSummary() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {
+              "ok": true,
+              "dry_run": true,
+              "routed": false,
+              "route": null,
+              "route_label": "",
+              "relative_target": "day.md",
+              "target": "/tmp/bob/day.md",
+              "text": "-9",
+              "task_line": "- [ ] (**0900-0900** [t:: 0m]) — FOCUS",
+              "kind": "pomodoro_adjust",
+              "created": "2026-08-14",
+              "scheduled": null,
+              "placement": "toggled",
+              "pomodoro_name": "FOCUS",
+              "pomodoro_adjust": {
+                "direction": "minus",
+                "requested_units": 9,
+                "requested_minutes": -45,
+                "delta_minutes": -10,
+                "before_start": "0900",
+                "before_end": "0910",
+                "before_duration_minutes": 10,
+                "after_start": "0900",
+                "after_end": "0900",
+                "after_duration_minutes": 0,
+                "pomodoro_line": 3,
+                "pomodoro_name": "FOCUS",
+                "time_range": "(**0900-0900** [t:: 0m])",
+                "clamped": true
+              }
+            }
+            """
+        )
+
+        XCTAssertEqual(
+            success.pomodoroAdjust,
+            PomodoroAdjustSummary(
+                direction: "minus",
+                requestedUnits: 9,
+                requestedMinutes: -45,
+                deltaMinutes: -10,
+                beforeStart: "0900",
+                beforeEnd: "0910",
+                beforeDurationMinutes: 10,
+                afterStart: "0900",
+                afterEnd: "0900",
+                afterDurationMinutes: 0,
+                pomodoroLine: 3,
+                pomodoroName: "FOCUS",
+                timeRange: "(**0900-0900** [t:: 0m])",
+                clamped: true
+            )
+        )
+    }
+
+    func testCaptureCommandOmitsPomodoroAdjustForOlderBobBinaries() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
+             "relative_target":"cash.md","target":"/tmp/bob/cash.md","text":"Call bank",
+             "task_line":"- [ ] #task Call bank [created::2026-08-14]","kind":"task",
+             "created":"2026-08-14","scheduled":null,"placement":"inserted"}
+            """
+        )
+
+        XCTAssertNil(success.pomodoroAdjust)
+        XCTAssertNil(CapturePomodoroAdjustPresentation(capture: success))
+    }
+
+    func testParseResponseDecodesPomodoroShiftSpec() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "++3",
+              "body": "++3",
+              "mode": "pomodoro_shift",
+              "route": null,
+              "section": null,
+              "block_id": null,
+              "needs": [],
+              "spans": [
+                { "start": 0, "end": 3, "kind": "pomodoro_shift" }
+              ],
+              "diagnostics": [],
+              "pomodoro_shift": { "raw": "++3", "later": true, "units": 3 }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(
+            decoded.pomodoroShift,
+            PomodoroShiftSpec(raw: "++3", later: true, units: 3)
+        )
+        XCTAssertEqual(
+            decoded.spans.map { captureSemanticCategory(forSpanKind: $0.kind) },
+            [.pomodoroStart]
+        )
+    }
+
+    func testParseResponseDecodesMixedDraftShiftItem() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "++3\\n\\nTest note\\n",
+              "body": "++3",
+              "mode": "pomodoro_shift",
+              "needs": [],
+              "spans": [
+                { "start": 0, "end": 3, "kind": "pomodoro_shift" }
+              ],
+              "diagnostics": [],
+              "items": [
+                {
+                  "index": 1,
+                  "range": { "start": 0, "end": 3 },
+                  "line_start": 1,
+                  "line_end": 1,
+                  "body": "++3",
+                  "mode": "pomodoro_shift",
+                  "needs": [],
+                  "pomodoro_shift": { "raw": "++3", "later": true, "units": 3 }
+                },
+                {
+                  "index": 2,
+                  "range": { "start": 5, "end": 14 },
+                  "line_start": 3,
+                  "line_end": 3,
+                  "body": "Test note",
+                  "mode": "task",
+                  "needs": []
+                }
+              ],
+              "pomodoro_shift": { "raw": "++3", "later": true, "units": 3 }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertEqual(decoded.items.count, 2)
+        XCTAssertEqual(
+            decoded.items[0].pomodoroShift,
+            PomodoroShiftSpec(raw: "++3", later: true, units: 3)
+        )
+        XCTAssertNil(decoded.items[1].pomodoroShift)
+    }
+
+    func testParseResponseOmitsPomodoroShiftForOlderBobBinaries() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "input": "Call bank",
+              "body": "Call bank",
+              "mode": "task",
+              "needs": [],
+              "spans": [],
+              "diagnostics": []
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        XCTAssertNil(decoded.pomodoroShift)
+    }
+
+    func testCaptureCommandDecodesPomodoroShiftSummary() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {
+              "ok": true,
+              "dry_run": true,
+              "routed": false,
+              "route": null,
+              "route_label": "",
+              "relative_target": "2026/20260928.md",
+              "target": "/tmp/bob/2026/20260928.md",
+              "text": "++3",
+              "task_line": "- [ ] (**0915-0940** [t:: 25m]) — FOCUS",
+              "kind": "pomodoro_shift",
+              "created": "2026-09-28",
+              "scheduled": null,
+              "placement": "toggled",
+              "pomodoro_name": "FOCUS",
+              "pomodoro_shift": {
+                "direction": "later",
+                "requested_units": 3,
+                "delta_minutes": 15,
+                "before_start": "0900",
+                "before_end": "0925",
+                "after_start": "0915",
+                "after_end": "0940",
+                "duration_minutes": 25,
+                "pomodoro_line": 3,
+                "pomodoro_name": "FOCUS",
+                "time_range": "(**0915-0940** [t:: 25m])"
+              }
+            }
+            """
+        )
+
+        XCTAssertEqual(
+            success.pomodoroShift,
+            PomodoroShiftSummary(
+                direction: "later",
+                requestedUnits: 3,
+                deltaMinutes: 15,
+                beforeStart: "0900",
+                beforeEnd: "0925",
+                afterStart: "0915",
+                afterEnd: "0940",
+                durationMinutes: 25,
+                pomodoroLine: 3,
+                pomodoroName: "FOCUS",
+                timeRange: "(**0915-0940** [t:: 25m])"
+            )
+        )
+    }
+
+    func testCaptureCommandOmitsPomodoroShiftForOlderBobBinaries() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash.md",
+             "relative_target":"cash.md","target":"/tmp/bob/cash.md","text":"Call bank",
+             "task_line":"- [ ] #task Call bank [created::2026-08-14]","kind":"task",
+             "created":"2026-08-14","scheduled":null,"placement":"inserted"}
+            """
+        )
+
+        XCTAssertNil(success.pomodoroShift)
+        XCTAssertNil(CapturePomodoroShiftPresentation(capture: success))
+    }
+
+    func testCaptureDiagnosticDecodesAllRangeShapesTolerantly() throws {
+        let decoder = JSONDecoder()
+        func decodeRange(_ rangeJSON: String) throws -> CaptureRange? {
+            let data = Data(
+                """
+                {"severity":"error","code":"invalid_pomodoro_start","message":"Bad start","range":\(rangeJSON)}
+                """.utf8
+            )
+            return try decoder.decode(CaptureDiagnostic.self, from: data).range
+        }
+
+        XCTAssertEqual(
+            try decodeRange(#"{"start":3,"end":9}"#),
+            CaptureRange(start: 3, end: 9)
+        )
+        XCTAssertEqual(
+            try decodeRange("[3,9]"),
+            CaptureRange(start: 3, end: 9)
+        )
+        XCTAssertNil(try decodeRange("null"))
+        XCTAssertNil(try decodeRange("[3]"))
+        XCTAssertNil(try decodeRange(#"{"start":"x"}"#))
+
+        let absent = try decoder.decode(
+            CaptureDiagnostic.self,
+            from: Data(
+                #"{"severity":"error","code":"invalid_pomodoro_start","message":"Bad start"}"#.utf8
+            )
+        )
+        XCTAssertNil(absent.range)
+    }
+
+    private func decodeCaptureSuccess(_ json: String) throws -> CaptureCommandSuccess {
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: Data(json.utf8))
+        guard case .success(let success) = decoded else {
+            throw CaptureFixtureError.expectedSuccess
+        }
+        return success
+    }
+
+    private func decodeFixture(_ name: String) throws -> CaptureCommandSuccess {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let text = try String(contentsOf: fixtures.appendingPathComponent(name), encoding: .utf8)
+        return try decodeCaptureSuccess(text)
+    }
+
+    func testProjectNoteDecodesTaskLinksTolerantly() throws {
+        let withLinks = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash_goog_exit.md",
+            "relative_target":"cash_goog_exit.md","target":"/tmp/vault/cash_goog_exit.md",
+            "text":"Finish it","task_line":"- [ ] #task #prj Finish it #hide ^prj",
+            "kind":"project_note","created":"2026-09-20","placement":"created","block_id":"prj",
+            "day_file":"/tmp/vault/day.md","pomodoro_name":"ADMIN","creates_pomodoro":true,
+            "project_note":{"basename":"cash_goog_exit.md","parent_route":"cash","parent_link":"[[cash]]",
+            "tasks":1,"sections":[],"task_links":[
+            {"block_id":"draft-memo","block_link":"[[cash_goog_exit#^draft-memo]]",
+            "text":"Draft the memo","task_line":"- [*] #task Draft the memo ^draft-memo"}]}}
+            """
+        )
+        XCTAssertEqual(
+            withLinks.projectNote?.taskLinks,
+            [
+                CaptureProjectTaskLink(
+                    blockID: "draft-memo",
+                    blockLink: "[[cash_goog_exit#^draft-memo]]",
+                    text: "Draft the memo",
+                    taskLine: "- [*] #task Draft the memo ^draft-memo"
+                )
+            ]
+        )
+
+        let withoutNote = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":true,"routed":true,"route":"cash","route_label":"cash_goog_exit.md",
+            "relative_target":"cash_goog_exit.md","target":"/tmp/vault/cash_goog_exit.md",
+            "text":"Finish it","task_line":"- [ ] #task #prj Finish it #hide ^prj",
+            "kind":"project_note","created":"2026-09-20","placement":"created","block_id":"prj"}
+            """
+        )
+        XCTAssertNil(withoutNote.projectNote)
+    }
+
+    func testTaskCompleteDecodesTolerantly() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/bob/sase.md",
+            "text":"","task_line":"- [x] #task Done ^fin",
+            "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fin",
+            "previous_task_line":"- [*] #task Done ^fin",
+            "status_symbol":"x","status_name":"Done",
+            "previous_status_symbol":"*","previous_status_name":"Next","status_changed":true,
+            "task_complete":{"raw":"!sase:fin","note":"sase","note_path":"sase.md",
+            "block_id":"fin","action":"completed","completion_date":"2026-10-05",
+            "subtasks":[{"note_path":"sase.md","block_id":"sub","line":2,"text":"Sub",
+            "previous_status_symbol":"/","previous_status_name":"In Progress",
+            "status_symbol":"x","status_name":"Done"}],
+            "subtasks_left_open":[{"note_path":"sase.md","block_id":"open","line":3,
+            "text":"Open","status_symbol":"?","status_name":"Blocked","reason":"blocked"}],
+            "ledger":{"day_file":"20261005.md","struck":1,"moved":[],
+            "deduplicated":0,"removed_placeholders":[]},
+            "unblocked":[{"note_path":"travel.md","block_id":"waiter","line":2,"text":"Waiter",
+            "previous_status_symbol":"?","previous_status_name":"Blocked",
+            "status_symbol":" ","status_name":"Ready"}]}}
+            """
+        )
+        let summary = try XCTUnwrap(success.taskComplete)
+        XCTAssertEqual(summary.raw, "!sase:fin")
+        XCTAssertEqual(summary.action, "completed")
+        // Older payloads omit `text`, `struck_in`, and `dropped`: clean text
+        // defaults to empty and the ledger arrays decode as nil so the
+        // presentation keeps its count-based fallback.
+        XCTAssertEqual(summary.text, "")
+        XCTAssertEqual(summary.subtasks.count, 1)
+        XCTAssertEqual(summary.subtasksLeftOpen.count, 1)
+        XCTAssertEqual(summary.unblocked.count, 1)
+        XCTAssertEqual(summary.ledger?.struck, 1)
+        XCTAssertNil(summary.ledger?.struckIn)
+        XCTAssertNil(summary.ledger?.dropped)
+
+        let withoutComplete = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/bob/sase.md",
+            "text":"","task_line":"- [x] #task Done ^fin",
+            "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fin"}
+            """
+        )
+        XCTAssertNil(withoutComplete.taskComplete)
+
+        // A malformed `task_complete` object never fails the capture decode.
+        let malformed = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/bob/sase.md",
+            "text":"","task_line":"- [x] #task Done ^fin",
+            "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fin",
+            "task_complete":{"raw":42}}
+            """
+        )
+        XCTAssertNil(malformed.taskComplete)
+    }
+
+    func testTaskCompleteDecodesNewTextAndLedgerNames() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/bob/sase.md",
+            "text":"","task_line":"- [x] #task Done ^fin",
+            "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fin",
+            "status_symbol":"x","status_name":"Done",
+            "previous_status_symbol":"*","previous_status_name":"Next","status_changed":true,
+            "task_complete":{"raw":"!sase:fin","note":"sase","note_path":"sase.md",
+            "block_id":"fin","action":"completed","completion_date":"2026-10-05",
+            "text":"Done","subtasks":[],"subtasks_left_open":[],
+            "ledger":{"day_file":"20261005.md","struck":1,
+            "struck_in":[{"line":2,"name":"CAPTURE","status":"running"}],
+            "moved":[],"deduplicated":1,
+            "dropped":[{"from":{"line":4,"name":"SASE","status":"queued"},
+            "to":{"line":2,"name":"MORNING","status":"completed"}}],
+            "removed_placeholders":[{"name":"SASE"}]},
+            "unblocked":[]}}
+            """
+        )
+        let summary = try XCTUnwrap(success.taskComplete)
+        XCTAssertEqual(summary.text, "Done")
+        let ledger = try XCTUnwrap(summary.ledger)
+        XCTAssertEqual(ledger.struckIn?.count, 1)
+        XCTAssertEqual(ledger.struckIn?.first?.name, "CAPTURE")
+        XCTAssertEqual(ledger.struckIn?.first?.status, "running")
+        XCTAssertEqual(ledger.dropped?.count, 1)
+        XCTAssertEqual(ledger.dropped?.first?.from.name, "SASE")
+        XCTAssertEqual(ledger.dropped?.first?.to.name, "MORNING")
+        // Present-but-empty arrays stay non-nil so the presentation uses
+        // the named wording rather than the count fallback.
+        let emptyArrays = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/bob/sase.md",
+            "text":"","task_line":"- [x] #task Done ^fin",
+            "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fin",
+            "task_complete":{"raw":"!sase:fin","note":"sase","note_path":"sase.md",
+            "block_id":"fin","action":"completed","text":"",
+            "subtasks":[],"subtasks_left_open":[],
+            "ledger":{"day_file":"20261005.md","struck":0,
+            "struck_in":[],"moved":[],"deduplicated":0,"dropped":[],
+            "removed_placeholders":[]},
+            "unblocked":[]}}
+            """
+        )
+        let emptyLedger = try XCTUnwrap(emptyArrays.taskComplete?.ledger)
+        XCTAssertEqual(emptyLedger.struckIn, [])
+        XCTAssertEqual(emptyLedger.dropped, [])
+    }
+
+    func testSuccessorJSONDecodesTolerantly() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/bob/sase.md",
+            "text":"","task_line":"- [x] #task Fix apollo ^fix-apollo",
+            "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fix-apollo",
+            "task_complete":{"raw":"!sase:fix-apollo","note":"sase","note_path":"sase.md",
+            "block_id":"fix-apollo","action":"completed","text":"Fix apollo",
+            "subtasks":[],"subtasks_left_open":[],
+            "unblocked":[{"note_path":"sase.md","block_id":"book-flights","line":8,
+            "text":"Book flights","previous_status_symbol":"?","previous_status_name":"Blocked",
+            "status_symbol":"*","status_name":"Next","inbox":false,
+            "unblocked_by":[{"note_path":"sase.md","block_id":"fix-apollo","text":"Fix apollo"}],
+            "link":{"day_file":"20261005.md","entry_name":"FIX","entry_line":4,
+            "entry_created":false,"next_up":true,"line":8,
+            "block_link":"[[sase#^book-flights]]","block_id_created":true}}],
+            "still_blocked":[{"note_path":"sase.md","block_id":"renew-domain","line":9,
+            "text":"Renew domain","status_symbol":"?","status_name":"Blocked",
+            "reason":"scheduled","waits_on":0,"scheduled":"2026-10-13"}],
+            "unblocked_check":"checked"}}
+            """
+        )
+        let summary = try XCTUnwrap(success.taskComplete)
+        XCTAssertEqual(summary.unblocked.count, 1)
+        let row = summary.unblocked[0]
+        XCTAssertFalse(row.inbox)
+        XCTAssertEqual(row.unblockedBy.count, 1)
+        XCTAssertEqual(row.unblockedBy[0].blockID, "fix-apollo")
+        let link = try XCTUnwrap(row.link)
+        XCTAssertEqual(link.entryName, "FIX")
+        XCTAssertTrue(link.nextUp)
+        XCTAssertTrue(link.blockIDCreated)
+        XCTAssertNil(row.notLinked)
+        XCTAssertEqual(summary.stillBlocked.count, 1)
+        XCTAssertEqual(summary.stillBlocked[0].reason, "scheduled")
+        XCTAssertEqual(summary.stillBlocked[0].scheduled, "2026-10-13")
+        XCTAssertEqual(summary.unblockedCheck, "checked")
+
+        // Every new nested value decodes on its own: malformed fields
+        // degrade to empty instead of failing the capture or dropping the
+        // completion card.
+        let degraded = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/bob/sase.md",
+            "text":"","task_line":"- [x] #task Fix apollo ^fix-apollo",
+            "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fix-apollo",
+            "task_complete":{"raw":"!sase:fix-apollo","note":"sase","note_path":"sase.md",
+            "block_id":"fix-apollo","action":"completed","text":"Fix apollo",
+            "subtasks":[],"subtasks_left_open":[],
+            "unblocked":[{"note_path":"sase.md","block_id":"book-flights","line":8,
+            "text":"Book flights","previous_status_symbol":"?","previous_status_name":"Blocked",
+            "status_symbol":"*","status_name":"Next","inbox":"yes",
+            "unblocked_by":"nobody",
+            "link":"nowhere","not_linked":42}],
+            "still_blocked":"nothing","unblocked_check":7}}
+            """
+        )
+        let degradedSummary = try XCTUnwrap(degraded.taskComplete)
+        XCTAssertEqual(degradedSummary.unblocked.count, 1)
+        XCTAssertFalse(degradedSummary.unblocked[0].inbox)
+        XCTAssertEqual(degradedSummary.unblocked[0].unblockedBy, [])
+        XCTAssertNil(degradedSummary.unblocked[0].link)
+        XCTAssertNil(degradedSummary.unblocked[0].notLinked)
+        XCTAssertEqual(degradedSummary.stillBlocked, [])
+        XCTAssertNil(degradedSummary.unblockedCheck)
+
+        // Older Bob omits every successor key.
+        let old = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/bob/sase.md",
+            "text":"","task_line":"- [x] #task Fix apollo ^fix-apollo",
+            "kind":"task_complete","created":"2026-10-05","placement":"completed","block_id":"fix-apollo",
+            "task_complete":{"raw":"!sase:fix-apollo","note":"sase","note_path":"sase.md",
+            "block_id":"fix-apollo","action":"completed","text":"Fix apollo",
+            "subtasks":[],"subtasks_left_open":[]}}
+            """
+        )
+        let oldSummary = try XCTUnwrap(old.taskComplete)
+        XCTAssertEqual(oldSummary.unblocked, [])
+        XCTAssertEqual(oldSummary.stillBlocked, [])
+        XCTAssertNil(oldSummary.unblockedCheck)
+    }
+
+    func testCloseSuccessorJSONDecodesTolerantly() throws {
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"2026/20261005.md",
+            "relative_target":"2026/20261005.md","target":"/tmp/bob/2026/20261005.md",
+            "text":"","task_line":"","kind":"pomodoro_close","created":"2026-10-05",
+            "placement":"closed",
+            "pomodoro_close":{"raw":"x!1","complete":[1],"complete_all":false,
+            "task_links":[],"pomodoro_line":5,"day_relative":"2026/20261005.md",
+            "entry_line":"- [ ] (**0920-0950**) — BOB",
+            "planned":{"start":"09:20","end":"09:50","duration_minutes":30,"time_range":"0920-0950"},
+            "closed":{"start":"09:20","end":"09:30","duration_minutes":10,"time_range":"0920-0930"},
+            "closed_at":"09:30","remaining_minutes":20,"decremented_minutes":10,
+            "tasks":[],"carried":[],"notes":[],
+            "unblocked":[{"note_path":"sase.md","block_id":"relaunch","line":2,
+            "text":"Re-launch","previous_status_symbol":"?","previous_status_name":"Blocked",
+            "status_symbol":"*","status_name":"Next","inbox":true,
+            "unblocked_by":[],"not_linked":null,
+            "link":{"day_file":"20261005.md","entry_name":"BOB","entry_line":4,
+            "entry_created":true,"next_up":true,"line":5,
+            "block_link":"[[sase#^relaunch]]","block_id_created":false}}],
+            "still_blocked":[],"unblocked_check":"checked"}}
+            """
+        )
+        let close = try XCTUnwrap(success.pomodoroClose)
+        XCTAssertEqual(close.unblocked.count, 1)
+        XCTAssertTrue(close.unblocked[0].inbox)
+        XCTAssertEqual(close.unblocked[0].link?.entryCreated, true)
+        XCTAssertEqual(close.stillBlocked, [])
+        XCTAssertEqual(close.unblockedCheck, "checked")
+
+        // Malformed successor values degrade to empty without failing the
+        // whole capture decode (the close summary itself uses plain `try`).
+        let degraded = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":null,"route_label":"2026/20261005.md",
+            "relative_target":"2026/20261005.md","target":"/tmp/bob/2026/20261005.md",
+            "text":"","task_line":"","kind":"pomodoro_close","created":"2026-10-05",
+            "placement":"closed",
+            "pomodoro_close":{"raw":"x!1",
+            "unblocked":42,"still_blocked":42,"unblocked_check":[]}}
+            """
+        )
+        let degradedClose = try XCTUnwrap(degraded.pomodoroClose)
+        XCTAssertEqual(degradedClose.unblocked, [])
+        XCTAssertEqual(degradedClose.stillBlocked, [])
+        XCTAssertNil(degradedClose.unblockedCheck)
+    }
+
+    func testBlockLineReasonDecodesTolerantly() throws {
+        let line = try JSONDecoder().decode(
+            CapturePomodoroBlockLine.self,
+            from: Data(
+                """
+                {"text":"\\t- [[sase#^relaunch]]","depth":1,"change":"added","reason":"unblocked"}
+                """.utf8
+            )
+        )
+        XCTAssertEqual(line.reason, "unblocked")
+        let malformed = try JSONDecoder().decode(
+            CapturePomodoroBlockLine.self,
+            from: Data(
+                """
+                {"text":"x","depth":0,"change":"added","reason":7}
+                """.utf8
+            )
+        )
+        XCTAssertNil(malformed.reason)
+        let old = try JSONDecoder().decode(
+            CapturePomodoroBlockLine.self,
+            from: Data(
+                """
+                {"text":"x","depth":0,"change":"added"}
+                """.utf8
+            )
+        )
+        XCTAssertNil(old.reason)
+    }
+
+    // MARK: - Pomodoro blocks
+
+    private func decodeBlockFixture(_ name: String) throws -> CaptureCommandSuccess {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        let text = try String(
+            contentsOf: fixtures.appendingPathComponent(name),
+            encoding: .utf8
+        )
+        return try decodeCaptureSuccess(text)
+    }
+
+    func testPomodoroBlocksDecodeAdjustFixture() throws {
+        let success = try decodeBlockFixture("pomodoro-adjust-blocks.json")
+
+        XCTAssertEqual(success.pomodoroBlocks.count, 1)
+        let block = try XCTUnwrap(success.pomodoroBlocks.first)
+        XCTAssertEqual(block.relativeTarget, "2026/20260930.md")
+        XCTAssertEqual(block.line, 5)
+        XCTAssertEqual(block.name, "CLEANUP")
+        XCTAssertEqual(block.timeRange, "0620-0735")
+        XCTAssertEqual(block.status, .running)
+        XCTAssertFalse(block.created)
+        XCTAssertEqual(block.roles, ["adjusted"])
+        XCTAssertEqual(block.lines.count, 4)
+
+        let headline = try XCTUnwrap(block.lines.first)
+        XCTAssertEqual(headline.text, "- [ ] (**0620-0735** [t:: 75m]) — CLEANUP")
+        XCTAssertEqual(headline.depth, 0)
+        XCTAssertEqual(headline.change, .changed)
+        XCTAssertEqual(headline.before, "- [ ] (**0620-0710** [t:: 50m]) — CLEANUP")
+
+        for child in block.lines.dropFirst() {
+            XCTAssertEqual(child.depth, 1)
+            XCTAssertEqual(child.change, .unchanged)
+            XCTAssertNil(child.before)
+        }
+        XCTAssertEqual(
+            block.lines.map(\.text),
+            [
+                "- [ ] (**0620-0735** [t:: 75m]) — CLEANUP",
+                "\t- [[sase#^re-launch-failed]]",
+                "\t- [[sase#^clean-prompt-history]]",
+                "\t- [[bob#^decision-web]]",
+            ]
+        )
+    }
+
+    func testPomodoroBlocksDecodeShiftFixture() throws {
+        let success = try decodeBlockFixture("pomodoro-shift-blocks.json")
+
+        let block = try XCTUnwrap(success.pomodoroBlocks.first)
+        XCTAssertEqual(success.pomodoroBlocks.count, 1)
+        XCTAssertEqual(block.roles, ["shifted"])
+        XCTAssertEqual(block.timeRange, "0625-0715")
+        XCTAssertEqual(block.status, .running)
+        XCTAssertEqual(block.lines.first?.change, .changed)
+        XCTAssertEqual(
+            block.lines.first?.before,
+            "- [ ] (**0620-0710** [t:: 50m]) — CLEANUP"
+        )
+    }
+
+    func testPomodoroBlocksDecodeStartFixture() throws {
+        let success = try decodeBlockFixture("pomodoro-start-blocks.json")
+
+        let block = try XCTUnwrap(success.pomodoroBlocks.first)
+        XCTAssertEqual(success.pomodoroBlocks.count, 1)
+        XCTAssertEqual(block.relativeTarget, "day.md")
+        XCTAssertEqual(block.line, 3)
+        XCTAssertEqual(block.name, "GTD")
+        XCTAssertEqual(block.timeRange, "0945-1010")
+        XCTAssertEqual(block.status, .running)
+        XCTAssertFalse(block.created)
+        XCTAssertEqual(block.roles, ["started"])
+        XCTAssertEqual(
+            block.lines.map(\.change),
+            [.changed, .unchanged, .unchanged]
+        )
+        XCTAssertEqual(block.lines.first?.before, "- [ ] () — GTD")
+    }
+
+    func testPomodoroBlocksDecodeCreatedNamedStartFixture() throws {
+        let success = try decodeBlockFixture("pomodoro-start-named-blocks-created.json")
+
+        let block = try XCTUnwrap(success.pomodoroBlocks.first)
+        XCTAssertEqual(success.pomodoroBlocks.count, 1)
+        XCTAssertEqual(block.name, "FOCUS")
+        XCTAssertEqual(block.timeRange, "0720-0745")
+        XCTAssertEqual(block.status, .running)
+        XCTAssertTrue(block.created)
+        XCTAssertEqual(block.roles, ["started"])
+        XCTAssertEqual(block.lines.count, 1)
+        XCTAssertEqual(block.lines.first?.change, .added)
+        XCTAssertNil(block.lines.first?.before)
+    }
+
+    func testPomodoroBlocksDecodeCloseFixture() throws {
+        let success = try decodeBlockFixture("pomodoro-close-blocks.json")
+
+        XCTAssertEqual(success.pomodoroBlocks.count, 2)
+        let closed = success.pomodoroBlocks[0]
+        XCTAssertEqual(closed.line, 5)
+        XCTAssertEqual(closed.name, "CAPTURE")
+        XCTAssertEqual(closed.timeRange, "0920-0940")
+        XCTAssertEqual(closed.status, .completed)
+        XCTAssertFalse(closed.created)
+        XCTAssertEqual(closed.roles, ["closed"])
+        XCTAssertEqual(
+            closed.lines.map(\.change),
+            [
+                .changed, .changed, .unchanged, .unchanged, .unchanged,
+                .removed, .unchanged, .unchanged, .unchanged,
+            ]
+        )
+        XCTAssertEqual(closed.lines[5].text, "\t- [[bob#^web-capture]]#")
+        XCTAssertEqual(closed.lines[5].depth, 1)
+
+        let next = success.pomodoroBlocks[1]
+        XCTAssertEqual(next.line, 13)
+        XCTAssertEqual(next.name, "CAPTURE")
+        XCTAssertNil(next.timeRange)
+        XCTAssertEqual(next.status, .queued)
+        XCTAssertTrue(next.created)
+        XCTAssertEqual(next.roles, ["next"])
+        XCTAssertTrue(next.lines.allSatisfy { $0.change == .added })
+    }
+
+    func testPomodoroBlocksDecodeChainFixture() throws {
+        let success = try decodeBlockFixture("pomodoro-chain-blocks.json")
+
+        XCTAssertEqual(success.pomodoroBlocks.count, 2)
+        let first = success.pomodoroBlocks[0]
+        XCTAssertEqual(first.name, "CLEANUP")
+        XCTAssertEqual(first.status, .completed)
+        XCTAssertEqual(first.roles, ["adjusted", "closed"])
+        XCTAssertEqual(
+            first.lines.first?.before,
+            "- [ ] (**0620-0710** [t:: 50m]) — CLEANUP"
+        )
+        let second = success.pomodoroBlocks[1]
+        XCTAssertEqual(second.status, .queued)
+        XCTAssertTrue(second.created)
+        XCTAssertEqual(second.roles, ["next"])
+    }
+
+    func testPomodoroBlocksAbsentKeyDecodesAsEmpty() throws {
+        let success = try decodeBlockFixture("pomodoro-close-worked.json")
+
+        XCTAssertEqual(success.pomodoroBlocks, [])
+    }
+
+    func testPomodoroBlocksMalformedValueDecodesAsEmpty() throws {
+        let objectInsteadOfArray = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":false,"route":null,"route_label":"",
+            "relative_target":"day.md","target":"/tmp/vault/day.md",
+            "text":"+5","task_line":"- [ ] () — GTD",
+            "kind":"pomodoro_adjust","created":"2026-09-30","placement":"toggled",
+            "pomodoro_blocks":{"line":5}}
+            """
+        )
+        XCTAssertEqual(objectInsteadOfArray.pomodoroBlocks, [])
+
+        let mistypedElement = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":false,"route":null,"route_label":"",
+            "relative_target":"day.md","target":"/tmp/vault/day.md",
+            "text":"+5","task_line":"- [ ] () — GTD",
+            "kind":"pomodoro_adjust","created":"2026-09-30","placement":"toggled",
+            "pomodoro_blocks":[{"relative_target":"day.md","line":"five"}]}
+            """
+        )
+        XCTAssertEqual(mistypedElement.pomodoroBlocks, [])
+    }
+
+    func testPomodoroBlocksUnknownStatusAndChangeDegrade() throws {
+        XCTAssertEqual(CapturePomodoroBlockStatus(wireValue: "running"), .running)
+        XCTAssertEqual(CapturePomodoroBlockStatus(wireValue: "queued"), .queued)
+        XCTAssertEqual(CapturePomodoroBlockStatus(wireValue: "completed"), .completed)
+        XCTAssertEqual(CapturePomodoroBlockStatus(wireValue: "napping"), .other)
+        XCTAssertEqual(CapturePomodoroBlockStatus(wireValue: nil), .other)
+
+        XCTAssertEqual(CapturePomodoroBlockChange(wireValue: "changed"), .changed)
+        XCTAssertEqual(CapturePomodoroBlockChange(wireValue: "added"), .added)
+        XCTAssertEqual(CapturePomodoroBlockChange(wireValue: "removed"), .removed)
+        XCTAssertEqual(CapturePomodoroBlockChange(wireValue: "morphed"), .unchanged)
+        XCTAssertEqual(CapturePomodoroBlockChange(wireValue: nil), .unchanged)
+
+        let success = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":false,"route":null,"route_label":"",
+            "relative_target":"day.md","target":"/tmp/vault/day.md",
+            "text":"+5","task_line":"- [ ] () — GTD",
+            "kind":"pomodoro_adjust","created":"2026-09-30","placement":"toggled",
+            "pomodoro_blocks":[{"relative_target":"day.md","line":2,"status":"napping",
+            "lines":[{"text":"- [ ] () — GTD","depth":0,"change":"morphed"}]}]}
+            """
+        )
+        let block = try XCTUnwrap(success.pomodoroBlocks.first)
+        XCTAssertEqual(block.status, .other)
+        XCTAssertEqual(block.lines.first?.change, .unchanged)
+    }
+
+    // MARK: - Task blocks
+
+    // Fixtures (`Tests/Fixtures/sub-bullet-*-task-block.json`) were
+    // generated by a `bob` built from bob-cli master (after the
+    // `task_blocks_contract` phase) with dry-run captures against sandbox
+    // vaults holding an obsidian-tasks-plugin `data.json` (global filter
+    // `#task`; `Ready`/`Done` core plus `Next`/`Blocked`/`In
+    // Progress`/`Canceled` custom statuses, so status names are real) and
+    // `BOB_NOW="2026-10-02"`, then committed with `"dry_run": false` and a
+    // stable `/tmp/bob-mac-capture-task-blocks/vault/…` target, as the
+    // existing fixtures do:
+    //
+    //   sub-bullet-task-block (`vault/sase.md` holding the `^capture` task
+    //   with `REQUIREMENTS`, an entry, and a Schedule Log):
+    //     bob capture -b vault -f json --dry-run -- \
+    //       'Should reuse as much of PIW sase-core code as possible! @sase+capture'
+    //   sub-bullet-section-task-block (`vault/foo.md` holding the
+    //   `docs/capture.md` `^bar` example with `REQUIREMENTS` and
+    //   `FUTURE WORK`):
+    //     bob capture -b vault -f json --dry-run -- \
+    //       'Postgres 17 minimum @foo+bar#requirements'
+    //   sub-bullet-children-task-block (`vault/sase.md` holding
+    //   `- [/] #task Parent ^capture` with one `keep` child):
+    //     bob capture -b vault -f json --dry-run -- 'new note @sase+capture
+    //     - child one
+    //     - child two'
+    //   sub-bullet-global-task-block (same vault as children):
+    //     bob capture -b vault -f json --dry-run -- '@@sase+capture
+    //     first note
+    //
+    //     second note'
+    //   sub-bullet-long-task-block (`vault/sase.md` holding
+    //   `- [/] #task Long parent ^long` with a `keep` child and a
+    //   30-entry Work Log):
+    //     bob capture -b vault -f json --dry-run -- 'fresh note @sase+long'
+
+    func testTaskBlocksDecodeSubBulletFixture() throws {
+        let success = try decodeBlockFixture("sub-bullet-task-block.json")
+
+        XCTAssertEqual(success.kind, "sub_bullet")
+        XCTAssertEqual(success.taskBlocks.count, 1)
+        let block = try XCTUnwrap(success.taskBlocks.first)
+        XCTAssertEqual(block.relativeTarget, "sase.md")
+        XCTAssertEqual(block.route, "sase")
+        XCTAssertEqual(block.line, 1)
+        XCTAssertEqual(block.blockID, "capture")
+        XCTAssertEqual(block.text, "Port capture to PIW sase-core")
+        XCTAssertEqual(block.statusSymbol, "/")
+        XCTAssertEqual(block.statusName, "In Progress")
+        XCTAssertFalse(block.created)
+        XCTAssertEqual(block.roles, ["sub_bullet"])
+        XCTAssertEqual(
+            block.lines.map(\.change),
+            [.unchanged, .unchanged, .unchanged, .added, .unchanged, .unchanged]
+        )
+        XCTAssertEqual(block.lines.map(\.depth), [0, 1, 2, 1, 1, 2])
+        XCTAssertEqual(
+            block.lines[3].text,
+            "\t- Should reuse as much of PIW sase-core code as possible!"
+        )
+        XCTAssertNil(block.lines[3].before)
+        // Per-item parent fields decode alongside the batch blocks.
+        XCTAssertEqual(success.parentText, "Port capture to PIW sase-core")
+        XCTAssertNil(success.parentSection)
+        XCTAssertEqual(success.parentStatusSymbol, "/")
+        XCTAssertEqual(success.parentStatusName, "In Progress")
+    }
+
+    func testTaskBlocksDecodeSectionFixture() throws {
+        let success = try decodeBlockFixture("sub-bullet-section-task-block.json")
+
+        XCTAssertEqual(success.parentSection, "REQUIREMENTS")
+        let block = try XCTUnwrap(success.taskBlocks.first)
+        XCTAssertEqual(block.relativeTarget, "foo.md")
+        XCTAssertEqual(block.blockID, "bar")
+        XCTAssertEqual(block.text, "Upgrade Postgres")
+        XCTAssertEqual(block.statusSymbol, " ")
+        XCTAssertEqual(block.statusName, "Ready")
+        XCTAssertEqual(
+            block.lines.map { ($0.text, $0.depth, $0.change) }.map { "\($0.0)|\($0.1)|\($0.2)" },
+            [
+                "- [ ] #task Upgrade Postgres [created:: 2026-07-31] ^bar|0|unchanged",
+                "\t- REQUIREMENTS|1|unchanged",
+                "\t\t- existing|2|unchanged",
+                "\t\t- Postgres 17 minimum|2|added",
+                "\t- FUTURE WORK|1|unchanged",
+            ]
+        )
+    }
+
+    func testTaskBlocksDecodeChildrenFixture() throws {
+        let success = try decodeBlockFixture("sub-bullet-children-task-block.json")
+
+        let block = try XCTUnwrap(success.taskBlocks.first)
+        XCTAssertEqual(
+            block.lines.map(\.depth),
+            [0, 1, 1, 2, 2]
+        )
+        XCTAssertEqual(
+            block.lines.map(\.change),
+            [.unchanged, .unchanged, .added, .added, .added]
+        )
+        XCTAssertTrue(block.lines[2].text.contains("new note"))
+        XCTAssertTrue(block.lines[3].text.contains("child one"))
+        XCTAssertTrue(block.lines[4].text.contains("child two"))
+    }
+
+    func testTaskBlocksDecodeGlobalFixture() throws {
+        let success = try decodeBlockFixture("sub-bullet-global-task-block.json")
+
+        XCTAssertEqual(success.taskBlocks.count, 1)
+        let block = try XCTUnwrap(success.taskBlocks.first)
+        XCTAssertEqual(block.roles, ["sub_bullet"])
+        XCTAssertEqual(
+            block.lines.map(\.change),
+            [.unchanged, .unchanged, .added, .added]
+        )
+        XCTAssertEqual(success.captures.count, 2)
+        for item in success.normalizedCaptures {
+            XCTAssertEqual(item.kind, "sub_bullet")
+            XCTAssertTrue(
+                CaptureTaskBlockPresentation.covers(item, blocks: success.taskBlocks),
+                "global item \(item.taskLine) should be covered"
+            )
+        }
+    }
+
+    func testTaskBlocksDecodeLongFixture() throws {
+        let success = try decodeBlockFixture("sub-bullet-long-task-block.json")
+
+        let block = try XCTUnwrap(success.taskBlocks.first)
+        XCTAssertEqual(block.lines.count, 34)
+        XCTAssertEqual(block.lines[2].change, .added)
+        XCTAssertTrue(block.lines[2].text.contains("fresh note"))
+        XCTAssertTrue(block.lines.dropFirst(3).allSatisfy { $0.change == .unchanged })
+    }
+
+    func testTaskBlocksAbsentKeyDecodesAsEmpty() throws {
+        let success = try decodeBlockFixture("pomodoro-close-worked.json")
+
+        XCTAssertEqual(success.taskBlocks, [])
+    }
+
+    func testTaskBlocksMalformedValueDecodesAsEmpty() throws {
+        let objectInsteadOfArray = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":"sase","route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/vault/sase.md",
+            "text":"note","task_line":"- note",
+            "kind":"sub_bullet","created":"2026-10-02","placement":"appended",
+            "task_blocks":{"line":1}}
+            """
+        )
+        XCTAssertEqual(objectInsteadOfArray.taskBlocks, [])
+
+        let mistypedElement = try decodeCaptureSuccess(
+            """
+            {"ok":true,"dry_run":false,"routed":true,"route":"sase","route_label":"sase.md",
+            "relative_target":"sase.md","target":"/tmp/vault/sase.md",
+            "text":"note","task_line":"- note",
+            "kind":"sub_bullet","created":"2026-10-02","placement":"appended",
+            "task_blocks":[{"relative_target":"sase.md","line":"one"}]}
+            """
+        )
+        XCTAssertEqual(mistypedElement.taskBlocks, [])
+    }
+
+    func testTemplateParseFixtureDecodesRangesRowsFieldsAndSlotSpans() throws {
+        let data = try Data(contentsOf: fixtureURL("capture-parse-template-example.json"))
+        let parse = try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+
+        let template = try XCTUnwrap(parse.template)
+        XCTAssertEqual(template.header.line, 1)
+        XCTAssertEqual(template.fieldCount, 3)
+        XCTAssertEqual(template.rows.count, 3)
+        XCTAssertEqual(template.rows[0].row, 1)
+        XCTAssertEqual(template.rows[0].mode, "pomodoro_task")
+        XCTAssertEqual(template.rows[0].body, "Apply to Foobar!")
+        XCTAssertEqual(
+            template.rows[0].fields.map(\.value),
+            ["Foobar", "foo", "http://foobar.com/career/some_foo_job"])
+        XCTAssertEqual(parse.items.last?.mode, "template_row")
+        XCTAssertEqual(parse.items.last?.templateRow?.row, 3)
+        XCTAssertEqual(
+            parse.spans.filter { $0.kind == "template_placeholder" }.map(\.field), [0, 1, 2])
+        XCTAssertEqual(parse.spans.filter { $0.kind == "template_field" }.first?.field, 0)
+    }
+
+    func testTemplateParseStateFixturesDecodeHeaderOnlyNoRowsAndArityError() throws {
+        let headerOnly = try decodeParseFixture("capture-parse-template-header-only.json")
+        XCTAssertNotNil(headerOnly.template)
+        XCTAssertTrue(headerOnly.needs.contains("template_row"))
+        XCTAssertTrue(headerOnly.diagnostics.contains { $0.code == "template_missing_rows" })
+
+        let noRows = try decodeParseFixture("capture-parse-template-no-rows.json")
+        XCTAssertNotNil(noRows.template)
+        XCTAssertTrue(noRows.needs.contains("template_row"))
+        XCTAssertTrue(noRows.diagnostics.contains { $0.code == "template_missing_rows" })
+        XCTAssertEqual(
+            noRows.diagnostics.first { $0.code == "template_missing_rows" }?.message,
+            "add one row per capture: 2 values separated by spaces"
+        )
+
+        let arity = try decodeParseFixture("capture-parse-template-arity-error.json")
+        XCTAssertNotNil(arity.template)
+        XCTAssertTrue(arity.diagnostics.contains { $0.code == "template_row_arity" })
+    }
+
+    func testTemplateExecutionFixturesDecodeSummaryAndOneRowLegacyShape() throws {
+        let batch = try decodeCaptureSuccess(
+            String(contentsOf: fixtureURL("capture-template-example.json"), encoding: .utf8)
+        )
+        XCTAssertEqual(batch.template?.fieldCount, 3)
+        XCTAssertEqual(batch.template?.rowCount, 3)
+        XCTAssertEqual(batch.captures.map(\.templateRow?.row), [1, 2, 3])
+        XCTAssertEqual(batch.template?.previewChipTitle, "Template · 3 rows")
+        XCTAssertEqual(batch.template?.previewAccessibilityLabel, "3 capture items from a template")
+
+        let one = try decodeCaptureSuccess(
+            String(contentsOf: fixtureURL("capture-template-one-row.json"), encoding: .utf8)
+        )
+        XCTAssertEqual(one.template?.rowCount, 1)
+        XCTAssertEqual(one.templateRow?.row, 1)
+        XCTAssertEqual(one.template?.previewChipTitle, "Template · 1 row")
+        XCTAssertEqual(one.template?.previewAccessibilityLabel, "1 capture items from a template")
+    }
+
+    func testOlderCapturePayloadKeepsTemplateFieldsAbsent() throws {
+        let success = try decodeFixture("pomodoro-close-worked.json")
+        XCTAssertNil(success.template)
+        XCTAssertNil(success.templateRow)
+        let parse = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(
+                #"{"ok":true,"schema_version":1,"input":"Write","body":"Write","mode":"task","needs":[],"spans":[],"diagnostics":[]}"#
+                    .utf8
+            )
+        )
+        XCTAssertNil(parse.template)
+        XCTAssertNil(parse.items.first?.templateRow)
+    }
+
+    func testMalformedTemplateObjectDoesNotFailCaptureParseDecoding() throws {
+        let parse = try JSONDecoder().decode(
+            CaptureParseResponse.self,
+            from: Data(
+                #"{"ok":true,"schema_version":1,"input":"@@template:","body":"","mode":"task","needs":[],"spans":[],"diagnostics":[],"template":42}"#
+                    .utf8
+            )
+        )
+
+        XCTAssertNil(parse.template)
+    }
+
+    private func fixtureURL(_ name: String) -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+            .appendingPathComponent(name)
+    }
+
+    private func decodeParseFixture(_ name: String) throws -> CaptureParseResponse {
+        let data = try Data(contentsOf: fixtureURL(name))
+        return try JSONDecoder().decode(CaptureParseResponse.self, from: data)
+    }
 }
