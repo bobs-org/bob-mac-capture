@@ -20,6 +20,9 @@ still runs the tests.
 If the mac is offline, say in the final report that the macOS targets are
 unverified.
 
+`.swift-format` pins the house style (4-space indentation, 100-column lines). Format
+only the lines you change; never re-indent whole files.
+
 After a red **Lint Swift formatting** step, check the later CI steps too — a parse
 error in lint skips Build, Test, Bundle, and the install gates.
 
