@@ -1208,6 +1208,8 @@ public struct RefsCopyKeyModifiers: OptionSet, Equatable, Sendable {
 public enum RefsCopyCommand: Equatable, Sendable {
     case key(RefsCopyKey, alternate: Bool = false)
     case copySelected
+    case openWindowRow(Int)
+    case openSelected
     case move(Int)
     case close
     case showActions
@@ -1258,6 +1260,9 @@ public enum RefsCopyKeyMap {
     ) -> RefsCopyCommand {
         let flags = modifiers.normalized
         if keyCode == 36 || keyCode == 76 {
+            if flags == .shift || flags == [.shift, .option] {
+                return .openSelected
+            }
             return flags.isEmpty || flags == .option ? .copySelected : .consume
         }
         if keyCode == 53 {
@@ -1295,6 +1300,12 @@ public enum RefsCopyKeyMap {
         }) {
             return .consume
         }
+        let isASCIIDigit = character.unicodeScalars.count == 1
+            && character.unicodeScalars.first.map { (0x30...0x39).contains($0.value) } == true
+        if flags.contains(.shift), !isASCIIDigit,
+           let position = shiftDigitPosition(for: keyCode) {
+            return .openWindowRow(position)
+        }
         if let key = RefsCopyKey.parse(character) {
             return .key(key, alternate: flags.contains(.option))
         }
@@ -1302,6 +1313,21 @@ public enum RefsCopyKeyMap {
             CharacterSet.controlCharacters.contains($0)
         }
         return isControlCharacter ? .consume : .unknown(character)
+    }
+
+    private static func shiftDigitPosition(for keyCode: UInt16) -> Int? {
+        switch keyCode {
+        case 18: 1 // kVK_ANSI_1
+        case 19: 2 // kVK_ANSI_2
+        case 20: 3 // kVK_ANSI_3
+        case 21: 4 // kVK_ANSI_4
+        case 23: 5 // kVK_ANSI_5
+        case 22: 6 // kVK_ANSI_6
+        case 26: 7 // kVK_ANSI_7
+        case 28: 8 // kVK_ANSI_8
+        case 25: 9 // kVK_ANSI_9
+        default: nil
+        }
     }
 }
 
@@ -1320,6 +1346,7 @@ public struct RefsCopyMessage: Equatable, Sendable {
 public enum RefsCopyEffect: Equatable, Sendable {
     case none
     case write(RefsCopyRow)
+    case openLink(RefsLinkOpenRequest)
     case close
     case closeThenActions
 }
@@ -1648,6 +1675,12 @@ public struct RefsCopyCard: Equatable, Sendable {
             return handlePicker(command, alternatesActive: alternatesActive)
         }
         switch command {
+        case .openWindowRow(let number):
+            pending = nil
+            message = RefsCopyMessage(text: "Nothing on ‘⇧\(number)’", isTransient: true)
+            return .none
+        case .openSelected:
+            return .none
         case .key(let key, let alternate):
             if case .loading = links, isLinkKey(key) {
                 pending = key
@@ -1802,6 +1835,10 @@ public struct RefsCopyCard: Equatable, Sendable {
             return .none
         case .copySelected:
             return copyLinkPickerSelection(markdown: alternatesActive)
+        case .openWindowRow(let number):
+            return openLinkPickerWindowRow(number)
+        case .openSelected:
+            return openLinkPickerSelection()
         case .move(let delta):
             guard var picker = linkPicker else { return .none }
             picker.move(delta)
@@ -1879,6 +1916,35 @@ public struct RefsCopyCard: Equatable, Sendable {
         return .write(entry.copyRow(markdown: markdown))
     }
 
+    private mutating func openLinkPickerWindowRow(_ number: Int) -> RefsCopyEffect {
+        guard var picker = linkPicker else { return .none }
+        guard let entry = picker.selectWindowPosition(number) else {
+            message = RefsCopyMessage(text: "No link \(number)")
+            return .none
+        }
+        linkPicker = picker
+        return openLinkPickerEntry(entry)
+    }
+
+    private mutating func openLinkPickerSelection() -> RefsCopyEffect {
+        guard let entry = linkPicker?.selectedEntry else { return .none }
+        return openLinkPickerEntry(entry)
+    }
+
+    private mutating func openLinkPickerEntry(
+        _ entry: RefsLinkPicker.Entry
+    ) -> RefsCopyEffect {
+        guard let url = entry.link.webURL else {
+            message = RefsCopyMessage(
+                text: "Only web links open — ↵ copies it",
+                isError: true
+            )
+            return .none
+        }
+        message = nil
+        return .openLink(RefsLinkOpenRequest(link: entry.link, url: url))
+    }
+
     private mutating func copyAllLinks(markdown: Bool) -> RefsCopyEffect {
         guard let picker = linkPicker, !picker.entries.isEmpty else {
             message = RefsCopyMessage(text: "No links in this reference")
@@ -1905,6 +1971,12 @@ public struct RefsCopyCard: Equatable, Sendable {
             return .none
         case .copySelected:
             return copyCodePickerSelection(fenced: alternatesActive)
+        case .openWindowRow(let number):
+            pending = nil
+            message = RefsCopyMessage(text: "Nothing on ‘⇧\(number)’", isTransient: true)
+            return .none
+        case .openSelected:
+            return .none
         case .move(let delta):
             guard var picker = codePicker else { return .none }
             picker.move(delta)
@@ -2002,7 +2074,7 @@ public struct RefsCopyCard: Equatable, Sendable {
 
     private func isTerminal(_ effect: RefsCopyEffect) -> Bool {
         switch effect {
-        case .write, .close, .closeThenActions:
+        case .write, .openLink, .close, .closeThenActions:
             return true
         case .none:
             return false
@@ -2029,6 +2101,12 @@ public struct RefsCopyCard: Equatable, Sendable {
             }
         case .copySelected:
             return copyPickerSelection(alternate: alternatesActive)
+        case .openWindowRow(let number):
+            pending = nil
+            message = RefsCopyMessage(text: "Nothing on ‘⇧\(number)’", isTransient: true)
+            return .none
+        case .openSelected:
+            return .none
         case .move(let delta):
             guard var picker = highlightPicker else { return .none }
             picker.move(delta)

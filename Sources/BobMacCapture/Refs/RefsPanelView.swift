@@ -303,6 +303,7 @@ public struct RefsPanelView: View {
                 RefsCopyCardView(
                     card: card,
                     alternatesActive: model.copyAlternatesActive,
+                    linkOpenActive: model.copyLinkOpenActive,
                     previewMode: previewMode,
                     onMeasuredHeight: { height in
                         guard let current = model.copyCard else { return }
@@ -317,7 +318,8 @@ public struct RefsPanelView: View {
                             )
                     },
                     onRowTap: { model.copyCardRowTapped($0) },
-                    onPickerRowTap: { model.copyCardPickerRowTapped($0) }
+                    onPickerRowTap: { model.copyCardPickerRowTapped($0) },
+                    onPickerRowOpen: { model.copyCardPickerRowOpenRequested($0) }
                 )
                 .id(card.token)
                 .transition(copyCardTransition)

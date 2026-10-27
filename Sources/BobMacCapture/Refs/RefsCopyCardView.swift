@@ -7,6 +7,7 @@ import SwiftUI
 struct RefsCopyCardView: View {
     let card: RefsCopyCard
     var alternatesActive = false
+    var linkOpenActive = false
     /// Design fixtures lay the column out statically:
     /// `ImageRenderer` snapshots `ScrollView` content blank.
     var previewMode = false
@@ -14,6 +15,7 @@ struct RefsCopyCardView: View {
     var onRowTap: (RefsCopyRow) -> Void = { _ in }
     var onRowHover: (RefsCopyKey?) -> Void = { _ in }
     var onPickerRowTap: (Int) -> Void = { _ in }
+    var onPickerRowOpen: (Int) -> Void = { _ in }
 
     @Environment(\.colorSchemeContrast) private var contrast
     @State private var hoveredKey: RefsCopyKey?
@@ -136,10 +138,11 @@ struct RefsCopyCardView: View {
                 RefsLinkPreviewWellView(
                     preview: RefsCore.RefsLinkPreview(
                         link: entry.link,
-                        markdown: alternatesActive,
+                        markdown: alternatesActive && !linkOpenActive,
                         columns: layout.columns,
                         visibleLines: layout.layout.bodyLines
-                    )
+                    ),
+                    opensInBrowser: linkOpenActive
                 )
                 .frame(height: CGFloat(layout.layout.height), alignment: .top)
                 .padding(.top, 6)
@@ -220,7 +223,10 @@ struct RefsCopyCardView: View {
         .accessibilityAction {
             onPickerRowTap(position)
         }
-        .help(alternatesActive ? entry.link.markdown : entry.link.url)
+        .accessibilityAction(named: "Open link") {
+            onPickerRowOpen(position)
+        }
+        .help(alternatesActive && !linkOpenActive ? entry.link.markdown : entry.link.url)
     }
 
     private func linkPickerLineTwo(_ entry: RefsLinkPicker.Entry) -> some View {
@@ -726,7 +732,10 @@ struct RefsCopyCardView: View {
 
     private var hintText: String {
         if card.linkPicker != nil {
-            return "↵ copies URL · ⌥↵ Markdown · A all · 1–9 pick · esc back"
+            if linkOpenActive {
+                return "⇧↵ opens in browser · ⇧1–9 open that link · esc back"
+            }
+            return "↵ copies · ⌥↵ Markdown · ⇧↵ opens · A all · 1–9 pick · esc back"
         }
         if card.codePicker != nil {
             return "↵ copies · ⌥↵ fenced · 1–9 pick · ↑↓ choose · esc back"

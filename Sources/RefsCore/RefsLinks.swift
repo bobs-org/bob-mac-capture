@@ -1,6 +1,14 @@
 import CaptureCore
 import Foundation
 
+private enum RefsLinkOpenPolicy {
+    static let allowedSchemes: Set<String> = ["http", "https"]
+    static let rfc3986AllowedCharacters = CharacterSet(
+        charactersIn:
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=%"
+    )
+}
+
 public enum RefsLinksStatus: Equatable, Sendable {
     case available
     case noLinks
@@ -72,6 +80,25 @@ public struct RefsLink: Decodable, Equatable, Sendable {
     public let section: RefsCodeSection?
     public let page: Int?
     public let pageSource: String?
+
+    /// A deterministic, allowlisted URL for opening in the default browser.
+    /// The catalog URL remains the value copied by the picker.
+    public var webURL: URL? {
+        let url = URL(string: self.url)
+            ?? self.url.addingPercentEncoding(
+                withAllowedCharacters: RefsLinkOpenPolicy.rfc3986AllowedCharacters
+            ).flatMap { URL(string: $0) }
+        guard let url,
+              let scheme = url.scheme?.lowercased(),
+              RefsLinkOpenPolicy.allowedSchemes.contains(scheme)
+        else {
+            return nil
+        }
+        if scheme == "http" || scheme == "https" {
+            guard let host = url.host, !host.isEmpty else { return nil }
+        }
+        return url
+    }
 
     public init(
         id: String = "",
@@ -162,6 +189,18 @@ public struct RefsLink: Decodable, Equatable, Sendable {
         let remainder = String(rest[hostEnd...])
         return remainder.isEmpty ? nil : remainder
     }
+}
+
+public struct RefsLinkOpenRequest: Equatable, Sendable {
+    public let link: RefsLink
+    public let url: URL
+
+    public init(link: RefsLink, url: URL) {
+        self.link = link
+        self.url = url
+    }
+
+    public var site: String { link.site }
 }
 
 private struct LossyRefsLink: Decodable {
@@ -381,7 +420,8 @@ public struct RefsLinkPicker: Equatable, Sendable {
             .joined(separator: ", ")
     }
 
-    public static let openingAnnouncement = "Links. Press a number or Return."
+    public static let openingAnnouncement =
+        "Links. Press a number or Return to copy. Hold Shift to open."
 
     public var openingVoiceOverLabel: String {
         Self.openingAnnouncement

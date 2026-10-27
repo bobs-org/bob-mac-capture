@@ -6,6 +6,7 @@ import SwiftUI
 @available(macOS 26.0, *)
 struct RefsLinkPreviewWellView: View {
     let preview: RefsCore.RefsLinkPreview
+    var opensInBrowser = false
     @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
@@ -64,7 +65,9 @@ struct RefsLinkPreviewWellView: View {
         if let page = preview.pageLabel {
             parts.append(page)
         }
-        if preview.markdown {
+        if opensInBrowser {
+            parts.append("Open")
+        } else if preview.markdown {
             parts.append("Markdown")
         }
         return parts.joined(separator: " · ")

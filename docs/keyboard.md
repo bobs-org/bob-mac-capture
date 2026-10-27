@@ -43,6 +43,7 @@ Command-Y, Command-B, or Command-L opens the Copy card for the selected row, or 
 | L | Open the link picker when the reference has saved Markdown and recorded links; Option-U copies the Markdown link |
 | M | Copy the saved Markdown source; Option-M copies its `~` path |
 | 1–9 | Copy that visible note, or that visible code, highlight, or link once a picker is open |
+| Shift-1–9 / Shift-Return | In a link picker, open that visible / selected web link in the default browser |
 | Return | Copy the selected row, or open the C, H, or L picker when that row is selected |
 | Option-Return | Copy the fenced form of the selected code block, or the Markdown form of the selected link |
 | A | In a highlight picker copy all highlights; in a link picker copy every distinct URL (Option-A as a Markdown list) |
@@ -51,7 +52,9 @@ Command-Y, Command-B, or Command-L opens the Copy card for the selected row, or 
 
 Command-B Return from Highlights copies the code block on the current PDF page.
 Command-L Return copies the link on the current PDF page. Without saved Markdown,
-Command-L copies the reference's Markdown link immediately, as Command-Y L does.
+Command-L Shift-Return opens the current page's web link in the default browser.
+Without saved Markdown, Command-L copies the reference's Markdown link immediately,
+as Command-Y L does.
 
 ### When a Highlights copy key fails
 

@@ -211,6 +211,26 @@ final class RefsCodeTests: XCTestCase {
         XCTAssertEqual(row.payload, .text("fn run() {}"))
     }
 
+    func testLinkOpenCommandsStayInactiveInCodePicker() throws {
+        let item = makeItem()
+        var card = RefsCopyCard(
+            token: 1,
+            item: item,
+            absolutePDFPath: nil,
+            pdfExists: false,
+            notes: .unavailable,
+            noteCapacity: 0,
+            code: .loaded(try decodeResponse())
+        )
+        _ = card.handle(.key(.codePicker))
+
+        XCTAssertEqual(card.handle(.openWindowRow(1)), .none)
+        XCTAssertEqual(card.message?.text, "Nothing on ‘⇧1’")
+        XCTAssertTrue(card.message?.isTransient == true)
+        XCTAssertEqual(card.handle(.openSelected), .none)
+        XCTAssertEqual(card.message?.text, "Nothing on ‘⇧1’")
+    }
+
     func testCodeEntrySeedShowsHiddenReasonWhenCatalogHasNoCode() throws {
         let item = makeItem()
         var card = RefsCopyCard(

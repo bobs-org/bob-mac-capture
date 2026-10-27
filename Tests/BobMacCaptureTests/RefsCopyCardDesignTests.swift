@@ -38,6 +38,11 @@ final class RefsCopyCardDesignTests: XCTestCase {
         try write(card: try linkRowsCard(), name: "refs-copy-card-link-rows")
         try write(card: try linkPickerCard(), name: "refs-copy-link-picker")
         try write(
+            card: try linkPickerCard(),
+            name: "refs-copy-link-picker-open",
+            linkOpenActive: true
+        )
+        try write(
             card: try linkPickerCard(), name: "refs-copy-link-picker-markdown", alternates: true)
         try write(card: try urlLabelPickerCard(), name: "refs-copy-link-picker-url-label")
         try write(card: longLinkPickerCard(), name: "refs-copy-link-picker-long-line")
@@ -63,9 +68,19 @@ final class RefsCopyCardDesignTests: XCTestCase {
         )
     }
 
-    private func write(card: RefsCopyCard, name: String, alternates: Bool = false) throws {
+    private func write(
+        card: RefsCopyCard,
+        name: String,
+        alternates: Bool = false,
+        linkOpenActive: Bool = false
+    ) throws {
         let width = inspectorColumnWidth
-        let view = RefsCopyCardView(card: card, alternatesActive: alternates, previewMode: true)
+        let view = RefsCopyCardView(
+            card: card,
+            alternatesActive: alternates,
+            linkOpenActive: linkOpenActive,
+            previewMode: true
+        )
             .frame(width: width, height: 480, alignment: .top)
         for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
             try RenderFixtureWriter.write(

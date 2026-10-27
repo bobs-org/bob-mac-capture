@@ -303,7 +303,10 @@ final class RefsLinksTests: XCTestCase {
                 if case .group(let title) = row { return title == "4  Image models" }
                 return false
             })
-        XCTAssertEqual(picker.openingVoiceOverLabel, "Links. Press a number or Return.")
+        XCTAssertEqual(
+            picker.openingVoiceOverLabel,
+            "Links. Press a number or Return to copy. Hold Shift to open."
+        )
         XCTAssertEqual(
             picker.selectedEntry?.voiceOverLabel(index: 2, total: 9, key: 1),
             "Link 2 of 9, Imagen 4 model card, ai.google.dev, page 7, on this page, key 1"
@@ -545,6 +548,87 @@ final class RefsLinksTests: XCTestCase {
 
         XCTAssertEqual(card.handle(.close), .none)
         XCTAssertNil(card.linkPicker)
+    }
+
+    func testLinkPickerOpensWebLinksAndRefusesOtherSchemes() throws {
+        let item = makeItem(
+            sourceMarkdown: ".bob/ref-sources/papers/demo--8b3d3805c049/source.md"
+        )
+        var card = makeCard(
+            item: item, links: .loaded(try decodeGolden()), highlightedPage: 7)
+        XCTAssertEqual(card.handle(.key(.linkPicker)), .none)
+        guard case .openLink(let request) = card.handle(.openWindowRow(2)) else {
+            return XCTFail("expected the selected web link to open")
+        }
+        XCTAssertEqual(request.url.absoluteString, "https://ai.google.dev/gemini-api/docs/imagen")
+        XCTAssertEqual(request.link.number, 2)
+        XCTAssertEqual(request.site, "ai.google.dev")
+        XCTAssertEqual(card.linkPicker?.selectedEntry?.link.number, 2)
+
+        var selected = makeCard(
+            item: item, links: .loaded(try decodeGolden()), highlightedPage: 7)
+        _ = selected.handle(.key(.linkPicker))
+        guard case .openLink(let selectedRequest) = selected.handle(.openSelected) else {
+            return XCTFail("expected the page-selected web link to open")
+        }
+        XCTAssertEqual(selectedRequest.link.number, 2)
+
+        XCTAssertEqual(card.handle(.openWindowRow(99)), .none)
+        XCTAssertEqual(card.message?.text, "No link 99")
+
+        var refused = makeCard(
+            item: item, links: .loaded(try decodeGolden()), highlightedPage: 7)
+        _ = refused.handle(.key(.linkPicker))
+        XCTAssertEqual(refused.handle(.openWindowRow(5)), .none)
+        XCTAssertEqual(refused.linkPicker?.selectedEntry?.link.number, 5)
+        XCTAssertEqual(refused.message?.text, "Only web links open — ↵ copies it")
+        XCTAssertTrue(refused.message?.isError == true)
+        guard case .write(let copied) = refused.handle(.copySelected) else {
+            return XCTFail("refused link should remain copyable")
+        }
+        XCTAssertEqual(copied.payload, .text("mailto:me@example.com"))
+    }
+
+    func testLinkOpenWaitsForCatalogAndStopsQueuedCommands() throws {
+        let item = makeItem(
+            sourceMarkdown: ".bob/ref-sources/papers/demo--8b3d3805c049/source.md"
+        )
+        var card = makeCard(item: item, links: .loading, highlightedPage: 7)
+        XCTAssertEqual(card.handle(.key(.markdownLink)), .none)
+        XCTAssertEqual(card.handle(.openSelected), .none)
+        guard case .openLink(let request) = card.linksLoaded(
+            path: item.id,
+            response: try decodeGolden()
+        ) else {
+            return XCTFail("queued Shift-Return should open the page link")
+        }
+        XCTAssertEqual(request.link.number, 2)
+        XCTAssertNil(card.pending)
+    }
+
+    func testWebURLAllowsOnlyHTTPAndHTTPSAndEncodesRfc3986Characters() throws {
+        let links = try decodeGolden().links
+        XCTAssertNotNil(links[0].webURL)
+        XCTAssertNotNil(RefsLink(
+            number: 1, url: "HTTPS://Example.COM/x", label: "Example", site: "example.com"
+        ).webURL)
+        XCTAssertNotNil(links[7].webURL)
+        XCTAssertEqual(links[6].webURL?.absoluteString, "https://example.com/a%20b")
+
+        for value in [
+            "mailto:me@example.com",
+            "obsidian://open?vault=bob",
+            "file:///etc/hosts",
+            "javascript:alert(1)",
+            "ftp://example.com/file",
+            "docs/x.md",
+            "https:///nohost",
+        ] {
+            XCTAssertNil(
+                RefsLink(number: 1, url: value, label: value, site: "test").webURL,
+                value
+            )
+        }
     }
 
     func testPathRemainderOmitsUrlLabels() throws {

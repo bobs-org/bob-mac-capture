@@ -478,6 +478,7 @@ public final class RefsPanelModel: ObservableObject {
     /// why that session could not open the Copy card.
     @Published public private(set) var pendingHighlightsCopy: RefsHighlightsCopyPending?
     @Published public private(set) var copyAlternatesActive = false
+    @Published public private(set) var copyLinkOpenActive = false
     /// The editable filename card; Bob remains the authority for the
     /// rename rules and the returned destination path.
     @Published public private(set) var renameCard: RefsRenameCard?
@@ -501,11 +502,19 @@ public final class RefsPanelModel: ObservableObject {
     /// Flags only affect an open card (including its picker layer) or a
     /// Command-Y session that is still buffering keys.
     public func updateCopyModifiers(_ modifiers: RefsCopyKeyModifiers) {
-        let active =
+        let alternatesActive =
             (copyCard != nil || isPendingHighlightsCopyArmed)
             && modifiers.contains(.option)
-        guard copyAlternatesActive != active else { return }
-        copyAlternatesActive = active
+        let linkOpenActive =
+            (copyCard != nil || isPendingHighlightsCopyArmed)
+            && modifiers.contains(.shift)
+        guard copyAlternatesActive != alternatesActive
+            || copyLinkOpenActive != linkOpenActive
+        else {
+            return
+        }
+        copyAlternatesActive = alternatesActive
+        copyLinkOpenActive = linkOpenActive
     }
 
     /// True while Command-Y is buffering keys for the focused PDF.
@@ -3101,11 +3110,20 @@ public final class RefsPanelModel: ObservableObject {
         else {
             return
         }
+        if copyCard?.linkPicker != nil, copyLinkOpenActive {
+            handleCopyCardCommand(.openWindowRow(windowPosition))
+            return
+        }
         handleCopyCardKey(
             characters: String(windowPosition),
             keyCode: 0,
             modifiers: copyAlternatesActive ? .option : []
         )
+    }
+
+    public func copyCardPickerRowOpenRequested(_ windowPosition: Int) {
+        guard copyCard?.linkPicker != nil else { return }
+        handleCopyCardCommand(.openWindowRow(windowPosition))
     }
 
     private func copyCardNotesLoaded(token: UInt64, path: String, row: RefsShowRow) {
@@ -3241,6 +3259,14 @@ public final class RefsPanelModel: ObservableObject {
                 copyCard = card
                 updateCopyCardTimers(token: token)
             }
+        case .openLink(let request):
+            closeCopyCard()
+            hidePanel()
+            opener.openWithDefaultApp(request.url) { [weak self] error in
+                Task {
+                    await self?.finishLinkOpen(request, error: error)
+                }
+            }
         case .close:
             closeCopyCard()
         case .closeThenActions:
@@ -3276,6 +3302,7 @@ public final class RefsPanelModel: ObservableObject {
         copyMessageTask = nil
         copyCard = nil
         copyAlternatesActive = false
+        copyLinkOpenActive = false
     }
 
     private func rerankSelectingFirst() {
@@ -3749,6 +3776,17 @@ public final class RefsPanelModel: ObservableObject {
             pendingClosedTab = nil
             banner = nil
         }
+    }
+
+    private func finishLinkOpen(_ request: RefsLinkOpenRequest, error: Error?) {
+        guard let error else { return }
+        lastDiagnostic = RefsLibrary.boundedMessage(for: error)
+        panelRepresenter()
+        banner = RefsBanner(
+            kind: .error,
+            message: "Couldn’t open the \(request.site) link.\n\(lastDiagnostic)",
+            actions: [.copyDiagnostic]
+        )
     }
 
     @discardableResult

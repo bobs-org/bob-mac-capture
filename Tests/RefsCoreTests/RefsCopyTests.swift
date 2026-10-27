@@ -361,6 +361,83 @@ final class RefsCopyTests: XCTestCase {
         XCTAssertEqual(RefsCopyKeyMap.command(characters: "q", keyCode: 12, modifiers: []), .unknown("q"))
     }
 
+    func testShiftTopRowDigitsOpenByPhysicalKeyCode() {
+        let cases: [(String, UInt16, RefsCopyKeyModifiers, RefsCopyCommand)] = [
+            ("!", 18, [.shift], .openWindowRow(1)),
+            ("(", 25, [.shift], .openWindowRow(9)),
+            ("\"", 19, [.shift], .openWindowRow(2)),
+            ("!", 18, [.shift, .option], .openWindowRow(1)),
+            ("1", 18, [.shift], .key(.note(1))),
+            ("!", 18, [.shift, .command], .consume),
+            (")", 29, [.shift], .unknown(")"))
+        ]
+
+        for (characters, keyCode, modifiers, expected) in cases {
+            XCTAssertEqual(
+                RefsCopyKeyMap.command(
+                    characters: characters,
+                    keyCode: keyCode,
+                    modifiers: modifiers
+                ),
+                expected,
+                "keyCode \(keyCode), characters \(characters)"
+            )
+        }
+
+        for keyCode in [UInt16(36), 76] {
+            XCTAssertEqual(
+                RefsCopyKeyMap.command(characters: nil, keyCode: keyCode, modifiers: .shift),
+                .openSelected
+            )
+            XCTAssertEqual(
+                RefsCopyKeyMap.command(
+                    characters: nil,
+                    keyCode: keyCode,
+                    modifiers: [.shift, .option]
+                ),
+                .openSelected
+            )
+        }
+        XCTAssertEqual(
+            RefsCopyKeyMap.command(characters: nil, keyCode: 36, modifiers: [.shift, .control]),
+            .consume
+        )
+    }
+
+    func testOpenCommandsOutsidePickersAreHarmless() {
+        let item = makeItem()
+        var card = RefsCopyCard(
+            token: 1,
+            item: item,
+            absolutePDFPath: nil,
+            pdfExists: false,
+            notes: .unavailable,
+            noteCapacity: 0
+        )
+        XCTAssertEqual(card.handle(.openWindowRow(1)), .none)
+        XCTAssertEqual(card.message?.text, "Nothing on ‘⇧1’")
+        XCTAssertTrue(card.message?.isTransient == true)
+        card.clearTransientMessage()
+        XCTAssertEqual(card.handle(.openSelected), .none)
+        XCTAssertNil(card.message)
+
+        var highlights = RefsCopyCard(
+            token: 2,
+            item: item,
+            absolutePDFPath: nil,
+            pdfExists: false,
+            notes: .loaded(RefsShowRow(path: item.id, annotations: [
+                RefsShowAnnotation(kind: "highlight", quote: "Quote")
+            ])),
+            noteCapacity: 1
+        )
+        _ = highlights.handle(.key(.highlightPicker))
+        XCTAssertEqual(highlights.handle(.openWindowRow(1)), .none)
+        XCTAssertEqual(highlights.message?.text, "Nothing on ‘⇧1’")
+        XCTAssertEqual(highlights.handle(.openSelected), .none)
+        XCTAssertEqual(highlights.message?.text, "Nothing on ‘⇧1’")
+    }
+
     func testCardQueuesMatchingNotesAndRevokesOnClose() {
         let item = makeItem(markerID: .absent)
         var card = RefsCopyCard(

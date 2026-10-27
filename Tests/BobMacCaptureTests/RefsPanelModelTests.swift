@@ -1468,7 +1468,9 @@ final class RefsPanelModelTests: XCTestCase {
         await harness.waitForSnapshot(ids: [path])
         let item = try XCTUnwrap(harness.library.items.first)
         reader.setNextResult(
-            .snapshot(Self.tabsSnapshot([item], vault: harness.vault, frontmost: true, pageNumber: 7))
+            .snapshot(
+                Self.tabsSnapshot([item], vault: harness.vault, frontmost: true, pageNumber: 7)
+            )
         )
         harness.model.prepareForPresentation(source: .highlightsTabs)
         await harness.waitForModel { $0.tabsState == .loaded }
@@ -1684,6 +1686,122 @@ final class RefsPanelModelTests: XCTestCase {
         XCTAssertEqual(completions.first?.confirmationTitle, "Copied link · ai.google.dev")
         XCTAssertEqual(completions.count, 1)
         XCTAssertNil(harness.model.copyCard)
+    }
+
+    func testShiftDigitOpensLinkWithoutCopying() async throws {
+        let harness = try await makeLinkPickerHarness()
+        var completions: [RefsCopyRow] = []
+        harness.model.copyCompletion = { completions.append($0) }
+
+        harness.model.handleCopyCardKey(characters: "@", keyCode: 19, modifiers: [.shift])
+
+        await harness.waitForModel { _ in harness.opener.defaultAppOpens.count == 1 }
+        XCTAssertEqual(
+            harness.opener.defaultAppOpens.first?.absoluteString,
+            "https://ai.google.dev/gemini-api/docs/imagen"
+        )
+        XCTAssertEqual(harness.pasteboard.strings, [])
+        XCTAssertEqual(completions, [])
+        XCTAssertNil(harness.model.copyCard)
+        XCTAssertEqual(harness.dismissed, 1)
+        XCTAssertFalse(harness.model.copyLinkOpenActive)
+    }
+
+    func testBufferedHighlightsShiftReturnOpensPageLink() async throws {
+        let path = "ref/chat/example.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.linksDelayNanoseconds = 80_000_000
+        fetcher.linksResponse = try Self.linksResponse(path: path)
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "example", sourceMarkdown: ".bob/src.md")]
+        )
+        let reader = FakeTabsReader(isTrusted: true)
+        let harness = try makeRenameHarness(fetcher: fetcher, tabsReader: reader)
+        harness.model.panelDismisser = { [weak harness] in harness?.dismissed += 1 }
+        await harness.waitForSnapshot(ids: [path])
+        let item = try XCTUnwrap(harness.library.items.first)
+        reader.setNextResult(
+            .snapshot(Self.tabsSnapshot([item], vault: harness.vault, frontmost: true, pageNumber: 7))
+        )
+        harness.model.prepareForPresentation(source: .highlightsCopy(.links))
+        var completions: [RefsCopyRow] = []
+        harness.model.copyCompletion = { completions.append($0) }
+        harness.model.bufferPendingHighlightsCopyKey(
+            characters: "\r",
+            keyCode: 36,
+            modifiers: [.shift]
+        )
+
+        await harness.waitForModel { _ in harness.opener.defaultAppOpens.count == 1 }
+        XCTAssertEqual(
+            harness.opener.defaultAppOpens.first?.absoluteString,
+            "https://ai.google.dev/gemini-api/docs/imagen"
+        )
+        XCTAssertEqual(harness.pasteboard.strings, [])
+        XCTAssertEqual(completions, [])
+        XCTAssertNil(harness.model.copyCard)
+        XCTAssertEqual(harness.dismissed, 1)
+    }
+
+    func testLinkOpenFailureReturnsPanelWithCopyDiagnosticOnly() async throws {
+        let harness = try await makeLinkPickerHarness()
+        harness.model.panelRepresenter = { [weak harness] in harness?.represented += 1 }
+        harness.opener.defaultAppError = NSError(
+            domain: "RefsPanelModelTests",
+            code: 4,
+            userInfo: [NSLocalizedDescriptionKey: "browser-unavailable"]
+        )
+
+        harness.model.handleCopyCardKey(characters: "\r", keyCode: 36, modifiers: [.shift])
+
+        await harness.waitForModel {
+            $0.banner?.message.contains("Couldn’t open the developers.openai.com link.") == true
+        }
+        XCTAssertEqual(
+            harness.opener.defaultAppOpens.map(\.absoluteString),
+            ["https://developers.openai.com/docs/image-generation"]
+        )
+        XCTAssertEqual(harness.represented, 1)
+        XCTAssertTrue(
+            harness.model.banner?.message.contains("Couldn’t open the developers.openai.com link.")
+                == true
+        )
+        XCTAssertTrue(harness.model.banner?.message.contains("browser-unavailable") == true)
+        XCTAssertEqual(harness.model.banner?.actions, [.copyDiagnostic])
+        XCTAssertEqual(harness.pasteboard.strings, [])
+    }
+
+    func testShiftClickOpenStateAndVoiceOverOpenAction() async throws {
+        let shiftClick = try await makeLinkPickerHarness()
+        shiftClick.model.updateCopyModifiers([.shift])
+        XCTAssertTrue(shiftClick.model.copyLinkOpenActive)
+        shiftClick.model.copyCardPickerRowTapped(2)
+        await shiftClick.waitForModel { _ in shiftClick.opener.defaultAppOpens.count == 1 }
+        XCTAssertEqual(
+            shiftClick.opener.defaultAppOpens.first?.absoluteString,
+            "https://ai.google.dev/gemini-api/docs/imagen"
+        )
+        XCTAssertFalse(shiftClick.model.copyLinkOpenActive)
+
+        let voiceOver = try await makeLinkPickerHarness()
+        voiceOver.model.copyCardPickerRowOpenRequested(2)
+        XCTAssertEqual(voiceOver.opener.defaultAppOpens.count, 1)
+        XCTAssertNil(voiceOver.model.copyCard)
+
+        let plainCard = try await makeLinkPickerHarness(openPicker: false)
+        plainCard.model.copyCardPickerRowOpenRequested(2)
+        XCTAssertTrue(plainCard.opener.defaultAppOpens.isEmpty)
+        XCTAssertNotNil(plainCard.model.copyCard)
+
+        let copyClick = try await makeLinkPickerHarness()
+        copyClick.model.updateCopyModifiers([])
+        copyClick.model.copyCardPickerRowTapped(2)
+        XCTAssertEqual(
+            copyClick.pasteboard.strings,
+            ["https://ai.google.dev/gemini-api/docs/imagen"]
+        )
+        XCTAssertTrue(copyClick.opener.defaultAppOpens.isEmpty)
     }
 
     func testUnsupportedLinksFetchExplainsNewerBob() async throws {
@@ -6520,6 +6638,31 @@ final class RefsPanelModelTests: XCTestCase {
         )
         model.tabCloseDismisser = { [weak harness] in harness?.dismissed += 1 }
         library.refresh(reason: .manual)
+        return harness
+    }
+
+    private func makeLinkPickerHarness(openPicker: Bool = true) async throws -> Harness {
+        let path = "ref/chat/example.md"
+        let fetcher = FakeRefsFetcher()
+        fetcher.codeResponse = try Self.codeResponse(path: path)
+        fetcher.linksResponse = try Self.linksResponse(path: path)
+        fetcher.listResponse = RefsListResponse(
+            schemaVersion: 1,
+            refs: [Self.renameRecord(path: path, stem: "example", sourceMarkdown: ".bob/src.md")]
+        )
+        let harness = try makeRenameHarness(fetcher: fetcher)
+        harness.model.panelDismisser = { [weak harness] in harness?.dismissed += 1 }
+        await harness.waitForSnapshot(ids: [path])
+        harness.model.prepareForPresentation()
+        harness.model.openCopyCard()
+        await harness.waitForModel {
+            guard let card = $0.copyCard else { return false }
+            if case .loaded = card.links { return true }
+            return false
+        }
+        guard openPicker else { return harness }
+        harness.model.handleCopyCardKey(characters: "l", keyCode: 37, modifiers: [])
+        await harness.waitForModel { $0.copyCard?.linkPicker != nil }
         return harness
     }
 

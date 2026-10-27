@@ -420,51 +420,50 @@ PDF" (on by default) suppresses notifications only; footer clauses stay.
 
 ### Copy card
 
-Command-Y opens an in-panel card for the selected reference, or for the
-focused Highlights PDF (see [Opening Bob Refs](#opening-bob-refs)). The fixed
-keys copy `I` marker ID, `T` title, `W` wiki link, `U` source URL, `X` arXiv
-ID, `D` DOI, `N` note path, `O` Obsidian link, `P` PDF path, `F` the PDF file,
-`R` reading-task link, and `S` research reference. `C` opens a code picker
-with a preview well (`Loading code…` while fetching). `M` copies the Markdown
-(Option-M its `~` path). `L` opens a link picker on references bob rendered
-from Markdown (`L` stays the Markdown link elsewhere; Option-U always copies
-it). A `p. N in Highlights` chip marks the focused tab. Hidden C/L/M
-keys explain why. Command-B Return and Command-L Return copy the page's code
-block and link in one chord; see [Keyboard](keyboard.md) for details.
+Command-Y opens an in-panel Copy card for the selected reference or focused
+Highlights PDF (see [Opening Bob Refs](#opening-bob-refs)). Fixed keys copy
+`I` marker ID, `T` title, `W` wiki link, `U` source URL, `X` arXiv ID, `D` DOI,
+`N` note path, `O` Obsidian link, `P` PDF path, `F` PDF file, `R` reading-task
+link, and `S` research reference. `C` opens a code picker with a preview
+(`Loading code…` while fetching); `M` copies saved Markdown (Option-M its `~`
+path). `L` opens the link picker for Markdown references; elsewhere it copies
+the Markdown link, and Option-U always copies it. A `p. N in Highlights` chip
+marks the focused tab. Hidden C/L/M keys explain why. Command-B Return and
+Command-L Return copy the page's code or link; Command-L Shift-Return also
+opens its link in the default browser. See [Keyboard](keyboard.md).
 
-`1`–`9` copy the visible commented highlights with page and block-link
-provenance; `A` copies all commented highlights, standalone notes, and Bob's
-notes, grouped under `### <Title>` (section description as a blockquote) when
-`bob ref show` supplies sections, then `### Other highlights` and `### Notes`.
-Empty sections and uncommented-only sections omit a group; older unsectioned
-responses keep the previous A payload. `H` opens a highlight picker for every
-highlight and standalone note (digits copy the window, arrows scroll, `A`
-copies all) with non-selectable section titles that repeat when the window
-starts mid-section. Return copies the selected row (marker ID
-when available, otherwise wiki link).
+`1`–`9` copy visible commented highlights with page and block-link provenance.
+`A` copies all commented highlights, standalone notes, and Bob's notes under
+`### <Title>` with supplied section descriptions as blockquotes, then
+`### Other highlights` and `### Notes`. Empty or uncommented-only sections
+are omitted; older unsectioned responses keep the previous A payload. `H`
+opens a picker for every highlight and standalone note (digits copy its window,
+arrows scroll, `A` copies all). Section titles repeat when a window starts
+mid-section. Return copies the selected marker ID when available, otherwise its
+wiki link.
 
-The link picker lists every recorded link in document order under a `LINKS N`
-header, grouped by report section, opening on the current page's first link
-when the Highlights page is known. Rows show the label first and the site and
-path second, with the page on the right (a `●` marks current-page links). A
-well below the rows shows the URL to copy, wrapped with its host
-emphasized; while Option is held the header gains `· Markdown` and the well
-shows the Markdown form. Return copies the URL, Option-Return its Markdown
-form, `1`–`9` copy that visible row, `A` copies every distinct URL one per
-line (Option-A as a Markdown list), and Escape returns to the card. Pressing
-`L` while its row is hidden explains why: links not yet recorded
-(`bob ref recatalog`), an older bob without `ref links`, or saved Markdown
-missing on this Mac. `L` typed before the links arrive queues like `C`.
+The link picker lists recorded links in document order under `LINKS N`, grouped
+by report section, and opens on the current Highlights page's first link when
+available. Rows show label, site, path, and page; `●` marks current-page links.
+The well previews the URL with its host emphasized, or the Markdown form while
+Option is held. Return copies the URL, Option-Return its Markdown form, `1`–`9`
+copy visible rows, `A` copies distinct URLs (Option-A a Markdown list), and
+Escape returns to the card. Shift-1–9 opens a visible link, Shift-Return the
+selection, and Shift-click a row in the default browser. Shift adds `· Open`
+and updates the hint. Only hosted `http` and `https` links open; others explain
+why and remain copyable with Return. Opening hides Refs without a HUD or
+pasteboard change; failure restores an error banner. `L` explains when links
+are unrecorded, bob lacks `ref links`, or saved Markdown is missing; input
+while links load queues like `C`.
 
 Home-folder paths copy with `~` (for example, `~/bob/lib/…`); only the
 Obsidian link and the PDF and narration file copies stay absolute.
 
-Hold Option (⌥) to swap previews in place: Option-W a titled wiki link,
-Option-P the absolute PDF path, Option-N the full `~` note path, Option-F the
-narration file, and Option-1–9 the highlight's quote verbatim. Rows without
-an alternate keep their payload. Option-click and Option-Return copy the
-displayed alternate too. A queued copy remembers whether Option was held;
-Return retries the same payload after a failed write.
+Hold Option to preview alternates: `W` a titled wiki link, `P` the absolute PDF
+path, `N` the full `~` note path, `F` the narration file, and `1`–`9` the
+highlight quote. Rows without alternates keep their payload. Option-click and
+Option-Return copy the preview. Queued copies remember Option; Return retries
+the same payload after a failed write.
 
 Each row previews the exact value it copies. A shared marker ID shows its
 `shared ×N` count; press `N` to copy this note's path. If the installed Bob
