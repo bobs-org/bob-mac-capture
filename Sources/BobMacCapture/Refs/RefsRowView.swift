@@ -5,68 +5,68 @@ import SwiftUI
 /// symbol, carrying the kind label for accessibility.
 @available(macOS 26.0, *)
 struct RefsKindTile: View {
-  let kind: RefKind
-  var size: CGFloat = RefsVisualTokens.kindTileSize
+    let kind: RefKind
+    var size: CGFloat = RefsVisualTokens.kindTileSize
 
-  @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.colorSchemeContrast) private var contrast
 
-  var body: some View {
-    let tint = RefsVisualTokens.tint(for: kind)
-    // The named radii: the 44 pt hero tile takes heroTileRadius,
-    // every other size the kind tile radius.
-    let radius =
-      size == RefsVisualTokens.heroTileSize
-      ? RefsVisualTokens.heroTileRadius
-      : RefsVisualTokens.kindTileRadius
-    return ZStack {
-      RoundedRectangle(cornerRadius: radius)
-        .fill(tint.opacity(0.16))
-        .overlay(
-          RoundedRectangle(cornerRadius: radius)
-            .strokeBorder(
-              tint.opacity(contrast == .increased ? 0.5 : 0.28),
-              lineWidth: 0.5
-            )
-        )
-      Image(systemName: kind.symbolName)
-        .font(.system(size: size * 0.46, weight: .semibold))
-        .foregroundStyle(tint)
+    var body: some View {
+        let tint = RefsVisualTokens.tint(for: kind)
+        // The named radii: the 44 pt hero tile takes heroTileRadius,
+        // every other size the kind tile radius.
+        let radius =
+            size == RefsVisualTokens.heroTileSize
+            ? RefsVisualTokens.heroTileRadius
+            : RefsVisualTokens.kindTileRadius
+        return ZStack {
+            RoundedRectangle(cornerRadius: radius)
+                .fill(tint.opacity(0.16))
+                .overlay(
+                    RoundedRectangle(cornerRadius: radius)
+                        .strokeBorder(
+                            tint.opacity(contrast == .increased ? 0.5 : 0.28),
+                            lineWidth: 0.5
+                        )
+                )
+            Image(systemName: kind.symbolName)
+                .font(.system(size: size * 0.46, weight: .semibold))
+                .foregroundStyle(tint)
+        }
+        .frame(width: size, height: size)
+        .accessibilityLabel(kind.label)
+        .accessibilityHidden(false)
     }
-    .frame(width: size, height: size)
-    .accessibilityLabel(kind.label)
-    .accessibilityHidden(false)
-  }
 }
 
 /// The state glyph in a fixed 18 pt column so glyphs align down the
 /// list. A missing PDF replaces it with an orange warning triangle.
 @available(macOS 26.0, *)
 struct RefsStateGlyph: View {
-  let content: RefsRowContent
+    let content: RefsRowContent
 
-  var body: some View {
-    Group {
-      if content.isMissingPDF {
-        Image(systemName: "exclamationmark.triangle.fill")
-          .font(.system(size: 15))
-          .foregroundStyle(.orange)
-          .accessibilityLabel("PDF missing")
-      } else if let item = content.item {
-        let resolved = CaptureEditorPalette.taskStatus(
-          RefsVisualTokens.paletteStatus(for: item)
-        )
-        Image(systemName: resolved.symbol)
-          .font(.system(size: 15))
-          .foregroundStyle(resolved.color)
-          .accessibilityLabel(RefsCaption.stateLabel(item))
-      } else {
-        Image(systemName: "circle.dashed")
-          .font(.system(size: 15))
-          .foregroundStyle(.secondary)
-      }
+    var body: some View {
+        Group {
+            if content.isMissingPDF {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.orange)
+                    .accessibilityLabel("PDF missing")
+            } else if let item = content.item {
+                let resolved = CaptureEditorPalette.taskStatus(
+                    RefsVisualTokens.paletteStatus(for: item)
+                )
+                Image(systemName: resolved.symbol)
+                    .font(.system(size: 15))
+                    .foregroundStyle(resolved.color)
+                    .accessibilityLabel(RefsCaption.stateLabel(item))
+            } else {
+                Image(systemName: "circle.dashed")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 18, alignment: .center)
     }
-    .frame(width: 18, alignment: .center)
-  }
 }
 
 /// The pink Now pill, matching capture's NOW pill: a capsule with a
@@ -74,32 +74,32 @@ struct RefsStateGlyph: View {
 /// characters, or "NOW" when the name is empty.
 @available(macOS 26.0, *)
 struct RefsTodayPill: View {
-  let pomodoroName: String
+    let pomodoroName: String
 
-  var body: some View {
-    HStack(spacing: 4) {
-      Image(systemName: "timer")
-        .font(.system(size: 11, weight: .bold))
-      Text(label)
-        .font(.caption2.weight(.bold))
-        .lineLimit(1)
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "timer")
+                .font(.system(size: 11, weight: .bold))
+            Text(label)
+                .font(.caption2.weight(.bold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(.pink, in: Capsule())
+        .accessibilityLabel("Now in \(label) Pomodoro")
     }
-    .foregroundStyle(.white)
-    .padding(.horizontal, 8)
-    .padding(.vertical, 4)
-    .background(.pink, in: Capsule())
-    .accessibilityLabel("Now in \(label) Pomodoro")
-  }
 
-  private var label: String {
-    if pomodoroName.isEmpty {
-      return "NOW"
+    private var label: String {
+        if pomodoroName.isEmpty {
+            return "NOW"
+        }
+        if pomodoroName.count > 12 {
+            return String(pomodoroName.prefix(12)) + "…"
+        }
+        return pomodoroName
     }
-    if pomodoroName.count > 12 {
-      return String(pomodoroName.prefix(12)) + "…"
-    }
-    return pomodoroName
-  }
 }
 
 /// The "Current · p. 5/25" pill marking the frontmost Highlights
@@ -107,25 +107,25 @@ struct RefsTodayPill: View {
 /// next to the pink Today pill when a row has both.
 @available(macOS 26.0, *)
 struct RefsCurrentTabPill: View {
-  let pageCaption: String?
+    let pageCaption: String?
 
-  var body: some View {
-    Text(label)
-      .font(.caption2.weight(.bold))
-      .lineLimit(1)
-      .foregroundStyle(Color.accentColor)
-      .padding(.horizontal, 8)
-      .padding(.vertical, 4)
-      .background(Color.accentColor.opacity(0.16), in: Capsule())
-      .accessibilityHidden(true)
-  }
-
-  private var label: String {
-    if let pageCaption {
-      return "Current · \(pageCaption)"
+    var body: some View {
+        Text(label)
+            .font(.caption2.weight(.bold))
+            .lineLimit(1)
+            .foregroundStyle(Color.accentColor)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.accentColor.opacity(0.16), in: Capsule())
+            .accessibilityHidden(true)
     }
-    return "Current"
-  }
+
+    private var label: String {
+        if let pageCaption {
+            return "Current · \(pageCaption)"
+        }
+        return "Current"
+    }
 }
 
 /// The neutral document tile for collision and unmatched Tabs rows:
@@ -134,25 +134,25 @@ struct RefsCurrentTabPill: View {
 /// a kind or a state.
 @available(macOS 26.0, *)
 struct RefsTabDocTile: View {
-  var size: CGFloat = RefsVisualTokens.kindTileSize
+    var size: CGFloat = RefsVisualTokens.kindTileSize
 
-  var body: some View {
-    // The named radii: the 44 pt hero tile takes heroTileRadius,
-    // every other size the kind tile radius, matching RefsKindTile.
-    let radius =
-      size == RefsVisualTokens.heroTileSize
-      ? RefsVisualTokens.heroTileRadius
-      : RefsVisualTokens.kindTileRadius
-    return ZStack {
-      RoundedRectangle(cornerRadius: radius)
-        .fill(.secondary.opacity(0.12))
-      Image(systemName: "doc")
-        .font(.system(size: size * 0.46, weight: .semibold))
-        .foregroundStyle(.secondary)
+    var body: some View {
+        // The named radii: the 44 pt hero tile takes heroTileRadius,
+        // every other size the kind tile radius, matching RefsKindTile.
+        let radius =
+            size == RefsVisualTokens.heroTileSize
+            ? RefsVisualTokens.heroTileRadius
+            : RefsVisualTokens.kindTileRadius
+        return ZStack {
+            RoundedRectangle(cornerRadius: radius)
+                .fill(.secondary.opacity(0.12))
+            Image(systemName: "doc")
+                .font(.system(size: size * 0.46, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
-    .frame(width: size, height: size)
-    .accessibilityHidden(true)
-  }
 }
 
 /// One 44 pt two-line row: the unopened gutter, the kind tile, the
@@ -170,304 +170,304 @@ struct RefsTabDocTile: View {
 /// trailing column for a quiet close button on hover and selection.
 @available(macOS 26.0, *)
 struct RefsRowView: View {
-  let content: RefsRowContent
-  let isSelected: Bool
-  let pomodoroName: String?
-  let onSelect: () -> Void
-  let onActivate: () -> Void
-  /// Closes this Highlights tab. Non-nil only when the model can
-  /// close the row, so the trailing column is reserved then and
-  /// nothing shifts as the pointer moves.
-  var onClose: (() -> Void)? = nil
-  /// Design fixtures force the hover close button without a pointer.
-  var previewHovering = false
+    let content: RefsRowContent
+    let isSelected: Bool
+    let pomodoroName: String?
+    let onSelect: () -> Void
+    let onActivate: () -> Void
+    /// Closes this Highlights tab. Non-nil only when the model can
+    /// close the row, so the trailing column is reserved then and
+    /// nothing shifts as the pointer moves.
+    var onClose: (() -> Void)? = nil
+    /// Design fixtures force the hover close button without a pointer.
+    var previewHovering = false
 
-  /// Tooltip and VoiceOver name for the row close control.
-  static let closeTabHelp = "Close Tab (⌃X)"
-  /// The VoiceOver action name that closes this tab.
-  static let closeTabActionName = "Close Tab"
+    /// Tooltip and VoiceOver name for the row close control.
+    static let closeTabHelp = "Close Tab (⌃X)"
+    /// The VoiceOver action name that closes this tab.
+    static let closeTabActionName = "Close Tab"
 
-  @Environment(\.colorSchemeContrast) private var contrast
-  @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @State private var hovering = false
-  @State private var closeHovering = false
+    @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hovering = false
+    @State private var closeHovering = false
 
-  /// Whether this row is a collision or unmatched Tabs row.
-  private var isTabFallback: Bool {
-    content.item == nil && content.openTab != nil
-  }
-
-  var body: some View {
-    HStack(spacing: 10) {
-      gutter
-      // The tile and glyph stay out of the VoiceOver tree: the
-      // row label below already names the kind and state once.
-      if let item = content.item {
-        RefsKindTile(kind: item.kind)
-          .accessibilityHidden(true)
-      } else if isTabFallback {
-        RefsTabDocTile()
-      } else {
-        RefsKindTile(kind: .other(raw: nil))
-          .accessibilityHidden(true)
-      }
-      textColumn
-      Spacer(minLength: 8)
-      if let pomodoroName {
-        RefsTodayPill(pomodoroName: pomodoroName)
-      }
-      if let openTab = content.openTab, openTab.isCurrent {
-        RefsCurrentTabPill(pageCaption: openTab.pageCaption)
-      }
-      if let item = content.item, item.annotationCount > 0 {
-        Label(
-          "\(item.annotationCount)",
-          systemImage: "highlighter"
-        )
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
-      }
-      if content.item?.audioPath != nil {
-        Image(systemName: "waveform")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-      if isTabFallback {
-        Image(systemName: "doc")
-          .font(.system(size: 15))
-          .foregroundStyle(.secondary)
-          .frame(width: 18, alignment: .center)
-          .accessibilityHidden(true)
-      } else {
-        RefsStateGlyph(content: content)
-          .accessibilityHidden(true)
-      }
-      closeColumn
+    /// Whether this row is a collision or unmatched Tabs row.
+    private var isTabFallback: Bool {
+        content.item == nil && content.openTab != nil
     }
-    .padding(.leading, 8)
-    .padding(.trailing, 12)
-    .frame(height: RefsVisualTokens.rowHeight)
-    .background(background)
-    .opacity(content.isUnavailable ? 0.45 : 1)
-    .onHover { hovering = $0 }
-    .onTapGesture(count: 2, perform: onActivate)
-    .onTapGesture(count: 1, perform: onSelect)
-    .accessibilityElement(children: .combine)
-    .accessibilityLabel(accessibilityLabel)
-    .accessibilityAddTraits(isSelected ? .isSelected : [])
-    .refsCloseTabAction(onClose)
-  }
 
-  /// True when the reserved close column should paint the button:
-  /// selected, hovered, or a design-fixture hover.
-  private var showsCloseControl: Bool {
-    onClose != nil && (isSelected || hovering || previewHovering)
-  }
-
-  /// An 18 pt trailing column, reserved whenever this row can close,
-  /// so the glyph never shoves neighbors as the button fades in.
-  @ViewBuilder
-  private var closeColumn: some View {
-    if onClose != nil {
-      ZStack {
-        if showsCloseControl {
-          closeButton
-            .transition(reduceMotion ? .identity : .opacity)
+    var body: some View {
+        HStack(spacing: 10) {
+            gutter
+            // The tile and glyph stay out of the VoiceOver tree: the
+            // row label below already names the kind and state once.
+            if let item = content.item {
+                RefsKindTile(kind: item.kind)
+                    .accessibilityHidden(true)
+            } else if isTabFallback {
+                RefsTabDocTile()
+            } else {
+                RefsKindTile(kind: .other(raw: nil))
+                    .accessibilityHidden(true)
+            }
+            textColumn
+            Spacer(minLength: 8)
+            if let pomodoroName {
+                RefsTodayPill(pomodoroName: pomodoroName)
+            }
+            if let openTab = content.openTab, openTab.isCurrent {
+                RefsCurrentTabPill(pageCaption: openTab.pageCaption)
+            }
+            if let item = content.item, item.annotationCount > 0 {
+                Label(
+                    "\(item.annotationCount)",
+                    systemImage: "highlighter"
+                )
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+            }
+            if content.item?.audioPath != nil {
+                Image(systemName: "waveform")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if isTabFallback {
+                Image(systemName: "doc")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, alignment: .center)
+                    .accessibilityHidden(true)
+            } else {
+                RefsStateGlyph(content: content)
+                    .accessibilityHidden(true)
+            }
+            closeColumn
         }
-      }
-      .frame(width: 18, alignment: .center)
-      .animation(
-        reduceMotion ? nil : .easeInOut(duration: 0.12),
-        value: showsCloseControl
-      )
+        .padding(.leading, 8)
+        .padding(.trailing, 12)
+        .frame(height: RefsVisualTokens.rowHeight)
+        .background(background)
+        .opacity(content.isUnavailable ? 0.45 : 1)
+        .onHover { hovering = $0 }
+        .onTapGesture(count: 2, perform: onActivate)
+        .onTapGesture(count: 1, perform: onSelect)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .refsCloseTabAction(onClose)
     }
-  }
 
-  /// Quiet close control: secondary until the pointer is over it.
-  /// The button consumes the click so the row neither selects nor
-  /// activates. VoiceOver uses the row action instead.
-  private var closeButton: some View {
-    Button {
-      onClose?()
-    } label: {
-      Image(systemName: "xmark.circle.fill")
-        .font(.system(size: 14))
-        .foregroundStyle(closeHovering ? Color.primary : Color.secondary)
-        .frame(width: 18, height: 18)
-        .contentShape(Rectangle())
+    /// True when the reserved close column should paint the button:
+    /// selected, hovered, or a design-fixture hover.
+    private var showsCloseControl: Bool {
+        onClose != nil && (isSelected || hovering || previewHovering)
     }
-    .buttonStyle(.borderless)
-    .help(Self.closeTabHelp)
-    .onHover { closeHovering = $0 }
-    .accessibilityHidden(true)
-  }
 
-  private var gutter: some View {
-    ZStack {
-      Circle()
-        .fill(Color.accentColor)
-        .frame(
-          width: RefsVisualTokens.newDotSize,
-          height: RefsVisualTokens.newDotSize
+    /// An 18 pt trailing column, reserved whenever this row can close,
+    /// so the glyph never shoves neighbors as the button fades in.
+    @ViewBuilder
+    private var closeColumn: some View {
+        if onClose != nil {
+            ZStack {
+                if showsCloseControl {
+                    closeButton
+                        .transition(reduceMotion ? .identity : .opacity)
+                }
+            }
+            .frame(width: 18, alignment: .center)
+            .animation(
+                reduceMotion ? nil : .easeInOut(duration: 0.12),
+                value: showsCloseControl
+            )
+        }
+    }
+
+    /// Quiet close control: secondary until the pointer is over it.
+    /// The button consumes the click so the row neither selects nor
+    /// activates. VoiceOver uses the row action instead.
+    private var closeButton: some View {
+        Button {
+            onClose?()
+        } label: {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(closeHovering ? Color.primary : Color.secondary)
+                .frame(width: 18, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help(Self.closeTabHelp)
+        .onHover { closeHovering = $0 }
+        .accessibilityHidden(true)
+    }
+
+    private var gutter: some View {
+        ZStack {
+            Circle()
+                .fill(Color.accentColor)
+                .frame(
+                    width: RefsVisualTokens.newDotSize,
+                    height: RefsVisualTokens.newDotSize
+                )
+                .scaleEffect(
+                    reduceMotion
+                        ? 1
+                        : (content.isNew ? 1 : RefsVisualTokens.newDotHiddenScale)
+                )
+                .opacity(content.isNew ? 1 : 0)
+                .animation(newDotAnimation, value: content.isNew)
+        }
+        .frame(width: RefsVisualTokens.newDotGutterWidth)
+    }
+
+    private var newDotAnimation: Animation {
+        if reduceMotion {
+            return .easeOut(duration: RefsVisualTokens.newDotReduceMotionDuration)
+        }
+        return content.isNew
+            ? .spring(
+                response: RefsVisualTokens.newDotAppearResponse,
+                dampingFraction: RefsVisualTokens.newDotAppearDamping
+            )
+            : .easeOut(duration: RefsVisualTokens.newDotDisappearDuration)
+    }
+
+    private var textColumn: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            titleLine
+            Text(captionLine)
+                .font(.system(size: 11.5).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+    }
+
+    /// The caption the row shows: a collision row names its
+    /// candidate notes after the model's "Matches N notes", so Bryan
+    /// can tell the candidates apart without opening the inspector.
+    private var displayCaption: String {
+        guard isTabFallback, !content.candidateItems.isEmpty else {
+            return content.caption
+        }
+        let names = content.candidateItems.map(\.title.text).joined(separator: " · ")
+        return "\(content.caption): \(names)"
+    }
+
+    /// The caption with the matched stem or secondary part in the
+    /// accent color (§8). The ranges come from the model, as
+    /// `Character` offsets into the caption text.
+    private var captionLine: AttributedString {
+        CapturePickerRichText.displayText(
+            displayCaption,
+            segments: [],
+            matches: content.captionMatch.map { [$0] } ?? []
         )
-        .scaleEffect(
-          reduceMotion
-            ? 1
-            : (content.isNew ? 1 : RefsVisualTokens.newDotHiddenScale)
-        )
-        .opacity(content.isNew ? 1 : 0)
-        .animation(newDotAnimation, value: content.isNew)
     }
-    .frame(width: RefsVisualTokens.newDotGutterWidth)
-  }
 
-  private var newDotAnimation: Animation {
-    if reduceMotion {
-      return .easeOut(duration: RefsVisualTokens.newDotReduceMotionDuration)
+    /// Speaks a tab page caption ("p. 5/25") as "page 5 of 25" for
+    /// VoiceOver. Pure so tests pin the phrasing without building the
+    /// view. An unrecognized shape falls back to the raw caption.
+    static func spokenPagePhrase(_ pageCaption: String?) -> String? {
+        guard let pageCaption else {
+            return nil
+        }
+        let trimmed = pageCaption.trimmingCharacters(in: .whitespaces)
+        let digits = trimmed.hasPrefix("p. ") ? String(trimmed.dropFirst(3)) : trimmed
+        let parts = digits.split(separator: "/")
+        guard parts.count == 2,
+            let page = Int(parts[0]),
+            let total = Int(parts[1])
+        else {
+            return pageCaption
+        }
+        return "page \(page) of \(total)"
     }
-    return content.isNew
-      ? .spring(
-        response: RefsVisualTokens.newDotAppearResponse,
-        dampingFraction: RefsVisualTokens.newDotAppearDamping
-      )
-      : .easeOut(duration: RefsVisualTokens.newDotDisappearDuration)
-  }
 
-  private var textColumn: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      titleLine
-      Text(captionLine)
-        .font(.system(size: 11.5).monospacedDigit())
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
-        .truncationMode(.tail)
+    private var titleLine: some View {
+        HStack(spacing: 0) {
+            if let item = content.item {
+                Text(
+                    CapturePickerRichText.displayText(
+                        item.title.text,
+                        segments: item.title.segments,
+                        matches: content.match?.titleRanges ?? []
+                    )
+                )
+                .font(.system(size: 13.5, weight: content.isNew ? .semibold : .regular))
+                .animation(newDotAnimation, value: content.isNew)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                if let disambiguator = item.titleDisambiguator {
+                    Text(" · \(disambiguator)")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+            } else {
+                Text(content.title)
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(isTabFallback ? .secondary : .primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        }
     }
-  }
 
-  /// The caption the row shows: a collision row names its
-  /// candidate notes after the model's "Matches N notes", so Bryan
-  /// can tell the candidates apart without opening the inspector.
-  private var displayCaption: String {
-    guard isTabFallback, !content.candidateItems.isEmpty else {
-      return content.caption
+    private var background: some View {
+        let increased = contrast == .increased
+        return RoundedRectangle(cornerRadius: 8)
+            .fill(
+                isSelected
+                    ? Color.accentColor.opacity(increased ? 0.30 : 0.16)
+                    : hovering
+                        ? Color.primary.opacity(increased ? 0.12 : 0.06)
+                        : Color.clear
+            )
+            .padding(.horizontal, 6)
     }
-    let names = content.candidateItems.map(\.title.text).joined(separator: " · ")
-    return "\(content.caption): \(names)"
-  }
 
-  /// The caption with the matched stem or secondary part in the
-  /// accent color (§8). The ranges come from the model, as
-  /// `Character` offsets into the caption text.
-  private var captionLine: AttributedString {
-    CapturePickerRichText.displayText(
-      displayCaption,
-      segments: [],
-      matches: content.captionMatch.map { [$0] } ?? []
-    )
-  }
-
-  /// Speaks a tab page caption ("p. 5/25") as "page 5 of 25" for
-  /// VoiceOver. Pure so tests pin the phrasing without building the
-  /// view. An unrecognized shape falls back to the raw caption.
-  static func spokenPagePhrase(_ pageCaption: String?) -> String? {
-    guard let pageCaption else {
-      return nil
-    }
-    let trimmed = pageCaption.trimmingCharacters(in: .whitespaces)
-    let digits = trimmed.hasPrefix("p. ") ? String(trimmed.dropFirst(3)) : trimmed
-    let parts = digits.split(separator: "/")
-    guard parts.count == 2,
-      let page = Int(parts[0]),
-      let total = Int(parts[1])
-    else {
-      return pageCaption
-    }
-    return "page \(page) of \(total)"
-  }
-
-  private var titleLine: some View {
-    HStack(spacing: 0) {
-      if let item = content.item {
-        Text(
-          CapturePickerRichText.displayText(
+    private var accessibilityLabel: String {
+        guard let item = content.item else {
+            return "\(content.title), \(displayCaption), open in Highlights"
+        }
+        var parts = [
             item.title.text,
-            segments: item.title.segments,
-            matches: content.match?.titleRanges ?? []
-          )
-        )
-        .font(.system(size: 13.5, weight: content.isNew ? .semibold : .regular))
-        .animation(newDotAnimation, value: content.isNew)
-        .lineLimit(1)
-        .truncationMode(.tail)
-        if let disambiguator = item.titleDisambiguator {
-          Text(" · \(disambiguator)")
-            .font(.caption.monospaced())
-            .foregroundStyle(.tertiary)
-            .lineLimit(1)
+            item.kind.label,
+            RefsCaption.stateLabel(item),
+            content.caption.replacingOccurrences(of: " pp", with: " pages"),
+        ]
+        if let pomodoroName {
+            let name = pomodoroName.isEmpty ? "NOW" : pomodoroName
+            parts.append("Now in \(name) Pomodoro")
         }
-      } else {
-        Text(content.title)
-          .font(.system(size: 13.5))
-          .foregroundStyle(isTabFallback ? .secondary : .primary)
-          .lineLimit(1)
-          .truncationMode(.tail)
-      }
-    }
-  }
-
-  private var background: some View {
-    let increased = contrast == .increased
-    return RoundedRectangle(cornerRadius: 8)
-      .fill(
-        isSelected
-          ? Color.accentColor.opacity(increased ? 0.30 : 0.16)
-          : hovering
-            ? Color.primary.opacity(increased ? 0.12 : 0.06)
-            : Color.clear
-      )
-      .padding(.horizontal, 6)
-  }
-
-  private var accessibilityLabel: String {
-    guard let item = content.item else {
-      return "\(content.title), \(displayCaption), open in Highlights"
-    }
-    var parts = [
-      item.title.text,
-      item.kind.label,
-      RefsCaption.stateLabel(item),
-      content.caption.replacingOccurrences(of: " pp", with: " pages"),
-    ]
-    if let pomodoroName {
-      let name = pomodoroName.isEmpty ? "NOW" : pomodoroName
-      parts.append("Now in \(name) Pomodoro")
-    }
-    if content.isNew {
-      parts.append("new")
-    }
-    if let openTab = content.openTab {
-      parts.append("open in Highlights")
-      if openTab.isCurrent {
-        if let spoken = Self.spokenPagePhrase(openTab.pageCaption) {
-          parts.append("current tab, \(spoken)")
-        } else {
-          parts.append("current tab")
+        if content.isNew {
+            parts.append("new")
         }
-      }
+        if let openTab = content.openTab {
+            parts.append("open in Highlights")
+            if openTab.isCurrent {
+                if let spoken = Self.spokenPagePhrase(openTab.pageCaption) {
+                    parts.append("current tab, \(spoken)")
+                } else {
+                    parts.append("current tab")
+                }
+            }
+        }
+        return parts.joined(separator: ", ")
     }
-    return parts.joined(separator: ", ")
-  }
 }
 
 @available(macOS 26.0, *)
 extension View {
-  /// Adds the VoiceOver "Close Tab" action only when the row can close.
-  @ViewBuilder
-  fileprivate func refsCloseTabAction(_ action: (() -> Void)?) -> some View {
-    if let action {
-      self.accessibilityAction(named: RefsRowView.closeTabActionName, action)
-    } else {
-      self
+    /// Adds the VoiceOver "Close Tab" action only when the row can close.
+    @ViewBuilder
+    fileprivate func refsCloseTabAction(_ action: (() -> Void)?) -> some View {
+        if let action {
+            self.accessibilityAction(named: RefsRowView.closeTabActionName, action)
+        } else {
+            self
+        }
     }
-  }
 }

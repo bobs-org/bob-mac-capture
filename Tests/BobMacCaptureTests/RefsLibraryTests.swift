@@ -13,1431 +13,1431 @@ import XCTest
 /// stale checks.
 @MainActor
 final class RefsLibraryTests: XCTestCase {
-  func testCacheFirstPaintThenRefreshReplacesSnapshot() async throws {
-    let context = try makeContext()
-    let seeded = try seedSnapshot(
-      context: context,
-      fixture: "refs-list.json",
-      dropping: ["ref/blogs/small_opened.md"]
-    )
-    XCTAssertEqual(seeded.records.count, 5)
+    func testCacheFirstPaintThenRefreshReplacesSnapshot() async throws {
+        let context = try makeContext()
+        let seeded = try seedSnapshot(
+            context: context,
+            fixture: "refs-list.json",
+            dropping: ["ref/blogs/small_opened.md"]
+        )
+        XCTAssertEqual(seeded.records.count, 5)
 
-    context.library.start()
-    XCTAssertTrue(context.library.hasSnapshot)
-    XCTAssertEqual(
-      context.library.items.map(\.id).sorted(),
-      seeded.records.map(\.path).sorted()
-    )
-    for item in context.library.items {
-      XCTAssertEqual(context.library.item(id: item.id), item)
+        context.library.start()
+        XCTAssertTrue(context.library.hasSnapshot)
+        XCTAssertEqual(
+            context.library.items.map(\.id).sorted(),
+            seeded.records.map(\.path).sorted()
+        )
+        for item in context.library.items {
+            XCTAssertEqual(context.library.item(id: item.id), item)
+        }
+
+        await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
+        XCTAssertEqual(context.library.items.count, 6)
+        for item in context.library.items {
+            XCTAssertEqual(context.library.item(id: item.id), item)
+        }
+        guard case .idle = context.library.refreshState else {
+            XCTFail("expected idle after a successful refresh")
+            return
+        }
     }
 
-    await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
-    XCTAssertEqual(context.library.items.count, 6)
-    for item in context.library.items {
-      XCTAssertEqual(context.library.item(id: item.id), item)
-    }
-    guard case .idle = context.library.refreshState else {
-      XCTFail("expected idle after a successful refresh")
-      return
-    }
-  }
+    func testFailureKeepsLastGoodSnapshotAndSetsFailed() async throws {
+        let context = try makeContext(environment: ["FAKE_BOB_EXIT": "1"])
+        let seeded = try seedSnapshot(context: context, fixture: "refs-list.json")
+        let before = seeded.records.map(\.path).sorted()
 
-  func testFailureKeepsLastGoodSnapshotAndSetsFailed() async throws {
-    let context = try makeContext(environment: ["FAKE_BOB_EXIT": "1"])
-    let seeded = try seedSnapshot(context: context, fixture: "refs-list.json")
-    let before = seeded.records.map(\.path).sorted()
-
-    context.library.start()
-    await waitUntil(timeout: 15) {
-      if case .failed = context.library.refreshState {
-        return true
-      }
-      return false
-    }
-    XCTAssertEqual(context.library.items.map(\.id).sorted(), before)
-    XCTAssertTrue(context.library.hasSnapshot)
-  }
-
-  func testSchemaMismatchTreatedAsFailure() async throws {
-    let schema3 = try fixtureURL("refs-plan-schema3.json").path
-    let context = try makeContext(environment: [
-      "FAKE_BOB_REFS_LIST_FIXTURE": schema3
-    ])
-    let seeded = try seedSnapshot(context: context, fixture: "refs-list.json")
-    let before = seeded.records.map(\.path).sorted()
-
-    context.library.start()
-    await waitUntil(timeout: 15) {
-      if case .failed = context.library.refreshState {
-        return true
-      }
-      return false
-    }
-    XCTAssertEqual(context.library.items.map(\.id).sorted(), before)
-  }
-
-  func testLossyRowsSurviveRefresh() async throws {
-    let golden = try fixtureURL("refs-list-golden.json").path
-    let context = try makeContext(environment: [
-      "FAKE_BOB_REFS_LIST_FIXTURE": golden
-    ])
-
-    context.library.refresh(reason: .manual)
-    await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
-    // 44 golden rows minus the title-less row skipped at decode and the
-    // row without a usable PDF dropped by the catalog.
-    XCTAssertEqual(context.library.items.count, 42)
-  }
-
-  func testGitPassRunsOnlyWhenNeededAndMerges() async throws {
-    let recordURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let context = try makeContext(environment: ["FAKE_BOB_RECORD_PATH": recordURL.path])
-
-    context.library.refresh(reason: .manual)
-    await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
-    // The `-g` lane starts after the snapshot publishes, so wait for
-    // its invocation before asserting on the record.
-    await waitUntil(timeout: 15) {
-      ((try? String(contentsOf: recordURL)) ?? "")
-        .contains("argv=ref list -R all -A -f json -g")
-    }
-    // The lane merges after the snapshot publishes, so wait for the
-    // backfilled date instead of reading it mid-flight.
-    await waitUntil(timeout: 15) {
-      context.library.items.first {
-        $0.id == "ref/blogs/small_opened.md"
-      }?.added?.isoString == "2026-09-11"
-    }
-    let opened = context.library.items.first {
-      $0.id == "ref/blogs/small_opened.md"
-    }
-    XCTAssertEqual(opened?.addedSource, "git")
-    XCTAssertTrue(opened?.addedIsApproximate ?? false)
-    XCTAssertEqual(opened.flatMap { context.library.item(id: $0.id) }, opened)
-    let created = context.library.items.first {
-      $0.id == "ref/chat/small_reading.md"
-    }
-    XCTAssertEqual(created?.added?.isoString, "2026-10-01")
-    XCTAssertFalse(created?.addedIsApproximate ?? true)
-  }
-
-  func testItemLookupTracksPreviewSnapshotReplacement() throws {
-    let context = try makeContext()
-    let first = RefItem(
-      id: "ref/chat/preview.md",
-      link: "[[ref/chat/preview]]",
-      rawTitle: "First preview row",
-      stem: "preview",
-      kind: .chat,
-      state: .read,
-      isBlocked: false,
-      pdfPath: "lib/preview.pdf"
-    )
-    let duplicate = RefItem(
-      id: first.id,
-      link: first.link,
-      rawTitle: "Second preview row",
-      stem: first.stem,
-      kind: .chat,
-      state: .read,
-      isBlocked: false,
-      pdfPath: first.pdfPath
-    )
-    let replacement = RefItem(
-      id: "ref/chat/replacement.md",
-      link: "[[ref/chat/replacement]]",
-      rawTitle: "Replacement preview row",
-      stem: "replacement",
-      kind: .chat,
-      state: .ready,
-      isBlocked: false,
-      pdfPath: "lib/replacement.pdf"
-    )
-
-    context.library.installSnapshotForPreviews(
-      items: [first, duplicate],
-      signals: RefsSignals(),
-      refreshState: .idle
-    )
-    XCTAssertEqual(context.library.item(id: first.id), first)
-
-    context.library.installSnapshotForPreviews(
-      items: [replacement],
-      signals: RefsSignals(),
-      refreshState: .idle
-    )
-    XCTAssertNil(context.library.item(id: first.id))
-    XCTAssertEqual(context.library.item(id: replacement.id), replacement)
-  }
-
-  func testGitPassFailureKeepsSnapshotAndStaysIdle() async throws {
-    let recordURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let context = try makeContext(environment: [
-      "FAKE_BOB_REFS_GIT_EXIT": "1",
-      "FAKE_BOB_RECORD_PATH": recordURL.path,
-    ])
-
-    context.library.refresh(reason: .manual)
-    await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
-    // Wait until the `-g` lane ran, then let it finish: the snapshot
-    // stays published and the state never flips to failed.
-    await waitUntil(timeout: 15) {
-      ((try? String(contentsOf: recordURL)) ?? "").contains("-g")
-    }
-    try? await Task.sleep(nanoseconds: 2_000_000_000)
-    XCTAssertEqual(context.library.items.count, 6)
-    XCTAssertTrue(context.library.hasSnapshot)
-    guard case .idle = context.library.refreshState else {
-      XCTFail("a -g failure must not fail the refresh")
-      return
-    }
-  }
-
-  func testWakeNotificationTriggersSnapshotRefresh() async throws {
-    let recordURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let center = NotificationCenter()
-    let context = try makeContext(
-      environment: ["FAKE_BOB_RECORD_PATH": recordURL.path],
-      wakeCenter: center
-    )
-
-    context.library.start()
-    await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
-    // Settle the `-g` lane before the baseline, so only the wake
-    // refresh can add a later list call.
-    await waitUntil(timeout: 15) {
-      context.library.items.contains {
-        $0.id == "ref/blogs/small_opened.md" && $0.added != nil
-      }
-    }
-    let launches = try String(contentsOf: recordURL)
-      .components(separatedBy: "argv=ref list").count
-
-    center.post(name: NSWorkspace.didWakeNotification, object: nil)
-
-    await waitUntil(timeout: 15) {
-      let record = (try? String(contentsOf: recordURL)) ?? ""
-      return record.components(separatedBy: "argv=ref list").count > launches
-    }
-    context.library.stop()
-  }
-
-  func testGitPassSkippedWhenEveryRowHasAdded() async throws {
-    let git = try fixtureURL("refs-list-git.json").path
-    let recordURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let context = try makeContext(environment: [
-      "FAKE_BOB_REFS_LIST_FIXTURE": git,
-      "FAKE_BOB_RECORD_PATH": recordURL.path,
-    ])
-
-    context.library.refresh(reason: .manual)
-    await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
-
-    let record = try String(contentsOf: recordURL)
-    XCTAssertFalse(record.contains("-g"))
-  }
-
-  func testTriggersDuringRefreshRunExactlyOneFollowUp() async throws {
-    let recordURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let context = try makeContext(environment: [
-      "FAKE_BOB_DELAY_SECONDS": "2",
-      "FAKE_BOB_RECORD_PATH": recordURL.path,
-    ])
-
-    context.library.refresh(reason: .manual)
-    context.library.refresh(reason: .manual)
-    context.library.refresh(reason: .manual)
-
-    // Three triggers, two snapshot passes (the run plus one follow-up).
-    // The first pass runs the plain and the git list calls; the follow-up
-    // reuses the just-backfilled git dates and skips its git pass, which
-    // only runs when needed.
-    await waitUntil(timeout: 40) {
-      let record = (try? String(contentsOf: recordURL)) ?? ""
-      return record.components(separatedBy: "argv=ref list").count == 4
-    }
-    try? await Task.sleep(nanoseconds: 4_000_000_000)
-    let record = try String(contentsOf: recordURL)
-    XCTAssertEqual(record.components(separatedBy: "argv=ref list").count, 4)
-    XCTAssertEqual(record.components(separatedBy: "argv=plan -f json").count, 3)
-  }
-
-  func testRefreshIfStaleDoesNotQueueDuringSnapshotPass() async throws {
-    let recordURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let context = try makeContext(environment: [
-      "FAKE_BOB_DELAY_SECONDS": "1",
-      "FAKE_BOB_RECORD_PATH": recordURL.path,
-    ])
-
-    context.library.refresh(reason: .manual)
-    context.library.refreshIfStale()
-    try? await Task.sleep(nanoseconds: 3_000_000_000)
-
-    let record = try String(contentsOf: recordURL)
-    XCTAssertEqual(record.components(separatedBy: "argv=ref list").count - 1, 2)
-  }
-
-  func testSnapshotPassKeepsGitDatesMergedDuringItsSweep() async throws {
-    let sweepGate = RefsCallGate(holding: 2)
-    let gitGate = RefsCallGate(holding: 1)
-    let context = try makeContext(spotlight: GatedSpotlight(gate: sweepGate))
-    let fetcher = ScriptedRefsFetcher(
-      plainURL: try fixtureURL("refs-list.json"),
-      gitURL: try fixtureURL("refs-list-git.json"),
-      gitGate: gitGate
-    )
-    context.library.setFetcher(fetcher)
-
-    context.library.refresh(reason: .manual)
-    await waitUntil(timeout: 15) { fetcher.gitListCount == 1 }
-
-    context.library.refresh(reason: .manual)
-    await waitUntil(timeout: 15) { sweepGate.isHolding }
-
-    gitGate.release()
-    await waitUntil(timeout: 15) {
-      context.library.items.contains {
-        $0.id == "ref/blogs/small_opened.md" && $0.added != nil
-      }
+        context.library.start()
+        await waitUntil(timeout: 15) {
+            if case .failed = context.library.refreshState {
+                return true
+            }
+            return false
+        }
+        XCTAssertEqual(context.library.items.map(\.id).sorted(), before)
+        XCTAssertTrue(context.library.hasSnapshot)
     }
 
-    sweepGate.release()
-    await waitUntil(timeout: 15) {
-      if case .idle = context.library.refreshState {
-        return true
-      }
-      return false
-    }
-    try? await Task.sleep(nanoseconds: 300_000_000)
+    func testSchemaMismatchTreatedAsFailure() async throws {
+        let schema3 = try fixtureURL("refs-plan-schema3.json").path
+        let context = try makeContext(environment: [
+            "FAKE_BOB_REFS_LIST_FIXTURE": schema3
+        ])
+        let seeded = try seedSnapshot(context: context, fixture: "refs-list.json")
+        let before = seeded.records.map(\.path).sorted()
 
-    XCTAssertTrue(
-      context.library.items.contains {
-        $0.id == "ref/blogs/small_opened.md"
-          && $0.added == RefDay(year: 2026, month: 9, day: 11)
-          && $0.addedAt == instant("2026-09-11T19:12:00Z")
-      }
-    )
-    XCTAssertTrue(
-      context.library.items.contains {
-        $0.id == "ref/books/small_book.md"
-          && $0.added == RefDay(year: 2026, month: 8, day: 30)
-          && $0.addedAt == instant("2026-08-30T19:12:00Z")
-      }
-    )
-    XCTAssertEqual(fetcher.gitListCount, 1)
-  }
-
-  func testRefreshCarriesGitAddedAtAndSkipsASecondGitPass() async throws {
-    let gitGate = RefsCallGate(holding: 1)
-    let context = try makeContext()
-    let fetcher = ScriptedRefsFetcher(
-      plainURL: try fixtureURL("refs-list.json"),
-      gitURL: try fixtureURL("refs-list-git.json"),
-      gitGate: gitGate
-    )
-    context.library.setFetcher(fetcher)
-
-    context.library.refresh(reason: .manual)
-    await waitUntil(timeout: 15) { fetcher.gitListCount == 1 }
-    gitGate.release()
-    await waitUntil(timeout: 15) {
-      context.library.items.contains {
-        $0.id == "ref/blogs/small_opened.md" && $0.addedAt != nil
-      }
+        context.library.start()
+        await waitUntil(timeout: 15) {
+            if case .failed = context.library.refreshState {
+                return true
+            }
+            return false
+        }
+        XCTAssertEqual(context.library.items.map(\.id).sorted(), before)
     }
 
-    context.library.refresh(reason: .manual)
-    await waitUntil(timeout: 15) {
-      if case .idle = context.library.refreshState {
-        return context.library.snapshotRefreshGeneration >= 2
-      }
-      return false
-    }
-    try? await Task.sleep(nanoseconds: 300_000_000)
+    func testLossyRowsSurviveRefresh() async throws {
+        let golden = try fixtureURL("refs-list-golden.json").path
+        let context = try makeContext(environment: [
+            "FAKE_BOB_REFS_LIST_FIXTURE": golden
+        ])
 
-    XCTAssertTrue(
-      context.library.items.contains {
-        $0.id == "ref/blogs/small_opened.md"
-          && $0.added == RefDay(year: 2026, month: 9, day: 11)
-          && $0.addedAt == instant("2026-09-11T19:12:00Z")
-      }
-    )
-    XCTAssertTrue(
-      context.library.items.contains {
-        $0.id == "ref/books/small_book.md"
-          && $0.added == RefDay(year: 2026, month: 8, day: 30)
-          && $0.addedAt == instant("2026-08-30T19:12:00Z")
-      }
-    )
-    XCTAssertEqual(fetcher.gitListCount, 1)
-  }
-
-  func testTodayLoadsAndSchemaMismatchKeepsLastToday() async throws {
-    let recordURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let context = try makeContext(environment: ["FAKE_BOB_RECORD_PATH": recordURL.path])
-
-    context.library.refresh(reason: .manual)
-    await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
-    // The Today lane runs beside the snapshot lane, so wait for the lane
-    // this test asserts instead of reading it mid-flight.
-    await waitUntil(timeout: 15) {
-      context.library.signals.today.taskEntries.count == 4
-    }
-    XCTAssertEqual(context.library.signals.today.taskEntries.count, 4)
-
-    let schema3 = try fixtureURL("refs-plan-schema3.json").path
-    context.library.setFetcher(
-      try planClient(
-        recordURL: recordURL,
-        environment: ["FAKE_BOB_PLAN_FIXTURE": schema3]
-      ))
-    context.library.refreshToday(reason: .manual)
-    await waitUntil(timeout: 15) {
-      let record = (try? String(contentsOf: recordURL)) ?? ""
-      return record.components(separatedBy: "argv=plan -f json").count == 3
-    }
-    XCTAssertEqual(context.library.signals.today.taskEntries.count, 4)
-  }
-
-  func testRecordOpenAndResetHistory() async throws {
-    let context = try makeContext()
-
-    context.library.refresh(reason: .manual)
-    await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
-
-    context.library.recordOpen(id: "ref/chat/small_reading.md")
-    XCTAssertEqual(context.library.signals.opens.count("ref/chat/small_reading.md"), 1)
-    XCTAssertNotNil(context.library.signals.opens.lastOpened("ref/chat/small_reading.md"))
-
-    context.library.resetOpenHistory()
-    XCTAssertEqual(context.library.signals.opens.count("ref/chat/small_reading.md"), 0)
-    XCTAssertFalse(FileManager.default.fileExists(atPath: context.openLogURL.path))
-  }
-
-  func testMissingPDFsPublishedFromFileChecks() async throws {
-    let context = try makeContext(fileExists: { url in
-      !url.path.hasSuffix("lib/chat/small_reading.pdf")
-    })
-
-    context.library.refresh(reason: .manual)
-    await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
-
-    XCTAssertEqual(context.library.signals.missingPDFs, ["ref/chat/small_reading.md"])
-  }
-
-  func testPdfURLNilWhenUnsafe() throws {
-    let context = try makeContext()
-    let item = RefItem(
-      id: "ref/chat/x.md",
-      link: "[[ref/chat/x]]",
-      rawTitle: "X",
-      stem: "x",
-      kind: .chat,
-      state: .reading,
-      isBlocked: false,
-      pdfPath: "lib/chat/x.pdf"
-    )
-
-    XCTAssertNotNil(context.library.pdfURL(for: item))
-    XCTAssertEqual(
-      context.library.noteURL(for: item).path,
-      context.vault.appendingPathComponent("ref/chat/x.md").path
-    )
-    XCTAssertNil(context.library.pdfURL(for: unsafe(item: item, pdf: "/abs/x.pdf")))
-    XCTAssertNil(context.library.pdfURL(for: unsafe(item: item, pdf: "../x.pdf")))
-    XCTAssertNil(context.library.pdfURL(for: unsafe(item: item, pdf: "lib/../../x.pdf")))
-  }
-
-  func testRefreshIfStale() async throws {
-    let recordURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let context = try makeContext(environment: ["FAKE_BOB_RECORD_PATH": recordURL.path])
-
-    context.library.refreshIfStale()
-    await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
-    // Both lanes record argv lines; wait for Today too so a late plan
-    // call cannot land between the baseline count and the quiet check.
-    await waitUntil(timeout: 15) {
-      context.library.signals.today.taskEntries.count == 4
-    }
-    // Settle the `-g` lane before the baseline. It starts after the
-    // snapshot publishes, so a late git argv line otherwise lands inside
-    // the quiet window and the counts disagree (4 vs 3).
-    await waitUntil(timeout: 15) {
-      context.library.items.contains {
-        $0.id == "ref/blogs/small_opened.md" && $0.added != nil
-      }
-    }
-    let staleRecord = try String(contentsOf: recordURL)
-    let count = staleRecord.components(separatedBy: "argv=").count
-
-    context.library.refreshIfStale()
-    try? await Task.sleep(nanoseconds: 1_000_000_000)
-    let quietRecord = try String(contentsOf: recordURL)
-    XCTAssertEqual(quietRecord.components(separatedBy: "argv=").count, count)
-
-    context.library.markStale()
-    context.library.refreshIfStale()
-    await waitUntil(timeout: 15) {
-      let record = (try? String(contentsOf: recordURL)) ?? ""
-      return record.components(separatedBy: "argv=").count > count
-    }
-  }
-
-  func testPanelOpenTodayRefreshUsesFiveSecondWindow() async throws {
-    let recordURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    var current = instant("2026-10-20T12:00:00Z")
-    let context = try makeContext(
-      environment: ["FAKE_BOB_RECORD_PATH": recordURL.path],
-      now: { current }
-    )
-    var signalPublishes = 0
-    let signalsCancellable = context.library.$signals.dropFirst().sink { _ in
-      signalPublishes += 1
+        context.library.refresh(reason: .manual)
+        await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
+        // 44 golden rows minus the title-less row skipped at decode and the
+        // row without a usable PDF dropped by the catalog.
+        XCTAssertEqual(context.library.items.count, 42)
     }
 
-    context.library.requestTodayForPanelOpen()
-    await waitUntil { context.library.todayRefreshGeneration == 1 }
-    let firstSignalPublishCount = signalPublishes
-    context.library.requestTodayForPanelOpen()
-    try? await Task.sleep(nanoseconds: 250_000_000)
-    XCTAssertEqual(try planCallCount(recordURL), 1)
+    func testGitPassRunsOnlyWhenNeededAndMerges() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: ["FAKE_BOB_RECORD_PATH": recordURL.path])
 
-    context.library.refreshToday(reason: .manual)
-    await waitUntil { context.library.todayRefreshGeneration == 2 }
-    XCTAssertEqual(try planCallCount(recordURL), 2)
-    XCTAssertEqual(signalPublishes, firstSignalPublishCount)
-
-    current.addTimeInterval(RefsLibrary.pullThrottleInterval + 1)
-    context.library.requestTodayForPanelOpen()
-    await waitUntil { context.library.todayRefreshGeneration == 3 }
-    XCTAssertEqual(try planCallCount(recordURL), 3)
-    withExtendedLifetime(signalsCancellable) {}
-  }
-
-  func testScanRunsOneScanArgv() async throws {
-    let recordURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let context = try makeContext(environment: [
-      "FAKE_BOB_RECORD_PATH": recordURL.path
-    ])
-    _ = try seedSnapshot(context: context, fixture: "refs-list.json")
-
-    XCTAssertTrue(context.library.scan())
-    await waitUntil(timeout: 15) {
-      if case .finished = context.library.scanState {
-        return true
-      }
-      return false
-    }
-    let record = try String(contentsOf: recordURL)
-    XCTAssertEqual(
-      record.components(separatedBy: "argv=ref scan -a -w -f json").count - 1,
-      1
-    )
-    guard case .finished(let outcome) = context.library.scanState else {
-      XCTFail("expected finished")
-      return
-    }
-    XCTAssertEqual(outcome.kind, .succeeded)
-    XCTAssertEqual(outcome.created.count, 2)
-  }
-
-  func testSecondScanMidFlightReturnsFalse() async throws {
-    let recordURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let context = try makeContext(environment: [
-      "FAKE_BOB_DELAY_SECONDS": "2",
-      "FAKE_BOB_RECORD_PATH": recordURL.path,
-    ])
-    _ = try seedSnapshot(context: context, fixture: "refs-list.json")
-
-    XCTAssertTrue(context.library.scan())
-    XCTAssertFalse(context.library.scan())
-    await waitUntil(timeout: 15) {
-      if case .finished = context.library.scanState {
-        return true
-      }
-      return false
-    }
-    let record = try String(contentsOf: recordURL)
-    XCTAssertEqual(
-      record.components(separatedBy: "argv=ref scan -a -w -f json").count - 1,
-      1
-    )
-  }
-
-  func testQueuedScanRequestsCollapseToOneFollowUpAfterFinished() async throws {
-    let recordURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let context = try makeContext(environment: [
-      "FAKE_BOB_DELAY_SECONDS": "0.5",
-      "FAKE_BOB_RECORD_PATH": recordURL.path,
-    ])
-    var transitions: [String] = []
-    let cancellable = context.library.$scanState.dropFirst().sink { state in
-      switch state {
-      case .idle:
-        transitions.append("idle")
-      case .scanning:
-        transitions.append("scanning")
-      case .finished:
-        transitions.append("finished")
-      }
+        context.library.refresh(reason: .manual)
+        await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
+        // The `-g` lane starts after the snapshot publishes, so wait for
+        // its invocation before asserting on the record.
+        await waitUntil(timeout: 15) {
+            ((try? String(contentsOf: recordURL)) ?? "")
+                .contains("argv=ref list -R all -A -f json -g")
+        }
+        // The lane merges after the snapshot publishes, so wait for the
+        // backfilled date instead of reading it mid-flight.
+        await waitUntil(timeout: 15) {
+            context.library.items.first {
+                $0.id == "ref/blogs/small_opened.md"
+            }?.added?.isoString == "2026-09-11"
+        }
+        let opened = context.library.items.first {
+            $0.id == "ref/blogs/small_opened.md"
+        }
+        XCTAssertEqual(opened?.addedSource, "git")
+        XCTAssertTrue(opened?.addedIsApproximate ?? false)
+        XCTAssertEqual(opened.flatMap { context.library.item(id: $0.id) }, opened)
+        let created = context.library.items.first {
+            $0.id == "ref/chat/small_reading.md"
+        }
+        XCTAssertEqual(created?.added?.isoString, "2026-10-01")
+        XCTAssertFalse(created?.addedIsApproximate ?? true)
     }
 
-    XCTAssertEqual(context.library.requestScan(queueIfBusy: false), .started)
-    XCTAssertEqual(context.library.requestScan(queueIfBusy: true), .queued)
-    XCTAssertEqual(context.library.requestScan(queueIfBusy: true), .queued)
-    XCTAssertEqual(context.library.requestScan(queueIfBusy: true), .queued)
-    await waitUntil(timeout: 15) {
-      let record = (try? String(contentsOf: recordURL)) ?? ""
-      return record.components(separatedBy: "argv=ref scan -a -w -f json").count - 1 == 2
-        && transitions.filter { $0 == "finished" }.count == 2
+    func testItemLookupTracksPreviewSnapshotReplacement() throws {
+        let context = try makeContext()
+        let first = RefItem(
+            id: "ref/chat/preview.md",
+            link: "[[ref/chat/preview]]",
+            rawTitle: "First preview row",
+            stem: "preview",
+            kind: .chat,
+            state: .read,
+            isBlocked: false,
+            pdfPath: "lib/preview.pdf"
+        )
+        let duplicate = RefItem(
+            id: first.id,
+            link: first.link,
+            rawTitle: "Second preview row",
+            stem: first.stem,
+            kind: .chat,
+            state: .read,
+            isBlocked: false,
+            pdfPath: first.pdfPath
+        )
+        let replacement = RefItem(
+            id: "ref/chat/replacement.md",
+            link: "[[ref/chat/replacement]]",
+            rawTitle: "Replacement preview row",
+            stem: "replacement",
+            kind: .chat,
+            state: .ready,
+            isBlocked: false,
+            pdfPath: "lib/replacement.pdf"
+        )
+
+        context.library.installSnapshotForPreviews(
+            items: [first, duplicate],
+            signals: RefsSignals(),
+            refreshState: .idle
+        )
+        XCTAssertEqual(context.library.item(id: first.id), first)
+
+        context.library.installSnapshotForPreviews(
+            items: [replacement],
+            signals: RefsSignals(),
+            refreshState: .idle
+        )
+        XCTAssertNil(context.library.item(id: first.id))
+        XCTAssertEqual(context.library.item(id: replacement.id), replacement)
     }
 
-    XCTAssertEqual(
-      transitions,
-      ["scanning", "finished", "scanning", "finished"]
-    )
-    withExtendedLifetime(cancellable) {}
-  }
+    func testGitPassFailureKeepsSnapshotAndStaysIdle() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: [
+            "FAKE_BOB_REFS_GIT_EXIT": "1",
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+        ])
 
-  func testScanRequestedDuringRenameStartsAfterRenameEnds() async throws {
-    let recordURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let context = try makeContext(environment: [
-      "FAKE_BOB_DELAY_SECONDS": "0.5",
-      "FAKE_BOB_RECORD_PATH": recordURL.path,
-    ])
-    let rename = Task {
-      try await context.library.rename(
-        notePath: "ref/blogs/442a6bf555914893e9891c11519de94f.md",
-        name: "renamed"
-      )
+        context.library.refresh(reason: .manual)
+        await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
+        // Wait until the `-g` lane ran, then let it finish: the snapshot
+        // stays published and the state never flips to failed.
+        await waitUntil(timeout: 15) {
+            ((try? String(contentsOf: recordURL)) ?? "").contains("-g")
+        }
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        XCTAssertEqual(context.library.items.count, 6)
+        XCTAssertTrue(context.library.hasSnapshot)
+        guard case .idle = context.library.refreshState else {
+            XCTFail("a -g failure must not fail the refresh")
+            return
+        }
     }
-    await waitUntil(timeout: 5) {
-      ((try? String(contentsOf: recordURL)) ?? "")
-        .contains("argv=ref rename -f json")
+
+    func testWakeNotificationTriggersSnapshotRefresh() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let center = NotificationCenter()
+        let context = try makeContext(
+            environment: ["FAKE_BOB_RECORD_PATH": recordURL.path],
+            wakeCenter: center
+        )
+
+        context.library.start()
+        await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
+        // Settle the `-g` lane before the baseline, so only the wake
+        // refresh can add a later list call.
+        await waitUntil(timeout: 15) {
+            context.library.items.contains {
+                $0.id == "ref/blogs/small_opened.md" && $0.added != nil
+            }
+        }
+        let launches = try String(contentsOf: recordURL)
+            .components(separatedBy: "argv=ref list").count
+
+        center.post(name: NSWorkspace.didWakeNotification, object: nil)
+
+        await waitUntil(timeout: 15) {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return record.components(separatedBy: "argv=ref list").count > launches
+        }
+        context.library.stop()
     }
 
-    XCTAssertEqual(context.library.requestScan(queueIfBusy: true), .queued)
-    _ = try await rename.value
-    await waitUntil(timeout: 15) {
-      let record = (try? String(contentsOf: recordURL)) ?? ""
-      let finished: Bool
-      if case .finished = context.library.scanState {
-        finished = true
-      } else {
-        finished = false
-      }
-      return record.contains("argv=ref scan -a -w -f json")
-        && finished
+    func testGitPassSkippedWhenEveryRowHasAdded() async throws {
+        let git = try fixtureURL("refs-list-git.json").path
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: [
+            "FAKE_BOB_REFS_LIST_FIXTURE": git,
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+        ])
+
+        context.library.refresh(reason: .manual)
+        await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertFalse(record.contains("-g"))
     }
-    let record = try String(contentsOf: recordURL)
-    guard let renameRange = record.range(of: "argv=ref rename -f json"),
-      let scanRange = record.range(of: "argv=ref scan -a -w -f json")
-    else {
-      XCTFail("expected rename and queued scan commands")
-      return
+
+    func testTriggersDuringRefreshRunExactlyOneFollowUp() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: [
+            "FAKE_BOB_DELAY_SECONDS": "2",
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+        ])
+
+        context.library.refresh(reason: .manual)
+        context.library.refresh(reason: .manual)
+        context.library.refresh(reason: .manual)
+
+        // Three triggers, two snapshot passes (the run plus one follow-up).
+        // The first pass runs the plain and the git list calls; the follow-up
+        // reuses the just-backfilled git dates and skips its git pass, which
+        // only runs when needed.
+        await waitUntil(timeout: 40) {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return record.components(separatedBy: "argv=ref list").count == 4
+        }
+        try? await Task.sleep(nanoseconds: 4_000_000_000)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=ref list").count, 4)
+        XCTAssertEqual(record.components(separatedBy: "argv=plan -f json").count, 3)
     }
-    XCTAssertTrue(renameRange.lowerBound < scanRange.lowerBound)
-  }
 
-  func testFinishedAfterPostScanListWithNewRows() async throws {
-    let recordURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let markerDir = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    try FileManager.default.createDirectory(
-      at: markerDir,
-      withIntermediateDirectories: true
-    )
-    let context = try makeContext(environment: [
-      "FAKE_BOB_RECORD_PATH": recordURL.path,
-      "FAKE_BOB_SCAN_MARKER_DIR": markerDir.path,
-      "FAKE_BOB_REFS_LIST_AFTER_SCAN_FIXTURE": "refs-list-after-scan.json",
-    ])
-    _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+    func testRefreshIfStaleDoesNotQueueDuringSnapshotPass() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: [
+            "FAKE_BOB_DELAY_SECONDS": "1",
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+        ])
 
-    XCTAssertTrue(context.library.scan())
-    await waitUntil(timeout: 15) {
-      if case .finished = context.library.scanState {
-        return true
-      }
-      return false
+        context.library.refresh(reason: .manual)
+        context.library.refreshIfStale()
+        try? await Task.sleep(nanoseconds: 3_000_000_000)
+
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(record.components(separatedBy: "argv=ref list").count - 1, 2)
     }
-    XCTAssertTrue(
-      context.library.items.contains {
-        $0.id == "ref/chat/omni_report.md"
-      })
-    XCTAssertTrue(
-      context.library.items.contains {
-        $0.id == "ref/papers/harness_notes.md"
-      })
-    let record = try String(contentsOf: recordURL)
-    guard let scanRange = record.range(of: "argv=ref scan -a -w -f json"),
-      let listRange = record.range(of: "argv=ref list -R all -A -f json")
-    else {
-      XCTFail("expected scan and post-scan list in record")
-      return
+
+    func testSnapshotPassKeepsGitDatesMergedDuringItsSweep() async throws {
+        let sweepGate = RefsCallGate(holding: 2)
+        let gitGate = RefsCallGate(holding: 1)
+        let context = try makeContext(spotlight: GatedSpotlight(gate: sweepGate))
+        let fetcher = ScriptedRefsFetcher(
+            plainURL: try fixtureURL("refs-list.json"),
+            gitURL: try fixtureURL("refs-list-git.json"),
+            gitGate: gitGate
+        )
+        context.library.setFetcher(fetcher)
+
+        context.library.refresh(reason: .manual)
+        await waitUntil(timeout: 15) { fetcher.gitListCount == 1 }
+
+        context.library.refresh(reason: .manual)
+        await waitUntil(timeout: 15) { sweepGate.isHolding }
+
+        gitGate.release()
+        await waitUntil(timeout: 15) {
+            context.library.items.contains {
+                $0.id == "ref/blogs/small_opened.md" && $0.added != nil
+            }
+        }
+
+        sweepGate.release()
+        await waitUntil(timeout: 15) {
+            if case .idle = context.library.refreshState {
+                return true
+            }
+            return false
+        }
+        try? await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertTrue(
+            context.library.items.contains {
+                $0.id == "ref/blogs/small_opened.md"
+                    && $0.added == RefDay(year: 2026, month: 9, day: 11)
+                    && $0.addedAt == instant("2026-09-11T19:12:00Z")
+            }
+        )
+        XCTAssertTrue(
+            context.library.items.contains {
+                $0.id == "ref/books/small_book.md"
+                    && $0.added == RefDay(year: 2026, month: 8, day: 30)
+                    && $0.addedAt == instant("2026-08-30T19:12:00Z")
+            }
+        )
+        XCTAssertEqual(fetcher.gitListCount, 1)
     }
-    XCTAssertTrue(scanRange.lowerBound < listRange.lowerBound)
-  }
 
-  func testWatcherDeferredDuringScanThenOnePostScanPass() async throws {
-    let recordURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let context = try makeContext(environment: [
-      "FAKE_BOB_DELAY_SECONDS": "2",
-      "FAKE_BOB_RECORD_PATH": recordURL.path,
-      "FAKE_BOB_REFS_LIST_FIXTURE": "refs-list-git.json",
-    ])
-    _ = try seedSnapshot(context: context, fixture: "refs-list-git.json")
+    func testRefreshCarriesGitAddedAtAndSkipsASecondGitPass() async throws {
+        let gitGate = RefsCallGate(holding: 1)
+        let context = try makeContext()
+        let fetcher = ScriptedRefsFetcher(
+            plainURL: try fixtureURL("refs-list.json"),
+            gitURL: try fixtureURL("refs-list-git.json"),
+            gitGate: gitGate
+        )
+        context.library.setFetcher(fetcher)
 
-    XCTAssertTrue(context.library.scan())
-    context.library.handleWatcherChange()
-    context.library.handleWatcherChange()
-    try? await Task.sleep(nanoseconds: 500_000_000)
-    let midRecord = (try? String(contentsOf: recordURL)) ?? ""
-    XCTAssertFalse(midRecord.contains("argv=ref list"))
-    await waitUntil(timeout: 15) {
-      if case .finished = context.library.scanState {
-        return true
-      }
-      return false
+        context.library.refresh(reason: .manual)
+        await waitUntil(timeout: 15) { fetcher.gitListCount == 1 }
+        gitGate.release()
+        await waitUntil(timeout: 15) {
+            context.library.items.contains {
+                $0.id == "ref/blogs/small_opened.md" && $0.addedAt != nil
+            }
+        }
+
+        context.library.refresh(reason: .manual)
+        await waitUntil(timeout: 15) {
+            if case .idle = context.library.refreshState {
+                return context.library.snapshotRefreshGeneration >= 2
+            }
+            return false
+        }
+        try? await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertTrue(
+            context.library.items.contains {
+                $0.id == "ref/blogs/small_opened.md"
+                    && $0.added == RefDay(year: 2026, month: 9, day: 11)
+                    && $0.addedAt == instant("2026-09-11T19:12:00Z")
+            }
+        )
+        XCTAssertTrue(
+            context.library.items.contains {
+                $0.id == "ref/books/small_book.md"
+                    && $0.added == RefDay(year: 2026, month: 8, day: 30)
+                    && $0.addedAt == instant("2026-08-30T19:12:00Z")
+            }
+        )
+        XCTAssertEqual(fetcher.gitListCount, 1)
     }
-    try? await Task.sleep(nanoseconds: 500_000_000)
-    let record = try String(contentsOf: recordURL)
-    XCTAssertEqual(
-      record.components(separatedBy: "argv=ref list -R all -A -f json").count - 1,
-      1
-    )
-  }
 
-  func testScanMarkSetClearedAndKept() async throws {
-    let context = try makeContext()
-    _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+    func testTodayLoadsAndSchemaMismatchKeepsLastToday() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: ["FAKE_BOB_RECORD_PATH": recordURL.path])
 
-    XCTAssertTrue(context.library.scan())
-    await waitUntil(timeout: 15) {
-      if case .finished = context.library.scanState {
-        return true
-      }
-      return false
+        context.library.refresh(reason: .manual)
+        await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
+        // The Today lane runs beside the snapshot lane, so wait for the lane
+        // this test asserts instead of reading it mid-flight.
+        await waitUntil(timeout: 15) {
+            context.library.signals.today.taskEntries.count == 4
+        }
+        XCTAssertEqual(context.library.signals.today.taskEntries.count, 4)
+
+        let schema3 = try fixtureURL("refs-plan-schema3.json").path
+        context.library.setFetcher(
+            try planClient(
+                recordURL: recordURL,
+                environment: ["FAKE_BOB_PLAN_FIXTURE": schema3]
+            ))
+        context.library.refreshToday(reason: .manual)
+        await waitUntil(timeout: 15) {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return record.components(separatedBy: "argv=plan -f json").count == 3
+        }
+        XCTAssertEqual(context.library.signals.today.taskEntries.count, 4)
     }
-    XCTAssertEqual(
-      context.library.signals.scan?.ids,
-      ["ref/chat/omni_report.md", "ref/papers/harness_notes.md"]
-    )
 
-    let nothingURL = try fixtureURL("refs-scan-nothing.json").path
-    context.library.setFetcher(
-      try scanClient(environment: [
-        "FAKE_BOB_REFS_SCAN_FIXTURE": nothingURL
-      ]))
-    XCTAssertTrue(context.library.scan())
-    await waitUntil(timeout: 15) {
-      if case .finished(let outcome) = context.library.scanState,
-        outcome.created.isEmpty,
-        outcome.kind == .succeeded
-      {
-        return true
-      }
-      return false
+    func testRecordOpenAndResetHistory() async throws {
+        let context = try makeContext()
+
+        context.library.refresh(reason: .manual)
+        await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
+
+        context.library.recordOpen(id: "ref/chat/small_reading.md")
+        XCTAssertEqual(context.library.signals.opens.count("ref/chat/small_reading.md"), 1)
+        XCTAssertNotNil(context.library.signals.opens.lastOpened("ref/chat/small_reading.md"))
+
+        context.library.resetOpenHistory()
+        XCTAssertEqual(context.library.signals.opens.count("ref/chat/small_reading.md"), 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: context.openLogURL.path))
     }
-    XCTAssertNil(context.library.signals.scan)
 
-    context.library.setFetcher(try scanClient(environment: [:]))
-    XCTAssertTrue(context.library.scan())
-    await waitUntil(timeout: 15) {
-      if case .finished(let outcome) = context.library.scanState,
-        outcome.kind == .succeeded,
-        !outcome.created.isEmpty
-      {
-        return true
-      }
-      return false
+    func testMissingPDFsPublishedFromFileChecks() async throws {
+        let context = try makeContext(fileExists: { url in
+            !url.path.hasSuffix("lib/chat/small_reading.pdf")
+        })
+
+        context.library.refresh(reason: .manual)
+        await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
+
+        XCTAssertEqual(context.library.signals.missingPDFs, ["ref/chat/small_reading.md"])
     }
-    let markBeforeFailure = context.library.signals.scan
-    XCTAssertNotNil(markBeforeFailure)
 
-    let dirtyURL = try fixtureURL("refs-scan-dirty.json").path
-    context.library.setFetcher(
-      try scanClient(environment: [
-        "FAKE_BOB_REFS_SCAN_FIXTURE": dirtyURL,
-        "FAKE_BOB_REFS_SCAN_EXIT": "1",
-      ]))
-    XCTAssertTrue(context.library.scan())
-    await waitUntil(timeout: 15) {
-      if case .finished(let outcome) = context.library.scanState,
-        outcome.kind == .failed
-      {
-        return true
-      }
-      return false
+    func testPdfURLNilWhenUnsafe() throws {
+        let context = try makeContext()
+        let item = RefItem(
+            id: "ref/chat/x.md",
+            link: "[[ref/chat/x]]",
+            rawTitle: "X",
+            stem: "x",
+            kind: .chat,
+            state: .reading,
+            isBlocked: false,
+            pdfPath: "lib/chat/x.pdf"
+        )
+
+        XCTAssertNotNil(context.library.pdfURL(for: item))
+        XCTAssertEqual(
+            context.library.noteURL(for: item).path,
+            context.vault.appendingPathComponent("ref/chat/x.md").path
+        )
+        XCTAssertNil(context.library.pdfURL(for: unsafe(item: item, pdf: "/abs/x.pdf")))
+        XCTAssertNil(context.library.pdfURL(for: unsafe(item: item, pdf: "../x.pdf")))
+        XCTAssertNil(context.library.pdfURL(for: unsafe(item: item, pdf: "lib/../../x.pdf")))
     }
-    XCTAssertEqual(context.library.signals.scan, markBeforeFailure)
-  }
 
-  func testPartialOutcomeHasCreatedAndFailures() async throws {
-    let partialURL = try fixtureURL("refs-scan-partial.json").path
-    let context = try makeContext(environment: [
-      "FAKE_BOB_REFS_SCAN_FIXTURE": partialURL,
-      "FAKE_BOB_REFS_SCAN_EXIT": "1",
-    ])
-    _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+    func testRefreshIfStale() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: ["FAKE_BOB_RECORD_PATH": recordURL.path])
 
-    XCTAssertTrue(context.library.scan())
-    await waitUntil(timeout: 15) {
-      if case .finished(let outcome) = context.library.scanState,
-        outcome.kind == .partial
-      {
-        return true
-      }
-      return false
+        context.library.refreshIfStale()
+        await waitUntil(timeout: 15) { context.library.lastSuccessAt != nil }
+        // Both lanes record argv lines; wait for Today too so a late plan
+        // call cannot land between the baseline count and the quiet check.
+        await waitUntil(timeout: 15) {
+            context.library.signals.today.taskEntries.count == 4
+        }
+        // Settle the `-g` lane before the baseline. It starts after the
+        // snapshot publishes, so a late git argv line otherwise lands inside
+        // the quiet window and the counts disagree (4 vs 3).
+        await waitUntil(timeout: 15) {
+            context.library.items.contains {
+                $0.id == "ref/blogs/small_opened.md" && $0.added != nil
+            }
+        }
+        let staleRecord = try String(contentsOf: recordURL)
+        let count = staleRecord.components(separatedBy: "argv=").count
+
+        context.library.refreshIfStale()
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        let quietRecord = try String(contentsOf: recordURL)
+        XCTAssertEqual(quietRecord.components(separatedBy: "argv=").count, count)
+
+        context.library.markStale()
+        context.library.refreshIfStale()
+        await waitUntil(timeout: 15) {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return record.components(separatedBy: "argv=").count > count
+        }
     }
-    guard case .finished(let outcome) = context.library.scanState else {
-      XCTFail("expected finished")
-      return
+
+    func testPanelOpenTodayRefreshUsesFiveSecondWindow() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        var current = instant("2026-10-20T12:00:00Z")
+        let context = try makeContext(
+            environment: ["FAKE_BOB_RECORD_PATH": recordURL.path],
+            now: { current }
+        )
+        var signalPublishes = 0
+        let signalsCancellable = context.library.$signals.dropFirst().sink { _ in
+            signalPublishes += 1
+        }
+
+        context.library.requestTodayForPanelOpen()
+        await waitUntil { context.library.todayRefreshGeneration == 1 }
+        let firstSignalPublishCount = signalPublishes
+        context.library.requestTodayForPanelOpen()
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        XCTAssertEqual(try planCallCount(recordURL), 1)
+
+        context.library.refreshToday(reason: .manual)
+        await waitUntil { context.library.todayRefreshGeneration == 2 }
+        XCTAssertEqual(try planCallCount(recordURL), 2)
+        XCTAssertEqual(signalPublishes, firstSignalPublishCount)
+
+        current.addTimeInterval(RefsLibrary.pullThrottleInterval + 1)
+        context.library.requestTodayForPanelOpen()
+        await waitUntil { context.library.todayRefreshGeneration == 3 }
+        XCTAssertEqual(try planCallCount(recordURL), 3)
+        withExtendedLifetime(signalsCancellable) {}
     }
-    XCTAssertEqual(outcome.created.map(\.path), ["ref/chat/fresh_report.md"])
-    XCTAssertEqual(outcome.failures.count, 2)
-    XCTAssertNil(outcome.problem)
-  }
 
-  func testDirtyOutcomeIsFailedWithCodeAndPaths() async throws {
-    let dirtyURL = try fixtureURL("refs-scan-dirty.json").path
-    let context = try makeContext(environment: [
-      "FAKE_BOB_REFS_SCAN_FIXTURE": dirtyURL,
-      "FAKE_BOB_REFS_SCAN_EXIT": "1",
-    ])
-    _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+    func testScanRunsOneScanArgv() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: [
+            "FAKE_BOB_RECORD_PATH": recordURL.path
+        ])
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
 
-    XCTAssertTrue(context.library.scan())
-    await waitUntil(timeout: 15) {
-      if case .finished(let outcome) = context.library.scanState,
-        outcome.kind == .failed
-      {
-        return true
-      }
-      return false
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished = context.library.scanState {
+                return true
+            }
+            return false
+        }
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(
+            record.components(separatedBy: "argv=ref scan -a -w -f json").count - 1,
+            1
+        )
+        guard case .finished(let outcome) = context.library.scanState else {
+            XCTFail("expected finished")
+            return
+        }
+        XCTAssertEqual(outcome.kind, .succeeded)
+        XCTAssertEqual(outcome.created.count, 2)
     }
-    guard case .finished(let outcome) = context.library.scanState else {
-      XCTFail("expected finished")
-      return
+
+    func testSecondScanMidFlightReturnsFalse() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: [
+            "FAKE_BOB_DELAY_SECONDS": "2",
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+        ])
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+
+        XCTAssertTrue(context.library.scan())
+        XCTAssertFalse(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished = context.library.scanState {
+                return true
+            }
+            return false
+        }
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(
+            record.components(separatedBy: "argv=ref scan -a -w -f json").count - 1,
+            1
+        )
     }
-    XCTAssertEqual(outcome.problem?.code, "dirty_targets")
-    XCTAssertEqual(outcome.problem?.paths.count, 4)
-  }
 
-  func testExitTwoEmptyGivesBobTooOld() async throws {
-    let context = try makeContext(environment: ["FAKE_BOB_EXIT": "2"])
-    _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+    func testQueuedScanRequestsCollapseToOneFollowUpAfterFinished() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: [
+            "FAKE_BOB_DELAY_SECONDS": "0.5",
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+        ])
+        var transitions: [String] = []
+        let cancellable = context.library.$scanState.dropFirst().sink { state in
+            switch state {
+            case .idle:
+                transitions.append("idle")
+            case .scanning:
+                transitions.append("scanning")
+            case .finished:
+                transitions.append("finished")
+            }
+        }
 
-    XCTAssertTrue(context.library.scan())
-    await waitUntil(timeout: 15) {
-      if case .finished(let outcome) = context.library.scanState,
-        outcome.kind == .failed
-      {
-        return true
-      }
-      return false
+        XCTAssertEqual(context.library.requestScan(queueIfBusy: false), .started)
+        XCTAssertEqual(context.library.requestScan(queueIfBusy: true), .queued)
+        XCTAssertEqual(context.library.requestScan(queueIfBusy: true), .queued)
+        XCTAssertEqual(context.library.requestScan(queueIfBusy: true), .queued)
+        await waitUntil(timeout: 15) {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            return record.components(separatedBy: "argv=ref scan -a -w -f json").count - 1 == 2
+                && transitions.filter { $0 == "finished" }.count == 2
+        }
+
+        XCTAssertEqual(
+            transitions,
+            ["scanning", "finished", "scanning", "finished"]
+        )
+        withExtendedLifetime(cancellable) {}
     }
-    guard case .finished(let outcome) = context.library.scanState else {
-      XCTFail("expected finished")
-      return
+
+    func testScanRequestedDuringRenameStartsAfterRenameEnds() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: [
+            "FAKE_BOB_DELAY_SECONDS": "0.5",
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+        ])
+        let rename = Task {
+            try await context.library.rename(
+                notePath: "ref/blogs/442a6bf555914893e9891c11519de94f.md",
+                name: "renamed"
+            )
+        }
+        await waitUntil(timeout: 5) {
+            ((try? String(contentsOf: recordURL)) ?? "")
+                .contains("argv=ref rename -f json")
+        }
+
+        XCTAssertEqual(context.library.requestScan(queueIfBusy: true), .queued)
+        _ = try await rename.value
+        await waitUntil(timeout: 15) {
+            let record = (try? String(contentsOf: recordURL)) ?? ""
+            let finished: Bool
+            if case .finished = context.library.scanState {
+                finished = true
+            } else {
+                finished = false
+            }
+            return record.contains("argv=ref scan -a -w -f json")
+                && finished
+        }
+        let record = try String(contentsOf: recordURL)
+        guard let renameRange = record.range(of: "argv=ref rename -f json"),
+            let scanRange = record.range(of: "argv=ref scan -a -w -f json")
+        else {
+            XCTFail("expected rename and queued scan commands")
+            return
+        }
+        XCTAssertTrue(renameRange.lowerBound < scanRange.lowerBound)
     }
-    XCTAssertEqual(outcome.problem?.code, "bob_too_old")
-  }
 
-  func testTimedOutGivesTimedOutProblem() async throws {
-    let context = try makeContext()
-    _ = try seedSnapshot(context: context, fixture: "refs-list.json")
-    context.library.setFetcher(TimedOutRefsFetcher())
+    func testFinishedAfterPostScanListWithNewRows() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let markerDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(
+            at: markerDir,
+            withIntermediateDirectories: true
+        )
+        let context = try makeContext(environment: [
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+            "FAKE_BOB_SCAN_MARKER_DIR": markerDir.path,
+            "FAKE_BOB_REFS_LIST_AFTER_SCAN_FIXTURE": "refs-list-after-scan.json",
+        ])
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
 
-    XCTAssertTrue(context.library.scan())
-    await waitUntil(timeout: 15) {
-      if case .finished(let outcome) = context.library.scanState,
-        outcome.kind == .failed
-      {
-        return true
-      }
-      return false
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished = context.library.scanState {
+                return true
+            }
+            return false
+        }
+        XCTAssertTrue(
+            context.library.items.contains {
+                $0.id == "ref/chat/omni_report.md"
+            })
+        XCTAssertTrue(
+            context.library.items.contains {
+                $0.id == "ref/papers/harness_notes.md"
+            })
+        let record = try String(contentsOf: recordURL)
+        guard let scanRange = record.range(of: "argv=ref scan -a -w -f json"),
+            let listRange = record.range(of: "argv=ref list -R all -A -f json")
+        else {
+            XCTFail("expected scan and post-scan list in record")
+            return
+        }
+        XCTAssertTrue(scanRange.lowerBound < listRange.lowerBound)
     }
-    guard case .finished(let outcome) = context.library.scanState else {
-      XCTFail("expected finished")
-      return
+
+    func testWatcherDeferredDuringScanThenOnePostScanPass() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: [
+            "FAKE_BOB_DELAY_SECONDS": "2",
+            "FAKE_BOB_RECORD_PATH": recordURL.path,
+            "FAKE_BOB_REFS_LIST_FIXTURE": "refs-list-git.json",
+        ])
+        _ = try seedSnapshot(context: context, fixture: "refs-list-git.json")
+
+        XCTAssertTrue(context.library.scan())
+        context.library.handleWatcherChange()
+        context.library.handleWatcherChange()
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        let midRecord = (try? String(contentsOf: recordURL)) ?? ""
+        XCTAssertFalse(midRecord.contains("argv=ref list"))
+        await waitUntil(timeout: 15) {
+            if case .finished = context.library.scanState {
+                return true
+            }
+            return false
+        }
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        let record = try String(contentsOf: recordURL)
+        XCTAssertEqual(
+            record.components(separatedBy: "argv=ref list -R all -A -f json").count - 1,
+            1
+        )
     }
-    XCTAssertEqual(outcome.problem?.code, "timed_out")
-  }
 
-  func testNoFetcherGivesBobUnavailableAtOnce() async throws {
-    let context = try makeContext()
-    _ = try seedSnapshot(context: context, fixture: "refs-list.json")
-    context.library.setFetcher(nil)
+    func testScanMarkSetClearedAndKept() async throws {
+        let context = try makeContext()
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
 
-    XCTAssertTrue(context.library.scan())
-    await waitUntil(timeout: 5) {
-      if case .finished(let outcome) = context.library.scanState,
-        outcome.kind == .failed
-      {
-        return true
-      }
-      return false
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished = context.library.scanState {
+                return true
+            }
+            return false
+        }
+        XCTAssertEqual(
+            context.library.signals.scan?.ids,
+            ["ref/chat/omni_report.md", "ref/papers/harness_notes.md"]
+        )
+
+        let nothingURL = try fixtureURL("refs-scan-nothing.json").path
+        context.library.setFetcher(
+            try scanClient(environment: [
+                "FAKE_BOB_REFS_SCAN_FIXTURE": nothingURL
+            ]))
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished(let outcome) = context.library.scanState,
+                outcome.created.isEmpty,
+                outcome.kind == .succeeded
+            {
+                return true
+            }
+            return false
+        }
+        XCTAssertNil(context.library.signals.scan)
+
+        context.library.setFetcher(try scanClient(environment: [:]))
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished(let outcome) = context.library.scanState,
+                outcome.kind == .succeeded,
+                !outcome.created.isEmpty
+            {
+                return true
+            }
+            return false
+        }
+        let markBeforeFailure = context.library.signals.scan
+        XCTAssertNotNil(markBeforeFailure)
+
+        let dirtyURL = try fixtureURL("refs-scan-dirty.json").path
+        context.library.setFetcher(
+            try scanClient(environment: [
+                "FAKE_BOB_REFS_SCAN_FIXTURE": dirtyURL,
+                "FAKE_BOB_REFS_SCAN_EXIT": "1",
+            ]))
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished(let outcome) = context.library.scanState,
+                outcome.kind == .failed
+            {
+                return true
+            }
+            return false
+        }
+        XCTAssertEqual(context.library.signals.scan, markBeforeFailure)
     }
-    guard case .finished(let outcome) = context.library.scanState else {
-      XCTFail("expected finished")
-      return
+
+    func testPartialOutcomeHasCreatedAndFailures() async throws {
+        let partialURL = try fixtureURL("refs-scan-partial.json").path
+        let context = try makeContext(environment: [
+            "FAKE_BOB_REFS_SCAN_FIXTURE": partialURL,
+            "FAKE_BOB_REFS_SCAN_EXIT": "1",
+        ])
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished(let outcome) = context.library.scanState,
+                outcome.kind == .partial
+            {
+                return true
+            }
+            return false
+        }
+        guard case .finished(let outcome) = context.library.scanState else {
+            XCTFail("expected finished")
+            return
+        }
+        XCTAssertEqual(outcome.created.map(\.path), ["ref/chat/fresh_report.md"])
+        XCTAssertEqual(outcome.failures.count, 2)
+        XCTAssertNil(outcome.problem)
     }
-    XCTAssertEqual(outcome.problem?.code, "bob_unavailable")
-  }
 
-  func testToggleNewPersistsTheSmallestMark() throws {
-    let context = try makeContext()
-    let now = Date()
-    var calendar = Calendar(identifier: .gregorian)
-    calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
-    let parts = calendar.dateComponents([.year, .month, .day], from: now)
-    let item = RefItem(
-      id: "ref/chat/fresh.md",
-      link: "[[ref/chat/fresh]]",
-      rawTitle: "Fresh",
-      stem: "fresh",
-      kind: .chat,
-      state: .ready,
-      isBlocked: false,
-      pdfPath: "lib/fresh.pdf",
-      added: RefDay(
-        year: parts.year ?? 2026, month: parts.month ?? 10, day: parts.day ?? 8
-      ),
-      addedSource: "created"
-    )
-    context.library.installSnapshotForPreviews(
-      items: [item],
-      signals: RefsSignals(now: now, calendar: calendar),
-      refreshState: .idle
-    )
+    func testDirtyOutcomeIsFailedWithCodeAndPaths() async throws {
+        let dirtyURL = try fixtureURL("refs-scan-dirty.json").path
+        let context = try makeContext(environment: [
+            "FAKE_BOB_REFS_SCAN_FIXTURE": dirtyURL,
+            "FAKE_BOB_REFS_SCAN_EXIT": "1",
+        ])
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
 
-    guard case .apply(let seen, let becameSeen) = context.library.toggleNew(id: item.id)
-    else {
-      XCTFail("expected apply")
-      return
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished(let outcome) = context.library.scanState,
+                outcome.kind == .failed
+            {
+                return true
+            }
+            return false
+        }
+        guard case .finished(let outcome) = context.library.scanState else {
+            XCTFail("expected finished")
+            return
+        }
+        XCTAssertEqual(outcome.problem?.code, "dirty_targets")
+        XCTAssertEqual(outcome.problem?.paths.count, 4)
     }
-    XCTAssertEqual(seen?.state, .seen)
-    XCTAssertFalse(becameSeen)
-    XCTAssertEqual(context.library.signals.newMarks.mark(for: item.id)?.state, .seen)
 
-    guard case .apply(let cleared, let becameNew) = context.library.toggleNew(id: item.id)
-    else {
-      XCTFail("expected apply")
-      return
+    func testExitTwoEmptyGivesBobTooOld() async throws {
+        let context = try makeContext(environment: ["FAKE_BOB_EXIT": "2"])
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished(let outcome) = context.library.scanState,
+                outcome.kind == .failed
+            {
+                return true
+            }
+            return false
+        }
+        guard case .finished(let outcome) = context.library.scanState else {
+            XCTFail("expected finished")
+            return
+        }
+        XCTAssertEqual(outcome.problem?.code, "bob_too_old")
     }
-    XCTAssertNil(cleared)
-    XCTAssertTrue(becameNew)
-    XCTAssertNil(context.library.signals.newMarks.mark(for: item.id))
 
-    context.library.markSeenIfNew(id: item.id)
-    XCTAssertEqual(context.library.signals.newMarks.mark(for: item.id)?.state, .seen)
-  }
+    func testTimedOutGivesTimedOutProblem() async throws {
+        let context = try makeContext()
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+        context.library.setFetcher(TimedOutRefsFetcher())
 
-  func testCodeFetchesTheCatalog() async throws {
-    let context = try makeContext()
-    let response = try await context.library.code(path: "ref/chat/example.md")
-    XCTAssertEqual(response.status, .available)
-    XCTAssertEqual(response.blocks.count, 5)
-    XCTAssertEqual(response.blocks[1].language, "yaml")
-  }
-
-  func testPanelOpenPullThrottlesSecondShowWithinFiveSeconds() async throws {
-    let root = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let vault = root.appendingPathComponent("vault")
-    try FileManager.default.createDirectory(
-      at: vault.appendingPathComponent("ref"), withIntermediateDirectories: true)
-    try FileManager.default.createDirectory(
-      at: vault.appendingPathComponent("lib"), withIntermediateDirectories: true)
-    let fetcher = FakeRefsFetcher()
-    let library = RefsLibrary(
-      fetcher: fetcher,
-      snapshotStore: RefsSnapshotStore(
-        fileURL: root.appendingPathComponent("refs-snapshot.json")),
-      openLogStore: RefsOpenLogStore(
-        fileURL: root.appendingPathComponent("refs-open-log.json")),
-      newMarkStore: RefsNewMarkStore(
-        fileURL: root.appendingPathComponent("refs-new-marks.json")),
-      vaultRoot: { vault },
-      fileExists: { _ in true },
-      spotlight: FakeSpotlight(),
-      now: { Date() }
-    )
-    library.requestPullForPanelOpen()
-    await waitUntil(timeout: 5) { fetcher.pullCalls == 1 }
-    library.requestPullForPanelOpen()
-    try? await Task.sleep(nanoseconds: 300_000_000)
-    XCTAssertEqual(fetcher.pullCalls, 1)
-  }
-
-  func testConcurrentPullTriggersShareOnePull() async throws {
-    let root = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let vault = root.appendingPathComponent("vault")
-    try FileManager.default.createDirectory(
-      at: vault.appendingPathComponent("ref"), withIntermediateDirectories: true)
-    try FileManager.default.createDirectory(
-      at: vault.appendingPathComponent("lib"), withIntermediateDirectories: true)
-    let fetcher = FakeRefsFetcher()
-    fetcher.pullDelayNanoseconds = 500_000_000
-    let library = RefsLibrary(
-      fetcher: fetcher,
-      snapshotStore: RefsSnapshotStore(
-        fileURL: root.appendingPathComponent("refs-snapshot.json")),
-      openLogStore: RefsOpenLogStore(
-        fileURL: root.appendingPathComponent("refs-open-log.json")),
-      newMarkStore: RefsNewMarkStore(
-        fileURL: root.appendingPathComponent("refs-new-marks.json")),
-      vaultRoot: { vault },
-      fileExists: { _ in true },
-      spotlight: FakeSpotlight(),
-      now: { Date() }
-    )
-    library.requestPullForPanelOpen()
-    // Second trigger while the first pull is still in flight joins it.
-    try? await Task.sleep(nanoseconds: 50_000_000)
-    library.requestPullForPanelOpen()
-    await waitUntil(timeout: 5) { fetcher.pullCalls == 1 }
-    await library.pullAndWait()
-    try? await Task.sleep(nanoseconds: 100_000_000)
-    XCTAssertEqual(fetcher.pullCalls, 1)
-  }
-
-  func testPullSkippedWhileScanOrRenameInFlight() async throws {
-    let root = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let vault = root.appendingPathComponent("vault")
-    try FileManager.default.createDirectory(
-      at: vault.appendingPathComponent("ref"), withIntermediateDirectories: true)
-    try FileManager.default.createDirectory(
-      at: vault.appendingPathComponent("lib"), withIntermediateDirectories: true)
-    let fetcher = FakeRefsFetcher()
-    fetcher.scanDelayNanoseconds = 2_000_000_000
-    let library = RefsLibrary(
-      fetcher: fetcher,
-      snapshotStore: RefsSnapshotStore(
-        fileURL: root.appendingPathComponent("refs-snapshot.json")),
-      openLogStore: RefsOpenLogStore(
-        fileURL: root.appendingPathComponent("refs-open-log.json")),
-      newMarkStore: RefsNewMarkStore(
-        fileURL: root.appendingPathComponent("refs-new-marks.json")),
-      vaultRoot: { vault },
-      fileExists: { _ in true },
-      spotlight: FakeSpotlight(),
-      now: { Date() }
-    )
-    XCTAssertTrue(library.scan())
-    library.requestPullForPanelOpen()
-    await library.pullAndWait()
-    XCTAssertEqual(fetcher.pullCalls, 0)
-    // Let the scan finish so it does not leak into other tests.
-    await waitUntil(timeout: 10) {
-      if case .finished = library.scanState { return true }
-      return false
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 15) {
+            if case .finished(let outcome) = context.library.scanState,
+                outcome.kind == .failed
+            {
+                return true
+            }
+            return false
+        }
+        guard case .finished(let outcome) = context.library.scanState else {
+            XCTFail("expected finished")
+            return
+        }
+        XCTAssertEqual(outcome.problem?.code, "timed_out")
     }
-  }
 
-  func testFailedPullLeavesRefreshStateIdle() async throws {
-    let root = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let vault = root.appendingPathComponent("vault")
-    try FileManager.default.createDirectory(
-      at: vault.appendingPathComponent("ref"), withIntermediateDirectories: true)
-    try FileManager.default.createDirectory(
-      at: vault.appendingPathComponent("lib"), withIntermediateDirectories: true)
-    let fetcher = FakeRefsFetcher()
-    fetcher.pullError = RefsTestError.boom
-    let library = RefsLibrary(
-      fetcher: fetcher,
-      snapshotStore: RefsSnapshotStore(
-        fileURL: root.appendingPathComponent("refs-snapshot.json")),
-      openLogStore: RefsOpenLogStore(
-        fileURL: root.appendingPathComponent("refs-open-log.json")),
-      newMarkStore: RefsNewMarkStore(
-        fileURL: root.appendingPathComponent("refs-new-marks.json")),
-      vaultRoot: { vault },
-      fileExists: { _ in true },
-      spotlight: FakeSpotlight(),
-      now: { Date() }
-    )
-    await library.pullAndWait()
-    XCTAssertEqual(fetcher.pullCalls, 1)
-    guard case .idle = library.refreshState else {
-      XCTFail("a failed pull must leave refreshState idle")
-      return
+    func testNoFetcherGivesBobUnavailableAtOnce() async throws {
+        let context = try makeContext()
+        _ = try seedSnapshot(context: context, fixture: "refs-list.json")
+        context.library.setFetcher(nil)
+
+        XCTAssertTrue(context.library.scan())
+        await waitUntil(timeout: 5) {
+            if case .finished(let outcome) = context.library.scanState,
+                outcome.kind == .failed
+            {
+                return true
+            }
+            return false
+        }
+        guard case .finished(let outcome) = context.library.scanState else {
+            XCTFail("expected finished")
+            return
+        }
+        XCTAssertEqual(outcome.problem?.code, "bob_unavailable")
     }
-  }
 
-  func testUnsupportedPullLeavesRefreshStateIdle() async throws {
-    let root = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let vault = root.appendingPathComponent("vault")
-    try FileManager.default.createDirectory(
-      at: vault.appendingPathComponent("ref"), withIntermediateDirectories: true)
-    try FileManager.default.createDirectory(
-      at: vault.appendingPathComponent("lib"), withIntermediateDirectories: true)
-    let library = RefsLibrary(
-      fetcher: TimedOutRefsFetcher(),
-      snapshotStore: RefsSnapshotStore(
-        fileURL: root.appendingPathComponent("refs-snapshot.json")),
-      openLogStore: RefsOpenLogStore(
-        fileURL: root.appendingPathComponent("refs-open-log.json")),
-      newMarkStore: RefsNewMarkStore(
-        fileURL: root.appendingPathComponent("refs-new-marks.json")),
-      vaultRoot: { vault },
-      fileExists: { _ in true },
-      spotlight: FakeSpotlight(),
-      now: { Date() }
-    )
-    await library.pullAndWait()
-    guard case .idle = library.refreshState else {
-      XCTFail("an unsupported pull must leave refreshState idle")
-      return
+    func testToggleNewPersistsTheSmallestMark() throws {
+        let context = try makeContext()
+        let now = Date()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
+        let parts = calendar.dateComponents([.year, .month, .day], from: now)
+        let item = RefItem(
+            id: "ref/chat/fresh.md",
+            link: "[[ref/chat/fresh]]",
+            rawTitle: "Fresh",
+            stem: "fresh",
+            kind: .chat,
+            state: .ready,
+            isBlocked: false,
+            pdfPath: "lib/fresh.pdf",
+            added: RefDay(
+                year: parts.year ?? 2026, month: parts.month ?? 10, day: parts.day ?? 8
+            ),
+            addedSource: "created"
+        )
+        context.library.installSnapshotForPreviews(
+            items: [item],
+            signals: RefsSignals(now: now, calendar: calendar),
+            refreshState: .idle
+        )
+
+        guard case .apply(let seen, let becameSeen) = context.library.toggleNew(id: item.id)
+        else {
+            XCTFail("expected apply")
+            return
+        }
+        XCTAssertEqual(seen?.state, .seen)
+        XCTAssertFalse(becameSeen)
+        XCTAssertEqual(context.library.signals.newMarks.mark(for: item.id)?.state, .seen)
+
+        guard case .apply(let cleared, let becameNew) = context.library.toggleNew(id: item.id)
+        else {
+            XCTFail("expected apply")
+            return
+        }
+        XCTAssertNil(cleared)
+        XCTAssertTrue(becameNew)
+        XCTAssertNil(context.library.signals.newMarks.mark(for: item.id))
+
+        context.library.markSeenIfNew(id: item.id)
+        XCTAssertEqual(context.library.signals.newMarks.mark(for: item.id)?.state, .seen)
     }
-  }
 
-  func testBobFetcherPullRunsVaultSyncLane() async throws {
-    let recordURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let context = try makeContext(environment: ["FAKE_BOB_RECORD_PATH": recordURL.path])
-    await context.library.pullAndWait()
-    await waitUntil(timeout: 5) {
-      ((try? String(contentsOf: recordURL)) ?? "").contains("argv=vault-sync -q")
+    func testCodeFetchesTheCatalog() async throws {
+        let context = try makeContext()
+        let response = try await context.library.code(path: "ref/chat/example.md")
+        XCTAssertEqual(response.status, .available)
+        XCTAssertEqual(response.blocks.count, 5)
+        XCTAssertEqual(response.blocks[1].language, "yaml")
     }
-    guard case .idle = context.library.refreshState else {
-      XCTFail("a pull must never touch refreshState")
-      return
+
+    func testPanelOpenPullThrottlesSecondShowWithinFiveSeconds() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let vault = root.appendingPathComponent("vault")
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent("ref"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent("lib"), withIntermediateDirectories: true)
+        let fetcher = FakeRefsFetcher()
+        let library = RefsLibrary(
+            fetcher: fetcher,
+            snapshotStore: RefsSnapshotStore(
+                fileURL: root.appendingPathComponent("refs-snapshot.json")),
+            openLogStore: RefsOpenLogStore(
+                fileURL: root.appendingPathComponent("refs-open-log.json")),
+            newMarkStore: RefsNewMarkStore(
+                fileURL: root.appendingPathComponent("refs-new-marks.json")),
+            vaultRoot: { vault },
+            fileExists: { _ in true },
+            spotlight: FakeSpotlight(),
+            now: { Date() }
+        )
+        library.requestPullForPanelOpen()
+        await waitUntil(timeout: 5) { fetcher.pullCalls == 1 }
+        library.requestPullForPanelOpen()
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(fetcher.pullCalls, 1)
     }
-  }
 
-  // MARK: - Helpers
-
-  private func instant(_ raw: String) -> Date {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime]
-    return formatter.date(from: raw)!
-  }
-
-  private struct Context {
-    let library: RefsLibrary
-    let vault: URL
-    let snapshotURL: URL
-    let openLogURL: URL
-  }
-
-  private func makeContext(
-    environment: [String: String] = [:],
-    fileExists: @escaping (URL) -> Bool = { _ in true },
-    spotlight: RefsSpotlightProviding = FakeSpotlight(),
-    now: @escaping () -> Date = { Date() },
-    wakeCenter: NotificationCenter? = nil
-  ) throws -> Context {
-    let root = FileManager.default.temporaryDirectory
-      .appendingPathComponent(UUID().uuidString)
-    let vault = root.appendingPathComponent("vault")
-    try FileManager.default.createDirectory(
-      at: vault.appendingPathComponent("ref"),
-      withIntermediateDirectories: true
-    )
-    try FileManager.default.createDirectory(
-      at: vault.appendingPathComponent("lib"),
-      withIntermediateDirectories: true
-    )
-    let snapshotURL = root.appendingPathComponent("refs-snapshot.json")
-    let openLogURL = root.appendingPathComponent("refs-open-log.json")
-    let library = RefsLibrary(
-      fetcher: BobRefsFetcher(client: try bobClient(environment: environment)),
-      snapshotStore: RefsSnapshotStore(fileURL: snapshotURL),
-      openLogStore: RefsOpenLogStore(fileURL: openLogURL),
-      newMarkStore: RefsNewMarkStore(
-        fileURL: root.appendingPathComponent("refs-new-marks.json")
-      ),
-      vaultRoot: { vault },
-      fileExists: fileExists,
-      spotlight: spotlight,
-      now: now,
-      wakeCenter: wakeCenter ?? NSWorkspace.shared.notificationCenter
-    )
-    return Context(
-      library: library,
-      vault: vault,
-      snapshotURL: snapshotURL,
-      openLogURL: openLogURL
-    )
-  }
-
-  @discardableResult
-  private func seedSnapshot(
-    context: Context,
-    fixture: String,
-    dropping: Set<String> = []
-  ) throws -> RefsSnapshot {
-    let data = try Data(contentsOf: fixtureURL(fixture))
-    let response = try JSONDecoder().decode(RefsListResponse.self, from: data)
-    let snapshot = RefsSnapshot(
-      fetchedAt: Date(timeIntervalSince1970: 1_700_000_000),
-      records: response.refs.filter { !dropping.contains($0.path) }
-    )
-    RefsSnapshotStore(fileURL: context.snapshotURL).save(snapshot: snapshot, today: nil)
-    return snapshot
-  }
-
-  private func planClient(
-    recordURL: URL,
-    environment: [String: String]
-  ) throws -> BobRefsFetcher {
-    var merged = environment
-    merged["FAKE_BOB_RECORD_PATH"] = recordURL.path
-    return BobRefsFetcher(client: try bobClient(environment: merged))
-  }
-
-  private func scanClient(environment: [String: String]) throws -> BobRefsFetcher {
-    BobRefsFetcher(client: try bobClient(environment: environment))
-  }
-
-  private func bobClient(environment: [String: String]) throws -> BobProcessClient {
-    BobProcessClient(
-      executablePath: try fakeBobPath(),
-      environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
-        .merging(environment) { _, override in override }
-    )
-  }
-
-  private func fixtureURL(_ name: String) throws -> URL {
-    let source = URL(fileURLWithPath: #filePath)
-    let packageRoot =
-      source
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-    let direct = packageRoot.appendingPathComponent("Tests/Fixtures/\(name)")
-    if FileManager.default.fileExists(atPath: direct.path) {
-      return direct
+    func testConcurrentPullTriggersShareOnePull() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let vault = root.appendingPathComponent("vault")
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent("ref"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent("lib"), withIntermediateDirectories: true)
+        let fetcher = FakeRefsFetcher()
+        fetcher.pullDelayNanoseconds = 500_000_000
+        let library = RefsLibrary(
+            fetcher: fetcher,
+            snapshotStore: RefsSnapshotStore(
+                fileURL: root.appendingPathComponent("refs-snapshot.json")),
+            openLogStore: RefsOpenLogStore(
+                fileURL: root.appendingPathComponent("refs-open-log.json")),
+            newMarkStore: RefsNewMarkStore(
+                fileURL: root.appendingPathComponent("refs-new-marks.json")),
+            vaultRoot: { vault },
+            fileExists: { _ in true },
+            spotlight: FakeSpotlight(),
+            now: { Date() }
+        )
+        library.requestPullForPanelOpen()
+        // Second trigger while the first pull is still in flight joins it.
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        library.requestPullForPanelOpen()
+        await waitUntil(timeout: 5) { fetcher.pullCalls == 1 }
+        await library.pullAndWait()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(fetcher.pullCalls, 1)
     }
-    throw NSError(
-      domain: "RefsLibraryTests",
-      code: 1,
-      userInfo: [NSLocalizedDescriptionKey: "missing fixture \(name)"]
-    )
-  }
 
-  private func unsafe(item: RefItem, pdf: String) -> RefItem {
-    RefItem(
-      id: item.id,
-      link: item.link,
-      rawTitle: item.rawTitle,
-      stem: item.stem,
-      kind: item.kind,
-      state: item.state,
-      isBlocked: item.isBlocked,
-      pdfPath: pdf
-    )
-  }
+    func testPullSkippedWhileScanOrRenameInFlight() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let vault = root.appendingPathComponent("vault")
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent("ref"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent("lib"), withIntermediateDirectories: true)
+        let fetcher = FakeRefsFetcher()
+        fetcher.scanDelayNanoseconds = 2_000_000_000
+        let library = RefsLibrary(
+            fetcher: fetcher,
+            snapshotStore: RefsSnapshotStore(
+                fileURL: root.appendingPathComponent("refs-snapshot.json")),
+            openLogStore: RefsOpenLogStore(
+                fileURL: root.appendingPathComponent("refs-open-log.json")),
+            newMarkStore: RefsNewMarkStore(
+                fileURL: root.appendingPathComponent("refs-new-marks.json")),
+            vaultRoot: { vault },
+            fileExists: { _ in true },
+            spotlight: FakeSpotlight(),
+            now: { Date() }
+        )
+        XCTAssertTrue(library.scan())
+        library.requestPullForPanelOpen()
+        await library.pullAndWait()
+        XCTAssertEqual(fetcher.pullCalls, 0)
+        // Let the scan finish so it does not leak into other tests.
+        await waitUntil(timeout: 10) {
+            if case .finished = library.scanState { return true }
+            return false
+        }
+    }
 
-  private func waitUntil(
-    timeout: TimeInterval = 5,
-    file: StaticString = #filePath,
-    line: UInt = #line,
-    _ condition: @MainActor @escaping () -> Bool
-  ) async {
-    let deadline = Date().addingTimeInterval(timeout)
-    while !condition() {
-      if Date() > deadline {
-        XCTFail("Condition not met before timeout", file: file, line: line)
+    func testFailedPullLeavesRefreshStateIdle() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let vault = root.appendingPathComponent("vault")
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent("ref"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent("lib"), withIntermediateDirectories: true)
+        let fetcher = FakeRefsFetcher()
+        fetcher.pullError = RefsTestError.boom
+        let library = RefsLibrary(
+            fetcher: fetcher,
+            snapshotStore: RefsSnapshotStore(
+                fileURL: root.appendingPathComponent("refs-snapshot.json")),
+            openLogStore: RefsOpenLogStore(
+                fileURL: root.appendingPathComponent("refs-open-log.json")),
+            newMarkStore: RefsNewMarkStore(
+                fileURL: root.appendingPathComponent("refs-new-marks.json")),
+            vaultRoot: { vault },
+            fileExists: { _ in true },
+            spotlight: FakeSpotlight(),
+            now: { Date() }
+        )
+        await library.pullAndWait()
+        XCTAssertEqual(fetcher.pullCalls, 1)
+        guard case .idle = library.refreshState else {
+            XCTFail("a failed pull must leave refreshState idle")
+            return
+        }
+    }
+
+    func testUnsupportedPullLeavesRefreshStateIdle() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let vault = root.appendingPathComponent("vault")
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent("ref"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent("lib"), withIntermediateDirectories: true)
+        let library = RefsLibrary(
+            fetcher: TimedOutRefsFetcher(),
+            snapshotStore: RefsSnapshotStore(
+                fileURL: root.appendingPathComponent("refs-snapshot.json")),
+            openLogStore: RefsOpenLogStore(
+                fileURL: root.appendingPathComponent("refs-open-log.json")),
+            newMarkStore: RefsNewMarkStore(
+                fileURL: root.appendingPathComponent("refs-new-marks.json")),
+            vaultRoot: { vault },
+            fileExists: { _ in true },
+            spotlight: FakeSpotlight(),
+            now: { Date() }
+        )
+        await library.pullAndWait()
+        guard case .idle = library.refreshState else {
+            XCTFail("an unsupported pull must leave refreshState idle")
+            return
+        }
+    }
+
+    func testBobFetcherPullRunsVaultSyncLane() async throws {
+        let recordURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let context = try makeContext(environment: ["FAKE_BOB_RECORD_PATH": recordURL.path])
+        await context.library.pullAndWait()
+        await waitUntil(timeout: 5) {
+            ((try? String(contentsOf: recordURL)) ?? "").contains("argv=vault-sync -q")
+        }
+        guard case .idle = context.library.refreshState else {
+            XCTFail("a pull must never touch refreshState")
+            return
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func instant(_ raw: String) -> Date {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: raw)!
+    }
+
+    private struct Context {
+        let library: RefsLibrary
+        let vault: URL
+        let snapshotURL: URL
+        let openLogURL: URL
+    }
+
+    private func makeContext(
+        environment: [String: String] = [:],
+        fileExists: @escaping (URL) -> Bool = { _ in true },
+        spotlight: RefsSpotlightProviding = FakeSpotlight(),
+        now: @escaping () -> Date = { Date() },
+        wakeCenter: NotificationCenter? = nil
+    ) throws -> Context {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+        let vault = root.appendingPathComponent("vault")
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent("ref"),
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: vault.appendingPathComponent("lib"),
+            withIntermediateDirectories: true
+        )
+        let snapshotURL = root.appendingPathComponent("refs-snapshot.json")
+        let openLogURL = root.appendingPathComponent("refs-open-log.json")
+        let library = RefsLibrary(
+            fetcher: BobRefsFetcher(client: try bobClient(environment: environment)),
+            snapshotStore: RefsSnapshotStore(fileURL: snapshotURL),
+            openLogStore: RefsOpenLogStore(fileURL: openLogURL),
+            newMarkStore: RefsNewMarkStore(
+                fileURL: root.appendingPathComponent("refs-new-marks.json")
+            ),
+            vaultRoot: { vault },
+            fileExists: fileExists,
+            spotlight: spotlight,
+            now: now,
+            wakeCenter: wakeCenter ?? NSWorkspace.shared.notificationCenter
+        )
+        return Context(
+            library: library,
+            vault: vault,
+            snapshotURL: snapshotURL,
+            openLogURL: openLogURL
+        )
+    }
+
+    @discardableResult
+    private func seedSnapshot(
+        context: Context,
+        fixture: String,
+        dropping: Set<String> = []
+    ) throws -> RefsSnapshot {
+        let data = try Data(contentsOf: fixtureURL(fixture))
+        let response = try JSONDecoder().decode(RefsListResponse.self, from: data)
+        let snapshot = RefsSnapshot(
+            fetchedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            records: response.refs.filter { !dropping.contains($0.path) }
+        )
+        RefsSnapshotStore(fileURL: context.snapshotURL).save(snapshot: snapshot, today: nil)
+        return snapshot
+    }
+
+    private func planClient(
+        recordURL: URL,
+        environment: [String: String]
+    ) throws -> BobRefsFetcher {
+        var merged = environment
+        merged["FAKE_BOB_RECORD_PATH"] = recordURL.path
+        return BobRefsFetcher(client: try bobClient(environment: merged))
+    }
+
+    private func scanClient(environment: [String: String]) throws -> BobRefsFetcher {
+        BobRefsFetcher(client: try bobClient(environment: environment))
+    }
+
+    private func bobClient(environment: [String: String]) throws -> BobProcessClient {
+        BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: ["HOME": "/tmp", "PATH": "/usr/bin:/bin"]
+                .merging(environment) { _, override in override }
+        )
+    }
+
+    private func fixtureURL(_ name: String) throws -> URL {
+        let source = URL(fileURLWithPath: #filePath)
+        let packageRoot =
+            source
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let direct = packageRoot.appendingPathComponent("Tests/Fixtures/\(name)")
+        if FileManager.default.fileExists(atPath: direct.path) {
+            return direct
+        }
+        throw NSError(
+            domain: "RefsLibraryTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "missing fixture \(name)"]
+        )
+    }
+
+    private func unsafe(item: RefItem, pdf: String) -> RefItem {
+        RefItem(
+            id: item.id,
+            link: item.link,
+            rawTitle: item.rawTitle,
+            stem: item.stem,
+            kind: item.kind,
+            state: item.state,
+            isBlocked: item.isBlocked,
+            pdfPath: pdf
+        )
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 5,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ condition: @MainActor @escaping () -> Bool
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline {
+                XCTFail("Condition not met before timeout", file: file, line: line)
+                return
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+
+    private func planCallCount(_ recordURL: URL) throws -> Int {
+        try String(contentsOf: recordURL)
+            .components(separatedBy: "argv=plan -f json").count - 1
+    }
+
+    private func fakeBobPath() throws -> String {
+        let source = URL(fileURLWithPath: #filePath)
+        let packageRoot =
+            source
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
         return
-      }
-      try? await Task.sleep(nanoseconds: 20_000_000)
+            packageRoot
+            .appendingPathComponent("Tests/Fixtures/fake-bob")
+            .path
     }
-  }
-
-  private func planCallCount(_ recordURL: URL) throws -> Int {
-    try String(contentsOf: recordURL)
-      .components(separatedBy: "argv=plan -f json").count - 1
-  }
-
-  private func fakeBobPath() throws -> String {
-    let source = URL(fileURLWithPath: #filePath)
-    let packageRoot =
-      source
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-      .deletingLastPathComponent()
-    return
-      packageRoot
-      .appendingPathComponent("Tests/Fixtures/fake-bob")
-      .path
-  }
 }
 
 struct FakeSpotlight: RefsSpotlightProviding, Sendable {
-  var facts: [String: RefsSpotlightFacts] = [:]
+    var facts: [String: RefsSpotlightFacts] = [:]
 
-  func sweep(_ requests: [RefsSpotlightRequest]) async -> [String: RefsSpotlightFacts] {
-    var result: [String: RefsSpotlightFacts] = [:]
-    for request in requests {
-      if let known = facts[request.id] {
-        result[request.id] = known
-      }
+    func sweep(_ requests: [RefsSpotlightRequest]) async -> [String: RefsSpotlightFacts] {
+        var result: [String: RefsSpotlightFacts] = [:]
+        for request in requests {
+            if let known = facts[request.id] {
+                result[request.id] = known
+            }
+        }
+        return result
     }
-    return result
-  }
 }
 
 final class TimedOutRefsFetcher: RefsFetching, @unchecked Sendable {
-  func list(gitDates: Bool) async throws -> RefsListResponse {
-    RefsListResponse(schemaVersion: 1)
-  }
+    func list(gitDates: Bool) async throws -> RefsListResponse {
+        RefsListResponse(schemaVersion: 1)
+    }
 
-  func plan() async throws -> RefsPlanResponse {
-    RefsPlanResponse(schemaVersion: 2)
-  }
+    func plan() async throws -> RefsPlanResponse {
+        RefsPlanResponse(schemaVersion: 2)
+    }
 
-  func show(path: String) async throws -> RefsShowResponse {
-    RefsShowResponse(schemaVersion: 1, refs: [])
-  }
+    func show(path: String) async throws -> RefsShowResponse {
+        RefsShowResponse(schemaVersion: 1, refs: [])
+    }
 
-  func scan() async throws -> RefsScanResponse {
-    throw BobClientError.timedOut(command: ["bob", "ref", "scan"], seconds: 300)
-  }
+    func scan() async throws -> RefsScanResponse {
+        throw BobClientError.timedOut(command: ["bob", "ref", "scan"], seconds: 300)
+    }
 
-  func rename(notePath: String, name: String) async throws -> RefsRenameResponse {
-    throw BobClientError.timedOut(
-      command: ["bob", "ref", "rename", notePath, name],
-      seconds: BobRefsFetcher.renameTimeout
-    )
-  }
+    func rename(notePath: String, name: String) async throws -> RefsRenameResponse {
+        throw BobClientError.timedOut(
+            command: ["bob", "ref", "rename", notePath, name],
+            seconds: BobRefsFetcher.renameTimeout
+        )
+    }
 }
 
 final class RefsCallGate: @unchecked Sendable {
-  private let lock = NSLock()
-  private var count = 0
-  private let holding: Int
-  private var continuation: CheckedContinuation<Void, Never>?
-  private var released = false
-  private var holdingNow = false
+    private let lock = NSLock()
+    private var count = 0
+    private let holding: Int
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var released = false
+    private var holdingNow = false
 
-  init(holding: Int) {
-    self.holding = holding
-  }
-
-  var isHolding: Bool {
-    lock.withLock { holdingNow }
-  }
-
-  func pass() async {
-    let shouldHold: Bool = lock.withLock {
-      count += 1
-      if released {
-        return false
-      }
-      if count == holding {
-        holdingNow = true
-        return true
-      }
-      return false
+    init(holding: Int) {
+        self.holding = holding
     }
-    guard shouldHold else {
-      return
+
+    var isHolding: Bool {
+        lock.withLock { holdingNow }
     }
-    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-      var resumeNow = false
-      lock.withLock {
-        if released {
-          resumeNow = true
-          holdingNow = false
-        } else {
-          self.continuation = continuation
+
+    func pass() async {
+        let shouldHold: Bool = lock.withLock {
+            count += 1
+            if released {
+                return false
+            }
+            if count == holding {
+                holdingNow = true
+                return true
+            }
+            return false
         }
-      }
-      if resumeNow {
-        continuation.resume()
-      }
+        guard shouldHold else {
+            return
+        }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            var resumeNow = false
+            lock.withLock {
+                if released {
+                    resumeNow = true
+                    holdingNow = false
+                } else {
+                    self.continuation = continuation
+                }
+            }
+            if resumeNow {
+                continuation.resume()
+            }
+        }
+        lock.withLock { holdingNow = false }
     }
-    lock.withLock { holdingNow = false }
-  }
 
-  func release() {
-    let continuation: CheckedContinuation<Void, Never>? = lock.withLock {
-      released = true
-      holdingNow = false
-      let held = self.continuation
-      self.continuation = nil
-      return held
+    func release() {
+        let continuation: CheckedContinuation<Void, Never>? = lock.withLock {
+            released = true
+            holdingNow = false
+            let held = self.continuation
+            self.continuation = nil
+            return held
+        }
+        continuation?.resume()
     }
-    continuation?.resume()
-  }
 }
 
 struct GatedSpotlight: RefsSpotlightProviding, Sendable {
-  let gate: RefsCallGate
+    let gate: RefsCallGate
 
-  func sweep(_ requests: [RefsSpotlightRequest]) async -> [String: RefsSpotlightFacts] {
-    await gate.pass()
-    return [:]
-  }
+    func sweep(_ requests: [RefsSpotlightRequest]) async -> [String: RefsSpotlightFacts] {
+        await gate.pass()
+        return [:]
+    }
 }
 
 final class ScriptedRefsFetcher: RefsFetching, @unchecked Sendable {
-  private let lock = NSLock()
-  private var counted = 0
-  private let plainURL: URL
-  private let gitURL: URL
-  private let gitGate: RefsCallGate
+    private let lock = NSLock()
+    private var counted = 0
+    private let plainURL: URL
+    private let gitURL: URL
+    private let gitGate: RefsCallGate
 
-  var gitListCount: Int {
-    lock.withLock { counted }
-  }
-
-  init(plainURL: URL, gitURL: URL, gitGate: RefsCallGate) {
-    self.plainURL = plainURL
-    self.gitURL = gitURL
-    self.gitGate = gitGate
-  }
-
-  func list(gitDates: Bool) async throws -> RefsListResponse {
-    if gitDates {
-      lock.withLock { counted += 1 }
-      await gitGate.pass()
-      let data = try Data(contentsOf: gitURL)
-      return try JSONDecoder().decode(RefsListResponse.self, from: data)
+    var gitListCount: Int {
+        lock.withLock { counted }
     }
-    let data = try Data(contentsOf: plainURL)
-    return try JSONDecoder().decode(RefsListResponse.self, from: data)
-  }
 
-  func plan() async throws -> RefsPlanResponse {
-    RefsPlanResponse(schemaVersion: 2)
-  }
+    init(plainURL: URL, gitURL: URL, gitGate: RefsCallGate) {
+        self.plainURL = plainURL
+        self.gitURL = gitURL
+        self.gitGate = gitGate
+    }
 
-  func show(path: String) async throws -> RefsShowResponse {
-    RefsShowResponse(schemaVersion: 1, refs: [])
-  }
+    func list(gitDates: Bool) async throws -> RefsListResponse {
+        if gitDates {
+            lock.withLock { counted += 1 }
+            await gitGate.pass()
+            let data = try Data(contentsOf: gitURL)
+            return try JSONDecoder().decode(RefsListResponse.self, from: data)
+        }
+        let data = try Data(contentsOf: plainURL)
+        return try JSONDecoder().decode(RefsListResponse.self, from: data)
+    }
 
-  func scan() async throws -> RefsScanResponse {
-    throw BobClientError.timedOut(command: ["bob", "ref", "scan"], seconds: 300)
-  }
+    func plan() async throws -> RefsPlanResponse {
+        RefsPlanResponse(schemaVersion: 2)
+    }
 
-  func rename(notePath: String, name: String) async throws -> RefsRenameResponse {
-    throw BobClientError.timedOut(
-      command: ["bob", "ref", "rename", notePath, name],
-      seconds: BobRefsFetcher.renameTimeout
-    )
-  }
+    func show(path: String) async throws -> RefsShowResponse {
+        RefsShowResponse(schemaVersion: 1, refs: [])
+    }
+
+    func scan() async throws -> RefsScanResponse {
+        throw BobClientError.timedOut(command: ["bob", "ref", "scan"], seconds: 300)
+    }
+
+    func rename(notePath: String, name: String) async throws -> RefsRenameResponse {
+        throw BobClientError.timedOut(
+            command: ["bob", "ref", "rename", notePath, name],
+            seconds: BobRefsFetcher.renameTimeout
+        )
+    }
 }
