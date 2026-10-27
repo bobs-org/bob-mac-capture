@@ -1206,6 +1206,41 @@ public enum RefsCopyCommand: Equatable, Sendable {
     case consume
 }
 
+/// The entry point that opens a Refs Copy card. Highlights shortcuts use
+/// the same card as Command-Y, then seed the selected picker with a key.
+public enum RefsCopyEntry: Equatable, Sendable {
+    case card
+    case code
+    case links
+
+    public var seedCommand: RefsCopyCommand? {
+        switch self {
+        case .card:
+            nil
+        case .code:
+            .key(.codePicker)
+        case .links:
+            .key(.markdownLink)
+        }
+    }
+
+    public var retryGlyph: String {
+        switch self {
+        case .card: "⌘Y"
+        case .code: "⌘B"
+        case .links: "⌘L"
+        }
+    }
+
+    public var accessibilityLabel: String {
+        switch self {
+        case .card: "Copy menu"
+        case .code: "Copy code menu"
+        case .links: "Copy link menu"
+        }
+    }
+}
+
 public enum RefsCopyKeyMap {
     public static func command(
         characters: String?,

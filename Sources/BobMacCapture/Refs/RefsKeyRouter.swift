@@ -53,6 +53,8 @@ public enum RefsKeyRouter {
     static let r: UInt16 = 15
     static let t: UInt16 = 17
     static let y: UInt16 = 16
+    static let b: UInt16 = 11
+    static let l: UInt16 = 37
     static let s: UInt16 = 1
     static let d: UInt16 = 2
     static let x: UInt16 = 7
@@ -168,6 +170,16 @@ public enum RefsKeyRouter {
     case KeyCode.y:
       if flags.subtracting(.capsLock) == .command {
         return context.markedTextPresent ? nil : .showCopyCard
+      }
+      return nil
+    case KeyCode.b:
+      if flags.subtracting(.capsLock) == .command {
+        return context.markedTextPresent ? nil : .showCopyEntry(.code)
+      }
+      return nil
+    case KeyCode.l:
+      if flags.subtracting(.capsLock) == .command {
+        return context.markedTextPresent ? nil : .showCopyEntry(.links)
       }
       return nil
     case KeyCode.j:

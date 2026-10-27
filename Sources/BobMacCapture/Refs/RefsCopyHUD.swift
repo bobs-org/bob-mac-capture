@@ -9,6 +9,7 @@ enum RefsGlassToastStyle: Equatable {
     case already
     case guarded
     case closedTab
+    case warning
 
     var symbolName: String {
         switch self {
@@ -16,6 +17,7 @@ enum RefsGlassToastStyle: Equatable {
         case .linked, .moved, .already: "timer"
         case .guarded: "lock.fill"
         case .closedTab: "xmark.square.fill"
+        case .warning: "exclamationmark.triangle.fill"
         }
     }
 
@@ -26,6 +28,7 @@ enum RefsGlassToastStyle: Equatable {
         case .already: .pink.opacity(0.6)
         case .guarded: .orange
         case .closedTab: .secondary
+        case .warning: .orange
         }
     }
 
@@ -168,6 +171,25 @@ public final class RefsGlassToastController {
             detail: detail,
             style: .closedTab,
             holdDuration: RefsTabClosePresentation.toastHoldDuration,
+            fadeIn: Self.todayFadeInDuration,
+            rises: false,
+            frame: { Self.frame(centeredOn: host, size: $0) }
+        )
+    }
+
+    public func show(
+        title: String,
+        value: String,
+        detail: String,
+        style: RefsGlassToastStyle,
+        centeredOn host: NSRect
+    ) {
+        present(
+            title: title,
+            value: value,
+            detail: detail,
+            style: style,
+            holdDuration: 2.2,
             fadeIn: Self.todayFadeInDuration,
             rises: false,
             frame: { Self.frame(centeredOn: host, size: $0) }

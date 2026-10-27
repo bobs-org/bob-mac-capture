@@ -25,13 +25,23 @@ final class HotKeyRegistryTests: XCTestCase {
             .refsHighlightsCopy,
             configuration: .highlightsCommandY
         )
+        try registry.register(
+            .refsHighlightsCode,
+            configuration: .highlightsCommandB
+        )
+        try registry.register(
+            .refsHighlightsLinks,
+            configuration: .highlightsCommandL
+        )
 
         XCTAssertEqual(
             registrar.identifiers.map { $0.id },
             [HotKeyAction.capture.rawValue, HotKeyAction.refs.rawValue,
                 HotKeyAction.refsHighlightsOpen.rawValue,
                 HotKeyAction.refsHighlightsTabs.rawValue,
-                HotKeyAction.refsHighlightsCopy.rawValue]
+                HotKeyAction.refsHighlightsCopy.rawValue,
+                HotKeyAction.refsHighlightsCode.rawValue,
+                HotKeyAction.refsHighlightsLinks.rawValue]
         )
         XCTAssertTrue(
             registrar.identifiers.allSatisfy {
@@ -43,6 +53,8 @@ final class HotKeyRegistryTests: XCTestCase {
         XCTAssertTrue(registry.isRegistered(.refsHighlightsOpen))
         XCTAssertTrue(registry.isRegistered(.refsHighlightsTabs))
         XCTAssertTrue(registry.isRegistered(.refsHighlightsCopy))
+        XCTAssertTrue(registry.isRegistered(.refsHighlightsCode))
+        XCTAssertTrue(registry.isRegistered(.refsHighlightsLinks))
     }
 
     func testHandleRoutesEachActionByID() {
@@ -239,6 +251,12 @@ final class HotKeyRegistryTests: XCTestCase {
             UInt32(cmdKey)
         )
         XCTAssertEqual(HotKeyConfiguration.highlightsCommandY.displayName, "Command-Y")
+        XCTAssertEqual(HotKeyConfiguration.highlightsCommandB.keyCode, UInt32(kVK_ANSI_B))
+        XCTAssertEqual(HotKeyConfiguration.highlightsCommandB.modifiers, UInt32(cmdKey))
+        XCTAssertEqual(HotKeyConfiguration.highlightsCommandB.displayName, "Command-B")
+        XCTAssertEqual(HotKeyConfiguration.highlightsCommandL.keyCode, UInt32(kVK_ANSI_L))
+        XCTAssertEqual(HotKeyConfiguration.highlightsCommandL.modifiers, UInt32(cmdKey))
+        XCTAssertEqual(HotKeyConfiguration.highlightsCommandL.displayName, "Command-L")
     }
 
     func testCapturePresetsDoNotCollideWithRefs() {

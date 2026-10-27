@@ -191,7 +191,10 @@ final class RefsCodeTests: XCTestCase {
             token: 1, item: item, absolutePDFPath: nil, pdfExists: false,
             notes: .unavailable, noteCapacity: 0, code: .loading, highlightedPage: 7
         )
-        XCTAssertEqual(card.handle(.key(.codePicker)), .none)
+        XCTAssertEqual(
+            card.handle(try XCTUnwrap(RefsCopyEntry.code.seedCommand)),
+            .none
+        )
         XCTAssertEqual(card.pending, .codePicker)
         XCTAssertEqual(card.message?.text, "Loading code… esc cancels")
 
@@ -202,6 +205,23 @@ final class RefsCodeTests: XCTestCase {
             return XCTFail("expected the selected code block to be copied")
         }
         XCTAssertEqual(row.payload, .text("fn run() {}"))
+    }
+
+    func testCodeEntrySeedShowsHiddenReasonWhenCatalogHasNoCode() throws {
+        let item = makeItem()
+        var card = RefsCopyCard(
+            token: 1, item: item, absolutePDFPath: nil, pdfExists: false,
+            notes: .unavailable, noteCapacity: 0, code: .loading
+        )
+        XCTAssertEqual(card.handle(try XCTUnwrap(RefsCopyEntry.code.seedCommand)), .none)
+        XCTAssertEqual(card.pending, .codePicker)
+        XCTAssertEqual(
+            card.codeLoaded(path: item.id, response: try decodeResponse(status: "no_code", blocks: "[]")),
+            .none
+        )
+        XCTAssertNil(card.pending)
+        XCTAssertEqual(card.message?.text, "No code blocks in this reference — M copies its Markdown")
+        XCTAssertTrue(card.message?.isError == true)
     }
 
     private func decodeResponse(

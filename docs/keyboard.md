@@ -21,6 +21,9 @@ These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspecto
 | Command-T (in Highlights) | While Highlights is frontmost and Bob Refs is hidden, open Bob Refs in Tabs from fresh defaults with the focused PDF selected; configurable to Shift-Command-O, Command-E, or Off |
 | Command-Y | Open the Copy card for the selected row |
 | Command-Y (in Highlights) | While Highlights is frontmost and Bob Refs is hidden, open the Copy card on the focused PDF; configurable to Off. Keys typed before the PDF is known are replayed on the card |
+| Command-B | Open the Copy card for the selected row with the code picker pressed |
+| Command-L | Open the Copy card for the selected row with the link picker pressed |
+| Command-B / Command-L (in Highlights) | Registered only while Highlights or its override app is frontmost; opens the code or link picker on the focused PDF, yields while Bob Refs is visible, and can be set to Off. Keys typed before the PDF is known replay on the card |
 | Control-Return | Open the reading task's file in Obsidian (at the task line) |
 | Ctrl-X | Close the selected tab in Highlights (Tabs only) |
 | Ctrl-D | Scroll the preview down by half its height |
@@ -32,7 +35,7 @@ These rows act in the Bob Refs panel; [Bob Refs](refs.md) and [Bob Refs inspecto
 
 ## Copy card keys
 
-Command-Y opens the Copy card for the selected row, or for the focused Highlights PDF when Highlights is frontmost. While the card is open:
+Command-Y, Command-B, or Command-L opens the Copy card for the selected row, or for the focused Highlights PDF when Highlights is frontmost. Command-B starts in the code picker; Command-L starts in the link picker. While the card is open:
 
 | Key | Action |
 | --- | --- |
@@ -46,8 +49,23 @@ Command-Y opens the Copy card for the selected row, or for the focused Highlight
 | Up / Down | Move the selection (and the code or link preview well) |
 | Escape / Ctrl-[ | Return to the card from a picker, then to the inspector |
 
-Command-Y C Return from Highlights copies the code block on the current PDF page.
-Command-Y L Return copies the link on the current PDF page.
+Command-B Return from Highlights copies the code block on the current PDF page.
+Command-L Return copies the link on the current PDF page. Without saved Markdown,
+Command-L copies the reference's Markdown link immediately, as Command-Y L does.
+
+### When a Highlights copy key fails
+
+- Without Accessibility, Bob Refs shows its existing Tabs permission card.
+- With no open PDF, the card says `Highlights has no open document`; an unmatched
+  PDF names its filename. A collision says `Two references match “…” — pick one,
+  then ⌘B` or `⌘L`.
+- A slow tab read says `Highlights didn't answer — try ⌘B again` or `⌘L again`;
+  a failed read says `Couldn't read Highlights — ⌘R retries`.
+- While catalogs load, the card says `Loading code… esc cancels` or
+  `Loading links… esc cancels`. Load failures and unavailable content show the
+  Copy card's red reason.
+- If another app owns a chord, a warning toast names it and says which copy action
+  will not work. Change the key in Bob Settings › References.
 
 ## Editor and completion keys
 

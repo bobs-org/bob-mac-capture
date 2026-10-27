@@ -1328,8 +1328,9 @@ final class RefsPanelModelTests: XCTestCase {
     await harness.waitForSnapshot(ids: [path])
     harness.model.prepareForPresentation()
     XCTAssertTrue(harness.model.perform(.select(id: path)))
-    harness.model.openCopyCard()
+    XCTAssertTrue(harness.model.perform(.showCopyEntry(.code)))
     XCTAssertEqual(harness.model.copyCard?.code, .loading)
+    XCTAssertEqual(harness.model.copyCard?.pending, .codePicker)
     XCTAssertEqual(
       harness.model.copyCard?.rows.first { $0.key == .codePicker }?.preview,
       "Loading code…"
@@ -1429,7 +1430,7 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertNil(harness.model.copyCard)
   }
 
-  func testQueuedCodeKeyCopiesPageBlockWhenCatalogReturnsFromHighlightsTab() async throws {
+  func testHighlightsCodeEntryAndBufferedReturnCopiesPageBlock() async throws {
     let path = "ref/chat/example.md"
     let fetcher = FakeRefsFetcher()
     fetcher.codeDelayNanoseconds = 80_000_000
@@ -1445,15 +1446,14 @@ final class RefsPanelModelTests: XCTestCase {
     reader.setNextResult(
       .snapshot(Self.tabsSnapshot([item], vault: harness.vault, frontmost: true, pageNumber: 7))
     )
-    harness.model.prepareForPresentation(source: .highlightsTabs)
-    await harness.waitForModel { $0.tabsState == .loaded }
+    harness.model.prepareForPresentation(source: .highlightsCopy(.code))
     var completions: [RefsCopyRow] = []
     harness.model.copyCompletion = { completions.append($0) }
-    harness.model.openCopyCard()
-    XCTAssertEqual(harness.model.copyCard?.highlightedPage, 7)
-    harness.model.handleCopyCardKey(characters: "c", keyCode: 8, modifiers: [])
-    XCTAssertEqual(harness.model.copyCard?.pending, .codePicker)
-    harness.model.handleCopyCardKey(characters: "\r", keyCode: 36, modifiers: [])
+    harness.model.bufferPendingHighlightsCopyKey(
+      characters: "\r",
+      keyCode: 36,
+      modifiers: []
+    )
     await harness.waitForModel { $0.copyCard == nil && harness.pasteboard.strings.count == 1 }
     XCTAssertEqual(
       harness.pasteboard.strings.first,
@@ -1497,8 +1497,9 @@ final class RefsPanelModelTests: XCTestCase {
     let harness = try makeRenameHarness(fetcher: fetcher)
     await harness.waitForSnapshot(ids: [path])
     harness.model.prepareForPresentation()
-    harness.model.openCopyCard()
+    XCTAssertTrue(harness.model.perform(.showCopyEntry(.links)))
     XCTAssertEqual(harness.model.copyCard?.links, .loading)
+    XCTAssertEqual(harness.model.copyCard?.pending, .linkPicker)
     await harness.waitForModel {
       if case .loaded = $0.copyCard?.links { return true }
       return false
@@ -1575,7 +1576,7 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertNil(harness.model.copyCard)
   }
 
-  func testQueuedLinkKeyCopiesPageLinkWhenCatalogReturns() async throws {
+  func testHighlightsLinkEntryAndBufferedReturnCopiesPageLink() async throws {
     let path = "ref/chat/example.md"
     let fetcher = FakeRefsFetcher()
     fetcher.linksDelayNanoseconds = 80_000_000
@@ -1591,14 +1592,14 @@ final class RefsPanelModelTests: XCTestCase {
     reader.setNextResult(
       .snapshot(Self.tabsSnapshot([item], vault: harness.vault, frontmost: true, pageNumber: 7))
     )
-    harness.model.prepareForPresentation(source: .highlightsTabs)
-    await harness.waitForModel { $0.tabsState == .loaded }
+    harness.model.prepareForPresentation(source: .highlightsCopy(.links))
     var completions: [RefsCopyRow] = []
     harness.model.copyCompletion = { completions.append($0) }
-    harness.model.openCopyCard()
-    harness.model.handleCopyCardKey(characters: "l", keyCode: 37, modifiers: [])
-    XCTAssertEqual(harness.model.copyCard?.pending, .linkPicker)
-    harness.model.handleCopyCardKey(characters: "\r", keyCode: 36, modifiers: [])
+    harness.model.bufferPendingHighlightsCopyKey(
+      characters: "\r",
+      keyCode: 36,
+      modifiers: []
+    )
     await harness.waitForModel { $0.copyCard == nil && harness.pasteboard.strings.count == 1 }
     XCTAssertEqual(
       harness.pasteboard.strings.first,
@@ -3809,7 +3810,7 @@ final class RefsPanelModelTests: XCTestCase {
       .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: true))
     )
     harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
-    harness.model.prepareForPresentation(source: .highlightsCopy)
+    harness.model.prepareForPresentation(source: .highlightsCopy(.card))
     XCTAssertTrue(harness.model.isPendingHighlightsCopyArmed)
     XCTAssertTrue(harness.model.tabsFilter)
 
@@ -3832,7 +3833,7 @@ final class RefsPanelModelTests: XCTestCase {
     )
     harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
     harness.model.copyCompletion = { _ in }
-    harness.model.prepareForPresentation(source: .highlightsCopy)
+    harness.model.prepareForPresentation(source: .highlightsCopy(.card))
     XCTAssertTrue(harness.model.isPendingHighlightsCopyArmed)
     harness.model.bufferPendingHighlightsCopyKey(
       characters: "w",
@@ -3858,7 +3859,7 @@ final class RefsPanelModelTests: XCTestCase {
       .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: true))
     )
     harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
-    harness.model.prepareForPresentation(source: .highlightsCopy)
+    harness.model.prepareForPresentation(source: .highlightsCopy(.card))
     XCTAssertTrue(harness.model.isPendingHighlightsCopyArmed)
     harness.model.bufferPendingHighlightsCopyKey(
       characters: "w",
@@ -3890,7 +3891,7 @@ final class RefsPanelModelTests: XCTestCase {
       .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: true))
     )
     harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
-    harness.model.prepareForPresentation(source: .highlightsCopy)
+    harness.model.prepareForPresentation(source: .highlightsCopy(.card))
     XCTAssertTrue(harness.model.isPendingHighlightsCopyArmed)
     harness.model.bufferPendingHighlightsCopyKey(
       characters: "w",
@@ -3901,7 +3902,7 @@ final class RefsPanelModelTests: XCTestCase {
 
     XCTAssertEqual(
       harness.model.pendingHighlightsCopy,
-      .failed(message: "Highlights didn't answer — try ⌘Y again")
+      .failed(message: "Highlights didn't answer — try ⌘Y again", entry: .card)
     )
     XCTAssertNil(harness.model.copyCard)
     XCTAssertEqual(harness.pasteboard.strings, [])
@@ -3909,9 +3910,28 @@ final class RefsPanelModelTests: XCTestCase {
     await harness.waitForModel { $0.tabsState == .loaded }
     XCTAssertEqual(
       harness.model.pendingHighlightsCopy,
-      .failed(message: "Highlights didn't answer — try ⌘Y again")
+      .failed(message: "Highlights didn't answer — try ⌘Y again", entry: .card)
     )
     XCTAssertNil(harness.model.copyCard)
+  }
+
+  func testHighlightsCodeAndLinkTimeoutMessagesNameTheirRetryChords() async throws {
+    for (entry, glyph) in [(RefsCopyEntry.code, "⌘B"), (.links, "⌘L")] {
+      let reader = FakeTabsReader(isTrusted: true, readDelayNanoseconds: 200_000_000)
+      let harness = try makeHarness(tabsReader: reader)
+      await harness.waitForSnapshot()
+      let items = Array(harness.library.items.prefix(2))
+      reader.setNextResult(
+        .snapshot(Self.tabsSnapshot(items, vault: harness.vault, frontmost: true))
+      )
+      harness.model.prepareForPresentation(source: .highlightsCopy(entry))
+      harness.model.pendingHighlightsCopyTimedOut()
+
+      XCTAssertEqual(
+        harness.model.pendingHighlightsCopy,
+        .failed(message: "Highlights didn't answer — try \(glyph) again", entry: entry)
+      )
+    }
   }
 
   func testHighlightsCopyUnmatchedShowsLibraryMessage() async throws {
@@ -3922,7 +3942,7 @@ final class RefsPanelModelTests: XCTestCase {
       .snapshot(Self.tabsSnapshot(fileNames: ["cv.pdf"], frontmost: true))
     )
     harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
-    harness.model.prepareForPresentation(source: .highlightsCopy)
+    harness.model.prepareForPresentation(source: .highlightsCopy(.card))
 
     await harness.waitForModel {
       if case .failed = $0.pendingHighlightsCopy { return true }
@@ -3930,7 +3950,7 @@ final class RefsPanelModelTests: XCTestCase {
     }
     XCTAssertEqual(
       harness.model.pendingHighlightsCopy,
-      .failed(message: "“cv.pdf” isn't in your Bob library")
+      .failed(message: "“cv.pdf” isn't in your Bob library", entry: .card)
     )
     XCTAssertNil(harness.model.copyCard)
     XCTAssertTrue(harness.model.tabsFilter)
@@ -3954,7 +3974,7 @@ final class RefsPanelModelTests: XCTestCase {
       )
     )
     harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
-    harness.model.prepareForPresentation(source: .highlightsCopy)
+    harness.model.prepareForPresentation(source: .highlightsCopy(.card))
 
     await harness.waitForModel {
       if case .failed = $0.pendingHighlightsCopy { return true }
@@ -3963,11 +3983,39 @@ final class RefsPanelModelTests: XCTestCase {
     XCTAssertEqual(
       harness.model.pendingHighlightsCopy,
       .failed(
-        message:
-          "Two references match “harness_engineering.pdf” — pick one, then ⌘Y"
+        message: "Two references match “harness_engineering.pdf” — pick one, then ⌘Y",
+        entry: .card
       )
     )
     XCTAssertNil(harness.model.copyCard)
+  }
+
+  func testHighlightsCodeAndLinkCollisionMessagesNameTheirRetryChords() async throws {
+    let list = try Self.collisionListFixture()
+    defer { try? FileManager.default.removeItem(at: list) }
+    for (entry, glyph) in [(RefsCopyEntry.code, "⌘B"), (.links, "⌘L")] {
+      let reader = FakeTabsReader(isTrusted: true)
+      let harness = try makeHarness(
+        environment: ["FAKE_BOB_REFS_LIST_FIXTURE": list.path],
+        tabsReader: reader
+      )
+      await harness.waitForSnapshot()
+      reader.setNextResult(
+        .snapshot(Self.tabsSnapshot(fileNames: ["harness_engineering.pdf"], frontmost: true))
+      )
+      harness.model.prepareForPresentation(source: .highlightsCopy(entry))
+      await harness.waitForModel {
+        if case .failed = $0.pendingHighlightsCopy { return true }
+        return false
+      }
+      XCTAssertEqual(
+        harness.model.pendingHighlightsCopy,
+        .failed(
+          message: "Two references match “harness_engineering.pdf” — pick one, then \(glyph)",
+          entry: entry
+        )
+      )
+    }
   }
 
   func testHighlightsCopyNoDocumentsShowsMessage() async throws {
@@ -3978,7 +4026,7 @@ final class RefsPanelModelTests: XCTestCase {
       .snapshot(Self.tabsSnapshot(fileNames: [], frontmost: true))
     )
     harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
-    harness.model.prepareForPresentation(source: .highlightsCopy)
+    harness.model.prepareForPresentation(source: .highlightsCopy(.card))
 
     await harness.waitForModel {
       if case .failed = $0.pendingHighlightsCopy { return true }
@@ -3986,7 +4034,7 @@ final class RefsPanelModelTests: XCTestCase {
     }
     XCTAssertEqual(
       harness.model.pendingHighlightsCopy,
-      .failed(message: "Highlights has no open document")
+      .failed(message: "Highlights has no open document", entry: .card)
     )
     XCTAssertEqual(harness.model.tabsState, .noDocuments)
     XCTAssertNil(harness.model.copyCard)
@@ -3998,7 +4046,7 @@ final class RefsPanelModelTests: XCTestCase {
     await harness.waitForSnapshot()
     reader.setNextResult(.failed("AX timed out"))
     harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
-    harness.model.prepareForPresentation(source: .highlightsCopy)
+    harness.model.prepareForPresentation(source: .highlightsCopy(.card))
 
     await harness.waitForModel {
       if case .failed = $0.pendingHighlightsCopy { return true }
@@ -4006,7 +4054,7 @@ final class RefsPanelModelTests: XCTestCase {
     }
     XCTAssertEqual(
       harness.model.pendingHighlightsCopy,
-      .failed(message: "Couldn't read Highlights — ⌘R retries")
+      .failed(message: "Couldn't read Highlights — ⌘R retries", entry: .card)
     )
     XCTAssertNil(harness.model.copyCard)
   }
@@ -4016,7 +4064,7 @@ final class RefsPanelModelTests: XCTestCase {
     let harness = try makeHarness(tabsReader: reader, isAdHocSigned: true)
     await harness.waitForSnapshot()
     harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
-    harness.model.prepareForPresentation(source: .highlightsCopy)
+    harness.model.prepareForPresentation(source: .highlightsCopy(.card))
 
     XCTAssertNil(harness.model.pendingHighlightsCopy)
     XCTAssertEqual(harness.model.tabsState, .needsPermission(adHoc: true))
@@ -4035,7 +4083,7 @@ final class RefsPanelModelTests: XCTestCase {
     harness.model.perform(.toggleNewest)
     XCTAssertTrue(harness.model.perform(.select(id: kept)))
 
-    harness.model.prepareForPresentation(source: .highlightsCopy)
+    harness.model.prepareForPresentation(source: .highlightsCopy(.card))
 
     XCTAssertTrue(harness.model.tabsFilter)
     XCTAssertEqual(harness.model.query, "")
@@ -4067,7 +4115,7 @@ final class RefsPanelModelTests: XCTestCase {
     )
     harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
     harness.model.copyCompletion = { _ in }
-    harness.model.prepareForPresentation(source: .highlightsCopy)
+    harness.model.prepareForPresentation(source: .highlightsCopy(.card))
     let controller = RefsPanelController(model: harness.model)
     let wiki = try XCTUnwrap(
       NSEvent.keyEvent(
@@ -4121,7 +4169,7 @@ final class RefsPanelModelTests: XCTestCase {
     )
     harness.model.highlightsCopyDeadlineNanoseconds = 30_000_000_000
     harness.model.copyCompletion = { _ in }
-    harness.model.prepareForPresentation(source: .highlightsCopy)
+    harness.model.prepareForPresentation(source: .highlightsCopy(.card))
     let controller = RefsPanelController(model: harness.model)
     let wiki = try XCTUnwrap(
       NSEvent.keyEvent(
@@ -4420,6 +4468,7 @@ final class RefsPanelModelTests: XCTestCase {
       "“\(tabName)” isn't in your library."
     )
     XCTAssertTrue(harness.model.perform(.showCopyCard))
+    XCTAssertTrue(harness.model.perform(.showCopyEntry(.code)))
     XCTAssertEqual(
       harness.model.banner?.message,
       "“\(tabName)” isn't in your library."
@@ -4996,6 +5045,8 @@ final class RefsPanelModelTests: XCTestCase {
     await harness.waitForModel { $0.todayLinkCard?.phase == .ready }
     harness.model.handleTodayLinkCardKey(.submit)
     await harness.waitForModel { $0.isLinkingToday }
+    XCTAssertTrue(harness.model.perform(.showCopyEntry(.links)))
+    XCTAssertNil(harness.model.copyCard)
     let resetGeneration = harness.model.inspectorGeneration
     harness.model.query = "link in progress"
     XCTAssertTrue(harness.model.perform(.resetView))

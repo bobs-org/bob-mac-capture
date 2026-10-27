@@ -121,7 +121,19 @@ final class RefsLinksTests: XCTestCase {
         )
         var card = makeCard(item: item)
         let markdown = try XCTUnwrap(catalog.row(for: .markdownLink))
-        XCTAssertEqual(card.handle(.key(.markdownLink)), .write(markdown))
+        XCTAssertEqual(
+            card.handle(try XCTUnwrap(RefsCopyEntry.links.seedCommand)),
+            .write(markdown)
+        )
+    }
+
+    func testCopyEntrySeedsMatchCommandYFollowUpKeys() {
+        XCTAssertEqual(RefsCopyEntry.card.seedCommand, nil)
+        XCTAssertEqual(RefsCopyEntry.card.retryGlyph, "⌘Y")
+        XCTAssertEqual(RefsCopyEntry.code.seedCommand, .key(.codePicker))
+        XCTAssertEqual(RefsCopyEntry.code.retryGlyph, "⌘B")
+        XCTAssertEqual(RefsCopyEntry.links.seedCommand, .key(.markdownLink))
+        XCTAssertEqual(RefsCopyEntry.links.retryGlyph, "⌘L")
     }
 
     func testLKeyResolvesToLinkPickerWhenMarkdownIsSaved() throws {
@@ -155,7 +167,10 @@ final class RefsLinksTests: XCTestCase {
         )
 
         var card = makeCard(item: item, links: .loaded(response), highlightedPage: 7)
-        XCTAssertEqual(card.handle(.key(.markdownLink)), .none)
+        XCTAssertEqual(
+            card.handle(try XCTUnwrap(RefsCopyEntry.links.seedCommand)),
+            .none
+        )
         XCTAssertEqual(card.selectedKey, .linkPicker)
         XCTAssertEqual(card.linkPicker?.selectedEntry?.link.number, 2)
     }

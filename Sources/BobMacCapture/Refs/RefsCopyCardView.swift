@@ -803,7 +803,7 @@ struct RefsCopySkeletonView: View {
     }
 
     private var header: some View {
-        Text("COPY")
+        Text(headerTitle)
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -836,7 +836,7 @@ struct RefsCopySkeletonView: View {
         case .finding:
             text = "esc cancels"
             error = false
-        case .failed(let message):
+        case .failed(let message, _):
             text = message
             error = true
         }
@@ -851,9 +851,17 @@ struct RefsCopySkeletonView: View {
     private var accessibilityText: String {
         switch pending {
         case .finding:
-            return "Copy menu. Finding the open PDF in Highlights."
-        case .failed(let message):
-            return "Copy menu. \(message)"
+            return "\(pending.entry.accessibilityLabel). Finding the open PDF in Highlights."
+        case .failed(let message, _):
+            return "\(pending.entry.accessibilityLabel). \(message)"
+        }
+    }
+
+    private var headerTitle: String {
+        switch pending.entry {
+        case .card: "COPY"
+        case .code: "COPY · CODE"
+        case .links: "COPY · LINKS"
         }
     }
 }

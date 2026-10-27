@@ -36,6 +36,14 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(refsHighlightsCopyKey.rawValue, forKey: Keys.refsHighlightsCopyKey) }
     }
 
+    @Published var refsHighlightsCodeKey: RefsHighlightsCodeKey {
+        didSet { defaults.set(refsHighlightsCodeKey.rawValue, forKey: Keys.refsHighlightsCodeKey) }
+    }
+
+    @Published var refsHighlightsLinkKey: RefsHighlightsLinkKey {
+        didSet { defaults.set(refsHighlightsLinkKey.rawValue, forKey: Keys.refsHighlightsLinkKey) }
+    }
+
     @Published var refsHighlightsAppPath: String {
         didSet { defaults.set(refsHighlightsAppPath, forKey: Keys.refsHighlightsAppPath) }
     }
@@ -146,6 +154,20 @@ final class AppSettings: ObservableObject {
             // The Highlights Copy key defaults to Command-Y.
             refsHighlightsCopyKey = .cmdY
         }
+        if let raw = defaults.string(forKey: Keys.refsHighlightsCodeKey),
+            let key = RefsHighlightsCodeKey(rawValue: raw)
+        {
+            refsHighlightsCodeKey = key
+        } else {
+            refsHighlightsCodeKey = .cmdB
+        }
+        if let raw = defaults.string(forKey: Keys.refsHighlightsLinkKey),
+            let key = RefsHighlightsLinkKey(rawValue: raw)
+        {
+            refsHighlightsLinkKey = key
+        } else {
+            refsHighlightsLinkKey = .cmdL
+        }
         refsHighlightsAppPath = defaults.string(forKey: Keys.refsHighlightsAppPath) ?? ""
         agendaEnabled = defaults.object(forKey: Keys.agendaEnabled) == nil
             ? true
@@ -222,6 +244,8 @@ private enum Keys {
     static let refsHighlightsOpenKey = "refsHighlightsOpenKey"
     static let refsHighlightsTabsKey = "refsHighlightsTabsKey"
     static let refsHighlightsCopyKey = "refsHighlightsCopyKey"
+    static let refsHighlightsCodeKey = "refsHighlightsCodeKey"
+    static let refsHighlightsLinkKey = "refsHighlightsLinkKey"
     static let refsHighlightsAppPath = AppSettings.refsHighlightsAppPathKey
     static let canceledDraftStashCapacity = "canceledDraftStashCapacity"
     static let refsInspectorNotesPageSize = "refsInspectorNotesPageSize"

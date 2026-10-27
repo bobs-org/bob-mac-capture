@@ -20,7 +20,7 @@ The only always-visible surface is a purpose-designed monochrome mark: a geometr
 
 Settings › Diagnostics shows the current status string (selectable; starts as `Starting`), the signing diagnostic (`Not checked` until inspected), and a Recent Activity disclosure of the last 20 timestamped entries (`HH:mm:ss  message`). Each status change appends one entry; the list is in-memory only and never contains captured text.
 
-A hotkey registration failure reports `Hotkey conflict` with the Carbon status, or `Refs hotkey conflict: …`. Recovery is in [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/). Target/route completion problems report `Target cache stale` with the scan error; recovery is in [Fix Mac Capture when bob is not resolved](https://bobs-org.github.io/guides/fix-mac-capture-bob-resolution/).
+A hotkey registration failure reports `Hotkey conflict` with the Carbon status, or `Refs hotkey conflict: …`. Highlights takeover conflicts name the chord and action and show a toast once per launch. Recovery is in [Resolve a Mac Capture hotkey conflict](https://bobs-org.github.io/guides/resolve-mac-capture-hotkey-conflict/). Target/route completion problems report `Target cache stale` with the scan error; recovery is in [Fix Mac Capture when bob is not resolved](https://bobs-org.github.io/guides/fix-mac-capture-bob-resolution/).
 
 ## Timeouts
 

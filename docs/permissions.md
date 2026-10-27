@@ -9,7 +9,7 @@ Recovery steps for a stale Accessibility switch, denied notifications, or a ling
 
 ## Accessibility
 
-Bob Mac Capture needs Accessibility to read Highlights tabs and observe ⌘S while Highlights is frontmost. Command-Y in Highlights uses that same tab read to open the Copy card on the focused PDF. Settings › References shows "Highlights tabs: Allowed / Not allowed" and never prompts. Tabs never asks at launch. Open Accessibility Settings from the Tabs card (an explicit gesture) clears a stale grant with `tccutil reset Accessibility org.bobs.bob-mac-capture` and then shows the system prompt; if the prompt does not grant trust it opens System Settings › Privacy & Security › Accessibility.
+Bob Mac Capture needs Accessibility to read Highlights tabs and observe ⌘S while Highlights is frontmost. Command-Y, Command-B, and Command-L in Highlights use that same tab read to open the Copy card on the focused PDF. Settings › References shows "Highlights tabs: Allowed / Not allowed" and never prompts. Tabs never asks at launch. Open Accessibility Settings from the Tabs card (an explicit gesture) clears a stale grant with `tccutil reset Accessibility org.bobs.bob-mac-capture` and then shows the system prompt; if the prompt does not grant trust it opens System Settings › Privacy & Security › Accessibility.
 
 Accessibility is used only against Highlights: it reads window/tab attributes, selects or closes tabs, and passively checks key-down characters and modifier flags for ⌘S. It never consumes or re-posts the key; key-event text is not stored or logged. Names stay in memory. Bob Refs quits Highlights only after closing its last document. Tab names and closed-tab entries are never persisted.
 

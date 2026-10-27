@@ -1,7 +1,7 @@
 import Carbon
 import Foundation
 
-struct HotKeyConfiguration: Equatable {
+struct HotKeyConfiguration: Equatable, Hashable {
     let keyCode: UInt32
     let modifiers: UInt32
     let displayName: String
@@ -59,6 +59,18 @@ struct HotKeyConfiguration: Equatable {
         modifiers: UInt32(cmdKey),
         displayName: "Command-Y"
     )
+
+    static let highlightsCommandB = HotKeyConfiguration(
+        keyCode: UInt32(kVK_ANSI_B),
+        modifiers: UInt32(cmdKey),
+        displayName: "Command-B"
+    )
+
+    static let highlightsCommandL = HotKeyConfiguration(
+        keyCode: UInt32(kVK_ANSI_L),
+        modifiers: UInt32(cmdKey),
+        displayName: "Command-L"
+    )
 }
 
 protocol HotKeyRegistering {
@@ -109,6 +121,25 @@ enum HotKeyAction: UInt32, CaseIterable {
     case refsHighlightsOpen = 3
     case refsHighlightsTabs = 4
     case refsHighlightsCopy = 5
+    case refsHighlightsCode = 6
+    case refsHighlightsLinks = 7
+
+    var purpose: String {
+        switch self {
+        case .capture, .refs:
+            "open Bob Refs"
+        case .refsHighlightsOpen:
+            "open Bob Refs"
+        case .refsHighlightsTabs:
+            "show open tabs"
+        case .refsHighlightsCopy:
+            "open the Copy card"
+        case .refsHighlightsCode:
+            "copy code"
+        case .refsHighlightsLinks:
+            "copy a link"
+        }
+    }
 }
 
 /// One Carbon event handler routing every Bob hotkey by `EventHotKeyID`.

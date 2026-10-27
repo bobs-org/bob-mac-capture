@@ -136,7 +136,7 @@ final class BobPanelCoordinator {
     /// Opens Refs as Command-T does, then arms a pending Copy card on the
     /// focused Highlights PDF. While Refs is visible the takeover steps
     /// aside so the panel's own Command-Y opens the card for the selection.
-    func openRefsCopyFromHighlights() {
-        showRefs(source: .highlightsCopy)
+    func openRefsCopyFromHighlights(entry: RefsCopyEntry = .card) {
+        showRefs(source: .highlightsCopy(entry))
     }
 }

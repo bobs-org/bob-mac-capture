@@ -106,6 +106,21 @@ public final class RefsPanelController: NSObject {
         panel?.isVisible == true
     }
 
+    /// Reports a Highlights takeover registration conflict even when
+    /// Refs is hidden, so the failed chord is visible at registration time.
+    func showHotKeyConflict(_ conflict: HotKeyConflict) {
+        glassToast.show(
+            title: conflict.toastTitle,
+            value: conflict.toastValue,
+            detail: conflict.toastDetail,
+            style: .warning,
+            centeredOn: RefsVisualTokens.panelFrame(for: Self.visibleFrame())
+        )
+        AccessibilityNotification.Announcement(
+            conflict.accessibilityAnnouncement
+        ).post()
+    }
+
     /// Builds the panel and hosting view at launch, the way capture's
     /// `prewarm` does, so the first show paints from memory.
     public func prewarm() {
@@ -123,7 +138,7 @@ public final class RefsPanelController: NSObject {
         do {
             let prepareToken = CaptureSignpost.begin("refs-panel-prepare")
             defer { CaptureSignpost.end(prepareToken) }
-            if source == .highlightsTabs || source == .highlightsCopy {
+            if source.isHighlightsKeySession {
                 cancelPendingViewRestores()
             }
             model.prepareForPresentation(source: source)

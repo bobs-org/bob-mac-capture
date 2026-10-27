@@ -369,6 +369,7 @@ you.
 | Command-S | Scan for new references now (`bob ref scan -a -w` in the background; an older `bob` is retried without `-a`); a second ⌘S while one runs does nothing |
 | Command-K | Actions menu for the selected row |
 | Command-Y | Open the Copy card for the selected row |
+| Command-B / Command-L | Open the Copy card for the selected row with its code / link picker pressed |
 | Command-N | Open the Link to Today card for the selected reference |
 | Option-N | Mark the selected Ready or Next reference Seen, or New again; the row stays put until the next re-rank; other rows beep |
 | Command-Shift-R | Open the Rename card for the selected row |
@@ -376,7 +377,7 @@ you.
 | Esc, Ctrl-[ | Link to Today, Rename, or Copy card, then banner, then close while keeping the view |
 | Shift-Tab | Consumed (no-op) |
 
-While IME-composing, Return, Command-Y, Ctrl-D, Ctrl-U, Ctrl-C, Ctrl-X,
+While IME-composing, Return, Command-Y, Command-B, Command-L, Ctrl-D, Ctrl-U, Ctrl-C, Ctrl-X,
 and Shift-Command-T pass through to the text system. Ctrl-C
 always resets the view, even with defaults, and Ctrl-D and
 Ctrl-U consume the key even when the preview is hidden, short, empty, or
@@ -392,11 +393,10 @@ announce 600 ms after typing stops, never on every keystroke.
 
 ### Open PDFs in Highlights
 
-A writing scan that updates a PDF open in Highlights — `editor_saved_first`
-is true, or the PDF's file name equals an open Highlights tab's
-`fileName` — tells Bob Refs. The tab check uses the existing read-only
-Highlights tab reader, only when a coordinated write did not already
-save-first and Accessibility is already trusted. It never prompts.
+A writing scan reports to Bob Refs when it updates a PDF open in
+Highlights (`editor_saved_first` or a matching tab filename). The
+existing read-only tab reader checks only when a coordinated write did
+not save-first and Accessibility is already trusted; it never prompts.
 
 | Event | Bob Refs visible | Bob Refs hidden |
 | --- | --- | --- |
@@ -429,8 +429,8 @@ with a preview well (`Loading code…` while fetching). `M` copies the Markdown
 (Option-M its `~` path). `L` opens a link picker on references bob rendered
 from Markdown (`L` stays the Markdown link elsewhere; Option-U always copies
 it). A `p. N in Highlights` chip marks the focused tab. Hidden C/L/M
-keys explain why. Command-Y C Return copies the page's block; Command-Y L
-Return copies the page's link.
+keys explain why. Command-B Return and Command-L Return copy the page's code
+block and link in one chord; see [Keyboard](keyboard.md) for details.
 
 `1`–`9` copy the visible commented highlights with page and block-link
 provenance; `A` copies all commented highlights, standalone notes, and Bob's
@@ -503,8 +503,7 @@ progress finishes if the panel hides.
 
 ### Opening Bob Refs
 
-- From anywhere on the Mac, Control-Shift-Command-O toggles the panel.
-  Settings › References can turn this binding off.
+- Control-Shift-Command-O toggles Refs; Settings can turn it off.
 - While Highlights is frontmost, Command-O opens Bob Refs instead of
   Highlights' Open… dialog. Settings can switch the takeover to
   Control-O or turn it Off. The takeover registers only while
@@ -514,17 +513,15 @@ progress finishes if the panel hides.
   activates, so Highlights stays frontmost and the same key closes the
   panel again.
 - While Highlights is frontmost and Bob Refs is hidden, Command-T opens
-  Bob Refs in Tabs (default) from fresh defaults with the focused PDF
-  selected. Settings › References can change this key to Shift-Command-O,
-  Command-E, or Off. It registers only for Highlights or the override app;
-  the global Control-Shift-Command-O and Command-O library flows are
-  unchanged. While Bob Refs is showing, Command-T switches between Tabs and
-  the library instead of closing the panel; Escape closes it.
+  Tabs from fresh defaults with the focused PDF selected. It registers only
+  for Highlights or its override, yields to visible Refs where it toggles
+  Tabs, and can be changed to Shift-Command-O, Command-E, or Off.
 - While Highlights is frontmost and Bob Refs is hidden, Command-Y opens
-  the Copy card on the focused PDF. Settings › References can turn this
-  Off. It registers only for Highlights or the override app, and steps
-  aside while Bob Refs is visible so the panel's Command-Y opens the card
-  for the selection. Keys typed before the PDF is known replay on the card.
+  the Copy card on the focused PDF; Command-B and Command-L start in its
+  code and link pickers. Settings › References can turn each chord Off.
+  They register only for Highlights or the override app and yield to the
+  panel while it is visible. Command-C stays Highlights' Copy. Keys typed
+  before the PDF is known replay on the card; see [Keyboard](keyboard.md).
 - Ordinary shows restore the remembered query, scope, filters, selection,
   revealed pages, and scroll positions, except when a newly added reference
   resets the view and selects it (including an arrival in the first 10

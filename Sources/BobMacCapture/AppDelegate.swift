@@ -177,7 +177,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       case .refsHighlightsCopy:
         CaptureSignpost.event("refs-copy-hotkey-received")
         Task { @MainActor in
-          self?.panelCoordinator?.openRefsCopyFromHighlights()
+          self?.panelCoordinator?.openRefsCopyFromHighlights(entry: .card)
+        }
+      case .refsHighlightsCode:
+        CaptureSignpost.event("refs-code-hotkey-received")
+        Task { @MainActor in
+          self?.panelCoordinator?.openRefsCopyFromHighlights(entry: .code)
+        }
+      case .refsHighlightsLinks:
+        CaptureSignpost.event("refs-links-hotkey-received")
+        Task { @MainActor in
+          self?.panelCoordinator?.openRefsCopyFromHighlights(entry: .links)
         }
       }
     }
@@ -646,12 +656,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       openKey: { settings.refsHighlightsOpenKey },
       tabsKey: { settings.refsHighlightsTabsKey },
       copyKey: { settings.refsHighlightsCopyKey },
+      codeKey: { settings.refsHighlightsCodeKey },
+      linkKey: { settings.refsHighlightsLinkKey },
       isRefsVisible: { [weak self] in self?.refsPanelController?.isVisible == true },
       overrideBundleID: {
         Self.highlightsOverrideBundleID(path: settings.refsHighlightsAppPath)
       },
       onHighlightsDeactivated: {
         Task { await tabsSession.sampleCurrentTab() }
+      },
+      onConflict: { [weak self] conflict in
+        self?.refsPanelController?.showHotKeyConflict(conflict)
       },
       onError: { [weak self] message in self?.settings.diagnosticStatus = message }
     )
@@ -738,11 +753,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings.$refsHighlightsCopyKey,
         settings.$refsHighlightsAppPath
       )
-      .sink { [weak self] openKey, tabsKey, copyKey, path in
+      .combineLatest(
+        settings.$refsHighlightsCodeKey.combineLatest(settings.$refsHighlightsLinkKey)
+      )
+      .sink { [weak self] base, extraKeys in
+        let (openKey, tabsKey, copyKey, path) = base
+        let (codeKey, linkKey) = extraKeys
         self?.highlightsTakeover?.sync(
           openKey: openKey,
           tabsKey: tabsKey,
           copyKey: copyKey,
+          codeKey: codeKey,
+          linkKey: linkKey,
           appPath: path
         )
         self?.highlightsSaveKeyMonitor?.sync()

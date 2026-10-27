@@ -18,6 +18,7 @@ final class RefsKeyRouterTests: XCTestCase {
     static let t: UInt16 = 17
     static let y: UInt16 = 16
     static let b: UInt16 = 11
+    static let l: UInt16 = 37
     static let s: UInt16 = 1
     static let d: UInt16 = 2
     static let x: UInt16 = 7
@@ -143,6 +144,26 @@ final class RefsKeyRouterTests: XCTestCase {
         .command,
         context: RefsKeyContext(markedTextPresent: true)
       ))
+  }
+
+  func testCommandBAndLOpenSeededCopyEntries() {
+    XCTAssertEqual(route(KeyCode.b, .command), .showCopyEntry(.code))
+    XCTAssertEqual(
+      route(KeyCode.b, [.command, .capsLock]),
+      .showCopyEntry(.code)
+    )
+    XCTAssertEqual(route(KeyCode.l, .command), .showCopyEntry(.links))
+    XCTAssertEqual(
+      route(KeyCode.l, [.command, .capsLock]),
+      .showCopyEntry(.links)
+    )
+    XCTAssertNil(route(KeyCode.b))
+    XCTAssertNil(route(KeyCode.l))
+    XCTAssertNil(route(KeyCode.b, [.command, .shift]))
+    XCTAssertNil(route(KeyCode.l, [.command, .option]))
+    let composing = RefsKeyContext(markedTextPresent: true)
+    XCTAssertNil(route(KeyCode.b, .command, context: composing))
+    XCTAssertNil(route(KeyCode.l, .command, context: composing))
   }
 
   func testPagingAndEnds() {

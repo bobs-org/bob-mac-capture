@@ -90,6 +90,24 @@ struct SettingsView: View {
                     Text(RefsHighlightsCopyKey.off.displayName)
                         .tag(RefsHighlightsCopyKey.off)
                 }
+                Picker(
+                    "Copy code key in Highlights",
+                    selection: $settings.refsHighlightsCodeKey
+                ) {
+                    Text(RefsHighlightsCodeKey.cmdB.displayName)
+                        .tag(RefsHighlightsCodeKey.cmdB)
+                    Text(RefsHighlightsCodeKey.off.displayName)
+                        .tag(RefsHighlightsCodeKey.off)
+                }
+                Picker(
+                    "Copy link key in Highlights",
+                    selection: $settings.refsHighlightsLinkKey
+                ) {
+                    Text(RefsHighlightsLinkKey.cmdL.displayName)
+                        .tag(RefsHighlightsLinkKey.cmdL)
+                    Text(RefsHighlightsLinkKey.off.displayName)
+                        .tag(RefsHighlightsLinkKey.off)
+                }
                 LabeledContent("Highlights app", value: highlightsAppDescription)
                 HStack {
                     Button("Choose…") {
