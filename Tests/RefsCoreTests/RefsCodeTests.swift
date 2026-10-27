@@ -72,6 +72,10 @@ final class RefsCodeTests: XCTestCase {
         XCTAssertEqual(code.group, .contents)
         XCTAssertEqual(code.label, "Code block…")
         XCTAssertEqual(code.preview, "3 blocks · ● 1 on this page · yaml, rust, mermaid")
+        XCTAssertEqual(code.truncation, .tail)
+        let codeDotRange = try XCTUnwrap(code.onPageDotRange)
+        XCTAssertEqual(String(code.preview[codeDotRange]), "●")
+        XCTAssertTrue(code.preview[codeDotRange.upperBound...].hasPrefix(" 1 on this page"))
         XCTAssertEqual(code.payload, .text(""))
 
         let markdown = try XCTUnwrap(catalog.row(for: .sourceMarkdown))

@@ -155,6 +155,10 @@ final class RefsLinksTests: XCTestCase {
             linkRow.preview,
             "9 links · ● 3 on this page · example.com, ai.google.dev, developers.openai.com"
         )
+        XCTAssertEqual(linkRow.truncation, .tail)
+        let linkDotRange = try XCTUnwrap(linkRow.onPageDotRange)
+        XCTAssertEqual(String(linkRow.preview[linkDotRange]), "●")
+        XCTAssertTrue(linkRow.preview[linkDotRange.upperBound...].hasPrefix(" 3 on this page"))
         let source = try XCTUnwrap(catalog.row(for: .sourceURL))
         XCTAssertEqual(source.alternate?.label, "Markdown link")
         XCTAssertEqual(

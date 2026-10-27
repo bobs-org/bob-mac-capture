@@ -185,6 +185,13 @@ public struct RefsCopyRow: Equatable, Sendable {
             confirmationTitle: alternate.confirmationTitle
         )
     }
+
+    /// The range of the on-page `●` marker in `preview`, if this C/L row
+    /// carries one. The Copy card renders that run in the accent color.
+    public var onPageDotRange: Range<String.Index>? {
+        guard key == .codePicker || key == .linkPicker else { return nil }
+        return preview.range(of: "●")
+    }
 }
 
 public enum RefsCopyNotesState: Equatable, Sendable {
@@ -708,6 +715,7 @@ public struct RefsCopyCatalog: Equatable, Sendable {
                 payload: .text(""),
                 preview: RefsLinkPicker.rowPreview(
                     links: response.links, highlightedPage: highlightedPage),
+                truncation: .tail,
                 confirmationTitle: "Links"
             )
         case .notRequested, .unsupported, .failed:
@@ -749,6 +757,7 @@ public struct RefsCopyCatalog: Equatable, Sendable {
             label: "Code block…",
             payload: .text(""),
             preview: preview,
+            truncation: .tail,
             confirmationTitle: "Code blocks"
         )
     }

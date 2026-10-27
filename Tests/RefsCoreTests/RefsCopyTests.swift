@@ -173,6 +173,29 @@ final class RefsCopyTests: XCTestCase {
         XCTAssertEqual(catalog.row(for: .pdfFile)?.preview, "example.pdf")
     }
 
+    func testOnPageDotRangeOnlyFiresOnCatalogRowsCarryingTheDot() throws {
+        func row(key: RefsCopyKey, preview: String) -> RefsCopyRow {
+            RefsCopyRow(
+                key: key, group: .contents, label: "Row",
+                payload: .text(""), preview: preview,
+                confirmationTitle: "Row"
+            )
+        }
+        let code = row(key: .codePicker, preview: "3 blocks · ● 1 on this page · yaml")
+        let dotRange = try XCTUnwrap(code.onPageDotRange)
+        XCTAssertEqual(String(code.preview[dotRange]), "●")
+        XCTAssertEqual(String(code.preview[..<dotRange.lowerBound]), "3 blocks · ")
+        XCTAssertTrue(code.preview[dotRange.upperBound...].hasPrefix(" 1 on this page"))
+
+        let link = row(
+            key: .linkPicker, preview: "9 links · ● 3 on this page · example.com")
+        XCTAssertNotNil(link.onPageDotRange)
+
+        XCTAssertNil(row(key: .codePicker, preview: "3 blocks · yaml").onPageDotRange)
+        XCTAssertNil(row(key: .linkPicker, preview: "Loading links…").onPageDotRange)
+        XCTAssertNil(row(key: .title, preview: "A ● title").onPageDotRange)
+    }
+
     func testPaperCatalogFormatsValuesAndNotes() {
         let item = makeItem(
             markerID: .present("paper-id"),

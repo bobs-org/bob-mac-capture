@@ -634,9 +634,8 @@ struct RefsCopyCardView: View {
                     width: RefsVisualTokens.copyCardLabelWidth,
                     alignment: .leading
                 )
-            Text(row.preview)
+            previewText(row)
                 .font(.system(size: 11.5, design: .monospaced))
-                .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(row.truncation == .middle ? .middle : .tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -664,6 +663,19 @@ struct RefsCopyCardView: View {
             onRowTap(primary)
         }
         .help(row.help ?? "")
+    }
+
+    /// The C/L row preview with the on-page `●` in the accent color,
+    /// matching the picker rows. Other rows render fully secondary.
+    private func previewText(_ row: RefsCopyRow) -> Text {
+        guard let range = row.onPageDotRange else {
+            return Text(row.preview).foregroundStyle(.secondary)
+        }
+        return Text(String(row.preview[..<range.lowerBound]))
+            .foregroundStyle(.secondary)
+            + Text("●").foregroundStyle(Color.accentColor)
+            + Text(String(row.preview[range.upperBound...]))
+                .foregroundStyle(.secondary)
     }
 
     private func rowBackground(selected: Bool, hovering: Bool) -> some View {
