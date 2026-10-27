@@ -169,4 +169,39 @@ final class RefsScanReceiptObserverTests: XCTestCase {
             ]
         )
     }
+
+    func testDirtyReceiptAddsRetryFooterWithoutHiddenWarning() async {
+        let observer = RefsScanReceiptObserver(
+            register: { _ in nil },
+            cancel: { _ in }
+        )
+        observer.isPanelVisible = { false }
+        observer.notificationsEnabled = { true }
+        var updates: RefsPDFUpdates?
+        var surface: RefsPDFUpdateSurface?
+        observer.onSurface = { receivedUpdates, receivedSurface in
+            updates = receivedUpdates
+            surface = receivedSurface
+        }
+        let held = RefsScanHold(
+            pdf: "lib/local.pdf",
+            note: "ref/chat/local.md",
+            title: "Local edit",
+            reason: "dirty_targets",
+            message: "dirty vault targets: ref/chat/local.md · retrying next scan"
+        )
+        let response = RefsScanResponse(ok: true, held: [held])
+
+        await observer.processForTests(
+            RefsScanReceipt(response: response, contentHash: 42)
+        )
+
+        XCTAssertEqual(updates?.dirtyHolds.map(\.pdf), ["lib/local.pdf"])
+        XCTAssertEqual(
+            surface?.footerClauses,
+            ["1 PDF held for local changes · retrying next scan"]
+        )
+        XCTAssertNil(surface?.banner)
+        XCTAssertTrue(surface?.notifications.isEmpty == true)
+    }
 }
