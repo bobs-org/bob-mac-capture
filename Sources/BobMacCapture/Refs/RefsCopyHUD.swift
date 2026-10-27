@@ -139,7 +139,7 @@ public final class RefsGlassToastController {
         )
     }
 
-    public func show(
+    func show(
         title: String,
         value: String,
         detail: String,
@@ -177,7 +177,7 @@ public final class RefsGlassToastController {
         )
     }
 
-    public func show(
+    func show(
         title: String,
         value: String,
         detail: String,
