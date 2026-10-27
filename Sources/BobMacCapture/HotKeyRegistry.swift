@@ -24,6 +24,12 @@ struct HotKeyConfiguration: Equatable, Hashable {
         displayName: "Control-Shift-Command-O"
     )
 
+    static let captureCommandBackslash = HotKeyConfiguration(
+        keyCode: UInt32(kVK_ANSI_Backslash),
+        modifiers: UInt32(cmdKey),
+        displayName: "Command-\\"
+    )
+
     static let highlightsCommandO = HotKeyConfiguration(
         keyCode: UInt32(kVK_ANSI_O),
         modifiers: UInt32(cmdKey),
@@ -123,12 +129,13 @@ enum HotKeyAction: UInt32, CaseIterable {
     case refsHighlightsCopy = 5
     case refsHighlightsCode = 6
     case refsHighlightsLinks = 7
+    case captureAlias = 8
 
     var purpose: String {
         switch self {
-        case .capture, .refs:
-            "open Bob Refs"
-        case .refsHighlightsOpen:
+        case .capture, .captureAlias:
+            "open Bob Capture"
+        case .refs, .refsHighlightsOpen:
             "open Bob Refs"
         case .refsHighlightsTabs:
             "show open tabs"

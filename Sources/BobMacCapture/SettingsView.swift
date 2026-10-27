@@ -32,6 +32,15 @@ struct SettingsView: View {
             Section("Hotkey") {
                 Toggle("Use production Control-Shift-Command-I", isOn: $settings.useProductionHotkey)
                 LabeledContent("Active binding", value: settings.hotKeyConfiguration.displayName)
+                Toggle(
+                    "Also open Capture with Command-\\",
+                    isOn: $settings.captureAliasHotkeyEnabled
+                )
+                Text(
+                    "Command-\\ is global: while this is on, other apps never receive Command-\\."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             Section("References") {

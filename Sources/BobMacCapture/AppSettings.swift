@@ -20,6 +20,12 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(useProductionHotkey, forKey: Keys.useProductionHotkey) }
     }
 
+    @Published var captureAliasHotkeyEnabled: Bool {
+        didSet {
+            defaults.set(captureAliasHotkeyEnabled, forKey: Keys.captureAliasHotkeyEnabled)
+        }
+    }
+
     @Published var refsHotkeyEnabled: Bool {
         didSet { defaults.set(refsHotkeyEnabled, forKey: Keys.refsHotkeyEnabled) }
     }
@@ -126,6 +132,10 @@ final class AppSettings: ObservableObject {
         useProductionHotkey = defaults.object(forKey: Keys.useProductionHotkey) == nil
             ? true
             : defaults.bool(forKey: Keys.useProductionHotkey)
+        captureAliasHotkeyEnabled =
+            defaults.object(forKey: Keys.captureAliasHotkeyEnabled) == nil
+            ? true
+            : defaults.bool(forKey: Keys.captureAliasHotkeyEnabled)
         refsHotkeyEnabled = defaults.object(forKey: Keys.refsHotkeyEnabled) == nil
             ? true
             : defaults.bool(forKey: Keys.refsHotkeyEnabled)
@@ -240,6 +250,7 @@ private enum Keys {
     static let bobExecutableOverride = "bobExecutableOverride"
     static let bobDirectory = "bobDirectory"
     static let useProductionHotkey = "useProductionHotkey"
+    static let captureAliasHotkeyEnabled = "captureAliasHotkeyEnabled"
     static let refsHotkeyEnabled = "refsHotkeyEnabled"
     static let refsHighlightsOpenKey = "refsHighlightsOpenKey"
     static let refsHighlightsTabsKey = "refsHighlightsTabsKey"

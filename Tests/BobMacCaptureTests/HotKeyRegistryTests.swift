@@ -33,15 +33,23 @@ final class HotKeyRegistryTests: XCTestCase {
             .refsHighlightsLinks,
             configuration: .highlightsCommandL
         )
+        try registry.register(
+            .captureAlias,
+            configuration: .captureCommandBackslash
+        )
 
         XCTAssertEqual(
             registrar.identifiers.map { $0.id },
-            [HotKeyAction.capture.rawValue, HotKeyAction.refs.rawValue,
+            [
+                HotKeyAction.capture.rawValue,
+                HotKeyAction.refs.rawValue,
                 HotKeyAction.refsHighlightsOpen.rawValue,
                 HotKeyAction.refsHighlightsTabs.rawValue,
                 HotKeyAction.refsHighlightsCopy.rawValue,
                 HotKeyAction.refsHighlightsCode.rawValue,
-                HotKeyAction.refsHighlightsLinks.rawValue]
+                HotKeyAction.refsHighlightsLinks.rawValue,
+                HotKeyAction.captureAlias.rawValue,
+            ]
         )
         XCTAssertTrue(
             registrar.identifiers.allSatisfy {
@@ -55,6 +63,7 @@ final class HotKeyRegistryTests: XCTestCase {
         XCTAssertTrue(registry.isRegistered(.refsHighlightsCopy))
         XCTAssertTrue(registry.isRegistered(.refsHighlightsCode))
         XCTAssertTrue(registry.isRegistered(.refsHighlightsLinks))
+        XCTAssertTrue(registry.isRegistered(.captureAlias))
     }
 
     func testHandleRoutesEachActionByID() {
@@ -257,10 +266,26 @@ final class HotKeyRegistryTests: XCTestCase {
         XCTAssertEqual(HotKeyConfiguration.highlightsCommandL.keyCode, UInt32(kVK_ANSI_L))
         XCTAssertEqual(HotKeyConfiguration.highlightsCommandL.modifiers, UInt32(cmdKey))
         XCTAssertEqual(HotKeyConfiguration.highlightsCommandL.displayName, "Command-L")
+        XCTAssertEqual(
+            HotKeyConfiguration.captureCommandBackslash.keyCode,
+            UInt32(kVK_ANSI_Backslash)
+        )
+        XCTAssertEqual(
+            HotKeyConfiguration.captureCommandBackslash.modifiers,
+            UInt32(cmdKey)
+        )
+        XCTAssertEqual(
+            HotKeyConfiguration.captureCommandBackslash.displayName,
+            "Command-\\"
+        )
     }
 
     func testCapturePresetsDoNotCollideWithRefs() {
-        for capture in [HotKeyConfiguration.production, HotKeyConfiguration.development] {
+        for capture in [
+            HotKeyConfiguration.production,
+            HotKeyConfiguration.development,
+            HotKeyConfiguration.captureCommandBackslash,
+        ] {
             let claimsRefsChord =
                 capture.keyCode == HotKeyConfiguration.refs.keyCode
                 && capture.modifiers == HotKeyConfiguration.refs.modifiers
@@ -277,6 +302,25 @@ final class HotKeyRegistryTests: XCTestCase {
                     "\(capture.displayName) must not claim the Highlights Tabs chord"
                 )
             }
+        }
+    }
+
+    func testCaptureAliasDoesNotCollideWithCaptureOrHighlightsKeys() {
+        let alias = HotKeyConfiguration.captureCommandBackslash
+        let others: [HotKeyConfiguration] =
+            [.production, .development]
+            + RefsHighlightsOpenKey.allCases.compactMap(\.configuration)
+            + RefsHighlightsTabsKey.allCases.compactMap(\.configuration)
+            + RefsHighlightsCopyKey.allCases.compactMap(\.configuration)
+            + RefsHighlightsCodeKey.allCases.compactMap(\.configuration)
+            + RefsHighlightsLinkKey.allCases.compactMap(\.configuration)
+        for other in others {
+            let collides =
+                alias.keyCode == other.keyCode && alias.modifiers == other.modifiers
+            XCTAssertFalse(
+                collides,
+                "\(alias.displayName) must not claim \(other.displayName)"
+            )
         }
     }
 

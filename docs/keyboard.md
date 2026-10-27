@@ -220,7 +220,8 @@ transposes text.
 ## Opening today's Pomodoro (Control-\)
 
 Control-\ is an in-panel key, not a global hotkey (a global Control-\ would take
-SIGQUIT from terminals and Vim's `Ctrl-\ Ctrl-N`). Each press runs a fresh
+SIGQUIT from terminals and Vim's `Ctrl-\ Ctrl-N`). Global `Command-\` opens Capture
+and is a different chord from this in-panel `Control-\`. Each press runs a fresh
 `bob capture-pomodoros --format json --all` through the pomodoros lane; it does
 not use the idle-agenda cache. The app never reads the daily note.
 

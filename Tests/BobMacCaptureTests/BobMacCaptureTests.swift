@@ -4160,6 +4160,21 @@ final class BobMacCaptureTests: XCTestCase {
     }
 
     @MainActor
+    func testCaptureAliasHotkeyEnabledDefaultsToTrueAndPersists() {
+        let suiteName = "org.bobs.bob-mac-capture.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+
+        XCTAssertTrue(AppSettings(defaults: defaults).captureAliasHotkeyEnabled)
+
+        let settings = AppSettings(defaults: defaults)
+        settings.captureAliasHotkeyEnabled = false
+        XCTAssertFalse(defaults.bool(forKey: "captureAliasHotkeyEnabled"))
+        XCTAssertFalse(AppSettings(defaults: defaults).captureAliasHotkeyEnabled)
+        defaults.removePersistentDomain(forName: suiteName)
+    }
+
+    @MainActor
     func testCanceledDraftStashCapacityDefaultsPersistsAndClamps() {
         let suiteName = "org.bobs.bob-mac-capture.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

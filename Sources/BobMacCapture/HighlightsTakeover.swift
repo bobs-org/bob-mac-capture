@@ -20,7 +20,7 @@ struct HotKeyConflict: Equatable {
         case .refsHighlightsCopy: "Opening the Copy card in Highlights won't work"
         case .refsHighlightsCode: "Copy code in Highlights won't work"
         case .refsHighlightsLinks: "Copy link in Highlights won't work"
-        case .capture, .refs: "Opening Bob Refs won't work"
+        case .capture, .captureAlias, .refs: "Opening Bob Refs won't work"
         }
     }
 

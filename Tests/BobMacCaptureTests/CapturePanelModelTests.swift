@@ -1949,6 +1949,9 @@ final class CapturePanelModelTests: XCTestCase {
             }
             return false
         }
+        // Preview can settle before editAnalysisBaseline; a stale baseline
+        // treats `:` as newly typed and auto-opens the picker instead of the chip.
+        await waitUntil { model.analysisBaselineForTesting == "@file:ready" }
 
         model.plainDraft = "@file:"
         model.editorTextDidChange(cursorUTF8Offset: 6)

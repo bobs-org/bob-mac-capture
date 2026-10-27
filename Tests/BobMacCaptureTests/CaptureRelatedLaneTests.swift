@@ -228,7 +228,9 @@ final class CaptureRelatedLaneTests: XCTestCase {
         model.installDependencyPickerForPreviews(candidates: [], draft: model.plainDraft)
         XCTAssertTrue(model.pickerVisible)
         typeDraft(model, "Install new UPS battery plus cable")
-        try await Task.sleep(nanoseconds: 250_000_000)
+        // Wait for the fire-time gate to clear pending; a fixed sleep
+        // flakes when the settle task is delayed under CI load.
+        await waitUntil { !model.similarTasks.pending }
         let after = (try? String(contentsOf: recordURL)) ?? ""
         XCTAssertEqual(after.components(separatedBy: "argv=capture-related").count - 1, 1)
         XCTAssertEqual(model.similarTasks.rows.map(\.id), heldIDs)
