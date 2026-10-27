@@ -216,7 +216,9 @@ elif "fetch" not in args and "reset" not in args:
         result = self.run_script("docs-check.sh", BOB_CLI_DIR=str(cli), JUST_EXIT="37")
         self.assertEqual(result.returncode, 37, result.stderr)
         called = json.loads((self.root / "just.json").read_text())
-        self.assertEqual(called, {"cwd": str(cli), "args": ["docs-check"], "source": str(self.mac)})
+        self.assertEqual(Path(called["cwd"]).resolve(), Path(cli).resolve())
+        self.assertEqual(called["args"], ["docs-check"])
+        self.assertEqual(Path(called["source"]).resolve(), Path(self.mac).resolve())
         self.assertFalse((self.root / "git.log").exists())
 
     def test_invalid_overrides_never_fall_through(self):
@@ -235,7 +237,10 @@ elif "fetch" not in args and "reset" not in args:
         sibling = self.cli(self.root / "bob-cli")
         result = self.run_script("docs-check.sh")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads((self.root / "just.json").read_text())["cwd"], str(sibling))
+        self.assertEqual(
+            Path(json.loads((self.root / "just.json").read_text())["cwd"]).resolve(),
+            Path(sibling).resolve(),
+        )
         self.assertFalse((self.root / "git.log").exists())
 
     def test_managed_cache_clone_refresh_and_wrong_origin(self):

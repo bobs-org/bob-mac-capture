@@ -66,3 +66,7 @@ docs-check:
 docs-test:
     bash -n Scripts/docs-media.sh Scripts/docs-check.sh
     python3 -B Scripts/test_docs_scripts.py
+
+# Offline script tests, including the macOS CI precommit gate.
+check-scripts: docs-test
+    python3 -B Scripts/test_macos_ci_check.py

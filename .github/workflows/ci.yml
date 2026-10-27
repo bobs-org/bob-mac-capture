@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - "ci/**"
   pull_request:
 
 jobs:
@@ -14,6 +15,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Check scripts
+        run: |
+          python3 -B Scripts/test_docs_scripts.py
+          python3 -B Scripts/test_macos_ci_check.py
 
       - name: Show toolchain
         run: |
