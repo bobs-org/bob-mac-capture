@@ -38,7 +38,9 @@ final class RefsScanReceiptTests: XCTestCase {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let receiptURL = directory.appendingPathComponent("last-scan.json")
-        let bytes = Data(#"{"schema_version":1,"generated_at":"2026-10-23T10:15:00Z"}"#.utf8)
+    let bytes = Data(
+      #"{"schema_version":1,"generated_at":"2026-10-23T10:15:00Z","summary":{"held":1},"held":[{"pdf":"lib/local.pdf","note":"ref/chat/local.md","title":"Local","reason":"dirty_targets","message":"dirty vault targets: ref/chat/local.md · retrying next scan"}]}"#.utf8
+    )
         try bytes.write(to: receiptURL)
 
         let reader = RefsScanReceiptReader()
@@ -47,6 +49,8 @@ final class RefsScanReceiptTests: XCTestCase {
 
         XCTAssertEqual(receipt.response.schemaVersion, 1)
         XCTAssertEqual(receipt.response.generatedAt, "2026-10-23T10:15:00Z")
+    XCTAssertEqual(receipt.response.summary.held, 1)
+    XCTAssertEqual(receipt.response.held.first?.reason, "dirty_targets")
         XCTAssertEqual(receipt.contentHash, again.contentHash)
     }
 

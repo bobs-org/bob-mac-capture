@@ -393,16 +393,16 @@ announce 600 ms after typing stops, never on every keystroke.
 
 ### Open PDFs in Highlights
 
-A writing scan reports to Bob Refs when it updates a PDF open in
-Highlights (`editor_saved_first` or a matching tab filename). The
-existing read-only tab reader checks only when a coordinated write did
-not save-first and Accessibility is already trusted; it never prompts.
+A writing scan reports updates to PDFs open in Highlights (`editor_saved_first`
+or matching filename). The read-only tab reader runs only when a coordinated
+write did not save-first and Accessibility is trusted.
 
 | Event | Bob Refs visible | Bob Refs hidden |
 | --- | --- | --- |
 | Open PDF refreshed | Footer clause `1 PDF refreshed in Highlights` | Notification "Updated in Highlights" |
 | `coordination_timeout` hold | Warning banner "Highlights needs you" with **Scan Again** | Notification "Highlights needs you", at most once per PDF until it stops being held |
 | `editor_active` / `marker_changed` hold, or a refresh of a PDF that is not open | Footer clause `1 PDF waiting while you read` (holds only) | Nothing |
+| `dirty_targets` hold | Footer: `PDF held for local changes · retrying next scan` | Nothing |
 
 Open-PDF notifications are passive, silent, and grouped
 (`threadIdentifier` `org.bobs.bob-mac-capture.refs-pdf-updates`) on the

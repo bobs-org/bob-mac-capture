@@ -8,6 +8,7 @@ public struct RefsPDFUpdates: Equatable, Sendable {
     public let readingHolds: [RefsScanHold]
     public let busyHolds: [RefsScanHold]
     public let changedHolds: [RefsScanHold]
+  public let dirtyHolds: [RefsScanHold]
 
     /// Stable per-PDF keys let the app notify once while a PDF remains busy.
     public var busyHoldDedupeKeys: Set<String> {
@@ -64,6 +65,7 @@ public struct RefsPDFUpdates: Equatable, Sendable {
         var reading: [RefsScanHold] = []
         var busy: [RefsScanHold] = []
         var changed: [RefsScanHold] = []
+    var dirty: [RefsScanHold] = []
         for hold in response.held {
             switch hold.reason {
             case "editor_active":
@@ -72,6 +74,8 @@ public struct RefsPDFUpdates: Equatable, Sendable {
                 busy.append(hold)
             case "marker_changed":
                 changed.append(hold)
+      case "dirty_targets":
+        dirty.append(hold)
             default:
                 break
             }
@@ -82,6 +86,7 @@ public struct RefsPDFUpdates: Equatable, Sendable {
         readingHolds = reading
         busyHolds = busy
         changedHolds = changed
+    dirtyHolds = dirty
     }
 
     private static func fileName(of path: String) -> String {
@@ -195,6 +200,12 @@ public enum RefsPDFUpdatePresentation {
             let noun = waitingCount == 1 ? "PDF" : "PDFs"
             clauses.append("\(waitingCount) \(noun) waiting while you read")
         }
+
+    let dirtyCount = updates.dirtyHolds.count
+    if dirtyCount > 0 {
+      let noun = dirtyCount == 1 ? "PDF" : "PDFs"
+      clauses.append("\(dirtyCount) \(noun) held for local changes · retrying next scan")
+    }
         return clauses
     }
 
