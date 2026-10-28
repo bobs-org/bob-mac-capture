@@ -2065,7 +2065,9 @@ final class CapturePanelModel: ObservableObject {
         // editorSelection; those writes echo back through the TextEditor into
         // another selection callback and wedge the main thread. Caret-dependent
         // paint (the unconfigured-theme underline) refreshes via the
-        // selection-triggered analysis below instead.
+        // selection-triggered analysis below, which paints with this event's
+        // caret: by the time the async parse returns, the live selection may
+        // already belong to the next move.
 
         // A caret-only move never auto-opens the picker; at most it shows the
         // reopen chip.
@@ -11170,7 +11172,7 @@ final class CapturePanelModel: ObservableObject {
                     guard self?.isCurrentAnalysis(generation) == true else {
                         return
                     }
-                    self?.applyParse(parse, draft: draft)
+                    self?.applyParse(parse, draft: draft, cursorUTF8: cursorUTF8Offset)
                     if let need = pickerNeeded {
                         // An incomplete `^` is a state, not an error: skip the
                         // doomed live dry run and stay calm instead of flashing
@@ -12306,7 +12308,11 @@ final class CapturePanelModel: ObservableObject {
         return seed
     }
 
-    private func applyParse(_ parse: CaptureParseResponse, draft: String) {
+    private func applyParse(
+        _ parse: CaptureParseResponse,
+        draft: String,
+        cursorUTF8: Int? = nil
+    ) {
         if plainDraft == draft, parse.template == nil {
             templateOrigin = nil
         }
@@ -12347,7 +12353,7 @@ final class CapturePanelModel: ObservableObject {
                 spans: parse.spans
             )
         }
-        applyHighlighting(parse: parse, draft: draft)
+        applyHighlighting(parse: parse, draft: draft, cursorUTF8: cursorUTF8)
 
         if let diagnostic = parse.diagnostics.first(where: { $0.severity != "info" }) {
             statusText = diagnostic.message
@@ -12356,7 +12362,11 @@ final class CapturePanelModel: ObservableObject {
         }
     }
 
-    private func applyHighlighting(parse: CaptureParseResponse, draft: String) {
+    private func applyHighlighting(
+        parse: CaptureParseResponse,
+        draft: String,
+        cursorUTF8: Int? = nil
+    ) {
         guard let ranges = validatedSpanRanges(in: draft, spans: parse.spans) else {
             statusText = "Ignored malformed parse spans"
             return
@@ -12373,7 +12383,7 @@ final class CapturePanelModel: ObservableObject {
                 parse: parse,
                 draft: draft,
                 ranges: ranges,
-                cursorUTF8: collapsedSelectionUTF8Offset()
+                cursorUTF8: cursorUTF8 ?? collapsedSelectionUTF8Offset()
             )
         }
         isApplyingProgrammaticDraft = false

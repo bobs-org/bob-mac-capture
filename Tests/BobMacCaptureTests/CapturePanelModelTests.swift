@@ -6937,7 +6937,12 @@ final class CapturePanelModelTests: XCTestCase {
             Self.dashedStrings(in: model.attributedDraft, style: dashed),
             ["fo"]
         )
-        model.editorSelection = AttributedTextSelection(insertionPoint: endIndex)
+        // Re-resolve the caret from the current editor value: the first
+        // analysis repainted attributedDraft, so the earlier index is stale.
+        let endIndexAfterAnalysis = try XCTUnwrap(
+            attributedStringIndex(in: model.attributedDraft, utf8Offset: draft.utf8.count)
+        )
+        model.editorSelection = AttributedTextSelection(insertionPoint: endIndexAfterAnalysis)
         model.editorSelectionDidChange(cursorUTF8Offset: draft.utf8.count)
         await waitUntil {
             Self.dashedStrings(in: model.attributedDraft, style: dashed).isEmpty
