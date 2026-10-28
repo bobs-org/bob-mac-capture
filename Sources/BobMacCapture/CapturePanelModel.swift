@@ -265,6 +265,9 @@ struct CaptureRelationLabelPromptState: Equatable {
     var rename: CaptureRelationRenameState?
     var isSaving: Bool
     var errorMessage: String?
+    /// Latest `relation_cancel` from a catalog, suggestion, or opening
+    /// completion. Nil on older Bob and when no cancel labels are configured.
+    var relationCancel: CaptureCompletionRelationCancel?
 }
 
 /// Ctrl+R rename mode over one existing relation label. `oldKey` is the
@@ -1575,6 +1578,11 @@ final class CapturePanelModel: ObservableObject {
         }
         if adjustPresentation != nil {
             return "Adjust"
+        }
+        if let hint = CaptureRelationCancelPresentation.submitHint(
+            cancelCount: CaptureRelationCancelPresentation.cancelCount(in: previewResults)
+        ) {
+            return hint
         }
         return "Capture"
     }
@@ -7350,10 +7358,59 @@ final class CapturePanelModel: ObservableObject {
 
     var relationLabelSentenceSource: String {
         guard let prompt = relationLabelPrompt else { return "This task" }
+        let base: String
         if prompt.direction == .linkedFrom {
-            return prompt.targetText.isEmpty ? "That task" : "“\(prompt.targetText)”"
+            base = prompt.targetText.isEmpty ? "That task" : "“\(prompt.targetText)”"
+        } else {
+            base = prompt.ownerText.isEmpty ? "This task" : "“\(prompt.ownerText)”"
         }
-        return prompt.ownerText.isEmpty ? "This task" : "“\(prompt.ownerText)”"
+        if relationLabelDimsSource {
+            return "⊘ \(base)"
+        }
+        return base
+    }
+
+    /// The selected catalog row, else the fresh typed row, for cancel cues.
+    var relationLabelCancelCandidate: CaptureCompletionCandidate? {
+        relationLabelSelectedCandidate ?? relationLabelFreshTypedRow
+    }
+
+    var relationLabelDimsSource: Bool {
+        CaptureRelationCancelPresentation.dimsSource(
+            candidate: relationLabelCancelCandidate,
+            cancel: relationLabelPrompt?.relationCancel
+        )
+    }
+
+    var relationLabelCancelSlot: CaptureRelationCancelSlot? {
+        CaptureRelationCancelPresentation.slot(
+            candidate: relationLabelCancelCandidate,
+            cancel: relationLabelPrompt?.relationCancel
+        )
+    }
+
+    /// VoiceOver for the live sentence. A canceling source reads
+    /// "Cancels Sell stocks!" instead of the quoted task name.
+    var relationLabelSentenceAccessibilityLabel: String {
+        let sourceName: String
+        if let prompt = relationLabelPrompt {
+            if prompt.direction == .linkedFrom {
+                sourceName = prompt.targetText
+            } else {
+                sourceName = prompt.ownerText
+            }
+        } else {
+            sourceName = ""
+        }
+        let source = CaptureRelationCancelPresentation.sourceAccessibilityLabel(
+            sourceText: sourceName,
+            dimsSource: relationLabelDimsSource
+        )
+        let sentence = relationLabelSentence
+        if relationLabelDimsSource, !source.isEmpty {
+            return "Relation sentence: \(source). \(sentence)"
+        }
+        return "Relation sentence: \(sentence)"
     }
 
     var relationLabelSentenceTarget: String {
@@ -7632,7 +7689,8 @@ final class CapturePanelModel: ObservableObject {
             visibilityWriteID: nil,
             rename: nil,
             isSaving: false,
-            errorMessage: nil
+            errorMessage: nil,
+            relationCancel: nil
         )
         statusText = "Link with a relation"
         requestFocus(.relationLabelPromptField)
@@ -9013,6 +9071,7 @@ final class CapturePanelModel: ObservableObject {
         }
         current.catalog = response.candidates.filter { !$0.typed }
         current.catalogErrorMessage = nil
+        current.relationCancel = response.relationCancel
         if let hiddenCount = response.hiddenCount {
             current.hiddenCount = hiddenCount
             current.hiddenCountKnown = true
@@ -9128,6 +9187,7 @@ final class CapturePanelModel: ObservableObject {
         }
         current.suggestions = response.candidates
         current.suggestionAuthoredLabel = authoredLabel
+        current.relationCancel = response.relationCancel
         if let hiddenCount = response.hiddenCount {
             current.hiddenCount = hiddenCount
             current.hiddenCountKnown = true
@@ -9248,6 +9308,7 @@ final class CapturePanelModel: ObservableObject {
             if verified, !hasFreshRows {
                 existing.suggestions = completion.candidates
                 existing.suggestionAuthoredLabel = existing.authoredLabel
+                existing.relationCancel = completion.relationCancel
                 if let typed = completion.candidates.first(where: { $0.typed }),
                    let reason = typed.disabledReason, !reason.isEmpty
                 {
@@ -9300,6 +9361,7 @@ final class CapturePanelModel: ObservableObject {
                 opened.hiddenCount = hiddenCount
                 opened.hiddenCountKnown = true
             }
+            opened.relationCancel = completion.relationCancel
             relationLabelPrompt = opened
             if opened.hiddenCount > 0 {
                 fetchRelationLabelHiddenRows()
@@ -9321,7 +9383,8 @@ final class CapturePanelModel: ObservableObject {
         suggestions: [CaptureCompletionCandidate] = [],
         suggestionAuthoredLabel: String? = nil,
         pendingSubmit: Bool = false,
-        returnPicker: CapturePickerState? = nil
+        returnPicker: CapturePickerState? = nil,
+        relationCancel: CaptureCompletionRelationCancel? = nil
     ) {
         plainDraft = draft
         relationLabelPrompt = CaptureRelationLabelPromptState(
@@ -9352,7 +9415,8 @@ final class CapturePanelModel: ObservableObject {
             visibilityWriteID: nil,
             rename: nil,
             isSaving: false,
-            errorMessage: nil
+            errorMessage: nil,
+            relationCancel: relationCancel
         )
         editorInputLocked = true
         fetchRelationLabelCatalog()

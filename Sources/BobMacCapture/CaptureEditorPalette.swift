@@ -95,6 +95,10 @@ enum CaptureEditorPalette {
             return .mint
         case .relationLabel:
             return .secondary
+        case .relationCancelLabel:
+            // Cancelled-status family, distinct from muted labels, amber
+            // caveats, and SwiftUI error red.
+            return Color(nsColor: .systemRed)
         case .pomodoroStart:
             return .pink
         case .pomodoroCloseInProgress:

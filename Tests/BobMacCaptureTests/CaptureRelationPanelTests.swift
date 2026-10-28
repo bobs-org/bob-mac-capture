@@ -1397,4 +1397,210 @@ final class CaptureRelationPanelTests: XCTestCase {
             .cancelRelationLabelPrompt
         )
     }
+
+    func testRelationCardCancelCueDimsSourceAndShowsVerdict() {
+        let model = CapturePanelModel()
+        let cancel = CaptureCompletionRelationCancel(
+            source: CaptureCompletionRelationCancelSource(
+                path: "cash.md",
+                blockID: "sell",
+                text: "Sell stocks!",
+                statusSymbol: " ",
+                statusName: "Todo"
+            ),
+            verdict: "cancels",
+            message: "⊘ Cancels “Sell stocks!” · Todo → Cancelled"
+        )
+        model.installRelationLabelPromptForPreviews(
+            draft: "Sell stocks! ~invest:now|\"duplicate of\"",
+            tokenRange: CaptureRange(start: 14, end: 25),
+            direction: .linksTo,
+            ownerText: "Sell stocks!",
+            targetText: "Sell stocks now!",
+            authoredLabel: "duplicate of",
+            suggestions: [
+                typedCandidate(
+                    label: "duplicate of",
+                    replacement: "|\"duplicate of\""
+                ).withCancelSource(),
+                suggestionCandidate(label: "duplicate of", count: 0).withCancelSource(
+                    configured: true
+                ),
+            ],
+            suggestionAuthoredLabel: "duplicate of",
+            relationCancel: cancel
+        )
+        XCTAssertTrue(model.relationLabelDimsSource)
+        XCTAssertTrue(model.relationLabelSentence.hasPrefix("⊘ "))
+        XCTAssertEqual(
+            model.relationLabelCancelSlot,
+            CaptureRelationCancelSlot(
+                text: "⊘ Cancels “Sell stocks!” · Todo → Cancelled",
+                style: .cancels
+            )
+        )
+        XCTAssertTrue(
+            model.relationLabelSentenceAccessibilityLabel.contains("Cancels Sell stocks!")
+        )
+        XCTAssertEqual(
+            model.relationLabelPromptRows.filter(\.cancelsSource).count,
+            1
+        )
+    }
+
+    func testRelationCardAlreadyClosedSlotIsMuted() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            ownerText: "Gone idea",
+            targetText: "Sell stocks now!",
+            authoredLabel: "duplicate of",
+            suggestions: [
+                typedCandidate(
+                    label: "duplicate of",
+                    replacement: "|\"duplicate of\""
+                ).withCancelSource()
+            ],
+            suggestionAuthoredLabel: "duplicate of",
+            relationCancel: CaptureCompletionRelationCancel(
+                source: CaptureCompletionRelationCancelSource(text: "Gone idea"),
+                verdict: "already_closed",
+                message: "Already Cancelled · link only"
+            )
+        )
+        XCTAssertFalse(model.relationLabelDimsSource)
+        XCTAssertEqual(model.relationLabelCancelSlot?.style, .muted)
+        XCTAssertEqual(model.relationLabelCancelSlot?.text, "Already Cancelled · link only")
+    }
+
+    func testRelationCardInverseHintIsMuted() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            ownerText: "Sell stocks!",
+            targetText: "Sell stocks now!",
+            authoredLabel: "supersedes",
+            suggestions: [
+                typedCandidate(label: "supersedes", replacement: "|supersedes")
+            ],
+            suggestionAuthoredLabel: "supersedes",
+            relationCancel: CaptureCompletionRelationCancel(
+                source: CaptureCompletionRelationCancelSource(text: "Sell stocks!"),
+                verdict: "cancels",
+                message: "⊘ Cancels “Sell stocks!” · Todo → Cancelled",
+                hint: "“supersedes” never cancels · to retire “Sell stocks now!”, use ~~ with “superseded by”"
+            )
+        )
+        XCTAssertFalse(model.relationLabelDimsSource)
+        XCTAssertEqual(model.relationLabelCancelSlot?.style, .muted)
+        XCTAssertTrue(model.relationLabelCancelSlot?.text.contains("never cancels") == true)
+    }
+
+    func testSubmitHintNamesCancelCountFromDryRun() throws {
+        let model = CapturePanelModel()
+        XCTAssertEqual(model.primaryActionTitle, "Capture")
+        let json = """
+        {
+          "ok": true, "dry_run": true, "routed": false,
+          "route_label": "cash.md", "relative_target": "cash.md",
+          "target": "/tmp/vault/cash.md", "text": "Sell stocks!",
+          "task_line": "- [ ] #task Sell stocks!", "kind": "task",
+          "created": "2026-10-28", "placement": "updated",
+          "relation_cancels": [{
+            "source": {"path": "cash.md", "line": 1, "block_id": "sell", "text": "Sell stocks!"},
+            "target": {"path": "invest.md", "block_id": "now", "text": "Sell stocks now!"},
+            "labels": ["duplicate of"],
+            "action": "added",
+            "previous_status": " ",
+            "previous_status_name": "Todo",
+            "cancel_log": "none",
+            "pomodoro_links_removed": 0,
+            "recovered": [],
+            "message": "⊘ would cancel “Sell stocks!” · Todo → Cancelled"
+          }]
+        }
+        """
+        let response = try JSONDecoder().decode(
+            CaptureCommandResponse.self,
+            from: Data(json.utf8)
+        )
+        guard case .success(let capture) = response else {
+            return XCTFail("expected success")
+        }
+        model.previewResults = [capture]
+        XCTAssertEqual(model.primaryActionTitle, "Capture & cancel 1 task")
+    }
+}
+
+extension CaptureCompletionCandidate {
+    fileprivate func withCancelSource(configured: Bool = false) -> CaptureCompletionCandidate {
+        CaptureCompletionCandidate(
+            replacement: replacement,
+            route: route,
+            label: label,
+            kind: kind,
+            status: status,
+            title: title,
+            level: level,
+            taskRef: taskRef,
+            target: target,
+            blockID: blockID,
+            requiresBlockID: requiresBlockID,
+            statusSymbol: statusSymbol,
+            statusName: statusName,
+            statusType: statusType,
+            text: text,
+            section: section,
+            depth: depth,
+            childCount: childCount,
+            cursorAfter: cursorAfter,
+            path: path,
+            name: name,
+            alias: alias,
+            matchKind: matchKind,
+            heading: heading,
+            preview: preview,
+            requiresName: requiresName,
+            line: line,
+            state: state,
+            timeRange: timeRange,
+            placeholder: placeholder,
+            isCurrent: isCurrent,
+            matchCount: matchCount,
+            createsPomodoro: createsPomodoro,
+            themes: themes,
+            origin: origin,
+            lastUsed: lastUsed,
+            daysUsed: daysUsed,
+            similarTo: similarTo,
+            nextUp: nextUp,
+            planThemesAfter: planThemesAfter,
+            planThemesCap: planThemesCap,
+            pomodoro: pomodoro,
+            noteKind: noteKind,
+            blockIDSuggestions: blockIDSuggestions,
+            group: group,
+            scheduled: scheduled,
+            pullsForward: pullsForward,
+            notePath: notePath,
+            locator: locator,
+            alreadyDependency: alreadyDependency,
+            alreadyBlocked: alreadyBlocked,
+            alreadyLinked: alreadyLinked,
+            existingLabel: existingLabel,
+            alsoPrerequisite: alsoPrerequisite,
+            disabledReason: disabledReason,
+            hidden: hidden,
+            recurring: recurring,
+            alreadySelected: alreadySelected,
+            today: today,
+            taskKind: taskKind,
+            count: count,
+            typed: typed,
+            key: key,
+            inverse: inverse,
+            hideReplacement: hideReplacement,
+            existing: existing,
+            cancelsSource: true,
+            configured: configured
+        )
+    }
 }

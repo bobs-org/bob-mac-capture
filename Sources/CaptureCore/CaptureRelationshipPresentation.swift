@@ -6,10 +6,17 @@ import Foundation
 public struct CaptureRelationshipRow: Equatable, Sendable {
     public let text: String
     public let accessibilityLabel: String
+    /// True for `relation_cancels[]` rows that render Bob's ⊘ message.
+    public let usesCancelledTint: Bool
 
-    public init(text: String, accessibilityLabel: String? = nil) {
+    public init(
+        text: String,
+        accessibilityLabel: String? = nil,
+        usesCancelledTint: Bool = false
+    ) {
         self.text = text
         self.accessibilityLabel = accessibilityLabel ?? text
+        self.usesCancelledTint = usesCancelledTint
     }
 }
 
@@ -50,7 +57,8 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
     public init(capture: CaptureCommandSuccess) {
         let dependencyRows = capture.dependencyUpdates.flatMap { Self.rows(for: $0) }
         let relationRows = capture.relationUpdates.map { Self.row(for: $0, capture: capture) }
-        rows = dependencyRows + relationRows
+        let cancelRows = capture.relationCancels.compactMap { Self.row(for: $0) }
+        rows = dependencyRows + relationRows + cancelRows
         if Self.isTaskDependency(capture) {
             ownerHeader = Self.ownerHeader(for: capture)
             notification = Self.notification(for: capture)
@@ -188,6 +196,16 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
             }
         }
         return CaptureRelationshipRow(text: text)
+    }
+
+    /// One ⊘ preview row per cancelled (or already-closed) source, using
+    /// Bob's authored `message`. Swift never restates the verdict.
+    private static func row(for cancel: CaptureRelationCancel) -> CaptureRelationshipRow? {
+        let text = cancel.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            return nil
+        }
+        return CaptureRelationshipRow(text: text, usesCancelledTint: true)
     }
 
     private static func isArchived(

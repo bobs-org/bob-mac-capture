@@ -1979,6 +1979,7 @@ private struct RelationLabelPromptCard: View {
                     HStack(spacing: 6) {
                         Text(model.relationLabelSentenceSource)
                             .lineLimit(1)
+                            .opacity(model.relationLabelDimsSource ? 0.55 : 1)
                         if let label = model.relationLabelDisplayedLabel {
                             HStack(spacing: 4) {
                                 if prompt.oneOff {
@@ -1992,7 +1993,11 @@ private struct RelationLabelPromptCard: View {
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
                             .background(
-                                CaptureEditorPalette.color(for: .relationSigil).opacity(0.14),
+                                CaptureEditorPalette.color(
+                                    for: model.relationLabelCancelCandidate?.cancelsSource == true
+                                        ? .relationCancelLabel
+                                        : .relationSigil
+                                ).opacity(0.14),
                                 in: Capsule()
                             )
                             .accessibilityLabel(
@@ -2009,7 +2014,7 @@ private struct RelationLabelPromptCard: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("Relation sentence: \(model.relationLabelSentence)")
+                        .accessibilityLabel(model.relationLabelSentenceAccessibilityLabel)
                 }
 
                 HStack(spacing: 8) {
@@ -2196,7 +2201,16 @@ private struct RelationLabelPromptCard: View {
                             .foregroundStyle(CaptureEditorPalette.color(for: .relationSigil))
                     }
 
-                    if let warning = model.relationLabelOneOffWarning {
+                    if let slot = model.relationLabelCancelSlot {
+                        Text(slot.text)
+                            .font(.caption)
+                            .foregroundStyle(
+                                slot.style == .cancels
+                                    ? CaptureEditorPalette.color(for: .relationCancelLabel)
+                                    : Color.secondary
+                            )
+                            .accessibilityLabel(slot.text)
+                    } else if let warning = model.relationLabelOneOffWarning {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Text("⚠ \(warning)")
                             Spacer(minLength: 8)
@@ -2282,6 +2296,7 @@ private struct RelationLabelPromptCard: View {
         showTabTarget: Bool
     ) -> some View {
         let effectiveHidden = ghost ?? (hidden || candidate.hidden)
+        let disabled = candidate.disabledReason?.isEmpty == false
         return HStack(spacing: 8) {
             if effectiveHidden {
                 Image(systemName: "eye.slash")
@@ -2315,7 +2330,29 @@ private struct RelationLabelPromptCard: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
-            if showTabTarget {
+            if candidate.cancelsSource {
+                HStack(spacing: 3) {
+                    Image(systemName: "circle.slash")
+                        .font(.caption2.weight(.medium))
+                    Text("cancels")
+                        .font(.caption2.weight(.medium))
+                }
+                .foregroundStyle(CaptureEditorPalette.color(for: .relationCancelLabel))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(
+                    CaptureEditorPalette.color(for: .relationCancelLabel).opacity(0.12),
+                    in: Capsule()
+                )
+                .accessibilityHidden(true)
+            }
+            if disabled, let reason = candidate.disabledReason {
+                Text(reason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            if showTabTarget, !disabled {
                 Text("⇥")
                     .font(.system(.caption2, design: .monospaced).weight(.semibold))
                     .padding(.horizontal, 5)
@@ -2323,7 +2360,8 @@ private struct RelationLabelPromptCard: View {
                     .background(.background.opacity(0.8), in: RoundedRectangle(cornerRadius: 4))
             }
         }
-        .foregroundStyle(effectiveHidden ? .secondary : .primary)
+        .foregroundStyle(effectiveHidden || disabled ? .secondary : .primary)
+        .opacity(disabled ? 0.55 : 1)
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2351,6 +2389,12 @@ private struct RelationLabelPromptCard: View {
         var parts = [label, "\(candidate.count ?? 0) links"]
         if let inverse = candidate.inverse, !inverse.isEmpty {
             parts.append("inverse \(inverse)")
+        }
+        if candidate.cancelsSource {
+            parts.append("cancels")
+        }
+        if let reason = candidate.disabledReason, !reason.isEmpty {
+            parts.append(reason)
         }
         if let ghost {
             parts.append(ghost ? "hidden everywhere, Control D undoes" : "visible again, Control D undoes")
@@ -4255,13 +4299,21 @@ struct PreviewPane: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             ForEach(
-                Array(success.warnings.filter { !$0.isThemeNotConfigured }.enumerated()),
+                Array(
+                    CaptureRelationCancelPresentation.startCardWarningRows(for: success)
+                        .enumerated()
+                ),
                 id: \.offset
             ) { _, warning in
-                Text(warning.message)
+                Text(warning.text)
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(
+                        warning.style == .cancelled
+                            ? CaptureEditorPalette.color(for: .relationCancelLabel)
+                            : Color.orange
+                    )
                     .textSelection(.enabled)
+                    .accessibilityLabel(warning.accessibilityLabel)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -4691,6 +4743,11 @@ struct PreviewPane: View {
                 ForEach(Array(relationship.rows.enumerated()), id: \.offset) { _, row in
                     Text(row.text)
                         .font(.system(.callout, design: .monospaced))
+                        .foregroundStyle(
+                            row.usesCancelledTint
+                                ? CaptureEditorPalette.color(for: .relationCancelLabel)
+                                : Color.primary
+                        )
                         .textSelection(.enabled)
                         .accessibilityLabel(row.accessibilityLabel)
                 }
@@ -4758,6 +4815,24 @@ struct PreviewPane: View {
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+
+        let previewWarnings = CaptureRelationCancelPresentation.previewWarningRows(for: success)
+        if !previewWarnings.isEmpty {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(previewWarnings.enumerated()), id: \.offset) { _, warning in
+                    Text(warning.text)
+                        .font(.caption)
+                        .foregroundStyle(
+                            warning.style == .cancelled
+                                ? CaptureEditorPalette.color(for: .relationCancelLabel)
+                                : Color.orange
+                        )
+                        .textSelection(.enabled)
+                        .accessibilityLabel(warning.accessibilityLabel)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

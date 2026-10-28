@@ -422,6 +422,14 @@ cards while relation rows are present. Relation rows never render red,
 consumption, or status arrows. A `||` dry run that would hide a visible label
 renders Bob's `hides_existing_relation_label` message as an amber row; the
 commit appends `· hid "label" from relation suggestions` to the notification.
+Cancel-label drafts add one ⊘ row per `relation_cancels[]` under the 🪢
+row, using Bob's message (`⊘ would cancel “Sell stocks!” · Todo → Cancelled`
+on a dry run). The matching `relation_cancelled_source` warning is skipped
+when that row is present, so it never appears as an orange duplicate; if
+Bob sends the warning without `relation_cancels[]`, it uses the ⊘ tint.
+The draft's `cancels_source` label span takes the cancelled tint. While the
+latest dry run has cancels, the submit button reads `Capture & cancel 1
+task`.
 Success notifications count relations separately:
 a single `~` reads `🪢 owner now links to "target"`, a single `~~` reads
 `🪢 "source" now links here`, and larger or mixed batches read

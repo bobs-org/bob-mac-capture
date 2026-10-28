@@ -82,6 +82,49 @@ final class CaptureEditorHighlightTests: XCTestCase {
         XCTAssertEqual(Self.strings(in: text, where: { $0.inlinePresentationIntent != nil }), ["follow"])
     }
 
+    func testCancelLabelSpanUsesCancelledTintAndItalic() throws {
+        let draft = "Use this @cash+sell ~invest:now|\"duplicate of\" next"
+        let spans = [
+            CaptureSpan(start: 9, end: 14, kind: "sub_bullet_route"),
+            CaptureSpan(start: 15, end: 19, kind: "sub_bullet_block_id"),
+            CaptureSpan(start: 20, end: 21, kind: "relation_sigil"),
+            CaptureSpan(start: 21, end: 27, kind: "relation_note"),
+            CaptureSpan(start: 28, end: 31, kind: "relation_block_id"),
+            CaptureSpan(start: 31, end: 32, kind: "relation_label_separator"),
+            CaptureSpan(
+                start: 33,
+                end: 45,
+                kind: "relation_label",
+                cancelsSource: true
+            ),
+        ]
+        var text = AttributedString(draft)
+        let parse = Self.parse(draft: draft, spans: spans)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+
+        XCTAssertEqual(
+            captureSemanticCategory(forSpan: spans[6]),
+            .relationCancelLabel
+        )
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(&text, parse: parse, draft: draft, ranges: ranges)
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.inlinePresentationIntent != nil }),
+            ["duplicate of"]
+        )
+        let cancelColor = NSColor(CaptureEditorPalette.color(for: .relationCancelLabel))
+        let labelColor = NSColor(CaptureEditorPalette.color(for: .relationLabel))
+        XCTAssertNotEqual(cancelColor, labelColor)
+        let painted = Self.strings(in: text, where: { run in
+            guard let color = run.foregroundColor else {
+                return false
+            }
+            return NSColor(color) == cancelColor
+        })
+        XCTAssertEqual(painted, ["duplicate of"])
+    }
+
     func testWhitespaceOnlyDraftClearsInheritedTint() throws {
         let model = CapturePanelModel()
         var text = AttributedString("  ")

@@ -118,7 +118,15 @@ token. Shift-Tab is consumed. Escape returns to the unchanged draft. Command-Ret
 inserts then captures when the owner is complete;
 Control-Return also opens the reported notes. The `~` / `~~` sigil uses a mint
 knot accent, distinct from the grey Pomodoro-drop `~`. Relation labels render
-muted italic; the `|` separator is muted.
+muted italic; the `|` separator is muted. When Bob's `relations.cancel_labels`
+lists a row, the card shows a `circle.slash` `cancels` capsule. Selecting or
+typing that label dims the live-sentence source as `⊘ {S} — {label} → {T}`
+and puts Bob's `relation_cancel.message` in the slot the `||` warning uses
+(⊘ tint when the verdict is `cancels`, muted for `Already Cancelled · link
+only` / `Stays Done · link only`). Inverse labels show Bob's muted `hint`.
+Disabled recurring and new-task rows keep Bob's `disabled_reason` and stay
+dimmed. VoiceOver names the source as `Cancels Sell stocks!`. Older Bob
+omits the fields and the card stays as it is.
 
 The partial `X ~` need shows **Pick a task to link — press Tab to browse**.
 A `|label` field shows **Type a relation label, or pick a suggestion**.

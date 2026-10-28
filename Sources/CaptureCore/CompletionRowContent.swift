@@ -20,6 +20,7 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case blockedTaskSigil
     case relationSigil
     case relationLabel
+    case relationCancelLabel
     case pomodoroStart
     case pomodoroCloseInProgress
     case pomodoroClosePark
@@ -39,9 +40,10 @@ extension CaptureSemanticCategory {
         self == .link
     }
 
-    /// Relation labels render muted italic in the editor.
+    /// Relation labels render muted italic in the editor. Cancel labels
+    /// keep the italic and take the ⊘ tint instead of the muted role.
     public var isItalic: Bool {
-        self == .relationLabel
+        self == .relationLabel || self == .relationCancelLabel
     }
 }
 
@@ -177,6 +179,8 @@ public func captureSemanticCategory(forSpan span: CaptureSpan) -> CaptureSemanti
             return .neutral
         }
         return .templateSlot(field)
+    case "relation_label" where span.cancelsSource:
+        return .relationCancelLabel
     default:
         return captureSemanticCategory(forSpanKind: span.kind)
     }
@@ -781,8 +785,8 @@ public func completionRowContent(
             : "Inserts a relation from the owner to this task."
 
     case .relationLabel:
-        category = .relationLabel
-        symbolName = "textformat"
+        category = candidate.cancelsSource ? .relationCancelLabel : .relationLabel
+        symbolName = candidate.cancelsSource ? "circle.slash" : "textformat"
         contextLabel = "Relation label"
         primaryText = candidate.label ?? candidate.replacement
         let labelCount = candidate.count ?? candidate.matchCount
@@ -791,12 +795,19 @@ public func completionRowContent(
         } else {
             secondaryText = nil
         }
-        if candidate.typed {
-            badges = ["Typed"]
-        } else if let reason = candidate.disabledReason, !reason.isEmpty {
-            badges = [reason]
+        var labelBadges: [String] = []
+        if candidate.cancelsSource {
+            labelBadges.append("cancels")
         }
-        accessibilityHint = "Inserts this relation label."
+        if candidate.typed {
+            labelBadges.append("Typed")
+        } else if let reason = candidate.disabledReason, !reason.isEmpty {
+            labelBadges.append(reason)
+        }
+        badges = labelBadges
+        accessibilityHint = candidate.cancelsSource
+            ? "Inserts this cancel relation label."
+            : "Inserts this relation label."
 
     case .taskComplete:
         // The `!` picker owns the card; this is only the stray inline
