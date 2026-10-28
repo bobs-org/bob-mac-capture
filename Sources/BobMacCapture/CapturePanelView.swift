@@ -1120,7 +1120,7 @@ private struct CapturePanelFooter: View {
             } label: {
                 Label("Stash \(model.stashCount)", systemImage: "tray")
             }
-            .help("Restore a draft canceled with Control-C (Control-S).")
+            .help("Restore a draft canceled with Control-C or left unsent at quit (Control-S).")
             .disabled(model.isSubmitting || model.inlinePromptVisible || model.pickerVisible)
             Button("Discard") {
                 model.discardDraftAndClose()

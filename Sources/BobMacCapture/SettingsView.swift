@@ -215,9 +215,13 @@ struct SettingsView: View {
 
                 LabeledContent("Retained", value: retainedDraftCountLabel)
 
-                Text("Canceled drafts are stored on disk and survive quitting or restarting. Setting capacity to 0 or using Clear Stash... deletes the file.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(
+                    "Canceled drafts are stored on disk and survive quitting or restarting. "
+                        + "Quitting or restarting with an unsent draft stashes it. "
+                        + "Setting capacity to 0 or using Clear Stash... deletes the file."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
                 Button("Clear Stash...", role: .destructive) {
                     isConfirmingStashClear = true

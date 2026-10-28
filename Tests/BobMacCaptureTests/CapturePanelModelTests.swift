@@ -4602,6 +4602,81 @@ final class CapturePanelModelTests: XCTestCase {
         XCTAssertEqual(dismissCount, 1)
     }
 
+    func testStashDraftForTerminationPushesExactTextWithoutClearingOrDismissing() {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        let draft = "  café task @Cash\n- keep whitespace  "
+        model.plainDraft = draft
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+
+        let entry = model.stashDraftForTermination()
+
+        XCTAssertEqual(entry?.text, draft)
+        XCTAssertEqual(stash.entries.map(\.text), [draft])
+        XCTAssertEqual(model.plainDraft, draft)
+        XCTAssertEqual(model.statusText, "")
+        XCTAssertEqual(dismissCount, 0)
+    }
+
+    func testStashDraftForTerminationWhitespaceOnlyAndEmptyDraftsPushNothing() {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        var dismissCount = 0
+        model.panelDismisser = { dismissCount += 1 }
+
+        model.plainDraft = " \n\t "
+        XCTAssertNil(model.stashDraftForTermination())
+        XCTAssertTrue(stash.entries.isEmpty)
+        XCTAssertEqual(model.plainDraft, " \n\t ")
+
+        model.plainDraft = ""
+        XCTAssertNil(model.stashDraftForTermination())
+        XCTAssertTrue(stash.entries.isEmpty)
+        XCTAssertEqual(model.plainDraft, "")
+        XCTAssertEqual(model.statusText, "")
+        XCTAssertEqual(dismissCount, 0)
+    }
+
+    func testStashDraftForTerminationCapacityZeroPushesNothing() {
+        let stash = CanceledDraftStash(capacity: 0)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        model.plainDraft = "Call bank @Cash"
+
+        XCTAssertNil(model.stashDraftForTermination())
+        XCTAssertTrue(stash.entries.isEmpty)
+        XCTAssertEqual(model.plainDraft, "Call bank @Cash")
+    }
+
+    func testStashDraftForTerminationAddsSecondEntryForIdenticalText() {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        stash.push("Call bank @Cash")
+        model.plainDraft = "Call bank @Cash"
+
+        let entry = model.stashDraftForTermination()
+
+        XCTAssertEqual(entry?.text, "Call bank @Cash")
+        XCTAssertEqual(stash.entries.map(\.text), ["Call bank @Cash", "Call bank @Cash"])
+        XCTAssertEqual(stash.entries.first?.id, entry?.id)
+        XCTAssertEqual(model.plainDraft, "Call bank @Cash")
+    }
+
+    func testStashDraftForTerminationPushesDraftWithTemplateOriginUnchanged() {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        model.plainDraft = "weekly body @Cash"
+        model.templateOrigin = "weekly-review"
+
+        let entry = model.stashDraftForTermination()
+
+        XCTAssertEqual(entry?.text, "weekly body @Cash")
+        XCTAssertEqual(stash.entries.map(\.text), ["weekly body @Cash"])
+        XCTAssertEqual(model.plainDraft, "weekly body @Cash")
+        XCTAssertEqual(model.templateOrigin, "weekly-review")
+        XCTAssertEqual(model.statusText, "")
+    }
+
     func testDiscardDraftAndCloseDoesNotAddToStash() {
         let stash = CanceledDraftStash(capacity: 10)
         let model = CapturePanelModel(canceledDraftStash: stash)

@@ -423,6 +423,21 @@ final class CaptureTaskGotoPanelTests: XCTestCase {
         XCTAssertEqual(model.statusText, "Canceled draft discarded")
     }
 
+    func testStashDraftForTerminationDoesNotPushGotoDraft() async throws {
+        let stash = CanceledDraftStash(capacity: 10)
+        let (model, _) = try gotoModel(stash: stash)
+        model.plainDraft = "/dee"
+        model.editorTextDidChange(cursorUTF8Offset: 4)
+        await waitUntil { model.pickerVisible }
+        XCTAssertNil(model.stashDraftForTermination())
+        XCTAssertTrue(stash.entries.isEmpty)
+        XCTAssertEqual(model.plainDraft, "/dee")
+        XCTAssertEqual(
+            model.statusText,
+            "Pick a task to open — press Tab to browse"
+        )
+    }
+
     private func gotoModel(
         recordURL: URL? = nil,
         stash: CanceledDraftStash? = nil

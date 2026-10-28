@@ -158,9 +158,11 @@ other supported install target (`/Applications` versus `~/Applications`) or from
 `swift run` / a raw `.build` binary is not touched.
 
 Automatic restart uses the same quit-and-relaunch sequence as
-`menu-bar icon → Restart Bob Mac Capture`: an unsent draft is discarded, retained canceled drafts
-survive, and there is no confirmation dialog. The menu item remains the manual restart
-mechanism when you want to relaunch without reinstalling.
+`menu-bar icon → Restart Bob Mac Capture`: a nonempty unsent draft goes onto the
+canceled-draft stash (a Task Go-To (`/`) draft and capacity 0 excepted), so restore it
+with Control-S after the restart; retained canceled drafts survive; and there is no
+confirmation dialog. The menu item remains the manual restart mechanism when you want
+to relaunch without reinstalling.
 
 When that automatic restart succeeds, the replacement process requests one
 `Install complete` notification after `applicationDidFinishLaunching` finishes its normal

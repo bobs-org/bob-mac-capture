@@ -12,8 +12,10 @@ The panel owns presentation, process orchestration, and the hotkey. Capture gram
 - The menu-bar icon's menu offers Capture, Settings, Recheck Bob, Restart Bob Mac
   Capture, and Quit Bob Mac Capture, in that order, plus a conditional
   `bob Not Resolved — Open Settings…` row (with a separator) while `bob` is
-  unresolved. Restart discards an unsent draft;
-  retained canceled drafts survive Restart and Quit. There is no confirmation dialog.
+  unresolved. Restart and Quit stash a nonempty unsent draft onto the canceled-draft
+  stash (a Task Go-To (`/`) draft and capacity 0 excepted), so restore it with
+  Control-S after relaunch; retained canceled drafts survive. There is no confirmation
+  dialog.
   Restart refuses to quit (reporting a failure instead) when the running process is not
   launched from an installed `.app` bundle or that bundle no longer exists on disk. See
   [Install](install.md#updating-reinstalling-and-rollback) for automatic install restart and the
@@ -369,7 +371,8 @@ A successful aggregate capture hides the panel automatically only after Bob retu
   **Discard** permanently clears the draft without stashing, while Control-C always
   clears it: it stashes a semantically nonempty draft first, except a Task Go-To (`/`)
   draft is deliberately discarded and nothing is retained when stashing is off
-  (capacity 0).
+  (capacity 0). A graceful quit (Quit, Restart, or the restart `just install`
+  performs) stashes the live draft the same way, without clearing anything on screen.
 
 ## Canceled drafts
 
@@ -379,19 +382,24 @@ Canceled drafts persist across Quit, Restart, crash, and logout in
   is mode 0600. Settings persists only the capacity (in `UserDefaults`), defaults it to
   10, and clamps it to 0...36. Zero turns the feature off and deletes the file. Capacity
   reductions keep the newest entries and drop older overflow. Repeated cancellations are
-  retained as separate entries, even when their text is identical. Settings also shows
-  the retained count and a confirmed **Clear Stash...** action, which deletes the file.
+  retained as separate entries, even when their text is identical. A nonempty unsent
+  draft at a graceful quit is also a stash entry, with the same Task Go-To and
+  capacity-0 exceptions as Control-C. A force quit or crash still loses an unsent
+  draft. Settings also shows the retained count and a confirmed **Clear Stash...**
+  action, which deletes the file.
 
 ## Stash
 
 The footer's **Stash** action shows the number of retained canceled drafts and matches
-Control-S. If the stash is empty, opening it reports "No canceled drafts yet" without
-logging draft text. If the editor currently contains any characters, the picker refuses
-to open; capture, retain, cancel, or explicitly discard the live draft first so restore
-can never overwrite work. **Discard** is intentionally different from Control-C: it is a
-permanent discard and never adds an entry to the stash. Control-C on an empty or
+Control-S. A draft stashed by a graceful quit counts as a stash entry the same way a
+Control-C cancel does. If the stash is empty, opening it reports "No canceled drafts yet"
+without logging draft text. If the editor currently contains any characters, the picker
+refuses to open; capture, retain, cancel, or explicitly discard the live draft first so
+restore can never overwrite work. **Discard** is intentionally different from Control-C:
+it is a permanent discard and never adds an entry to the stash. Control-C on an empty or
 whitespace-only editor, on a Task Go-To (`/`) draft, or when stashing is off
-(capacity 0) closes without adding an entry.
+(capacity 0) closes without adding an entry. A force quit or crash still loses an
+unsent draft.
 
 While the stash picker is open, it is modal inside the panel's auxiliary region and
 uses the same compact material style as completion. Rows are newest first. Restoring a

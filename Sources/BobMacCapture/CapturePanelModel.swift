@@ -3032,14 +3032,17 @@ final class CapturePanelModel: ObservableObject {
         resetAnalysisState()
     }
 
+    private var draftIsTaskGoto: Bool {
+        picker?.source == .taskGoto
+            || pickerChip?.source == .taskGoto
+            || lastAnalysisNeedsTaskGoto
+    }
+
     func stashDraftAndClose() {
         if hasDraft {
             let draft = plainDraft
             let keptTemplate = templateOrigin != nil
-            let discardGoto = picker?.source == .taskGoto
-                || pickerChip?.source == .taskGoto
-                || lastAnalysisNeedsTaskGoto
-            let stashed = discardGoto ? false : canceledDraftStash.push(draft) != nil
+            let stashed = draftIsTaskGoto ? false : canceledDraftStash.push(draft) != nil
             discardDraft()
             let status: String
             if stashed && keptTemplate {
@@ -3054,6 +3057,17 @@ final class CapturePanelModel: ObservableObject {
             discardDraft()
         }
         panelDismisser()
+    }
+
+    /// Called once from applicationWillTerminate so Quit, Restart, and an install
+    /// restart never drop unsent text. It only pushes onto the write-through stash: the
+    /// process is exiting, so no status, dismissal, clearing, or analysis runs.
+    @discardableResult
+    func stashDraftForTermination() -> CanceledDraftEntry? {
+        guard hasDraft, !draftIsTaskGoto else {
+            return nil
+        }
+        return canceledDraftStash.push(plainDraft)
     }
 
     func toggleStashPicker() {

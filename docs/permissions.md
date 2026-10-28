@@ -38,7 +38,8 @@ What is stored on disk, what stays in memory, and what diagnostic logs omit:
   command it echoes, and failure notifications carry only that bounded error message.
   Success notifications include Bob's semantic task/note text from the capture response,
   not the raw draft syntax; see [Settings › Notification copy](settings.md#notification-copy).
-- Canceled drafts retained with Control-C are stored in
+- Canceled drafts stashed with Control-C or by quitting with an unsent draft are
+  stored in
   `~/Library/Application Support/org.bobs.bob-mac-capture/canceled-draft-stash.json`
   (directory mode 0700, file mode 0600). If the stash file is unreadable, it is renamed
   to `canceled-draft-stash.corrupt.json`, which can also hold captured text. They are

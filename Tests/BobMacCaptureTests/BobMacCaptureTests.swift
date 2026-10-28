@@ -4369,6 +4369,30 @@ final class BobMacCaptureTests: XCTestCase {
     }
 
     @MainActor
+    func testApplicationWillTerminateStashesLiveDraft() {
+        let stash = CanceledDraftStash(capacity: 10)
+        let model = CapturePanelModel(canceledDraftStash: stash)
+        model.plainDraft = "Call bank @Cash"
+        let delegate = AppDelegate()
+        delegate.panelModel = model
+
+        delegate.applicationWillTerminate(
+            Notification(name: NSApplication.willTerminateNotification)
+        )
+
+        XCTAssertEqual(stash.entries.map(\.text), ["Call bank @Cash"])
+        XCTAssertEqual(model.plainDraft, "Call bank @Cash")
+    }
+
+    @MainActor
+    func testApplicationWillTerminateWithNoPanelModelDoesNotCrash() {
+        let delegate = AppDelegate()
+        delegate.applicationWillTerminate(
+            Notification(name: NSApplication.willTerminateNotification)
+        )
+    }
+
+    @MainActor
     func testStatusMenuOffersRestartBeforeQuit() {
         // Regression guard for the restart flow: Restart must sit directly below the
         // separator and directly above Quit, and every item's action/key-equivalent

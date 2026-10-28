@@ -34,7 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     var hotKeyRegistry: HotKeyRegistry?
     private var panelController: CapturePanelController?
-    private var panelModel: CapturePanelModel?
+    var panelModel: CapturePanelModel?
     private var savedTemplateShelf: SavedTemplateShelf?
     private var agendaStore: CaptureAgendaStore?
     private var agendaCancellables: Set<AnyCancellable> = []
@@ -220,9 +220,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        // The canceled-draft stash is write-through on every mutation, so there is
-        // nothing to flush here. A terminate-only save would drop drafts on force
-        // quit, crash, logout SIGKILL, or a just install that replaces the bundle.
+        // The canceled-draft stash is write-through on every mutation, so the only
+        // terminate-time work is pushing the live editor draft. Force quit, a crash,
+        // and SIGKILL still lose an unsent draft. A terminate-only stash flush would
+        // drop drafts on those paths.
+        panelModel?.stashDraftForTermination()
         hotKeyRegistry?.invalidate()
         highlightsTakeover?.stop()
         highlightsSaveKeyMonitor?.stop()

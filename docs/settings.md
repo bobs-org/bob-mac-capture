@@ -72,7 +72,11 @@ Matching and the JSON contract belong to `bob capture-related`; the Mac app owns
 | Retained | live count | Read-only. |
 | Clear Stash... | — | Confirmed. Permanently removes retained canceled drafts. Disabled when the stash is empty. |
 
-Canceled drafts live on disk and survive quit and restart. Capacity 0 or Clear Stash... deletes the file. Storage rules are in [Permissions](permissions.md). Stash keys are in [Keyboard](keyboard.md) and [Capture panel](capture-panel.md).
+Canceled drafts live on disk and survive quit and restart. Quitting or restarting with
+a nonempty unsent draft stashes it (a Task Go-To (`/`) draft and capacity 0 excepted).
+Capacity 0 or Clear Stash... deletes the file. Storage rules are in
+[Permissions](permissions.md). Stash keys are in [Keyboard](keyboard.md) and
+[Capture panel](capture-panel.md).
 
 ## Saved Templates
 
