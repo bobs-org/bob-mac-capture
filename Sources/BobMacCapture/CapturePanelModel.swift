@@ -12521,9 +12521,11 @@ final class CapturePanelModel: ObservableObject {
                             end: end,
                             caretUTF8: cursorUTF8
                         ) {
-                            // Caret is inside the name: make sure no
-                            // dashed underline remains on this range.
-                            text[themeLower..<themeUpper].underlineStyle = nil
+                            // Caret is inside the name: overwrite any
+                            // dashed underline on this range. An empty
+                            // style clears the run where nil removal
+                            // leaves the prior paint in place.
+                            text[themeLower..<themeUpper].underlineStyle = NSUnderlineStyle([])
                             text[themeLower..<themeUpper].underlineColor = nil
                             continue
                         }
