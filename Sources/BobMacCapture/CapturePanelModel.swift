@@ -11,6 +11,13 @@ enum CapturePreviewState: Equatable {
     case failed(String)
 }
 
+/// Relation-card row identity comes from Bob's canonical label key. Refused cancel rows
+/// can share an empty replacement, so candidate identity is not unique.
+struct CaptureRelationLabelRowEntry: Identifiable {
+    let id: String
+    let candidate: CaptureCompletionCandidate
+}
+
 /// One-shot expected buffer after a native `:`/`^` or template-start `@` insertion. Cleared on
 /// consume, mismatch, or lifecycle invalidation; never used to parse grammar.
 /// The keystroke's completion waits on the eager rewrite (the completion gate):
@@ -7329,6 +7336,24 @@ final class CapturePanelModel: ObservableObject {
             .map { relationLabelHiddenCandidate($0.element) }
     }
 
+    var relationLabelPromptRowEntries: [CaptureRelationLabelRowEntry] {
+        relationLabelPromptRows.map {
+            CaptureRelationLabelRowEntry(
+                id: relationLabelSelectionKey(for: $0),
+                candidate: $0
+            )
+        }
+    }
+
+    var relationLabelHiddenPromptRowEntries: [CaptureRelationLabelRowEntry] {
+        relationLabelHiddenPromptRows.map {
+            CaptureRelationLabelRowEntry(
+                id: relationLabelSelectionKey(for: $0),
+                candidate: $0
+            )
+        }
+    }
+
     /// Pending ghost state for a row key: true is an optimistic hide,
     /// false an optimistic unhide, nil is no ghost.
     func relationLabelGhostState(forKey key: String) -> Bool? {
@@ -7469,7 +7494,7 @@ final class CapturePanelModel: ObservableObject {
     var relationLabelPromptBadgeText: String? {
         guard let prompt = relationLabelPrompt else { return nil }
         if let typed = relationLabelFreshTypedRow,
-           let reason = typed.disabledReason, !reason.isEmpty
+           let reason = typed.disabledReason, !reason.isEmpty, !typed.cancelsSource
         {
             return "invalid"
         }
@@ -7482,7 +7507,7 @@ final class CapturePanelModel: ObservableObject {
             if hidden {
                 base = "hidden"
             } else if let count = selected.count, count > 0 {
-                base = "\(count) links"
+                base = count == 1 ? "1 link" : "\(count) links"
             } else {
                 base = "new"
             }
@@ -7495,7 +7520,7 @@ final class CapturePanelModel: ObservableObject {
             if typed.hidden == true {
                 base = "hidden"
             } else if typed.existing == true, let count = typed.count, count > 0 {
-                base = "\(count) links"
+                base = count == 1 ? "1 link" : "\(count) links"
             } else {
                 base = "new"
             }
@@ -7504,7 +7529,8 @@ final class CapturePanelModel: ObservableObject {
         if let existing = prompt.catalog.first(where: { relationLabelKey($0) == query }),
            let count = existing.count, count > 0
         {
-            return prompt.oneOff ? "one-off · \(count) links" : "\(count) links"
+            let countText = count == 1 ? "1 link" : "\(count) links"
+            return prompt.oneOff ? "one-off · \(countText)" : countText
         }
         return prompt.oneOff ? "one-off · new" : "new"
     }
@@ -8682,6 +8708,25 @@ final class CapturePanelModel: ObservableObject {
         guard let prompt = relationLabelPrompt else { return [] }
         if prompt.rename != nil {
             return relationLabelRenameFooterItems
+        }
+        if let selected = relationLabelSelectedCandidate,
+           selected.disabledReason?.isEmpty == false
+        {
+            let key = relationLabelKey(selected)
+            let hidden =
+                selected.hidden || relationLabelIsHiddenKey(key, in: prompt)
+                || prompt.ghosts[key] == true
+            var items: [(keycap: String, label: String)] = [
+                (
+                    "⌃D",
+                    prompt.ghosts[key] != nil ? "undo" : (hidden ? "unhide" : "hide")
+                ),
+            ]
+            if prompt.hiddenCountKnown, prompt.hiddenCount > 0 {
+                items.append(("⌃H", prompt.showHidden ? "hide list" : "hidden"))
+            }
+            items.append(("esc", "back"))
+            return items
         }
         let selectedInsertion = relationLabelSelectedCandidate.map {
             relationLabelInsertion(for: $0, oneOff: prompt.oneOff)

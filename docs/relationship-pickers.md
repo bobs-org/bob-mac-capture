@@ -124,9 +124,12 @@ typing that label dims the live-sentence source as `⊘ {S} — {label} → {T}`
 and puts Bob's `relation_cancel.message` in the slot the `||` warning uses
 (⊘ tint when the verdict is `cancels`, muted for `Already Cancelled · link
 only` / `Stays Done · link only`). Inverse labels show Bob's muted `hint`.
-Disabled recurring and new-task rows keep Bob's `disabled_reason` and stay
-dimmed. VoiceOver names the source as `Cancels Sell stocks!`. Older Bob
-omits the fields and the card stays as it is.
+Refused cancel rows stay dimmed with the `cancels` capsule; hovering shows
+Bob's full `disabled_reason`. Highlighting or typing one puts Bob's
+`relation_cancel.message` in the slot, muted. The footer drops `↩`, while
+the label can still be hidden; its badge keeps the link count. Return shows
+Bob's refusal reason as the error. VoiceOver names the source as
+`Cancels Sell stocks!`. Older Bob omits the fields and the card stays as it is.
 
 The partial `X ~` need shows **Pick a task to link — press Tab to browse**.
 A `|label` field shows **Type a relation label, or pick a suggestion**.

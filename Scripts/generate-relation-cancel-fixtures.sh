@@ -37,6 +37,23 @@ cat > "$scratch_root/invest.md" <<'MD'
 - [x] #task Old idea ^old
 - [-] #task Gone idea ^gone
 MD
+cat > "$scratch_root/inbox.md" <<'MD'
+# Inbox
+MD
+cat > "$scratch_root/catalog.md" <<'MD'
+- [ ] #task First entry ^first
+  - 🪢 **LINKS:** superseded by [[invest#^now]]
+- [ ] #task Second entry ^second
+  - 🪢 **LINKS:** superseded by [[invest#^now]]
+- [ ] #task Third entry ^third
+  - 🪢 **LINKS:** duplicate of [[invest#^now]] • superseded by [[invest#^now]]
+- [ ] #task Fourth entry ^fourth
+  - 🪢 **LINKS:** implements [[invest#^now]]
+- [ ] #task Fifth entry ^fifth
+  - 🪢 **LINKS:** inspired by [[invest#^now]]
+- [ ] #task Sixth entry ^sixth
+  - 🪢 **LINKS:** polishes [[invest#^now]]
+MD
 cat > "$scratch_root/proj.md" <<'MD'
 - [ ] #task Big project ^prj
 - [ ] #task Resident one ^r1
@@ -71,6 +88,10 @@ capture_json() {
 complete 'Use this @cash+sell ~invest:now|dup' relation-cancel-complete-dup.json
 # Fully typed cancel label marks the typed row.
 complete 'Use this @cash+sell ~invest:now|"duplicate of"' relation-cancel-complete-duplicate.json
+# New-task and recurring sources refuse both configured labels with empty replacements.
+complete 'New idea @inbox ~invest:now|' relation-cancel-complete-new-task.json
+complete 'New idea @inbox ~invest:now|"duplicate of"' relation-cancel-complete-new-task-typed.json
+complete '@cash+sell ~~invest:weekly|' relation-cancel-complete-recurring.json
 # Already-closed source (Cancelled).
 complete 'Use this @invest+gone ~invest:now|"duplicate of"' relation-cancel-complete-already-closed.json
 # Inverse hint on a non-cancel label.

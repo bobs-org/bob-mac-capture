@@ -66,6 +66,36 @@ final class CaptureRelationPanelTests: XCTestCase {
         )
     }
 
+    private func relationCompletionFixture(_ name: String) throws -> CaptureCompletionResponse {
+        let fixtures = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures", isDirectory: true)
+        return try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(contentsOf: fixtures.appendingPathComponent(name))
+        )
+    }
+
+    private func installRelationCompletionFixture(
+        _ name: String,
+        authoredLabel: String? = nil
+    ) throws -> (CapturePanelModel, CaptureCompletionResponse) {
+        let completion = try relationCompletionFixture(name)
+        let label = authoredLabel ?? completion.query ?? ""
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            draft: "New idea @inbox ~target:target|\(label)",
+            ownerText: completion.owner?.text ?? "New idea",
+            targetText: "Target",
+            authoredLabel: label,
+            suggestions: completion.candidates,
+            suggestionAuthoredLabel: completion.query ?? label,
+            relationCancel: completion.relationCancel
+        )
+        return (model, completion)
+    }
+
     func testRelationCardShowsSuggestionsAndLiveSentence() {
         let model = CapturePanelModel()
         model.installRelationLabelPromptForPreviews(
@@ -1492,6 +1522,64 @@ final class CaptureRelationPanelTests: XCTestCase {
         XCTAssertFalse(model.relationLabelDimsSource)
         XCTAssertEqual(model.relationLabelCancelSlot?.style, .muted)
         XCTAssertTrue(model.relationLabelCancelSlot?.text.contains("never cancels") == true)
+    }
+
+    func testRefusedCancelRowsUseLabelKeysAndKeepTheReasonVisible() throws {
+        let (model, completion) = try installRelationCompletionFixture(
+            "relation-cancel-complete-new-task.json"
+        )
+        let entries = model.relationLabelPromptRowEntries
+        XCTAssertEqual(Set(entries.map(\.id)).count, entries.count)
+        XCTAssertEqual(
+            entries.map(\.candidate.label),
+            completion.candidates
+                .filter { $0.label != nil && !$0.typed && !$0.hidden }
+                .map(\.label)
+        )
+        XCTAssertTrue(entries.contains { $0.id == "superseded by" })
+        XCTAssertTrue(entries.contains { $0.id == "duplicate of" })
+
+        model.selectRelationLabelSuggestion(key: "superseded by")
+        let refused = try XCTUnwrap(entries.first { $0.id == "superseded by" }?.candidate)
+        XCTAssertEqual(model.relationLabelCancelSlot?.text, completion.relationCancel?.message)
+        XCTAssertEqual(model.relationLabelCancelSlot?.style, .muted)
+        XCTAssertFalse(model.relationLabelPromptCanSubmit)
+        XCTAssertEqual(model.relationLabelPromptBadgeText, "3 links")
+        XCTAssertFalse(model.relationLabelFooterItems.contains { $0.keycap == "↩" })
+        XCTAssertTrue(
+            model.relationLabelFooterItems.contains { $0.keycap == "⌃D" && $0.label == "hide" }
+        )
+
+        model.relationLabelPrompt?.oneOff = true
+        XCTAssertFalse(model.relationLabelFooterItems.contains { $0.keycap == "↩" })
+        XCTAssertTrue(model.relationLabelFooterItems.contains { $0.keycap == "⌃D" })
+
+        let originalDraft = model.plainDraft
+        model.submitRelationLabelPrompt()
+        XCTAssertEqual(model.plainDraft, originalDraft)
+        XCTAssertEqual(
+            model.relationLabelPrompt?.errorMessage,
+            refused.disabledReason
+        )
+
+        model.selectRelationLabelSuggestion(key: "duplicate of")
+        XCTAssertEqual(model.relationLabelPromptBadgeText, "1 link")
+    }
+
+    func testTypedRefusedCancelLabelKeepsItsBadgeAndShowsBobMessage() throws {
+        let (model, completion) = try installRelationCompletionFixture(
+            "relation-cancel-complete-new-task-typed.json"
+        )
+        let typed = try XCTUnwrap(completion.candidates.first(where: \.typed))
+        XCTAssertEqual(model.relationLabelPromptBadgeText, "1 link")
+        XCTAssertEqual(model.relationLabelCancelSlot?.text, completion.relationCancel?.message)
+        XCTAssertEqual(model.relationLabelCancelSlot?.style, .muted)
+        XCTAssertFalse(model.relationLabelPromptCanSubmit)
+
+        let originalDraft = model.plainDraft
+        model.submitRelationLabelPrompt()
+        XCTAssertEqual(model.plainDraft, originalDraft)
+        XCTAssertEqual(model.relationLabelPrompt?.errorMessage, typed.disabledReason)
     }
 
     func testSubmitHintNamesCancelCountFromDryRun() throws {

@@ -135,6 +135,11 @@ final class CaptureRelationCancelTests: XCTestCase {
             verdict: "recurring",
             message: "“Weekly review” repeats — cancel it with Obsidian Tasks first"
         )
+        let newTask = CaptureCompletionRelationCancel(
+            source: CaptureCompletionRelationCancelSource(text: "New idea"),
+            verdict: "new_task",
+            message: "“New idea” is new — it would be born cancelled"
+        )
         let hinted = CaptureCompletionRelationCancel(
             source: CaptureCompletionRelationCancelSource(text: "Sell stocks!"),
             verdict: "cancels",
@@ -162,8 +167,21 @@ final class CaptureRelationCancelTests: XCTestCase {
             CaptureRelationCancelPresentation.slot(candidate: canceling, cancel: closed),
             CaptureRelationCancelSlot(text: "Already Cancelled · link only", style: .muted)
         )
-        XCTAssertNil(
-            CaptureRelationCancelPresentation.slot(candidate: canceling, cancel: recurring)
+        XCTAssertEqual(
+            CaptureRelationCancelPresentation.slot(candidate: canceling, cancel: recurring),
+            CaptureRelationCancelSlot(text: recurring.message, style: .muted)
+        )
+        XCTAssertEqual(
+            CaptureRelationCancelPresentation.slot(candidate: canceling, cancel: newTask),
+            CaptureRelationCancelSlot(text: newTask.message, style: .muted)
+        )
+        XCTAssertNil(CaptureRelationCancelPresentation.slot(candidate: ordinary, cancel: recurring))
+        XCTAssertNil(CaptureRelationCancelPresentation.slot(candidate: ordinary, cancel: newTask))
+        XCTAssertFalse(
+            CaptureRelationCancelPresentation.dimsSource(candidate: canceling, cancel: recurring)
+        )
+        XCTAssertFalse(
+            CaptureRelationCancelPresentation.dimsSource(candidate: canceling, cancel: newTask)
         )
         XCTAssertEqual(
             CaptureRelationCancelPresentation.slot(candidate: ordinary, cancel: hinted)?.style,
@@ -271,6 +289,38 @@ final class CaptureRelationCancelTests: XCTestCase {
             "⊘ Cancels “Sell stocks!” · Todo → Cancelled"
         )
         XCTAssertTrue(completion.candidates.contains(where: \.cancelsSource))
+
+        for fixtureName in [
+            "relation-cancel-complete-new-task.json",
+            "relation-cancel-complete-new-task-typed.json",
+            "relation-cancel-complete-recurring.json",
+        ] {
+            let refused = try JSONDecoder().decode(
+                CaptureCompletionResponse.self,
+                from: Data(contentsOf: fixtures.appendingPathComponent(fixtureName))
+            )
+            let refusedRows = refused.candidates.filter(\.cancelsSource)
+            XCTAssertFalse(refusedRows.isEmpty, "expected cancel rows in \(fixtureName)")
+            XCTAssertTrue(
+                refusedRows.allSatisfy {
+                    $0.replacement.isEmpty && $0.disabledReason?.isEmpty == false
+                },
+                "expected refused cancel rows in \(fixtureName)"
+            )
+        }
+
+        let typedRefusal = try JSONDecoder().decode(
+            CaptureCompletionResponse.self,
+            from: Data(
+                contentsOf: fixtures.appendingPathComponent(
+                    "relation-cancel-complete-new-task-typed.json"
+                )
+            )
+        )
+        let typedRefusedRow = try XCTUnwrap(typedRefusal.candidates.first(where: \.typed))
+        XCTAssertTrue(typedRefusedRow.cancelsSource)
+        XCTAssertTrue(typedRefusedRow.replacement.isEmpty)
+        XCTAssertTrue(typedRefusedRow.disabledReason?.isEmpty == false)
 
         let overlay = try JSONDecoder().decode(
             CaptureCompletionResponse.self,

@@ -6,7 +6,7 @@ public struct CaptureRelationCancelSlot: Equatable, Sendable {
     public enum Style: Equatable, Sendable {
         /// Verdict `cancels`: ⊘ tint, never strikethrough.
         case cancels
-        /// Verdict `already_closed` or the inverse hint: muted.
+        /// A refused cancel row, `already_closed`, or an inverse hint: muted.
         case muted
     }
 
@@ -59,9 +59,8 @@ public enum CaptureRelationCancelPresentation {
         return cancel.verdict == "cancels"
     }
 
-    /// Bob's `relation_cancel.message` when the active label cancels, else
-    /// the muted inverse `hint`. Recurring and new-task verdicts stay on
-    /// the existing `disabled_reason` error path.
+    /// Bob's `relation_cancel.message` when the active cancel label would
+    /// cancel or is refused, else the muted inverse `hint`.
     public static func slot(
         candidate: CaptureCompletionCandidate?,
         cancel: CaptureCompletionRelationCancel?
@@ -74,6 +73,8 @@ public enum CaptureRelationCancelPresentation {
             case "cancels":
                 return CaptureRelationCancelSlot(text: cancel.message, style: .cancels)
             case "already_closed":
+                return CaptureRelationCancelSlot(text: cancel.message, style: .muted)
+            case "recurring", "new_task":
                 return CaptureRelationCancelSlot(text: cancel.message, style: .muted)
             default:
                 return nil

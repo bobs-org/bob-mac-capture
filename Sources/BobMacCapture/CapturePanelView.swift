@@ -2088,16 +2088,18 @@ private struct RelationLabelPromptCard: View {
                 }
 
                 if prompt.rename == nil {
-                    let rows = model.relationLabelPromptRows
-                    let hiddenRows = model.relationLabelHiddenPromptRows
-                    let topKey = rows.first.map { model.relationLabelSelectionKey(for: $0) }
+                    let rows = model.relationLabelPromptRowEntries
+                    let hiddenRows = model.relationLabelHiddenPromptRowEntries
+                    let topKey = rows.first?.id
                 if !rows.isEmpty || !hiddenRows.isEmpty {
                     ScrollViewReader { proxy in
                         ScrollView(.vertical, showsIndicators: true) {
                             LazyVStack(alignment: .leading, spacing: 3) {
-                                ForEach(rows, id: \.id) { candidate in
+                                // Refused rows share an empty replacement, so key relation rows by label.
+                                ForEach(rows) { entry in
+                                    let candidate = entry.candidate
                                     let label = candidate.label ?? candidate.replacement
-                                    let key = model.relationLabelSelectionKey(for: candidate)
+                                    let key = entry.id
                                     let selected = prompt.selectedKey == key
                                     let ghost = model.relationLabelGhostState(forKey: key)
                                     Button {
@@ -2139,9 +2141,10 @@ private struct RelationLabelPromptCard: View {
                                     .padding(.horizontal, 9)
                                     .padding(.top, 4)
                                     .accessibilityLabel("Hidden relation labels")
-                                    ForEach(hiddenRows, id: \.id) { candidate in
+                                    ForEach(hiddenRows) { entry in
+                                        let candidate = entry.candidate
                                         let label = candidate.label ?? candidate.replacement
-                                        let key = model.relationLabelSelectionKey(for: candidate)
+                                        let key = entry.id
                                         let selected = prompt.selectedKey == key
                                         let ghost = model.relationLabelGhostState(forKey: key)
                                         Button {
@@ -2204,6 +2207,7 @@ private struct RelationLabelPromptCard: View {
                     if let slot = model.relationLabelCancelSlot {
                         Text(slot.text)
                             .font(.caption)
+                            .fixedSize(horizontal: false, vertical: true)
                             .foregroundStyle(
                                 slot.style == .cancels
                                     ? CaptureEditorPalette.color(for: .relationCancelLabel)
@@ -2346,7 +2350,7 @@ private struct RelationLabelPromptCard: View {
                 )
                 .accessibilityHidden(true)
             }
-            if disabled, let reason = candidate.disabledReason {
+            if disabled, let reason = candidate.disabledReason, !candidate.cancelsSource {
                 Text(reason)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -2377,6 +2381,7 @@ private struct RelationLabelPromptCard: View {
                 )
         )
         .contentShape(RoundedRectangle(cornerRadius: 6))
+        .help(disabled ? (candidate.disabledReason ?? "") : "")
     }
 
     private func relationRowAccessibilityLabel(
