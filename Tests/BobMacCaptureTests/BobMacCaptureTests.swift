@@ -1889,6 +1889,16 @@ final class BobMacCaptureTests: XCTestCase {
         )
     }
 
+    func testEditorTextWrapWidthSubtractsInsetAndLineFragmentPadding() {
+        XCTAssertEqual(CapturePanelLayout.editorTextWrapWidth(editorWidth: 724), 677)
+        XCTAssertEqual(CapturePanelLayout.editorTextWrapWidth(editorWidth: 584), 537)
+        XCTAssertEqual(CapturePanelLayout.editorTextWrapWidth(editorWidth: 10), 1)
+        // Mirrors AppKit's default line-fragment padding.
+        XCTAssertEqual(CapturePanelLayout.editorLineFragmentPadding, 5)
+        // Mirrors the NSTextView shortfall measured in CI at both panel widths.
+        XCTAssertEqual(CapturePanelLayout.editorTextViewGutterWidth, 17)
+    }
+
     func testEditorHeightBudgetGrowsOnTallScreensAndReservesAuxiliary() {
         let footerHeight: CGFloat = 40
         let tallScreen: CGFloat = 1600

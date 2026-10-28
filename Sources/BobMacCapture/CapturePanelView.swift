@@ -11,7 +11,30 @@ enum CapturePanelLayout {
     static let panelMinimumContentWidth: CGFloat = 620
 
     static let editorContentPadding: CGFloat = 10
+    /// AppKit's default `NSTextContainer.lineFragmentPadding`, which SwiftUI's
+    /// `TextEditor` keeps on its backing `NSTextView`: glyphs sit this far inside
+    /// each side of the editor's text container.
+    static let editorLineFragmentPadding: CGFloat = 5
+    /// Trailing width SwiftUI's `TextEditor` keeps off the backing `NSTextView`
+    /// relative to the padded editor frame. CI measured 704 − 687 at the default
+    /// panel and 564 − 547 at the minimum panel. The sizer must wrap this
+    /// narrower width: a line that fits a 694-pt sizer wraps in the 687-pt
+    /// NSTextView and the box stays one line high.
+    static let editorTextViewGutterWidth: CGFloat = 17
     static let editorLineHeight: CGFloat = 22
+
+    /// Width at which the editor's `NSTextView` wraps a line, for an editor
+    /// `editorWidth` points wide. The hidden sizing text must wrap here too: if it
+    /// wraps wider, a line that just fits the sizer soft-wraps in the editor and
+    /// the box clips one line.
+    static func editorTextWrapWidth(editorWidth: CGFloat) -> CGFloat {
+        max(
+            1,
+            editorWidth
+                - (editorContentPadding + editorLineFragmentPadding) * 2
+                - editorTextViewGutterWidth
+        )
+    }
     static let completionVisibleRows = 5
     static let completionRowHeight: CGFloat = 48
     static let completionViewportHeight = completionRowHeight * CGFloat(completionVisibleRows) + 12
@@ -1243,7 +1266,7 @@ private struct AutosizingCaptureEditor: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let usableTextWidth = max(1, proxy.size.width - textInset * 2)
+            let wrapWidth = CapturePanelLayout.editorTextWrapWidth(editorWidth: proxy.size.width)
 
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $model.attributedDraft, selection: $selection)
@@ -1275,13 +1298,13 @@ private struct AutosizingCaptureEditor: View {
                     Text("Type to capture\u{2026}")
                         .font(editorFont)
                         .foregroundStyle(.secondary)
-                        .padding(.leading, textInset + 5)
+                        .padding(.leading, textInset + CapturePanelLayout.editorLineFragmentPadding)
                         .padding(.top, textInset + 3)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }
 
-                sizingText(width: usableTextWidth)
+                sizingText(width: wrapWidth)
                     .padding(textInset)
                     .accessibilityHidden(true)
                     .allowsHitTesting(false)
