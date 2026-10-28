@@ -6856,6 +6856,109 @@ final class CapturePanelModelTests: XCTestCase {
         )
     }
 
+    func testCaretMoveWithUnconfiguredThemeDoesNotRewriteEditor() throws {
+        let model = CapturePanelModel()
+        let draft = "=#fo"
+        model.plainDraft = draft
+        let end = try XCTUnwrap(
+            attributedStringIndex(in: model.attributedDraft, utf8Offset: draft.utf8.count)
+        )
+        model.editorSelection = AttributedTextSelection(insertionPoint: end)
+        model.latestParse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: draft,
+            body: draft,
+            mode: "pomodoro_start",
+            spans: [
+                CaptureSpan(start: 0, end: 1, kind: "pomodoro_start"),
+                CaptureSpan(
+                    start: 2,
+                    end: 4,
+                    kind: "pomodoro_name",
+                    themes: [
+                        CapturePomodoroThemeRef(
+                            key: "fo",
+                            name: "fo",
+                            hueSource: "unconfigured",
+                            known: false,
+                            configured: false,
+                            start: 2,
+                            end: 4
+                        )
+                    ]
+                ),
+            ]
+        )
+        var draftEmissions = 0
+        var selectionEmissions = 0
+        var cancellables = Set<AnyCancellable>()
+        model.$attributedDraft.dropFirst().sink { _ in
+            draftEmissions += 1
+        }.store(in: &cancellables)
+        model.$editorSelection.dropFirst().sink { _ in
+            selectionEmissions += 1
+        }.store(in: &cancellables)
+
+        model.editorSelectionDidChange(cursorUTF8Offset: 0)
+        model.editorSelectionDidChange(cursorUTF8Offset: draft.utf8.count)
+
+        XCTAssertEqual(draftEmissions, 0)
+        XCTAssertEqual(selectionEmissions, 0)
+    }
+
+    func testCaretLeavingUnconfiguredThemeUnderlinesAfterAnalysis() async throws {
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_PARSE_FIXTURE":
+                    "capture-parse-unconfigured-theme-start.json",
+            ]
+        )
+        let draft = "=#fo"
+        model.plainDraft = draft
+        let endIndex = try XCTUnwrap(
+            attributedStringIndex(in: model.attributedDraft, utf8Offset: draft.utf8.count)
+        )
+        model.editorSelection = AttributedTextSelection(insertionPoint: endIndex)
+        let startIndex = try XCTUnwrap(
+            attributedStringIndex(in: model.attributedDraft, utf8Offset: 0)
+        )
+        model.editorSelection = AttributedTextSelection(insertionPoint: startIndex)
+        model.editorSelectionDidChange(cursorUTF8Offset: 0)
+        let dashed = NSUnderlineStyle([.single, .patternDash])
+        await waitUntil {
+            Self.dashedStrings(in: model.attributedDraft, style: dashed) == ["fo"]
+        }
+        XCTAssertEqual(
+            Self.dashedStrings(in: model.attributedDraft, style: dashed),
+            ["fo"]
+        )
+        model.editorSelection = AttributedTextSelection(insertionPoint: endIndex)
+        model.editorSelectionDidChange(cursorUTF8Offset: draft.utf8.count)
+        await waitUntil {
+            Self.dashedStrings(in: model.attributedDraft, style: dashed).isEmpty
+        }
+        XCTAssertTrue(
+            Self.dashedStrings(in: model.attributedDraft, style: dashed).isEmpty
+        )
+    }
+
+    private static func dashedStrings(
+        in text: AttributedString,
+        style: NSUnderlineStyle
+    ) -> [String] {
+        text.runs.compactMap { run -> String? in
+            guard run.attributes.underlineStyle == style else {
+                return nil
+            }
+            return String(text[run.range].characters)
+        }
+    }
+
     func testRecentThemeCtrlDHidesAndUndoesThroughBob() async throws {
         let recordURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let model = CapturePanelModel(debounceNanoseconds: 0)

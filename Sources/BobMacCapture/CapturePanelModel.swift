@@ -2061,14 +2061,11 @@ final class CapturePanelModel: ObservableObject {
             return
         }
 
-        if let parse = latestParse,
-           parse.spans.contains(where: { span in
-               (span.kind == "pomodoro_name" || span.kind == "task_toggle_pomodoro_name")
-                   && span.themes.contains(where: { $0.configured == false })
-           })
-        {
-            applyHighlighting(parse: parse, draft: plainDraft)
-        }
+        // Invariant: selection callbacks never write attributedDraft or
+        // editorSelection; those writes echo back through the TextEditor into
+        // another selection callback and wedge the main thread. Caret-dependent
+        // paint (the unconfigured-theme underline) refreshes via the
+        // selection-triggered analysis below instead.
 
         // A caret-only move never auto-opens the picker; at most it shows the
         // reopen chip.
