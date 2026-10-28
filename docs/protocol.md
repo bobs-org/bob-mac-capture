@@ -314,6 +314,7 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 - `pomodoro_start.override`, `toggle_behavior`, `toggle_direction` with `status_changed`
 - `plan_budget`, destination `role`, `plan_themes_after`, `plan_themes_cap`, `code`, `added_theme_refs`
 - span `themes` (`pomodoro_name`, `task_toggle_pomodoro_name`), agenda entry `themes`, Refs Today row `themes`
+- `configured` on theme refs and `themes list` rows; `configured_themes` on `themes list`; `hue_source` `config` / `unconfigured`; structured `theme_not_configured` warnings on capture and `capture-pomodoro-name`
 - `ref` with `ref.parent`, `ref_parent`, `project_name_aliases`
 - Refs list fields `blocked`, `task`, `added_at`; snapshot cache key `git_added_at`; copy-card `marker_id`
 - Scan report fields `generated_at`, `summary.held`, `held[]`, `notes[].marker_write` (`mode`, `editor_saved_first`, `status.from`/`to`)
@@ -340,6 +341,8 @@ Absent fields decode tolerantly and only hide their own row, badge, or offer:
 | `toggle_behavior` | Ensure Next vs Set Next / Open labels | Two-way labels; status and relocation still exact | Upgrade `bob` for exact labels |
 | `plan_budget`, `role`, theme caps | Meter capsules, badges, strict hint | Destination row only (`-> NAME`) | Upgrade `bob` for meters |
 | `added_theme_refs`, span/entry/row `themes` | Pill and swatch tints in the editor, agenda, previews, and Refs Today | Plain names; neutral pills only where a budget exists | Upgrade `bob` for theme tints |
+| `configured`, `configured_themes`, `hue_source` `config`/`unconfigured` | Dashed unconfigured pills, Name-it chips from the vocabulary, `theme_not_configured` captions | Today's pills; Name-it shows Recent as before; no unconfigured warning | Upgrade `bob` for configured themes |
+| structured `theme_not_configured` warning | Orange caption with the unconfigured pill in every settled preview and in Name-it | Absent; start/close cards still show other warning strings | Upgrade `bob` for the warning |
 | `ref` object | Queue preview card, footer action | Ordinary inbox task | Upgrade `bob`; `-R` disables queueing |
 | `ref.parent`, aliases | File-under prompt, alias-ranked routes | No auto-open; prefix matching only | Upgrade `bob` for filing |
 | `ref list` schema 1, optional `-g` | Refs snapshot with git instants | Refresh fails on any other schema; `-g` omitted until a row still lacks `added`/`added_at` | Upgrade `bob` for Refs |

@@ -175,10 +175,12 @@ struct CapturePomodoroNamePromptState: Equatable {
     let replacementRange: CaptureRange
     let selectedCompletionIndex: Int
     var authoredName: String
-  var suggestions: [CapturePomodoroTheme]
-  var suggestionQuery: String?
-  var suggestionsLoading: Bool
-  var suggestionsUnavailable: Bool
+    var suggestions: [CapturePomodoroTheme]
+    var suggestionQuery: String?
+    var suggestionsLoading: Bool
+    var suggestionsUnavailable: Bool
+    /// Present when Bob's themes list included `configured_themes`.
+    var configuredThemes: [CaptureConfiguredTheme]?
     var isSaving: Bool
     var errorMessage: String?
 }
@@ -359,6 +361,12 @@ final class CapturePanelModel: ObservableObject {
         }
     }
     @Published var parseDiagnostics: [CaptureDiagnostic] = []
+    /// Latest applied parse, used to suppress unconfigured-theme flicker
+    /// while the caret sits at the end of a prefix of a configured name.
+    @Published var latestParse: CaptureParseResponse?
+    /// Bob's `configured_themes` from the last themes-list response that
+    /// included the field. Empty when no vocabulary is configured.
+    var configuredThemes: [CaptureConfiguredTheme] = []
     /// Bob's additive template parse object for the current draft, if any.
     @Published var parsedTemplate: CaptureParseTemplate?
     @Published var completionResponse: CaptureCompletionResponse?
@@ -1314,6 +1322,60 @@ final class CapturePanelModel: ObservableObject {
         return Self.isValidCanonicalPomodoroName(canonical) ? canonical : nil
     }
 
+    /// Name-it warnings for components outside Bob's configured vocabulary.
+    var pomodoroNamePromptWarnings: [StructuredCaptureWarning] {
+        guard let prompt = pomodoroNamePrompt,
+              let configured = prompt.configuredThemes,
+              !configured.isEmpty
+        else {
+            return []
+        }
+        let name = pomodoroNamePromptCanonicalName ?? prompt.authoredName
+        return CaptureUnconfiguredThemePresentation.nameItWarnings(
+            authoredName: name,
+            configuredThemes: configured
+        )
+    }
+
+    func visibleThemeNotConfiguredWarnings(
+        from success: CaptureCommandSuccess
+    ) -> [StructuredCaptureWarning] {
+        let themeSpans = (latestParse?.spans ?? []).filter {
+            $0.kind == "pomodoro_name" || $0.kind == "task_toggle_pomodoro_name"
+        }.flatMap(\.themes)
+        return CaptureUnconfiguredThemePresentation.visibleWarnings(
+            from: success.warnings,
+            draft: plainDraft,
+            caretUTF8: collapsedSelectionUTF8Offset(),
+            themeSpans: themeSpans,
+            configuredNames: visibleConfiguredThemeNames()
+        )
+    }
+
+    func visibleConfiguredThemeNames() -> [String] {
+        var names: [String] = []
+        var seen = Set<String>()
+        func add(_ name: String) {
+            let key = PomodoroThemeSwatches.normalizeThemeKey(name)
+            guard !key.isEmpty, seen.insert(key).inserted else {
+                return
+            }
+            names.append(name)
+        }
+        for theme in configuredThemes {
+            add(theme.name)
+            add(theme.key)
+        }
+        if let completion = completionResponse {
+            for candidate in completion.candidates {
+                for theme in candidate.themes where theme.configured == true {
+                    add(theme.name)
+                }
+            }
+        }
+        return names
+    }
+
     var stashEntries: [CanceledDraftEntry] {
         canceledDraftStash.entries
     }
@@ -1997,6 +2059,15 @@ final class CapturePanelModel: ObservableObject {
         }
         guard !isApplyingProgrammaticDraft, hasDraft else {
             return
+        }
+
+        if let parse = latestParse,
+           parse.spans.contains(where: { span in
+               (span.kind == "pomodoro_name" || span.kind == "task_toggle_pomodoro_name")
+                   && span.themes.contains(where: { $0.configured == false })
+           })
+        {
+            applyHighlighting(parse: parse, draft: plainDraft)
         }
 
         // A caret-only move never auto-opens the picker; at most it shows the
@@ -6974,7 +7045,7 @@ final class CapturePanelModel: ObservableObject {
         }
 
         let delay = debounceNanoseconds
-        let limit = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 5 : 12
+        let limit = 12
         pomodoroThemeSuggestionsTask = Task { [weak self] in
             if delay > 0 {
                 do {
@@ -6992,7 +7063,7 @@ final class CapturePanelModel: ObservableObject {
                     self?.finishPomodoroThemeSuggestions(
                         requestID: requestID,
                         query: query,
-                        themes: response.themes
+                        response: response
                     )
                 }
             } catch {
@@ -7006,7 +7077,7 @@ final class CapturePanelModel: ObservableObject {
     private func finishPomodoroThemeSuggestions(
         requestID: UUID,
         query: String,
-        themes: [CapturePomodoroTheme]
+        response: CapturePomodoroThemesResponse
     ) {
         guard activePomodoroThemeSuggestionRequestID == requestID,
               var prompt = pomodoroNamePrompt,
@@ -7016,7 +7087,17 @@ final class CapturePanelModel: ObservableObject {
         }
         activePomodoroThemeSuggestionRequestID = nil
         pomodoroThemeSuggestionsTask = nil
-        prompt.suggestions = themes.filter { !$0.hidden }
+        prompt.configuredThemes = response.configuredThemes
+        if let configured = response.configuredThemes {
+            configuredThemes = configured
+            prompt.suggestions = CaptureUnconfiguredThemePresentation.nameItSuggestions(
+                configuredThemes: configured,
+                list: response.themes
+            )
+        } else {
+            configuredThemes = []
+            prompt.suggestions = response.themes.filter { !$0.hidden }
+        }
         prompt.suggestionsLoading = false
         prompt.suggestionsUnavailable = false
         pomodoroNamePrompt = prompt
@@ -9930,6 +10011,7 @@ final class CapturePanelModel: ObservableObject {
             suggestionQuery: nil,
             suggestionsLoading: false,
             suggestionsUnavailable: false,
+            configuredThemes: nil,
             isSaving: false,
             errorMessage: nil
         )
@@ -12219,6 +12301,7 @@ final class CapturePanelModel: ObservableObject {
         }
         lastAnalysisNeedsTaskGoto = Self.pickerNeed(in: parse) == .taskGoto
         parseDiagnostics = parse.diagnostics
+        latestParse = parse
         parsedTemplate = parse.template
         lastAppliedParseDraft = draft
         lastAppliedParseItemCount = parse.items.isEmpty
@@ -12278,7 +12361,8 @@ final class CapturePanelModel: ObservableObject {
                 &text,
                 parse: parse,
                 draft: draft,
-                ranges: ranges
+                ranges: ranges,
+                cursorUTF8: collapsedSelectionUTF8Offset()
             )
         }
         isApplyingProgrammaticDraft = false
@@ -12305,7 +12389,8 @@ final class CapturePanelModel: ObservableObject {
         _ text: inout AttributedString,
         parse: CaptureParseResponse,
         draft: String,
-        ranges: [ValidatedCaptureSpan]
+        ranges: [ValidatedCaptureSpan],
+        cursorUTF8: Int? = nil
     ) -> Bool {
         clearEditorHighlightAttributes(&text)
         for item in ranges {
@@ -12324,10 +12409,12 @@ final class CapturePanelModel: ObservableObject {
                 text[lower..<upper].inlinePresentationIntent = .emphasized
             }
             // Theme tints wash Bob's hue behind each known component of a name.
+            // Unconfigured names take a dashed orange underline once the caret
+            // leaves the component, matching the Typing rule for unknown names.
             if item.span.kind == "pomodoro_name"
                 || item.span.kind == "task_toggle_pomodoro_name"
             {
-                for theme in item.span.themes where theme.known {
+                for theme in item.span.themes {
                     guard let start = theme.start,
                           let end = theme.end,
                           start < end,
@@ -12339,7 +12426,26 @@ final class CapturePanelModel: ObservableObject {
                           let themeUpper = AttributedString.Index(
                               themeRange.upperBound,
                               within: text
-                          ),
+                          )
+                    else {
+                        continue
+                    }
+                    if theme.configured == false {
+                        if CaptureUnconfiguredThemePresentation.caretIsInName(
+                            start: start,
+                            end: end,
+                            caretUTF8: cursorUTF8
+                        ) {
+                            continue
+                        }
+                        text[themeLower..<themeUpper].underlineStyle = NSUnderlineStyle([
+                            .single, .patternDash,
+                        ])
+                        text[themeLower..<themeUpper].underlineColor =
+                            NSColor.systemOrange.withAlphaComponent(0.7)
+                        continue
+                    }
+                    guard theme.known,
                           let tint = PomodoroThemeTint.background(for: theme.hue)
                     else {
                         continue

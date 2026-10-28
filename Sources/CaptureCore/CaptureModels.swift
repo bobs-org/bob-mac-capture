@@ -3009,6 +3009,15 @@ public enum CaptureWarning: Codable, Equatable, Sendable {
         return false
     }
 
+    /// True for `theme_not_configured`, rendered once in every settled
+    /// capture preview (not post-submit notifications).
+    public var isThemeNotConfigured: Bool {
+        if case .structured(let warning) = self {
+            return warning.code == CaptureUnconfiguredThemePresentation.warningCode
+        }
+        return false
+    }
+
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if let message = try? container.decode(String.self) {
@@ -5708,6 +5717,9 @@ public struct CapturePomodoroNameSuccess: Codable, Equatable {
     public let line: Int
     public let pomodoroRef: String
     public let pomodoro: CapturePomodoroEntry
+    /// Structured `theme_not_configured` warnings when the name is outside
+    /// the configured vocabulary. Older Bob omits the key; decode as empty.
+    public let warnings: [CaptureWarning]
 
     public init(
         ok: Bool,
@@ -5719,7 +5731,8 @@ public struct CapturePomodoroNameSuccess: Codable, Equatable {
         slug: String,
         line: Int,
         pomodoroRef: String,
-        pomodoro: CapturePomodoroEntry
+        pomodoro: CapturePomodoroEntry,
+        warnings: [CaptureWarning] = []
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -5731,6 +5744,23 @@ public struct CapturePomodoroNameSuccess: Codable, Equatable {
         self.line = line
         self.pomodoroRef = pomodoroRef
         self.pomodoro = pomodoro
+        self.warnings = warnings
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decode(Bool.self, forKey: .ok)
+        schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        dryRun = try container.decode(Bool.self, forKey: .dryRun)
+        dayFile = try container.decode(String.self, forKey: .dayFile)
+        relativeDayFile = try container.decode(String.self, forKey: .relativeDayFile)
+        name = try container.decode(String.self, forKey: .name)
+        slug = try container.decode(String.self, forKey: .slug)
+        line = try container.decode(Int.self, forKey: .line)
+        pomodoroRef = try container.decode(String.self, forKey: .pomodoroRef)
+        pomodoro = try container.decode(CapturePomodoroEntry.self, forKey: .pomodoro)
+        warnings =
+            (try? container.decodeIfPresent([CaptureWarning].self, forKey: .warnings)) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -5744,6 +5774,7 @@ public struct CapturePomodoroNameSuccess: Codable, Equatable {
         case line
         case pomodoroRef = "ref"
         case pomodoro
+        case warnings
     }
 }
 
@@ -6619,8 +6650,13 @@ public struct CapturePomodoroThemeRef: Codable, Equatable, Sendable {
     /// Bob omits `known` for catalogued themes and sends `false` only for an
     /// unknown typed name.
     public let known: Bool
+    /// Present only when a `themes:` block is configured. `false` means
+    /// the name is outside the vocabulary; absent means no opinion.
+    public let configured: Bool?
     public let start: Int?
     public let end: Int?
+
+    public var isUnconfigured: Bool { configured == false }
 
     public init(
         key: String,
@@ -6628,6 +6664,7 @@ public struct CapturePomodoroThemeRef: Codable, Equatable, Sendable {
         hue: PomodoroHomeHue? = nil,
         hueSource: String? = nil,
         known: Bool = true,
+        configured: Bool? = nil,
         start: Int? = nil,
         end: Int? = nil
     ) {
@@ -6636,6 +6673,7 @@ public struct CapturePomodoroThemeRef: Codable, Equatable, Sendable {
         self.hue = hue
         self.hueSource = hueSource
         self.known = known
+        self.configured = configured
         self.start = start
         self.end = end
     }
@@ -6647,6 +6685,7 @@ public struct CapturePomodoroThemeRef: Codable, Equatable, Sendable {
         hue = try container.decodeIfPresent(PomodoroHomeHue.self, forKey: .hue)
         hueSource = try container.decodeIfPresent(String.self, forKey: .hueSource)
         known = try container.decodeIfPresent(Bool.self, forKey: .known) ?? true
+        configured = try container.decodeIfPresent(Bool.self, forKey: .configured)
         start = try container.decodeIfPresent(Int.self, forKey: .start)
         end = try container.decodeIfPresent(Int.self, forKey: .end)
     }
@@ -6657,6 +6696,7 @@ public struct CapturePomodoroThemeRef: Codable, Equatable, Sendable {
         case hue
         case hueSource = "hue_source"
         case known
+        case configured
         case start
         case end
     }
@@ -6669,10 +6709,14 @@ public struct CapturePomodoroTheme: Codable, Equatable, Identifiable, Sendable {
     public let hue: PomodoroHomeHue?
     public let hueSource: String?
     public let hidden: Bool
+    /// Present only when a `themes:` block is configured.
+    public let configured: Bool?
     public let lastUsed: String?
     public let daysUsed: Int?
 
     public var id: String { key }
+
+    public var isUnconfigured: Bool { configured == false }
 
     public init(
         key: String,
@@ -6680,6 +6724,7 @@ public struct CapturePomodoroTheme: Codable, Equatable, Identifiable, Sendable {
         hue: PomodoroHomeHue? = nil,
         hueSource: String? = nil,
         hidden: Bool = false,
+        configured: Bool? = nil,
         lastUsed: String? = nil,
         daysUsed: Int? = nil
     ) {
@@ -6688,6 +6733,7 @@ public struct CapturePomodoroTheme: Codable, Equatable, Identifiable, Sendable {
         self.hue = hue
         self.hueSource = hueSource
         self.hidden = hidden
+        self.configured = configured
         self.lastUsed = lastUsed
         self.daysUsed = daysUsed
     }
@@ -6699,6 +6745,7 @@ public struct CapturePomodoroTheme: Codable, Equatable, Identifiable, Sendable {
         hue = try container.decodeIfPresent(PomodoroHomeHue.self, forKey: .hue)
         hueSource = try container.decodeIfPresent(String.self, forKey: .hueSource)
         hidden = try container.decodeIfPresent(Bool.self, forKey: .hidden) ?? false
+        configured = try container.decodeIfPresent(Bool.self, forKey: .configured)
         lastUsed = try container.decodeIfPresent(String.self, forKey: .lastUsed)
         daysUsed = try container.decodeIfPresent(Int.self, forKey: .daysUsed)
     }
@@ -6709,8 +6756,23 @@ public struct CapturePomodoroTheme: Codable, Equatable, Identifiable, Sendable {
         case hue
         case hueSource = "hue_source"
         case hidden
+        case configured
         case lastUsed = "last_used"
         case daysUsed = "days_used"
+    }
+}
+
+/// One entry in Bob's additive `configured_themes` array, in config order.
+/// `color` is a palette slot, or `null` for configured `auto`.
+public struct CaptureConfiguredTheme: Codable, Equatable, Sendable {
+    public let key: String
+    public let name: String
+    public let color: PomodoroHomeHue?
+
+    public init(key: String, name: String, color: PomodoroHomeHue? = nil) {
+        self.key = key
+        self.name = name
+        self.color = color
     }
 }
 
@@ -6718,21 +6780,33 @@ public struct CapturePomodoroTheme: Codable, Equatable, Identifiable, Sendable {
 public struct CapturePomodoroThemesResponse: Codable, Equatable, SchemaVersioned, Sendable {
     public let schemaVersion: Int
     public let themes: [CapturePomodoroTheme]
+    /// Present only when a `themes:` block is configured. Older Bob omits it.
+    public let configuredThemes: [CaptureConfiguredTheme]?
 
-    public init(schemaVersion: Int, themes: [CapturePomodoroTheme] = []) {
+    public init(
+        schemaVersion: Int,
+        themes: [CapturePomodoroTheme] = [],
+        configuredThemes: [CaptureConfiguredTheme]? = nil
+    ) {
         self.schemaVersion = schemaVersion
         self.themes = themes
+        self.configuredThemes = configuredThemes
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
         themes = try container.decodeIfPresent([CapturePomodoroTheme].self, forKey: .themes) ?? []
+        configuredThemes = try container.decodeIfPresent(
+            [CaptureConfiguredTheme].self,
+            forKey: .configuredThemes
+        )
     }
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
         case themes
+        case configuredThemes = "configured_themes"
     }
 }
 

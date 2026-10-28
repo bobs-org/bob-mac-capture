@@ -595,8 +595,36 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(response.themes.first?.hue, .aqua)
         XCTAssertEqual(response.themes.first?.lastUsed, "2026-10-21")
         XCTAssertEqual(response.themes.first?.daysUsed, 3)
+        XCTAssertNil(response.configuredThemes)
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(record.contains("argv=themes list --format json --limit 12 --query BOOK"))
+    }
+
+    func testPomodoroThemesDecodesConfiguredThemesCatalog() async throws {
+        let stdout = """
+            {"schema_version":1,"themes":[\
+            {"key":"build","name":"BUILD","hue":"yellow","hue_source":"config","hidden":false,"configured":true},\
+            {"key":"snack","name":"SNACK","hue":null,"hue_source":"unconfigured","hidden":false,"configured":false}\
+            ],"configured_themes":[\
+            {"key":"build","name":"BUILD","color":"yellow"},\
+            {"key":"plan","name":"PLAN","color":null}\
+            ]}
+            """
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": stdout,
+            ]
+        )
+
+        let response = try await client.pomodoroThemes(query: "", limit: 12)
+
+        XCTAssertEqual(response.themes.map(\.name), ["BUILD", "SNACK"])
+        XCTAssertEqual(response.themes.map(\.configured), [true, false])
+        XCTAssertEqual(response.configuredThemes?.map(\.key), ["build", "plan"])
+        XCTAssertNil(response.configuredThemes?.last?.color)
     }
 
     func testSetPomodoroThemeHiddenWritesThroughBobWithClientIdentity() async throws {
@@ -644,11 +672,49 @@ final class BobProcessClientTests: XCTestCase {
         XCTAssertEqual(success.slug, "deep-work")
         XCTAssertEqual(success.relativeDayFile, "2026/20260828.md")
         XCTAssertEqual(success.pomodoro.name, "DEEP WORK")
+        XCTAssertTrue(success.warnings.isEmpty)
         let record = try String(contentsOf: recordURL)
         XCTAssertTrue(
             record.contains(
                 "argv=capture-pomodoro-name --pomodoro-ref 38:0b1c2d3e --name DEEP WORK --format json"
             )
+        )
+    }
+
+    func testAssignPomodoroNameDecodesThemeNotConfiguredWarnings() async throws {
+        let stdout = """
+            {"ok":true,"schema_version":1,"dry_run":false,\
+            "day_file":"/tmp/bob/2026/20260828.md","relative_day_file":"2026/20260828.md",\
+            "name":"SNACK","slug":"snack","line":38,"ref":"38:0b1c2d3e",\
+            "pomodoro":{"ref":"38:0b1c2d3e","line":38,"state":"open","status_symbol":" ",\
+            "name":"SNACK","slug":"snack","selectable":true,"time_range":null,\
+            "placeholder":true,"is_current":false,"child_count":0},\
+            "warnings":[{"code":"theme_not_configured","label":"SNACK",\
+            "message":"SNACK isn't one of your configured themes"}]}
+            """
+        let client = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": stdout,
+            ]
+        )
+
+        let response = try await client.assignPomodoroName(
+            ref: "38:0b1c2d3e",
+            name: "SNACK"
+        )
+
+        guard case .success(let success) = response else {
+            return XCTFail("Expected pomodoro name success")
+        }
+        XCTAssertEqual(success.name, "SNACK")
+        XCTAssertEqual(success.warnings.count, 1)
+        XCTAssertTrue(success.warnings[0].isThemeNotConfigured)
+        XCTAssertEqual(
+            success.warnings[0].message,
+            "SNACK isn't one of your configured themes"
         )
     }
 

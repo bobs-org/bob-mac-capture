@@ -466,6 +466,41 @@ final class CapturePomodoroClosePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.title, "Close session")
     }
 
+    func testClosePresentationOmitsThemeNotConfiguredWarnings() throws {
+        let success = try decodeSuccess(
+            #"""
+            {
+              "ok": true,
+              "dry_run": true,
+              "routed": false,
+              "route": null,
+              "route_label": "",
+              "relative_target": "2026/20260928.md",
+              "target": "/tmp/bob/2026/20260928.md",
+              "text": "x",
+              "task_line": "- [x] entry",
+              "kind": "pomodoro_close",
+              "created": "2026-09-28",
+              "scheduled": null,
+              "placement": "closed",
+              "pomodoro_close": {"raw": "x"},
+              "warnings": [
+                {
+                  "code": "theme_not_configured",
+                  "label": "SNACK",
+                  "message": "SNACK isn't one of your configured themes"
+                },
+                "other warning"
+              ]
+            }
+            """#
+        )
+        let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))
+        XCTAssertEqual(presentation.warnings, ["other warning"])
+        XCTAssertFalse(presentation.accessibilitySummary.contains("SNACK"))
+        XCTAssertTrue(presentation.accessibilitySummary.contains("other warning"))
+    }
+
     func testSelectWorkedCloseBadgesDimmingSummaryAndHint() throws {
         let success = try decodeFixture("pomodoro-close-select-worked.json")
         let presentation = try XCTUnwrap(CapturePomodoroClosePresentation(capture: success))

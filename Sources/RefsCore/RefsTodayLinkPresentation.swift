@@ -63,7 +63,7 @@ public enum RefsTodayLinkPresentation {
         guard let name = row.name, !name.isEmpty, !row.themes.isEmpty else {
             return []
         }
-        return row.themes.map { CaptureThemeSwatch(hue: $0.hue, known: $0.known) }
+        return row.themes.map { CaptureThemeSwatch($0) }
     }
 
     /// Spoken theme colors for the row's accessibility label.

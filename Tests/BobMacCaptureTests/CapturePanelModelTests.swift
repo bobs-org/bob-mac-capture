@@ -6661,8 +6661,124 @@ final class CapturePanelModelTests: XCTestCase {
                 && model.pomodoroNamePrompt?.suggestionsLoading == false
         }
         let record = try String(contentsOf: recordURL)
-        XCTAssertTrue(record.contains("argv=themes list --format json --limit 5"))
+        XCTAssertTrue(record.contains("argv=themes list --format json --limit 12"))
         XCTAssertTrue(record.contains("argv=themes list --format json --limit 12 --query BOOKS"))
+    }
+
+    func testPomodoroNamePromptUsesConfiguredThemesInConfigOrder() async throws {
+        let stdout = """
+            {"schema_version":1,"themes":[\
+            {"key":"snack","name":"SNACK","hue":null,"hue_source":"unconfigured","hidden":false,"configured":false},\
+            {"key":"build","name":"BUILD","hue":"yellow","hue_source":"config","hidden":false,"configured":true},\
+            {"key":"plan","name":"PLAN","hue":"blue","hue_source":"config","hidden":false,"configured":true},\
+            {"key":"chore","name":"CHORE","hue":"red","hue_source":"config","hidden":true,"configured":true}\
+            ],"configured_themes":[\
+            {"key":"plan","name":"PLAN","color":"blue"},\
+            {"key":"build","name":"BUILD","color":"yellow"},\
+            {"key":"chore","name":"CHORE","color":"red"}\
+            ]}
+            """
+        let model = CapturePanelModel(debounceNanoseconds: 0)
+        model.processClient = BobProcessClient(
+            executablePath: try fakeBobPath(),
+            environment: [
+                "HOME": "/tmp",
+                "PATH": "/usr/bin:/bin",
+                "FAKE_BOB_STDOUT": stdout,
+            ]
+        )
+        installPomodoroNameCompletion(on: model, query: "")
+        model.selectedCompletionIndex = 1
+
+        model.acceptSelectedCompletion()
+        await waitUntil {
+            model.pomodoroNamePrompt?.suggestionsLoading == false
+                && model.pomodoroNamePrompt?.suggestions.map(\.name) == ["PLAN", "BUILD"]
+        }
+
+        XCTAssertEqual(model.pomodoroNamePrompt?.configuredThemes?.map(\.key), [
+            "plan", "build", "chore",
+        ])
+        model.updatePomodoroNamePromptName("SNACK")
+        XCTAssertEqual(model.pomodoroNamePromptWarnings.map(\.label), ["SNACK"])
+        XCTAssertEqual(
+            model.pomodoroNamePromptWarnings.first?.message,
+            "SNACK isn't one of your configured themes"
+        )
+        model.updatePomodoroNamePromptName("BUI")
+        XCTAssertTrue(model.pomodoroNamePromptWarnings.isEmpty)
+        model.updatePomodoroNamePromptName("BUILD")
+        XCTAssertTrue(model.pomodoroNamePromptWarnings.isEmpty)
+    }
+
+    func testVisibleThemeNotConfiguredWarningsHoldBackConfiguredPrefixes() throws {
+        let model = CapturePanelModel()
+        let draft = "=BUI"
+        model.plainDraft = draft
+        let insertion = try XCTUnwrap(
+            attributedStringIndex(in: model.attributedDraft, utf8Offset: draft.utf8.count)
+        )
+        model.editorSelection = AttributedTextSelection(insertionPoint: insertion)
+        model.configuredThemes = [
+            CaptureConfiguredTheme(key: "build", name: "BUILD", color: .yellow)
+        ]
+        model.latestParse = CaptureParseResponse(
+            ok: true,
+            schemaVersion: 1,
+            input: draft,
+            body: draft,
+            mode: "task",
+            spans: [
+                CaptureSpan(
+                    start: 1,
+                    end: 4,
+                    kind: "pomodoro_name",
+                    themes: [
+                        CapturePomodoroThemeRef(
+                            key: "bui",
+                            name: "BUI",
+                            hueSource: "unconfigured",
+                            configured: false,
+                            start: 1,
+                            end: 4
+                        )
+                    ]
+                )
+            ]
+        )
+        let success = CaptureCommandSuccess(
+            ok: true,
+            dryRun: true,
+            routed: true,
+            routeLabel: "Cash.md",
+            relativeTarget: "Cash.md",
+            target: "/tmp/Cash.md",
+            text: draft,
+            taskLine: "- [ ] \(draft)",
+            kind: "task",
+            created: "2026-08-14",
+            placement: "append",
+            warnings: [
+                .structured(
+                    StructuredCaptureWarning(
+                        code: "theme_not_configured",
+                        label: "BUI",
+                        message: "BUI isn't one of your configured themes"
+                    )
+                )
+            ]
+        )
+
+        XCTAssertTrue(model.visibleThemeNotConfiguredWarnings(from: success).isEmpty)
+
+        let start = try XCTUnwrap(
+            attributedStringIndex(in: model.attributedDraft, utf8Offset: 0)
+        )
+        model.editorSelection = AttributedTextSelection(insertionPoint: start)
+        XCTAssertEqual(
+            model.visibleThemeNotConfiguredWarnings(from: success).map(\.label),
+            ["BUI"]
+        )
     }
 
     func testRecentThemeCtrlDHidesAndUndoesThroughBob() async throws {

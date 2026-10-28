@@ -63,6 +63,40 @@ final class PomodoroThemeSwatchesTests: XCTestCase {
         XCTAssertTrue(PomodoroThemeSwatches.swatches(forName: "  ", refs: []).isEmpty)
     }
 
+    func testSwatchesKeepFirstRefWhenKeysRepeat() {
+        let swatches = PomodoroThemeSwatches.swatches(
+            forName: "FIX + fix",
+            refs: [
+                ref(key: "fix", name: "FIX", hue: .red, hueSource: "config"),
+                ref(key: "fix", name: "fix", hue: .red, hueSource: "hash"),
+            ]
+        )
+
+        XCTAssertEqual(swatches, [
+            CaptureThemeSwatch(hue: .red, known: true),
+            CaptureThemeSwatch(hue: .red, known: true),
+        ])
+    }
+
+    func testSwatchesCarryUnconfiguredFlag() {
+        let swatches = PomodoroThemeSwatches.swatches(
+            forName: "SNACK",
+            refs: [
+                CapturePomodoroThemeRef(
+                    key: "snack",
+                    name: "SNACK",
+                    hueSource: "unconfigured",
+                    configured: false
+                ),
+            ]
+        )
+
+        XCTAssertEqual(
+            swatches,
+            [CaptureThemeSwatch(hue: nil, known: true, configured: false)]
+        )
+    }
+
     func testSpokenColorsNameHuesAndMuted() {
         let spoken = PomodoroThemeSwatches.spokenThemeColors(
             forName: "BOB + GTD",
@@ -84,6 +118,32 @@ final class PomodoroThemeSwatchesTests: XCTestCase {
         XCTAssertEqual(spoken, ["NEW, unknown theme"])
     }
 
+    func testSpokenColorsCallOutUnconfiguredAndConfigSources() {
+        let spoken = PomodoroThemeSwatches.spokenThemeColors(
+            forName: "BUILD + SNACK",
+            refs: [
+                CapturePomodoroThemeRef(
+                    key: "build",
+                    name: "BUILD",
+                    hue: .yellow,
+                    hueSource: "config",
+                    configured: true
+                ),
+                CapturePomodoroThemeRef(
+                    key: "snack",
+                    name: "SNACK",
+                    hueSource: "unconfigured",
+                    configured: false
+                ),
+            ]
+        )
+
+        XCTAssertEqual(
+            spoken,
+            ["BUILD, yellow", "SNACK, muted, not in your themes"]
+        )
+    }
+
     // MARK: - Span themes decode
 
     func testSpanDecodesThemeRefs() throws {
@@ -100,6 +160,22 @@ final class PomodoroThemeSwatchesTests: XCTestCase {
         XCTAssertEqual(span.themes.first?.hue, .magenta)
         XCTAssertEqual(span.themes.first?.start, 3)
         XCTAssertEqual(span.themes.first?.end, 6)
+        XCTAssertNil(span.themes.first?.configured)
+    }
+
+    func testSpanDecodesConfiguredFlag() throws {
+        let data = Data(
+            """
+            {"start":1,"end":6,"kind":"pomodoro_name",
+             "themes":[{"key":"snack","name":"SNACK","hue":null,
+             "hue_source":"unconfigured","configured":false,"start":1,"end":6}]}
+            """.utf8
+        )
+        let span = try JSONDecoder().decode(CaptureSpan.self, from: data)
+
+        XCTAssertEqual(span.themes.first?.configured, false)
+        XCTAssertEqual(span.themes.first?.hueSource, "unconfigured")
+        XCTAssertTrue(span.themes.first?.isUnconfigured ?? false)
     }
 
     func testSpanWithoutThemesDecodesEmpty() throws {

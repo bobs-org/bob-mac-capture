@@ -1945,11 +1945,145 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(success.pomodoroRef, "38:0b1c2d3e")
         XCTAssertEqual(success.pomodoro.name, "DEEP WORK")
         XCTAssertTrue(success.pomodoro.selectable)
+        XCTAssertTrue(success.warnings.isEmpty)
 
         guard case .failure(let failure) = failureResponse else {
             return XCTFail("Expected pomodoro name failure")
         }
         XCTAssertEqual(failure.error, "Pomodoro 38:0b1c2d3e already has a selectable name")
+    }
+
+    func testCapturePomodoroNameResponseDecodesThemeNotConfiguredWarnings() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "dry_run": false,
+              "day_file": "/tmp/bob/2026/20260828.md",
+              "relative_day_file": "2026/20260828.md",
+              "name": "SNACK",
+              "slug": "snack",
+              "line": 38,
+              "ref": "38:0b1c2d3e",
+              "pomodoro": {
+                "ref": "38:0b1c2d3e",
+                "line": 38,
+                "state": "open",
+                "status_symbol": " ",
+                "name": "SNACK",
+                "slug": "snack",
+                "selectable": true,
+                "time_range": null,
+                "placeholder": true,
+                "is_current": false,
+                "child_count": 0
+              },
+              "warnings": [
+                {
+                  "code": "theme_not_configured",
+                  "label": "SNACK",
+                  "message": "SNACK isn't one of your configured themes"
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let response = try JSONDecoder().decode(CapturePomodoroNameResponse.self, from: data)
+        guard case .success(let success) = response else {
+            return XCTFail("Expected pomodoro name success")
+        }
+        XCTAssertEqual(success.warnings.count, 1)
+        XCTAssertTrue(success.warnings[0].isThemeNotConfigured)
+        XCTAssertEqual(
+            success.warnings[0].message,
+            "SNACK isn't one of your configured themes"
+        )
+    }
+
+    func testThemesResponseDecodesConfiguredThemesAndOmitsForOlderBob() throws {
+        let withVocabulary = try JSONDecoder().decode(
+            CapturePomodoroThemesResponse.self,
+            from: Data(
+                """
+                {
+                  "schema_version": 1,
+                  "themes": [
+                    {
+                      "key": "build",
+                      "name": "BUILD",
+                      "hue": "yellow",
+                      "hue_source": "config",
+                      "hidden": false,
+                      "configured": true
+                    },
+                    {
+                      "key": "snack",
+                      "name": "SNACK",
+                      "hue": null,
+                      "hue_source": "unconfigured",
+                      "hidden": false,
+                      "configured": false
+                    }
+                  ],
+                  "configured_themes": [
+                    {"key": "build", "name": "BUILD", "color": "yellow"},
+                    {"key": "plan", "name": "PLAN", "color": null}
+                  ]
+                }
+                """.utf8
+            )
+        )
+        XCTAssertEqual(withVocabulary.themes.map(\.configured), [true, false])
+        XCTAssertEqual(withVocabulary.configuredThemes?.map(\.key), ["build", "plan"])
+        XCTAssertEqual(withVocabulary.configuredThemes?.last?.color, nil)
+
+        let older = try JSONDecoder().decode(
+            CapturePomodoroThemesResponse.self,
+            from: Data(
+                #"{"schema_version":1,"themes":[{"key":"books","name":"BOOKS","hue":"aqua","hue_source":"area","hidden":false}]}"#
+                    .utf8
+            )
+        )
+        XCTAssertNil(older.configuredThemes)
+        XCTAssertNil(older.themes.first?.configured)
+    }
+
+    func testCaptureCommandDecodesThemeNotConfiguredWarning() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "dry_run": true,
+              "routed": true,
+              "route": "mac_inbox",
+              "route_label": "mac_inbox.md",
+              "relative_target": "mac_inbox.md",
+              "target": "/tmp/bob/mac_inbox.md",
+              "text": "buy milk",
+              "task_line": "- [ ] #task buy milk [created::2026-08-14]",
+              "kind": "task",
+              "created": "2026-08-14",
+              "placement": "created",
+              "warnings": [
+                {
+                  "code": "theme_not_configured",
+                  "label": "SNACK",
+                  "message": "SNACK isn't one of your configured themes"
+                }
+              ]
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCommandResponse.self, from: data)
+        guard case .success(let success) = decoded else {
+            return XCTFail("Expected a successful response")
+        }
+        XCTAssertEqual(success.warnings.count, 1)
+        XCTAssertTrue(success.warnings[0].isThemeNotConfigured)
+        XCTAssertEqual(success.warnings[0].message, "SNACK isn't one of your configured themes")
     }
 
     func testAttributedStringUtf8OffsetRoundTripsCollapsedCaret() throws {

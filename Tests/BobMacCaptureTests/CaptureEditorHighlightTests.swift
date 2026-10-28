@@ -1,3 +1,4 @@
+import AppKit
 import CaptureCore
 import SwiftUI
 import XCTest
@@ -92,6 +93,70 @@ final class CaptureEditorHighlightTests: XCTestCase {
         model.editorTextDidChange(cursorUTF8Offset: 2)
 
         XCTAssertTrue(Self.strings(in: model.attributedDraft, where: { $0.backgroundColor != nil }).isEmpty)
+    }
+
+    func testUnconfiguredThemeGetsDashedUnderlineOnceCaretLeavesTheName() throws {
+        let draft = "Add bar @bob:theme-day-strip-bar#vibe=\n\nFix theme highlighting! @bob"
+        let theme = CapturePomodoroThemeRef(
+            key: "vibe",
+            name: "vibe",
+            hueSource: "unconfigured",
+            configured: false,
+            start: 33,
+            end: 37
+        )
+        let spans = Self.screenshotSpans(theme: theme)
+        var text = AttributedString(draft)
+        let parse = Self.parse(draft: draft, spans: spans)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+        let dashed = NSUnderlineStyle([.single, .patternDash])
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(
+                &text,
+                parse: parse,
+                draft: draft,
+                ranges: ranges,
+                cursorUTF8: 0
+            )
+        )
+        XCTAssertEqual(
+            Self.strings(in: text, where: { $0.underlineStyle == dashed }),
+            ["vibe"]
+        )
+        XCTAssertTrue(Self.strings(in: text, where: { $0.backgroundColor != nil }).isEmpty)
+    }
+
+    func testUnconfiguredThemeHasNoMarkWhileCaretIsInTheName() throws {
+        let draft = "Add bar @bob:theme-day-strip-bar#vibe=\n\nFix theme highlighting! @bob"
+        let theme = CapturePomodoroThemeRef(
+            key: "vibe",
+            name: "vibe",
+            hueSource: "unconfigured",
+            configured: false,
+            start: 33,
+            end: 37
+        )
+        let spans = Self.screenshotSpans(theme: theme)
+        var text = AttributedString(draft)
+        try Self.setAttributes(on: &text, start: 33, end: 37) {
+            $0.underlineStyle = NSUnderlineStyle([.single, .patternDash])
+            $0.underlineColor = NSColor.systemOrange.withAlphaComponent(0.7)
+        }
+        let parse = Self.parse(draft: draft, spans: spans)
+        let ranges = try XCTUnwrap(validatedSpanRanges(in: draft, spans: spans))
+
+        XCTAssertFalse(
+            CapturePanelModel.paintHighlighting(
+                &text,
+                parse: parse,
+                draft: draft,
+                ranges: ranges,
+                cursorUTF8: 35
+            )
+        )
+        XCTAssertTrue(Self.strings(in: text, where: { $0.underlineStyle != nil }).isEmpty)
+        XCTAssertTrue(Self.strings(in: text, where: { $0.underlineColor != nil }).isEmpty)
     }
 
     private static func screenshotSpans(theme: CapturePomodoroThemeRef) -> [CaptureSpan] {

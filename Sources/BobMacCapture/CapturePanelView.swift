@@ -1788,6 +1788,7 @@ private struct PomodoroNamePromptCard: View {
                                             PomodoroThemeSwatchView(
                                                 hue: theme.hue,
                                                 known: true,
+                                                configured: theme.configured,
                                                 size: 8
                                             )
                                             Text(theme.name)
@@ -1801,6 +1802,14 @@ private struct PomodoroNamePromptCard: View {
                                                 Text("Exempt")
                                                     .font(.caption2)
                                                     .foregroundStyle(.secondary)
+                                            } else if theme.hueSource == "unconfigured"
+                                                || theme.configured == false
+                                            {
+                                                Text("Not in your themes")
+                                                    .font(.caption2)
+                                                    .foregroundStyle(
+                                                        Color(nsColor: .systemOrange)
+                                                    )
                                             }
                                         }
                                         .padding(.horizontal, 8)
@@ -1814,7 +1823,13 @@ private struct PomodoroNamePromptCard: View {
                                     .buttonStyle(.plain)
                                     .help("Use exact theme name \(theme.name)")
                                     .accessibilityLabel(
-                                        "\(theme.name), \(theme.hue?.slotName ?? (theme.hueSource == "exempt" ? "muted" : "no color"))"
+                                        CaptureUnconfiguredThemePresentation.spokenColor(
+                                            name: theme.name,
+                                            hue: theme.hue,
+                                            hueSource: theme.hueSource,
+                                            known: true,
+                                            configured: theme.configured
+                                        )
                                     )
                                 }
                             }
@@ -1841,6 +1856,13 @@ private struct PomodoroNamePromptCard: View {
                     Text("Saves as \(canonical)")
                         .font(.caption)
                         .foregroundStyle(CaptureEditorPalette.color(for: .section))
+                }
+
+                ForEach(
+                    Array(model.pomodoroNamePromptWarnings.enumerated()),
+                    id: \.offset
+                ) { _, warning in
+                    CaptureThemeNotConfiguredCaption(warning: warning)
                 }
 
                 Text("Letters, numbers, spaces, and & ' ( ) , . / -")
@@ -2974,7 +2996,7 @@ private struct CompletionRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     ForEach(Array(content.themeSwatches.enumerated()), id: \.offset) { _, swatch in
-                        PomodoroThemeSwatchView(hue: swatch.hue, known: swatch.known, size: 8)
+                        PomodoroThemeSwatchView(swatch: swatch, size: 8)
                     }
                     emphasizedPrimaryText
                         .font(.system(.body, design: .monospaced))
@@ -3017,8 +3039,8 @@ private struct CompletionRow: View {
 
     private func badgeView(_ badge: String) -> some View {
         let fill: Color = badgeFill(for: badge)
-        let stroke: Color = isOutlinedBadge(badge) ? tint.opacity(0.55) : Color.clear
-        let foreground: Color = isOverCapBadge(badge) ? Color.red : tint
+        let stroke: Color = badgeStroke(for: badge)
+        let foreground: Color = badgeForeground(for: badge)
         return Text(badge)
             .font(.caption2)
             .lineLimit(1)
@@ -3033,7 +3055,7 @@ private struct CompletionRow: View {
     }
 
     private func badgeFill(for badge: String) -> Color {
-        if isOutlinedBadge(badge) {
+        if isOutlinedBadge(badge) || isWarningBadge(badge) {
             return Color.clear
         }
         if isOverCapBadge(badge) {
@@ -3042,8 +3064,32 @@ private struct CompletionRow: View {
         return tint.opacity(0.15)
     }
 
+    private func badgeStroke(for badge: String) -> Color {
+        if isWarningBadge(badge) {
+            return Color(nsColor: .systemOrange).opacity(0.7)
+        }
+        if isOutlinedBadge(badge) {
+            return tint.opacity(0.55)
+        }
+        return Color.clear
+    }
+
+    private func badgeForeground(for badge: String) -> Color {
+        if isOverCapBadge(badge) {
+            return Color.red
+        }
+        if isWarningBadge(badge) {
+            return Color(nsColor: .systemOrange)
+        }
+        return tint
+    }
+
     private func isOutlinedBadge(_ badge: String) -> Bool {
         badge == "Add ID" || badge == "Name it"
+    }
+
+    private func isWarningBadge(_ badge: String) -> Bool {
+        badge == CaptureUnconfiguredThemePresentation.createBadge
     }
 
     /// A `pomodoro_name` create row that would push the plan past its theme
@@ -3220,6 +3266,12 @@ struct PreviewPane: View {
                   let budget = CapturePlanBudgetPresentation(capture: first)
         {
             CapturePlanBudgetMeterRow(budget: budget)
+        }
+        ForEach(
+            Array(model.visibleThemeNotConfiguredWarnings(from: success).enumerated()),
+            id: \.offset
+        ) { _, warning in
+            CaptureThemeNotConfiguredCaption(warning: warning)
         }
 
         ForEach(Array(captures.enumerated()), id: \.offset) { index, capture in
@@ -4202,7 +4254,10 @@ struct PreviewPane: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            ForEach(Array(success.warnings.enumerated()), id: \.offset) { _, warning in
+            ForEach(
+                Array(success.warnings.filter { !$0.isThemeNotConfigured }.enumerated()),
+                id: \.offset
+            ) { _, warning in
                 Text(warning.message)
                     .font(.caption)
                     .foregroundStyle(.orange)

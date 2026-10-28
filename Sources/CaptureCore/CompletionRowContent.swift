@@ -292,10 +292,19 @@ public struct CompletionRowContent: Equatable, Sendable {
 public struct CaptureThemeSwatch: Equatable, Sendable {
     public let hue: PomodoroHomeHue?
     public let known: Bool
+    /// `false` when Bob reports the name is outside the configured vocabulary.
+    public let configured: Bool?
 
-    public init(hue: PomodoroHomeHue?, known: Bool) {
+    public var isUnconfigured: Bool { configured == false }
+
+    public init(hue: PomodoroHomeHue?, known: Bool, configured: Bool? = nil) {
         self.hue = hue
         self.known = known
+        self.configured = configured
+    }
+
+    public init(_ ref: CapturePomodoroThemeRef) {
+        self.init(hue: ref.hue, known: ref.known, configured: ref.configured)
     }
 }
 
@@ -314,18 +323,19 @@ public enum PomodoroThemeSwatches {
         guard let name, !name.trimmingCharacters(in: .whitespaces).isEmpty else {
             return []
         }
-        let byKey = Dictionary(uniqueKeysWithValues: refs.map { ($0.key, $0) })
+        let byKey = refsByKey(refs)
         return name.split(separator: "+").map { part in
             let key = normalizeThemeKey(String(part))
             if let ref = byKey[key] {
-                return CaptureThemeSwatch(hue: ref.hue, known: ref.known)
+                return CaptureThemeSwatch(ref)
             }
             return CaptureThemeSwatch(hue: nil, known: false)
         }
     }
 
     /// Spoken theme colors for an accessibility label (`BOB, magenta`).
-    /// Unknown components read as unknown; exempt themes read as muted.
+    /// Unknown components read as unknown; exempt themes read as muted;
+    /// unconfigured themes read as muted and not in your themes.
     public static func spokenThemeColors(
         forName name: String?,
         refs: [CapturePomodoroThemeRef]
@@ -333,7 +343,7 @@ public enum PomodoroThemeSwatches {
         guard let name, !name.trimmingCharacters(in: .whitespaces).isEmpty else {
             return []
         }
-        let byKey = Dictionary(uniqueKeysWithValues: refs.map { ($0.key, $0) })
+        let byKey = refsByKey(refs)
         return name.split(separator: "+").compactMap { part -> String? in
             let display = String(part).trimmingCharacters(in: .whitespaces)
             guard !display.isEmpty else {
@@ -342,21 +352,27 @@ public enum PomodoroThemeSwatches {
             guard let ref = byKey[normalizeThemeKey(String(part))] else {
                 return "\(display), unknown theme"
             }
-            guard ref.known else {
-                return "\(display), unknown theme"
-            }
-            if let hueName = ref.hue?.slotName {
-                return "\(display), \(hueName)"
-            }
-            return ref.hueSource == "exempt"
-                ? "\(display), muted"
-                : "\(display), no color"
+            return CaptureUnconfiguredThemePresentation.spokenColor(
+                name: display,
+                hue: ref.hue,
+                hueSource: ref.hueSource,
+                known: ref.known,
+                configured: ref.configured
+            )
         }
+    }
+
+    /// First-wins map so a refs array with a repeated key (`FIX + fix`)
+    /// cannot trap `Dictionary(uniqueKeysWithValues:)`.
+    static func refsByKey(
+        _ refs: [CapturePomodoroThemeRef]
+    ) -> [String: CapturePomodoroThemeRef] {
+        Dictionary(refs.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     /// Matches Bob's `normalize_component`: whitespace collapsed,
     /// lowercased.
-    static func normalizeThemeKey(_ raw: String) -> String {
+    public static func normalizeThemeKey(_ raw: String) -> String {
         raw.lowercased()
             .split(separator: " ", omittingEmptySubsequences: true)
             .joined(separator: " ")
@@ -850,7 +866,7 @@ public func completionRowContent(
 
     let themeContext = context == .pomodoroName || context == .pomodoroStartName
     let themeSwatches = themeContext
-        ? candidate.themes.map { CaptureThemeSwatch(hue: $0.hue, known: $0.known) }
+        ? candidate.themes.map { CaptureThemeSwatch($0) }
         : []
     if themeContext {
         if candidate.hidden, !badges.contains("Hidden") {
@@ -863,6 +879,13 @@ public func completionRowContent(
             if theme.hueSource == "exempt", !badges.contains("Exempt") {
                 badges.append("Exempt")
             }
+        }
+        let isCreateRow = candidate.createsPomodoro && candidate.origin != "history"
+        if isCreateRow,
+           candidate.themes.contains(where: { $0.configured == false }),
+           !badges.contains(CaptureUnconfiguredThemePresentation.createBadge)
+        {
+            badges.append(CaptureUnconfiguredThemePresentation.createBadge)
         }
     }
     let isHistoryTheme = themeContext && candidate.origin == "history"
@@ -885,17 +908,7 @@ public func completionRowContent(
         badges: badges
     )
     let themeAccessibilityDetails = themeContext
-        ? candidate.themes.map { theme -> String in
-            guard theme.known else {
-                return "\(theme.name), unknown theme"
-            }
-            if let hueName = theme.hue?.slotName {
-                return "\(theme.name), \(hueName)"
-            }
-            return theme.hueSource == "exempt"
-                ? "\(theme.name), muted"
-                : "\(theme.name), no color"
-        }
+        ? candidate.themes.map { CaptureUnconfiguredThemePresentation.spokenColor(for: $0) }
         : []
     let accessibilityLabel = ([baseAccessibilityLabel] + themeAccessibilityDetails)
         .filter { !$0.isEmpty }

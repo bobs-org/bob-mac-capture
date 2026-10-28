@@ -432,6 +432,65 @@ final class CompletionRowContentTests: XCTestCase {
         )
     }
 
+    func testUnconfiguredCreateRowAddsNotInYourThemesBadge() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "SNACK",
+            name: "SNACK",
+            createsPomodoro: true,
+            themes: [
+                CapturePomodoroThemeRef(
+                    key: "snack",
+                    name: "SNACK",
+                    hueSource: "unconfigured",
+                    configured: false
+                ),
+            ]
+        )
+
+        let content = completionRowContent(
+            for: candidate,
+            context: "pomodoro_name",
+            query: "sna"
+        )
+
+        XCTAssertEqual(
+            content.badges,
+            ["Create", CaptureUnconfiguredThemePresentation.createBadge]
+        )
+        XCTAssertEqual(
+            content.themeSwatches,
+            [CaptureThemeSwatch(hue: nil, known: true, configured: false)]
+        )
+        XCTAssertTrue(content.accessibilityLabel.contains("not in your themes"))
+    }
+
+    func testHistoryRowDoesNotAddUnconfiguredCreateBadge() {
+        let candidate = CaptureCompletionCandidate(
+            replacement: "SNACK",
+            name: "SNACK",
+            createsPomodoro: true,
+            themes: [
+                CapturePomodoroThemeRef(
+                    key: "snack",
+                    name: "SNACK",
+                    hueSource: "unconfigured",
+                    configured: false
+                ),
+            ],
+            origin: "history"
+        )
+
+        let content = completionRowContent(
+            for: candidate,
+            context: "pomodoro_name",
+            query: ""
+        )
+
+        XCTAssertFalse(
+            content.badges.contains(CaptureUnconfiguredThemePresentation.createBadge)
+        )
+    }
+
     func testRecentPomodoroThemeShowsBobHueAndCanRenderHiddenUndoState() {
         let candidate = CaptureCompletionCandidate(
             replacement: "BOOKS",

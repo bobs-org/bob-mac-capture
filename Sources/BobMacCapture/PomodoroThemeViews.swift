@@ -28,17 +28,47 @@ enum PomodoroThemeTint {
 /// The shared 8 pt theme swatch (PT6): a rounded square in the theme's
 /// light/dark hex before a name. Area homes keep their ● circle, so a
 /// theme never looks like a home. Unknown names draw a neutral outline
-/// and stay quiet while typing.
+/// and stay quiet while typing. Unconfigured names wear a dashed
+/// `systemOrange` outline over the muted fill.
 @available(macOS 26.0, *)
 struct PomodoroThemeSwatchView: View {
     let hue: PomodoroHomeHue?
     let known: Bool
+    var configured: Bool? = nil
     let size: CGFloat
     @Environment(\.colorScheme) private var colorScheme
 
+    init(hue: PomodoroHomeHue?, known: Bool, configured: Bool? = nil, size: CGFloat) {
+        self.hue = hue
+        self.known = known
+        self.configured = configured
+        self.size = size
+    }
+
+    init(swatch: CaptureThemeSwatch, size: CGFloat) {
+        self.init(
+            hue: swatch.hue,
+            known: swatch.known,
+            configured: swatch.configured,
+            size: size
+        )
+    }
+
+    private var isUnconfigured: Bool { configured == false }
+
     var body: some View {
         Group {
-            if known, let hue {
+            if isUnconfigured {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color(nsColor: .quaternaryLabelColor))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 2)
+                            .strokeBorder(
+                                Color(nsColor: .systemOrange).opacity(0.7),
+                                style: StrokeStyle(lineWidth: 1, dash: [2.5, 1.5])
+                            )
+                    }
+            } else if known, let hue {
                 RoundedRectangle(cornerRadius: 2)
                     .fill(PomodoroHomeColor.color(for: hue, scheme: colorScheme))
             } else {
@@ -63,11 +93,15 @@ struct PomodoroThemePillView: View {
     @State private var hovering = false
 
     private var isExempt: Bool {
-        swatch.known && swatch.hue == nil
+        swatch.known && swatch.hue == nil && !swatch.isUnconfigured
     }
 
+    private var isUnconfigured: Bool { swatch.isUnconfigured }
+
+    private var isMuted: Bool { isExempt || isUnconfigured }
+
     private var tint: Color {
-        if isExempt {
+        if isMuted {
             return Color(nsColor: .quaternaryLabelColor)
         }
         guard let hue = swatch.hue else {
@@ -79,6 +113,9 @@ struct PomodoroThemePillView: View {
     }
 
     private var spokenHue: String {
+        if isUnconfigured {
+            return "muted · \(CaptureUnconfiguredThemePresentation.accessibilitySuffix)"
+        }
         if isExempt {
             return "muted"
         }
@@ -93,7 +130,16 @@ struct PomodoroThemePillView: View {
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
             .background(tint, in: RoundedRectangle(cornerRadius: 4))
-            .foregroundStyle(isExempt ? .secondary : .primary)
+            .overlay {
+                if isUnconfigured {
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(
+                            Color(nsColor: .systemOrange).opacity(0.7),
+                            style: StrokeStyle(lineWidth: 1, dash: [3, 2])
+                        )
+                }
+            }
+            .foregroundStyle(isMuted ? .secondary : .primary)
             .onHover { hovering = $0 }
             .help("\(name) · \(spokenHue)")
             .accessibilityLabel("\(name), \(spokenHue) theme")
@@ -137,6 +183,31 @@ enum PomodoroThemePillNames {
         return name.split(separator: "+").map { part in
             String(part).trimmingCharacters(in: .whitespaces)
         }.filter { !$0.isEmpty }
+    }
+}
+
+/// One orange caption for a settled `theme_not_configured` warning: the
+/// unconfigured pill plus Bob's message. Used in every capture preview
+/// and in the Name-it prompt.
+@available(macOS 26.0, *)
+struct CaptureThemeNotConfiguredCaption: View {
+    let warning: StructuredCaptureWarning
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if let label = warning.label, !label.isEmpty {
+                PomodoroThemePillView(
+                    name: label,
+                    swatch: CaptureThemeSwatch(hue: nil, known: true, configured: false)
+                )
+            }
+            Text(warning.message)
+                .font(.caption)
+                .foregroundStyle(Color(nsColor: .systemOrange))
+                .textSelection(.enabled)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Warning: \(warning.message)")
     }
 }
 

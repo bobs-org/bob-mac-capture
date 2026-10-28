@@ -907,7 +907,7 @@ struct CaptureAgendaRowView: View {
             if !row.themeSwatches.isEmpty {
                 HStack(spacing: 3) {
                     ForEach(Array(row.themeSwatches.enumerated()), id: \.offset) { _, swatch in
-                        PomodoroThemeSwatchView(hue: swatch.hue, known: swatch.known, size: 8)
+                        PomodoroThemeSwatchView(swatch: swatch, size: 8)
                     }
                 }
             }

@@ -162,7 +162,7 @@ public struct CaptureAgendaRow: Equatable, Sendable {
 
     /// Per-component swatches for the row's theme refs, in order.
     public var themeSwatches: [CaptureThemeSwatch] {
-        themeRefs.map { CaptureThemeSwatch(hue: $0.hue, known: $0.known) }
+        themeRefs.map { CaptureThemeSwatch($0) }
     }
 }
 

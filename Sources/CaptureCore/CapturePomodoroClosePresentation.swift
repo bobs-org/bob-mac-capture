@@ -458,10 +458,11 @@ public struct CapturePomodoroClosePresentation: Equatable, Sendable {
         } else {
             summaryParts.append(emptyText)
         }
-        summaryParts.append(contentsOf: capture.warnings.map { "Warning: \($0.message)" })
+        let otherWarnings = capture.warnings.filter { !$0.isThemeNotConfigured }
+        summaryParts.append(contentsOf: otherWarnings.map { "Warning: \($0.message)" })
         accessibilitySummary = summaryParts.joined(separator: ", ")
 
-        warnings = capture.warnings.map(\.message)
+        warnings = otherWarnings.map(\.message)
     }
 
     private static func taskRow(
