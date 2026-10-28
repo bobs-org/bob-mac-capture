@@ -93,6 +93,7 @@ enum CaptureKeyCommand: Equatable {
     case cycleTaskLinkSuggestionForward
     case cycleTaskLinkSuggestionBackward
     case continuePickerOperator(String)
+    case flipRelationDirection
     case insertCloseTaskNumber(String)
     case openTodayPomodoro
     case switchPanel
@@ -770,6 +771,16 @@ struct CaptureKeyCommandRouter {
         case KeyCode.c:
             return modifiers == .control ? .stashDraftAndClose : nil
         default:
+            if context.pickerSourceIsRelation,
+               event.characters == "~",
+               modifiers.intersection([.command, .option, .control]).isEmpty,
+               !context.editorHasMarkedText
+            {
+                if context.keyIsRepeat || event.isARepeat {
+                    return .consumeKey
+                }
+                return .flipRelationDirection
+            }
             if context.pickerFilterIsEmpty,
                !context.pickerOperatorContinuationKeys.isEmpty,
                modifiers.intersection([.command, .option, .control]).isEmpty,

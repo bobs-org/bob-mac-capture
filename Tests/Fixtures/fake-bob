@@ -1295,6 +1295,8 @@ JSON
       cat "${fixtures_dir}/relation-parse-need.json"
     elif [[ "${draft}" == "New task ~~" ]]; then
       cat "${fixtures_dir}/relation-parse-from-need.json"
+    elif [[ "${draft}" == "New task ~~tar" ]]; then
+      cat "${fixtures_dir}/relation-parse-from-need.json"
     elif [[ "${draft}" == "New task ~tasks:target" ]]; then
       cat "${fixtures_dir}/relation-parse-complete.json"
     elif [[ "${draft}" == "New task ~tasks:target|" ]]; then
@@ -3006,6 +3008,8 @@ JSON
       cat "${fixtures_dir}/relation-complete-to-filtered.json"
     elif [[ "${draft}" == "New task ~~sou" ]]; then
       cat "${fixtures_dir}/relation-complete-from-filtered.json"
+    elif [[ "${draft}" == "New task ~~tar" ]]; then
+      cat "${fixtures_dir}/relation-complete-from-tar.json"
     elif [[ "${draft}" == "Use this @mac_inbox+owner ~" ]]; then
       cat "${fixtures_dir}/relation-complete-owner-to.json"
     elif [[ "${draft}" == "Use this @mac_inbox+owner ~~" ]]; then

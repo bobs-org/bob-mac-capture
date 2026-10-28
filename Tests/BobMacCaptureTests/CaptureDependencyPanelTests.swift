@@ -428,7 +428,7 @@ final class CaptureDependencyPanelTests: XCTestCase {
         let model = installRelationToPicker()
         XCTAssertTrue(model.pickerVisible)
         XCTAssertTrue(model.pickerSourceIsRelation)
-        XCTAssertEqual(model.pickerOperatorContinuationKeys, ["~"])
+        XCTAssertEqual(model.pickerOperatorContinuationKeys, [])
         model.acceptPickerRow(id: "tasks.md|1:aaaa1111", submitAfterInsert: false)
         XCTAssertEqual(model.plainDraft, "New task ~tasks:target ")
         XCTAssertFalse(model.pickerVisible)
@@ -454,12 +454,70 @@ final class CaptureDependencyPanelTests: XCTestCase {
             direction: .linksTo
         )
         XCTAssertEqual(model.picker?.source, .linksTo)
-        model.continuePickerOperator("~")
+        model.flipRelationDirection()
         XCTAssertEqual(model.plainDraft, "New task ~~")
         XCTAssertTrue(model.pickerVisible)
         await waitUntil { model.picker?.source == .linkedFrom }
         XCTAssertEqual(model.picker?.filterText, "")
         XCTAssertTrue(model.pickerVisible)
+    }
+
+    func testRelationFlipKeepsNonEmptyFilter() async throws {
+        let model = try liveModel()
+        model.installRelationPickerForPreviews(
+            candidates: [relationCandidate()],
+            filter: "foot",
+            draft: "New task ~",
+            replacement: CaptureRange(start: 9, end: 10),
+            owner: DependencyOwner(kind: "new_task", text: "New task"),
+            direction: .linksTo
+        )
+        XCTAssertEqual(model.picker?.source, .linksTo)
+        model.flipRelationDirection()
+        XCTAssertEqual(model.plainDraft, "New task ~~")
+        XCTAssertTrue(model.pickerVisible)
+        XCTAssertEqual(model.picker?.filterText, "foot")
+        await waitUntil { model.picker?.source == .linkedFrom }
+        XCTAssertEqual(model.picker?.filterText, "foot")
+        XCTAssertTrue(model.pickerVisible)
+        model.flipRelationDirection()
+        XCTAssertEqual(model.plainDraft, "New task ~")
+        await waitUntil { model.picker?.source == .linksTo }
+        XCTAssertEqual(model.picker?.filterText, "foot")
+    }
+
+    func testRelationFlipSeededQueryInsertsAfterSigil() {
+        let model = CapturePanelModel()
+        model.installRelationPickerForPreviews(
+            candidates: [relationCandidate()],
+            filter: "tar",
+            draft: "New task ~tar",
+            replacement: CaptureRange(start: 9, end: 13),
+            owner: DependencyOwner(kind: "new_task", text: "New task"),
+            direction: .linksTo
+        )
+        model.flipRelationDirection()
+        XCTAssertEqual(model.plainDraft, "New task ~~tar")
+        XCTAssertEqual(model.picker?.replacementRange, CaptureRange(start: 9, end: 14))
+        XCTAssertEqual(model.picker?.filterText, "tar")
+    }
+
+    func testRelationDoubleFlipBeforeRepresentsStaysSingle() {
+        let model = CapturePanelModel()
+        model.installRelationPickerForPreviews(
+            candidates: [relationCandidate()],
+            filter: "",
+            draft: "New task ~",
+            replacement: CaptureRange(start: 9, end: 10),
+            owner: DependencyOwner(kind: "new_task", text: "New task"),
+            direction: .linksTo
+        )
+        model.flipRelationDirection()
+        XCTAssertEqual(model.plainDraft, "New task ~~")
+        model.flipRelationDirection()
+        XCTAssertEqual(model.plainDraft, "New task ~")
+        XCTAssertEqual(model.picker?.source, .linksTo)
+        XCTAssertFalse(model.plainDraft.contains("~~~"))
     }
 
     func testRelationBackspaceOnLinkedFromFlipsBack() async throws {
@@ -543,20 +601,79 @@ final class CaptureDependencyPanelTests: XCTestCase {
         XCTAssertEqual(range, CaptureRange(start: 9, end: 11))
     }
 
-    func testRouterTildeContinuesRelationPicker() {
+    func testRouterTildeFlipsRelationPickerAnywhere() {
         let router = CaptureKeyCommandRouter()
-        let context = CaptureKeyRoutingContext(
+        let emptyContext = CaptureKeyRoutingContext(
+            pickerSourceIsRelation: true,
             pickerVisible: true,
-            pickerFilterIsEmpty: true,
-            pickerOperatorContinuationKeys: ["~"]
+            pickerFilterIsEmpty: true
         )
         XCTAssertEqual(
-            router.command(for: keyEvent(keyCode: 50, modifiers: .shift, characters: "~"), context: context),
-            .continuePickerOperator("~")
+            router.command(
+                for: keyEvent(keyCode: 50, modifiers: .shift, characters: "~"),
+                context: emptyContext
+            ),
+            .flipRelationDirection
+        )
+        let filteredContext = CaptureKeyRoutingContext(
+            pickerSourceIsRelation: true,
+            pickerVisible: true,
+            pickerFilterIsEmpty: false
         )
         XCTAssertEqual(
-            router.command(for: keyEvent(keyCode: 36, modifiers: .shift), context: context),
+            router.command(
+                for: keyEvent(keyCode: 50, modifiers: .shift, characters: "~"),
+                context: filteredContext
+            ),
+            .flipRelationDirection
+        )
+        let repeatContext = CaptureKeyRoutingContext(
+            pickerSourceIsRelation: true,
+            keyIsRepeat: true,
+            pickerVisible: true,
+            pickerFilterIsEmpty: false
+        )
+        XCTAssertEqual(
+            router.command(
+                for: keyEvent(keyCode: 50, modifiers: .shift, characters: "~"),
+                context: repeatContext
+            ),
             .consumeKey
+        )
+        for modifiers: NSEvent.ModifierFlags in [.command, .option, .control] {
+            let vetoed = CaptureKeyRoutingContext(
+                pickerSourceIsRelation: true,
+                pickerVisible: true,
+                pickerFilterIsEmpty: false
+            )
+            XCTAssertNil(
+                router.command(
+                    for: keyEvent(keyCode: 50, modifiers: modifiers, characters: "~"),
+                    context: vetoed
+                )
+            )
+        }
+        let marked = CaptureKeyRoutingContext(
+            pickerSourceIsRelation: true,
+            pickerVisible: true,
+            pickerFilterIsEmpty: false,
+            editorHasMarkedText: true
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 50, modifiers: .shift, characters: "~"),
+                context: marked
+            )
+        )
+        let nonRelation = CaptureKeyRoutingContext(
+            pickerVisible: true,
+            pickerFilterIsEmpty: false
+        )
+        XCTAssertNil(
+            router.command(
+                for: keyEvent(keyCode: 50, modifiers: .shift, characters: "~"),
+                context: nonRelation
+            )
         )
     }
 

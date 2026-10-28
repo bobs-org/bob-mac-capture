@@ -1277,9 +1277,6 @@ final class CapturePanelModel: ObservableObject {
         if picker?.source == .taskComplete {
             return picker?.taskCompleteContinuationKeys ?? []
         }
-        if picker?.source.isRelation == true {
-            return ["~"]
-        }
         return []
     }
 
@@ -5858,12 +5855,6 @@ final class CapturePanelModel: ObservableObject {
             guard openPicker.taskCompleteContinuationKeys.contains(key) else {
                 return
             }
-        } else if openPicker.source.isRelation {
-            guard key == "~" else {
-                return
-            }
-            flipRelationDirection(insertingSecondTilde: openPicker.source == .linksTo)
-            return
         } else {
             return
         }
@@ -5915,13 +5906,13 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
-    /// Empty-filter `~` on a relation picker inserts or removes one tilde
-    /// in the draft, keeps the picker open, and never suppresses auto-open.
+    /// `~` anywhere in a relation picker filter flips the direction in
+    /// place: it inserts or removes one tilde at the sigil, keeps the picker
+    /// open with the filter untouched, and never suppresses auto-open.
     /// Analysis then live-flips `relation_to` ↔ `relation_from`.
-    private func flipRelationDirection(insertingSecondTilde: Bool) {
+    func flipRelationDirection() {
         guard let openPicker = picker,
               openPicker.source.isRelation,
-              openPicker.filterText.isEmpty,
               plainDraft == openPicker.draftSnapshot
         else {
             return
@@ -5931,33 +5922,46 @@ final class CapturePanelModel: ObservableObject {
         guard r.start < caretBytes.count, caretBytes[r.start] == 126 else {
             return
         }
+        let editPoint = r.start + 1
+        let isLinkedFrom =
+            editPoint < r.end && editPoint < caretBytes.count && caretBytes[editPoint] == 126
         let text: String
         let caret: Int
         let newRange: CaptureRange
-        if insertingSecondTilde {
+        if !isLinkedFrom {
             guard let insertRange = stringRange(
                 in: plainDraft,
-                start: openPicker.restoreCursor,
-                end: openPicker.restoreCursor
+                start: editPoint,
+                end: editPoint
             ) else {
                 return
             }
             var next = plainDraft
             next.replaceSubrange(insertRange, with: "~")
             text = next
-            caret = openPicker.restoreCursor + 1
-            newRange = CaptureRange(start: r.start, end: r.end + 1)
+            var shiftedRestore = openPicker.restoreCursor
+            if shiftedRestore >= editPoint {
+                shiftedRestore += 1
+            }
+            caret = shiftedRestore
+            let shiftedEnd = r.end >= editPoint ? r.end + 1 : r.end
+            newRange = CaptureRange(start: r.start, end: shiftedEnd)
         } else {
-            let removeStart = r.start + 1
-            guard removeStart <= r.end,
-                  let deleteRange = stringRange(in: plainDraft, start: removeStart, end: removeStart + 1)
+            guard editPoint <= r.end,
+                  let deleteRange = stringRange(
+                      in: plainDraft, start: editPoint, end: editPoint + 1
+                  )
             else {
                 return
             }
             var next = plainDraft
             next.removeSubrange(deleteRange)
             text = next
-            caret = max(r.start + 1, openPicker.restoreCursor - 1)
+            var shiftedRestore = openPicker.restoreCursor
+            if shiftedRestore > editPoint {
+                shiftedRestore -= 1
+            }
+            caret = max(r.start + 1, shiftedRestore)
             newRange = CaptureRange(start: r.start, end: max(r.start + 1, r.end - 1))
         }
         guard stringRange(in: text, start: caret, end: caret) != nil else {
@@ -5993,7 +5997,7 @@ final class CapturePanelModel: ObservableObject {
             return
         }
         if picker.source == .linkedFrom {
-            flipRelationDirection(insertingSecondTilde: false)
+            flipRelationDirection()
             return
         }
         let r = picker.replacementRange

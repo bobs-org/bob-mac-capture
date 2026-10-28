@@ -89,13 +89,13 @@ Control-Return Insert, Capture & Open when the owner is complete.
 Typing `~` in Bob's valid relation position opens the Links To picker
 (`relation_to` context): scope `~`, caption Links To, and the header
 **🪢 “Owner” links to…** (or **🪢 Choose a task to link to…** when there is
-no owner yet). The subtitle is **any task · ~ flips direction**. Typing a
-second `~` at the same replacement start live-flips to Linked From
-(`relation_from`): scope `~~`, caption Linked From, and the header
-**🪢 Choose a task that will link to “Owner”**. The filter stays; auto-open
-is never suppressed. Empty-filter `~` is operator continuation, like
-Complete's `!`. Backspace on an empty `~~` filter flips back by removing one
-`~`; Backspace on empty-filter `~` removes the token.
+no owner yet). The subtitle is **any task · ~ flips direction**. Typing `~`
+anywhere in the filter live-flips Links To ↔ Linked From in place: to
+Linked From (`relation_from`) it shows scope `~~`, caption Linked From, and
+the header **🪢 Choose a task that will link to “Owner”**. The filter keeps
+its text and the typed `~` never enters it; repeats are ignored. Auto-open
+is never suppressed. Backspace on an empty `~~` filter flips back by
+removing one `~`; Backspace on empty-filter `~` removes the token.
 
 Bob supplies `already_linked`, `existing_label`, `also_prerequisite`,
 disabled reasons, and backend-formatted `~note:id` / `~~note:id`

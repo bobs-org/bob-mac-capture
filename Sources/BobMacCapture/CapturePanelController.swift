@@ -1868,6 +1868,9 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
         case .continuePickerOperator(let key):
             model.continuePickerOperator(key)
             return true
+        case .flipRelationDirection:
+            model.flipRelationDirection()
+            return true
         case .insertCloseTaskNumber(let digit):
             return Self.insertCloseTaskNumberInEditableTextView(
                 digit,
