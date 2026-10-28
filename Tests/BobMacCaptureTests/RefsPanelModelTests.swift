@@ -3751,12 +3751,19 @@ final class RefsPanelModelTests: XCTestCase {
         let reader = FakeTabsReader(isTrusted: true)
         let harness = try makeHarness(tabsReader: reader)
         await harness.waitForSnapshot()
+        await harness.waitForGitBackfill()
         let items = Array(harness.library.items.prefix(2))
-        XCTAssertEqual(items.count, 2)
+        guard items.count == 2 else {
+            XCTFail("fixture needs two references, got \(items.count)")
+            return
+        }
         let snapshot = Self.tabsSnapshot(items, vault: harness.vault, frontmost: true)
         reader.setNextResult(.snapshot(snapshot))
         harness.model.prepareForPresentation(source: .highlightsTabs)
-        await harness.waitForModel { $0.tabsState == .loaded }
+        await harness.waitForModel(
+            { $0.tabsState == .loaded },
+            label: "tabs loaded"
+        )
         XCTAssertEqual(harness.model.selectedID, items[0].id)
         XCTAssertEqual(harness.model.tabsListing?.preselectedID, items[0].id)
         XCTAssertEqual(harness.model.tabsListing?.currentID, items[0].id)
@@ -3770,7 +3777,10 @@ final class RefsPanelModelTests: XCTestCase {
             signals: changedSignals,
             refreshState: .idle
         )
-        await harness.waitForModel { $0.unavailableIDs.contains(items[0].id) }
+        await harness.waitForModel(
+            { $0.unavailableIDs.contains(items[0].id) },
+            label: "first tab unavailable"
+        )
         XCTAssertEqual(harness.model.selectedID, items[0].id)
         XCTAssertEqual(harness.model.tabsListing?.preselectedID, items[0].id)
         XCTAssertEqual(harness.model.tabsListing?.currentID, items[0].id)
@@ -3788,7 +3798,92 @@ final class RefsPanelModelTests: XCTestCase {
             signals: changedSignals,
             refreshState: .idle
         )
-        await harness.waitForModel { $0.unavailableIDs.contains(other.id) }
+        await harness.waitForModel(
+            { $0.unavailableIDs.contains(other.id) },
+            label: "filtered second tab unavailable"
+        )
+        XCTAssertNil(harness.model.tabsListing?.currentID)
+    }
+
+    func testHighlightsKeySelectsCurrentTabAfterGitBackfill() async throws {
+        let reader = FakeTabsReader(isTrusted: true)
+        let gate = BoundedGitGate()
+        defer { gate.release() }
+        let base = BobRefsFetcher(client: try bobClient(environment: [:]))
+        let fetcher = GatedGitFetcher(wrapping: base, gate: gate)
+        let harness = try makeHarness(tabsReader: reader, fetcher: fetcher)
+        await harness.waitForSnapshot()
+        XCTAssertFalse(
+            harness.hasPublishedGitBackfill,
+            "snapshot must publish before the held git lane"
+        )
+        let earlyItems = Array(harness.library.items.prefix(2))
+        guard earlyItems.count == 2 else {
+            XCTFail("fixture needs two references, got \(earlyItems.count)")
+            return
+        }
+        let snapshot = Self.tabsSnapshot(
+            earlyItems,
+            vault: harness.vault,
+            frontmost: true
+        )
+        reader.setNextResult(.snapshot(snapshot))
+        harness.model.prepareForPresentation(source: .highlightsTabs)
+        await harness.waitForModel(
+            { $0.tabsState == .loaded },
+            label: "tabs loaded while git held"
+        )
+        XCTAssertEqual(harness.model.selectedID, earlyItems[0].id)
+        XCTAssertEqual(
+            harness.model.tabsListing?.preselectedID,
+            earlyItems[0].id
+        )
+        XCTAssertEqual(harness.model.tabsListing?.currentID, earlyItems[0].id)
+        gate.release()
+        await harness.waitForGitBackfill()
+        XCTAssertTrue(harness.hasPublishedGitBackfill)
+        guard case .idle = harness.library.refreshState else {
+            XCTFail("expected idle refresh after git release")
+            return
+        }
+        let items = Array(harness.library.items.prefix(2))
+        guard items.count == 2 else {
+            XCTFail("fixture needs two references, got \(items.count)")
+            return
+        }
+        var changedSignals = harness.library.signals
+        changedSignals.today = RefsToday(entries: [
+            items[0].id: RefsTodayEntry(order: 0, pomodoroName: "refresh-proof")
+        ])
+        harness.library.installSnapshotForPreviews(
+            items: harness.library.items.filter { $0.id != items[0].id },
+            signals: changedSignals,
+            refreshState: .idle
+        )
+        await harness.waitForModel(
+            { $0.unavailableIDs.contains(items[0].id) },
+            label: "first tab unavailable after git"
+        )
+        XCTAssertEqual(harness.model.selectedID, items[0].id)
+        XCTAssertEqual(harness.model.tabsListing?.preselectedID, items[0].id)
+        XCTAssertEqual(harness.model.tabsListing?.currentID, items[0].id)
+        let other = items[1]
+        harness.model.setQuery(other.stem)
+        XCTAssertTrue(harness.model.listing.contains(id: other.id))
+        XCTAssertFalse(harness.model.listing.contains(id: items[0].id))
+        XCTAssertNil(harness.model.tabsListing?.currentID)
+        changedSignals.today = RefsToday(entries: [
+            other.id: RefsTodayEntry(order: 0, pomodoroName: "filtered-refresh-proof")
+        ])
+        harness.library.installSnapshotForPreviews(
+            items: harness.library.items.filter { $0.id != other.id },
+            signals: changedSignals,
+            refreshState: .idle
+        )
+        await harness.waitForModel(
+            { $0.unavailableIDs.contains(other.id) },
+            label: "filtered second tab unavailable after git"
+        )
         XCTAssertNil(harness.model.tabsListing?.currentID)
     }
 
@@ -6471,7 +6566,12 @@ final class RefsPanelModelTests: XCTestCase {
             XCTFail("open not recorded before timeout")
         }
 
-        func waitForModel(_ condition: @MainActor (RefsPanelModel) -> Bool) async {
+        func waitForModel(
+            _ condition: @MainActor (RefsPanelModel) -> Bool,
+            label: String = "model condition",
+            file: StaticString = #filePath,
+            line: UInt = #line
+        ) async {
             let deadline = Date().addingTimeInterval(5)
             while Date() < deadline {
                 if condition(model) {
@@ -6479,7 +6579,68 @@ final class RefsPanelModelTests: XCTestCase {
                 }
                 try? await Task.sleep(nanoseconds: 20_000_000)
             }
-            XCTFail("model condition not met before timeout")
+            XCTFail(
+                "\(label) not met before timeout: \(diagnosticSummary())",
+                file: file,
+                line: line
+            )
+        }
+
+        func waitForGitBackfill(
+            file: StaticString = #filePath,
+            line: UInt = #line
+        ) async {
+            let deadline = Date().addingTimeInterval(15)
+            while Date() < deadline {
+                if hasPublishedGitBackfill {
+                    // Let the model's coalesced publish settle
+                    // before the caller mutates the snapshot.
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                    if hasPublishedGitBackfill {
+                        return
+                    }
+                }
+                try? await Task.sleep(nanoseconds: 20_000_000)
+            }
+            XCTFail(
+                "git backfill not published before timeout: "
+                    + "\(diagnosticSummary())",
+                file: file,
+                line: line
+            )
+        }
+
+        var hasPublishedGitBackfill: Bool {
+            let opened = library.item(id: "ref/blogs/small_opened.md")
+            let book = library.item(id: "ref/books/small_book.md")
+            return opened?.added == RefDay(year: 2026, month: 9, day: 11)
+                && book?.added == RefDay(year: 2026, month: 8, day: 30)
+                && opened?.addedAt != nil && book?.addedAt != nil
+        }
+
+        func diagnosticSummary() -> String {
+            let libraryIDs = library.items.map(\.id).sorted()
+            let listingIDs = model.listing.orderedIDs
+            let unavailable = unavailableIDsSorted
+            let tabs = String(describing: model.tabsState)
+            let selected = model.selectedID ?? "nil"
+            let preselected = model.tabsListing?.preselectedID ?? "nil"
+            let current = model.tabsListing?.currentID ?? "nil"
+            let refresh = String(describing: library.refreshState)
+            let snapshotGen = library.snapshotRefreshGeneration
+            let todayGen = library.todayRefreshGeneration
+            let hasSnapshot = library.hasSnapshot
+            let lastSuccess = library.lastSuccessAt.map { "\($0)" } ?? "nil"
+            return "label state library=\(libraryIDs) listing=\(listingIDs) "
+                + "unavailable=\(unavailable) tabs=\(tabs) "
+                + "selected=\(selected) preselected=\(preselected) "
+                + "current=\(current) refresh=\(refresh) "
+                + "snapshotGen=\(snapshotGen) todayGen=\(todayGen) "
+                + "hasSnapshot=\(hasSnapshot) lastSuccess=\(lastSuccess)"
+        }
+
+        var unavailableIDsSorted: [String] {
+            Array(model.unavailableIDs).sorted()
         }
 
         func waitForPasteboard(containing string: String) async {
@@ -6522,7 +6683,8 @@ final class RefsPanelModelTests: XCTestCase {
         environment: [String: String] = [:],
         tabsReader: FakeTabsReader? = nil,
         isAdHocSigned: Bool = false,
-        now: @escaping () -> Date = { Date() }
+        now: @escaping () -> Date = { Date() },
+        fetcher: RefsFetching? = nil
     ) throws -> Harness {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -6538,8 +6700,16 @@ final class RefsPanelModelTests: XCTestCase {
         let openLogStore = RefsOpenLogStore(
             fileURL: root.appendingPathComponent("refs-open-log.json")
         )
+        let resolvedFetcher: RefsFetching
+        if let fetcher {
+            resolvedFetcher = fetcher
+        } else {
+            resolvedFetcher = BobRefsFetcher(
+                client: try bobClient(environment: environment)
+            )
+        }
         let library = RefsLibrary(
-            fetcher: BobRefsFetcher(client: try bobClient(environment: environment)),
+            fetcher: resolvedFetcher,
             snapshotStore: RefsSnapshotStore(
                 fileURL: root.appendingPathComponent("refs-snapshot.json")
             ),
@@ -6797,6 +6967,100 @@ extension RefsPanelModelTests.Harness {
                     "FAKE_BOB_REFS_LIST_FIXTURE": variant.path
                 ]))
         )
+    }
+}
+
+struct BoundedGitGateTimeoutError: Error, Sendable {}
+
+final class BoundedGitGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var released = false
+
+    func release() {
+        lock.withLock { released = true }
+    }
+
+    var isReleased: Bool {
+        lock.withLock { released }
+    }
+
+    func wait(timeoutSeconds: TimeInterval = 15) async throws {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        while true {
+            if lock.withLock({ released }) {
+                return
+            }
+            if Task.isCancelled {
+                throw CancellationError()
+            }
+            if Date() >= deadline {
+                throw BoundedGitGateTimeoutError()
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+    }
+}
+
+final class GatedGitFetcher: RefsFetching, @unchecked Sendable {
+    private let base: RefsFetching
+    private let gate: BoundedGitGate
+    private let timeoutSeconds: TimeInterval
+
+    init(
+        wrapping base: RefsFetching,
+        gate: BoundedGitGate,
+        timeoutSeconds: TimeInterval = 15
+    ) {
+        self.base = base
+        self.gate = gate
+        self.timeoutSeconds = timeoutSeconds
+    }
+
+    func list(gitDates: Bool) async throws -> RefsListResponse {
+        if gitDates {
+            try await gate.wait(timeoutSeconds: timeoutSeconds)
+        }
+        return try await base.list(gitDates: gitDates)
+    }
+
+    func plan() async throws -> RefsPlanResponse {
+        try await base.plan()
+    }
+
+    func show(path: String) async throws -> RefsShowResponse {
+        try await base.show(path: path)
+    }
+
+    func code(path: String) async throws -> RefsCodeResponse {
+        try await base.code(path: path)
+    }
+
+    func links(path: String) async throws -> RefsLinksResponse {
+        try await base.links(path: path)
+    }
+
+    func scan() async throws -> RefsScanResponse {
+        try await base.scan()
+    }
+
+    func rename(notePath: String, name: String) async throws -> RefsRenameResponse {
+        try await base.rename(notePath: notePath, name: name)
+    }
+
+    func linkToToday(
+        notePath: String,
+        selector: RefsTodayLinkSelector,
+        dryRun: Bool
+    ) async throws -> RefsTodayLinkResponse {
+        try await base.linkToToday(
+            notePath: notePath,
+            selector: selector,
+            dryRun: dryRun
+        )
+    }
+
+    func pull() async throws {
+        try await base.pull()
     }
 }
 
