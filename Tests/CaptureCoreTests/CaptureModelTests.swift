@@ -1851,6 +1851,181 @@ final class CaptureModelTests: XCTestCase {
         XCTAssertEqual(block.candidates.first?.preview, "Plan the next step")
     }
 
+    func testCompletionResponseDecodesWikilinkTaskMetadata() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 12,
+              "replacement": { "start": 10, "end": 12 },
+              "context": "wikilink_task",
+              "candidates": [
+                {
+                  "replacement": "[[mac_inbox#^inbox-chore]]",
+                  "ref": "1:aaaa1111",
+                  "note_path": "mac_inbox.md",
+                  "locator": "mac_inbox",
+                  "group": "in_this_note",
+                  "hidden": false,
+                  "block_id": "inbox-chore",
+                  "requires_block_id": false,
+                  "block_id_suggestions": [],
+                  "status_symbol": " ",
+                  "status_name": "Todo",
+                  "status_type": "TODO",
+                  "text": "Inbox chore",
+                  "section": null,
+                  "depth": 0,
+                  "line": 1,
+                  "cursor_after": 36,
+                  "link_target": "mac_inbox"
+                },
+                {
+                  "replacement": "",
+                  "ref": "2:bbbb2222",
+                  "note_path": "mac_inbox.md",
+                  "locator": "mac_inbox",
+                  "group": "in_this_note",
+                  "hidden": false,
+                  "block_id": null,
+                  "requires_block_id": true,
+                  "block_id_suggestions": ["inbox-plain"],
+                  "status_symbol": " ",
+                  "status_name": "Todo",
+                  "status_type": "TODO",
+                  "text": "Inbox plain",
+                  "section": null,
+                  "depth": 0,
+                  "line": 2,
+                  "link_target": "mac_inbox"
+                }
+              ],
+              "query": "s",
+              "picker": {
+                "kind": "wikilink_task",
+                "scope": "vault",
+                "scope_token": "((",
+                "marker_range": { "start": 10, "end": 13 },
+                "trigger_removal_range": { "start": 11, "end": 13 }
+              }
+            }
+            """.utf8
+        )
+
+        let decoded = try JSONDecoder().decode(CaptureCompletionResponse.self, from: data)
+        XCTAssertEqual(decoded.context, "wikilink_task")
+        XCTAssertEqual(decoded.query, "s")
+        XCTAssertTrue(decoded.picker?.isWikilinkTask ?? false)
+        XCTAssertEqual(decoded.candidates.first?.linkTarget, "mac_inbox")
+        XCTAssertEqual(decoded.candidates.first?.cursorAfter, 36)
+        XCTAssertEqual(decoded.candidates[1].linkTarget, "mac_inbox")
+        XCTAssertNil(decoded.candidates[1].cursorAfter)
+
+        // Older Bob omits link_target; decode as nil.
+        let legacyData = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "cursor": 12,
+              "replacement": { "start": 10, "end": 12 },
+              "context": "wikilink_task",
+              "candidates": [
+                {
+                  "replacement": "[[mac_inbox#^inbox-chore]]",
+                  "ref": "1:aaaa1111",
+                  "note_path": "mac_inbox.md",
+                  "locator": "mac_inbox",
+                  "group": "in_this_note",
+                  "hidden": false,
+                  "block_id": "inbox-chore",
+                  "requires_block_id": false,
+                  "block_id_suggestions": [],
+                  "status_symbol": " ",
+                  "status_name": "Todo",
+                  "status_type": "TODO",
+                  "text": "Inbox chore",
+                  "section": null,
+                  "depth": 0,
+                  "line": 1
+                }
+              ]
+            }
+            """.utf8
+        )
+        let legacy = try JSONDecoder().decode(CaptureCompletionResponse.self, from: legacyData)
+        XCTAssertNil(legacy.candidates.first?.linkTarget)
+    }
+
+    func testCaptureTaskIDResponseDecodesWikilinkReplacement() throws {
+        let successData = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "dry_run": false,
+              "relative_target": "mac_inbox.md",
+              "note_path": "mac_inbox.md",
+              "block_id": "inbox-plain",
+              "line": 2,
+              "ref": "2:updated",
+              "wikilink_replacement": "[[mac_inbox#^inbox-plain]]",
+              "task": {
+                "ref": "2:updated",
+                "line": 2,
+                "block_id": "inbox-plain",
+                "status_symbol": " ",
+                "status_name": "Todo",
+                "status_type": "TODO",
+                "text": "Inbox plain",
+                "section": null,
+                "depth": 0,
+                "child_count": 0
+              }
+            }
+            """.utf8
+        )
+        let legacyData = Data(
+            """
+            {
+              "ok": true,
+              "schema_version": 1,
+              "dry_run": false,
+              "relative_target": "mac_inbox.md",
+              "note_path": "mac_inbox.md",
+              "block_id": "inbox-plain",
+              "line": 2,
+              "ref": "2:updated",
+              "task": {
+                "ref": "2:updated",
+                "line": 2,
+                "block_id": "inbox-plain",
+                "status_symbol": " ",
+                "status_name": "Todo",
+                "status_type": "TODO",
+                "text": "Inbox plain",
+                "section": null,
+                "depth": 0,
+                "child_count": 0
+              }
+            }
+            """.utf8
+        )
+
+        let successResponse = try JSONDecoder().decode(CaptureTaskIDResponse.self, from: successData)
+        guard case .success(let success) = successResponse else {
+            return XCTFail("Expected task ID success")
+        }
+        XCTAssertEqual(success.wikilinkReplacement, "[[mac_inbox#^inbox-plain]]")
+
+        let legacyResponse = try JSONDecoder().decode(CaptureTaskIDResponse.self, from: legacyData)
+        guard case .success(let legacy) = legacyResponse else {
+            return XCTFail("Expected task ID success")
+        }
+        XCTAssertNil(legacy.wikilinkReplacement)
+    }
+
     func testCaptureTaskIDResponseDecodesVersionedSuccessAndFailure() throws {
         let successData = Data(
             """

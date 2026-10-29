@@ -216,6 +216,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
     case wikilinkNote
     case wikilinkHeading
     case wikilinkBlock
+    case wikilinkTask
 
     public init?(rawContext: String?) {
         switch rawContext {
@@ -241,6 +242,7 @@ public enum CaptureCompletionContext: Equatable, Sendable {
         case "wikilink_note": self = .wikilinkNote
         case "wikilink_heading": self = .wikilinkHeading
         case "wikilink_block": self = .wikilinkBlock
+        case "wikilink_task": self = .wikilinkTask
         default: return nil
         }
     }
@@ -892,6 +894,31 @@ public func completionRowContent(
         }
         accessibilityHint = "Inserts a link to this block."
 
+    case .wikilinkTask:
+        // The `((` picker owns the card; this is only the stray inline
+        // rendering, which reads as a linkable task. The locator uses
+        // Bob's exact `link_target` when present, never a lowercased route.
+        category = .wikilinkTarget
+        symbolName = "link"
+        contextLabel = "Task link"
+        primaryText = candidate.text ?? candidate.replacement
+        let wikilinkLocator = candidate.linkTarget ?? candidate.locator ?? candidate.route
+        if let wikilinkLocator, let blockID = candidate.blockID ?? candidate.blockIDSuggestions.first {
+            var secondary = "\(wikilinkLocator)#^\(blockID)"
+            if let section = candidate.section, !section.isEmpty {
+                secondary += " · \(section)"
+            }
+            secondaryText = secondary
+        } else {
+            secondaryText = candidate.section
+        }
+        if let reason = candidate.disabledReason, !reason.isEmpty {
+            badges = [reason]
+        } else if candidate.requiresBlockID {
+            badges = ["Needs ID"]
+        }
+        accessibilityHint = "Inserts a link to this task."
+
     case nil:
         category = .neutral
         symbolName = "text.cursor"
@@ -1028,8 +1055,9 @@ private func themeHistorySummary(lastUsed: String?, daysUsed: Int?) -> String? {
 /// The `book` override for reading-task rows in the task pickers, or
 /// nil when the row renders as before. Only `task_kind == "ref"` rows in
 /// the `^` (active_task), `:` (task_link), `/` (task_goto), `+` (task_parent and scoped
-/// task), `&` (task_dependency), and `!` (task_complete) contexts change;
-/// an older `bob` omits `task_kind` and every other context is untouched.
+/// task), `&` (task_dependency), `!` (task_complete), and `((` (wikilink_task)
+/// contexts change; an older `bob` omits `task_kind` and every other context
+/// is untouched.
 private func bookSymbolName(
     for candidate: CaptureCompletionCandidate,
     context: CaptureCompletionContext?
@@ -1038,7 +1066,7 @@ private func bookSymbolName(
         return nil
     }
     switch context {
-    case .activeTask, .taskLink, .taskGoto, .task, .taskParent, .taskDependency, .blockedTask, .taskComplete:
+    case .activeTask, .taskLink, .taskGoto, .task, .taskParent, .taskDependency, .blockedTask, .taskComplete, .wikilinkTask:
         return "book"
     default:
         return nil

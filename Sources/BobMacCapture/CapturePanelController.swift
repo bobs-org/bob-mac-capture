@@ -1927,6 +1927,7 @@ final class CapturePanelController: NSObject, NSWindowDelegate {
                 taskIDPromptIsTaskLink: model.taskIDPromptIsTaskLink,
                 taskIDPromptIsDependency: model.taskIDPromptIsDependency,
                 taskIDPromptIsTaskComplete: model.taskIDPromptIsTaskComplete,
+                taskIDPromptIsWikilinkTask: model.taskIDPromptIsWikilinkTask,
                 pomodoroNamePromptVisible: model.pomodoroNamePromptVisible,
                 relationLabelPromptVisible: model.relationLabelPromptVisible,
                 relationLabelPromptFieldIsEmpty: model.relationLabelFieldText.isEmpty,

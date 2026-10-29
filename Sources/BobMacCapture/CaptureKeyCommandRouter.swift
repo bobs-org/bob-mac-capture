@@ -113,6 +113,7 @@ struct CaptureKeyRoutingContext: Equatable {
     var taskIDPromptIsTaskLink = false
     var taskIDPromptIsDependency = false
     var taskIDPromptIsTaskComplete = false
+    var taskIDPromptIsWikilinkTask = false
     var pomodoroNamePromptVisible = false
     var relationLabelPromptVisible = false
     var relationLabelPromptFieldIsEmpty = true
@@ -571,7 +572,8 @@ struct CaptureKeyCommandRouter {
         if context.taskIDPromptCyclesSuggestions
             || context.taskIDPromptIsTaskLink
             || context.taskIDPromptIsDependency
-            || context.taskIDPromptIsTaskComplete,
+            || context.taskIDPromptIsTaskComplete
+            || context.taskIDPromptIsWikilinkTask,
            event.keyCode == KeyCode.tab
         {
             if modifiers.isEmpty {

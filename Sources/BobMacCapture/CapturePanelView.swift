@@ -1398,13 +1398,18 @@ private struct TaskIDPromptCard: View {
         if let prompt {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
-                    Label("Add block ID", systemImage: "link.badge.plus")
+                    Label(wikilinkPromptTitle, systemImage: "link.badge.plus")
                         .font(.headline)
                     Spacer(minLength: 8)
                     if prompt.isSaving {
                         ProgressView()
                             .controlSize(.small)
                     }
+                }
+                if let subtitle = wikilinkPromptSubtitle(for: prompt) {
+                    Text(subtitle)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
 
                 taskSummary(prompt)
@@ -1541,11 +1546,32 @@ private struct TaskIDPromptCard: View {
         return false
     }
 
-    /// Either link-mode prompt (task-link, dependency, Complete,
-    /// parent-task card, or similar-tasks band): all show suggestion chips
-    /// and the inserts line.
+    private var isWikilinkTaskPrompt: Bool {
+        guard let prompt else {
+            return false
+        }
+        if case .wikilinkTask = prompt.purpose {
+            return true
+        }
+        return false
+    }
+
+    /// Either link-mode prompt (task-link, dependency, Complete, Task
+    /// Wikilink, parent-task card, or similar-tasks band): all show
+    /// suggestion chips and the inserts line.
     private var isIDLinkMode: Bool {
-        isTaskLink || isDependencyPrompt || isTaskCompletePrompt || isParentTaskPickerPrompt || isSimilarTaskPrompt
+        isTaskLink || isDependencyPrompt || isTaskCompletePrompt || isWikilinkTaskPrompt || isParentTaskPickerPrompt || isSimilarTaskPrompt
+    }
+
+    private var wikilinkPromptTitle: String {
+        isWikilinkTaskPrompt ? "Add a block ID to link this task" : "Add block ID"
+    }
+
+    private func wikilinkPromptSubtitle(for prompt: CaptureTaskIDPromptState) -> String? {
+        guard case .wikilinkTask(let notePath, _, _, _, _, _, _) = prompt.purpose else {
+            return nil
+        }
+        return "Adds ^\(prompt.authoredID.isEmpty ? "id" : prompt.authoredID) to \(notePath) now."
     }
 
     private var isSimilarTaskPrompt: Bool {
@@ -1596,6 +1622,13 @@ private struct TaskIDPromptCard: View {
             case .none, .start:
                 return "Add ID & Insert"
             }
+        case .wikilinkTask(_, _, _, let followUp, _, _, _):
+            switch followUp {
+            case .submit, .submitAndOpen:
+                return "Add ID & Capture"
+            case .none, .start:
+                return "Add ID & Link"
+            }
         case .parentTask:
             return "Add & Select"
         case .parentTaskPicker(_, _, _, let followUp, _, _):
@@ -1624,6 +1657,9 @@ private struct TaskIDPromptCard: View {
             return "Inserts \(direction.leadingSigil)\(notePath):\(typed)"
         case .taskComplete(let notePath, _, _, _, _):
             return "Inserts !\(taskCompleteLocator(for: prompt, fallback: notePath)):\(typed)"
+        case .wikilinkTask(_, _, _, _, _, _, let linkTarget):
+            let target = linkTarget ?? prompt.candidate.linkTarget ?? prompt.candidate.locator ?? "note"
+            return "Inserts [[\(target)#^\(typed)]]"
         case .parentTask:
             return ""
         case .parentTaskPicker(let route, _, _, _, _, _):
@@ -1668,6 +1704,9 @@ private struct TaskIDPromptCard: View {
             return Text("\(Text("Inserts \(direction.leadingSigil)").foregroundStyle(CaptureEditorPalette.color(for: .relationSigil)))\(Text(notePath).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
         case .taskComplete(let notePath, _, _, _, _):
             return Text("\(Text("Inserts !").foregroundStyle(.secondary))\(Text(taskCompleteLocator(for: prompt, fallback: notePath)).foregroundStyle(CaptureEditorPalette.color(for: .route)))\(Text(":").foregroundStyle(.secondary))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))")
+        case .wikilinkTask(_, _, _, _, _, _, let linkTarget):
+            let target = linkTarget ?? prompt.candidate.linkTarget ?? prompt.candidate.locator ?? "note"
+            return Text("\(Text("Inserts [[").foregroundStyle(.secondary))\(Text(target).foregroundStyle(CaptureEditorPalette.color(for: .wikilinkTarget)))\(Text("#^").foregroundStyle(CaptureEditorPalette.color(for: .wikilinkDelimiter)))\(Text(typed).foregroundStyle(CaptureEditorPalette.color(for: .blockID)))\(Text("]]").foregroundStyle(.secondary))")
         case .parentTask:
             return Text("")
         case .parentTaskPicker(let route, _, _, _, _, _):

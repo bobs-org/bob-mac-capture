@@ -814,6 +814,11 @@ private struct CapturePickerRowView: View {
         // `+`), a plus glyph, and the dim italic suggestion, middle-truncated
         // at 260 pt. The display route is the row locator; the pending route
         // is Bob's exact note path, used only for the ID assignment.
+        // The Task Wikilink picker renders the link it will insert: the
+        // target in the wikilink target color, `#^` in the delimiter color.
+        let isWikilink = model.picker?.source == .wikilinkTask
+        let routeColor = isWikilink ? CaptureEditorPalette.color(for: .wikilinkTarget) : CaptureEditorPalette.color(for: .route)
+        let markerColor = isWikilink ? CaptureEditorPalette.color(for: .wikilinkDelimiter) : .secondary
         if let pending = row.pendingBlockID {
             let displayRoute = row.route ?? pending.route
             return AnyView(HStack(spacing: 2) {
@@ -825,9 +830,9 @@ private struct CapturePickerRowView: View {
                             matches: row.routeMatchRanges
                         )
                     )
-                    .foregroundStyle(CaptureEditorPalette.color(for: .route))
+                    .foregroundStyle(routeColor)
                     Text(locatorMarker)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(markerColor)
                 }
                 Image(systemName: "plus.circle")
                     .foregroundStyle(.secondary)
@@ -850,11 +855,11 @@ private struct CapturePickerRowView: View {
                     segments: [],
                     matches: row.routeMatchRanges
                 ))
-                .foregroundStyle(CaptureEditorPalette.color(for: .route))
+                .foregroundStyle(routeColor)
             }
             if row.blockID != nil {
                 Text(locatorMarker)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(markerColor)
             }
             if let blockID = row.blockID {
                 Text(CapturePickerRichText.displayText(
@@ -997,6 +1002,8 @@ private struct CapturePickerDetailStrip: View {
             return nil
         case .taskComplete:
             return nil
+        case .wikilinkTask:
+            return nil
         case .blockID(let context):
             if context.intent == .projectNote || context.scope == .projectTask {
                 return nil
@@ -1032,6 +1039,9 @@ private struct CapturePickerDetailStrip: View {
         if source == .taskComplete {
             return Text(TaskCompletePickerIndex.actionLine(for: row)).foregroundColor(.secondary)
         }
+        if source == .wikilinkTask {
+            return Text(WikilinkTaskPickerIndex.actionLine(for: row)).foregroundColor(.secondary)
+        }
         if source.isRelationshipModifier,
            let actionLine = model.pickerActionLine(for: row)
         {
@@ -1054,7 +1064,29 @@ private struct CapturePickerDetailStrip: View {
 
     /// The `↩ inserts …` locator mirrors the row locator: the route (absent
     /// for project-task rows), then the session's own marker, then the ID.
+    /// The Task Wikilink picker renders the link it will insert: the target
+    /// in the wikilink target color, `#^` in the delimiter color, and the
+    /// block ID in the block-ID color.
     private func locatorInsertionText(for row: CapturePickerRow) -> Text {
+        if source == .wikilinkTask {
+            var targetPart = Text("")
+            if let route = row.route {
+                targetPart = Text(route).foregroundStyle(CaptureEditorPalette.color(for: .wikilinkTarget))
+            }
+            var markerPart = Text("")
+            if row.blockID != nil {
+                markerPart = Text("#^").foregroundStyle(CaptureEditorPalette.color(for: .wikilinkDelimiter))
+            }
+            var blockPart = Text("")
+            if let blockID = row.blockID {
+                blockPart = Text(blockID).foregroundStyle(CaptureEditorPalette.color(for: .blockID))
+            }
+            var idPart = Text("")
+            if row.route == nil, row.blockID == nil {
+                idPart = Text(row.id).foregroundStyle(.primary)
+            }
+            return Text("\(targetPart)\(markerPart)\(blockPart)\(idPart)")
+        }
         let marker = source.locatorMarker
         var routePart = Text("")
         if let route = row.route {

@@ -3067,6 +3067,11 @@ JSON
       # Shift-Return chaining: the fresh item reopens the Complete picker
       # (real `bob capture-complete` output for the trailing `!`).
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/task-complete-complete-full.json"
+    elif [[ "${draft}" == "Follow up ((" ]]; then
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/wikilink-task-complete-full.json"
+    elif [[ "${draft}" == "Follow up ((s" || "${draft}" == "Follow up ((no-idle" ]]; then
+      # Filtered `((` drafts serve the full catalog; the app filters locally.
+      sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/wikilink-task-complete-full.json"
     elif [[ "${draft}" == "+" ]]; then
       sed "s/\"cursor\":[0-9][0-9]*/\"cursor\":${cursor}/" "${fixtures_dir}/parent-task-complete-full.json"
     elif [[ "${draft}" == "+bank" ]]; then
@@ -3743,10 +3748,9 @@ JSON
       cat "${fixtures_dir}/task-link-task-id-duplicate.json"
       exit 1
     fi
-    if [[ -n "${note_path}" && -n "${block_id}" ]]; then
-      # ID assignment via `--note-path` (the `!` Complete and `&` dependency
-      # flows): splice Bob's backend-formatted replacement verbatim. The
-      # locator strips the `.md` extension; it never echoes the file name.
+    if [[ "${FAKE_BOB_WIKILINK_OLD:-}" == "1" && -n "${note_path}" && -n "${block_id}" ]]; then
+      # Older Bob predating `wikilink_replacement`: omit it so the app keeps
+      # the prompt open with the upgrade copy.
       locator="${note_path%.md}"
       updated_ref="8:${block_id}-updated"
       cat <<JSON
@@ -3761,6 +3765,45 @@ JSON
   "ref": "${updated_ref}",
   "dependency_replacement": "&${locator}:${block_id}",
   "complete_replacement": "!${locator}:${block_id}",
+  "task": {
+    "ref": "${updated_ref}",
+    "line": 8,
+    "block_id": "${block_id}",
+    "status_symbol": " ",
+    "status_name": "Todo",
+    "status_type": "TODO",
+    "text": "Plan the handoff",
+    "section": "Tasks",
+    "depth": 1,
+    "child_count": 0
+  }
+}
+JSON
+      exit 0
+    fi
+    if [[ -n "${note_path}" && -n "${block_id}" ]]; then
+      # ID assignment via `--note-path` (the `!` Complete, `&` dependency,
+      # and `((` Task Wikilink flows): splice Bob's backend-formatted
+      # replacements verbatim. The locator strips the `.md` extension; it
+      # never echoes the file name.
+      locator="${note_path%.md}"
+      updated_ref="8:${block_id}-updated"
+      cat <<JSON
+{
+  "ok": true,
+  "schema_version": 1,
+  "dry_run": ${dry_run},
+  "relative_target": "${note_path}",
+  "note_path": "${note_path}",
+  "block_id": "${block_id}",
+  "line": 8,
+  "ref": "${updated_ref}",
+  "dependency_replacement": "&${locator}:${block_id}",
+  "blocked_task_replacement": "*${locator}:${block_id}",
+  "complete_replacement": "!${locator}:${block_id}",
+  "relation_to_replacement": "~${locator}:${block_id}",
+  "relation_from_replacement": "~~${locator}:${block_id}",
+  "wikilink_replacement": "[[${locator}#^${block_id}]]",
   "task": {
     "ref": "${updated_ref}",
     "line": 8,

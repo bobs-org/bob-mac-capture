@@ -1,0 +1,28 @@
+{
+    "ok": true,
+    "schema_version": 1,
+    "dry_run": false,
+    "relative_target": "mac_inbox.md",
+    "note_path": "mac_inbox.md",
+    "block_id": "inbox-plain",
+    "dependency_replacement": "&mac_inbox:inbox-plain",
+    "blocked_task_replacement": "*mac_inbox:inbox-plain",
+    "complete_replacement": "!mac_inbox:inbox-plain",
+    "relation_to_replacement": "~mac_inbox:inbox-plain",
+    "relation_from_replacement": "~~mac_inbox:inbox-plain",
+    "wikilink_replacement": "[[mac_inbox#^inbox-plain]]",
+    "line": 2,
+    "ref": "2:fbb3c8ec",
+    "task": {
+        "ref": "2:fbb3c8ec",
+        "line": 2,
+        "block_id": "inbox-plain",
+        "status_symbol": " ",
+        "status_name": "Unknown",
+        "status_type": "TODO",
+        "text": "Inbox plain",
+        "section": null,
+        "depth": 0,
+        "child_count": 0
+    }
+}

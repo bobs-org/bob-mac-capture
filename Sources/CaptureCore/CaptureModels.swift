@@ -5931,6 +5931,9 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
     /// Backend-formatted `~~note:id` for a successful linked-from ID assignment.
     /// Older Bob omits it; decode as nil.
     public let relationFromReplacement: String?
+    /// Backend-formatted `[[target#^id]]` for a successful Task Wikilink
+    /// (`((`) ID assignment. Older Bob omits it; decode as nil.
+    public let wikilinkReplacement: String?
 
     public init(
         ok: Bool,
@@ -5948,7 +5951,8 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
         completeReplacement: String? = nil,
         blockedTaskReplacement: String? = nil,
         relationToReplacement: String? = nil,
-        relationFromReplacement: String? = nil
+        relationFromReplacement: String? = nil,
+        wikilinkReplacement: String? = nil
     ) {
         self.ok = ok
         self.schemaVersion = schemaVersion
@@ -5966,6 +5970,7 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
         self.blockedTaskReplacement = blockedTaskReplacement
         self.relationToReplacement = relationToReplacement
         self.relationFromReplacement = relationFromReplacement
+        self.wikilinkReplacement = wikilinkReplacement
     }
 
     public init(from decoder: Decoder) throws {
@@ -5992,6 +5997,8 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
             (try? container.decodeIfPresent(String.self, forKey: .relationToReplacement)) ?? nil
         relationFromReplacement =
             (try? container.decodeIfPresent(String.self, forKey: .relationFromReplacement)) ?? nil
+        wikilinkReplacement =
+            (try? container.decodeIfPresent(String.self, forKey: .wikilinkReplacement)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -6011,6 +6018,7 @@ public struct CaptureTaskIDSuccess: Codable, Equatable {
         case blockedTaskReplacement = "blocked_task_replacement"
         case relationToReplacement = "relation_to_replacement"
         case relationFromReplacement = "relation_from_replacement"
+        case wikilinkReplacement = "wikilink_replacement"
     }
 }
 
@@ -6898,6 +6906,11 @@ public struct CapturePickerDescriptor: Codable, Equatable, Sendable {
         kind == "task_complete"
     }
 
+    /// True when this descriptor is the Task Wikilink (`((`) picker contract.
+    public var isWikilinkTask: Bool {
+        kind == "wikilink_task"
+    }
+
     public var parentTaskContext: ParentTaskPickerContext? {
         guard isParentTask, let scope = ParentTaskPickerScope(rawValue: scope) else {
             return nil
@@ -7617,6 +7630,10 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     public let depth: Int?
     public let childCount: Int?
     public let cursorAfter: Int?
+    /// Additive `wikilink_task` display-only link target: the exact text
+    /// Bob would put before `#^` (`sase_cleanup` or a full path). Older
+    /// Bob omits it; decode as nil.
+    public let linkTarget: String?
     public let path: String?
     public let name: String?
     public let alias: String?
@@ -7772,6 +7789,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         depth: Int? = nil,
         childCount: Int? = nil,
         cursorAfter: Int? = nil,
+        linkTarget: String? = nil,
         path: String? = nil,
         name: String? = nil,
         alias: String? = nil,
@@ -7844,6 +7862,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.depth = depth
         self.childCount = childCount
         self.cursorAfter = cursorAfter
+        self.linkTarget = linkTarget
         self.path = path
         self.name = name
         self.alias = alias
@@ -7919,6 +7938,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         depth = try container.decodeIfPresent(Int.self, forKey: .depth)
         childCount = try container.decodeIfPresent(Int.self, forKey: .childCount)
         cursorAfter = try container.decodeIfPresent(Int.self, forKey: .cursorAfter)
+        linkTarget = (try? container.decodeIfPresent(String.self, forKey: .linkTarget)) ?? nil
         path = try container.decodeIfPresent(String.self, forKey: .path)
         name = try container.decodeIfPresent(String.self, forKey: .name)
         alias = try container.decodeIfPresent(String.self, forKey: .alias)
@@ -7998,6 +8018,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case depth
         case childCount = "child_count"
         case cursorAfter = "cursor_after"
+        case linkTarget = "link_target"
         case path
         case name
         case alias

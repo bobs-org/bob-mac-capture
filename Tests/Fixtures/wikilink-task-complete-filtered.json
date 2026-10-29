@@ -1,0 +1,106 @@
+{
+    "ok": true,
+    "schema_version": 1,
+    "cursor": 13,
+    "replacement": {
+        "start": 10,
+        "end": 13
+    },
+    "context": "wikilink_task",
+    "candidates": [
+        {
+            "replacement": "[[sase_cleanup#^no-idle]]",
+            "ref": "1:fa53e656",
+            "note_path": "sase_cleanup.md",
+            "locator": "sase_cleanup",
+            "group": "in_progress",
+            "hidden": false,
+            "block_id": "no-idle",
+            "requires_block_id": false,
+            "block_id_suggestions": [],
+            "status_symbol": "/",
+            "status_name": "Unknown",
+            "status_type": "IN_PROGRESS",
+            "text": "Stop idling when no agents run",
+            "section": null,
+            "depth": 0,
+            "line": 1,
+            "cursor_after": 35,
+            "link_target": "sase_cleanup"
+        },
+        {
+            "replacement": "[[sase_cleanup#^deep-fix]]",
+            "ref": "2:b9f8453e",
+            "note_path": "sase_cleanup.md",
+            "locator": "sase_cleanup",
+            "group": "open",
+            "hidden": false,
+            "block_id": "deep-fix",
+            "requires_block_id": false,
+            "block_id_suggestions": [],
+            "status_symbol": " ",
+            "status_name": "Unknown",
+            "status_type": "TODO",
+            "text": "Fix deep bug",
+            "section": null,
+            "depth": 0,
+            "line": 2,
+            "cursor_after": 36,
+            "link_target": "sase_cleanup"
+        },
+        {
+            "replacement": "[[cash#^meals]]",
+            "ref": "2:679310c8",
+            "note_path": "cash.md",
+            "locator": "cash",
+            "group": "next",
+            "hidden": false,
+            "block_id": "meals",
+            "requires_block_id": false,
+            "block_id_suggestions": [],
+            "status_symbol": "*",
+            "status_name": "Unknown",
+            "status_type": "ON_HOLD",
+            "text": "Plan meals",
+            "section": null,
+            "depth": 0,
+            "line": 2,
+            "cursor_after": 25,
+            "link_target": "cash"
+        },
+        {
+            "replacement": "[[cash#^budget]]",
+            "ref": "1:39c561b2",
+            "note_path": "cash.md",
+            "locator": "cash",
+            "group": "open",
+            "hidden": false,
+            "block_id": "budget",
+            "requires_block_id": false,
+            "block_id_suggestions": [],
+            "status_symbol": " ",
+            "status_name": "Unknown",
+            "status_type": "TODO",
+            "text": "Confirm grocery budget",
+            "section": null,
+            "depth": 0,
+            "line": 1,
+            "cursor_after": 26,
+            "link_target": "cash"
+        }
+    ],
+    "query": "s",
+    "picker": {
+        "kind": "wikilink_task",
+        "scope": "vault",
+        "scope_token": "((",
+        "marker_range": {
+            "start": 10,
+            "end": 13
+        },
+        "trigger_removal_range": {
+            "start": 11,
+            "end": 13
+        }
+    }
+}
