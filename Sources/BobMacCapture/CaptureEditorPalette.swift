@@ -99,6 +99,11 @@ enum CaptureEditorPalette {
             // Cancelled-status family, distinct from muted labels, amber
             // caveats, and SwiftUI error red.
             return Color(nsColor: .systemRed)
+        case .relationCompleteLabel:
+            // Done-status family, matching the picker's Done glyph and the
+            // `!` seal. A distinct role from the `!` sigil's category even
+            // though both render green.
+            return .green
         case .pomodoroStart:
             return .pink
         case .pomodoroCloseInProgress:

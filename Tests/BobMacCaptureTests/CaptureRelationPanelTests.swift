@@ -91,7 +91,8 @@ final class CaptureRelationPanelTests: XCTestCase {
             authoredLabel: label,
             suggestions: completion.candidates,
             suggestionAuthoredLabel: completion.query ?? label,
-            relationCancel: completion.relationCancel
+            relationCancel: completion.relationCancel,
+            relationComplete: completion.relationComplete
         )
         return (model, completion)
     }
@@ -1616,6 +1617,198 @@ final class CaptureRelationPanelTests: XCTestCase {
         model.previewResults = [capture]
         XCTAssertEqual(model.primaryActionTitle, "Capture & cancel 1 task")
     }
+
+    func testRelationCardCompleteCueDimsSourceAndSlot() {
+        let complete = CaptureCompletionRelationComplete(
+            source: CaptureCompletionRelationCompleteSource(text: "Ship retry policy"),
+            verdict: "completes",
+            message: "✓ Completes “Ship retry policy” · Todo → Done"
+        )
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            draft: "Ship retry policy ~verify:confirm|\"implemented by\"",
+            tokenRange: CaptureRange(start: 18, end: 33),
+            direction: .linksTo,
+            ownerText: "Ship retry policy",
+            targetText: "Verify cancel labels",
+            authoredLabel: "implemented by",
+            suggestions: [
+                typedCandidate(
+                    label: "implemented by",
+                    replacement: "|\"implemented by\""
+                ).withCompleteSource(),
+                suggestionCandidate(label: "implemented by", count: 2).withCompleteSource(
+                    configured: true
+                ),
+            ],
+            suggestionAuthoredLabel: "implemented by",
+            relationComplete: complete
+        )
+        XCTAssertTrue(model.relationLabelCompletesSource)
+        XCTAssertFalse(model.relationLabelDimsSource)
+        XCTAssertTrue(model.relationLabelCloseDimsSource)
+        XCTAssertTrue(model.relationLabelSentence.hasPrefix("✓ "))
+        XCTAssertEqual(
+            model.relationLabelCompleteSlot,
+            CaptureRelationCompleteSlot(
+                text: "✓ Completes “Ship retry policy” · Todo → Done",
+                style: .completes
+            )
+        )
+        XCTAssertEqual(model.relationLabelCloseSlot?.effect, .complete)
+        XCTAssertTrue(
+            model.relationLabelSentenceAccessibilityLabel.contains(
+                "Completes Ship retry policy"
+            )
+        )
+        XCTAssertEqual(
+            model.relationLabelPromptRows.filter(\.completesSource).count,
+            1
+        )
+    }
+
+    func testRelationCardAlreadyClosedCompleteSlotIsMuted() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            ownerText: "Old idea",
+            targetText: "Verify cancel labels",
+            authoredLabel: "implemented by",
+            suggestions: [
+                typedCandidate(
+                    label: "implemented by",
+                    replacement: "|\"implemented by\""
+                ).withCompleteSource()
+            ],
+            suggestionAuthoredLabel: "implemented by",
+            relationComplete: CaptureCompletionRelationComplete(
+                source: CaptureCompletionRelationCompleteSource(text: "Old idea"),
+                verdict: "already_closed",
+                message: "Already Done · link only"
+            )
+        )
+        XCTAssertFalse(model.relationLabelCompletesSource)
+        XCTAssertEqual(model.relationLabelCompleteSlot?.style, .muted)
+        XCTAssertEqual(model.relationLabelCompleteSlot?.text, "Already Done · link only")
+    }
+
+    func testRelationCardCompleteInverseHintIsMuted() {
+        let model = CapturePanelModel()
+        model.installRelationLabelPromptForPreviews(
+            ownerText: "Ship retry policy",
+            targetText: "Verify cancel labels",
+            authoredLabel: "implements",
+            suggestions: [
+                typedCandidate(label: "implements", replacement: "|implements")
+            ],
+            suggestionAuthoredLabel: "implements",
+            relationComplete: CaptureCompletionRelationComplete(
+                source: CaptureCompletionRelationCompleteSource(text: "Ship retry policy"),
+                verdict: "completes",
+                message: "✓ Completes “Ship retry policy” · Todo → Done",
+                hint: "“implements” never completes · to finish “Verify cancel labels”, use ~~ with “implemented by”"
+            )
+        )
+        XCTAssertFalse(model.relationLabelCompletesSource)
+        XCTAssertEqual(model.relationLabelCompleteSlot?.style, .muted)
+        XCTAssertTrue(model.relationLabelCompleteSlot?.text.contains("never completes") == true)
+    }
+
+    func testSubmitHintNamesCompleteAndMixedCountsFromDryRun() throws {
+        let json = """
+        {
+          "ok": true, "dry_run": true, "routed": true,
+          "route": "design", "route_label": "design.md", "relative_target": "design.md",
+          "target": "/tmp/vault/design.md", "text": "Close this",
+          "task_line": "- Close this", "kind": "sub_bullet",
+          "created": "2026-10-26", "placement": "appended",
+          "relation_completes": [{
+            "source": {"path": "design.md", "line": 1, "block_id": "ship", "text": "Ship retry policy"},
+            "target": {"path": "verify.md", "block_id": "confirm", "text": "Verify cancel labels"},
+            "labels": ["implemented by"],
+            "action": "added",
+            "previous_status": " ",
+            "previous_status_name": "Todo",
+            "task_complete": {
+              "raw": "~verify:confirm|\\"implemented by\\"",
+              "note": "design",
+              "note_path": "design.md",
+              "block_id": "ship",
+              "action": "completed",
+              "text": "Ship retry policy",
+              "subtasks": [],
+              "subtasks_left_open": [],
+              "unblocked": [],
+              "still_blocked": [],
+              "unblocked_check": "checked"
+            },
+            "message": "✓ would complete “Ship retry policy” · Todo → Done"
+          }]
+        }
+        """
+        let response = try JSONDecoder().decode(
+            CaptureCommandResponse.self,
+            from: Data(json.utf8)
+        )
+        guard case .success(let capture) = response else {
+            return XCTFail("expected success")
+        }
+        let model = CapturePanelModel()
+        model.previewResults = [capture]
+        XCTAssertEqual(model.primaryActionTitle, "Capture & complete 1 task")
+
+        let mixedJSON = """
+        {
+          "ok": true, "dry_run": true, "routed": false,
+          "route_label": "cash.md", "relative_target": "cash.md",
+          "target": "/tmp/vault/cash.md", "text": "Sell stocks!",
+          "task_line": "- [ ] #task Sell stocks!", "kind": "task",
+          "created": "2026-10-26", "placement": "updated",
+          "relation_cancels": [{
+            "source": {"path": "cash.md", "line": 1, "block_id": "sell", "text": "Sell stocks!"},
+            "target": {"path": "invest.md", "block_id": "now", "text": "Sell stocks now!"},
+            "labels": ["duplicate of"],
+            "action": "added",
+            "previous_status": " ",
+            "previous_status_name": "Todo",
+            "cancel_log": "none",
+            "pomodoro_links_removed": 0,
+            "recovered": [],
+            "message": "⊘ would cancel “Sell stocks!” · Todo → Cancelled"
+          }],
+          "relation_completes": [{
+            "source": {"path": "design.md", "line": 1, "block_id": "ship", "text": "Ship retry policy"},
+            "target": {"path": "verify.md", "block_id": "confirm", "text": "Verify cancel labels"},
+            "labels": ["implemented by"],
+            "action": "added",
+            "previous_status": " ",
+            "previous_status_name": "Todo",
+            "task_complete": {
+              "raw": "~verify:confirm|\\"implemented by\\"",
+              "note": "design",
+              "note_path": "design.md",
+              "block_id": "ship",
+              "action": "completed",
+              "text": "Ship retry policy",
+              "subtasks": [],
+              "subtasks_left_open": [],
+              "unblocked": [],
+              "still_blocked": [],
+              "unblocked_check": "checked"
+            },
+            "message": "✓ would complete “Ship retry policy” · Todo → Done"
+          }]
+        }
+        """
+        let mixedResponse = try JSONDecoder().decode(
+            CaptureCommandResponse.self,
+            from: Data(mixedJSON.utf8)
+        )
+        guard case .success(let mixed) = mixedResponse else {
+            return XCTFail("expected success")
+        }
+        model.previewResults = [mixed]
+        XCTAssertEqual(model.primaryActionTitle, "Capture & close 2 tasks")
+    }
 }
 
 extension CaptureCompletionCandidate {
@@ -1688,6 +1881,80 @@ extension CaptureCompletionCandidate {
             hideReplacement: hideReplacement,
             existing: existing,
             cancelsSource: true,
+            configured: configured
+        )
+    }
+
+    fileprivate func withCompleteSource(configured: Bool = false) -> CaptureCompletionCandidate {
+        CaptureCompletionCandidate(
+            replacement: replacement,
+            route: route,
+            label: label,
+            kind: kind,
+            status: status,
+            title: title,
+            level: level,
+            taskRef: taskRef,
+            target: target,
+            blockID: blockID,
+            requiresBlockID: requiresBlockID,
+            statusSymbol: statusSymbol,
+            statusName: statusName,
+            statusType: statusType,
+            text: text,
+            section: section,
+            depth: depth,
+            childCount: childCount,
+            cursorAfter: cursorAfter,
+            path: path,
+            name: name,
+            alias: alias,
+            matchKind: matchKind,
+            heading: heading,
+            preview: preview,
+            requiresName: requiresName,
+            line: line,
+            state: state,
+            timeRange: timeRange,
+            placeholder: placeholder,
+            isCurrent: isCurrent,
+            matchCount: matchCount,
+            createsPomodoro: createsPomodoro,
+            themes: themes,
+            origin: origin,
+            lastUsed: lastUsed,
+            daysUsed: daysUsed,
+            similarTo: similarTo,
+            nextUp: nextUp,
+            planThemesAfter: planThemesAfter,
+            planThemesCap: planThemesCap,
+            pomodoro: pomodoro,
+            noteKind: noteKind,
+            blockIDSuggestions: blockIDSuggestions,
+            group: group,
+            scheduled: scheduled,
+            pullsForward: pullsForward,
+            notePath: notePath,
+            locator: locator,
+            alreadyDependency: alreadyDependency,
+            alreadyBlocked: alreadyBlocked,
+            alreadyLinked: alreadyLinked,
+            existingLabel: existingLabel,
+            alsoPrerequisite: alsoPrerequisite,
+            disabledReason: disabledReason,
+            hidden: hidden,
+            recurring: recurring,
+            alreadySelected: alreadySelected,
+            today: today,
+            taskKind: taskKind,
+            count: count,
+            typed: typed,
+            key: key,
+            inverse: inverse,
+            hideReplacement: hideReplacement,
+            existing: existing,
+            cancelsSource: false,
+            completesSource: true,
             configured: configured
         )
     }

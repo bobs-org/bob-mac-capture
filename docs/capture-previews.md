@@ -434,6 +434,18 @@ Bob sends the warning without `relation_cancels[]`, it uses the ⊘ tint.
 The draft's `cancels_source` label span takes the cancelled tint. While the
 latest dry run has cancels, the submit button reads `Capture & cancel 1
 task`.
+Complete-label drafts add one ✓ row per `relation_completes[]` under the 🪢
+row, using Bob's message (`✓ would complete “Ship retry policy” · Todo →
+Done` on a dry run), followed by the same transition, ledger, and unblocked
+rows `!` would print for that source. The matching
+`relation_completed_source` warning is skipped when those rows are present,
+so it never appears as an orange duplicate; if Bob sends the warning without
+`relation_completes[]`, it uses the ✓ tint. The draft's `completes_source`
+label span takes the complete tint, distinct from the `!` sigil's role. While
+the latest dry run has completes, the submit button reads
+`Capture & complete 1 task`; a mixed cancel-and-complete dry run reads
+`Capture & close N tasks`. A complete-label commit with offers opens the
+in-panel successor choice exactly as `!` does.
 Success notifications count relations separately:
 a single `~` reads `🪢 owner now links to "target"`, a single `~~` reads
 `🪢 "source" now links here`, and larger or mixed batches read

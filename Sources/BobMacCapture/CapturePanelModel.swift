@@ -275,6 +275,10 @@ struct CaptureRelationLabelPromptState: Equatable {
     /// Latest `relation_cancel` from a catalog, suggestion, or opening
     /// completion. Nil on older Bob and when no cancel labels are configured.
     var relationCancel: CaptureCompletionRelationCancel?
+    /// Latest `relation_complete` from a catalog, suggestion, or opening
+    /// completion. Nil on older Bob and when no complete labels are
+    /// configured.
+    var relationComplete: CaptureCompletionRelationComplete?
 }
 
 /// Ctrl+R rename mode over one existing relation label. `oldKey` is the
@@ -1586,8 +1590,11 @@ final class CapturePanelModel: ObservableObject {
         if adjustPresentation != nil {
             return "Adjust"
         }
-        if let hint = CaptureRelationCancelPresentation.submitHint(
-            cancelCount: CaptureRelationCancelPresentation.cancelCount(in: previewResults)
+        if let hint = CaptureRelationCompletePresentation.submitHint(
+            cancelCount: CaptureRelationCancelPresentation.cancelCount(in: previewResults),
+            completeCount: CaptureRelationCompletePresentation.completeCount(
+                in: previewResults
+            )
         ) {
             return hint
         }
@@ -7398,6 +7405,9 @@ final class CapturePanelModel: ObservableObject {
         } else {
             base = prompt.ownerText.isEmpty ? "This task" : "“\(prompt.ownerText)”"
         }
+        if relationLabelCompletesSource {
+            return "✓ \(base)"
+        }
         if relationLabelDimsSource {
             return "⊘ \(base)"
         }
@@ -7409,11 +7419,45 @@ final class CapturePanelModel: ObservableObject {
         relationLabelSelectedCandidate ?? relationLabelFreshTypedRow
     }
 
+    /// Palette role for the live-sentence label pill: the close-effect
+    /// tint when the active row carries one, else the mint relation sigil.
+    var relationLabelCloseEffectCategory: CaptureSemanticCategory {
+        let candidate = relationLabelSelectedCandidate ?? relationLabelFreshTypedRow
+        if candidate?.completesSource == true {
+            return .relationCompleteLabel
+        }
+        if candidate?.cancelsSource == true {
+            return .relationCancelLabel
+        }
+        return .relationSigil
+    }
+
+    /// The selected catalog row, else the fresh typed row, for complete
+    /// cues. One label carries at most one close effect, so at most one of
+    /// the cancel and complete cues is ever active.
+    var relationLabelCompleteCandidate: CaptureCompletionCandidate? {
+        relationLabelSelectedCandidate ?? relationLabelFreshTypedRow
+    }
+
     var relationLabelDimsSource: Bool {
         CaptureRelationCancelPresentation.dimsSource(
             candidate: relationLabelCancelCandidate,
             cancel: relationLabelPrompt?.relationCancel
         )
+    }
+
+    /// True when the active complete label dims the live-sentence source
+    /// (verdict `completes`).
+    var relationLabelCompletesSource: Bool {
+        CaptureRelationCompletePresentation.dimsSource(
+            candidate: relationLabelCompleteCandidate,
+            complete: relationLabelPrompt?.relationComplete
+        )
+    }
+
+    /// True when either close effect dims the source.
+    var relationLabelCloseDimsSource: Bool {
+        relationLabelDimsSource || relationLabelCompletesSource
     }
 
     var relationLabelCancelSlot: CaptureRelationCancelSlot? {
@@ -7423,8 +7467,36 @@ final class CapturePanelModel: ObservableObject {
         )
     }
 
+    var relationLabelCompleteSlot: CaptureRelationCompleteSlot? {
+        CaptureRelationCompletePresentation.slot(
+            candidate: relationLabelCompleteCandidate,
+            complete: relationLabelPrompt?.relationComplete
+        )
+    }
+
+    /// The close-effect slot: the complete slot when it applies, else the
+    /// cancel slot.
+    var relationLabelCloseSlot: (text: String, isClosing: Bool, effect: RelationSourceEffect)? {
+        if let complete = relationLabelCompleteSlot {
+            return (
+                text: complete.text,
+                isClosing: complete.style == .completes,
+                effect: .complete
+            )
+        }
+        if let cancel = relationLabelCancelSlot {
+            return (
+                text: cancel.text,
+                isClosing: cancel.style == .cancels,
+                effect: .cancel
+            )
+        }
+        return nil
+    }
+
     /// VoiceOver for the live sentence. A canceling source reads
-    /// "Cancels Sell stocks!" instead of the quoted task name.
+    /// "Cancels Sell stocks!" and a completing source reads
+    /// "Completes Sell stocks!" instead of the quoted task name.
     var relationLabelSentenceAccessibilityLabel: String {
         let sourceName: String
         if let prompt = relationLabelPrompt {
@@ -7436,12 +7508,20 @@ final class CapturePanelModel: ObservableObject {
         } else {
             sourceName = ""
         }
-        let source = CaptureRelationCancelPresentation.sourceAccessibilityLabel(
-            sourceText: sourceName,
-            dimsSource: relationLabelDimsSource
-        )
+        let source: String
+        if relationLabelCompletesSource {
+            source = CaptureRelationCompletePresentation.sourceAccessibilityLabel(
+                sourceText: sourceName,
+                dimsSource: true
+            )
+        } else {
+            source = CaptureRelationCancelPresentation.sourceAccessibilityLabel(
+                sourceText: sourceName,
+                dimsSource: relationLabelDimsSource
+            )
+        }
         let sentence = relationLabelSentence
-        if relationLabelDimsSource, !source.isEmpty {
+        if relationLabelCloseDimsSource, !source.isEmpty {
             return "Relation sentence: \(source). \(sentence)"
         }
         return "Relation sentence: \(sentence)"
@@ -7503,7 +7583,8 @@ final class CapturePanelModel: ObservableObject {
     var relationLabelPromptBadgeText: String? {
         guard let prompt = relationLabelPrompt else { return nil }
         if let typed = relationLabelFreshTypedRow,
-           let reason = typed.disabledReason, !reason.isEmpty, !typed.cancelsSource
+           let reason = typed.disabledReason, !reason.isEmpty,
+           !typed.cancelsSource, !typed.completesSource
         {
             return "invalid"
         }
@@ -7725,7 +7806,8 @@ final class CapturePanelModel: ObservableObject {
             rename: nil,
             isSaving: false,
             errorMessage: nil,
-            relationCancel: nil
+            relationCancel: nil,
+            relationComplete: nil
         )
         statusText = "Link with a relation"
         requestFocus(.relationLabelPromptField)
@@ -9126,6 +9208,7 @@ final class CapturePanelModel: ObservableObject {
         current.catalog = response.candidates.filter { !$0.typed }
         current.catalogErrorMessage = nil
         current.relationCancel = response.relationCancel
+        current.relationComplete = response.relationComplete
         if let hiddenCount = response.hiddenCount {
             current.hiddenCount = hiddenCount
             current.hiddenCountKnown = true
@@ -9242,6 +9325,7 @@ final class CapturePanelModel: ObservableObject {
         current.suggestions = response.candidates
         current.suggestionAuthoredLabel = authoredLabel
         current.relationCancel = response.relationCancel
+        current.relationComplete = response.relationComplete
         if let hiddenCount = response.hiddenCount {
             current.hiddenCount = hiddenCount
             current.hiddenCountKnown = true
@@ -9363,6 +9447,7 @@ final class CapturePanelModel: ObservableObject {
                 existing.suggestions = completion.candidates
                 existing.suggestionAuthoredLabel = existing.authoredLabel
                 existing.relationCancel = completion.relationCancel
+                existing.relationComplete = completion.relationComplete
                 if let typed = completion.candidates.first(where: { $0.typed }),
                    let reason = typed.disabledReason, !reason.isEmpty
                 {
@@ -9416,6 +9501,7 @@ final class CapturePanelModel: ObservableObject {
                 opened.hiddenCountKnown = true
             }
             opened.relationCancel = completion.relationCancel
+            opened.relationComplete = completion.relationComplete
             relationLabelPrompt = opened
             if opened.hiddenCount > 0 {
                 fetchRelationLabelHiddenRows()
@@ -9438,7 +9524,8 @@ final class CapturePanelModel: ObservableObject {
         suggestionAuthoredLabel: String? = nil,
         pendingSubmit: Bool = false,
         returnPicker: CapturePickerState? = nil,
-        relationCancel: CaptureCompletionRelationCancel? = nil
+        relationCancel: CaptureCompletionRelationCancel? = nil,
+        relationComplete: CaptureCompletionRelationComplete? = nil
     ) {
         plainDraft = draft
         relationLabelPrompt = CaptureRelationLabelPromptState(
@@ -9470,7 +9557,8 @@ final class CapturePanelModel: ObservableObject {
             rename: nil,
             isSaving: false,
             errorMessage: nil,
-            relationCancel: relationCancel
+            relationCancel: relationCancel,
+            relationComplete: relationComplete
         )
         editorInputLocked = true
         fetchRelationLabelCatalog()
@@ -11029,6 +11117,15 @@ final class CapturePanelModel: ObservableObject {
             if let close = capture.pomodoroClose {
                 offers.append(contentsOf: close.unblocked)
                 stillBlocked.append(contentsOf: close.stillBlocked)
+            }
+            // Complete-label commits offer successors exactly like `!`:
+            // the close carries the same `task_complete` offers.
+            for relationComplete in capture.relationCompletes {
+                guard let complete = relationComplete.taskComplete else {
+                    continue
+                }
+                offers.append(contentsOf: complete.unblocked)
+                stillBlocked.append(contentsOf: complete.stillBlocked)
             }
         }
         return CapturePullInPreviewSnapshot(

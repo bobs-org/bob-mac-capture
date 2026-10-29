@@ -21,6 +21,7 @@ public enum CaptureSemanticCategory: Equatable, Sendable {
     case relationSigil
     case relationLabel
     case relationCancelLabel
+    case relationCompleteLabel
     case pomodoroStart
     case pomodoroCloseInProgress
     case pomodoroClosePark
@@ -40,10 +41,11 @@ extension CaptureSemanticCategory {
         self == .link
     }
 
-    /// Relation labels render muted italic in the editor. Cancel labels
-    /// keep the italic and take the ⊘ tint instead of the muted role.
+    /// Relation labels render muted italic in the editor. Cancel and
+    /// complete labels keep the italic and take the ⊘/✓ tint instead of
+    /// the muted role.
     public var isItalic: Bool {
-        self == .relationLabel || self == .relationCancelLabel
+        self == .relationLabel || self == .relationCancelLabel || self == .relationCompleteLabel
     }
 }
 
@@ -179,6 +181,8 @@ public func captureSemanticCategory(forSpan span: CaptureSpan) -> CaptureSemanti
             return .neutral
         }
         return .templateSlot(field)
+    case "relation_label" where span.completesSource:
+        return .relationCompleteLabel
     case "relation_label" where span.cancelsSource:
         return .relationCancelLabel
     default:
@@ -792,8 +796,16 @@ public func completionRowContent(
             : "Inserts a relation from the owner to this task."
 
     case .relationLabel:
-        category = candidate.cancelsSource ? .relationCancelLabel : .relationLabel
-        symbolName = candidate.cancelsSource ? "circle.slash" : "textformat"
+        if candidate.completesSource {
+            category = .relationCompleteLabel
+            symbolName = "checkmark.circle"
+        } else if candidate.cancelsSource {
+            category = .relationCancelLabel
+            symbolName = "circle.slash"
+        } else {
+            category = .relationLabel
+            symbolName = "textformat"
+        }
         contextLabel = "Relation label"
         primaryText = candidate.label ?? candidate.replacement
         let labelCount = candidate.count ?? candidate.matchCount
@@ -803,7 +815,9 @@ public func completionRowContent(
             secondaryText = nil
         }
         var labelBadges: [String] = []
-        if candidate.cancelsSource {
+        if candidate.completesSource {
+            labelBadges.append("completes")
+        } else if candidate.cancelsSource {
             labelBadges.append("cancels")
         }
         if candidate.typed {
@@ -812,9 +826,13 @@ public func completionRowContent(
             labelBadges.append(reason)
         }
         badges = labelBadges
-        accessibilityHint = candidate.cancelsSource
-            ? "Inserts this cancel relation label."
-            : "Inserts this relation label."
+        if candidate.completesSource {
+            accessibilityHint = "Inserts this complete relation label."
+        } else if candidate.cancelsSource {
+            accessibilityHint = "Inserts this cancel relation label."
+        } else {
+            accessibilityHint = "Inserts this relation label."
+        }
 
     case .taskComplete:
         // The `!` picker owns the card; this is only the stray inline

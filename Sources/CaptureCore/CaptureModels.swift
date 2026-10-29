@@ -795,6 +795,11 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
     /// Additive `cancels_source` on `relation_label` spans. Bob omits it
     /// when false, and older Bob omits it entirely; both decode as false.
     public let cancelsSource: Bool
+    /// Additive `completes_source` on `relation_label` spans. Bob omits it
+    /// when false, and older Bob omits it entirely; both decode as false.
+    /// Never set alongside `cancelsSource`: one label carries at most one
+    /// close effect.
+    public let completesSource: Bool
 
     public init(
         start: Int,
@@ -802,7 +807,8 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         kind: String,
         field: Int? = nil,
         themes: [CapturePomodoroThemeRef] = [],
-        cancelsSource: Bool = false
+        cancelsSource: Bool = false,
+        completesSource: Bool = false
     ) {
         self.start = start
         self.end = end
@@ -810,6 +816,7 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         self.field = field
         self.themes = themes
         self.cancelsSource = cancelsSource
+        self.completesSource = completesSource
     }
 
     public init(from decoder: Decoder) throws {
@@ -824,6 +831,7 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
                 forKey: .themes
             )) ?? []
         cancelsSource = (try? container.decodeIfPresent(Bool.self, forKey: .cancelsSource)) ?? false
+        completesSource = (try? container.decodeIfPresent(Bool.self, forKey: .completesSource)) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -833,6 +841,7 @@ public struct CaptureSpan: Codable, Equatable, Sendable {
         case field
         case themes
         case cancelsSource = "cancels_source"
+        case completesSource = "completes_source"
     }
 }
 
@@ -3025,6 +3034,15 @@ public enum CaptureWarning: Codable, Equatable, Sendable {
         return false
     }
 
+    /// True for `relation_completed_source`, rendered in the ✓ style and
+    /// skipped when `relation_completes[]` already shows Bob's message.
+    public var isRelationCompletedSource: Bool {
+        if case .structured(let warning) = self {
+            return warning.code == "relation_completed_source"
+        }
+        return false
+    }
+
     /// True for `theme_not_configured`, rendered once in every settled
     /// capture preview (not post-submit notifications).
     public var isThemeNotConfigured: Bool {
@@ -3523,6 +3541,9 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
     /// Additive per-item cancel-label effects. Older Bob omits the key;
     /// missing decodes as empty so the rest of capture still shows.
     public let relationCancels: [CaptureRelationCancel]
+    /// Additive per-item complete-label effects. Older Bob omits the key;
+    /// missing decodes as empty so the rest of capture still shows.
+    public let relationCompletes: [CaptureRelationComplete]
     public let linkedFromLineUpdates: [CaptureBlocksLineUpdate]
     public let mintedRelationBlockIDs: [CaptureMintedRelationBlockID]
     public let mirrorSkipped: [CaptureMirrorSkipped]
@@ -3641,6 +3662,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         mintedBlockerBlockID: CaptureMintedBlockID? = nil,
         relationUpdates: [CaptureRelationUpdate] = [],
         relationCancels: [CaptureRelationCancel] = [],
+        relationCompletes: [CaptureRelationComplete] = [],
         linkedFromLineUpdates: [CaptureBlocksLineUpdate] = [],
         mintedRelationBlockIDs: [CaptureMintedRelationBlockID] = [],
         mirrorSkipped: [CaptureMirrorSkipped] = [],
@@ -3718,6 +3740,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         self.mintedBlockerBlockID = mintedBlockerBlockID
         self.relationUpdates = relationUpdates
         self.relationCancels = relationCancels
+        self.relationCompletes = relationCompletes
         self.linkedFromLineUpdates = linkedFromLineUpdates
         self.mintedRelationBlockIDs = mintedRelationBlockIDs
         self.mirrorSkipped = mirrorSkipped
@@ -3847,6 +3870,11 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
             (try? container.decodeIfPresent(
                 [CaptureRelationCancel].self,
                 forKey: .relationCancels
+            )) ?? []
+        relationCompletes =
+            (try? container.decodeIfPresent(
+                [CaptureRelationComplete].self,
+                forKey: .relationCompletes
             )) ?? []
         linkedFromLineUpdates =
             (try? container.decodeIfPresent(
@@ -3992,6 +4020,7 @@ public struct CaptureCommandSuccess: Codable, Equatable, Sendable {
         case mintedBlockerBlockID = "minted_blocker_block_id"
         case relationUpdates = "relation_updates"
         case relationCancels = "relation_cancels"
+        case relationCompletes = "relation_completes"
         case linkedFromLineUpdates = "linked_from_line_updates"
         case mintedRelationBlockIDs = "minted_relation_block_ids"
         case mirrorSkipped = "mirror_skipped"
@@ -4488,6 +4517,9 @@ public struct CaptureRelationUpdate: Codable, Equatable, Sendable {
     /// Additive cancel-label effect on this edge: `cancelled` or
     /// `already_closed`. Older Bob and non-cancel labels omit it.
     public let cancelEffect: String?
+    /// Additive complete-label effect on this edge: `completed` or
+    /// `already_closed`. Older Bob and non-complete labels omit it.
+    public let completeEffect: String?
 
     public init(
         direction: String = "to",
@@ -4496,7 +4528,8 @@ public struct CaptureRelationUpdate: Codable, Equatable, Sendable {
         label: String? = nil,
         previousLabel: String? = nil,
         action: String = "added",
-        cancelEffect: String? = nil
+        cancelEffect: String? = nil,
+        completeEffect: String? = nil
     ) {
         self.direction = direction
         self.source = source
@@ -4505,6 +4538,7 @@ public struct CaptureRelationUpdate: Codable, Equatable, Sendable {
         self.previousLabel = previousLabel
         self.action = action
         self.cancelEffect = cancelEffect
+        self.completeEffect = completeEffect
     }
 
     public init(from decoder: Decoder) throws {
@@ -4520,6 +4554,7 @@ public struct CaptureRelationUpdate: Codable, Equatable, Sendable {
         previousLabel = (try? container.decodeIfPresent(String.self, forKey: .previousLabel)) ?? nil
         action = (try? container.decodeIfPresent(String.self, forKey: .action)) ?? "added"
         cancelEffect = (try? container.decodeIfPresent(String.self, forKey: .cancelEffect)) ?? nil
+        completeEffect = (try? container.decodeIfPresent(String.self, forKey: .completeEffect)) ?? nil
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -4530,6 +4565,7 @@ public struct CaptureRelationUpdate: Codable, Equatable, Sendable {
         case previousLabel = "previous_label"
         case action
         case cancelEffect = "cancel_effect"
+        case completeEffect = "complete_effect"
     }
 }
 
@@ -4616,6 +4652,83 @@ public struct CaptureRelationCancel: Codable, Equatable, Sendable {
         case cancelLog = "cancel_log"
         case pomodoroLinksRemoved = "pomodoro_links_removed"
         case recovered
+        case message
+    }
+}
+
+/// One complete-label source this item completed. Bob authors `message`
+/// and the nested `task_complete` (the same object `!note:id` reports);
+/// Swift renders them and computes no verdict. Already-closed sources
+/// keep `effect: AlreadyClosed` for the human line and are omitted from
+/// the JSON `relation_completes[]`, so they never decode here.
+public struct CaptureRelationComplete: Codable, Equatable, Sendable {
+    public let source: CaptureRelationCancelEndpoint
+    public let target: CaptureRelationCancelEndpoint
+    public let labels: [String]
+    public let action: String
+    public let previousStatus: String
+    public let previousStatusName: String
+    public let projectOpenTasks: Int?
+    public let taskComplete: CaptureTaskComplete?
+    public let message: String
+
+    public init(
+        source: CaptureRelationCancelEndpoint = CaptureRelationCancelEndpoint(),
+        target: CaptureRelationCancelEndpoint = CaptureRelationCancelEndpoint(),
+        labels: [String] = [],
+        action: String = "added",
+        previousStatus: String = "",
+        previousStatusName: String = "",
+        projectOpenTasks: Int? = nil,
+        taskComplete: CaptureTaskComplete? = nil,
+        message: String = ""
+    ) {
+        self.source = source
+        self.target = target
+        self.labels = labels
+        self.action = action
+        self.previousStatus = previousStatus
+        self.previousStatusName = previousStatusName
+        self.projectOpenTasks = projectOpenTasks
+        self.taskComplete = taskComplete
+        self.message = message
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        source =
+            (try? container.decodeIfPresent(
+                CaptureRelationCancelEndpoint.self,
+                forKey: .source
+            )) ?? CaptureRelationCancelEndpoint()
+        target =
+            (try? container.decodeIfPresent(
+                CaptureRelationCancelEndpoint.self,
+                forKey: .target
+            )) ?? CaptureRelationCancelEndpoint()
+        labels = (try? container.decodeIfPresent([String].self, forKey: .labels)) ?? []
+        action = (try? container.decodeIfPresent(String.self, forKey: .action)) ?? "added"
+        previousStatus =
+            (try? container.decodeIfPresent(String.self, forKey: .previousStatus)) ?? ""
+        previousStatusName =
+            (try? container.decodeIfPresent(String.self, forKey: .previousStatusName)) ?? ""
+        projectOpenTasks =
+            (try? container.decodeIfPresent(Int.self, forKey: .projectOpenTasks)) ?? nil
+        taskComplete =
+            (try? container.decodeIfPresent(CaptureTaskComplete.self, forKey: .taskComplete))
+            ?? nil
+        message = (try? container.decodeIfPresent(String.self, forKey: .message)) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case source
+        case target
+        case labels
+        case action
+        case previousStatus = "previous_status"
+        case previousStatusName = "previous_status_name"
+        case projectOpenTasks = "project_open_tasks"
+        case taskComplete = "task_complete"
         case message
     }
 }
@@ -6355,6 +6468,10 @@ public struct CaptureCompletionResponse: Codable, Equatable {
     /// Present only when at least one cancel label is configured. Older Bob
     /// omits it; missing decodes as nil so the card stays inert.
     public let relationCancel: CaptureCompletionRelationCancel?
+    /// Additive complete-label consequence for the token under the cursor.
+    /// Present only when at least one complete label is configured. Older
+    /// Bob omits it; missing decodes as nil so the card stays inert.
+    public let relationComplete: CaptureCompletionRelationComplete?
     /// Additive task-theme suggestion for the `pomodoro_name` context.
     /// `Some(null)` (no suggestion) and a missing key both decode as nil.
     /// Older Bob omits it; missing keeps today's default.
@@ -6377,6 +6494,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         hiddenCount: Int? = nil,
         oneOff: Bool? = nil,
         relationCancel: CaptureCompletionRelationCancel? = nil,
+        relationComplete: CaptureCompletionRelationComplete? = nil,
         themeSuggestion: CaptureThemeSuggestion? = nil
     ) {
         self.ok = ok
@@ -6395,6 +6513,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         self.hiddenCount = hiddenCount
         self.oneOff = oneOff
         self.relationCancel = relationCancel
+        self.relationComplete = relationComplete
         self.themeSuggestion = themeSuggestion
     }
 
@@ -6422,6 +6541,11 @@ public struct CaptureCompletionResponse: Codable, Equatable {
                 CaptureCompletionRelationCancel.self,
                 forKey: .relationCancel
             )) ?? nil
+        relationComplete =
+            (try? container.decodeIfPresent(
+                CaptureCompletionRelationComplete.self,
+                forKey: .relationComplete
+            )) ?? nil
         themeSuggestion =
             (try? container.decodeIfPresent(
                 CaptureThemeSuggestion.self,
@@ -6446,6 +6570,7 @@ public struct CaptureCompletionResponse: Codable, Equatable {
         case hiddenCount = "hidden_count"
         case oneOff = "one_off"
         case relationCancel = "relation_cancel"
+        case relationComplete = "relation_complete"
         case themeSuggestion = "theme_suggestion"
     }
 
@@ -6497,6 +6622,96 @@ public struct CaptureCompletionRelationCancel: Codable, Equatable, Sendable {
 /// for ID-less owners; `project_open_tasks` counts open tasks when the
 /// source is a `^prj`. `status_symbol` is a one-character JSON string.
 public struct CaptureCompletionRelationCancelSource: Codable, Equatable, Sendable {
+    public let path: String
+    public let blockID: String?
+    public let text: String
+    public let statusSymbol: String
+    public let statusName: String
+    public let projectOpenTasks: Int?
+
+    public init(
+        path: String = "",
+        blockID: String? = nil,
+        text: String = "",
+        statusSymbol: String = "",
+        statusName: String = "",
+        projectOpenTasks: Int? = nil
+    ) {
+        self.path = path
+        self.blockID = blockID
+        self.text = text
+        self.statusSymbol = statusSymbol
+        self.statusName = statusName
+        self.projectOpenTasks = projectOpenTasks
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = (try? container.decodeIfPresent(String.self, forKey: .path)) ?? ""
+        blockID = (try? container.decodeIfPresent(String.self, forKey: .blockID)) ?? nil
+        text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? ""
+        statusSymbol = (try? container.decodeIfPresent(String.self, forKey: .statusSymbol)) ?? ""
+        statusName = (try? container.decodeIfPresent(String.self, forKey: .statusName)) ?? ""
+        projectOpenTasks =
+            (try? container.decodeIfPresent(Int.self, forKey: .projectOpenTasks)) ?? nil
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case path
+        case blockID = "block_id"
+        case text
+        case statusSymbol = "status_symbol"
+        case statusName = "status_name"
+        case projectOpenTasks = "project_open_tasks"
+    }
+}
+
+/// The complete consequence of the `relation_label` token under the cursor.
+/// Present only when at least one complete label is configured. Swift
+/// renders `message` and `hint` and computes no verdict.
+public struct CaptureCompletionRelationComplete: Codable, Equatable, Sendable {
+    public let source: CaptureCompletionRelationCompleteSource
+    /// `completes` | `already_closed` | `recurring` | `new_task`.
+    public let verdict: String
+    public let message: String
+    public let hint: String?
+
+    public init(
+        source: CaptureCompletionRelationCompleteSource = CaptureCompletionRelationCompleteSource(),
+        verdict: String = "",
+        message: String = "",
+        hint: String? = nil
+    ) {
+        self.source = source
+        self.verdict = verdict
+        self.message = message
+        self.hint = hint
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        source =
+            (try? container.decodeIfPresent(
+                CaptureCompletionRelationCompleteSource.self,
+                forKey: .source
+            )) ?? CaptureCompletionRelationCompleteSource()
+        verdict = (try? container.decodeIfPresent(String.self, forKey: .verdict)) ?? ""
+        message = (try? container.decodeIfPresent(String.self, forKey: .message)) ?? ""
+        hint = (try? container.decodeIfPresent(String.self, forKey: .hint)) ?? nil
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case source
+        case verdict
+        case message
+        case hint
+    }
+}
+
+/// The relation source a complete label would complete. `block_id` is
+/// omitted for ID-less owners; `project_open_tasks` counts open tasks when
+/// the source is a `^prj`. `status_symbol` is a one-character JSON string.
+public struct CaptureCompletionRelationCompleteSource: Codable, Equatable, Sendable {
     public let path: String
     public let blockID: String?
     public let text: String
@@ -7430,6 +7645,11 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
     /// configured cancel label. Omitted when false, so older Bob and
     /// ordinary labels decode as false.
     public let cancelsSource: Bool
+    /// Additive `relation_label` complete flag: true when the row's key is
+    /// a configured complete label. Omitted when false, so older Bob and
+    /// ordinary labels decode as false. Never set alongside
+    /// `cancelsSource`: one label carries at most one close effect.
+    public let completesSource: Bool
     /// Additive `relation_label` overlay flag: true on zero-use rows
     /// synthesized from config. Omitted when false.
     public let configured: Bool
@@ -7528,6 +7748,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         hideReplacement: String? = nil,
         existing: Bool? = nil,
         cancelsSource: Bool = false,
+        completesSource: Bool = false,
         configured: Bool = false,
         suggested: Bool = false,
         suggestionLabel: String? = nil
@@ -7599,6 +7820,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         self.hideReplacement = hideReplacement
         self.existing = existing
         self.cancelsSource = cancelsSource
+        self.completesSource = completesSource
         self.configured = configured
         self.suggested = suggested
         self.suggestionLabel = suggestionLabel
@@ -7677,6 +7899,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
             (try? container.decodeIfPresent(String.self, forKey: .hideReplacement)) ?? nil
         existing = (try? container.decodeIfPresent(Bool.self, forKey: .existing)) ?? nil
         cancelsSource = (try? container.decodeIfPresent(Bool.self, forKey: .cancelsSource)) ?? false
+        completesSource = (try? container.decodeIfPresent(Bool.self, forKey: .completesSource)) ?? false
         configured = (try? container.decodeIfPresent(Bool.self, forKey: .configured)) ?? false
         suggested = (try? container.decodeIfPresent(Bool.self, forKey: .suggested)) ?? false
         suggestionLabel =
@@ -7751,6 +7974,7 @@ public struct CaptureCompletionCandidate: Codable, Equatable, Identifiable {
         case hideReplacement = "hide_replacement"
         case existing
         case cancelsSource = "cancels_source"
+        case completesSource = "completes_source"
         case configured
         case suggested
         case suggestionLabel = "suggestion_label"

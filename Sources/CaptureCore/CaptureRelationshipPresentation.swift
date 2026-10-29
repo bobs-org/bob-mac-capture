@@ -8,15 +8,19 @@ public struct CaptureRelationshipRow: Equatable, Sendable {
     public let accessibilityLabel: String
     /// True for `relation_cancels[]` rows that render Bob's ⊘ message.
     public let usesCancelledTint: Bool
+    /// True for `relation_completes[]` rows that render Bob's ✓ message.
+    public let usesCompletedTint: Bool
 
     public init(
         text: String,
         accessibilityLabel: String? = nil,
-        usesCancelledTint: Bool = false
+        usesCancelledTint: Bool = false,
+        usesCompletedTint: Bool = false
     ) {
         self.text = text
         self.accessibilityLabel = accessibilityLabel ?? text
         self.usesCancelledTint = usesCancelledTint
+        self.usesCompletedTint = usesCompletedTint
     }
 }
 
@@ -58,7 +62,10 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
         let dependencyRows = capture.dependencyUpdates.flatMap { Self.rows(for: $0) }
         let relationRows = capture.relationUpdates.map { Self.row(for: $0, capture: capture) }
         let cancelRows = capture.relationCancels.compactMap { Self.row(for: $0) }
-        rows = dependencyRows + relationRows + cancelRows
+        let completeRows = capture.relationCompletes.flatMap {
+            Self.rows(for: $0, dryRun: capture.dryRun)
+        }
+        rows = dependencyRows + relationRows + cancelRows + completeRows
         if Self.isTaskDependency(capture) {
             ownerHeader = Self.ownerHeader(for: capture)
             notification = Self.notification(for: capture)
@@ -206,6 +213,74 @@ public struct CaptureRelationshipPresentation: Equatable, Sendable {
             return nil
         }
         return CaptureRelationshipRow(text: text, usesCancelledTint: true)
+    }
+
+    /// One ✓ preview row per completed source, using Bob's authored
+    /// `message`, followed by the same transition, ledger, and unblocked
+    /// rows `!` would print for that source. Swift never restates the
+    /// verdict. Already-closed sources serialize away, so every row here
+    /// completed.
+    private static func rows(
+        for complete: CaptureRelationComplete,
+        dryRun: Bool
+    ) -> [CaptureRelationshipRow] {
+        let text = complete.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else {
+            return []
+        }
+        var rows = [CaptureRelationshipRow(text: text, usesCompletedTint: true)]
+        guard
+            let detail = CaptureRelationCompletePresentation.detailPresentation(
+                complete: complete,
+                dryRun: dryRun
+            )
+        else {
+            return rows
+        }
+        rows.append(
+            CaptureRelationshipRow(
+                text: detail.transitionText,
+                usesCompletedTint: true
+            )
+        )
+        for row in detail.subtaskRows {
+            rows.append(
+                CaptureRelationshipRow(
+                    text: "closes \(row.transitionText) \(row.locatorText)",
+                    usesCompletedTint: true
+                )
+            )
+        }
+        for row in detail.leftOpenRows {
+            rows.append(
+                CaptureRelationshipRow(
+                    text: "\(row.displayText) \(row.locatorText)",
+                    usesCompletedTint: true
+                )
+            )
+        }
+        if let ledgerText = detail.ledgerText {
+            rows.append(CaptureRelationshipRow(text: ledgerText, usesCompletedTint: true))
+        }
+        for row in detail.unblockedRows {
+            var detailText = "unblocks \(row.transitionText) \(row.locatorText)"
+            if let destination = row.destinationText {
+                detailText += " \(destination)"
+            }
+            if let caption = row.captionText {
+                detailText += " · \(caption)"
+            }
+            rows.append(CaptureRelationshipRow(text: detailText, usesCompletedTint: true))
+        }
+        for row in detail.stillBlockedRows {
+            rows.append(
+                CaptureRelationshipRow(
+                    text: "still blocked \(row.text) \(row.locatorText) · \(row.captionText)",
+                    usesCompletedTint: true
+                )
+            )
+        }
+        return rows
     }
 
     private static func isArchived(

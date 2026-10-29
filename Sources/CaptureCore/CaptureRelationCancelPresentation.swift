@@ -20,11 +20,13 @@ public struct CaptureRelationCancelSlot: Equatable, Sendable {
 }
 
 /// One preview warning that is not a duplicate of a `relation_cancels[]`
-/// row. Hide warnings stay amber; leftover cancel warnings use the ⊘ tint.
+/// or `relation_completes[]` row. Hide warnings stay amber; leftover cancel
+/// warnings use the ⊘ tint and leftover complete warnings the ✓ tint.
 public struct CapturePreviewWarningRow: Equatable, Sendable {
     public enum Style: Equatable, Sendable {
         case amber
         case cancelled
+        case completed
     }
 
     public let text: String

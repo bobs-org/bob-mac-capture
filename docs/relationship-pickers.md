@@ -129,7 +129,16 @@ Bob's full `disabled_reason`. Highlighting or typing one puts Bob's
 `relation_cancel.message` in the slot, muted. The footer drops `↩`, while
 the label can still be hidden; its badge keeps the link count. Return shows
 Bob's refusal reason as the error. VoiceOver names the source as
-`Cancels Sell stocks!`. Older Bob omits the fields and the card stays as it is.
+`Cancels Sell stocks!`. When Bob's `relations.complete_labels` lists a row,
+the card shows a `checkmark.circle` `completes` capsule instead. Selecting or
+typing that label dims the live-sentence source as `✓ {S} — {label} → {T}`
+and puts Bob's `relation_complete.message` in the slot (✓ tint when the
+verdict is `completes`, muted for `Already Done · link only` /
+`Stays Cancelled · link only`). Inverse labels show Bob's muted `hint`, and
+refused complete rows behave exactly like refused cancel rows. VoiceOver
+names the source as `Completes Ship retry policy`. When both close effects
+report a slot, the complete slot shows. Older Bob omits the fields and the
+card stays as it is.
 
 The partial `X ~` need shows **Pick a task to link — press Tab to browse**.
 A `|label` field shows **Type a relation label, or pick a suggestion**.
