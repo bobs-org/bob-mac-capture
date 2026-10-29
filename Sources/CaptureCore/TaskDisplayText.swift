@@ -19,10 +19,10 @@ public struct TaskDisplaySegment: Equatable, Sendable {
     }
 }
 
-/// Parses task text for display: code spans and `[[wikilinks]]` become styled
-/// segments with their delimiters dropped, and everything else stays literal
-/// plain text. All fuzzy matching runs on `text`, so highlight offsets map
-/// directly onto `segments`.
+/// Parses task text for display: code spans, `[[wikilinks]]`, and Markdown
+/// `[label](url)` links become styled segments with their delimiters dropped,
+/// and everything else stays literal plain text. All fuzzy matching runs on
+/// `text`, so highlight offsets map directly onto `segments`.
 public struct TaskDisplayText: Equatable, Sendable {
     public let text: String
     public let segments: [TaskDisplaySegment]
@@ -53,8 +53,11 @@ public struct TaskDisplayText: Equatable, Sendable {
         while index < chars.count {
             let backtick = chars[index...].firstIndex(of: "`")
             let wikilink = findWikilinkOpen(in: chars, from: index)
+            let markdownLink = findMarkdownLinkOpen(in: chars, from: index)
             // Whichever delimiter appears first wins.
-            if let wikilink, backtick == nil || wikilink < backtick! {
+            if let wikilink, (backtick == nil || wikilink < backtick!),
+               (markdownLink == nil || wikilink < markdownLink!)
+            {
                 append(String(chars[index..<wikilink]), kind: .plain)
                 if let close = findWikilinkClose(in: chars, from: wikilink + 2) {
                     let inner = String(chars[(wikilink + 2)..<close])
@@ -63,6 +66,24 @@ public struct TaskDisplayText: Equatable, Sendable {
                 } else {
                     append("[[", kind: .plain)
                     index = wikilink + 2
+                }
+            } else if let markdownLink, (backtick == nil || markdownLink < backtick!) {
+                if let (label, nextIndex) = parseMarkdownLink(in: chars, from: markdownLink) {
+                    // A leading `!` belongs to the image syntax, never to
+                    // the display text: `![alt](url)` shows `alt` as a link.
+                    let bangStart = markdownLink > index && chars[markdownLink - 1] == "!"
+                    if bangStart {
+                        append(String(chars[index..<(markdownLink - 1)]), kind: .plain)
+                    } else {
+                        append(String(chars[index..<markdownLink]), kind: .plain)
+                    }
+                    append(label, kind: .link)
+                    index = nextIndex
+                } else {
+                    // Not a well-formed `[label](url)`: keep the bracket
+                    // literal and keep scanning after it.
+                    append(String(chars[index...markdownLink]), kind: .plain)
+                    index = markdownLink + 1
                 }
             } else if let open = backtick {
                 append(String(chars[index..<open]), kind: .plain)
@@ -119,4 +140,84 @@ private func findWikilinkClose(in chars: [Character], from index: Int) -> Int? {
         i += 1
     }
     return nil
+}
+
+/// Finds the next single `[` that could open a Markdown `[label](url)` link,
+/// skipping `[[` wikilink openers (those belong to the wikilink scan).
+private func findMarkdownLinkOpen(in chars: [Character], from index: Int) -> Int? {
+    var i = index
+    while i < chars.count {
+        if chars[i] == "[" {
+            if i + 1 < chars.count, chars[i + 1] == "[" {
+                i += 2
+                continue
+            }
+            return i
+        }
+        i += 1
+    }
+    return nil
+}
+
+/// Parses a well-formed `[label](destination)` link at `open` (the `[`),
+/// returning the display label and the index just past the closing `)`.
+/// A double-quoted title after the destination — the form Keep captures
+/// are stored in, `[💡](url "Open in Google Keep")` — parses the same way.
+/// Returns nil when the brackets do not form a link, so the caller keeps
+/// them literal.
+private func parseMarkdownLink(in chars: [Character], from open: Int) -> (String, Int)? {
+    var labelClose: Int?
+    var i = open + 1
+    while i < chars.count {
+        if chars[i] == "]" {
+            labelClose = i
+            break
+        }
+        i += 1
+    }
+    guard let labelClose,
+          labelClose + 1 < chars.count,
+          chars[labelClose + 1] == "("
+    else {
+        return nil
+    }
+    // The destination runs to the first whitespace or `)`. An empty
+    // destination (`[label]()`) is malformed, like an unclosed link.
+    var j = labelClose + 2
+    while j < chars.count, chars[j] != ")", !chars[j].isWhitespace {
+        j += 1
+    }
+    guard j > labelClose + 2 else {
+        return nil
+    }
+    if j < chars.count, chars[j] == ")" {
+        return (String(chars[(open + 1)..<labelClose]), j + 1)
+    }
+    // Otherwise a double-quoted title must follow, then the close.
+    while j < chars.count, chars[j] != ")", chars[j].isWhitespace {
+        j += 1
+    }
+    guard j < chars.count, chars[j] == "\"" else {
+        return nil
+    }
+    var titleClose: Int?
+    var k = j + 1
+    while k < chars.count {
+        if chars[k] == "\"" {
+            titleClose = k
+            break
+        }
+        k += 1
+    }
+    guard let titleClose else {
+        return nil
+    }
+    var end = titleClose + 1
+    while end < chars.count, chars[end].isWhitespace {
+        end += 1
+    }
+    guard end < chars.count, chars[end] == ")" else {
+        return nil
+    }
+    return (String(chars[(open + 1)..<labelClose]), end + 1)
 }

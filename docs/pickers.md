@@ -7,5 +7,6 @@ Pickers browse what `bob` returns and insert exactly its replacement range. One 
 
 - [Task pickers](task-pickers.md): Task Link (`:`), Go To (`/`), Parent Task (`@file+` and vault `+`), Active Task (`^`), and Block ID (`@route:` / `@route^`), plus Name Pomodoro and named-start lists.
 - [Relationship pickers](relationship-pickers.md): Dependency (`&`), Blocks (`*`), Complete (`!`), and Relations (`~` / `~~`).
+- [Wikilink completion](wikilink-completion.md): Obsidian note, heading, block, and alias completion, plus the Task Wikilink picker (`((`) that links any task in the vault and names a block ID when the task has none.
 
 Cards that only pick a destination or an ID never capture on their own: Return inserts and returns to the editor, Shift-Return variants stay in the draft where documented, and Command-Return / Control-Return capture with the inserted result. ID-less rows open the Add block ID prompt, which names the task through `bob capture-task-id` and splices the returned canonical ID; Name Pomodoro rows name through `bob capture-pomodoro-name`. Cancel and every failure keep the draft unchanged. Rendered results are in [Capture previews](capture-previews.md).

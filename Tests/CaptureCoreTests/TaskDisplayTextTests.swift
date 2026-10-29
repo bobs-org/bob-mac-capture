@@ -118,6 +118,87 @@ final class TaskDisplayTextTests: XCTestCase {
         )
     }
 
+    func testMarkdownLinkShowsLabel() {
+        // The titled form Keep captures are stored in renders as its
+        // label too, so Keep-captured rows read "Try Opus with Blender. 💡".
+        let parsed = TaskDisplayText(
+            parsing: "Try Opus with Blender. [💡](https://keep.google.com/u/0/#NOTE/x \"Open in Google Keep\")"
+        )
+        XCTAssertEqual(parsed.text, "Try Opus with Blender. 💡")
+        XCTAssertEqual(
+            parsed.segments,
+            [
+                TaskDisplaySegment(kind: .plain, range: 0..<23),
+                TaskDisplaySegment(kind: .link, range: 23..<24),
+            ]
+        )
+        assertTilesExactly(parsed)
+    }
+
+    func testMarkdownImageShowsAltAsLink() {
+        let parsed = TaskDisplayText(parsing: "See ![diagram](https://example.com/d.png) now")
+        XCTAssertEqual(parsed.text, "See diagram now")
+        XCTAssertEqual(
+            parsed.segments,
+            [
+                TaskDisplaySegment(kind: .plain, range: 0..<4),
+                TaskDisplaySegment(kind: .link, range: 4..<11),
+                TaskDisplaySegment(kind: .plain, range: 11..<15),
+            ]
+        )
+        assertTilesExactly(parsed)
+    }
+
+    func testMarkdownLinkBesideWikilink() {
+        let parsed = TaskDisplayText(parsing: "Read [[ref/chat/old]] and [notes](https://example.com/n)")
+        XCTAssertEqual(parsed.text, "Read ref/chat/old and notes")
+        XCTAssertEqual(
+            parsed.segments.map { $0.kind },
+            [.plain, .link, .plain, .link]
+        )
+        assertTilesExactly(parsed)
+    }
+
+    func testMarkdownLinkInsideCodeStaysLiteral() {
+        let parsed = TaskDisplayText(parsing: "Run `[a](b)` now")
+        XCTAssertEqual(parsed.text, "Run [a](b) now")
+        XCTAssertEqual(
+            parsed.segments.map { $0.kind },
+            [.plain, .code, .plain]
+        )
+        assertTilesExactly(parsed)
+    }
+
+    func testUnmatchedMarkdownLinkStaysLiteral() {
+        let missingParen = TaskDisplayText(parsing: "see [label] later")
+        XCTAssertEqual(missingParen.text, "see [label] later")
+        XCTAssertEqual(
+            missingParen.segments,
+            [TaskDisplaySegment(kind: .plain, range: 0..<17)]
+        )
+        assertTilesExactly(missingParen)
+
+        let missingClose = TaskDisplayText(parsing: "see [label](https://example.com")
+        XCTAssertEqual(missingClose.text, "see [label](https://example.com")
+        XCTAssertEqual(
+            missingClose.segments,
+            [TaskDisplaySegment(kind: .plain, range: 0..<31)]
+        )
+        assertTilesExactly(missingClose)
+
+        let emptyDestination = TaskDisplayText(parsing: "see [label]() now")
+        XCTAssertEqual(emptyDestination.text, "see [label]() now")
+        assertTilesExactly(emptyDestination)
+
+        let unquotedSpace = TaskDisplayText(parsing: "see [label](https://example.com/a b)")
+        XCTAssertEqual(unquotedSpace.text, "see [label](https://example.com/a b)")
+        assertTilesExactly(unquotedSpace)
+
+        let unclosedTitle = TaskDisplayText(parsing: "see [label](https://example.com \"No close)")
+        XCTAssertEqual(unclosedTitle.text, "see [label](https://example.com \"No close)")
+        assertTilesExactly(unclosedTitle)
+    }
+
     func testCurlyQuotesAndBangStayPlain() {
         let parsed = TaskDisplayText(parsing: "Add “card blocks”!")
         XCTAssertEqual(parsed.text, "Add “card blocks”!")

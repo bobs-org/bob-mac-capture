@@ -708,6 +708,232 @@ final class CapturePickerDesignTests: XCTestCase {
         }
     }
 
+    /// Rendered-image review for the Task Wikilink (`((`) picker card and its
+    /// Add block ID prompt: grouped, filtered, ID-less-selected, and history
+    /// states render the card production mounts, and the ID-prompt state
+    /// renders the full panel with the wikilink prompt open — at full and
+    /// minimum panel widths, in light and dark. Inspect the PNGs with an
+    /// image reader and iterate on alignment, truncation (long paths
+    /// middle-truncate so the filename survives), locator color balance, and
+    /// dark-mode contrast until the card reads as calm and consistent with
+    /// the `!` and `~` cards.
+    @MainActor
+    func testRenderWikilinkTaskCardStatesToPNG() throws {
+        let cardStates: [(name: String, filter: String, draft: String, replacement: CaptureRange)] = [
+            ("wikilink-task-grouped", "", "Follow up ((", CaptureRange(start: 10, end: 12)),
+            ("wikilink-task-filtered", "blend", "Follow up ((blend", CaptureRange(start: 10, end: 17)),
+            (
+                "wikilink-task-id-less-selected", "", "Follow up ((",
+                CaptureRange(start: 10, end: 12)
+            ),
+            ("wikilink-task-history", "", "Follow up ((", CaptureRange(start: 10, end: 12)),
+        ]
+        let cardCandidates: [[CaptureCompletionCandidate]] = [
+            Self.wikilinkTaskRenderCandidates,
+            Self.wikilinkTaskRenderCandidates,
+            Self.wikilinkTaskIdlessFirstCandidates,
+            Self.wikilinkTaskHistoryCandidates,
+        ]
+        for (state, candidates) in zip(cardStates, cardCandidates) {
+            for width in [760, 620] as [CGFloat] {
+                for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
+                    let model = CapturePanelModel()
+                    model.installWikilinkTaskPickerForPreviews(
+                        candidates: candidates,
+                        filter: state.filter,
+                        draft: state.draft,
+                        replacement: state.replacement
+                    )
+                    let card = CapturePickerCard(model: model)
+                        .frame(width: width)
+                    try RenderFixtureWriter.write(
+                        card,
+                        name: "capture-picker-\(state.name)-\(width == 760 ? "wide" : "minimum")",
+                        width: width,
+                        appearance: appearance
+                    )
+                }
+            }
+        }
+
+        // ID prompt: accept the ID-less This-note row so the panel shows the
+        // wikilink-mode Add block ID prompt, then render the full panel.
+        for width in [760, 620] as [CGFloat] {
+            for appearance in [NSAppearance.Name.aqua, NSAppearance.Name.darkAqua] {
+                let model = CapturePanelModel()
+                model.installWikilinkTaskPickerForPreviews(
+                    candidates: Self.wikilinkTaskRenderCandidates,
+                    draft: "Follow up ((",
+                    replacement: CaptureRange(start: 10, end: 12)
+                )
+                model.acceptPickerRow(id: "mac_inbox.md|2:c37a3d45", submitAfterInsert: false)
+                let panel = CapturePanelView(model: model)
+                    .frame(width: width)
+                try RenderFixtureWriter.write(
+                    panel,
+                    name: "capture-picker-wikilink-task-id-prompt-\(width == 760 ? "wide" : "minimum")",
+                    width: width,
+                    appearance: appearance
+                )
+            }
+        }
+    }
+
+    /// Task Wikilink render fixture: This-note (identified plus ID-less with
+    /// a Keep-style Markdown link), In Progress, Next, a long-path open row
+    /// that must middle-truncate to its filename, a hidden row, a guarded
+    /// row, and Done plus Cancelled history.
+    private static var wikilinkTaskRenderCandidates: [CaptureCompletionCandidate] {
+        [
+            CaptureCompletionCandidate(
+                replacement: "[[mac_inbox#^inbox-chore]]",
+                taskRef: "1:aaaa1111",
+                blockID: "inbox-chore",
+                statusSymbol: " ",
+                statusName: "Todo",
+                statusType: "TODO",
+                text: "Inbox chore",
+                group: "in_this_note",
+                notePath: "mac_inbox.md",
+                locator: "mac_inbox",
+                linkTarget: "mac_inbox",
+                cursorAfter: 26
+            ),
+            CaptureCompletionCandidate(
+                replacement: "",
+                taskRef: "2:c37a3d45",
+                requiresBlockID: true,
+                statusSymbol: " ",
+                statusName: "Todo",
+                statusType: "TODO",
+                text: "Try Opus with Blender. [💡](https://keep.google.com/u/0/#NOTE/x)",
+                blockIDSuggestions: ["try-opus-blender"],
+                group: "in_this_note",
+                notePath: "mac_inbox.md",
+                locator: "mac_inbox",
+                linkTarget: "mac_inbox"
+            ),
+            CaptureCompletionCandidate(
+                replacement: "[[sase_cleanup#^no-idle]]",
+                taskRef: "3:cccc3333",
+                blockID: "no-idle",
+                statusSymbol: "/",
+                statusName: "In Progress",
+                statusType: "IN_PROGRESS",
+                text: "Stop idling when no agents run",
+                group: "in_progress",
+                notePath: "sase_cleanup.md",
+                locator: "sase_cleanup",
+                linkTarget: "sase_cleanup",
+                cursorAfter: 25
+            ),
+            CaptureCompletionCandidate(
+                replacement: "[[cash#^meals]]",
+                taskRef: "4:dddd4444",
+                blockID: "meals",
+                statusSymbol: "*",
+                statusName: "Next",
+                statusType: "ON_HOLD",
+                text: "Plan meals",
+                group: "next",
+                notePath: "cash.md",
+                locator: "cash",
+                linkTarget: "cash",
+                cursorAfter: 15
+            ),
+            CaptureCompletionCandidate(
+                replacement: "[[projects/shopping#^weekly-list-with-a-very-long-block-id]]",
+                taskRef: "5:eeee5555",
+                blockID: "weekly-list-with-a-very-long-block-id",
+                statusSymbol: " ",
+                statusName: "Todo",
+                statusType: "TODO",
+                text: "Buy the weekly list for the very long quarterly household spending review",
+                section: "Lists",
+                group: "open",
+                notePath: "projects/shopping.md",
+                locator: "projects/shopping",
+                linkTarget: "projects/shopping",
+                cursorAfter: 60
+            ),
+            CaptureCompletionCandidate(
+                replacement: "[[sase#^hidden-chore]]",
+                taskRef: "6:ffff6666",
+                blockID: "hidden-chore",
+                statusSymbol: " ",
+                statusName: "Todo",
+                statusType: "TODO",
+                text: "Hidden housekeeping",
+                group: "open",
+                notePath: "sase.md",
+                locator: "sase",
+                linkTarget: "sase",
+                hidden: true,
+                cursorAfter: 24
+            ),
+            CaptureCompletionCandidate(
+                replacement: "",
+                taskRef: "7:gggg7777",
+                blockID: "twin",
+                statusSymbol: " ",
+                statusName: "Todo",
+                statusType: "TODO",
+                text: "Second twin",
+                group: "open",
+                notePath: "twin.md",
+                locator: "twin",
+                linkTarget: "twin",
+                disabledReason: "duplicate block ID ^twin in twin.md"
+            ),
+            CaptureCompletionCandidate(
+                replacement: "[[home#^done-deed]]",
+                taskRef: "8:hhhh8888",
+                blockID: "done-deed",
+                statusSymbol: "x",
+                statusName: "Done",
+                statusType: "DONE",
+                text: "Done deed",
+                section: "Home",
+                group: "completed",
+                notePath: "home.md",
+                locator: "home",
+                linkTarget: "home",
+                cursorAfter: 19
+            ),
+            CaptureCompletionCandidate(
+                replacement: "",
+                taskRef: "9:history000",
+                requiresBlockID: true,
+                statusSymbol: "-",
+                statusName: "Cancelled",
+                statusType: "CANCELLED",
+                text: "Old cancelled chore without an id",
+                blockIDSuggestions: ["old-cancelled-chore"],
+                group: "completed",
+                notePath: "home.md",
+                locator: "home",
+                linkTarget: "home"
+            ),
+        ]
+    }
+
+    /// ID-less-selected fixture: the same rows in Bob order with the ID-less
+    /// This-note row first, so the selected row (and its detail strip) is
+    /// the ID-less one that opens the Add block ID prompt.
+    private static var wikilinkTaskIdlessFirstCandidates: [CaptureCompletionCandidate] {
+        var list = wikilinkTaskRenderCandidates
+        list.insert(list.remove(at: 1), at: 0)
+        return list
+    }
+
+    /// History fixture: one open row plus the Completed history rows, so the
+    /// history section (including an ID-less completed row) is what the
+    /// review judges.
+    private static var wikilinkTaskHistoryCandidates: [CaptureCompletionCandidate] {
+        [wikilinkTaskRenderCandidates[2]]
+            + wikilinkTaskRenderCandidates.filter { $0.group == "completed" }
+    }
+
     private static func pngData(for image: NSImage) throws -> Data {
         guard let tiff = image.tiffRepresentation,
               let rep = NSBitmapImageRep(data: tiff),

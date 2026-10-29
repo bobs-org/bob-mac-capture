@@ -246,8 +246,20 @@ final class CaptureAgendaInlineTextTests: XCTestCase {
         )
     }
 
-    func testKeepSourceLinkLeavesTaskDisplayTextUnchanged() {
+    func testKeepSourceLinkRendersAsLabelInTaskDisplayText() {
+        // TaskDisplayText renders every Markdown link by its label —
+        // including the titled form Keep captures are stored in — so
+        // picker rows read "Call dentist 💡" instead of a raw URL. (The
+        // agenda parser above keeps its own Keep-only contract.)
         let source = "Call dentist \(keepExample)"
-        XCTAssertEqual(TaskDisplayText(parsing: source).text, source)
+        let parsed = TaskDisplayText(parsing: source)
+        XCTAssertEqual(parsed.text, "Call dentist 💡")
+        XCTAssertEqual(
+            parsed.segments,
+            [
+                TaskDisplaySegment(kind: .plain, range: 0..<13),
+                TaskDisplaySegment(kind: .link, range: 13..<14),
+            ]
+        )
     }
 }

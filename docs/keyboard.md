@@ -105,7 +105,7 @@ as Command-Y L does.
 
 ## Capture picker keys
 
-While a picker card is open, Return accepts the selected row, Escape cancels, and Backspace on an empty filter removes the trigger. Relation pickers (`~` / `~~`) treat `~` anywhere in the filter as a live direction flip and Backspace on `~~` as a flip back. Shift-Return inserts the relation token and opens its label card. In the editor, typing `|` after a relation token opens that card with or without spaces before the pipe; an empty-label Return removes the pipe. Source-specific hints live in [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).
+While a picker card is open, Return accepts the selected row, Escape cancels, and Backspace on an empty filter removes the trigger. Relation pickers (`~` / `~~`) treat `~` anywhere in the filter as a live direction flip and Backspace on `~~` as a flip back. Shift-Return inserts the relation token and opens its label card. In the editor, typing `|` after a relation token opens that card with or without spaces before the pipe; an empty-label Return removes the pipe. The Task Wikilink picker (`((`) inserts `bob`'s link on Return (Command-Return inserts and captures, Control-Return inserts, captures, and opens); its footer hints list the full contract. Source-specific hints live in [Pickers](pickers.md) and [Relationship pickers](relationship-pickers.md).
 
 ## Successor choices
 
