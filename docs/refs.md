@@ -488,18 +488,18 @@ progress; completion while hidden posts a notification.
 ### Link to Today card
 
 Command-N or Link to Today… in the ⌘K menu opens the selected reference's
-Pomodoro picker. Bob supplies the open Pomodoros, the current or next
-default, and each preview; Return links to the default, while typing
-filters rows and offers a new Pomodoro name. Arrow keys move through
-matches, Shift-Return creates or reuses the exact typed name, and clicking
-a row links it. The card stays open while choosing another reference.
-The selected row gains its Now pill immediately, then the library refresh
-replaces that optimistic pill. A successful (non-guarded) link from Bob Refs
-marks that row seen, so it leaves NEW on the next unfrozen ranking. A glass
-toast confirms the lane and ledger change; if the panel was hidden when Bob
-returned, Bob Refs posts the same outcome as a system notification. VoiceOver
-announces visible successes. Escape closes the card, and a link already in
-progress finishes if the panel hides.
+Pomodoro picker. Bob supplies the open Pomodoros, the default, each preview,
+and the additive `theme_suggestion` (`suggested` rows carry `suggestion_label`);
+the card preselects the suggested row, shows its reason in the row meta, offers
+a synthetic `New X Pomodoro` row first when `create` is true, and sends a
+suggested non-default row's entry on Return. Typing filters rows, Shift-Return
+creates the exact name, and clicking a row links it. The card never writes a
+`[theme::]` field. The card stays open across references. The selected row gains
+its Now pill immediately, then the refresh replaces it. A successful link marks
+that row seen, so it leaves NEW next ranking. A glass toast confirms the lane
+and ledger change; when hidden, Bob Refs posts a system notification instead.
+VoiceOver announces visible successes. Escape closes the card; an in-progress
+link finishes if the panel hides.
 
 ### Opening Bob Refs
 

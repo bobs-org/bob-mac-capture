@@ -94,6 +94,10 @@ public struct RefsTodayLinkPomodoro: Decodable, Equatable, Sendable {
     /// Theme refs for the row name. Bob omits them on older binaries;
     /// they decode as empty and the row renders the plain name.
     public let themes: [CapturePomodoroThemeRef]
+    /// Task-aware preselection from Bob's shared menu rule. Older Bob
+    /// omits both; missing decodes as false/nil.
+    public let suggested: Bool
+    public let suggestionLabel: String?
 
     public init(
         ref: String,
@@ -109,7 +113,9 @@ public struct RefsTodayLinkPomodoro: Decodable, Equatable, Sendable {
         linked: Bool = false,
         taskLinkCount: Int = 0,
         homes: CaptureAgendaHomes? = nil,
-        themes: [CapturePomodoroThemeRef] = []
+        themes: [CapturePomodoroThemeRef] = [],
+        suggested: Bool = false,
+        suggestionLabel: String? = nil
     ) {
         self.ref = ref
         self.line = line
@@ -125,6 +131,8 @@ public struct RefsTodayLinkPomodoro: Decodable, Equatable, Sendable {
         self.taskLinkCount = taskLinkCount
         self.homes = homes
         self.themes = themes
+        self.suggested = suggested
+        self.suggestionLabel = suggestionLabel
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -142,6 +150,8 @@ public struct RefsTodayLinkPomodoro: Decodable, Equatable, Sendable {
         case taskLinkCount = "task_link_count"
         case homes
         case themes
+        case suggested
+        case suggestionLabel = "suggestion_label"
     }
 
     public init(from decoder: Decoder) throws {
@@ -164,6 +174,9 @@ public struct RefsTodayLinkPomodoro: Decodable, Equatable, Sendable {
                 [CapturePomodoroThemeRef].self,
                 forKey: .themes
             )) ?? []
+        suggested = (try? container.decodeIfPresent(Bool.self, forKey: .suggested)) ?? false
+        suggestionLabel =
+            (try? container.decodeIfPresent(String.self, forKey: .suggestionLabel)) ?? nil
     }
 }
 
@@ -209,6 +222,10 @@ public struct RefsTodayLinkResponse: Decodable, Equatable, Sendable, SchemaVersi
     public let capture: CaptureCommandSuccess?
     public let error: RefsTodayLinkFailure?
     public let candidates: [RefsTodayLinkReference]
+    /// Additive task-theme suggestion for the reading task. `Some(null)`
+    /// (no suggestion) and a missing key both decode as nil. Older Bob
+    /// omits it; missing keeps today's behavior and never writes a field.
+    public let themeSuggestion: CaptureThemeSuggestion?
 
     public init(
         schemaVersion: Int = 1,
@@ -220,7 +237,8 @@ public struct RefsTodayLinkResponse: Decodable, Equatable, Sendable, SchemaVersi
         pomodoros: [RefsTodayLinkPomodoro] = [],
         capture: CaptureCommandSuccess? = nil,
         error: RefsTodayLinkFailure? = nil,
-        candidates: [RefsTodayLinkReference] = []
+        candidates: [RefsTodayLinkReference] = [],
+        themeSuggestion: CaptureThemeSuggestion? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.ok = ok
@@ -232,6 +250,7 @@ public struct RefsTodayLinkResponse: Decodable, Equatable, Sendable, SchemaVersi
         self.capture = capture
         self.error = error
         self.candidates = candidates
+        self.themeSuggestion = themeSuggestion
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -245,6 +264,7 @@ public struct RefsTodayLinkResponse: Decodable, Equatable, Sendable, SchemaVersi
         case capture
         case error
         case candidates
+        case themeSuggestion = "theme_suggestion"
     }
 
     public init(from decoder: Decoder) throws {
@@ -261,6 +281,10 @@ public struct RefsTodayLinkResponse: Decodable, Equatable, Sendable, SchemaVersi
         error = try container.decodeIfPresent(RefsTodayLinkFailure.self, forKey: .error)
         candidates =
             try container.decodeIfPresent([RefsTodayLinkReference].self, forKey: .candidates) ?? []
+        themeSuggestion =
+            (try? container.decodeIfPresent(
+                CaptureThemeSuggestion.self, forKey: .themeSuggestion
+            )) ?? nil
     }
 }
 

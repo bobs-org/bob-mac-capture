@@ -54,6 +54,8 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
     public let notificationTitle: String
     public let notificationBody: String
     public let previewAccessibilitySummary: String
+    /// Optional task-theme line, e.g. `task theme → FIX · sase_blog suggests WRITE`.
+    public let taskThemeLine: String?
 
     public init?(capture: CaptureCommandSuccess) {
         guard Self.isPomodoroLinkKind(capture.kind) else {
@@ -158,11 +160,17 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
                 notificationTitle = "Linked to \(destination)"
             }
         }
+        taskThemeLine = CaptureTaskThemePresentation.line(
+            for: capture.taskTheme, isDryRun: capture.dryRun)
+
         var bodyLines = ["\(statusPhrase)  \(routeDestinationLabel)"]
         if let dayFileDestinationLabel {
             bodyLines.append(dayFileDestinationLabel)
         }
         bodyLines.append(ledgerText)
+        if let taskThemeLine {
+            bodyLines.append(taskThemeLine)
+        }
         if let start = CapturePomodoroStartPresentation(capture: capture) {
             bodyLines.append(start.notificationDetail)
         }
@@ -174,6 +182,9 @@ public struct CapturePomodoroLinkPresentation: Equatable, Sendable {
         var previewParts = [routeDestinationLabel, transitionText, ledgerText]
         if let dayFileDestinationLabel {
             previewParts.append(dayFileDestinationLabel)
+        }
+        if let taskThemeLine {
+            previewParts.append(taskThemeLine)
         }
         if let start = CapturePomodoroStartPresentation(capture: capture) {
             previewParts.append(start.accessibilitySummary)

@@ -151,7 +151,9 @@ struct RefsTodayLinkCardView: View {
                     : RefsTodayLinkPresentation.loading
             )
         case .ready, .running, .failed:
-            if card.visiblePomodoros.isEmpty, !card.offersCreate, card.query.isEmpty {
+            if card.visiblePomodoros.isEmpty, !card.offersCreate, !card.showsSuggestedCreate,
+                card.query.isEmpty
+            {
                 VStack(alignment: .leading, spacing: 5) {
                     Text(RefsTodayLinkPresentation.emptyTitle)
                         .font(.callout)
@@ -165,6 +167,9 @@ struct RefsTodayLinkCardView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 3) {
+                        if card.showsSuggestedCreate, let name = card.suggestedCreateName {
+                            suggestedCreateRow(name: name)
+                        }
                         ForEach(Array(card.visiblePomodoros.enumerated()), id: \.offset) { index, row in
                             pomodoroRow(row, index: index)
                         }
@@ -264,6 +269,40 @@ struct RefsTodayLinkCardView: View {
         .accessibilityLabel("\(RefsTodayLinkPresentation.createTitle(query: card.query)), New")
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { onRowTap(index) }
+    }
+
+    /// Synthetic suggested-create row shown first when Bob reports
+    /// `theme_suggestion.create`. It sends `.exactName(name)`.
+    private func suggestedCreateRow(name: String) -> some View {
+        let selected = card.selectedSuggestedCreate
+        let title = RefsTodayLinkPresentation.suggestedCreateTitle(name: name)
+        return HStack(spacing: 8) {
+            Image(systemName: "plus.circle.fill")
+                .font(.system(size: 17))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 20)
+            Text(title)
+                .font(.callout.weight(selected ? .semibold : .regular))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Text(RefsTodayLinkPresentation.newPill)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Color.accentColor.opacity(0.12), in: Capsule())
+            Spacer(minLength: 0)
+            if selected { RefsReturnKeycap() }
+        }
+        .padding(.horizontal, 7)
+        .frame(height: 38)
+        .background(rowBackground(selected: selected))
+        .contentShape(Rectangle())
+        .onTapGesture { onRowTap(-1) }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title), New")
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { onRowTap(-1) }
     }
 
     private func progressGlyph(_ row: RefsTodayLinkPomodoro) -> some View {

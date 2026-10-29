@@ -4470,6 +4470,15 @@ final class CapturePanelModel: ObservableObject {
         completionResponse = completion.candidates.isEmpty ? nil : completion
         completionDraftSnapshot = completion.candidates.isEmpty ? nil : draft
         selectedCompletionIndex = 0
+        // Task-theme suggestion: in `pomodoro_name` with an empty query the
+        // initial selection is the first `suggested` row Bob preselected;
+        // otherwise it stays 0 and PT7 ranking wins.
+        if completion.context == "pomodoro_name",
+           completionQueryText().isEmpty,
+           let suggested = completion.candidates.firstIndex(where: \.suggested)
+        {
+            selectedCompletionIndex = suggested
+        }
         // A fresh server or cached completion is never the File-under list:
         // only the File-under opener sets the header back below.
         fileUnderActive = false
@@ -9614,7 +9623,8 @@ final class CapturePanelModel: ObservableObject {
             context: completionResponse?.context,
             query: completionQueryText(),
             override: completionResponse?.overrideInfo,
-            temporarilyHiddenThemeKey: temporarilyHiddenThemeKey
+            temporarilyHiddenThemeKey: temporarilyHiddenThemeKey,
+            themeSuggestion: completionResponse?.themeSuggestion
         )
     }
 

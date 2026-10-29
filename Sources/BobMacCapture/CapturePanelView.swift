@@ -2972,7 +2972,19 @@ private struct CompletionList: View {
             return nil
         }
         let previous = row.index > 0 ? indexedCandidates[row.index - 1].candidate : nil
+        // Task-theme suggestion: a suggested create row on top gets a
+        // "Suggested" header instead of "Recent"; the remaining Recent
+        // rows keep their own header below it.
+        if row.candidate.suggested, row.candidate.createsPomodoro, row.index == 0 {
+            return "Suggested"
+        }
         if row.candidate.origin == "history" {
+            if row.candidate.suggested {
+                return previous?.suggested == true ? nil : "Suggested"
+            }
+            if previous?.suggested == true {
+                return "Recent"
+            }
             return previous?.origin == "history" ? nil : "Recent"
         }
         let isTodayRow = row.candidate.line != nil || row.candidate.requiresName
@@ -3026,6 +3038,7 @@ private struct CompletionRow: View {
     let content: CompletionRowContent
     let selected: Bool
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.colorScheme) private var colorScheme
 
     /// Character budget for the secondary (path) line before it truncates from the middle,
     /// chosen to comfortably fit the list's fixed 430pt width alongside any badges.
@@ -3061,10 +3074,7 @@ private struct CompletionRow: View {
                 if content.secondaryText != nil || !content.badges.isEmpty {
                     HStack(spacing: 6) {
                         if let secondaryText = content.secondaryText {
-                            Text(middleTruncatedPath(secondaryText, maxLength: Self.secondaryMaxLength))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                            secondaryView(secondaryText)
                         }
                         ForEach(Array(content.badges.enumerated()), id: \.offset) { _, badge in
                             badgeView(badge)
@@ -3154,6 +3164,35 @@ private struct CompletionRow: View {
             return false
         }
         return after > cap
+    }
+
+    @ViewBuilder
+    private func secondaryView(_ secondaryText: String) -> some View {
+        let truncated = middleTruncatedPath(secondaryText, maxLength: Self.secondaryMaxLength)
+        // Task-theme suggestion: tint the `●` dot with the declaring
+        // note's hue; color is never the only signal because the stem
+        // name stays in the text.
+        if let hue = content.suggestedFromHue, truncated.contains("●") {
+            let parts = truncated.components(separatedBy: "●")
+            if parts.count == 2 {
+                (Text(parts[0]).foregroundStyle(.secondary)
+                    + Text("●").foregroundStyle(
+                        PomodoroHomeColor.color(for: hue, scheme: colorScheme))
+                    + Text(parts[1]).foregroundStyle(.secondary))
+                    .font(.caption)
+                    .lineLimit(1)
+            } else {
+                Text(truncated)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        } else {
+            Text(truncated)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
     }
 
     private var selectionFill: Color {
@@ -5246,6 +5285,12 @@ struct PreviewPane: View {
             if let removedLinksText = toggle.removedLinksText {
                 toggleLinkLine(prefix: "\u{2212}", color: .red, text: removedLinksText)
             }
+            if let taskThemeLine = toggle.taskThemeLine {
+                Text(taskThemeLine)
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
             if !toggle.chips.isEmpty {
                 HStack(spacing: 6) {
                     ForEach(toggle.chips, id: \.self) { chip in
@@ -5306,6 +5351,12 @@ struct PreviewPane: View {
             Text(link.ledgerText)
                 .font(.system(.callout, design: .monospaced))
                 .textSelection(.enabled)
+            if let taskThemeLine = link.taskThemeLine {
+                Text(taskThemeLine)
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
             if !link.chips.isEmpty {
                 HStack(spacing: 6) {
                     ForEach(link.chips, id: \.self) { chip in

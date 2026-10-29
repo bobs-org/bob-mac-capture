@@ -2761,7 +2761,10 @@ public final class RefsPanelModel: ObservableObject {
 
     public func selectTodayLinkRow(_ index: Int) {
         guard var card = todayLinkCard else { return }
-        let effect = card.select(index: index)
+        // Index -1 is the synthetic suggested-create row shown first when
+        // `theme_suggestion.create` is true.
+        let effect =
+            index == -1 ? card.selectSuggestedCreate() : card.select(index: index)
         todayLinkCard = card
         applyTodayLinkEffect(effect, token: todayLinkSequence)
     }
@@ -2772,7 +2775,11 @@ public final class RefsPanelModel: ObservableObject {
         guard var card = todayLinkCard,
             card.phase.canSelectDestination
         else { return }
-        _ = card.select(index: index)
+        if index == -1 {
+            _ = card.selectSuggestedCreate()
+        } else {
+            _ = card.select(index: index)
+        }
         let effect = card.handle(.submit)
         todayLinkCard = card
         applyTodayLinkEffect(effect, token: todayLinkSequence)

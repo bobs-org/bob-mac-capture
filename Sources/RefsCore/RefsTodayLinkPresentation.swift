@@ -79,6 +79,16 @@ public enum RefsTodayLinkPresentation {
         "New Pomodoro \(RefsTodayLinkCard.canonicalName(query))"
     }
 
+    /// Synthetic create row offered first when `theme_suggestion.create` is
+    /// true, e.g. `New READ Pomodoro`. It sends `.exactName(name)`.
+    public static func suggestedCreateTitle(name: String) -> String {
+        let canonical = RefsTodayLinkCard.canonicalName(name)
+        if canonical.isEmpty {
+            return "New Pomodoro"
+        }
+        return "New \(canonical) Pomodoro"
+    }
+
     public static func pills(_ row: RefsTodayLinkPomodoro) -> [String] {
         var result: [String] = []
         if row.running { result.append("Running") } else if row.isDefault { result.append("Next up") }
@@ -98,6 +108,13 @@ public enum RefsTodayLinkPresentation {
         parts.append(
             row.taskLinkCount == 0
                 ? "empty" : "\(row.taskLinkCount) \(row.taskLinkCount == 1 ? "task" : "tasks")")
+        // Task-theme suggestion: show the reason Bob reported, e.g.
+        // `Suggested · from sase_blog`.
+        if row.suggested, let label = row.suggestionLabel, !label.isEmpty {
+            parts.append("Suggested · \(label)")
+        } else if row.suggested {
+            parts.append("Suggested")
+        }
         return parts.joined(separator: " · ")
     }
 

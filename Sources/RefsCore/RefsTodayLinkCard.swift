@@ -90,7 +90,29 @@ public struct RefsTodayLinkCard: Equatable, Sendable {
     public private(set) var previewPending = true
     public private(set) var previewRequest: RefsTodayLinkPreviewRequest?
     public private(set) var generation: UInt64 = 0
+    /// Additive task-theme suggestion for the reading task. Older Bob omits
+    /// it; missing keeps today's default selection and never writes a field.
+    public private(set) var themeSuggestion: CaptureThemeSuggestion?
+    /// True while the synthetic suggested-create row (shown first when
+    /// `theme_suggestion.create`) is selected. It sends `.exactName(name)`.
+    public private(set) var selectedSuggestedCreate = false
     private var hasNavigated = false
+
+    /// Synthetic `New NAME Pomodoro` row offered first when Bob reports
+    /// `theme_suggestion.create` with an empty query. Nil when Bob offers
+    /// an existing row, when the query is non-empty, or on older Bob.
+    public var suggestedCreateName: String? {
+        guard Self.canonicalName(query).isEmpty,
+            let suggestion = themeSuggestion,
+            suggestion.create,
+            !suggestion.theme.name.isEmpty
+        else {
+            return nil
+        }
+        return suggestion.theme.name
+    }
+
+    public var showsSuggestedCreate: Bool { suggestedCreateName != nil }
 
     public init(item: RefItem) {
         frozenItemID = item.id
@@ -148,7 +170,23 @@ public struct RefsTodayLinkCard: Equatable, Sendable {
     }
 
     public var selector: RefsTodayLinkSelector? {
+        // Synthetic suggested-create row sends its exact name.
+        if selectedSuggestedCreate, let name = suggestedCreateName {
+            return .exactName(name)
+        }
         if Self.canonicalName(query).isEmpty && !hasNavigated {
+            // Task-theme suggestion: Return on the suggested row sends its
+            // entry whenever it is not Bob's default row. This fixes the
+            // `.automatic` trap, where Return would otherwise link Bob's
+            // default instead of the suggested row.
+            if let row = selectedPomodoro, row.suggested, !row.isDefault {
+                return .entry(ref: row.ref)
+            }
+            // With a suggested create, the synthetic row is preselected and
+            // sends its exact name instead of `.automatic`.
+            if showsSuggestedCreate, let name = suggestedCreateName {
+                return .exactName(name)
+            }
             return (phase == .loading || phase == .ready) && defaultProblem == nil
                 ? .automatic : nil
         }
@@ -162,6 +200,7 @@ public struct RefsTodayLinkCard: Equatable, Sendable {
     public mutating func applyListing(_ response: RefsTodayLinkResponse) -> RefsTodayLinkCardEffect {
         guard phase != .running else { return .none }
         pomodoros = response.pomodoros
+        themeSuggestion = response.themeSuggestion
         defaultProblem = nil
         failure = nil
         if let problem = response.error {
@@ -202,6 +241,19 @@ public struct RefsTodayLinkCard: Equatable, Sendable {
         else { return .none }
         clearFailure()
         selectedIndex = index
+        selectedSuggestedCreate = false
+        hasNavigated = true
+        return requestPreview()
+    }
+
+    /// Select the synthetic suggested-create row shown first when
+    /// `theme_suggestion.create` is true. It sends `.exactName(name)`.
+    @discardableResult
+    public mutating func selectSuggestedCreate() -> RefsTodayLinkCardEffect {
+        guard canEdit, phase.canSelectDestination, showsSuggestedCreate
+        else { return .none }
+        clearFailure()
+        selectedSuggestedCreate = true
         hasNavigated = true
         return requestPreview()
     }
@@ -215,7 +267,18 @@ public struct RefsTodayLinkCard: Equatable, Sendable {
             invalidatePreview()
             return .cancel
         case .move(let delta):
-            guard canEdit, phase.canSelectDestination, rowCount > 0 else { return .none }
+            guard canEdit, phase.canSelectDestination else { return .none }
+            // Leaving the synthetic suggested-create row lands on a real
+            // row; the suggested row itself is only reachable by the
+            // initial preselect until the user types or arrows away.
+            if selectedSuggestedCreate {
+                selectedSuggestedCreate = false
+                hasNavigated = true
+                guard rowCount > 0 else { return .none }
+                let landing = delta >= 0 ? 0 : rowCount - 1
+                return select(index: landing)
+            }
+            guard rowCount > 0 else { return .none }
             let origin = selectedIndex ?? (delta >= 0 ? -1 : 0)
             return select(index: ((origin + delta) % rowCount + rowCount) % rowCount)
         case .submit, .submitExactName:
@@ -260,6 +323,8 @@ public struct RefsTodayLinkCard: Equatable, Sendable {
             phase = .reloading
             pomodoros = []
             selectedIndex = nil
+            selectedSuggestedCreate = false
+            themeSuggestion = nil
             defaultProblem = nil
         } else {
             phase = wasLoading
@@ -284,7 +349,20 @@ public struct RefsTodayLinkCard: Equatable, Sendable {
 
     private mutating func resetSelection() {
         hasNavigated = false
+        selectedSuggestedCreate = false
         if Self.canonicalName(query).isEmpty {
+            // Task-theme suggestion: a synthetic create row is preselected
+            // first; otherwise the suggested row wins; otherwise Bob's
+            // default row keeps today's behavior.
+            if showsSuggestedCreate {
+                selectedSuggestedCreate = true
+                selectedIndex = nil
+                return
+            }
+            if let suggested = pomodoros.firstIndex(where: \.suggested) {
+                selectedIndex = suggested
+                return
+            }
             selectedIndex = pomodoros.firstIndex(where: \.isDefault)
         } else {
             selectedIndex = rowCount > 0 ? 0 : nil

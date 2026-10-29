@@ -261,6 +261,10 @@ public struct CompletionRowContent: Equatable, Sendable {
   /// A hidden history row remains visible as an undo affordance until the
   /// next editor change refreshes Bob's completion result.
   public let isHiddenThemeGhost: Bool
+    /// When Bob preselects this `pomodoro_name` row, the hue of the
+    /// declaring note (`theme_suggestion.from.hue`) so the view can tint
+    /// the `●` dot in the secondary text.
+    public let suggestedFromHue: PomodoroHomeHue?
     public let accessibilityLabel: String
     public let accessibilityHint: String
 
@@ -274,6 +278,7 @@ public struct CompletionRowContent: Equatable, Sendable {
         badges: [String],
         themeSwatches: [CaptureThemeSwatch] = [],
         isHiddenThemeGhost: Bool = false,
+        suggestedFromHue: PomodoroHomeHue? = nil,
         accessibilityLabel: String,
         accessibilityHint: String
     ) {
@@ -286,6 +291,7 @@ public struct CompletionRowContent: Equatable, Sendable {
         self.badges = badges
         self.themeSwatches = themeSwatches
         self.isHiddenThemeGhost = isHiddenThemeGhost
+        self.suggestedFromHue = suggestedFromHue
         self.accessibilityLabel = accessibilityLabel
         self.accessibilityHint = accessibilityHint
     }
@@ -396,7 +402,8 @@ public func completionRowContent(
     context rawContext: String?,
     query: String,
     override: CaptureCompleteOverride? = nil,
-    temporarilyHiddenThemeKey: String? = nil
+    temporarilyHiddenThemeKey: String? = nil,
+    themeSuggestion: CaptureThemeSuggestion? = nil
 ) -> CompletionRowContent {
     let context = CaptureCompletionContext(rawContext: rawContext)
 
@@ -907,6 +914,29 @@ public func completionRowContent(
         badges = []
     }
 
+    // Task-theme suggestion: in `pomodoro_name` with an empty query, the
+    // row Bob preselected carries `suggested` and renders the reason in
+    // the secondary slot. With a non-empty query PT7 ranking wins and the
+    // row keeps the reason but never moves.
+    var suggestedFromHue: PomodoroHomeHue? = nil
+    var suggestedRowLabel: String? = nil
+    if context == .pomodoroName, candidate.suggested, !isHiddenThemeGhost {
+        if let label = candidate.suggestionLabel, !label.isEmpty {
+            suggestedRowLabel = label
+            secondaryText = CaptureTaskThemePresentation.suggestedSecondaryText(
+                label: label, themeName: candidate.name ?? themeSuggestion?.theme.name)
+        } else if let fallback = themeSuggestion, !fallback.label.isEmpty {
+            suggestedRowLabel = fallback.label
+            secondaryText = CaptureTaskThemePresentation.suggestedSecondaryText(
+                label: fallback.label, themeName: candidate.name ?? fallback.theme.name)
+        }
+        // The dot hue comes from the top-level suggestion's declaring note.
+        suggestedFromHue = themeSuggestion?.from?.hue
+        if !badges.contains("Suggested") {
+            badges.append("Suggested")
+        }
+    }
+
     // Reading tasks (`#task #ref`) draw the book symbol in the task
     // pickers (`^`, `:`, `+`, `&`, `!`). Bob already strips `#ref` from
     // the display text, so only the symbol changes.
@@ -921,9 +951,18 @@ public func completionRowContent(
     let themeAccessibilityDetails = themeContext
         ? candidate.themes.map { CaptureUnconfiguredThemePresentation.spokenColor(for: $0) }
         : []
-    let accessibilityLabel = ([baseAccessibilityLabel] + themeAccessibilityDetails)
+    var accessibilityParts = ([baseAccessibilityLabel] + themeAccessibilityDetails)
         .filter { !$0.isEmpty }
-        .joined(separator: ", ")
+    if context == .pomodoroName, candidate.suggested, !isHiddenThemeGhost {
+        let themeName = candidate.name ?? themeSuggestion?.theme.name ?? primaryText
+        let reason = suggestedRowLabel ?? candidate.suggestionLabel ?? themeSuggestion?.label ?? ""
+        let suggestedLabel = CaptureTaskThemePresentation.suggestedAccessibilityLabel(
+            themeName: themeName, label: reason)
+        if !suggestedLabel.isEmpty, !accessibilityParts.contains(suggestedLabel) {
+            accessibilityParts.append(suggestedLabel)
+        }
+    }
+    let accessibilityLabel = accessibilityParts.joined(separator: ", ")
 
     return CompletionRowContent(
         category: category,
@@ -935,6 +974,7 @@ public func completionRowContent(
         badges: badges,
         themeSwatches: themeSwatches,
         isHiddenThemeGhost: isHiddenThemeGhost,
+        suggestedFromHue: suggestedFromHue,
         accessibilityLabel: accessibilityLabel,
         accessibilityHint: isHiddenThemeGhost
             ? "Theme hidden from Recent. Press Control+D to undo."

@@ -79,6 +79,8 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
     public let notificationTitle: String
     public let notificationBody: String
     public let previewAccessibilitySummary: String
+    /// Optional task-theme line, e.g. `task theme → FIX · sase_blog suggests WRITE`.
+    public let taskThemeLine: String?
 
     public init?(capture: CaptureCommandSuccess) {
         guard let rawDirection = capture.toggleDirection,
@@ -231,7 +233,13 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         statusText =
             "\(statusVerb) \u{2192} \(routeDestinationLabel) (\(statusPhrase))"
 
+        taskThemeLine = CaptureTaskThemePresentation.line(
+            for: capture.taskTheme, isDryRun: capture.dryRun)
+
         var announcementParts = ["\(statusVerb): \(routeLabel), \(statusPhrase)"]
+        if let taskThemeLine {
+            announcementParts.append(taskThemeLine)
+        }
         if let relocationText {
             announcementParts.append(relocationText)
         } else if (direction == .next || direction == .link), removedLinks == 0, !pomodoroAlreadyLinked {
@@ -269,6 +277,9 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         if let removedLinksText {
             bodyLines.append("\u{2212} \(removedLinksText)")
         }
+        if let taskThemeLine {
+            bodyLines.append(taskThemeLine)
+        }
         if !chips.isEmpty {
             bodyLines.append(chips.joined(separator: " \u{00b7} "))
         }
@@ -291,6 +302,9 @@ public struct CaptureTogglePresentation: Equatable, Sendable {
         }
         if let removedLinksText {
             previewParts.append(removedLinksText)
+        }
+        if let taskThemeLine {
+            previewParts.append(taskThemeLine)
         }
         previewParts.append(contentsOf: chips)
         previewAccessibilitySummary = previewParts.joined(separator: ", ")
